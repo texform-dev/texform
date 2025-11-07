@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 chumsky = "0.11.1"
+logos = "0.15.1"
