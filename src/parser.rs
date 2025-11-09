@@ -57,17 +57,31 @@ pub fn parse(tokens: &[Token], strict: bool) -> Result<SyntaxNode, Vec<Rich<'_, 
 fn parse_math_block<'a>(
     strict: bool,
 ) -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone {
-    recursive(|normal_item| {
-        // Helper: parse group content (list of normal items)
-        let group_content = normal_item.clone().repeated().collect::<Vec<_>>();
+    // KEY ARCHITECTURE CHANGE:
+    // Instead of recursive(|normal_item| ...) returning normal_item definition,
+    // we use recursive(|group_content_parser| ...) returning group_content_math.
+    // This ensures the top-level uses Infix/Declarative logic, not simple .repeated().
+    recursive(|group_content_parser| {
+        // group_content_parser: Parser<Vec<SyntaxNode>>
+        // This is a forward reference to the group_content_math we'll define below.
 
         // ====================================================================
-        // Atom Parsers
+        // Stage 4: GroupContent = Leading + [InfixTail] + [DeclarativeTail]
+        // ====================================================================
+
+        // First, we need to define normal_item (which uses group_content_parser for explicit_group)
+        // Then we define group_content_math using normal_item
+
+        // We'll build normal_item inline and use it in group_content_math
+
+        // ====================================================================
+        // Define Atom Parsers First (needed for normal_item)
         // ====================================================================
 
         // Explicit group: {...}
+        // Uses group_content_parser for recursive parsing
         let explicit_group = just(&Token::LBrace)
-            .ignore_then(group_content.clone())
+            .ignore_then(group_content_parser.clone())
             .then_ignore(just(&Token::RBrace))
             .map(|children| SyntaxNode::Group {
                 mode: ContentMode::Math,
@@ -107,43 +121,42 @@ fn parse_math_block<'a>(
         // ====================================================================
 
         // Generic prefix command parser using KB and custom parser
-        // This allows us to dynamically parse arguments based on CommandMeta.args
         let prefix_command = custom(move |input| {
-            // 1. Read command name
-            let name = match input.next() {
+            // 1. Peek command name (don't consume yet!)
+            let name = match input.peek() {
                 Some(Token::ControlSeq(name)) => name.clone(),
-                Some(tok) => {
+                _ => {
                     return Err(Rich::custom(
                         SimpleSpan::new((), 0..0),
-                        format!("Expected command, got {:?}", tok),
-                    ))
-                }
-                None => {
-                    return Err(Rich::custom(
-                        SimpleSpan::new((), 0..0),
-                        "Unexpected end of input",
+                        "not a command",
                     ))
                 }
             };
 
             // 2. Check blacklist
             if let Some(reason) = knowledge::is_blacklisted(&name) {
+                // For blacklisted commands, consume the token before erroring
+                input.next();
                 return Err(Rich::custom(
                     SimpleSpan::new((), 0..0),
                     format!("Banned command: \\{} ({})", name, reason),
                 ));
             }
 
-            // 3. Lookup in KB
+            // 3. Lookup in KB - check if it's a Prefix command
             let meta = match knowledge::lookup_command(&name) {
                 Some(m) if m.kind == CommandKind::Prefix => m,
                 Some(_) => {
+                    // Not a prefix command (e.g., Infix or Declarative)
+                    // Don't consume token, just fail softly
                     return Err(Rich::custom(
                         SimpleSpan::new((), 0..0),
-                        format!("Not a prefix command: \\{}", name),
+                        "not prefix",
                     ))
                 }
                 None if strict => {
+                    // Unknown in strict mode - consume and error
+                    input.next();
                     return Err(Rich::custom(
                         SimpleSpan::new((), 0..0),
                         format!("Unknown command: \\{}", name),
@@ -151,11 +164,14 @@ fn parse_math_block<'a>(
                 }
                 None => {
                     // Non-strict mode: will be handled by unknown_command parser
-                    return Err(Rich::custom(SimpleSpan::new((), 0..0), "__UNKNOWN__"));
+                    return Err(Rich::custom(SimpleSpan::new((), 0..0), "unknown"));
                 }
             };
 
-            // 4. Parse optional star
+            // 4. Now we know it's a valid Prefix command - consume the token
+            input.next();
+
+            // 5. Parse optional star
             let starred = if matches!(input.peek(), Some(Token::Star)) {
                 input.next();
                 true
@@ -163,7 +179,7 @@ fn parse_math_block<'a>(
                 false
             };
 
-            // 5. Parse arguments based on meta.args
+            // 6. Parse arguments based on meta.args
             let mut args = Vec::new();
             for arg_spec in meta.args {
                 match arg_spec.kind {
@@ -324,7 +340,7 @@ fn parse_math_block<'a>(
                 }
             }
 
-            // 6. Return command node
+            // 7. Return command node
             Ok(SyntaxNode::Command {
                 name,
                 starred,
@@ -343,8 +359,13 @@ fn parse_math_block<'a>(
             }
 
             // Check if it's in KB
-            if knowledge::lookup_command(&name).is_some() {
-                return Err(Rich::custom(span, "known command"));
+            if let Some(meta) = knowledge::lookup_command(&name) {
+                // Known command - don't match it here
+                return Err(Rich::custom(span, format!("known {} command", match meta.kind {
+                    CommandKind::Prefix => "prefix",
+                    CommandKind::Infix => "infix",
+                    CommandKind::Declarative => "declarative",
+                })));
             }
 
             // Unknown command in non-strict mode
@@ -362,7 +383,6 @@ fn parse_math_block<'a>(
         // Atom: priority order
         // ====================================================================
 
-        // Try parsers in order (highest to lowest priority)
         let atom = choice((
             explicit_group,
             escaped_symbol,
@@ -412,10 +432,226 @@ fn parse_math_block<'a>(
             });
 
         // Normal item: scripted or atom
-        choice((scripted, atom))
+        let normal_item = choice((scripted, atom));
+
+        // ====================================================================
+        // Now define group_content_math using normal_item
+        // ====================================================================
+
+        // group_content_math parses: Leading items + optional InfixTail + optional DeclarativeTail
+        let group_content_math = {
+            // Leading items: parse normal_item repeatedly, stopping before infix/declarative commands
+            //
+            // Solution: Use .not() combinator for zero-consumption lookahead
+            // 1. Create a parser that matches infix/declarative commands
+            // 2. Use .not() to invert it (succeeds when NOT infix/declarative)
+            // 3. When .not() fails (i.e., we find infix/declarative), repeated() stops gracefully
+            // 4. .not() doesn't consume tokens, so infix_tail can read them
+
+            // Pattern that matches infix/declarative commands
+            let stop_infix_or_decl = select! {
+                Token::ControlSeq(name)
+                    if knowledge::lookup_command(name.as_str())
+                        .map(|m| matches!(m.kind, CommandKind::Infix | CommandKind::Declarative))
+                        .unwrap_or(false) => ()
+            };
+
+            // Guard: .not() inverts the match (zero-consumption lookahead)
+            // When we encounter infix/declarative, .not() fails and repeated() stops
+            let guarded_item = stop_infix_or_decl.not().then(normal_item.clone()).map(|(_, item)| item);
+
+            let leading = guarded_item.repeated().collect::<Vec<_>>();
+
+            // InfixTail: infix_command + right_items
+            // Returns (infix_info, right_items) where infix_info = (name, starred, args)
+            let infix_tail = {
+                // Parse infix command (returns marker with metadata)
+                let infix_cmd = custom(move |input| {
+                    // 1. Read command name
+                    let name = match input.peek() {
+                        Some(Token::ControlSeq(n)) => n.clone(),
+                        _ => return Err(Rich::custom(SimpleSpan::new((), 0..0), "not a command")),
+                    };
+                    input.next(); // consume
+
+                    // 2. Check blacklist
+                    if let Some(reason) = knowledge::is_blacklisted(&name) {
+                        return Err(Rich::custom(
+                            SimpleSpan::new((), 0..0),
+                            format!("Banned command: \\{} ({})", name, reason),
+                        ));
+                    }
+
+                    // 3. Lookup in KB - must be Infix
+                    let meta = match knowledge::lookup_command(&name) {
+                        Some(m) if m.kind == CommandKind::Infix => m,
+                        Some(_) => return Err(Rich::custom(SimpleSpan::new((), 0..0), "not infix")),
+                        None => return Err(Rich::custom(SimpleSpan::new((), 0..0), "unknown")),
+                    };
+
+                    // 4. Parse optional star
+                    let starred = if meta.has_star_variant && matches!(input.peek(), Some(Token::Star)) {
+                        input.next();
+                        true
+                    } else {
+                        false
+                    };
+
+                    // 5. Parse args (usually empty for infix)
+                    // TODO: Implement arg parsing for infix commands with args
+                    let args = Vec::new();
+
+                    Ok((name, starred, args))
+                });
+
+                // Right operand: at least one normal_item, stopping before declarative commands
+                // Use .not() combinator for zero-consumption lookahead
+
+                // Pattern that matches declarative commands
+                let stop_declarative = select! {
+                    Token::ControlSeq(name)
+                        if knowledge::lookup_command(name.as_str())
+                            .map(|m| m.kind == CommandKind::Declarative)
+                            .unwrap_or(false) => ()
+                };
+
+                // Guard: .not() inverts the match (zero-consumption lookahead)
+                // When we encounter declarative, .not() fails and repeated() stops
+                let guarded_item_right = stop_declarative.not().then(normal_item.clone()).map(|(_, item)| item);
+
+                let right_items = guarded_item_right.repeated().at_least(1).collect::<Vec<_>>();
+
+                infix_cmd.then(right_items)
+            };
+
+            // DeclarativeTail: declarative_command + scope_items
+            let declarative_tail = {
+                // Parse declarative command
+                let decl_cmd = custom(move |input| {
+                    // 1. Read command name
+                    let name = match input.peek() {
+                        Some(Token::ControlSeq(n)) => n.clone(),
+                        _ => return Err(Rich::custom(SimpleSpan::new((), 0..0), "not a command")),
+                    };
+                    input.next(); // consume
+
+                    // 2. Check blacklist
+                    if let Some(reason) = knowledge::is_blacklisted(&name) {
+                        return Err(Rich::custom(
+                            SimpleSpan::new((), 0..0),
+                            format!("Banned command: \\{} ({})", name, reason),
+                        ));
+                    }
+
+                    // 3. Lookup in KB - must be Declarative
+                    let meta = match knowledge::lookup_command(&name) {
+                        Some(m) if m.kind == CommandKind::Declarative => m,
+                        Some(_) => return Err(Rich::custom(SimpleSpan::new((), 0..0), "not declarative")),
+                        None => return Err(Rich::custom(SimpleSpan::new((), 0..0), "unknown")),
+                    };
+
+                    // 4. Parse optional star
+                    let starred = if meta.has_star_variant && matches!(input.peek(), Some(Token::Star)) {
+                        input.next();
+                        true
+                    } else {
+                        false
+                    };
+
+                    // 5. Parse args
+                    // TODO: Implement arg parsing for declarative commands
+                    let args = Vec::new();
+
+                    Ok((name, starred, args))
+                });
+
+                // Scope: remaining items (can be empty)
+                let scope_items = normal_item.clone().repeated().collect::<Vec<_>>();
+
+                decl_cmd.then(scope_items)
+            };
+
+            // Combine: Leading + optional InfixTail + optional DeclarativeTail
+            leading
+                .then(infix_tail.or_not())
+                .then(declarative_tail.or_not())
+                .map(|((leading, infix_tail), declarative_tail)| {
+                    // Build the final group based on what we found
+                    //
+                    // Logic:
+                    // 1. If InfixTail exists, fold Leading as left and RightItems+DeclarativeTail as right
+                    // 2. If only DeclarativeTail exists, append it to Leading
+                    // 3. Otherwise return Leading as is
+
+                    if let Some((infix_info, right_items)) = infix_tail {
+                        // Have InfixTail: construct Infix node
+                        let (infix_name, infix_starred, infix_args) = infix_info;
+
+                        // Left operand: fold Leading items
+                        let left = fold_items(ContentMode::Math, leading);
+
+                        // Right operand: right_items + optional DeclarativeTail
+                        let mut right_content = right_items;
+                        if let Some((decl_tail_info, scope_items)) = declarative_tail {
+                            let (decl_name, decl_starred, decl_args) = decl_tail_info;
+                            let scope = fold_items(ContentMode::Math, scope_items);
+
+                            let decl_node = SyntaxNode::Declarative {
+                                name: decl_name,
+                                starred: decl_starred,
+                                args: decl_args,
+                                scope: Box::new(scope),
+                            };
+
+                            right_content.push(decl_node);
+                        }
+
+                        let right = fold_items(ContentMode::Math, right_content);
+
+                        // Return Infix node as single-element vector
+                        return vec![SyntaxNode::Infix {
+                            name: infix_name,
+                            starred: infix_starred,
+                            args: infix_args,
+                            left: Box::new(left),
+                            right: Box::new(right),
+                        }];
+                    }
+
+                    // No InfixTail: check DeclarativeTail
+                    let mut items = leading;
+
+                    if let Some((decl_tail_info, scope_items)) = declarative_tail {
+                        let (decl_name, decl_starred, decl_args) = decl_tail_info;
+                        let scope = fold_items(ContentMode::Math, scope_items);
+
+                        let decl_node = SyntaxNode::Declarative {
+                            name: decl_name,
+                            starred: decl_starred,
+                            args: decl_args,
+                            scope: Box::new(scope),
+                        };
+
+                        items.push(decl_node);
+                    }
+
+                    // Return items
+                    items
+                })
+        };
+
+        // ====================================================================
+        // Return group_content_math (not normal_item!)
+        // ====================================================================
+        //
+        // KEY: This is the architecture fix!
+        // We return group_content_math which contains the full Infix/Declarative logic,
+        // not a simple normal_item that would be .repeated() outside the closure.
+        //
+        // group_content_math: Parser<Vec<SyntaxNode>>
+        group_content_math
     })
-    .repeated()
-    .collect()
+    // Wrap the Vec<SyntaxNode> into a top-level Group node
     .map(|children| SyntaxNode::Group {
         mode: ContentMode::Math,
         kind: GroupKind::Implicit,
@@ -432,7 +668,6 @@ fn parse_math_block<'a>(
 /// - Empty list: empty implicit group
 /// - Single item: return that item
 /// - Multiple items: wrap in implicit group
-#[allow(dead_code)]
 fn fold_items(mode: ContentMode, items: Vec<SyntaxNode>) -> SyntaxNode {
     match items.len() {
         0 => SyntaxNode::Group {
@@ -1031,5 +1266,247 @@ mod tests {
 
         let result = parse(&tokens, false);
         assert!(result.is_err());
+    }
+
+    // ========================================================================
+    // Stage 4 Tests (Infix and Declarative commands)
+    // ========================================================================
+
+    #[test]
+    fn test_infix_over_simple() {
+        // "a \over b"
+        let tokens = vec![
+            Token::Char('a'),
+            Token::ControlSeq("over".to_string()),
+            Token::Char('b'),
+        ];
+
+        let result = match parse(&tokens, false) {
+            Ok(r) => r,
+            Err(errors) => {
+                eprintln!("Parse errors:");
+                for err in &errors {
+                    eprintln!("  {:?}", err);
+                }
+                panic!("Parse failed with {} errors", errors.len());
+            }
+        };
+
+        match result {
+            SyntaxNode::Group { children, .. } => {
+                assert_eq!(children.len(), 1);
+
+                match &children[0] {
+                    SyntaxNode::Infix {
+                        name,
+                        starred,
+                        left,
+                        right,
+                        args,
+                    } => {
+                        assert_eq!(name, "over");
+                        assert!(!starred);
+                        assert!(args.is_empty());
+                        assert_eq!(**left, SyntaxNode::Char('a'));
+                        assert_eq!(**right, SyntaxNode::Char('b'));
+                    }
+                    _ => panic!("Expected Infix node, got {:?}", children[0]),
+                }
+            }
+            _ => panic!("Expected root Group"),
+        }
+    }
+
+    #[test]
+    fn test_infix_choose() {
+        // "n \choose k"
+        let tokens = vec![
+            Token::Char('n'),
+            Token::ControlSeq("choose".to_string()),
+            Token::Char('k'),
+        ];
+
+        let result = parse(&tokens, false).unwrap();
+
+        match result {
+            SyntaxNode::Group { children, .. } => {
+                assert_eq!(children.len(), 1);
+
+                match &children[0] {
+                    SyntaxNode::Infix { name, left, right, .. } => {
+                        assert_eq!(name, "choose");
+                        assert_eq!(**left, SyntaxNode::Char('n'));
+                        assert_eq!(**right, SyntaxNode::Char('k'));
+                    }
+                    _ => panic!("Expected Infix node"),
+                }
+            }
+            _ => panic!("Expected root Group"),
+        }
+    }
+
+    #[test]
+    fn test_infix_multiple_items() {
+        // "a+b \over c+d"
+        let tokens = vec![
+            Token::Char('a'),
+            Token::Char('+'),
+            Token::Char('b'),
+            Token::ControlSeq("over".to_string()),
+            Token::Char('c'),
+            Token::Char('+'),
+            Token::Char('d'),
+        ];
+
+        let result = parse(&tokens, false).unwrap();
+
+        match result {
+            SyntaxNode::Group { children, .. } => {
+                assert_eq!(children.len(), 1);
+
+                match &children[0] {
+                    SyntaxNode::Infix { left, right, .. } => {
+                        // Left should be folded into implicit group
+                        match &**left {
+                            SyntaxNode::Group { children, kind, .. } => {
+                                assert_eq!(*kind, GroupKind::Implicit);
+                                assert_eq!(children.len(), 3);
+                                assert_eq!(children[0], SyntaxNode::Char('a'));
+                                assert_eq!(children[1], SyntaxNode::Char('+'));
+                                assert_eq!(children[2], SyntaxNode::Char('b'));
+                            }
+                            _ => panic!("Expected implicit group for left operand"),
+                        }
+
+                        // Right should be folded into implicit group
+                        match &**right {
+                            SyntaxNode::Group { children, kind, .. } => {
+                                assert_eq!(*kind, GroupKind::Implicit);
+                                assert_eq!(children.len(), 3);
+                                assert_eq!(children[0], SyntaxNode::Char('c'));
+                                assert_eq!(children[1], SyntaxNode::Char('+'));
+                                assert_eq!(children[2], SyntaxNode::Char('d'));
+                            }
+                            _ => panic!("Expected implicit group for right operand"),
+                        }
+                    }
+                    _ => panic!("Expected Infix node"),
+                }
+            }
+            _ => panic!("Expected root Group"),
+        }
+    }
+
+    #[test]
+    fn test_declarative_bfseries() {
+        // "\bfseries text" -> Declarative with scope containing "text"
+        let tokens = vec![
+            Token::ControlSeq("bfseries".to_string()),
+            Token::Char('t'),
+            Token::Char('e'),
+            Token::Char('x'),
+            Token::Char('t'),
+        ];
+
+        let result = parse(&tokens, false).unwrap();
+
+        match result {
+            SyntaxNode::Group { children, .. } => {
+                assert_eq!(children.len(), 1);
+
+                match &children[0] {
+                    SyntaxNode::Declarative {
+                        name,
+                        starred,
+                        args,
+                        scope,
+                    } => {
+                        assert_eq!(name, "bfseries");
+                        assert!(!starred);
+                        assert!(args.is_empty());
+
+                        // Scope should contain 4 chars
+                        match &**scope {
+                            SyntaxNode::Group { children, kind, .. } => {
+                                assert_eq!(*kind, GroupKind::Implicit);
+                                assert_eq!(children.len(), 4);
+                            }
+                            _ => panic!("Expected Group for scope"),
+                        }
+                    }
+                    _ => panic!("Expected Declarative node"),
+                }
+            }
+            _ => panic!("Expected root Group"),
+        }
+    }
+
+    #[test]
+    fn test_declarative_with_leading() {
+        // "a \bfseries b c"
+        let tokens = vec![
+            Token::Char('a'),
+            Token::ControlSeq("bfseries".to_string()),
+            Token::Char('b'),
+            Token::Char('c'),
+        ];
+
+        let result = parse(&tokens, false).unwrap();
+
+        match result {
+            SyntaxNode::Group { children, .. } => {
+                assert_eq!(children.len(), 2);
+
+                // First item: 'a'
+                assert_eq!(children[0], SyntaxNode::Char('a'));
+
+                // Second item: Declarative
+                match &children[1] {
+                    SyntaxNode::Declarative { name, scope, .. } => {
+                        assert_eq!(name, "bfseries");
+
+                        match &**scope {
+                            SyntaxNode::Group { children, .. } => {
+                                assert_eq!(children.len(), 2);
+                                assert_eq!(children[0], SyntaxNode::Char('b'));
+                                assert_eq!(children[1], SyntaxNode::Char('c'));
+                            }
+                            _ => panic!("Expected Group for scope"),
+                        }
+                    }
+                    _ => panic!("Expected Declarative node"),
+                }
+            }
+            _ => panic!("Expected root Group"),
+        }
+    }
+
+    #[test]
+    fn test_declarative_empty_scope() {
+        // "\bfseries" with nothing after it
+        let tokens = vec![Token::ControlSeq("bfseries".to_string())];
+
+        let result = parse(&tokens, false).unwrap();
+
+        match result {
+            SyntaxNode::Group { children, .. } => {
+                assert_eq!(children.len(), 1);
+
+                match &children[0] {
+                    SyntaxNode::Declarative { scope, .. } => {
+                        // Scope should be empty implicit group
+                        match &**scope {
+                            SyntaxNode::Group { children, kind, .. } => {
+                                assert_eq!(*kind, GroupKind::Implicit);
+                                assert!(children.is_empty());
+                            }
+                            _ => panic!("Expected empty Group for scope"),
+                        }
+                    }
+                    _ => panic!("Expected Declarative node"),
+                }
+            }
+            _ => panic!("Expected root Group"),
+        }
     }
 }
