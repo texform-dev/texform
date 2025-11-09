@@ -43,6 +43,18 @@ pub enum ContentMode {
     Text,
 }
 
+/// Delimiter type for delimited groups (\left ... \right)
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Delimiter {
+    /// No delimiter (corresponds to '.' in LaTeX: \left. or \right.)
+    None,
+    /// Single character delimiter: '(', ')', '[', ']', '|', etc.
+    Char(char),
+    /// Control sequence delimiter: "\langle", "\rangle", "\{", "\}", etc.
+    /// Stored as owned String to allow for arbitrary control sequences
+    Control(String),
+}
+
 /// Group type for serialization
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GroupKind {
@@ -50,8 +62,8 @@ pub enum GroupKind {
     /// Used to wrap operands/scope of infix and declarative commands
     Implicit,
     Delimited {
-        left: String,
-        right: String,
+        left: Delimiter,
+        right: Delimiter,
     },
     /// Inline math in text mode: $...$
     InlineMath,
@@ -93,9 +105,13 @@ pub enum Node {
     /// Prefix command: arguments follow the command
     /// Example: \frac{a}{b}, \sqrt[n]{x}, \section*{title}
     /// Most common command type
+    ///
+    /// Note: Unknown commands (from non-strict mode parsing) are also represented
+    /// as Command nodes with is_unknown=true and empty args.
     Command {
         name: String,
-        starred: bool, // Has * suffix (e.g., \section*)
+        starred: bool,     // Has * suffix (e.g., \section*)
+        is_unknown: bool,  // True if this was an unknown command in non-strict mode
         args: Vec<Argument>,
     },
 
