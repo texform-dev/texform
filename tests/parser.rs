@@ -1,0 +1,821 @@
+use texform::lexer::Token;
+use texform::parser::{parse, filter_tokens};
+use texform::syntax_node::{ArgumentKind, ContentMode, GroupKind, SyntaxNode};
+
+// ========================================================================
+// Stage 1-2 Tests (Basic parsing)
+// ========================================================================
+
+#[test]
+fn test_parse_simple_chars() {
+    let tokens = vec![Token::Char('a'), Token::Char('b'), Token::Char('c')];
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group {
+            mode,
+            kind,
+            children,
+        } => {
+            assert_eq!(mode, ContentMode::Math);
+            assert_eq!(kind, GroupKind::Implicit);
+            assert_eq!(children.len(), 3);
+            assert_eq!(children[0], SyntaxNode::Char('a'));
+            assert_eq!(children[1], SyntaxNode::Char('b'));
+            assert_eq!(children[2], SyntaxNode::Char('c'));
+        }
+        _ => panic!("Expected Group node"),
+    }
+}
+
+#[test]
+fn test_parse_empty() {
+    let tokens = vec![];
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group {
+            mode,
+            kind,
+            children,
+        } => {
+            assert_eq!(mode, ContentMode::Math);
+            assert_eq!(kind, GroupKind::Implicit);
+            assert!(children.is_empty());
+        }
+        _ => panic!("Expected Group node"),
+    }
+}
+
+#[test]
+fn test_escaped_symbols() {
+    let tokens = vec![
+        Token::ControlSeq("%".to_string()),
+        Token::ControlSeq("$".to_string()),
+        Token::ControlSeq("&".to_string()),
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 3);
+            assert_eq!(children[0], SyntaxNode::Char('%'));
+            assert_eq!(children[1], SyntaxNode::Char('$'));
+            assert_eq!(children[2], SyntaxNode::Char('&'));
+        }
+        _ => panic!("Expected Group"),
+    }
+}
+
+#[test]
+fn test_active_char() {
+    let tokens = vec![Token::Char('a'), Token::ActiveChar, Token::Char('b')];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 3);
+            assert_eq!(children[0], SyntaxNode::Char('a'));
+            assert_eq!(children[1], SyntaxNode::ActiveSpace);
+            assert_eq!(children[2], SyntaxNode::Char('b'));
+        }
+        _ => panic!("Expected Group"),
+    }
+}
+
+#[test]
+fn test_explicit_group() {
+    let tokens = vec![Token::LBrace, Token::Char('a'), Token::RBrace];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group {
+            mode,
+            kind,
+            children,
+        } => {
+            assert_eq!(mode, ContentMode::Math);
+            assert_eq!(kind, GroupKind::Implicit);
+            assert_eq!(children.len(), 1);
+
+            match &children[0] {
+                SyntaxNode::Group {
+                    mode: inner_mode,
+                    kind: inner_kind,
+                    children: inner_children,
+                } => {
+                    assert_eq!(*inner_mode, ContentMode::Math);
+                    assert_eq!(*inner_kind, GroupKind::Explicit);
+                    assert_eq!(inner_children.len(), 1);
+                    assert_eq!(inner_children[0], SyntaxNode::Char('a'));
+                }
+                _ => panic!("Expected inner Group"),
+            }
+        }
+        _ => panic!("Expected Group node"),
+    }
+}
+
+#[test]
+fn test_nested_groups() {
+    let tokens = vec![
+        Token::Char('a'),
+        Token::LBrace,
+        Token::Char('b'),
+        Token::LBrace,
+        Token::Char('c'),
+        Token::RBrace,
+        Token::RBrace,
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 2);
+            assert_eq!(children[0], SyntaxNode::Char('a'));
+
+            match &children[1] {
+                SyntaxNode::Group {
+                    kind: GroupKind::Explicit,
+                    children: inner1,
+                    ..
+                } => {
+                    assert_eq!(inner1.len(), 2);
+                    assert_eq!(inner1[0], SyntaxNode::Char('b'));
+
+                    match &inner1[1] {
+                        SyntaxNode::Group {
+                            kind: GroupKind::Explicit,
+                            children: inner2,
+                            ..
+                        } => {
+                            assert_eq!(inner2.len(), 1);
+                            assert_eq!(inner2[0], SyntaxNode::Char('c'));
+                        }
+                        _ => panic!("Expected second level Group"),
+                    }
+                }
+                _ => panic!("Expected first level Group"),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_simple_script() {
+    let tokens = vec![Token::Char('x'), Token::Superscript, Token::Char('2')];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 1);
+
+            match &children[0] {
+                SyntaxNode::Scripted {
+                    base,
+                    subscript,
+                    superscript,
+                } => {
+                    assert_eq!(**base, SyntaxNode::Char('x'));
+                    assert!(subscript.is_none());
+                    assert_eq!(**superscript.as_ref().unwrap(), SyntaxNode::Char('2'));
+                }
+                _ => panic!("Expected Scripted node"),
+            }
+        }
+        _ => panic!("Expected Group node"),
+    }
+}
+
+#[test]
+fn test_script_normalization() {
+    // "x^a_b" and "x_b^a" should produce equivalent AST
+    let tokens1 = vec![
+        Token::Char('x'),
+        Token::Superscript,
+        Token::Char('a'),
+        Token::Subscript,
+        Token::Char('b'),
+    ];
+
+    let tokens2 = vec![
+        Token::Char('x'),
+        Token::Subscript,
+        Token::Char('b'),
+        Token::Superscript,
+        Token::Char('a'),
+    ];
+
+    let result1 = parse(&tokens1, false).unwrap();
+    let result2 = parse(&tokens2, false).unwrap();
+
+    assert_eq!(result1, result2);
+}
+
+#[test]
+fn test_script_duplicate_last_wins() {
+    // "x^a^b" -> superscript should be 'b' (last wins)
+    let tokens = vec![
+        Token::Char('x'),
+        Token::Superscript,
+        Token::Char('a'),
+        Token::Superscript,
+        Token::Char('b'),
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            match &children[0] {
+                SyntaxNode::Scripted { superscript, .. } => {
+                    assert_eq!(**superscript.as_ref().unwrap(), SyntaxNode::Char('b'));
+                }
+                _ => panic!("Expected Scripted node"),
+            }
+        }
+        _ => panic!("Expected Group node"),
+    }
+}
+
+#[test]
+fn test_script_with_group() {
+    // "x^{ab}" -> Scripted with group as superscript
+    let tokens = vec![
+        Token::Char('x'),
+        Token::Superscript,
+        Token::LBrace,
+        Token::Char('a'),
+        Token::Char('b'),
+        Token::RBrace,
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            match &children[0] {
+                SyntaxNode::Scripted {
+                    base,
+                    superscript,
+                    subscript,
+                } => {
+                    assert_eq!(**base, SyntaxNode::Char('x'));
+                    assert!(subscript.is_none());
+
+                    match superscript.as_ref().unwrap().as_ref() {
+                        SyntaxNode::Group { children, .. } => {
+                            assert_eq!(children.len(), 2);
+                            assert_eq!(children[0], SyntaxNode::Char('a'));
+                            assert_eq!(children[1], SyntaxNode::Char('b'));
+                        }
+                        _ => panic!("Expected Group as superscript"),
+                    }
+                }
+                _ => panic!("Expected Scripted node"),
+            }
+        }
+        _ => panic!("Expected Group node"),
+    }
+}
+
+#[test]
+fn test_filter_tokens() {
+    let tokens = vec![
+        Token::Char('a'),
+        Token::Whitespace,
+        Token::Char('b'),
+        Token::Whitespace,
+        Token::Char('c'),
+    ];
+
+    let filtered = filter_tokens(&tokens);
+    assert_eq!(filtered.len(), 3);
+    assert_eq!(filtered[0], Token::Char('a'));
+    assert_eq!(filtered[1], Token::Char('b'));
+    assert_eq!(filtered[2], Token::Char('c'));
+}
+
+#[test]
+fn test_filter_comments() {
+    let tokens = vec![
+        Token::Char('a'),
+        Token::Comment("% test\n".to_string()),
+        Token::Char('b'),
+    ];
+
+    let filtered = filter_tokens(&tokens);
+    assert_eq!(filtered.len(), 2);
+    assert_eq!(filtered[0], Token::Char('a'));
+    assert_eq!(filtered[1], Token::Char('b'));
+}
+
+// ========================================================================
+// Stage 3 Tests (Command parsing)
+// ========================================================================
+
+#[test]
+fn test_frac_command() {
+    // "\frac{a}{b}"
+    let tokens = vec![
+        Token::ControlSeq("frac".to_string()),
+        Token::LBrace,
+        Token::Char('a'),
+        Token::RBrace,
+        Token::LBrace,
+        Token::Char('b'),
+        Token::RBrace,
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 1);
+
+            match &children[0] {
+                SyntaxNode::Command { name, starred, args } => {
+                    assert_eq!(name, "frac");
+                    assert!(!starred);
+                    assert_eq!(args.len(), 2);
+
+                    assert_eq!(args[0].kind, ArgumentKind::Mandatory);
+                    assert_eq!(args[1].kind, ArgumentKind::Mandatory);
+                }
+                _ => panic!("Expected Command node"),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_sqrt_without_optional() {
+    // "\sqrt{x}"
+    let tokens = vec![
+        Token::ControlSeq("sqrt".to_string()),
+        Token::LBrace,
+        Token::Char('x'),
+        Token::RBrace,
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            match &children[0] {
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "sqrt");
+                    assert_eq!(args.len(), 2);
+
+                    // Optional arg should be empty
+                    assert_eq!(args[0].kind, ArgumentKind::Optional);
+                    match &args[0].value {
+                        SyntaxNode::Group { children, .. } => {
+                            assert!(children.is_empty());
+                        }
+                        _ => panic!("Expected Group in optional arg"),
+                    }
+
+                    // Mandatory arg
+                    assert_eq!(args[1].kind, ArgumentKind::Mandatory);
+                }
+                _ => panic!("Expected Command node"),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_sqrt_with_optional() {
+    // "\sqrt[3]{8}"
+    let tokens = vec![
+        Token::ControlSeq("sqrt".to_string()),
+        Token::LBracket,
+        Token::Char('3'),
+        Token::RBracket,
+        Token::LBrace,
+        Token::Char('8'),
+        Token::RBrace,
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            match &children[0] {
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "sqrt");
+                    assert_eq!(args.len(), 2);
+
+                    // Optional arg
+                    assert_eq!(args[0].kind, ArgumentKind::Optional);
+                    match &args[0].value {
+                        SyntaxNode::Group { children, .. } => {
+                            assert_eq!(children.len(), 1);
+                            assert_eq!(children[0], SyntaxNode::Char('3'));
+                        }
+                        _ => panic!("Expected Group in optional arg"),
+                    }
+                }
+                _ => panic!("Expected Command node"),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_text_command() {
+    // "\text{hello}"
+    let tokens = vec![
+        Token::ControlSeq("text".to_string()),
+        Token::LBrace,
+        Token::Char('h'),
+        Token::Char('e'),
+        Token::Char('l'),
+        Token::Char('l'),
+        Token::Char('o'),
+        Token::RBrace,
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            match &children[0] {
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "text");
+                    assert_eq!(args.len(), 1);
+                    match &args[0].value {
+                        SyntaxNode::Text(s) => {
+                            assert_eq!(s, "hello");
+                        }
+                        _ => panic!("Expected Text node"),
+                    }
+                }
+                _ => panic!("Expected Command node"),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_nested_commands() {
+    // "\frac{a}{\sqrt{b}}"
+    let tokens = vec![
+        Token::ControlSeq("frac".to_string()),
+        Token::LBrace,
+        Token::Char('a'),
+        Token::RBrace,
+        Token::LBrace,
+        Token::ControlSeq("sqrt".to_string()),
+        Token::LBrace,
+        Token::Char('b'),
+        Token::RBrace,
+        Token::RBrace,
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            match &children[0] {
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "frac");
+
+                    // Second argument should contain \sqrt command
+                    match &args[1].value {
+                        SyntaxNode::Group { children, .. } => {
+                            assert_eq!(children.len(), 1);
+                            match &children[0] {
+                                SyntaxNode::Command { name, .. } => {
+                                    assert_eq!(name, "sqrt");
+                                }
+                                _ => panic!("Expected nested Command"),
+                            }
+                        }
+                        _ => panic!("Expected Group in arg 1"),
+                    }
+                }
+                _ => panic!("Expected Command node"),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_unknown_command_nonstrict() {
+    // "\unknown{x}" in non-strict mode
+    let tokens = vec![
+        Token::ControlSeq("unknown".to_string()),
+        Token::LBrace,
+        Token::Char('x'),
+        Token::RBrace,
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 2);
+
+            // First: UnknownCommand node
+            match &children[0] {
+                SyntaxNode::UnknownCommand { name, starred } => {
+                    assert_eq!(name, "unknown");
+                    assert!(!starred);
+                }
+                _ => panic!("Expected UnknownCommand node"),
+            }
+
+            // Second: explicit group {x}
+            match &children[1] {
+                SyntaxNode::Group {
+                    kind: GroupKind::Explicit,
+                    children,
+                    ..
+                } => {
+                    assert_eq!(children.len(), 1);
+                    assert_eq!(children[0], SyntaxNode::Char('x'));
+                }
+                _ => panic!("Expected Group"),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_unknown_command_strict() {
+    // "\unknown{x}" in strict mode should error
+    let tokens = vec![
+        Token::ControlSeq("unknown".to_string()),
+        Token::LBrace,
+        Token::Char('x'),
+        Token::RBrace,
+    ];
+
+    let result = parse(&tokens, true);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_blacklisted_command() {
+    // "\ifnum" is blacklisted
+    let tokens = vec![Token::ControlSeq("ifnum".to_string())];
+
+    let result = parse(&tokens, false);
+    assert!(result.is_err());
+}
+
+// ========================================================================
+// Stage 4 Tests (Infix and Declarative commands)
+// ========================================================================
+
+#[test]
+fn test_infix_over_simple() {
+    // "a \over b"
+    let tokens = vec![
+        Token::Char('a'),
+        Token::ControlSeq("over".to_string()),
+        Token::Char('b'),
+    ];
+
+    let result = match parse(&tokens, false) {
+        Ok(r) => r,
+        Err(errors) => {
+            eprintln!("Parse errors:");
+            for err in &errors {
+                eprintln!("  {:?}", err);
+            }
+            panic!("Parse failed with {} errors", errors.len());
+        }
+    };
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 1);
+
+            match &children[0] {
+                SyntaxNode::Infix {
+                    name,
+                    starred,
+                    left,
+                    right,
+                    args,
+                } => {
+                    assert_eq!(name, "over");
+                    assert!(!starred);
+                    assert!(args.is_empty());
+                    assert_eq!(**left, SyntaxNode::Char('a'));
+                    assert_eq!(**right, SyntaxNode::Char('b'));
+                }
+                _ => panic!("Expected Infix node, got {:?}", children[0]),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_infix_choose() {
+    // "n \choose k"
+    let tokens = vec![
+        Token::Char('n'),
+        Token::ControlSeq("choose".to_string()),
+        Token::Char('k'),
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 1);
+
+            match &children[0] {
+                SyntaxNode::Infix { name, left, right, .. } => {
+                    assert_eq!(name, "choose");
+                    assert_eq!(**left, SyntaxNode::Char('n'));
+                    assert_eq!(**right, SyntaxNode::Char('k'));
+                }
+                _ => panic!("Expected Infix node"),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_infix_multiple_items() {
+    // "a+b \over c+d"
+    let tokens = vec![
+        Token::Char('a'),
+        Token::Char('+'),
+        Token::Char('b'),
+        Token::ControlSeq("over".to_string()),
+        Token::Char('c'),
+        Token::Char('+'),
+        Token::Char('d'),
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 1);
+
+            match &children[0] {
+                SyntaxNode::Infix { left, right, .. } => {
+                    // Left should be folded into implicit group
+                    match &**left {
+                        SyntaxNode::Group { children, kind, .. } => {
+                            assert_eq!(*kind, GroupKind::Implicit);
+                            assert_eq!(children.len(), 3);
+                            assert_eq!(children[0], SyntaxNode::Char('a'));
+                            assert_eq!(children[1], SyntaxNode::Char('+'));
+                            assert_eq!(children[2], SyntaxNode::Char('b'));
+                        }
+                        _ => panic!("Expected implicit group for left operand"),
+                    }
+
+                    // Right should be folded into implicit group
+                    match &**right {
+                        SyntaxNode::Group { children, kind, .. } => {
+                            assert_eq!(*kind, GroupKind::Implicit);
+                            assert_eq!(children.len(), 3);
+                            assert_eq!(children[0], SyntaxNode::Char('c'));
+                            assert_eq!(children[1], SyntaxNode::Char('+'));
+                            assert_eq!(children[2], SyntaxNode::Char('d'));
+                        }
+                        _ => panic!("Expected implicit group for right operand"),
+                    }
+                }
+                _ => panic!("Expected Infix node"),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_declarative_bfseries() {
+    // "\bfseries text" -> Declarative with scope containing "text"
+    let tokens = vec![
+        Token::ControlSeq("bfseries".to_string()),
+        Token::Char('t'),
+        Token::Char('e'),
+        Token::Char('x'),
+        Token::Char('t'),
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 1);
+
+            match &children[0] {
+                SyntaxNode::Declarative {
+                    name,
+                    starred,
+                    args,
+                    scope,
+                } => {
+                    assert_eq!(name, "bfseries");
+                    assert!(!starred);
+                    assert!(args.is_empty());
+
+                    // Scope should contain 4 chars
+                    match &**scope {
+                        SyntaxNode::Group { children, kind, .. } => {
+                            assert_eq!(*kind, GroupKind::Implicit);
+                            assert_eq!(children.len(), 4);
+                        }
+                        _ => panic!("Expected Group for scope"),
+                    }
+                }
+                _ => panic!("Expected Declarative node"),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_declarative_with_leading() {
+    // "a \bfseries b c"
+    let tokens = vec![
+        Token::Char('a'),
+        Token::ControlSeq("bfseries".to_string()),
+        Token::Char('b'),
+        Token::Char('c'),
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 2);
+
+            // First item: 'a'
+            assert_eq!(children[0], SyntaxNode::Char('a'));
+
+            // Second item: Declarative
+            match &children[1] {
+                SyntaxNode::Declarative { name, scope, .. } => {
+                    assert_eq!(name, "bfseries");
+
+                    match &**scope {
+                        SyntaxNode::Group { children, .. } => {
+                            assert_eq!(children.len(), 2);
+                            assert_eq!(children[0], SyntaxNode::Char('b'));
+                            assert_eq!(children[1], SyntaxNode::Char('c'));
+                        }
+                        _ => panic!("Expected Group for scope"),
+                    }
+                }
+                _ => panic!("Expected Declarative node"),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_declarative_empty_scope() {
+    // "\bfseries" with nothing after it
+    let tokens = vec![Token::ControlSeq("bfseries".to_string())];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 1);
+
+            match &children[0] {
+                SyntaxNode::Declarative { scope, .. } => {
+                    // Scope should be empty implicit group
+                    match &**scope {
+                        SyntaxNode::Group { children, kind, .. } => {
+                            assert_eq!(*kind, GroupKind::Implicit);
+                            assert!(children.is_empty());
+                        }
+                        _ => panic!("Expected empty Group for scope"),
+                    }
+                }
+                _ => panic!("Expected Declarative node"),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
