@@ -153,10 +153,7 @@ pub enum GroupKind {
     /// Delimited group: \left delim ... \right delim
     ///
     /// Examples: \left( ... \right), \left\{ ... \right\}
-    Delimited {
-        left: Delimiter,
-        right: Delimiter,
-    },
+    Delimited { left: Delimiter, right: Delimiter },
 
     /// Inline math in text mode: $...$
     ///
@@ -176,7 +173,10 @@ impl SyntaxNode {
     pub fn is_leaf(&self) -> bool {
         matches!(
             self,
-            SyntaxNode::Char(_) | SyntaxNode::Text(_) | SyntaxNode::ActiveSpace | SyntaxNode::UnknownCommand { .. }
+            SyntaxNode::Char(_)
+                | SyntaxNode::Text(_)
+                | SyntaxNode::ActiveSpace
+                | SyntaxNode::UnknownCommand { .. }
         )
     }
 
@@ -250,14 +250,22 @@ impl SyntaxNode {
     fn fmt_with_indent(&self, f: &mut std::fmt::Formatter<'_>, indent: usize) -> std::fmt::Result {
         let prefix = "  ".repeat(indent);
         match self {
-            SyntaxNode::Group { mode, kind, children } => {
+            SyntaxNode::Group {
+                mode,
+                kind,
+                children,
+            } => {
                 writeln!(f, "{}Group({:?}, {:?}) [", prefix, mode, kind)?;
                 for child in children {
                     child.fmt_with_indent(f, indent + 1)?;
                 }
                 writeln!(f, "{}]", prefix)
             }
-            SyntaxNode::Command { name, starred, args } => {
+            SyntaxNode::Command {
+                name,
+                starred,
+                args,
+            } => {
                 let star = if *starred { "*" } else { "" };
                 writeln!(f, "{}Command(\\{}{}) [", prefix, name, star)?;
                 for arg in args {
@@ -387,7 +395,11 @@ mod tests {
         let group = SyntaxNode::implicit_group(ContentMode::Math, children.clone());
 
         match group {
-            SyntaxNode::Group { mode, kind, children: c } => {
+            SyntaxNode::Group {
+                mode,
+                kind,
+                children: c,
+            } => {
                 assert_eq!(mode, ContentMode::Math);
                 assert_eq!(kind, GroupKind::Implicit);
                 assert_eq!(c.len(), 2);
@@ -397,7 +409,11 @@ mod tests {
 
         let empty = SyntaxNode::empty_group(ContentMode::Text);
         match empty {
-            SyntaxNode::Group { mode, kind, children } => {
+            SyntaxNode::Group {
+                mode,
+                kind,
+                children,
+            } => {
                 assert_eq!(mode, ContentMode::Text);
                 assert_eq!(kind, GroupKind::Implicit);
                 assert!(children.is_empty());
@@ -436,7 +452,11 @@ mod tests {
         };
 
         match cmd {
-            SyntaxNode::Command { name, starred, args } => {
+            SyntaxNode::Command {
+                name,
+                starred,
+                args,
+            } => {
                 assert_eq!(name, "frac");
                 assert!(!starred);
                 assert_eq!(args.len(), 2);
@@ -456,7 +476,9 @@ mod tests {
         };
 
         match infix {
-            SyntaxNode::Infix { name, left, right, .. } => {
+            SyntaxNode::Infix {
+                name, left, right, ..
+            } => {
                 assert_eq!(name, "over");
                 assert!(matches!(*left, SyntaxNode::Char('a')));
                 assert!(matches!(*right, SyntaxNode::Char('b')));
@@ -577,7 +599,12 @@ mod tests {
         };
 
         match env {
-            SyntaxNode::Environment { name, starred, args, body } => {
+            SyntaxNode::Environment {
+                name,
+                starred,
+                args,
+                body,
+            } => {
                 assert_eq!(name, "matrix");
                 assert!(!starred);
                 assert!(args.is_empty());

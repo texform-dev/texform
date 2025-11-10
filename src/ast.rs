@@ -110,8 +110,8 @@ pub enum Node {
     /// as Command nodes with is_unknown=true and empty args.
     Command {
         name: String,
-        starred: bool,     // Has * suffix (e.g., \section*)
-        is_unknown: bool,  // True if this was an unknown command in non-strict mode
+        starred: bool,    // Has * suffix (e.g., \section*)
+        is_unknown: bool, // True if this was an unknown command in non-strict mode
         args: Vec<Argument>,
     },
 

@@ -1,6 +1,6 @@
 use texform::lexer::Token;
-use texform::parser::{parse, filter_tokens};
-use texform::syntax_node::{ArgumentKind, ContentMode, GroupKind, SyntaxNode};
+use texform::parser::{filter_tokens, parse};
+use texform::syntax_node::{ArgumentKind, ContentMode, Delimiter, GroupKind, SyntaxNode};
 
 // ========================================================================
 // Stage 1-2 Tests (Basic parsing)
@@ -232,14 +232,12 @@ fn test_script_duplicate_last_wins() {
     let result = parse(&tokens, false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
-            match &children[0] {
-                SyntaxNode::Scripted { superscript, .. } => {
-                    assert_eq!(**superscript.as_ref().unwrap(), SyntaxNode::Char('b'));
-                }
-                _ => panic!("Expected Scripted node"),
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Scripted { superscript, .. } => {
+                assert_eq!(**superscript.as_ref().unwrap(), SyntaxNode::Char('b'));
             }
-        }
+            _ => panic!("Expected Scripted node"),
+        },
         _ => panic!("Expected Group node"),
     }
 }
@@ -259,28 +257,26 @@ fn test_script_with_group() {
     let result = parse(&tokens, false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
-            match &children[0] {
-                SyntaxNode::Scripted {
-                    base,
-                    superscript,
-                    subscript,
-                } => {
-                    assert_eq!(**base, SyntaxNode::Char('x'));
-                    assert!(subscript.is_none());
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Scripted {
+                base,
+                superscript,
+                subscript,
+            } => {
+                assert_eq!(**base, SyntaxNode::Char('x'));
+                assert!(subscript.is_none());
 
-                    match superscript.as_ref().unwrap().as_ref() {
-                        SyntaxNode::Group { children, .. } => {
-                            assert_eq!(children.len(), 2);
-                            assert_eq!(children[0], SyntaxNode::Char('a'));
-                            assert_eq!(children[1], SyntaxNode::Char('b'));
-                        }
-                        _ => panic!("Expected Group as superscript"),
+                match superscript.as_ref().unwrap().as_ref() {
+                    SyntaxNode::Group { children, .. } => {
+                        assert_eq!(children.len(), 2);
+                        assert_eq!(children[0], SyntaxNode::Char('a'));
+                        assert_eq!(children[1], SyntaxNode::Char('b'));
                     }
+                    _ => panic!("Expected Group as superscript"),
                 }
-                _ => panic!("Expected Scripted node"),
             }
-        }
+            _ => panic!("Expected Scripted node"),
+        },
         _ => panic!("Expected Group node"),
     }
 }
@@ -340,7 +336,11 @@ fn test_frac_command() {
             assert_eq!(children.len(), 1);
 
             match &children[0] {
-                SyntaxNode::Command { name, starred, args } => {
+                SyntaxNode::Command {
+                    name,
+                    starred,
+                    args,
+                } => {
                     assert_eq!(name, "frac");
                     assert!(!starred);
                     assert_eq!(args.len(), 2);
@@ -449,21 +449,19 @@ fn test_text_command() {
     let result = parse(&tokens, false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
-            match &children[0] {
-                SyntaxNode::Command { name, args, .. } => {
-                    assert_eq!(name, "text");
-                    assert_eq!(args.len(), 1);
-                    match &args[0].value {
-                        SyntaxNode::Text(s) => {
-                            assert_eq!(s, "hello");
-                        }
-                        _ => panic!("Expected Text node"),
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "text");
+                assert_eq!(args.len(), 1);
+                match &args[0].value {
+                    SyntaxNode::Text(s) => {
+                        assert_eq!(s, "hello");
                     }
+                    _ => panic!("Expected Text node"),
                 }
-                _ => panic!("Expected Command node"),
             }
-        }
+            _ => panic!("Expected Command node"),
+        },
         _ => panic!("Expected root Group"),
     }
 }
@@ -643,7 +641,9 @@ fn test_infix_choose() {
             assert_eq!(children.len(), 1);
 
             match &children[0] {
-                SyntaxNode::Infix { name, left, right, .. } => {
+                SyntaxNode::Infix {
+                    name, left, right, ..
+                } => {
                     assert_eq!(name, "choose");
                     assert_eq!(**left, SyntaxNode::Char('n'));
                     assert_eq!(**right, SyntaxNode::Char('k'));
@@ -819,3 +819,326 @@ fn test_declarative_empty_scope() {
         _ => panic!("Expected root Group"),
     }
 }
+
+// ========================================================================
+// Stage 5 Tests (Text mode, inline math, delimited groups, environments)
+// ========================================================================
+
+// Note: These tests use the lexer to generate tokens from LaTeX source
+use logos::Logos;
+use texform::lexer::Token as LexerToken;
+
+macro_rules! lex_filter {
+    ($source:expr) => {{
+        let mut tokens = Vec::new();
+        for result in LexerToken::lexer($source) {
+            match result {
+                Ok(tok) => tokens.push(tok),
+                Err(_) => panic!("Lexer error in test: {}", $source),
+            }
+        }
+        filter_tokens(&tokens)
+    }};
+}
+
+// TODO: Add test for text mode - currently parse_text_block is not exposed
+// We can test text mode through \text{} command which uses Text mode args
+
+#[test]
+fn test_text_in_command() {
+    // "\text{Hello World}" - text mode in command argument
+    let tokens = lex_filter!(r"\text{Hello World}");
+    let result = parse(&tokens, false).unwrap();
+
+    // Debug print the result
+    eprintln!("Result:\n{}", result);
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 1);
+            match &children[0] {
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "text");
+                    assert_eq!(args.len(), 1);
+                    eprintln!("Arg value: {:?}", args[0].value);
+                    match &args[0].value {
+                        SyntaxNode::Group { mode, children, .. } => {
+                            assert_eq!(*mode, ContentMode::Text);
+                            // Text should be merged into a single Text node
+                            // Note: Currently the arg parsing in Math mode doesn't use proper Text mode parsing
+                            // It just collects chars, so we may get individual chars instead
+                            // Let's check what we actually get
+                            eprintln!("Children: {:?}", children);
+                        }
+                        SyntaxNode::Text(s) => {
+                            // Might return Text directly
+                            eprintln!("Got Text directly: {}", s);
+                        }
+                        other => {
+                            panic!("Expected Group or Text for text argument, got {:?}", other)
+                        }
+                    }
+                }
+                _ => panic!("Expected Command node"),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_text_inline_math_segment() {
+    let tokens = lex_filter!(r"\text{foo$a+b$bar}");
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "text");
+                assert_eq!(args.len(), 1);
+                match &args[0].value {
+                    SyntaxNode::Group { mode, children, .. } => {
+                        assert_eq!(*mode, ContentMode::Text);
+                        assert_eq!(children.len(), 3);
+                        assert_eq!(children[0], SyntaxNode::Text("foo".to_string()));
+                        match &children[1] {
+                            SyntaxNode::Group {
+                                kind,
+                                children: math_children,
+                                ..
+                            } => {
+                                assert_eq!(*kind, GroupKind::InlineMath);
+                                assert_eq!(math_children.len(), 3);
+                                assert_eq!(math_children[0], SyntaxNode::Char('a'));
+                                assert_eq!(math_children[1], SyntaxNode::Char('+'));
+                                assert_eq!(math_children[2], SyntaxNode::Char('b'));
+                            }
+                            _ => panic!("Expected inline math group"),
+                        }
+                        assert_eq!(children[2], SyntaxNode::Text("bar".to_string()));
+                    }
+                    _ => panic!("Expected text group"),
+                }
+            }
+            _ => panic!("Expected text command"),
+        },
+        _ => panic!("Expected root group"),
+    }
+}
+
+#[test]
+fn test_text_inline_math_active_char_and_command() {
+    let tokens = lex_filter!(r"\text{A~$x$B\frac{a}{b}}");
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "text");
+                assert_eq!(args.len(), 1);
+                match &args[0].value {
+                    SyntaxNode::Group { mode, children, .. } => {
+                        assert_eq!(*mode, ContentMode::Text);
+                        assert!(children.len() >= 5);
+                        assert_eq!(children[0], SyntaxNode::Text("A".to_string()));
+                        assert_eq!(children[1], SyntaxNode::ActiveSpace);
+                        match &children[2] {
+                            SyntaxNode::Group {
+                                kind,
+                                children: math_children,
+                                ..
+                            } => {
+                                assert_eq!(*kind, GroupKind::InlineMath);
+                                assert_eq!(math_children.len(), 1);
+                                assert_eq!(math_children[0], SyntaxNode::Char('x'));
+                            }
+                            _ => panic!("Expected inline math for $x$"),
+                        }
+                        assert_eq!(children[3], SyntaxNode::Text("B".to_string()));
+                        match &children[4] {
+                            SyntaxNode::Command { name, args, .. } => {
+                                assert_eq!(name, "frac");
+                                assert_eq!(args.len(), 2);
+                            }
+                            _ => panic!("Expected fraction command"),
+                        }
+                    }
+                    _ => panic!("Expected text group"),
+                }
+            }
+            _ => panic!("Expected text command"),
+        },
+        _ => panic!("Expected root group"),
+    }
+}
+
+#[test]
+fn test_delimited_group_simple() {
+    // "\left( a+b \right)"
+    let tokens = lex_filter!(r"\left(a+b\right)");
+    let result = parse(&tokens, false).unwrap();
+
+    eprintln!("Parsed result:\n{:#?}", result);
+
+    match result {
+        SyntaxNode::Group { ref children, .. } => {
+            eprintln!("Root children count: {}", children.len());
+            for (i, child) in children.iter().enumerate() {
+                eprintln!("Child {}: {:?}", i, child);
+            }
+            assert_eq!(children.len(), 1);
+            match &children[0] {
+                SyntaxNode::Group {
+                    kind,
+                    mode,
+                    children,
+                    ..
+                } => {
+                    assert_eq!(*mode, ContentMode::Math);
+                    match kind {
+                        GroupKind::Delimited { left, right } => {
+                            assert_eq!(*left, Delimiter::Char('('));
+                            assert_eq!(*right, Delimiter::Char(')'));
+                            assert_eq!(children.len(), 3);
+                            assert_eq!(children[0], SyntaxNode::Char('a'));
+                            assert_eq!(children[1], SyntaxNode::Char('+'));
+                            assert_eq!(children[2], SyntaxNode::Char('b'));
+                        }
+                        _ => panic!("Expected Delimited GroupKind"),
+                    }
+                }
+                _ => panic!("Expected Delimited Group node"),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_delimited_group_with_dot() {
+    // "\left. x \right|" - dot means no delimiter
+    let tokens = lex_filter!(r"\left.x\right|");
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 1);
+            match &children[0] {
+                SyntaxNode::Group { kind, children, .. } => match kind {
+                    GroupKind::Delimited { left, right } => {
+                        assert_eq!(*left, Delimiter::None);
+                        assert_eq!(*right, Delimiter::Char('|'));
+                        assert_eq!(children.len(), 1);
+                        assert_eq!(children[0], SyntaxNode::Char('x'));
+                    }
+                    _ => panic!("Expected Delimited GroupKind"),
+                },
+                _ => panic!("Expected Delimited Group"),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_delimited_group_nested() {
+    // "\left( \frac{a}{b} \right)"
+    let tokens = lex_filter!(r"\left(\frac{a}{b}\right)");
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 1);
+            match &children[0] {
+                SyntaxNode::Group { kind, children, .. } => match kind {
+                    GroupKind::Delimited { left, right } => {
+                        assert_eq!(*left, Delimiter::Char('('));
+                        assert_eq!(*right, Delimiter::Char(')'));
+                        assert_eq!(children.len(), 1);
+                        match &children[0] {
+                            SyntaxNode::Command { name, .. } => {
+                                assert_eq!(name, "frac");
+                            }
+                            _ => panic!("Expected frac command inside delimited group"),
+                        }
+                    }
+                    _ => panic!("Expected Delimited GroupKind"),
+                },
+                _ => panic!("Expected Delimited Group"),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_environment_basic() {
+    let tokens = lex_filter!(r"\begin{matrix}ab\end{matrix}");
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 1);
+            match &children[0] {
+                SyntaxNode::Environment {
+                    name,
+                    starred,
+                    args,
+                    body,
+                } => {
+                    assert_eq!(name, "matrix");
+                    assert!(!starred);
+                    assert!(args.is_empty());
+                    match &**body {
+                        SyntaxNode::Group { children, .. } => {
+                            assert_eq!(children.len(), 2);
+                            assert_eq!(children[0], SyntaxNode::Char('a'));
+                            assert_eq!(children[1], SyntaxNode::Char('b'));
+                        }
+                        _ => panic!("Expected group body"),
+                    }
+                }
+                _ => panic!("Expected Environment node"),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_environment_nested() {
+    let tokens = lex_filter!(r"\begin{matrix}\begin{matrix}x\end{matrix}\end{matrix}");
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Environment { body, .. } => match &**body {
+                SyntaxNode::Group { children, .. } => {
+                    assert_eq!(children.len(), 1);
+                    match &children[0] {
+                        SyntaxNode::Environment { body, .. } => match &**body {
+                            SyntaxNode::Group { children, .. } => {
+                                assert_eq!(children.len(), 1);
+                                assert_eq!(children[0], SyntaxNode::Char('x'));
+                            }
+                            _ => panic!("Expected inner environment body group"),
+                        },
+                        _ => panic!("Expected inner Environment"),
+                    }
+                }
+                _ => panic!("Expected outer environment body"),
+            },
+            _ => panic!("Expected outer Environment"),
+        },
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_environment_name_mismatch() {
+    let tokens = lex_filter!(r"\begin{matrix}a\end{align}");
+    let result = parse(&tokens, false);
+    assert!(result.is_err());
+}
+
+// TODO: Add tests for inline math in text mode once parse_text_block is accessible

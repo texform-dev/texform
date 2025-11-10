@@ -1,12 +1,4 @@
-use texform::ast::{
-    Argument,
-    ArgumentKind,
-    Ast,
-    ContentMode,
-    GroupKind,
-    Node,
-    Slot,
-};
+use texform::ast::{Argument, ArgumentKind, Ast, ContentMode, GroupKind, Node, Slot};
 
 #[test]
 fn test_ast_creation() {

@@ -8,7 +8,6 @@ use logos::Logos;
 #[derive(Logos, Debug, PartialEq, Clone)]
 pub enum Token {
     // --- Control Sequences ---
-
     /// Control sequence: \command
     /// - catcode 0 (Escape): backslash triggers control sequence scanning
     /// - Matches: \<letters> (control word) or \<single-char> (control symbol)
@@ -27,7 +26,6 @@ pub enum Token {
     ActiveChar,
 
     // --- Structural Tokens ---
-
     /// Left brace: {
     /// - catcode 1: Begin Group
     /// - Used for grouping and delimiting arguments
@@ -90,7 +88,6 @@ pub enum Token {
     RBracket,
 
     // --- Whitespace and Comments ---
-
     /// Whitespace: spaces, tabs, newlines, form feeds
     /// - catcode 10: Spacer
     /// - Multiple consecutive whitespace characters are merged
@@ -104,7 +101,6 @@ pub enum Token {
     Comment(String),
 
     // --- Character Tokens ---
-
     /// Regular character: letters, digits, punctuation, Unicode (excluding invalid chars)
     /// - catcode 11: Letter (a-z, A-Z)
     /// - catcode 12: Other (digits, punctuation, etc.)
@@ -159,7 +155,10 @@ mod tests {
         assert_eq!(lex.next(), Some(Ok(Token::Whitespace)));
         assert_eq!(lex.next(), Some(Ok(Token::Char('b'))));
         assert_eq!(lex.next(), Some(Ok(Token::Whitespace)));
-        assert_eq!(lex.next(), Some(Ok(Token::Comment("% comment\n".to_string()))));
+        assert_eq!(
+            lex.next(),
+            Some(Ok(Token::Comment("% comment\n".to_string())))
+        );
         assert_eq!(lex.next(), Some(Ok(Token::Char('c'))));
     }
 
@@ -179,7 +178,10 @@ mod tests {
     fn test_star_token() {
         // Test starred command variants
         let mut lex = Token::lexer(r"\section*{Title}");
-        assert_eq!(lex.next(), Some(Ok(Token::ControlSeq("section".to_string()))));
+        assert_eq!(
+            lex.next(),
+            Some(Ok(Token::ControlSeq("section".to_string())))
+        );
         assert_eq!(lex.next(), Some(Ok(Token::Star)));
         assert_eq!(lex.next(), Some(Ok(Token::LBrace)));
         assert_eq!(lex.next(), Some(Ok(Token::Char('T'))));

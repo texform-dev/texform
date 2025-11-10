@@ -236,10 +236,7 @@ mod tests {
 
     #[test]
     fn test_blacklist() {
-        assert_eq!(
-            is_blacklisted("ifnum"),
-            Some("Control flow not supported")
-        );
+        assert_eq!(is_blacklisted("ifnum"), Some("Control flow not supported"));
         assert_eq!(
             is_blacklisted("csname"),
             Some("Dynamic command names not supported")

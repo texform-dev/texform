@@ -1,27 +1,37 @@
-//! Parser module: Token stream → SyntaxTree (Stage 1)
+//! Refactored Parser module - Layered architecture
 //!
-//! This is the first stage of the two-stage parsing pipeline.
-//! Uses chumsky parser combinators to build an immutable syntax tree.
+//! ## Architecture Design
 //!
-//! ## Implementation Strategy
+//! **Layer 1: Base Parsers** - No recursive dependencies, pure functional
+//! - delimiter() - Delimiters
+//! - escaped_symbol() - Escaped symbols
+//! - active_char() - Active characters
+//! - math_char() - Math characters
+//! - text_chunk() - Text chunks
 //!
-//! Following the design doc (3-parser.md), this parser:
-//! 1. Uses knowledge base (KB) for command metadata lookup
-//! 2. Supports strict/non-strict mode for unknown commands
-//! 3. Implements starred variants, blacklist checking
-//! 4. Provides generic argument parsing based on ArgSpec
-//! 5. Supports both Math and Text modes with proper mode switching
+//! **Layer 2: Parameterized Group Parsers** - Accept content_parser as parameter
+//! - explicit_group_parser(mode, content_parser) - {...}
+//! - delimited_group_parser(content_parser) - \left...\right
+//!
+//! **Layer 3: Parameterized Command Parsers** - Accept mode and strict
+//! - prefix_command_parser(mode, strict) - \frac{}{} etc
+//! - unknown_command_parser(mode, strict) - Unknown commands
+//!
+//! **Layer 4: Assembly Layer** - Combine within recursive closures
+//! - parse_math_block(strict) - Math mode entry point
+//! - parse_text_block(strict) - Text mode entry point
 
-use chumsky::prelude::*;
+use chumsky::{input::InputRef, prelude::*};
 
-use crate::knowledge::{self, CommandKind};
+use crate::knowledge::{self, ArgSpec, CommandKind};
 use crate::lexer::Token;
-use crate::syntax_node::{Argument, ArgumentKind, ContentMode, GroupKind, SyntaxNode};
+use crate::syntax_node::{Argument, ArgumentKind, ContentMode, Delimiter, GroupKind, SyntaxNode};
 
-/// Filter tokens to remove whitespace and comments
-///
-/// This should be called before parsing.
-/// Note: In Text mode, whitespace is collected by text_chunk parser.
+// ============================================================================
+// Public Interface
+// ============================================================================
+
+/// Filter tokens, removing whitespace and comments
 pub fn filter_tokens(tokens: &[Token]) -> Vec<Token> {
     tokens
         .iter()
@@ -30,15 +40,7 @@ pub fn filter_tokens(tokens: &[Token]) -> Vec<Token> {
         .collect()
 }
 
-/// Parse token stream into syntax tree
-///
-/// # Arguments
-/// * `tokens` - Token stream from lexer (should be pre-filtered with `filter_tokens`)
-/// * `strict` - If true, unknown commands cause errors; if false, produce UnknownCommand nodes
-///
-/// # Returns
-/// * `Ok(SyntaxNode::Group)` - Root group in Math mode with Implicit kind
-/// * `Err(errors)` - Parse errors with span information
+/// Parse entry point - Math mode
 pub fn parse(tokens: &[Token], strict: bool) -> Result<SyntaxNode, Vec<Rich<'_, Token>>> {
     parse_math_block(strict)
         .then_ignore(end())
@@ -47,375 +49,603 @@ pub fn parse(tokens: &[Token], strict: bool) -> Result<SyntaxNode, Vec<Rich<'_, 
 }
 
 // ============================================================================
-// Math Mode Parsing
+// Layer 1: Base Parsers (no recursive dependencies)
 // ============================================================================
 
-/// Parse math mode block (returns Group node)
+/// Delimiter parser
 ///
-/// This is the entry point for math mode parsing.
-/// Returns a Group node with mode=Math and kind=Implicit.
-fn parse_math_block<'a>(
-    strict: bool,
-) -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone {
-    // KEY ARCHITECTURE CHANGE:
-    // Instead of recursive(|normal_item| ...) returning normal_item definition,
-    // we use recursive(|group_content_parser| ...) returning group_content_math.
-    // This ensures the top-level uses Infix/Declarative logic, not simple .repeated().
-    recursive(|group_content_parser| {
-        // group_content_parser: Parser<Vec<SyntaxNode>>
-        // This is a forward reference to the group_content_math we'll define below.
+/// Supports:
+/// - '.' => Delimiter::None
+/// - '(', ')', '[', ']', '|' etc => Delimiter::Char
+/// - \langle, \rangle etc => Delimiter::Control
+fn delimiter<'a>() -> impl Parser<'a, &'a [Token], Delimiter, extra::Err<Rich<'a, Token>>> + Clone {
+    choice((
+        select! { Token::Char('.') => Delimiter::None },
+        select! {
+            Token::Char(c) if matches!(c, '(' | ')' | '[' | ']' | '|' | '<' | '>' | '/' | '\\')
+                => Delimiter::Char(c)
+        },
+        select! {
+            Token::ControlSeq(name) if matches!(
+                name.as_str(),
+                "langle" | "rangle" | "{" | "}" | "lfloor" | "rfloor" | "lceil" | "rceil" |
+                "lvert" | "rvert" | "lVert" | "rVert" | "lgroup" | "rgroup" | "lmoustache" | "rmoustache"
+            ) => Delimiter::Control(Box::leak(name.into_boxed_str()))
+        },
+    ))
+}
 
-        // ====================================================================
-        // Stage 4: GroupContent = Leading + [InfixTail] + [DeclarativeTail]
-        // ====================================================================
+/// Escaped symbol parser - Math mode
+fn escaped_symbol<'a>()
+-> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone {
+    select! {
+        Token::ControlSeq(name) if matches!(name.as_str(), "%" | "$" | "&" | "#" | "_" | "{" | "}") => {
+            let c = match name.as_str() {
+                "%" => '%', "$" => '$', "&" => '&', "#" => '#',
+                "_" => '_', "{" => '{', "}" => '}',
+                _ => unreachable!(),
+            };
+            SyntaxNode::Char(c)
+        }
+    }
+}
 
-        // First, we need to define normal_item (which uses group_content_parser for explicit_group)
-        // Then we define group_content_math using normal_item
+/// Active character parser - ~
+fn active_char<'a>() -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone
+{
+    just(&Token::ActiveChar).to(SyntaxNode::ActiveSpace)
+}
 
-        // We'll build normal_item inline and use it in group_content_math
+/// Math character parser
+fn math_char<'a>() -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone
+{
+    select! {
+        Token::Char(c) => SyntaxNode::Char(c),
+        Token::Star => SyntaxNode::Char('*'),
+        Token::Alignment => SyntaxNode::Char('&'),
+    }
+}
 
-        // ====================================================================
-        // Define Atom Parsers First (needed for normal_item)
-        // ====================================================================
+/// Text chunk parser - merge consecutive characters
+fn text_chunk<'a>() -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone
+{
+    select! { Token::Char(c) => c }
+        .repeated()
+        .at_least(1)
+        .collect::<Vec<_>>()
+        .map(|chars| SyntaxNode::Text(chars.into_iter().collect()))
+}
 
-        // Explicit group: {...}
-        // Uses group_content_parser for recursive parsing
-        let explicit_group = just(&Token::LBrace)
-            .ignore_then(group_content_parser.clone())
-            .then_ignore(just(&Token::RBrace))
-            .map(|children| SyntaxNode::Group {
-                mode: ContentMode::Math,
-                kind: GroupKind::Explicit,
-                children,
-            });
+// ============================================================================
+// Layer 2: Parameterized Group Parsers (accept content_parser)
+// ============================================================================
 
-        // Escaped symbols: \%, \$, \&, \#, \_, \{, \}
-        let escaped_symbol = select! {
-            Token::ControlSeq(name) if matches!(name.as_str(), "%" | "$" | "&" | "#" | "_" | "{" | "}") => {
-                let c = match name.as_str() {
-                    "%" => '%',
-                    "$" => '$',
-                    "&" => '&',
-                    "#" => '#',
-                    "_" => '_',
-                    "{" => '{',
-                    "}" => '}',
-                    _ => unreachable!(),
-                };
-                SyntaxNode::Char(c)
+/// Explicit group parser - {...}
+///
+/// Parameters:
+/// - mode: Content mode of the group
+/// - content_parser: Parser for group content
+fn explicit_group_parser<'a, P>(
+    mode: ContentMode,
+    content_parser: P,
+) -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone
+where
+    P: Parser<'a, &'a [Token], Vec<SyntaxNode>, extra::Err<Rich<'a, Token>>> + Clone + 'a,
+{
+    just(&Token::LBrace)
+        .ignore_then(content_parser)
+        .then_ignore(just(&Token::RBrace))
+        .map(move |children| SyntaxNode::Group {
+            mode,
+            kind: GroupKind::Explicit,
+            children,
+        })
+}
+
+/// Delimited group parser - \left...\right
+///
+/// Parameters:
+/// - content_parser: Parser for group content (Math mode)
+fn delimited_group_parser<'a, P>(
+    content_parser: P,
+) -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone
+where
+    P: Parser<'a, &'a [Token], Vec<SyntaxNode>, extra::Err<Rich<'a, Token>>> + Clone + 'a,
+{
+    select! { Token::ControlSeq(name) if name == "left" => () }
+        .ignore_then(delimiter())
+        .then(content_parser)
+        .then_ignore(select! { Token::ControlSeq(name) if name == "right" => () })
+        .then(delimiter())
+        .map(|((left, children), right)| SyntaxNode::Group {
+            mode: ContentMode::Math,
+            kind: GroupKind::Delimited { left, right },
+            children,
+        })
+}
+
+type ParserInput<'src, 'parse> =
+    InputRef<'src, 'parse, &'src [Token], extra::Err<Rich<'src, Token>>>;
+
+fn read_env_name<'src, 'parse>(
+    input: &mut ParserInput<'src, 'parse>,
+    context: &str,
+) -> Result<String, Rich<'src, Token>> {
+    match input.next() {
+        Some(Token::LBrace) => {}
+        Some(_) => {
+            return Err(Rich::custom(
+                SimpleSpan::new((), 0..0),
+                format!("Expected '{{' after {}", context),
+            ));
+        }
+        None => {
+            return Err(Rich::custom(
+                SimpleSpan::new((), 0..0),
+                format!("Unexpected end of input after {}", context),
+            ));
+        }
+    }
+
+    let mut name = String::new();
+    loop {
+        let token = match input.next() {
+            Some(tok) => tok.clone(),
+            None => {
+                return Err(Rich::custom(
+                    SimpleSpan::new((), 0..0),
+                    format!("Unclosed {} name", context),
+                ));
             }
         };
 
-        // Active character: ~
-        let active_char = just(&Token::ActiveChar).to(SyntaxNode::ActiveSpace);
+        match token {
+            Token::RBrace => break,
+            Token::Char(c) => name.push(c),
+            Token::Star => name.push('*'),
+            _ => {
+                return Err(Rich::custom(
+                    SimpleSpan::new((), 0..0),
+                    format!("Invalid token inside {}", context),
+                ));
+            }
+        }
+    }
 
-        // Math characters
-        let math_char = select! {
-            Token::Char(c) => SyntaxNode::Char(c),
-            Token::Star => SyntaxNode::Char('*'),
-            Token::Alignment => SyntaxNode::Char('&'),
+    if name.is_empty() {
+        return Err(Rich::custom(
+            SimpleSpan::new((), 0..0),
+            format!("Empty {} name", context),
+        ));
+    }
+
+    Ok(name)
+}
+
+fn parse_argument_value_from_tokens<'src>(
+    tokens: Vec<Token>,
+    mode: ContentMode,
+    strict: bool,
+    context: &str,
+) -> Result<SyntaxNode, Rich<'src, Token>> {
+    match mode {
+        ContentMode::Text => match parse_text_block(strict).parse(&tokens).into_result() {
+            Ok(SyntaxNode::Group { children, .. }) => Ok(fold_items(ContentMode::Text, children)),
+            Ok(other) => Ok(other),
+            Err(_) => Err(Rich::custom(
+                SimpleSpan::new((), 0..0),
+                format!("Failed to parse {}", context),
+            )),
+        },
+        ContentMode::Math => match parse_math_block(strict).parse(&tokens).into_result() {
+            Ok(SyntaxNode::Group { children, .. }) => Ok(SyntaxNode::Group {
+                mode: ContentMode::Math,
+                kind: GroupKind::Implicit,
+                children,
+            }),
+            Ok(other) => Ok(other),
+            Err(_) => Err(Rich::custom(
+                SimpleSpan::new((), 0..0),
+                format!("Failed to parse {}", context),
+            )),
+        },
+    }
+}
+
+fn empty_group(mode: ContentMode) -> SyntaxNode {
+    SyntaxNode::Group {
+        mode,
+        kind: GroupKind::Implicit,
+        children: vec![],
+    }
+}
+
+fn collect_braced_tokens<'src, 'parse>(
+    input: &mut ParserInput<'src, 'parse>,
+    context: &str,
+) -> Result<Vec<Token>, Rich<'src, Token>> {
+    match input.next() {
+        Some(Token::LBrace) => {}
+        Some(tok) => {
+            return Err(Rich::custom(
+                SimpleSpan::new((), 0..0),
+                format!("Expected '{{' for {}, got {:?}", context, tok),
+            ));
+        }
+        None => {
+            return Err(Rich::custom(
+                SimpleSpan::new((), 0..0),
+                format!("Expected '{{' for {}", context),
+            ));
+        }
+    }
+
+    let mut content_tokens = Vec::new();
+    let mut depth = 1;
+    while depth > 0 {
+        match input.next() {
+            Some(Token::LBrace) => {
+                content_tokens.push(Token::LBrace);
+                depth += 1;
+            }
+            Some(Token::RBrace) => {
+                depth -= 1;
+                if depth > 0 {
+                    content_tokens.push(Token::RBrace);
+                }
+            }
+            Some(tok) => content_tokens.push(tok.clone()),
+            None => {
+                return Err(Rich::custom(
+                    SimpleSpan::new((), 0..0),
+                    format!("Unclosed brace in {}", context),
+                ));
+            }
+        }
+    }
+
+    Ok(content_tokens)
+}
+
+fn collect_bracket_tokens<'src, 'parse>(
+    input: &mut ParserInput<'src, 'parse>,
+    context: &str,
+) -> Result<Vec<Token>, Rich<'src, Token>> {
+    let mut tokens = Vec::new();
+    loop {
+        match input.next() {
+            Some(Token::RBracket) => break,
+            Some(tok) => tokens.push(tok.clone()),
+            None => {
+                return Err(Rich::custom(
+                    SimpleSpan::new((), 0..0),
+                    format!("Unclosed bracket in {}", context),
+                ));
+            }
+        }
+    }
+    Ok(tokens)
+}
+
+fn parse_argument_by_spec<'src, 'parse>(
+    input: &mut ParserInput<'src, 'parse>,
+    spec: ArgSpec,
+    strict: bool,
+    context: &str,
+) -> Result<Argument, Rich<'src, Token>> {
+    match spec.kind {
+        ArgumentKind::Mandatory => {
+            let tokens = collect_braced_tokens(input, context)?;
+            let value = parse_argument_value_from_tokens(tokens, spec.mode, strict, context)?;
+            Ok(Argument::mandatory(value))
+        }
+        ArgumentKind::Optional => {
+            if matches!(input.peek(), Some(Token::LBracket)) {
+                input.next();
+                let tokens = collect_bracket_tokens(input, context)?;
+                let value = parse_argument_value_from_tokens(tokens, spec.mode, strict, context)?;
+                Ok(Argument::optional(value))
+            } else {
+                Ok(Argument::optional(empty_group(spec.mode)))
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Layer 3: Parameterized Command Parsers
+// ============================================================================
+
+/// Prefix command parser
+///
+/// Implements full command argument parsing logic using custom parser
+/// All logic is inlined to avoid complex type signatures
+fn prefix_command_parser<'a>(
+    _mode: ContentMode,
+    strict: bool,
+) -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone {
+    custom(move |input| {
+        // 1. Peek command name
+        let name = match input.peek() {
+            Some(Token::ControlSeq(name)) => name.clone(),
+            _ => return Err(Rich::custom(SimpleSpan::new((), 0..0), "not a command")),
         };
 
-        // ====================================================================
-        // Command Parsing (Stage 3) - Generic Implementation using custom()
-        // ====================================================================
+        // 2. Check blacklist
+        if let Some(reason) = knowledge::is_blacklisted(&name) {
+            input.next();
+            return Err(Rich::custom(
+                SimpleSpan::new((), 0..0),
+                format!("Banned command: \\{} ({})", name, reason),
+            ));
+        }
 
-        // Generic prefix command parser using KB and custom parser
-        let prefix_command = custom(move |input| {
-            // 1. Peek command name (don't consume yet!)
-            let name = match input.peek() {
-                Some(Token::ControlSeq(name)) => name.clone(),
-                _ => {
-                    return Err(Rich::custom(
-                        SimpleSpan::new((), 0..0),
-                        "not a command",
-                    ))
-                }
-            };
-
-            // 2. Check blacklist
-            if let Some(reason) = knowledge::is_blacklisted(&name) {
-                // For blacklisted commands, consume the token before erroring
+        // 3. Lookup metadata - must be Prefix type
+        let meta = match knowledge::lookup_command(&name) {
+            Some(m) if m.kind == CommandKind::Prefix => m,
+            Some(_) => return Err(Rich::custom(SimpleSpan::new((), 0..0), "not prefix")),
+            None if strict => {
                 input.next();
                 return Err(Rich::custom(
                     SimpleSpan::new((), 0..0),
-                    format!("Banned command: \\{} ({})", name, reason),
+                    format!("Unknown command: \\{}", name),
                 ));
             }
+            None => return Err(Rich::custom(SimpleSpan::new((), 0..0), "unknown")),
+        };
 
-            // 3. Lookup in KB - check if it's a Prefix command
-            let meta = match knowledge::lookup_command(&name) {
-                Some(m) if m.kind == CommandKind::Prefix => m,
-                Some(_) => {
-                    // Not a prefix command (e.g., Infix or Declarative)
-                    // Don't consume token, just fail softly
-                    return Err(Rich::custom(
-                        SimpleSpan::new((), 0..0),
-                        "not prefix",
-                    ))
-                }
-                None if strict => {
-                    // Unknown in strict mode - consume and error
-                    input.next();
-                    return Err(Rich::custom(
-                        SimpleSpan::new((), 0..0),
-                        format!("Unknown command: \\{}", name),
-                    ))
-                }
-                None => {
-                    // Non-strict mode: will be handled by unknown_command parser
-                    return Err(Rich::custom(SimpleSpan::new((), 0..0), "unknown"));
-                }
-            };
+        // 4. Consume command token
+        input.next();
 
-            // 4. Now we know it's a valid Prefix command - consume the token
+        // 5. Parse star variant
+        let starred = if matches!(input.peek(), Some(Token::Star)) {
             input.next();
+            true
+        } else {
+            false
+        };
 
-            // 5. Parse optional star
-            let starred = if matches!(input.peek(), Some(Token::Star)) {
+        // 6. Parse arguments
+        let mut args = Vec::new();
+        for &arg_spec in meta.args {
+            let arg = parse_argument_by_spec(input, arg_spec, strict, "command argument")?;
+            args.push(arg);
+        }
+
+        Ok(SyntaxNode::Command {
+            name,
+            starred,
+            args,
+        })
+    })
+}
+
+/// Unknown command parser
+fn unknown_command_parser<'a>(
+    strict: bool,
+) -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone {
+    select! { Token::ControlSeq(name) => name }.try_map(move |name, span| {
+        if knowledge::is_blacklisted(&name).is_some() {
+            return Err(Rich::custom(span, "blacklisted"));
+        }
+        if knowledge::lookup_command(&name).is_some() {
+            return Err(Rich::custom(span, "known command"));
+        }
+        if !strict {
+            Ok(SyntaxNode::UnknownCommand {
+                name,
+                starred: false,
+            })
+        } else {
+            Err(Rich::custom(span, "strict mode"))
+        }
+    })
+}
+
+fn parse_env_body<'src>(
+    tokens: &[Token],
+    mode: ContentMode,
+    strict: bool,
+) -> Result<SyntaxNode, Rich<'src, Token>> {
+    let parsed = match mode {
+        ContentMode::Math => parse_math_block(strict).parse(tokens).into_result(),
+        ContentMode::Text => parse_text_block(strict).parse(tokens).into_result(),
+    };
+
+    match parsed {
+        Ok(group @ SyntaxNode::Group { .. }) => Ok(group),
+        Ok(other) => Ok(SyntaxNode::Group {
+            mode,
+            kind: GroupKind::Implicit,
+            children: vec![other],
+        }),
+        Err(_) => Err(Rich::custom(
+            SimpleSpan::new((), 0..0),
+            "Failed to parse environment body",
+        )),
+    }
+}
+
+fn environment_parser<'a>(
+    strict: bool,
+) -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone {
+    custom(move |input| {
+        match input.peek() {
+            Some(Token::ControlSeq(name)) if name == "begin" => {
                 input.next();
-                true
-            } else {
-                false
+            }
+            _ => return Err(Rich::custom(SimpleSpan::new((), 0..0), "not environment")),
+        }
+
+        let raw_name = read_env_name(input, "\\begin")?;
+        let raw_name_full = raw_name.clone();
+
+        let (base_name, mut starred) = if raw_name.ends_with('*') {
+            let stripped = &raw_name[..raw_name.len() - 1];
+            if stripped.is_empty() || stripped.contains('*') {
+                return Err(Rich::custom(
+                    SimpleSpan::new((), 0..0),
+                    "Invalid '*' placement in environment name",
+                ));
+            }
+            (stripped.to_string(), true)
+        } else {
+            if raw_name.contains('*') {
+                return Err(Rich::custom(
+                    SimpleSpan::new((), 0..0),
+                    "Invalid '*' placement in environment name",
+                ));
+            }
+            (raw_name.clone(), false)
+        };
+
+        let meta = match knowledge::lookup_env(&base_name) {
+            Some(m) => m,
+            None => {
+                return Err(Rich::custom(
+                    SimpleSpan::new((), 0..0),
+                    format!("Unknown environment: {}", base_name),
+                ));
+            }
+        };
+
+        if starred && !meta.has_star_variant {
+            return Err(Rich::custom(
+                SimpleSpan::new((), 0..0),
+                format!("Environment {} has no starred variant", base_name),
+            ));
+        }
+
+        if !meta.has_star_variant {
+            starred = false;
+        }
+
+        let mut args = Vec::new();
+        for &arg_spec in meta.args {
+            let arg = parse_argument_by_spec(input, arg_spec, strict, "environment argument")?;
+            args.push(arg);
+        }
+
+        let mut body_tokens = Vec::new();
+        let mut depth = 0;
+        loop {
+            let token = match input.next() {
+                Some(tok) => tok.clone(),
+                None => {
+                    return Err(Rich::custom(
+                        SimpleSpan::new((), 0..0),
+                        "Unclosed environment body",
+                    ));
+                }
             };
 
-            // 6. Parse arguments based on meta.args
-            let mut args = Vec::new();
-            for arg_spec in meta.args {
-                match arg_spec.kind {
-                    ArgumentKind::Mandatory => {
-                        // Expect {
-                        match input.next() {
-                            Some(Token::LBrace) => {}
-                            Some(tok) => {
-                                return Err(Rich::custom(
-                                    SimpleSpan::new((), 0..0),
-                                    format!("Expected '{{' for mandatory arg, got {:?}", tok),
-                                ))
-                            }
-                            None => {
-                                return Err(Rich::custom(
-                                    SimpleSpan::new((), 0..0),
-                                    "Expected '{'",
-                                ))
-                            }
+            if let Token::ControlSeq(name) = &token {
+                if name == "begin" {
+                    depth += 1;
+                } else if name == "end" {
+                    let close_name = read_env_name(input, "\\end")?;
+                    if depth == 0 {
+                        if close_name != raw_name_full {
+                            return Err(Rich::custom(
+                                SimpleSpan::new((), 0..0),
+                                "Environment name mismatch",
+                            ));
                         }
-
-                        // Parse content (recursively using group_content)
-                        // For now, collect tokens until }
-                        // TODO: Actually parse using group_content based on arg_spec.mode
-                        let mut content_tokens = Vec::new();
-                        let mut depth = 1;
-                        while depth > 0 {
-                            match input.next() {
-                                Some(Token::LBrace) => {
-                                    content_tokens.push(Token::LBrace);
-                                    depth += 1;
-                                }
-                                Some(Token::RBrace) => {
-                                    depth -= 1;
-                                    if depth > 0 {
-                                        content_tokens.push(Token::RBrace);
-                                    }
-                                }
-                                Some(tok) => content_tokens.push(tok.clone()),
-                                None => {
-                                    return Err(Rich::custom(
-                                        SimpleSpan::new((), 0..0),
-                                        "Unclosed brace",
-                                    ))
-                                }
-                            }
-                        }
-
-                        // Parse content recursively based on mode
-                        let value = if arg_spec.mode == ContentMode::Text {
-                            // Text mode: collect chars as text
-                            // TODO: Implement proper text mode parsing in Stage 5
-                            let text: String = content_tokens
-                                .iter()
-                                .filter_map(|t| {
-                                    if let Token::Char(c) = t {
-                                        Some(*c)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
-                            SyntaxNode::Text(text)
-                        } else {
-                            // Math mode: recursively parse content
-                            // Parse the collected tokens using the same parser
-                            match parse_math_block(strict)
-                                .parse(&content_tokens)
-                                .into_result()
-                            {
-                                Ok(SyntaxNode::Group { children, .. }) => {
-                                    // Return the implicit group with parsed children
-                                    SyntaxNode::Group {
-                                        mode: ContentMode::Math,
-                                        kind: GroupKind::Implicit,
-                                        children,
-                                    }
-                                }
-                                Ok(other) => other, // Shouldn't happen
-                                Err(_) => {
-                                    // Parsing failed, return error
-                                    return Err(Rich::custom(
-                                        SimpleSpan::new((), 0..0),
-                                        "Failed to parse argument content",
-                                    ));
-                                }
-                            }
-                        };
-
-                        args.push(Argument::mandatory(value));
-                    }
-                    ArgumentKind::Optional => {
-                        // Check for [
-                        if matches!(input.peek(), Some(Token::LBracket)) {
-                            input.next(); // consume [
-
-                            // Collect until ]
-                            let mut content_tokens = Vec::new();
-                            loop {
-                                match input.next() {
-                                    Some(Token::RBracket) => break,
-                                    Some(tok) => content_tokens.push(tok.clone()),
-                                    None => {
-                                        return Err(Rich::custom(
-                                            SimpleSpan::new((), 0..0),
-                                            "Unclosed bracket",
-                                        ))
-                                    }
-                                }
-                            }
-
-                            // Parse content recursively based on mode
-                            let value = if arg_spec.mode == ContentMode::Text {
-                                // Text mode: simple char collection
-                                // TODO: Implement proper text mode parsing in Stage 5
-                                let text: String = content_tokens
-                                    .iter()
-                                    .filter_map(|t| {
-                                        if let Token::Char(c) = t {
-                                            Some(*c)
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .collect();
-                                SyntaxNode::Text(text)
+                        break;
+                    } else {
+                        depth -= 1;
+                        body_tokens.push(Token::ControlSeq("end".to_string()));
+                        body_tokens.push(Token::LBrace);
+                        for ch in close_name.chars() {
+                            if ch == '*' {
+                                body_tokens.push(Token::Star);
                             } else {
-                                // Math mode: recursively parse
-                                match parse_math_block(strict)
-                                    .parse(&content_tokens)
-                                    .into_result()
-                                {
-                                    Ok(SyntaxNode::Group { children, .. }) => SyntaxNode::Group {
-                                        mode: arg_spec.mode,
-                                        kind: GroupKind::Implicit,
-                                        children,
-                                    },
-                                    Ok(other) => other,
-                                    Err(_) => {
-                                        return Err(Rich::custom(
-                                            SimpleSpan::new((), 0..0),
-                                            "Failed to parse optional argument",
-                                        ))
-                                    }
-                                }
-                            };
-
-                            args.push(Argument::optional(value));
-                        } else {
-                            // Optional arg not provided: empty group
-                            args.push(Argument::optional(SyntaxNode::Group {
-                                mode: arg_spec.mode,
-                                kind: GroupKind::Implicit,
-                                children: vec![],
-                            }));
+                                body_tokens.push(Token::Char(ch));
+                            }
                         }
+                        body_tokens.push(Token::RBrace);
+                        continue;
                     }
                 }
             }
 
-            // 7. Return command node
-            Ok(SyntaxNode::Command {
-                name,
-                starred,
-                args,
-            })
-        });
-
-        // Unknown command (non-strict mode)
-        let unknown_command = select! {
-            Token::ControlSeq(name) => name,
+            body_tokens.push(token);
         }
-        .try_map(move |name, span| {
-            // Check if it's blacklisted
-            if knowledge::is_blacklisted(&name).is_some() {
-                return Err(Rich::custom(span, "blacklisted"));
-            }
 
-            // Check if it's in KB
-            if let Some(meta) = knowledge::lookup_command(&name) {
-                // Known command - don't match it here
-                return Err(Rich::custom(span, format!("known {} command", match meta.kind {
-                    CommandKind::Prefix => "prefix",
-                    CommandKind::Infix => "infix",
-                    CommandKind::Declarative => "declarative",
-                })));
-            }
+        let body = parse_env_body(&body_tokens, meta.body_mode, strict)?;
 
-            // Unknown command in non-strict mode
-            if !strict {
-                Ok(SyntaxNode::UnknownCommand {
-                    name,
-                    starred: false,
-                })
-            } else {
-                Err(Rich::custom(span, "strict mode"))
-            }
-        });
+        Ok(SyntaxNode::Environment {
+            name: base_name,
+            starred,
+            args,
+            body: Box::new(body),
+        })
+    })
+}
 
-        // ====================================================================
-        // Atom: priority order
-        // ====================================================================
+// ============================================================================
+// Layer 4: Mode Parsers (Math and Text)
+// ============================================================================
+
+/// Math mode parser
+fn parse_math_block<'a>(
+    strict: bool,
+) -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone {
+    recursive(|group_content| {
+        // === Build Math mode parsers ===
+
+        // Atom layer: base elements
+        let explicit_group = explicit_group_parser(ContentMode::Math, group_content.clone());
+
+        // Delimited group: \left delim ... \right delim (inlined for better type inference)
+        let delimited_group =
+            select! { Token::ControlSeq(name) if matches!(name.as_str(), "left") => () }
+                .ignore_then(delimiter())
+                .then(group_content.clone())
+                .then_ignore(
+                    select! { Token::ControlSeq(name) if matches!(name.as_str(), "right") => () },
+                )
+                .then(delimiter())
+                .map(|((left, children), right)| SyntaxNode::Group {
+                    mode: ContentMode::Math,
+                    kind: GroupKind::Delimited { left, right },
+                    children,
+                });
+
+        let environment = environment_parser(strict);
+        let prefix_command = prefix_command_parser(ContentMode::Math, strict);
+        let unknown_command = unknown_command_parser(strict);
 
         let atom = choice((
+            delimited_group,
             explicit_group,
-            escaped_symbol,
+            environment,
+            escaped_symbol(),
             prefix_command,
             unknown_command,
-            active_char,
-            math_char,
+            active_char(),
+            math_char(),
         ));
 
-        // ====================================================================
-        // Scripted Expression
-        // ====================================================================
-
+        // Scripted layer: superscripts and subscripts
         let scripted = atom
             .clone()
             .then(
                 choice((
                     just(&Token::Superscript)
                         .ignore_then(atom.clone())
-                        .map(|node| (true, node)),
+                        .map(|n| (true, n)),
                     just(&Token::Subscript)
                         .ignore_then(atom.clone())
-                        .map(|node| (false, node)),
+                        .map(|n| (false, n)),
                 ))
                 .repeated()
                 .at_least(1)
                 .collect::<Vec<_>>(),
             )
             .map(|(base, scripts)| {
-                // Normalize scripts: collect last occurrence of each type
                 let mut subscript = None;
                 let mut superscript = None;
-
                 for (is_sup, node) in scripts {
                     if is_sup {
                         superscript = Some(Box::new(node));
@@ -423,7 +653,6 @@ fn parse_math_block<'a>(
                         subscript = Some(Box::new(node));
                     }
                 }
-
                 SyntaxNode::Scripted {
                     base: Box::new(base),
                     subscript,
@@ -431,227 +660,11 @@ fn parse_math_block<'a>(
                 }
             });
 
-        // Normal item: scripted or atom
         let normal_item = choice((scripted, atom));
 
-        // ====================================================================
-        // Now define group_content_math using normal_item
-        // ====================================================================
-
-        // group_content_math parses: Leading items + optional InfixTail + optional DeclarativeTail
-        let group_content_math = {
-            // Leading items: parse normal_item repeatedly, stopping before infix/declarative commands
-            //
-            // Solution: Use .not() combinator for zero-consumption lookahead
-            // 1. Create a parser that matches infix/declarative commands
-            // 2. Use .not() to invert it (succeeds when NOT infix/declarative)
-            // 3. When .not() fails (i.e., we find infix/declarative), repeated() stops gracefully
-            // 4. .not() doesn't consume tokens, so infix_tail can read them
-
-            // Pattern that matches infix/declarative commands
-            let stop_infix_or_decl = select! {
-                Token::ControlSeq(name)
-                    if knowledge::lookup_command(name.as_str())
-                        .map(|m| matches!(m.kind, CommandKind::Infix | CommandKind::Declarative))
-                        .unwrap_or(false) => ()
-            };
-
-            // Guard: .not() inverts the match (zero-consumption lookahead)
-            // When we encounter infix/declarative, .not() fails and repeated() stops
-            let guarded_item = stop_infix_or_decl.not().then(normal_item.clone()).map(|(_, item)| item);
-
-            let leading = guarded_item.repeated().collect::<Vec<_>>();
-
-            // InfixTail: infix_command + right_items
-            // Returns (infix_info, right_items) where infix_info = (name, starred, args)
-            let infix_tail = {
-                // Parse infix command (returns marker with metadata)
-                let infix_cmd = custom(move |input| {
-                    // 1. Read command name
-                    let name = match input.peek() {
-                        Some(Token::ControlSeq(n)) => n.clone(),
-                        _ => return Err(Rich::custom(SimpleSpan::new((), 0..0), "not a command")),
-                    };
-                    input.next(); // consume
-
-                    // 2. Check blacklist
-                    if let Some(reason) = knowledge::is_blacklisted(&name) {
-                        return Err(Rich::custom(
-                            SimpleSpan::new((), 0..0),
-                            format!("Banned command: \\{} ({})", name, reason),
-                        ));
-                    }
-
-                    // 3. Lookup in KB - must be Infix
-                    let meta = match knowledge::lookup_command(&name) {
-                        Some(m) if m.kind == CommandKind::Infix => m,
-                        Some(_) => return Err(Rich::custom(SimpleSpan::new((), 0..0), "not infix")),
-                        None => return Err(Rich::custom(SimpleSpan::new((), 0..0), "unknown")),
-                    };
-
-                    // 4. Parse optional star
-                    let starred = if meta.has_star_variant && matches!(input.peek(), Some(Token::Star)) {
-                        input.next();
-                        true
-                    } else {
-                        false
-                    };
-
-                    // 5. Parse args (usually empty for infix)
-                    // TODO: Implement arg parsing for infix commands with args
-                    let args = Vec::new();
-
-                    Ok((name, starred, args))
-                });
-
-                // Right operand: at least one normal_item, stopping before declarative commands
-                // Use .not() combinator for zero-consumption lookahead
-
-                // Pattern that matches declarative commands
-                let stop_declarative = select! {
-                    Token::ControlSeq(name)
-                        if knowledge::lookup_command(name.as_str())
-                            .map(|m| m.kind == CommandKind::Declarative)
-                            .unwrap_or(false) => ()
-                };
-
-                // Guard: .not() inverts the match (zero-consumption lookahead)
-                // When we encounter declarative, .not() fails and repeated() stops
-                let guarded_item_right = stop_declarative.not().then(normal_item.clone()).map(|(_, item)| item);
-
-                let right_items = guarded_item_right.repeated().at_least(1).collect::<Vec<_>>();
-
-                infix_cmd.then(right_items)
-            };
-
-            // DeclarativeTail: declarative_command + scope_items
-            let declarative_tail = {
-                // Parse declarative command
-                let decl_cmd = custom(move |input| {
-                    // 1. Read command name
-                    let name = match input.peek() {
-                        Some(Token::ControlSeq(n)) => n.clone(),
-                        _ => return Err(Rich::custom(SimpleSpan::new((), 0..0), "not a command")),
-                    };
-                    input.next(); // consume
-
-                    // 2. Check blacklist
-                    if let Some(reason) = knowledge::is_blacklisted(&name) {
-                        return Err(Rich::custom(
-                            SimpleSpan::new((), 0..0),
-                            format!("Banned command: \\{} ({})", name, reason),
-                        ));
-                    }
-
-                    // 3. Lookup in KB - must be Declarative
-                    let meta = match knowledge::lookup_command(&name) {
-                        Some(m) if m.kind == CommandKind::Declarative => m,
-                        Some(_) => return Err(Rich::custom(SimpleSpan::new((), 0..0), "not declarative")),
-                        None => return Err(Rich::custom(SimpleSpan::new((), 0..0), "unknown")),
-                    };
-
-                    // 4. Parse optional star
-                    let starred = if meta.has_star_variant && matches!(input.peek(), Some(Token::Star)) {
-                        input.next();
-                        true
-                    } else {
-                        false
-                    };
-
-                    // 5. Parse args
-                    // TODO: Implement arg parsing for declarative commands
-                    let args = Vec::new();
-
-                    Ok((name, starred, args))
-                });
-
-                // Scope: remaining items (can be empty)
-                let scope_items = normal_item.clone().repeated().collect::<Vec<_>>();
-
-                decl_cmd.then(scope_items)
-            };
-
-            // Combine: Leading + optional InfixTail + optional DeclarativeTail
-            leading
-                .then(infix_tail.or_not())
-                .then(declarative_tail.or_not())
-                .map(|((leading, infix_tail), declarative_tail)| {
-                    // Build the final group based on what we found
-                    //
-                    // Logic:
-                    // 1. If InfixTail exists, fold Leading as left and RightItems+DeclarativeTail as right
-                    // 2. If only DeclarativeTail exists, append it to Leading
-                    // 3. Otherwise return Leading as is
-
-                    if let Some((infix_info, right_items)) = infix_tail {
-                        // Have InfixTail: construct Infix node
-                        let (infix_name, infix_starred, infix_args) = infix_info;
-
-                        // Left operand: fold Leading items
-                        let left = fold_items(ContentMode::Math, leading);
-
-                        // Right operand: right_items + optional DeclarativeTail
-                        let mut right_content = right_items;
-                        if let Some((decl_tail_info, scope_items)) = declarative_tail {
-                            let (decl_name, decl_starred, decl_args) = decl_tail_info;
-                            let scope = fold_items(ContentMode::Math, scope_items);
-
-                            let decl_node = SyntaxNode::Declarative {
-                                name: decl_name,
-                                starred: decl_starred,
-                                args: decl_args,
-                                scope: Box::new(scope),
-                            };
-
-                            right_content.push(decl_node);
-                        }
-
-                        let right = fold_items(ContentMode::Math, right_content);
-
-                        // Return Infix node as single-element vector
-                        return vec![SyntaxNode::Infix {
-                            name: infix_name,
-                            starred: infix_starred,
-                            args: infix_args,
-                            left: Box::new(left),
-                            right: Box::new(right),
-                        }];
-                    }
-
-                    // No InfixTail: check DeclarativeTail
-                    let mut items = leading;
-
-                    if let Some((decl_tail_info, scope_items)) = declarative_tail {
-                        let (decl_name, decl_starred, decl_args) = decl_tail_info;
-                        let scope = fold_items(ContentMode::Math, scope_items);
-
-                        let decl_node = SyntaxNode::Declarative {
-                            name: decl_name,
-                            starred: decl_starred,
-                            args: decl_args,
-                            scope: Box::new(scope),
-                        };
-
-                        items.push(decl_node);
-                    }
-
-                    // Return items
-                    items
-                })
-        };
-
-        // ====================================================================
-        // Return group_content_math (not normal_item!)
-        // ====================================================================
-        //
-        // KEY: This is the architecture fix!
-        // We return group_content_math which contains the full Infix/Declarative logic,
-        // not a simple normal_item that would be .repeated() outside the closure.
-        //
-        // group_content_math: Parser<Vec<SyntaxNode>>
-        group_content_math
+        // Group content: Leading + InfixTail + DeclarativeTail
+        build_math_group_content(normal_item)
     })
-    // Wrap the Vec<SyntaxNode> into a top-level Group node
     .map(|children| SyntaxNode::Group {
         mode: ContentMode::Math,
         kind: GroupKind::Implicit,
@@ -659,15 +672,288 @@ fn parse_math_block<'a>(
     })
 }
 
+/// Build Math mode group content parser
+fn build_math_group_content<'a, P>(
+    normal_item: P,
+) -> impl Parser<'a, &'a [Token], Vec<SyntaxNode>, extra::Err<Rich<'a, Token>>> + Clone
+where
+    P: Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone + 'a,
+{
+    // Define stop patterns
+    let stop_infix_or_decl = select! {
+        Token::ControlSeq(name)
+            if knowledge::lookup_command(name.as_str())
+                .map(|m| matches!(m.kind, CommandKind::Infix | CommandKind::Declarative))
+                .unwrap_or(false) => ()
+    };
+    let stop_delimited = select! {
+        Token::ControlSeq(name) if name.as_str() == "right" => ()
+    };
+    let stop_environment = select! {
+        Token::ControlSeq(name) if name.as_str() == "end" => ()
+    };
+
+    // Leading items - stop before infix/declarative tokens and before \right
+    let guarded_item = stop_infix_or_decl
+        .or(stop_delimited)
+        .or(stop_environment)
+        .not()
+        .then(normal_item.clone())
+        .map(|(_, item)| item);
+    let leading = guarded_item.repeated().collect::<Vec<_>>();
+
+    // Infix tail
+    let infix_tail = build_infix_tail(normal_item.clone());
+
+    // Declarative tail
+    let declarative_tail = build_declarative_tail(normal_item);
+
+    // Combine
+    leading
+        .then(infix_tail.or_not())
+        .then(declarative_tail.or_not())
+        .map(|((leading, infix_tail), declarative_tail)| {
+            if let Some((infix_info, right_items)) = infix_tail {
+                // Has Infix command
+                let (name, starred, args) = infix_info;
+                let left = fold_items(ContentMode::Math, leading);
+
+                let mut right_content = right_items;
+                if let Some((decl_info, scope_items)) = declarative_tail {
+                    let (decl_name, decl_starred, decl_args) = decl_info;
+                    let scope = fold_items(ContentMode::Math, scope_items);
+                    right_content.push(SyntaxNode::Declarative {
+                        name: decl_name,
+                        starred: decl_starred,
+                        args: decl_args,
+                        scope: Box::new(scope),
+                    });
+                }
+
+                let right = fold_items(ContentMode::Math, right_content);
+
+                vec![SyntaxNode::Infix {
+                    name,
+                    starred,
+                    args,
+                    left: Box::new(left),
+                    right: Box::new(right),
+                }]
+            } else {
+                // No Infix command
+                let mut items = leading;
+                if let Some((decl_info, scope_items)) = declarative_tail {
+                    let (decl_name, decl_starred, decl_args) = decl_info;
+                    let scope = fold_items(ContentMode::Math, scope_items);
+                    items.push(SyntaxNode::Declarative {
+                        name: decl_name,
+                        starred: decl_starred,
+                        args: decl_args,
+                        scope: Box::new(scope),
+                    });
+                }
+                items
+            }
+        })
+}
+
+/// Build Infix tail parser
+fn build_infix_tail<'a, P>(
+    normal_item: P,
+) -> impl Parser<
+    'a,
+    &'a [Token],
+    ((String, bool, Vec<Argument>), Vec<SyntaxNode>),
+    extra::Err<Rich<'a, Token>>,
+> + Clone
+where
+    P: Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone + 'a,
+{
+    let infix_cmd = custom(move |input| {
+        let name = match input.peek() {
+            Some(Token::ControlSeq(n)) => n.clone(),
+            _ => return Err(Rich::custom(SimpleSpan::new((), 0..0), "not a command")),
+        };
+        input.next();
+
+        if let Some(reason) = knowledge::is_blacklisted(&name) {
+            return Err(Rich::custom(
+                SimpleSpan::new((), 0..0),
+                format!("Banned: \\{} ({})", name, reason),
+            ));
+        }
+
+        let meta = match knowledge::lookup_command(&name) {
+            Some(m) if m.kind == CommandKind::Infix => m,
+            Some(_) => return Err(Rich::custom(SimpleSpan::new((), 0..0), "not infix")),
+            None => return Err(Rich::custom(SimpleSpan::new((), 0..0), "unknown")),
+        };
+
+        let starred = if meta.has_star_variant && matches!(input.peek(), Some(Token::Star)) {
+            input.next();
+            true
+        } else {
+            false
+        };
+
+        Ok((name, starred, Vec::new()))
+    });
+
+    let stop_declarative = select! {
+        Token::ControlSeq(name)
+            if knowledge::lookup_command(name.as_str())
+                .map(|m| m.kind == CommandKind::Declarative)
+                .unwrap_or(false) => ()
+    };
+
+    let guarded_item = stop_declarative
+        .not()
+        .then(normal_item)
+        .map(|(_, item)| item);
+    let right_items = guarded_item.repeated().at_least(1).collect::<Vec<_>>();
+
+    infix_cmd.then(right_items)
+}
+
+/// Build Declarative tail parser
+fn build_declarative_tail<'a, P>(
+    normal_item: P,
+) -> impl Parser<
+    'a,
+    &'a [Token],
+    ((String, bool, Vec<Argument>), Vec<SyntaxNode>),
+    extra::Err<Rich<'a, Token>>,
+> + Clone
+where
+    P: Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone + 'a,
+{
+    let decl_cmd = custom(move |input| {
+        let name = match input.peek() {
+            Some(Token::ControlSeq(n)) => n.clone(),
+            _ => return Err(Rich::custom(SimpleSpan::new((), 0..0), "not a command")),
+        };
+        input.next();
+
+        if let Some(reason) = knowledge::is_blacklisted(&name) {
+            return Err(Rich::custom(
+                SimpleSpan::new((), 0..0),
+                format!("Banned: \\{} ({})", name, reason),
+            ));
+        }
+
+        let meta = match knowledge::lookup_command(&name) {
+            Some(m) if m.kind == CommandKind::Declarative => m,
+            Some(_) => return Err(Rich::custom(SimpleSpan::new((), 0..0), "not declarative")),
+            None => return Err(Rich::custom(SimpleSpan::new((), 0..0), "unknown")),
+        };
+
+        let starred = if meta.has_star_variant && matches!(input.peek(), Some(Token::Star)) {
+            input.next();
+            true
+        } else {
+            false
+        };
+
+        Ok((name, starred, Vec::new()))
+    });
+
+    let scope_items = normal_item.repeated().collect::<Vec<_>>();
+    decl_cmd.then(scope_items)
+}
+
+/// Text mode parser
+fn parse_text_block<'a>(
+    strict: bool,
+) -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone {
+    recursive(|group_content| {
+        // === Build Text mode parsers ===
+
+        // Inline math: $...$
+        let inline_math = just(&Token::MathShift)
+            .ignore_then(parse_math_block(strict).map(|node| match node {
+                SyntaxNode::Group { mode, children, .. } => SyntaxNode::Group {
+                    mode,
+                    kind: GroupKind::InlineMath,
+                    children,
+                },
+                other => other,
+            }))
+            .then_ignore(just(&Token::MathShift));
+
+        let explicit_group = explicit_group_parser(ContentMode::Text, group_content.clone());
+        let prefix_command = prefix_command_parser(ContentMode::Text, strict);
+        let environment = environment_parser(strict);
+        let unknown_command = unknown_command_parser(strict);
+
+        let normal_item = choice((
+            text_chunk(),
+            inline_math,
+            explicit_group,
+            environment,
+            escaped_symbol(),
+            prefix_command,
+            unknown_command,
+            active_char(),
+        ));
+
+        // Text mode only has Declarative tail, no Infix
+        build_text_group_content(normal_item)
+    })
+    .map(|children| SyntaxNode::Group {
+        mode: ContentMode::Text,
+        kind: GroupKind::Implicit,
+        children,
+    })
+}
+
+/// Build Text mode group content parser
+fn build_text_group_content<'a, P>(
+    normal_item: P,
+) -> impl Parser<'a, &'a [Token], Vec<SyntaxNode>, extra::Err<Rich<'a, Token>>> + Clone
+where
+    P: Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone + 'a,
+{
+    let stop_declarative = select! {
+        Token::ControlSeq(name)
+            if knowledge::lookup_command(name.as_str())
+                .map(|m| m.kind == CommandKind::Declarative)
+                .unwrap_or(false) => ()
+    };
+    let stop_environment = select! {
+        Token::ControlSeq(name) if name.as_str() == "end" => ()
+    };
+
+    let guarded_item = stop_declarative
+        .or(stop_environment)
+        .not()
+        .then(normal_item.clone())
+        .map(|(_, item)| item);
+    let leading = guarded_item.repeated().collect::<Vec<_>>();
+
+    let declarative_tail = build_declarative_tail(normal_item);
+
+    leading
+        .then(declarative_tail.or_not())
+        .map(|(mut leading, declarative_tail)| {
+            if let Some((decl_info, scope_items)) = declarative_tail {
+                let (decl_name, decl_starred, decl_args) = decl_info;
+                let scope = fold_items(ContentMode::Text, scope_items);
+                leading.push(SyntaxNode::Declarative {
+                    name: decl_name,
+                    starred: decl_starred,
+                    args: decl_args,
+                    scope: Box::new(scope),
+                });
+            }
+            leading
+        })
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
-/// Fold a list of items into a single node
-///
-/// - Empty list: empty implicit group
-/// - Single item: return that item
-/// - Multiple items: wrap in implicit group
+/// Fold node list into single node
 fn fold_items(mode: ContentMode, items: Vec<SyntaxNode>) -> SyntaxNode {
     match items.len() {
         0 => SyntaxNode::Group {
