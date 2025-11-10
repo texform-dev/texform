@@ -969,3 +969,5 @@ fn fold_items(mode: ContentMode, items: Vec<SyntaxNode>) -> SyntaxNode {
         },
     }
 }
+
+// Tests in tests/parser.rs

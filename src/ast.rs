@@ -685,3 +685,5 @@ impl Default for Ast {
         Self::new()
     }
 }
+
+// Tests in tests/ast.rs
