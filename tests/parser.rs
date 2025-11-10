@@ -292,10 +292,12 @@ fn test_filter_tokens() {
     ];
 
     let filtered = filter_tokens(&tokens);
-    assert_eq!(filtered.len(), 3);
+    assert_eq!(filtered.len(), 5);
     assert_eq!(filtered[0], Token::Char('a'));
-    assert_eq!(filtered[1], Token::Char('b'));
-    assert_eq!(filtered[2], Token::Char('c'));
+    assert_eq!(filtered[1], Token::Whitespace);
+    assert_eq!(filtered[2], Token::Char('b'));
+    assert_eq!(filtered[3], Token::Whitespace);
+    assert_eq!(filtered[4], Token::Char('c'));
 }
 
 #[test]
@@ -851,8 +853,6 @@ fn test_text_in_command() {
     let result = parse(&tokens, false).unwrap();
 
     // Debug print the result
-    eprintln!("Result:\n{}", result);
-
     match result {
         SyntaxNode::Group { children, .. } => {
             assert_eq!(children.len(), 1);
@@ -860,23 +860,22 @@ fn test_text_in_command() {
                 SyntaxNode::Command { name, args, .. } => {
                     assert_eq!(name, "text");
                     assert_eq!(args.len(), 1);
-                    eprintln!("Arg value: {:?}", args[0].value);
                     match &args[0].value {
                         SyntaxNode::Group { mode, children, .. } => {
                             assert_eq!(*mode, ContentMode::Text);
-                            // Text should be merged into a single Text node
-                            // Note: Currently the arg parsing in Math mode doesn't use proper Text mode parsing
-                            // It just collects chars, so we may get individual chars instead
-                            // Let's check what we actually get
-                            eprintln!("Children: {:?}", children);
+                            assert_eq!(children.len(), 1);
+                            assert_eq!(
+                                children[0],
+                                SyntaxNode::Text("Hello World".to_string())
+                            );
                         }
                         SyntaxNode::Text(s) => {
-                            // Might return Text directly
-                            eprintln!("Got Text directly: {}", s);
+                            assert_eq!(s, "Hello World");
                         }
-                        other => {
-                            panic!("Expected Group or Text for text argument, got {:?}", other)
-                        }
+                        other => panic!(
+                            "Expected Group or Text for text argument, got {:?}",
+                            other
+                        ),
                     }
                 }
                 _ => panic!("Expected Command node"),

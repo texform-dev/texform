@@ -114,6 +114,11 @@ pub fn is_blacklisted(name: &str) -> Option<&'static str> {
         .map(|(_, reason)| *reason)
 }
 
+/// Check if control sequence acts as a delimiter usable by \left...\right
+pub fn is_delimiter_control(name: &str) -> bool {
+    DELIMITER_CONTROLS.iter().any(|&candidate| candidate == name)
+}
+
 // ============ Temporary Command Definitions ============
 
 static COMMANDS: &[CommandMeta] = &[
@@ -192,6 +197,25 @@ static BLACKLIST: &[(&str, &str)] = &[
     ("csname", "Dynamic command names not supported"),
 ];
 
+static DELIMITER_CONTROLS: &[&str] = &[
+    "langle",
+    "rangle",
+    "{",
+    "}",
+    "lfloor",
+    "rfloor",
+    "lceil",
+    "rceil",
+    "lvert",
+    "rvert",
+    "lVert",
+    "rVert",
+    "lgroup",
+    "rgroup",
+    "lmoustache",
+    "rmoustache",
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -253,5 +277,12 @@ mod tests {
         let optional_text = ArgSpec::optional(ContentMode::Text);
         assert_eq!(optional_text.kind, ArgumentKind::Optional);
         assert_eq!(optional_text.mode, ContentMode::Text);
+    }
+
+    #[test]
+    fn test_delimiter_controls() {
+        assert!(is_delimiter_control("langle"));
+        assert!(is_delimiter_control("rvert"));
+        assert!(!is_delimiter_control("notadelim"));
     }
 }
