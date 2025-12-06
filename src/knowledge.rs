@@ -116,7 +116,7 @@ pub fn is_blacklisted(name: &str) -> Option<&'static str> {
 
 /// Check if control sequence acts as a delimiter usable by \left...\right
 pub fn is_delimiter_control(name: &str) -> bool {
-    DELIMITER_CONTROLS.iter().any(|&candidate| candidate == name)
+    DELIMITER_CONTROLS.contains(&name)
 }
 
 // ============ Temporary Command Definitions ============

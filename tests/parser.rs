@@ -864,18 +864,14 @@ fn test_text_in_command() {
                         SyntaxNode::Group { mode, children, .. } => {
                             assert_eq!(*mode, ContentMode::Text);
                             assert_eq!(children.len(), 1);
-                            assert_eq!(
-                                children[0],
-                                SyntaxNode::Text("Hello World".to_string())
-                            );
+                            assert_eq!(children[0], SyntaxNode::Text("Hello World".to_string()));
                         }
                         SyntaxNode::Text(s) => {
                             assert_eq!(s, "Hello World");
                         }
-                        other => panic!(
-                            "Expected Group or Text for text argument, got {:?}",
-                            other
-                        ),
+                        other => {
+                            panic!("Expected Group or Text for text argument, got {:?}", other)
+                        }
                     }
                 }
                 _ => panic!("Expected Command node"),

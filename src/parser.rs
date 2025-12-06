@@ -27,6 +27,8 @@ use crate::knowledge::{self, ArgSpec, CommandKind, CommandMeta};
 use crate::lexer::Token;
 use crate::syntax_node::{Argument, ArgumentKind, ContentMode, Delimiter, GroupKind, SyntaxNode};
 
+type TailParseOutput = ((String, bool, Vec<Argument>), Vec<SyntaxNode>);
+
 // ============================================================================
 // Public Interface
 // ============================================================================
@@ -106,30 +108,30 @@ fn text_chunk<'a>() -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<
         select! { Token::Char(c) => c },
         select! { Token::Whitespaces => ' ' },
     ))
-        .repeated()
-        .at_least(1)
-        .collect::<Vec<_>>()
-        .map(|chars| {
-            let mut buf = String::new();
-            let mut last_was_space = false;
-            for ch in chars {
-                if ch == ' ' {
-                    if !last_was_space {
-                        buf.push(' ');
-                        last_was_space = true;
-                    }
-                } else {
-                    buf.push(ch);
-                    last_was_space = false;
+    .repeated()
+    .at_least(1)
+    .collect::<Vec<_>>()
+    .map(|chars| {
+        let mut buf = String::new();
+        let mut last_was_space = false;
+        for ch in chars {
+            if ch == ' ' {
+                if !last_was_space {
+                    buf.push(' ');
+                    last_was_space = true;
                 }
+            } else {
+                buf.push(ch);
+                last_was_space = false;
             }
-            SyntaxNode::Text(buf)
-        })
+        }
+        SyntaxNode::Text(buf)
+    })
 }
 
 /// Parser that skips any amount of whitespace tokens without producing output.
-fn insignificant_whitespace<'a>(
-) -> impl Parser<'a, &'a [Token], (), extra::Err<Rich<'a, Token>>> + Clone {
+fn insignificant_whitespace<'a>()
+-> impl Parser<'a, &'a [Token], (), extra::Err<Rich<'a, Token>>> + Clone {
     select! { Token::Whitespaces => () }.repeated().ignored()
 }
 
@@ -214,7 +216,7 @@ fn read_env_name<'src, 'parse>(
                     format!("Unclosed {} name", context),
                 ));
             }
-        }; 
+        };
 
         match token {
             Token::RBrace => break,
@@ -405,7 +407,7 @@ fn parse_typed_command_head<'src, 'parse>(
             return Err(Rich::custom(
                 SimpleSpan::new((), 0..0),
                 format!("not {}", kind_label(expected_kind)),
-            ))
+            ));
         }
         None => {
             if strict {
@@ -846,12 +848,7 @@ where
 fn build_infix_tail<'a, P>(
     normal_item: P,
     strict: bool,
-) -> impl Parser<
-    'a,
-    &'a [Token],
-    ((String, bool, Vec<Argument>), Vec<SyntaxNode>),
-    extra::Err<Rich<'a, Token>>,
-> + Clone
+) -> impl Parser<'a, &'a [Token], TailParseOutput, extra::Err<Rich<'a, Token>>> + Clone
 where
     P: Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone + 'a,
 {
@@ -891,12 +888,7 @@ where
 fn build_declarative_tail<'a, P>(
     normal_item: P,
     strict: bool,
-) -> impl Parser<
-    'a,
-    &'a [Token],
-    ((String, bool, Vec<Argument>), Vec<SyntaxNode>),
-    extra::Err<Rich<'a, Token>>,
-> + Clone
+) -> impl Parser<'a, &'a [Token], TailParseOutput, extra::Err<Rich<'a, Token>>> + Clone
 where
     P: Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone + 'a,
 {
@@ -909,12 +901,8 @@ where
 
         let mut args = Vec::new();
         for &arg_spec in meta.args {
-            let arg = parse_argument_by_spec(
-                input,
-                arg_spec,
-                strict,
-                "declarative command argument",
-            )?;
+            let arg =
+                parse_argument_by_spec(input, arg_spec, strict, "declarative command argument")?;
             args.push(arg);
         }
 

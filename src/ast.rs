@@ -293,11 +293,11 @@ impl Ast {
     pub fn prev_sibling(&self, id: NodeId) -> Option<NodeId> {
         let parent_link = self.parent(id)?;
 
-        if let Slot::GroupChild(idx) = parent_link.slot {
-            if idx > 0 {
-                let siblings = self.children(parent_link.parent);
-                return Some(siblings[idx - 1]);
-            }
+        if let Slot::GroupChild(idx) = parent_link.slot
+            && idx > 0
+        {
+            let siblings = self.children(parent_link.parent);
+            return Some(siblings[idx - 1]);
         }
 
         None

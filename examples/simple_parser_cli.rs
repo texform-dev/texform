@@ -58,7 +58,11 @@ fn main() {
                 println!("  {:?}", token);
             }
             Err(err) => {
-                eprintln!("Lexical error at position {}: {:?}", lexer.span().start, err);
+                eprintln!(
+                    "Lexical error at position {}: {:?}",
+                    lexer.span().start,
+                    err
+                );
                 return;
             }
         }
