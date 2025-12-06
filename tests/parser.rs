@@ -285,18 +285,18 @@ fn test_script_with_group() {
 fn test_filter_tokens() {
     let tokens = vec![
         Token::Char('a'),
-        Token::Whitespace,
+        Token::Whitespaces,
         Token::Char('b'),
-        Token::Whitespace,
+        Token::Whitespaces,
         Token::Char('c'),
     ];
 
     let filtered = filter_tokens(&tokens);
     assert_eq!(filtered.len(), 5);
     assert_eq!(filtered[0], Token::Char('a'));
-    assert_eq!(filtered[1], Token::Whitespace);
+    assert_eq!(filtered[1], Token::Whitespaces);
     assert_eq!(filtered[2], Token::Char('b'));
-    assert_eq!(filtered[3], Token::Whitespace);
+    assert_eq!(filtered[3], Token::Whitespaces);
     assert_eq!(filtered[4], Token::Char('c'));
 }
 

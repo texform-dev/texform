@@ -6,6 +6,69 @@
 //!
 //! After parsing, the syntax tree is converted to the slotmap-based AST via lowering.
 
+/// Command or environment argument
+///
+/// Arguments can be mandatory {...} or optional [...].
+/// Each argument contains a syntax node representing its content.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Argument {
+    pub kind: ArgumentKind,
+    pub value: SyntaxNode,
+}
+
+/// Argument type: mandatory or optional
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArgumentKind {
+    /// Mandatory argument: {...}
+    Mandatory,
+    /// Optional argument: [...]
+    Optional,
+}
+
+/// Content mode: math or text
+///
+/// Determines how content is parsed and interpreted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContentMode {
+    /// Math mode: default mode, supports formulas, scripts, infix commands
+    Math,
+    /// Text mode: consecutive chars merged, no scripts, inline math via $...$
+    Text,
+}
+
+/// Delimiter type for delimited groups
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Delimiter {
+    /// No delimiter (corresponds to '.' in LaTeX)
+    None,
+    /// Single character delimiter: '(', ')', '[', ']', '|', etc.
+    Char(char),
+    /// Control sequence delimiter: "\langle", "\rangle", "\{", "\}", etc.
+    Control(&'static str),
+}
+
+/// Group type for different grouping constructs
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GroupKind {
+    /// Explicit group: {...}
+    Explicit,
+
+    /// Implicit group: wrapper for sequences that need to be treated as a single node
+    ///
+    /// Used when folding multiple items into one (e.g., infix operands, declarative scope).
+    Implicit,
+
+    /// Delimited group: \left delim ... \right delim
+    ///
+    /// Examples: \left( ... \right), \left\{ ... \right\}
+    Delimited { left: Delimiter, right: Delimiter },
+
+    /// Inline math in text mode: $...$
+    ///
+    /// Note: Display math \[...\] is not currently supported (future extension).
+    InlineMath,
+}
+
 /// Immutable syntax tree node
 ///
 /// Represents the structure of parsed LaTeX source code.
@@ -96,69 +159,6 @@ pub enum SyntaxNode {
     /// This node is produced in both Math and Text modes.
     /// In Text mode, ~ is NOT merged into TextChunk; it remains as a separate node.
     ActiveSpace,
-}
-
-/// Command or environment argument
-///
-/// Arguments can be mandatory {...} or optional [...].
-/// Each argument contains a syntax node representing its content.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Argument {
-    pub kind: ArgumentKind,
-    pub value: SyntaxNode,
-}
-
-/// Argument type: mandatory or optional
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ArgumentKind {
-    /// Mandatory argument: {...}
-    Mandatory,
-    /// Optional argument: [...]
-    Optional,
-}
-
-/// Content mode: math or text
-///
-/// Determines how content is parsed and interpreted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ContentMode {
-    /// Math mode: default mode, supports formulas, scripts, infix commands
-    Math,
-    /// Text mode: consecutive chars merged, no scripts, inline math via $...$
-    Text,
-}
-
-/// Delimiter type for delimited groups
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Delimiter {
-    /// No delimiter (corresponds to '.' in LaTeX)
-    None,
-    /// Single character delimiter: '(', ')', '[', ']', '|', etc.
-    Char(char),
-    /// Control sequence delimiter: "\langle", "\rangle", "\{", "\}", etc.
-    Control(&'static str),
-}
-
-/// Group type for different grouping constructs
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GroupKind {
-    /// Explicit group: {...}
-    Explicit,
-
-    /// Implicit group: wrapper for sequences that need to be treated as a single node
-    ///
-    /// Used when folding multiple items into one (e.g., infix operands, declarative scope).
-    Implicit,
-
-    /// Delimited group: \left delim ... \right delim
-    ///
-    /// Examples: \left( ... \right), \left\{ ... \right\}
-    Delimited { left: Delimiter, right: Delimiter },
-
-    /// Inline math in text mode: $...$
-    ///
-    /// Note: Display math \[...\] is not currently supported (future extension).
-    InlineMath,
 }
 
 // ============ Helper Methods ============

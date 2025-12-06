@@ -87,12 +87,19 @@ pub enum Token {
     #[token("]")]
     RBracket,
 
+    /// Prime mark: ' or ' (U+2019 right single quotation mark)
+    /// - In math mode, represents derivative notation (f' = f^\prime)
+    /// - Multiple primes are common: f'', f'''
+    #[regex(r"['\u2019]")]
+    Prime,
+
     // --- Whitespace and Comments ---
-    /// Whitespace: spaces, tabs, newlines, form feeds
+    /// Whitespace: spaces, tabs, newlines, form feeds, non-breaking space
     /// - catcode 10: Spacer
     /// - Multiple consecutive whitespace characters are merged
-    #[regex(r"[ \t\n\f]+")]
-    Whitespace,
+    /// - Includes U+00A0 (non-breaking space) for copy-paste compatibility
+    #[regex(r"[ \t\n\f\u{00A0}]+")]
+    Whitespaces,
 
     /// Comment: % to end of line
     /// - catcode 14: Comment
@@ -126,11 +133,11 @@ mod tests {
     fn test_command_sequences() {
         let mut lex = Token::lexer(r"\alpha \frac \$ ~");
         assert_eq!(lex.next(), Some(Ok(Token::ControlSeq("alpha".to_string()))));
-        assert_eq!(lex.next(), Some(Ok(Token::Whitespace)));
+        assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
         assert_eq!(lex.next(), Some(Ok(Token::ControlSeq("frac".to_string()))));
-        assert_eq!(lex.next(), Some(Ok(Token::Whitespace)));
+        assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
         assert_eq!(lex.next(), Some(Ok(Token::ControlSeq("$".to_string()))));
-        assert_eq!(lex.next(), Some(Ok(Token::Whitespace)));
+        assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
         assert_eq!(lex.next(), Some(Ok(Token::ActiveChar)));
     }
 
@@ -152,9 +159,9 @@ mod tests {
     fn test_whitespace_and_comments() {
         let mut lex = Token::lexer("a  \t\n  b % comment\nc");
         assert_eq!(lex.next(), Some(Ok(Token::Char('a'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Whitespace)));
+        assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
         assert_eq!(lex.next(), Some(Ok(Token::Char('b'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Whitespace)));
+        assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
         assert_eq!(
             lex.next(),
             Some(Ok(Token::Comment("% comment\n".to_string())))
@@ -203,7 +210,7 @@ mod tests {
         let mut lex = Token::lexer(r"#1 #2");
         assert_eq!(lex.next(), Some(Ok(Token::Parameter)));
         assert_eq!(lex.next(), Some(Ok(Token::Char('1'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Whitespace)));
+        assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
         assert_eq!(lex.next(), Some(Ok(Token::Parameter)));
         assert_eq!(lex.next(), Some(Ok(Token::Char('2'))));
     }
@@ -234,6 +241,40 @@ mod tests {
         let mut lex = Token::lexer("a~b");
         assert_eq!(lex.next(), Some(Ok(Token::Char('a'))));
         assert_eq!(lex.next(), Some(Ok(Token::ActiveChar)));
+        assert_eq!(lex.next(), Some(Ok(Token::Char('b'))));
+    }
+
+    #[test]
+    fn test_prime_token() {
+        // ASCII apostrophe
+        let mut lex = Token::lexer("f'");
+        assert_eq!(lex.next(), Some(Ok(Token::Char('f'))));
+        assert_eq!(lex.next(), Some(Ok(Token::Prime)));
+
+        // Multiple primes
+        let mut lex = Token::lexer("f''");
+        assert_eq!(lex.next(), Some(Ok(Token::Char('f'))));
+        assert_eq!(lex.next(), Some(Ok(Token::Prime)));
+        assert_eq!(lex.next(), Some(Ok(Token::Prime)));
+
+        // Unicode right single quotation mark (U+2019)
+        let mut lex = Token::lexer("f'");
+        assert_eq!(lex.next(), Some(Ok(Token::Char('f'))));
+        assert_eq!(lex.next(), Some(Ok(Token::Prime)));
+    }
+
+    #[test]
+    fn test_nbsp_whitespace() {
+        // Non-breaking space (U+00A0) should be treated as whitespace
+        let mut lex = Token::lexer("a\u{00A0}b");
+        assert_eq!(lex.next(), Some(Ok(Token::Char('a'))));
+        assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
+        assert_eq!(lex.next(), Some(Ok(Token::Char('b'))));
+
+        // Mixed whitespace including NBSP
+        let mut lex = Token::lexer("a \u{00A0}\t b");
+        assert_eq!(lex.next(), Some(Ok(Token::Char('a'))));
+        assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
         assert_eq!(lex.next(), Some(Ok(Token::Char('b'))));
     }
 }

@@ -104,7 +104,7 @@ fn text_chunk<'a>() -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<
 {
     choice((
         select! { Token::Char(c) => c },
-        select! { Token::Whitespace => ' ' },
+        select! { Token::Whitespaces => ' ' },
     ))
         .repeated()
         .at_least(1)
@@ -130,7 +130,7 @@ fn text_chunk<'a>() -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<
 /// Parser that skips any amount of whitespace tokens without producing output.
 fn insignificant_whitespace<'a>(
 ) -> impl Parser<'a, &'a [Token], (), extra::Err<Rich<'a, Token>>> + Clone {
-    select! { Token::Whitespace => () }.repeated().ignored()
+    select! { Token::Whitespaces => () }.repeated().ignored()
 }
 
 // ============================================================================
@@ -214,7 +214,7 @@ fn read_env_name<'src, 'parse>(
                     format!("Unclosed {} name", context),
                 ));
             }
-        };
+        }; 
 
         match token {
             Token::RBrace => break,
@@ -666,31 +666,66 @@ fn parse_math_block<'a>(
             math_char(),
         ));
 
-        // Scripted layer: superscripts and subscripts
+        // Scripted layer: superscripts, subscripts, and primes
+        // Prime (') is stored as Char('\'') in superscript position
+        // f' -> Scripted { base: f, superscript: Char('\'') }
+        // f'' -> Scripted { base: f, superscript: Group[Char('\''), Char('\'')] }
         let atom_for_scripts = atom.clone().padded_by(ws.clone());
-        let scripted = atom_for_scripts
-            .clone()
-            .then(
-                choice((
-                    just(&Token::Superscript)
-                        .padded_by(ws.clone())
-                        .ignore_then(atom_for_scripts.clone())
-                        .map(|n| (true, n)),
-                    just(&Token::Subscript)
-                        .padded_by(ws.clone())
-                        .ignore_then(atom_for_scripts.clone())
-                        .map(|n| (false, n)),
-                ))
+
+        // Script marker: either ^/_ with content, or ' (prime)
+        // Returns (is_superscript, is_prime, node)
+        let script_marker = choice((
+            just(&Token::Superscript)
+                .padded_by(ws.clone())
+                .ignore_then(atom_for_scripts.clone())
+                .map(|n| (true, false, n)),
+            just(&Token::Subscript)
+                .padded_by(ws.clone())
+                .ignore_then(atom_for_scripts.clone())
+                .map(|n| (false, false, n)),
+            // Prime: collect consecutive primes as Char nodes
+            just(&Token::Prime)
                 .repeated()
                 .at_least(1)
-                .collect::<Vec<_>>(),
-            )
+                .collect::<Vec<_>>()
+                .map(|primes| {
+                    let prime_nodes: Vec<SyntaxNode> =
+                        primes.iter().map(|_| SyntaxNode::Char('\'')).collect();
+                    let node = if prime_nodes.len() == 1 {
+                        prime_nodes.into_iter().next().unwrap()
+                    } else {
+                        SyntaxNode::Group {
+                            mode: ContentMode::Math,
+                            kind: GroupKind::Implicit,
+                            children: prime_nodes,
+                        }
+                    };
+                    (true, true, node) // Prime is always superscript
+                }),
+        ));
+
+        let scripted = atom_for_scripts
+            .clone()
+            .then(script_marker.repeated().at_least(1).collect::<Vec<_>>())
             .map(|(base, scripts)| {
-                let mut subscript = None;
-                let mut superscript = None;
-                for (is_sup, node) in scripts {
+                let mut subscript: Option<Box<SyntaxNode>> = None;
+                let mut superscript: Option<Box<SyntaxNode>> = None;
+                for (is_sup, is_prime, node) in scripts {
                     if is_sup {
-                        superscript = Some(Box::new(node));
+                        if is_prime {
+                            // Primes merge with existing superscript (x^a' -> x^{a'})
+                            superscript = Some(Box::new(match superscript {
+                                None => node,
+                                Some(existing) => SyntaxNode::Group {
+                                    mode: ContentMode::Math,
+                                    kind: GroupKind::Implicit,
+                                    children: vec![*existing, node],
+                                },
+                            }));
+                        } else {
+                            // Regular ^: last wins (x^a^b -> x^b)
+                            superscript = Some(Box::new(node));
+                        }
                     } else {
                         subscript = Some(Box::new(node));
                     }
