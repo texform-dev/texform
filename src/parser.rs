@@ -1,39 +1,30 @@
-//! Refactored Parser module - Layered architecture
+//! Parser module - content-first combinator architecture
 //!
-//! ## Architecture Design
-//!
-//! **Layer 1: Base Parsers** - No recursive dependencies, pure functional
-//! - delimiter() - Delimiters
-//! - escaped_symbol() - Escaped symbols
-//! - active_char() - Active characters
-//! - math_char() - Math characters
-//! - text_chunk() - Text chunks
-//!
-//! **Layer 2: Parameterized Group Parsers** - Accept content_parser as parameter
-//! - explicit_group_parser(mode, content_parser) - {...}
-//! - delimited_group_parser(content_parser) - \left...\right
-//!
-//! **Layer 3: Parameterized Command Parsers** - Accept mode and strict
-//! - prefix_command_parser(mode, strict) - \frac{}{} etc
-//! - unknown_command_parser(mode, strict) - Unknown commands
-//!
-//! **Layer 4: Assembly Layer** - Combine within recursive closures
-//! - parse_math_block(strict) - Math mode entry point
-//! - parse_text_block(strict) - Text mode entry point
+//! - Base parsers: delimiters, escapes, characters, whitespace
+//! - Group builders: implicit/braced/bracket/delimited/env_body
+//! - Content & arguments: mode content factories + argument_parser/arguments_parser
+//! - Commands & environments: custom heads with combinator arguments/body
+//! - Mode entry: mode_group_parsers + math_block_parser/text_block_parser
 
 use chumsky::{input::InputRef, prelude::*};
 
-use crate::knowledge::{self, ArgSpec, CommandKind, CommandMeta};
+use crate::knowledge::{self, ArgSpec, CommandKind, CommandMeta, EnvMeta};
 use crate::lexer::Token;
 use crate::syntax_node::{Argument, ArgumentKind, ContentMode, Delimiter, GroupKind, SyntaxNode};
 
+type ParserError<'a> = extra::Err<Rich<'a, Token>>;
+type TokenInput<'a> = &'a [Token];
+type ContentParser<'a> = Boxed<'a, 'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>>;
+type NodeParser<'a> = Boxed<'a, 'a, TokenInput<'a>, SyntaxNode, ParserError<'a>>;
+type ArgumentParser<'a> = Boxed<'a, 'a, TokenInput<'a>, Argument, ParserError<'a>>;
+type ParserInput<'src, 'parse> = InputRef<'src, 'parse, TokenInput<'src>, ParserError<'src>>;
 type TailParseOutput = ((String, bool, Vec<Argument>), Vec<SyntaxNode>);
 
 // ============================================================================
 // Public Interface
 // ============================================================================
 
-/// Filter tokens, removing only comments (whitespace must be preserved for text mode)
+/// Filter tokens, removing only comments (whitespace must be preserved for text mode) TODO: Move comment filtering into lexer and drop this helper
 pub fn filter_tokens(tokens: &[Token]) -> Vec<Token> {
     tokens
         .iter()
@@ -42,9 +33,9 @@ pub fn filter_tokens(tokens: &[Token]) -> Vec<Token> {
         .collect()
 }
 
-/// Parse entry point - Math mode
+/// Parse entry point - Math mode.
 pub fn parse(tokens: &[Token], strict: bool) -> Result<SyntaxNode, Vec<Rich<'_, Token>>> {
-    parse_math_block(strict)
+    math_block_parser(strict)
         .then_ignore(end())
         .parse(tokens)
         .into_result()
@@ -54,63 +45,61 @@ pub fn parse(tokens: &[Token], strict: bool) -> Result<SyntaxNode, Vec<Rich<'_, 
 // Layer 1: Base Parsers (no recursive dependencies)
 // ============================================================================
 
-/// Delimiter parser
+/// Parse a math delimiter token into a typed `Delimiter`.
 ///
 /// Supports:
 /// - '.' => Delimiter::None
 /// - '(', ')', '[', ']', '|' etc => Delimiter::Char
 /// - \langle, \rangle etc => Delimiter::Control
-fn delimiter<'a>() -> impl Parser<'a, &'a [Token], Delimiter, extra::Err<Rich<'a, Token>>> + Clone {
-    choice((
-        select! { Token::Char('.') => Delimiter::None }, // LaTeX use \left. to represent no delimiter
-        select! {
-            Token::Char(c) if matches!(c, '(' | ')' | '[' | ']' | '|' | '<' | '>' | '/' | '\\')
-                => Delimiter::Char(c)
-        },
-        select! {
-            Token::ControlSeq(name) if knowledge::is_delimiter_control(name.as_str()) => {
-                Delimiter::Control(Box::leak(name.into_boxed_str()))
-            }
-        },
-    ))
+/// TODO: Integrate MathJax delimiter map and distinguish left/right.
+fn delimiter<'a>() -> impl Parser<'a, TokenInput<'a>, Delimiter, ParserError<'a>> + Clone {
+    select! {
+        Token::Char('.') => Delimiter::None, // LaTeX use \left. to represent no delimiter
+        Token::Char(c) if matches!(c, '(' | ')' | '[' | ']' | '|' | '<' | '>' | '/' | '\\')
+            => Delimiter::Char(c),
+        Token::ControlSeq(name) if knowledge::is_delimiter_control(name.as_str()) => {
+            Delimiter::Control(Box::leak(name.into_boxed_str()))
+        }
+    }
+    .labelled("delimiter")
 }
 
-/// Escaped symbol parser - Math mode
-fn escaped_symbol<'a>()
--> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone {
+/// Parse escaped symbol control sequences into raw `Char` nodes.
+/// TODO: Confirm the full list of escapable symbols.
+fn escaped_symbol<'a>() -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
     select! {
         Token::ControlSeq(name) if matches!(name.as_str(), "%" | "$" | "&" | "#" | "_" | "{" | "}") => {
             SyntaxNode::Char(name.chars().next().unwrap())
         }
     }
+    .labelled("escaped symbol")
 }
 
-/// Active character parser - ~
-fn active_char<'a>() -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone
-{
+/// Parse the active character `~` into `ActiveSpace`.
+fn active_char<'a>() -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
     just(&Token::ActiveChar).to(SyntaxNode::ActiveSpace)
 }
 
-/// Math character parser
-fn math_char<'a>() -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone
-{
+/// Parse plain math characters (including `*` and `&` tokens).
+fn math_char<'a>() -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
     select! {
         Token::Char(c) => SyntaxNode::Char(c),
         Token::Star => SyntaxNode::Char('*'),
         Token::Alignment => SyntaxNode::Char('&'),
     }
+    .labelled("math character")
 }
 
-/// Text chunk parser - merge consecutive characters
-fn text_chunk<'a>() -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone
-{
-    choice((
-        select! { Token::Char(c) => c },
-        select! { Token::Whitespaces => ' ' },
-    ))
+/// Parse and coalesce consecutive text characters/whitespace into a single `Text` node.
+fn text_chunk<'a>() -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
+    select! {
+        Token::Char(c) => c,
+        Token::Whitespaces => ' ',
+    }
     .repeated()
     .at_least(1)
     .collect::<Vec<_>>()
+    .labelled("text")
     .map(|chars| {
         let mut buf = String::new();
         let mut last_was_space = false;
@@ -129,30 +118,43 @@ fn text_chunk<'a>() -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<
     })
 }
 
-/// Parser that skips any amount of whitespace tokens without producing output.
-fn insignificant_whitespace<'a>()
--> impl Parser<'a, &'a [Token], (), extra::Err<Rich<'a, Token>>> + Clone {
+/// Consume insignificant whitespace tokens and produce no output.
+fn insignificant_whitespace<'a>() -> impl Parser<'a, TokenInput<'a>, (), ParserError<'a>> + Clone {
     select! { Token::Whitespaces => () }.repeated().ignored()
 }
 
-// ============================================================================
-// Layer 2: Parameterized Group Parsers (accept content_parser)
-// ============================================================================
+/// Match an exact control sequence.
+fn control_seq<'a>(
+    target: &'static str,
+) -> impl Parser<'a, TokenInput<'a>, (), ParserError<'a>> + Clone {
+    select! {
+        Token::ControlSeq(name) if name == target => (),
+    }
+    .labelled(target)
+}
 
-/// Explicit group parser - {...}
-///
-/// Parameters:
-/// - mode: Content mode of the group
-/// - content_parser: Parser for group content
-fn explicit_group_parser<'a, P>(
+/// Build an implicit group from a content parser.
+fn implicit_group_parser<'a>(
     mode: ContentMode,
-    content_parser: P,
-) -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone
+    content: ContentParser<'a>,
+) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
+    content.map(move |children| SyntaxNode::Group {
+        mode,
+        kind: GroupKind::Implicit,
+        children,
+    })
+}
+
+/// Parse an explicit `{...}` group with the given content parser.
+fn braced_group_parser<'a, P>(
+    mode: ContentMode,
+    content: P,
+) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, &'a [Token], Vec<SyntaxNode>, extra::Err<Rich<'a, Token>>> + Clone + 'a,
+    P: Parser<'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
 {
     just(&Token::LBrace)
-        .ignore_then(content_parser)
+        .ignore_then(content)
         .then_ignore(just(&Token::RBrace))
         .map(move |children| SyntaxNode::Group {
             mode,
@@ -161,20 +163,32 @@ where
         })
 }
 
-/// Delimited group parser - \left...\right
-///
-/// Parameters:
-/// - content_parser: Parser for group content (Math mode)
-fn delimited_group_parser<'a, P>(
-    content_parser: P,
-) -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone
+/// Parse a bracketed `[...]` group with the given content parser.
+fn bracket_group_parser<'a, P>(
+    mode: ContentMode,
+    content: P,
+) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, &'a [Token], Vec<SyntaxNode>, extra::Err<Rich<'a, Token>>> + Clone + 'a,
+    P: Parser<'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
 {
-    select! { Token::ControlSeq(name) if name == "left" => () }
+    just(&Token::LBracket)
+        .ignore_then(content)
+        .then_ignore(just(&Token::RBracket))
+        .map(move |children| SyntaxNode::Group {
+            mode,
+            kind: GroupKind::Explicit,
+            children,
+        })
+}
+
+/// Parse `\\left ... \\right` delimited math group.
+fn delimited_group_parser<'a>(
+    math_content: ContentParser<'a>,
+) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
+    control_seq("left")
         .ignore_then(delimiter())
-        .then(content_parser)
-        .then_ignore(select! { Token::ControlSeq(name) if name == "right" => () })
+        .then(math_content)
+        .then_ignore(control_seq("right"))
         .then(delimiter())
         .map(|((left, children), right)| SyntaxNode::Group {
             mode: ContentMode::Math,
@@ -183,201 +197,20 @@ where
         })
 }
 
-type ParserInput<'src, 'parse> =
-    InputRef<'src, 'parse, &'src [Token], extra::Err<Rich<'src, Token>>>;
-
-fn read_env_name<'src, 'parse>(
-    input: &mut ParserInput<'src, 'parse>,
-    context: &str,
-) -> Result<String, Rich<'src, Token>> {
-    match input.next() {
-        Some(Token::LBrace) => {}
-        Some(_) => {
-            return Err(Rich::custom(
-                SimpleSpan::new((), 0..0),
-                format!("Expected '{{' after {}", context),
-            ));
-        }
-        None => {
-            return Err(Rich::custom(
-                SimpleSpan::new((), 0..0),
-                format!("Unexpected end of input after {}", context),
-            ));
-        }
-    }
-
-    let mut name = String::new();
-    loop {
-        let token = match input.next() {
-            Some(tok) => tok.clone(),
-            None => {
-                return Err(Rich::custom(
-                    SimpleSpan::new((), 0..0),
-                    format!("Unclosed {} name", context),
-                ));
-            }
-        };
-
-        match token {
-            Token::RBrace => break,
-            Token::Char(c) => name.push(c),
-            Token::Star => name.push('*'),
-            _ => {
-                return Err(Rich::custom(
-                    SimpleSpan::new((), 0..0),
-                    format!("Invalid token inside {}", context),
-                ));
-            }
-        }
-    }
-
-    if name.is_empty() {
-        return Err(Rich::custom(
-            SimpleSpan::new((), 0..0),
-            format!("Empty {} name", context),
-        ));
-    }
-
-    Ok(name)
-}
-
-/// Parse a raw token buffer into a `SyntaxNode` using the specified mode.
-fn parse_argument_value<'src>(
-    tokens: Vec<Token>,
+/// Pick the correct implicit group parser for an environment body.
+fn env_body_parser<'a>(
     mode: ContentMode,
-    strict: bool,
-    context: &str,
-) -> Result<SyntaxNode, Rich<'src, Token>> {
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
+) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
     match mode {
-        ContentMode::Text => match parse_text_block(strict).parse(&tokens).into_result() {
-            Ok(SyntaxNode::Group { children, .. }) => Ok(fold_items(ContentMode::Text, children)),
-            Ok(other) => Ok(other),
-            Err(_) => Err(Rich::custom(
-                SimpleSpan::new((), 0..0),
-                format!("Failed to parse {}", context),
-            )),
-        },
-        ContentMode::Math => match parse_math_block(strict).parse(&tokens).into_result() {
-            Ok(SyntaxNode::Group { children, .. }) => Ok(SyntaxNode::Group {
-                mode: ContentMode::Math,
-                kind: GroupKind::Implicit,
-                children,
-            }),
-            Ok(other) => Ok(other),
-            Err(_) => Err(Rich::custom(
-                SimpleSpan::new((), 0..0),
-                format!("Failed to parse {}", context),
-            )),
-        },
-    }
-}
-
-/// Construct an empty implicit group for the provided content mode.
-fn empty_group(mode: ContentMode) -> SyntaxNode {
-    SyntaxNode::Group {
-        mode,
-        kind: GroupKind::Implicit,
-        children: vec![],
-    }
-}
-
-/// Collect tokens inside a balanced `{...}` block (including nesting).
-fn collect_braced_tokens<'src, 'parse>(
-    input: &mut ParserInput<'src, 'parse>,
-    context: &str,
-) -> Result<Vec<Token>, Rich<'src, Token>> {
-    match input.next() {
-        Some(Token::LBrace) => {}
-        Some(tok) => {
-            return Err(Rich::custom(
-                SimpleSpan::new((), 0..0),
-                format!("Expected '{{' for {}, got {:?}", context, tok),
-            ));
-        }
-        None => {
-            return Err(Rich::custom(
-                SimpleSpan::new((), 0..0),
-                format!("Expected '{{' for {}", context),
-            ));
-        }
-    }
-
-    let mut content_tokens = Vec::new();
-    let mut depth = 1;
-    while depth > 0 {
-        match input.next() {
-            Some(Token::LBrace) => {
-                content_tokens.push(Token::LBrace);
-                depth += 1;
-            }
-            Some(Token::RBrace) => {
-                depth -= 1;
-                if depth > 0 {
-                    content_tokens.push(Token::RBrace);
-                }
-            }
-            Some(tok) => content_tokens.push(tok.clone()),
-            None => {
-                return Err(Rich::custom(
-                    SimpleSpan::new((), 0..0),
-                    format!("Unclosed brace in {}", context),
-                ));
-            }
-        }
-    }
-
-    Ok(content_tokens)
-}
-
-/// Collect tokens until the matching `]` for optional argument parsing.
-fn collect_bracket_tokens<'src, 'parse>(
-    input: &mut ParserInput<'src, 'parse>,
-    context: &str,
-) -> Result<Vec<Token>, Rich<'src, Token>> {
-    let mut tokens = Vec::new();
-    loop {
-        match input.next() {
-            Some(Token::RBracket) => break,
-            Some(tok) => tokens.push(tok.clone()),
-            None => {
-                return Err(Rich::custom(
-                    SimpleSpan::new((), 0..0),
-                    format!("Unclosed bracket in {}", context),
-                ));
-            }
-        }
-    }
-    Ok(tokens)
-}
-
-/// Parse a single argument according to the provided `ArgSpec`.
-fn parse_argument_by_spec<'src, 'parse>(
-    input: &mut ParserInput<'src, 'parse>,
-    spec: ArgSpec,
-    strict: bool,
-    context: &str,
-) -> Result<Argument, Rich<'src, Token>> {
-    match spec.kind {
-        ArgumentKind::Mandatory => {
-            let tokens = collect_braced_tokens(input, context)?;
-            let value = parse_argument_value(tokens, spec.mode, strict, context)?;
-            Ok(Argument::mandatory(value))
-        }
-        ArgumentKind::Optional => {
-            if matches!(input.peek(), Some(Token::LBracket)) {
-                input.next();
-                let tokens = collect_bracket_tokens(input, context)?;
-                let value = parse_argument_value(tokens, spec.mode, strict, context)?;
-                Ok(Argument::optional(value))
-            } else {
-                Ok(Argument::optional(empty_group(spec.mode)))
-            }
-        }
+        ContentMode::Math => implicit_group_parser(ContentMode::Math, math_content),
+        ContentMode::Text => implicit_group_parser(ContentMode::Text, text_content),
     }
 }
 
 /// Parse a control sequence and ensure it matches the expected command kind.
-fn parse_typed_command_head<'src, 'parse>(
+fn command_head_parser<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
     expected_kind: CommandKind,
     strict: bool,
@@ -442,29 +275,141 @@ fn parse_typed_command_head<'src, 'parse>(
 }
 
 // ============================================================================
-// Layer 3: Parameterized Command Parsers
+// Content and Argument Parsers
 // ============================================================================
 
-/// Prefix command parser
-///
-/// Implements full command argument parsing logic using custom parser
-/// All logic is inlined to avoid complex type signatures
-fn prefix_command_parser<'a>(
-    _mode: ContentMode,
-    strict: bool,
-) -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone {
-    custom(move |input| {
-        let (name, meta, starred) =
-            match parse_typed_command_head(input, CommandKind::Prefix, strict) {
-                Ok(data) => data,
-                Err(err) => return Err(err),
-            };
+/// Guard used to stop math content before infix/declarative commands.
+fn math_infix_or_decl_guard<'a>() -> impl Parser<'a, TokenInput<'a>, (), ParserError<'a>> + Clone {
+    select! {
+        Token::ControlSeq(name)
+            if knowledge::lookup_command(name.as_str())
+                .map(|m| matches!(m.kind, CommandKind::Infix | CommandKind::Declarative))
+                .unwrap_or(false) => ()
+    }
+}
 
-        let mut args = Vec::new();
-        for &arg_spec in meta.args {
-            let arg = parse_argument_by_spec(input, arg_spec, strict, "command argument")?;
+/// Guard used to stop text content before declarative commands.
+fn text_declarative_guard<'a>() -> impl Parser<'a, TokenInput<'a>, (), ParserError<'a>> + Clone {
+    select! {
+        Token::ControlSeq(name)
+            if knowledge::lookup_command(name.as_str())
+                .map(|m| m.kind == CommandKind::Declarative)
+                .unwrap_or(false) => ()
+    }
+}
+
+/// Parse a single math item (respecting script rules and stop guards).
+fn math_item_parser<'a>(
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
+    strict: bool,
+) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
+    let ws = insignificant_whitespace();
+    let atom = math_atom_parser(math_content.clone(), math_content, text_content, strict);
+    let scripted = scripted_atom_parser(atom);
+    let normal_item = scripted.padded_by(ws.clone());
+
+    math_infix_or_decl_guard()
+        .or(control_seq("right"))
+        .or(control_seq("end"))
+        .not()
+        .ignore_then(normal_item)
+}
+
+/// Parse a single text item (respecting stop guards).
+fn text_item_parser<'a>(
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
+    strict: bool,
+) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
+    let normal_item = text_atom_parser(text_content.clone(), math_content, text_content, strict);
+
+    text_declarative_guard()
+        .or(control_seq("end"))
+        .not()
+        .ignore_then(normal_item)
+}
+
+/// Parse one argument according to `ArgSpec`, producing an `Argument`.
+fn argument_parser<'a>(
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
+    spec: ArgSpec,
+    strict: bool,
+) -> ArgumentParser<'a> {
+    let content = match spec.mode {
+        ContentMode::Math => math_content.clone(),
+        ContentMode::Text => text_content.clone(),
+    };
+
+    match spec.kind {
+        ArgumentKind::Mandatory => {
+            let braced = braced_group_parser(spec.mode, content.clone());
+            let single_item: NodeParser<'a> = match spec.mode {
+                ContentMode::Math => math_item_parser(math_content, text_content, strict).boxed(),
+                ContentMode::Text => text_item_parser(math_content, text_content, strict).boxed(),
+            };
+            choice((braced, single_item))
+                .labelled("mandatory argument")
+                .map(move |node| Argument::mandatory(normalize_argument_value(spec.mode, node)))
+                .boxed()
+        }
+        ArgumentKind::Optional => bracket_group_parser(spec.mode, content)
+            .labelled("optional argument")
+            .or_not()
+            .map(move |opt| match opt {
+                Some(node) => Argument::optional(normalize_argument_value(spec.mode, node)),
+                None => Argument::optional(SyntaxNode::empty_group(spec.mode)),
+            })
+            .boxed(),
+    }
+}
+
+/// Parse a full argument list driven by metadata specs. This is the only custom loop in the argument layer.
+fn arguments_parser<'a>(
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
+    specs: &'static [ArgSpec],
+    strict: bool,
+    context: &'static str,
+) -> impl Parser<'a, TokenInput<'a>, Vec<Argument>, ParserError<'a>> + Clone {
+    custom(move |input| {
+        let mut args = Vec::with_capacity(specs.len());
+
+        for &spec in specs {
+            let _ = input.parse(insignificant_whitespace());
+            let parser = argument_parser(math_content.clone(), text_content.clone(), spec, strict)
+                .labelled(context);
+            let arg = input.parse(parser)?;
             args.push(arg);
         }
+
+        Ok(args)
+    })
+}
+
+// ============================================================================
+// Command and Environment Parsers
+// ============================================================================
+
+fn prefix_command_parser<'a>(
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
+    strict: bool,
+) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
+    custom(move |input| {
+        let (name, meta, starred) = match command_head_parser(input, CommandKind::Prefix, strict) {
+            Ok(data) => data,
+            Err(err) => return Err(err),
+        };
+
+        let args = input.parse(arguments_parser(
+            math_content.clone(),
+            text_content.clone(),
+            meta.args,
+            strict,
+            "command argument",
+        ))?;
 
         Ok(SyntaxNode::Command {
             name,
@@ -474,86 +419,64 @@ fn prefix_command_parser<'a>(
     })
 }
 
-/// Unknown command parser
 fn unknown_command_parser<'a>(
     strict: bool,
-) -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone {
-    select! { Token::ControlSeq(name) => name }.try_map(move |name, span| {
-        if knowledge::is_blacklisted(&name).is_some() {
-            return Err(Rich::custom(span, "blacklisted"));
-        }
-        if knowledge::lookup_command(&name).is_some() {
-            return Err(Rich::custom(span, "known command"));
-        }
-        if !strict {
-            Ok(SyntaxNode::UnknownCommand {
-                name,
-                starred: false,
-            })
-        } else {
-            Err(Rich::custom(span, "strict mode"))
-        }
-    })
+) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
+    select! { Token::ControlSeq(name) => name }
+        .try_map(move |name, span| {
+            if let Some(reason) = knowledge::is_blacklisted(&name) {
+                return Err(Rich::custom(
+                    span,
+                    format!("Banned command: \\{} ({})", name, reason),
+                ));
+            }
+            if knowledge::lookup_command(name.as_str()).is_some() {
+                return Err(Rich::custom(span, "Unexpected known command"));
+            }
+
+            if strict {
+                Err(Rich::custom(span, format!("Unknown command: \\{}", name)))
+            } else {
+                Ok(SyntaxNode::UnknownCommand {
+                    name,
+                    starred: false,
+                })
+            }
+        })
+        .labelled("unknown command")
 }
 
-fn parse_env_body<'src>(
-    tokens: &[Token],
-    mode: ContentMode,
-    strict: bool,
-) -> Result<SyntaxNode, Rich<'src, Token>> {
-    let parsed = match mode {
-        ContentMode::Math => parse_math_block(strict).parse(tokens).into_result(),
-        ContentMode::Text => parse_text_block(strict).parse(tokens).into_result(),
-    };
-
-    match parsed {
-        Ok(group @ SyntaxNode::Group { .. }) => Ok(group),
-        Ok(other) => Ok(SyntaxNode::Group {
-            mode,
-            kind: GroupKind::Implicit,
-            children: vec![other],
-        }),
-        Err(_) => Err(Rich::custom(
-            SimpleSpan::new((), 0..0),
-            "Failed to parse environment body",
-        )),
+/// Parse `{name}` or `{name*}` inside environment delimiters.
+fn env_name_parser<'a>() -> impl Parser<'a, TokenInput<'a>, (String, bool), ParserError<'a>> + Clone
+{
+    let base_name = select! {
+        Token::Char(c) => c,
     }
+    .repeated()
+    .at_least(1)
+    .collect::<String>();
+
+    let starred = just(Token::Star).or_not().map(|s| s.is_some());
+
+    base_name
+        .then(starred)
+        .delimited_by(just(Token::LBrace), just(Token::RBrace))
+        .labelled("environment name")
 }
 
-fn environment_parser<'a>(
+/// Parse `\begin{name}` plus its arguments, returning metadata.
+fn parse_env_header<'a>(
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone {
+) -> impl Parser<'a, TokenInput<'a>, (String, bool, Vec<Argument>, &'static EnvMeta), ParserError<'a>>
++ Clone {
     custom(move |input| {
-        match input.peek() {
-            Some(Token::ControlSeq(name)) if name == "begin" => {
-                input.next();
-            }
-            _ => return Err(Rich::custom(SimpleSpan::new((), 0..0), "not environment")),
-        }
+        input.parse(control_seq("begin"))?;
 
-        let raw_name = read_env_name(input, "\\begin")?;
-        let raw_name_full = raw_name.clone();
+        let (base_name, starred) = input.parse(env_name_parser())?;
 
-        let (base_name, mut starred) = if raw_name.ends_with('*') {
-            let stripped = &raw_name[..raw_name.len() - 1];
-            if stripped.is_empty() || stripped.contains('*') {
-                return Err(Rich::custom(
-                    SimpleSpan::new((), 0..0),
-                    "Invalid '*' placement in environment name",
-                ));
-            }
-            (stripped.to_string(), true)
-        } else {
-            if raw_name.contains('*') {
-                return Err(Rich::custom(
-                    SimpleSpan::new((), 0..0),
-                    "Invalid '*' placement in environment name",
-                ));
-            }
-            (raw_name.clone(), false)
-        };
-
-        let meta = match knowledge::lookup_env(&base_name) {
+        let meta = match knowledge::lookup_env(base_name.as_str()) {
             Some(m) => m,
             None => {
                 return Err(Rich::custom(
@@ -570,66 +493,65 @@ fn environment_parser<'a>(
             ));
         }
 
-        if !meta.has_star_variant {
-            starred = false;
-        }
+        let args = input.parse(arguments_parser(
+            math_content.clone(),
+            text_content.clone(),
+            meta.args,
+            strict,
+            "environment argument",
+        ))?;
 
-        let mut args = Vec::new();
-        for &arg_spec in meta.args {
-            let arg = parse_argument_by_spec(input, arg_spec, strict, "environment argument")?;
-            args.push(arg);
-        }
+        Ok((base_name, starred, args, meta))
+    })
+}
 
-        let mut body_tokens = Vec::new();
-        let mut depth = 0;
-        loop {
-            let token = match input.next() {
-                Some(tok) => tok.clone(),
-                None => {
-                    return Err(Rich::custom(
-                        SimpleSpan::new((), 0..0),
-                        "Unclosed environment body",
-                    ));
-                }
+/// Parse a full environment including body and closing tag.
+fn environment_parser<'a>(
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
+    strict: bool,
+) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
+    custom(move |input| {
+        let (name, starred, args, meta) = input.parse(parse_env_header(
+            math_content.clone(),
+            text_content.clone(),
+            strict,
+        ))?;
+
+        let body = input.parse(env_body_parser(
+            meta.body_mode,
+            math_content.clone(),
+            text_content.clone(),
+        ))?;
+
+        let end_tag = just(Token::ControlSeq("end".into()))
+            .ignore_then(env_name_parser())
+            .labelled("environment end tag");
+
+        let (end_name, end_starred) = input.parse(end_tag)?;
+
+        if end_name != name || end_starred != starred {
+            let expected = if starred {
+                format!("{name}*")
+            } else {
+                name.clone()
             };
-
-            if let Token::ControlSeq(name) = &token {
-                if name == "begin" {
-                    depth += 1;
-                } else if name == "end" {
-                    let close_name = read_env_name(input, "\\end")?;
-                    if depth == 0 {
-                        if close_name != raw_name_full {
-                            return Err(Rich::custom(
-                                SimpleSpan::new((), 0..0),
-                                "Environment name mismatch",
-                            ));
-                        }
-                        break;
-                    } else {
-                        depth -= 1;
-                        body_tokens.push(Token::ControlSeq("end".to_string()));
-                        body_tokens.push(Token::LBrace);
-                        for ch in close_name.chars() {
-                            if ch == '*' {
-                                body_tokens.push(Token::Star);
-                            } else {
-                                body_tokens.push(Token::Char(ch));
-                            }
-                        }
-                        body_tokens.push(Token::RBrace);
-                        continue;
-                    }
-                }
-            }
-
-            body_tokens.push(token);
+            let found = if end_starred {
+                format!("{end_name}*")
+            } else {
+                end_name.clone()
+            };
+            return Err(Rich::custom(
+                SimpleSpan::new((), 0..0),
+                format!(
+                    "Environment name mismatch: expected \\end{{{}}}, found \\end{{{}}}",
+                    expected, found
+                ),
+            ));
         }
-
-        let body = parse_env_body(&body_tokens, meta.body_mode, strict)?;
 
         Ok(SyntaxNode::Environment {
-            name: base_name,
+            name,
             starred,
             args,
             body: Box::new(body),
@@ -638,157 +560,251 @@ fn environment_parser<'a>(
 }
 
 // ============================================================================
-// Layer 4: Mode Parsers (Math and Text)
+// Mode Parsers (Math and Text)
 // ============================================================================
 
-/// Math mode parser
-fn parse_math_block<'a>(
+/// Parse a math atom (group/command/env/char) without scripts.
+fn math_atom_parser<'a, P>(
+    group_content: P,
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone {
-    recursive(|group_content| {
-        let ws = insignificant_whitespace();
+) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone
+where
+    P: Parser<'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
+{
+    let explicit_group = braced_group_parser(ContentMode::Math, group_content.clone());
+    let delimited_group = delimited_group_parser(math_content.clone());
+    let environment = environment_parser(math_content.clone(), text_content.clone(), strict);
+    let prefix_command = prefix_command_parser(math_content, text_content, strict);
+    let unknown_command = unknown_command_parser(strict);
 
-        // === Build Math mode parsers ===
-
-        // Atom layer: base elements
-        let explicit_group = explicit_group_parser(ContentMode::Math, group_content.clone());
-        let delimited_group = delimited_group_parser(group_content.clone());
-        let environment = environment_parser(strict);
-        let prefix_command = prefix_command_parser(ContentMode::Math, strict);
-        let unknown_command = unknown_command_parser(strict);
-
-        let atom = choice((
-            delimited_group,
-            explicit_group,
-            environment,
-            escaped_symbol(),
-            prefix_command,
-            unknown_command,
-            active_char(),
-            math_char(),
-        ));
-
-        // Scripted layer: superscripts, subscripts, and primes
-        // Prime (') is stored as Char('\'') in superscript position
-        // f' -> Scripted { base: f, superscript: Char('\'') }
-        // f'' -> Scripted { base: f, superscript: Group[Char('\''), Char('\'')] }
-        let atom_for_scripts = atom.clone().padded_by(ws.clone());
-
-        // Script marker: either ^/_ with content, or ' (prime)
-        // Returns (is_superscript, is_prime, node)
-        let script_marker = choice((
-            just(&Token::Superscript)
-                .padded_by(ws.clone())
-                .ignore_then(atom_for_scripts.clone())
-                .map(|n| (true, false, n)),
-            just(&Token::Subscript)
-                .padded_by(ws.clone())
-                .ignore_then(atom_for_scripts.clone())
-                .map(|n| (false, false, n)),
-            // Prime: collect consecutive primes as Char nodes
-            just(&Token::Prime)
-                .repeated()
-                .at_least(1)
-                .collect::<Vec<_>>()
-                .map(|primes| {
-                    let prime_nodes: Vec<SyntaxNode> =
-                        primes.iter().map(|_| SyntaxNode::Char('\'')).collect();
-                    let node = if prime_nodes.len() == 1 {
-                        prime_nodes.into_iter().next().unwrap()
-                    } else {
-                        SyntaxNode::Group {
-                            mode: ContentMode::Math,
-                            kind: GroupKind::Implicit,
-                            children: prime_nodes,
-                        }
-                    };
-                    (true, true, node) // Prime is always superscript
-                }),
-        ));
-
-        let scripted = atom_for_scripts
-            .clone()
-            .then(script_marker.repeated().at_least(1).collect::<Vec<_>>())
-            .map(|(base, scripts)| {
-                let mut subscript: Option<Box<SyntaxNode>> = None;
-                let mut superscript: Option<Box<SyntaxNode>> = None;
-                for (is_sup, is_prime, node) in scripts {
-                    if is_sup {
-                        if is_prime {
-                            // Primes merge with existing superscript (x^a' -> x^{a'})
-                            superscript = Some(Box::new(match superscript {
-                                None => node,
-                                Some(existing) => SyntaxNode::Group {
-                                    mode: ContentMode::Math,
-                                    kind: GroupKind::Implicit,
-                                    children: vec![*existing, node],
-                                },
-                            }));
-                        } else {
-                            // Regular ^: last wins (x^a^b -> x^b)
-                            superscript = Some(Box::new(node));
-                        }
-                    } else {
-                        subscript = Some(Box::new(node));
-                    }
-                }
-                SyntaxNode::Scripted {
-                    base: Box::new(base),
-                    subscript,
-                    superscript,
-                }
-            });
-
-        let normal_item = choice((scripted, atom)).padded_by(ws.clone());
-
-        // Group content: Leading + InfixTail + DeclarativeTail
-        build_math_group_content(normal_item, strict).padded_by(ws)
-    })
-    .map(|children| SyntaxNode::Group {
-        mode: ContentMode::Math,
-        kind: GroupKind::Implicit,
-        children,
-    })
+    choice((
+        delimited_group,
+        explicit_group,
+        environment,
+        escaped_symbol(),
+        prefix_command,
+        unknown_command,
+        active_char(),
+        math_char(),
+    ))
 }
 
-/// Build Math mode group content parser
-fn build_math_group_content<'a, P>(
-    normal_item: P,
-    strict: bool,
-) -> impl Parser<'a, &'a [Token], Vec<SyntaxNode>, extra::Err<Rich<'a, Token>>> + Clone
+/// Wrap a base atom with script parsing (`^`, `_`, primes).
+fn scripted_atom_parser<'a, P>(
+    atom: P,
+) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone + 'a,
+    P: Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
 {
-    // Define stop patterns
-    let stop_infix_or_decl = select! {
-        Token::ControlSeq(name)
-            if knowledge::lookup_command(name.as_str())
-                .map(|m| matches!(m.kind, CommandKind::Infix | CommandKind::Declarative))
-                .unwrap_or(false) => ()
-    };
-    let stop_delimited = select! {
-        Token::ControlSeq(name) if name.as_str() == "right" => ()
-    };
-    let stop_environment = select! {
-        Token::ControlSeq(name) if name.as_str() == "end" => ()
-    };
+    let ws = insignificant_whitespace();
+    let atom_for_scripts = atom.clone().padded_by(ws.clone());
 
-    // Leading items - stop before infix/declarative tokens and before \right
+    let script_marker = choice((
+        just(&Token::Superscript)
+            .padded_by(ws.clone())
+            .ignore_then(atom_for_scripts.clone())
+            .map(|n| (true, false, n)),
+        just(&Token::Subscript)
+            .padded_by(ws.clone())
+            .ignore_then(atom_for_scripts.clone())
+            .map(|n| (false, false, n)),
+        just(&Token::Prime)
+            .repeated()
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .map(|primes| {
+                let prime_nodes: Vec<SyntaxNode> =
+                    primes.iter().map(|_| SyntaxNode::Char('\'')).collect();
+                let node = if prime_nodes.len() == 1 {
+                    prime_nodes.into_iter().next().unwrap()
+                } else {
+                    SyntaxNode::Group {
+                        mode: ContentMode::Math,
+                        kind: GroupKind::Implicit,
+                        children: prime_nodes,
+                    }
+                };
+                (true, true, node)
+            }),
+    ));
+
+    atom_for_scripts
+        .then(script_marker.repeated().collect::<Vec<_>>())
+        .map(|(base, scripts)| {
+            if scripts.is_empty() {
+                return base;
+            }
+
+            let mut subscript: Option<Box<SyntaxNode>> = None;
+            let mut superscript: Option<Box<SyntaxNode>> = None;
+            for (is_sup, is_prime, node) in scripts {
+                if is_sup {
+                    if is_prime {
+                        superscript = Some(Box::new(match superscript {
+                            None => node,
+                            Some(existing) => SyntaxNode::Group {
+                                mode: ContentMode::Math,
+                                kind: GroupKind::Implicit,
+                                children: vec![*existing, node],
+                            },
+                        }));
+                    } else {
+                        superscript = Some(Box::new(node));
+                    }
+                } else {
+                    subscript = Some(Box::new(node));
+                }
+            }
+            SyntaxNode::Scripted {
+                base: Box::new(base),
+                subscript,
+                superscript,
+            }
+        })
+}
+
+/// Parse a text atom (text chunk, inline math, group, command, env).
+fn text_atom_parser<'a, P>(
+    group_content: P,
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
+    strict: bool,
+) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone
+where
+    P: Parser<'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
+{
+    let inline_math = just(&Token::MathShift)
+        .ignore_then(implicit_group_parser(
+            ContentMode::Math,
+            math_content.clone(),
+        ))
+        .then_ignore(just(&Token::MathShift))
+        .map(|node| match node {
+            SyntaxNode::Group { mode, children, .. } => SyntaxNode::Group {
+                mode,
+                kind: GroupKind::InlineMath,
+                children,
+            },
+            other => other,
+        });
+
+    let explicit_group = braced_group_parser(ContentMode::Text, group_content);
+    let environment = environment_parser(math_content.clone(), text_content.clone(), strict);
+    let prefix_command = prefix_command_parser(math_content, text_content, strict);
+    let unknown_command = unknown_command_parser(strict);
+
+    choice((
+        text_chunk(),
+        inline_math,
+        explicit_group,
+        environment,
+        escaped_symbol(),
+        prefix_command,
+        unknown_command,
+        active_char(),
+    ))
+}
+
+/// Parse the tail after an infix command: the command head plus right operand items.
+fn infix_tail_parser<'a, P>(
+    normal_item: P,
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
+    strict: bool,
+) -> impl Parser<'a, TokenInput<'a>, TailParseOutput, ParserError<'a>> + Clone
+where
+    P: Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
+{
+    let infix_cmd = custom(move |input| {
+        let (name, meta, starred) = match command_head_parser(input, CommandKind::Infix, strict) {
+            Ok(data) => data,
+            Err(err) => return Err(err),
+        };
+
+        let args = input.parse(arguments_parser(
+            math_content.clone(),
+            text_content.clone(),
+            meta.args,
+            strict,
+            "infix command argument",
+        ))?;
+
+        Ok((name, starred, args))
+    });
+
+    let stop_declarative = text_declarative_guard();
+
+    let guarded_item = stop_declarative
+        .not()
+        .then(normal_item)
+        .map(|(_, item)| item);
+    let right_items = guarded_item.repeated().at_least(1).collect::<Vec<_>>();
+
+    infix_cmd.then(right_items)
+}
+
+/// Parse the tail of a declarative command: command head plus scoped items.
+fn declarative_tail_parser<'a, P>(
+    normal_item: P,
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
+    strict: bool,
+) -> impl Parser<'a, TokenInput<'a>, TailParseOutput, ParserError<'a>> + Clone
+where
+    P: Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
+{
+    let decl_cmd = custom(move |input| {
+        let (name, meta, starred) =
+            match command_head_parser(input, CommandKind::Declarative, strict) {
+                Ok(data) => data,
+                Err(err) => return Err(err),
+            };
+
+        let args = input.parse(arguments_parser(
+            math_content.clone(),
+            text_content.clone(),
+            meta.args,
+            strict,
+            "declarative command argument",
+        ))?;
+
+        Ok((name, starred, args))
+    });
+
+    let scope_items = normal_item.repeated().collect::<Vec<_>>();
+    decl_cmd.then(scope_items)
+}
+
+/// Build math-mode group content (leading items + optional infix/declarative tails).
+fn math_group_content_parser<'a, P>(
+    normal_item: P,
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
+    strict: bool,
+) -> impl Parser<'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone
+where
+    P: Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
+{
+    let stop_infix_or_decl = math_infix_or_decl_guard();
     let guarded_item = stop_infix_or_decl
-        .or(stop_delimited)
-        .or(stop_environment)
+        .or(control_seq("right"))
+        .or(control_seq("end"))
         .not()
         .then(normal_item.clone())
         .map(|(_, item)| item);
     let leading = guarded_item.repeated().collect::<Vec<_>>();
 
-    // Infix tail
-    let infix_tail = build_infix_tail(normal_item.clone(), strict);
+    let infix_tail = infix_tail_parser(
+        normal_item.clone(),
+        math_content.clone(),
+        text_content.clone(),
+        strict,
+    );
 
-    // Declarative tail
-    let declarative_tail = build_declarative_tail(normal_item, strict);
+    let declarative_tail = declarative_tail_parser(normal_item, math_content, text_content, strict);
 
-    // Combine
     leading
         .then(infix_tail.or_not())
         .then(declarative_tail.or_not())
@@ -801,7 +817,6 @@ where
                     ));
                 }
 
-                // Has Infix command
                 let (name, starred, args) = infix_info;
                 let left = fold_items(ContentMode::Math, leading);
                 let right = fold_items(ContentMode::Math, right_items);
@@ -827,7 +842,6 @@ where
                 }
                 Ok(nodes)
             } else {
-                // No Infix command
                 let mut items = leading;
                 if let Some((decl_info, scope_items)) = declarative_tail {
                     let (decl_name, decl_starred, decl_args) = decl_info;
@@ -844,146 +858,26 @@ where
         })
 }
 
-/// Build Infix tail parser
-fn build_infix_tail<'a, P>(
+/// Build text-mode group content (leading items + optional declarative tail).
+fn text_group_content_parser<'a, P>(
     normal_item: P,
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, &'a [Token], TailParseOutput, extra::Err<Rich<'a, Token>>> + Clone
+) -> impl Parser<'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone
 where
-    P: Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone + 'a,
+    P: Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
 {
-    let infix_cmd = custom(move |input| {
-        let (name, meta, starred) =
-            match parse_typed_command_head(input, CommandKind::Infix, strict) {
-                Ok(data) => data,
-                Err(err) => return Err(err),
-            };
-
-        let mut args = Vec::new();
-        for &arg_spec in meta.args {
-            let arg = parse_argument_by_spec(input, arg_spec, strict, "infix command argument")?;
-            args.push(arg);
-        }
-
-        Ok((name, starred, args))
-    });
-
-    let stop_declarative = select! {
-        Token::ControlSeq(name)
-            if knowledge::lookup_command(name.as_str())
-                .map(|m| m.kind == CommandKind::Declarative)
-                .unwrap_or(false) => ()
-    };
+    let stop_declarative = text_declarative_guard();
 
     let guarded_item = stop_declarative
-        .not()
-        .then(normal_item)
-        .map(|(_, item)| item);
-    let right_items = guarded_item.repeated().at_least(1).collect::<Vec<_>>();
-
-    infix_cmd.then(right_items)
-}
-
-/// Build Declarative tail parser
-fn build_declarative_tail<'a, P>(
-    normal_item: P,
-    strict: bool,
-) -> impl Parser<'a, &'a [Token], TailParseOutput, extra::Err<Rich<'a, Token>>> + Clone
-where
-    P: Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone + 'a,
-{
-    let decl_cmd = custom(move |input| {
-        let (name, meta, starred) =
-            match parse_typed_command_head(input, CommandKind::Declarative, strict) {
-                Ok(data) => data,
-                Err(err) => return Err(err),
-            };
-
-        let mut args = Vec::new();
-        for &arg_spec in meta.args {
-            let arg =
-                parse_argument_by_spec(input, arg_spec, strict, "declarative command argument")?;
-            args.push(arg);
-        }
-
-        Ok((name, starred, args))
-    });
-
-    let scope_items = normal_item.repeated().collect::<Vec<_>>();
-    decl_cmd.then(scope_items)
-}
-
-/// Text mode parser
-fn parse_text_block<'a>(
-    strict: bool,
-) -> impl Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone {
-    recursive(|group_content| {
-        // === Build Text mode parsers ===
-
-        // Inline math: $...$
-        let inline_math = just(&Token::MathShift)
-            .ignore_then(parse_math_block(strict).map(|node| match node {
-                SyntaxNode::Group { mode, children, .. } => SyntaxNode::Group {
-                    mode,
-                    kind: GroupKind::InlineMath,
-                    children,
-                },
-                other => other,
-            }))
-            .then_ignore(just(&Token::MathShift));
-
-        let explicit_group = explicit_group_parser(ContentMode::Text, group_content.clone());
-        let prefix_command = prefix_command_parser(ContentMode::Text, strict);
-        let environment = environment_parser(strict);
-        let unknown_command = unknown_command_parser(strict);
-
-        let normal_item = choice((
-            text_chunk(),
-            inline_math,
-            explicit_group,
-            environment,
-            escaped_symbol(),
-            prefix_command,
-            unknown_command,
-            active_char(),
-        ));
-
-        // Text mode only has Declarative tail, no Infix
-        build_text_group_content(normal_item, strict)
-    })
-    .map(|children| SyntaxNode::Group {
-        mode: ContentMode::Text,
-        kind: GroupKind::Implicit,
-        children,
-    })
-}
-
-/// Build Text mode group content parser
-fn build_text_group_content<'a, P>(
-    normal_item: P,
-    strict: bool,
-) -> impl Parser<'a, &'a [Token], Vec<SyntaxNode>, extra::Err<Rich<'a, Token>>> + Clone
-where
-    P: Parser<'a, &'a [Token], SyntaxNode, extra::Err<Rich<'a, Token>>> + Clone + 'a,
-{
-    let stop_declarative = select! {
-        Token::ControlSeq(name)
-            if knowledge::lookup_command(name.as_str())
-                .map(|m| m.kind == CommandKind::Declarative)
-                .unwrap_or(false) => ()
-    };
-    let stop_environment = select! {
-        Token::ControlSeq(name) if name.as_str() == "end" => ()
-    };
-
-    let guarded_item = stop_declarative
-        .or(stop_environment)
+        .or(control_seq("end"))
         .not()
         .then(normal_item.clone())
         .map(|(_, item)| item);
     let leading = guarded_item.repeated().collect::<Vec<_>>();
 
-    let declarative_tail = build_declarative_tail(normal_item, strict);
+    let declarative_tail = declarative_tail_parser(normal_item, math_content, text_content, strict);
 
     leading
         .then(declarative_tail.or_not())
@@ -1002,11 +896,80 @@ where
         })
 }
 
+/// Construct paired math/text content parsers using mutually recursive declarations.
+fn mode_content_parsers<'a>(strict: bool) -> (ContentParser<'a>, ContentParser<'a>) {
+    let mut math = Recursive::declare();
+    let mut text = Recursive::declare();
+
+    let math_for_math = math.clone();
+    let text_for_math = text.clone();
+    math.define(recursive(move |group_content| {
+        let ws = insignificant_whitespace();
+        let math_content = math_for_math.clone().boxed();
+        let text_content = text_for_math.clone().boxed();
+        let atom = math_atom_parser(
+            group_content,
+            math_content.clone(),
+            text_content.clone(),
+            strict,
+        );
+        let scripted = scripted_atom_parser(atom);
+        let normal_item = scripted.padded_by(ws.clone());
+        math_group_content_parser(normal_item, math_content, text_content, strict).padded_by(ws)
+    }));
+
+    let math_for_text = math.clone();
+    let text_for_text = text.clone();
+    text.define(recursive(move |group_content| {
+        let math_content = math_for_text.clone().boxed();
+        let text_content = text_for_text.clone().boxed();
+        let normal_item = text_atom_parser(
+            group_content,
+            math_content.clone(),
+            text_content.clone(),
+            strict,
+        );
+        text_group_content_parser(normal_item, math_content, text_content, strict)
+    }));
+
+    (math.boxed(), text.boxed())
+}
+
+/// Construct top-level math/text group parsers from content parsers.
+fn mode_group_parsers<'a>(strict: bool) -> (NodeParser<'a>, NodeParser<'a>) {
+    let (math_content, text_content) = mode_content_parsers(strict);
+    let math_group = implicit_group_parser(ContentMode::Math, math_content).boxed();
+    let text_group = implicit_group_parser(ContentMode::Text, text_content).boxed();
+    (math_group, text_group)
+}
+
+/// Entry point parser for math mode.
+fn math_block_parser<'a>(strict: bool) -> NodeParser<'a> {
+    let (math_parser, _) = mode_group_parsers(strict);
+    math_parser
+}
+
+/// Entry point parser for text mode.
+#[allow(dead_code)] // Text entry point is unused; expose when direct text parsing is needed
+fn text_block_parser<'a>(strict: bool) -> NodeParser<'a> {
+    let (_, text_parser) = mode_group_parsers(strict);
+    text_parser
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
-/// Fold node list into single node
+/// Normalize argument value by collapsing text-mode groups to a single node.
+fn normalize_argument_value(mode: ContentMode, node: SyntaxNode) -> SyntaxNode {
+    match (mode, node) {
+        (ContentMode::Text, SyntaxNode::Group { children, .. }) => {
+            fold_items(ContentMode::Text, children)
+        }
+        (_, other) => other,
+    }
+}
+
 fn fold_items(mode: ContentMode, items: Vec<SyntaxNode>) -> SyntaxNode {
     match items.len() {
         0 => SyntaxNode::Group {
@@ -1022,5 +985,3 @@ fn fold_items(mode: ContentMode, items: Vec<SyntaxNode>) -> SyntaxNode {
         },
     }
 }
-
-// Tests in tests/parser.rs
