@@ -24,15 +24,6 @@ type TailParseOutput = ((String, bool, Vec<Argument>), Vec<SyntaxNode>);
 // Public Interface
 // ============================================================================
 
-/// Filter tokens, removing only comments (whitespace must be preserved for text mode) TODO: Move comment filtering into lexer and drop this helper
-pub fn filter_tokens(tokens: &[Token]) -> Vec<Token> {
-    tokens
-        .iter()
-        .filter(|t| !matches!(t, Token::Comment(_)))
-        .cloned()
-        .collect()
-}
-
 /// Parse entry point - Math mode.
 pub fn parse(tokens: &[Token], strict: bool) -> Result<SyntaxNode, Vec<Rich<'_, Token>>> {
     math_block_parser(strict)

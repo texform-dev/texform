@@ -1,7 +1,7 @@
 use logos::Logos;
 use std::env;
 use texform::lexer::Token;
-use texform::parser::{self, filter_tokens};
+use texform::parser;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -70,19 +70,9 @@ fn main() {
     println!("Total tokens: {}", all_tokens.len());
     println!();
 
-    // Step 2: Filter tokens (remove whitespace and comments)
-    println!("--- Step 2: Token Filtering ---");
-    let filtered_tokens = filter_tokens(&all_tokens);
-    println!("Filtered tokens (removed whitespace/comments):");
-    for token in &filtered_tokens {
-        println!("  {:?}", token);
-    }
-    println!("Filtered token count: {}", filtered_tokens.len());
-    println!();
-
-    // Step 3: Parsing
-    println!("--- Step 3: Parsing ---");
-    match parser::parse(&filtered_tokens, strict) {
+    // Step 2: Parsing (comments are skipped by the lexer)
+    println!("--- Step 2: Parsing ---");
+    match parser::parse(&all_tokens, strict) {
         Ok(syntax_node) => {
             println!("Parse successful!");
             println!();

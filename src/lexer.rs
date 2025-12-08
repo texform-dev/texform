@@ -104,8 +104,9 @@ pub enum Token {
     /// Comment: % to end of line
     /// - catcode 14: Comment
     /// - Lexer consumes everything from % to line end (inclusive)
-    #[regex(r"%[^\n]*\n?", |lex| lex.slice().to_string())]
-    Comment(String),
+    /// - Comments are discarded and do not produce tokens
+    #[regex(r"%[^\n]*\n?", logos::skip)]
+    Comment,
 
     // --- Character Tokens ---
     /// Regular character: letters, digits, punctuation, Unicode (excluding invalid chars)
@@ -162,11 +163,8 @@ mod tests {
         assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
         assert_eq!(lex.next(), Some(Ok(Token::Char('b'))));
         assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
-        assert_eq!(
-            lex.next(),
-            Some(Ok(Token::Comment("% comment\n".to_string())))
-        );
         assert_eq!(lex.next(), Some(Ok(Token::Char('c'))));
+        assert_eq!(lex.next(), None);
     }
 
     #[test]

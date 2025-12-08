@@ -1,5 +1,5 @@
 use texform::lexer::Token;
-use texform::parser::{filter_tokens, parse};
+use texform::parser::parse;
 use texform::syntax_node::{ArgumentKind, ContentMode, Delimiter, GroupKind, SyntaxNode};
 
 // ========================================================================
@@ -279,39 +279,6 @@ fn test_script_with_group() {
         },
         _ => panic!("Expected Group node"),
     }
-}
-
-#[test]
-fn test_filter_tokens() {
-    let tokens = vec![
-        Token::Char('a'),
-        Token::Whitespaces,
-        Token::Char('b'),
-        Token::Whitespaces,
-        Token::Char('c'),
-    ];
-
-    let filtered = filter_tokens(&tokens);
-    assert_eq!(filtered.len(), 5);
-    assert_eq!(filtered[0], Token::Char('a'));
-    assert_eq!(filtered[1], Token::Whitespaces);
-    assert_eq!(filtered[2], Token::Char('b'));
-    assert_eq!(filtered[3], Token::Whitespaces);
-    assert_eq!(filtered[4], Token::Char('c'));
-}
-
-#[test]
-fn test_filter_comments() {
-    let tokens = vec![
-        Token::Char('a'),
-        Token::Comment("% test\n".to_string()),
-        Token::Char('b'),
-    ];
-
-    let filtered = filter_tokens(&tokens);
-    assert_eq!(filtered.len(), 2);
-    assert_eq!(filtered[0], Token::Char('a'));
-    assert_eq!(filtered[1], Token::Char('b'));
 }
 
 // ========================================================================
@@ -830,7 +797,7 @@ fn test_declarative_empty_scope() {
 use logos::Logos;
 use texform::lexer::Token as LexerToken;
 
-macro_rules! lex_filter {
+macro_rules! lex_tokens {
     ($source:expr) => {{
         let mut tokens = Vec::new();
         for result in LexerToken::lexer($source) {
@@ -839,7 +806,7 @@ macro_rules! lex_filter {
                 Err(_) => panic!("Lexer error in test: {}", $source),
             }
         }
-        filter_tokens(&tokens)
+        tokens
     }};
 }
 
@@ -849,7 +816,7 @@ macro_rules! lex_filter {
 #[test]
 fn test_text_in_command() {
     // "\text{Hello World}" - text mode in command argument
-    let tokens = lex_filter!(r"\text{Hello World}");
+    let tokens = lex_tokens!(r"\text{Hello World}");
     let result = parse(&tokens, false).unwrap();
 
     // Debug print the result
@@ -883,7 +850,7 @@ fn test_text_in_command() {
 
 #[test]
 fn test_text_inline_math_segment() {
-    let tokens = lex_filter!(r"\text{foo$a+b$bar}");
+    let tokens = lex_tokens!(r"\text{foo$a+b$bar}");
     let result = parse(&tokens, false).unwrap();
 
     match result {
@@ -923,7 +890,7 @@ fn test_text_inline_math_segment() {
 
 #[test]
 fn test_text_inline_math_active_char_and_command() {
-    let tokens = lex_filter!(r"\text{A~$x$B\frac{a}{b}}");
+    let tokens = lex_tokens!(r"\text{A~$x$B\frac{a}{b}}");
     let result = parse(&tokens, false).unwrap();
 
     match result {
@@ -970,7 +937,7 @@ fn test_text_inline_math_active_char_and_command() {
 #[test]
 fn test_delimited_group_simple() {
     // "\left( a+b \right)"
-    let tokens = lex_filter!(r"\left(a+b\right)");
+    let tokens = lex_tokens!(r"\left(a+b\right)");
     let result = parse(&tokens, false).unwrap();
 
     eprintln!("Parsed result:\n{:#?}", result);
@@ -1012,7 +979,7 @@ fn test_delimited_group_simple() {
 #[test]
 fn test_delimited_group_with_dot() {
     // "\left. x \right|" - dot means no delimiter
-    let tokens = lex_filter!(r"\left.x\right|");
+    let tokens = lex_tokens!(r"\left.x\right|");
     let result = parse(&tokens, false).unwrap();
 
     match result {
@@ -1038,7 +1005,7 @@ fn test_delimited_group_with_dot() {
 #[test]
 fn test_delimited_group_nested() {
     // "\left( \frac{a}{b} \right)"
-    let tokens = lex_filter!(r"\left(\frac{a}{b}\right)");
+    let tokens = lex_tokens!(r"\left(\frac{a}{b}\right)");
     let result = parse(&tokens, false).unwrap();
 
     match result {
@@ -1068,7 +1035,7 @@ fn test_delimited_group_nested() {
 
 #[test]
 fn test_environment_basic() {
-    let tokens = lex_filter!(r"\begin{matrix}ab\end{matrix}");
+    let tokens = lex_tokens!(r"\begin{matrix}ab\end{matrix}");
     let result = parse(&tokens, false).unwrap();
 
     match result {
@@ -1102,7 +1069,7 @@ fn test_environment_basic() {
 
 #[test]
 fn test_environment_nested() {
-    let tokens = lex_filter!(r"\begin{matrix}\begin{matrix}x\end{matrix}\end{matrix}");
+    let tokens = lex_tokens!(r"\begin{matrix}\begin{matrix}x\end{matrix}\end{matrix}");
     let result = parse(&tokens, false).unwrap();
 
     match result {
@@ -1131,7 +1098,7 @@ fn test_environment_nested() {
 
 #[test]
 fn test_environment_name_mismatch() {
-    let tokens = lex_filter!(r"\begin{matrix}a\end{align}");
+    let tokens = lex_tokens!(r"\begin{matrix}a\end{align}");
     let result = parse(&tokens, false);
     assert!(result.is_err());
 }
