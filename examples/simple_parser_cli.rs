@@ -1,7 +1,7 @@
 use logos::Logos;
 use std::env;
-use texform_core::lexer::Token;
-use texform_core::parser;
+use texform::lexer::Token;
+use texform::parser;
 
 fn main() {
     let args: Vec<String> = env::args().collect();

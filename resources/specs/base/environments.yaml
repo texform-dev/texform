@@ -1,0 +1,11 @@
+environments:
+  - name: matrix
+    has_star_variant: false
+    args: []
+    body_mode: math
+
+  - name: align
+    has_star_variant: true
+    args: []
+    body_mode: math
+

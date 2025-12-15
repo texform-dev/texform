@@ -1,6 +1,6 @@
-use texform_core::lexer::Token;
-use texform_core::parser::parse;
-use texform_interface::syntax_node::{ArgumentKind, ContentMode, Delimiter, GroupKind, SyntaxNode};
+use texform::lexer::Token;
+use texform::parser::parse;
+use texform::syntax_node::{ArgumentKind, ContentMode, Delimiter, GroupKind, SyntaxNode};
 
 // ========================================================================
 // Stage 1-2 Tests (Basic parsing)
@@ -781,7 +781,7 @@ fn test_declarative_empty_scope() {
 
 // Note: These tests use the lexer to generate tokens from LaTeX source
 use logos::Logos;
-use texform_core::lexer::Token as LexerToken;
+use texform::lexer::Token as LexerToken;
 
 macro_rules! lex_tokens {
     ($source:expr) => {{

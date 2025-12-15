@@ -9,7 +9,7 @@ use chumsky::{
 };
 
 use crate::lexer::Token;
-use texform_interface::syntax_node::{ContentMode, GroupKind, SyntaxNode};
+use crate::syntax_node::{ContentMode, GroupKind, SyntaxNode};
 
 pub type ParserError<'a> = extra::Err<Rich<'a, Token>>;
 pub type TokenInput<'a> = &'a [Token];
@@ -17,6 +17,8 @@ pub type ParserInput<'src, 'parse> = InputRef<'src, 'parse, TokenInput<'src>, Pa
 
 /// Ergonomic helpers for building spans and custom errors in imperative parsers.
 pub trait ParserInputExt<'src, 'parse> {
+    fn pos(&self) -> usize;
+
     fn span_from_cursor(
         &mut self,
         start: &Cursor<'src, 'parse, TokenInput<'src>>,
@@ -28,6 +30,8 @@ pub trait ParserInputExt<'src, 'parse> {
         msg: impl ToString,
     ) -> Rich<'src, Token>;
 
+    fn err_at_cursor(&self, msg: impl ToString) -> Rich<'src, Token>;
+
     /// Build an error for the next token without consuming it. Falls back to a
     /// point span at EOF.
     fn err_peek_or_point(
@@ -38,6 +42,11 @@ pub trait ParserInputExt<'src, 'parse> {
 }
 
 impl<'src, 'parse> ParserInputExt<'src, 'parse> for ParserInput<'src, 'parse> {
+    #[inline]
+    fn pos(&self) -> usize {
+        *self.cursor().inner()
+    }
+
     #[inline]
     fn span_from_cursor(
         &mut self,
@@ -53,6 +62,12 @@ impl<'src, 'parse> ParserInputExt<'src, 'parse> for ParserInput<'src, 'parse> {
         msg: impl ToString,
     ) -> Rich<'src, Token> {
         Rich::custom(self.span_from_cursor(start), msg)
+    }
+
+    #[inline]
+    fn err_at_cursor(&self, msg: impl ToString) -> Rich<'src, Token> {
+        let pos = self.pos();
+        Rich::custom(SimpleSpan::new((), pos..pos), msg)
     }
 
     #[inline]

@@ -1,6 +1,4 @@
-use texform_interface::syntax_node::{
-    Argument, ArgumentKind, ContentMode, Delimiter, GroupKind, SyntaxNode,
-};
+use texform::syntax_node::{Argument, ArgumentKind, ContentMode, Delimiter, GroupKind, SyntaxNode};
 
 #[test]
 fn test_syntax_node_creation() {

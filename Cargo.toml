@@ -1,21 +1,11 @@
-[workspace]
-members = [
-  "crates/texform-core",
-  "crates/texform-interface",
-  "crates/texform-specs",
-]
-resolver = "3"
-
-[workspace.package]
+[package]
+name = "texform"
 version = "0.1.0"
 edition = "2024"
 
-[workspace.dependencies]
+[dependencies]
 chumsky = "0.11.1"
 logos = "0.15.1"
 serde = { version = "1.0.216", features = ["derive"] }
 serde_yaml = "0.9.34"
 slotmap = "1.0.7"
-
-texform-interface = { path = "crates/texform-interface" }
-texform-specs = { path = "crates/texform-specs" }
