@@ -1,0 +1,11 @@
+[package]
+name = "texform-specs"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_yaml.workspace = true
+
+texform-interface.workspace = true
+

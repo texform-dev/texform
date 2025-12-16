@@ -299,7 +299,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "texform"
+name = "texform-core"
 version = "0.1.0"
 dependencies = [
  "chumsky",
@@ -307,6 +307,21 @@ dependencies = [
  "serde",
  "serde_yaml",
  "slotmap",
+ "texform-interface",
+ "texform-specs",
+]
+
+[[package]]
+name = "texform-interface"
+version = "0.1.0"
+
+[[package]]
+name = "texform-specs"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_yaml",
+ "texform-interface",
 ]
 
 [[package]]

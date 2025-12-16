@@ -1,3 +1,9 @@
+characters:
+  - alpha
+  - beta
+  - gamma
+  # ... more character commands ...
+
 commands:
   # Prefix commands
   - name: frac
@@ -48,4 +54,37 @@ commands:
     args:
       - kind: mandatory
         mode: text
+
+environments:
+  - name: matrix
+    has_star_variant: false
+    args: []
+    body_mode: math
+
+  - name: align
+    has_star_variant: true
+    args: []
+    body_mode: math
+
+delimiter_controls:
+  - langle
+  - rangle
+  - "{"
+  - "}"
+  - lfloor
+  - rfloor
+  - lceil
+  - rceil
+  - lvert
+  - rvert
+  - lVert
+  - rVert
+  - lgroup
+  - rgroup
+  - lmoustache
+  - rmoustache
+
+blacklist:
+  ifnum: Control flow not supported
+  csname: Dynamic command names not supported
 

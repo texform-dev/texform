@@ -13,7 +13,9 @@ use crate::lexer::Token;
 use crate::parser_utils::{
     ParserError, ParserInput, ParserInputExt, TokenInput, parse_scripted_components,
 };
-use crate::syntax_node::{Argument, ArgumentKind, ContentMode, Delimiter, GroupKind, SyntaxNode};
+use texform_interface::syntax_node::{
+    Argument, ArgumentKind, ContentMode, Delimiter, GroupKind, SyntaxNode,
+};
 
 type ContentParser<'a> = Boxed<'a, 'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>>;
 type NodeParser<'a> = Boxed<'a, 'a, TokenInput<'a>, SyntaxNode, ParserError<'a>>;

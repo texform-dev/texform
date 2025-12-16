@@ -1,4 +1,0 @@
-blacklist:
-  ifnum: Control flow not supported
-  csname: Dynamic command names not supported
-

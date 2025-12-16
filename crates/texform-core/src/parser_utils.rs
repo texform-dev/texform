@@ -9,7 +9,7 @@ use chumsky::{
 };
 
 use crate::lexer::Token;
-use crate::syntax_node::{ContentMode, GroupKind, SyntaxNode};
+use texform_interface::syntax_node::{ContentMode, GroupKind, SyntaxNode};
 
 pub type ParserError<'a> = extra::Err<Rich<'a, Token>>;
 pub type TokenInput<'a> = &'a [Token];
