@@ -78,7 +78,7 @@ pub enum SyntaxNode {
     /// Group: explicit {...}, implicit, delimited \left...\right, or inline math $...$
     Group {
         mode: ContentMode,
-        kind: GroupKind,
+        kind: GroupKind, // TODO: Move boundary info into Group, remove kind.
         children: Vec<SyntaxNode>,
     },
 

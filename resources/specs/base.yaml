@@ -1,0 +1,90 @@
+characters:
+  - alpha
+  - beta
+  - gamma
+  # ... more character commands ...
+
+commands:
+  # Prefix commands
+  - name: frac
+    kind: prefix
+    has_star_variant: false
+    args:
+      - kind: mandatory
+        mode: math
+      - kind: mandatory
+        mode: math
+
+  - name: sqrt
+    kind: prefix
+    has_star_variant: false
+    args:
+      - kind: optional
+        mode: math
+      - kind: mandatory
+        mode: math
+
+  - name: text
+    kind: prefix
+    has_star_variant: false
+    args:
+      - kind: mandatory
+        mode: text
+
+  # Infix commands
+  - name: over
+    kind: infix
+    has_star_variant: false
+    args: []
+
+  - name: choose
+    kind: infix
+    has_star_variant: false
+    args: []
+
+  # Declarative commands
+  - name: bfseries
+    kind: declarative
+    has_star_variant: false
+    args: []
+
+  - name: color
+    kind: declarative
+    has_star_variant: false
+    args:
+      - kind: mandatory
+        mode: text
+
+environments:
+  - name: matrix
+    has_star_variant: false
+    args: []
+    body_mode: math
+
+  - name: align
+    has_star_variant: true
+    args: []
+    body_mode: math
+
+delimiter_controls:
+  - langle
+  - rangle
+  - "{"
+  - "}"
+  - lfloor
+  - rfloor
+  - lceil
+  - rceil
+  - lvert
+  - rvert
+  - lVert
+  - rVert
+  - lgroup
+  - rgroup
+  - lmoustache
+  - rmoustache
+
+blacklist:
+  ifnum: Control flow not supported
+  csname: Dynamic command names not supported
+

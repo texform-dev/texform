@@ -87,11 +87,12 @@ pub enum Token {
     #[token("]")]
     RBracket,
 
-    /// Prime mark: ' or ' (U+2019 right single quotation mark)
+    /// Prime mark(s): one or more ' or U+2019
     /// - In math mode, represents derivative notation (f' = f^\prime)
     /// - Multiple primes are common: f'', f'''
-    #[regex(r"['\u2019]")]
-    Prime,
+    /// - We store the count to simplify parser handling
+    #[regex(r"['\u2019]+", callback = |lex| lex.slice().chars().count())]
+    Prime(usize),
 
     // --- Whitespace and Comments ---
     /// Whitespace: spaces, tabs, newlines, form feeds, non-breaking space
@@ -247,18 +248,17 @@ mod tests {
         // ASCII apostrophe
         let mut lex = Token::lexer("f'");
         assert_eq!(lex.next(), Some(Ok(Token::Char('f'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Prime)));
+        assert_eq!(lex.next(), Some(Ok(Token::Prime(1))));
 
         // Multiple primes
         let mut lex = Token::lexer("f''");
         assert_eq!(lex.next(), Some(Ok(Token::Char('f'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Prime)));
-        assert_eq!(lex.next(), Some(Ok(Token::Prime)));
+        assert_eq!(lex.next(), Some(Ok(Token::Prime(2))));
 
         // Unicode right single quotation mark (U+2019)
         let mut lex = Token::lexer("f'");
         assert_eq!(lex.next(), Some(Ok(Token::Char('f'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Prime)));
+        assert_eq!(lex.next(), Some(Ok(Token::Prime(1))));
     }
 
     #[test]

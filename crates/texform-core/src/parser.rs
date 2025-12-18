@@ -6,18 +6,20 @@
 //! - Commands & environments: custom heads with combinator arguments/body
 //! - Mode entry: mode_group_parsers + math_block_parser/text_block_parser
 
-use chumsky::{input::InputRef, prelude::*};
+use chumsky::prelude::*;
 
 use crate::knowledge::{self, ArgSpec, CommandKind, CommandMeta, EnvMeta};
 use crate::lexer::Token;
-use crate::syntax_node::{Argument, ArgumentKind, ContentMode, Delimiter, GroupKind, SyntaxNode};
+use crate::parser_utils::{
+    ParserError, ParserInput, ParserInputExt, TokenInput, parse_scripted_components,
+};
+use texform_interface::syntax_node::{
+    Argument, ArgumentKind, ContentMode, Delimiter, GroupKind, SyntaxNode,
+};
 
-type ParserError<'a> = extra::Err<Rich<'a, Token>>;
-type TokenInput<'a> = &'a [Token];
 type ContentParser<'a> = Boxed<'a, 'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>>;
 type NodeParser<'a> = Boxed<'a, 'a, TokenInput<'a>, SyntaxNode, ParserError<'a>>;
 type ArgumentParser<'a> = Boxed<'a, 'a, TokenInput<'a>, Argument, ParserError<'a>>;
-type ParserInput<'src, 'parse> = InputRef<'src, 'parse, TokenInput<'src>, ParserError<'src>>;
 type TailParseOutput = ((String, bool, Vec<Argument>), Vec<SyntaxNode>);
 
 // ============================================================================
@@ -206,15 +208,19 @@ fn command_head_parser<'src, 'parse>(
     expected_kind: CommandKind,
     strict: bool,
 ) -> Result<(String, &'static CommandMeta, bool), Rich<'src, Token>> {
-    let name = match input.peek() {
-        Some(Token::ControlSeq(name)) => name.clone(),
-        _ => return Err(Rich::custom(SimpleSpan::new((), 0..0), "not a command")),
+    let cmd_start = input.cursor();
+    let token = input.next();
+    let name = match token {
+        Some(Token::ControlSeq(name)) => name,
+        Some(_) => return Err(input.err_since(&cmd_start, "not a command")),
+        None => return Err(input.err_since(&cmd_start, "not a command")),
     };
 
+    let cmd_span = input.span_from_cursor(&cmd_start);
+
     if let Some(reason) = knowledge::is_blacklisted(&name) {
-        input.next();
         return Err(Rich::custom(
-            SimpleSpan::new((), 0..0),
+            cmd_span,
             format!("Banned command: \\{} ({})", name, reason),
         ));
     }
@@ -229,32 +235,30 @@ fn command_head_parser<'src, 'parse>(
         Some(meta) if meta.kind == expected_kind => meta,
         Some(_) => {
             return Err(Rich::custom(
-                SimpleSpan::new((), 0..0),
+                cmd_span,
                 format!("not {}", kind_label(expected_kind)),
             ));
         }
         None => {
             if strict {
-                input.next();
                 return Err(Rich::custom(
-                    SimpleSpan::new((), 0..0),
+                    cmd_span,
                     format!("Unknown command: \\{}", name),
                 ));
             } else {
-                return Err(Rich::custom(SimpleSpan::new((), 0..0), "unknown"));
+                return Err(Rich::custom(cmd_span, "unknown"));
             }
         }
     };
 
-    input.next();
-
     let starred = if matches!(input.peek(), Some(Token::Star)) {
+        let star_cursor = input.cursor();
         if meta.has_star_variant {
             input.next();
             true
         } else {
-            return Err(Rich::custom(
-                SimpleSpan::new((), 0..0),
+            return Err(input.err_peek_or_point(
+                &star_cursor,
                 format!("Command \\{} has no starred variant", name),
             ));
         }
@@ -465,13 +469,15 @@ fn parse_env_header<'a>(
     custom(move |input| {
         input.parse(control_seq("begin"))?;
 
+        let name_start = input.cursor();
         let (base_name, starred) = input.parse(env_name_parser())?;
+        let name_span = input.span_from_cursor(&name_start);
 
         let meta = match knowledge::lookup_env(base_name.as_str()) {
             Some(m) => m,
             None => {
                 return Err(Rich::custom(
-                    SimpleSpan::new((), 0..0),
+                    name_span,
                     format!("Unknown environment: {}", base_name),
                 ));
             }
@@ -479,7 +485,7 @@ fn parse_env_header<'a>(
 
         if starred && !meta.has_star_variant {
             return Err(Rich::custom(
-                SimpleSpan::new((), 0..0),
+                name_span,
                 format!("Environment {} has no starred variant", base_name),
             ));
         }
@@ -519,7 +525,9 @@ fn environment_parser<'a>(
             .ignore_then(env_name_parser())
             .labelled("environment end tag");
 
+        let end_start = input.cursor();
         let (end_name, end_starred) = input.parse(end_tag)?;
+        let end_span = input.span_from_cursor(&end_start);
 
         if end_name != name || end_starred != starred {
             let expected = if starred {
@@ -533,7 +541,7 @@ fn environment_parser<'a>(
                 end_name.clone()
             };
             return Err(Rich::custom(
-                SimpleSpan::new((), 0..0),
+                end_span,
                 format!(
                     "Environment name mismatch: expected \\end{{{}}}, found \\end{{{}}}",
                     expected, found
@@ -591,69 +599,21 @@ where
 {
     let ws = insignificant_whitespace();
     let atom_for_scripts = atom.clone().padded_by(ws.clone());
+    // Script parsing is delegated to `parse_scripted_components` so that
+    // the core state machine can be tested in isolation and kept small.
+    custom(move |input| {
+        let components = parse_scripted_components(input, atom_for_scripts.clone())?;
 
-    let script_marker = choice((
-        just(&Token::Superscript)
-            .padded_by(ws.clone())
-            .ignore_then(atom_for_scripts.clone())
-            .map(|n| (true, false, n)),
-        just(&Token::Subscript)
-            .padded_by(ws.clone())
-            .ignore_then(atom_for_scripts.clone())
-            .map(|n| (false, false, n)),
-        just(&Token::Prime)
-            .repeated()
-            .at_least(1)
-            .collect::<Vec<_>>()
-            .map(|primes| {
-                let prime_nodes: Vec<SyntaxNode> =
-                    primes.iter().map(|_| SyntaxNode::Char('\'')).collect();
-                let node = if prime_nodes.len() == 1 {
-                    prime_nodes.into_iter().next().unwrap()
-                } else {
-                    SyntaxNode::Group {
-                        mode: ContentMode::Math,
-                        kind: GroupKind::Implicit,
-                        children: prime_nodes,
-                    }
-                };
-                (true, true, node)
-            }),
-    ));
+        if components.subscript.is_none() && components.superscript.is_none() {
+            return Ok(components.base);
+        }
 
-    atom_for_scripts
-        .then(script_marker.repeated().collect::<Vec<_>>())
-        .map(|(base, scripts)| {
-            if scripts.is_empty() {
-                return base;
-            }
-
-            let mut subscript: Option<Box<SyntaxNode>> = None;
-            let mut superscript: Option<Box<SyntaxNode>> = None;
-            for (is_sup, is_prime, node) in scripts {
-                if is_sup {
-                    if is_prime {
-                        superscript = Some(Box::new(match superscript {
-                            None => node,
-                            Some(existing) => SyntaxNode::Group {
-                                mode: ContentMode::Math,
-                                kind: GroupKind::Implicit,
-                                children: vec![*existing, node],
-                            },
-                        }));
-                    } else {
-                        superscript = Some(Box::new(node));
-                    }
-                } else {
-                    subscript = Some(Box::new(node));
-                }
-            }
-            SyntaxNode::Scripted {
-                base: Box::new(base),
-                subscript,
-                superscript,
-            }
+        Ok(SyntaxNode::Scripted {
+            base: Box::new(components.base),
+            subscript: components.subscript.map(Box::new),
+            superscript: components.superscript.map(Box::new),
         })
+    })
 }
 
 /// Parse a text atom (text chunk, inline math, group, command, env).
@@ -951,13 +911,16 @@ fn text_block_parser<'a>(strict: bool) -> NodeParser<'a> {
 // Helper Functions
 // ============================================================================
 
-/// Normalize argument value by collapsing text-mode groups to a single node.
+/// Normalize argument value by collapsing groups to a single node when possible.
+///
+/// This ensures `\frac{a}{b}` and `\frac ab` produce identical AST:
+/// - Single-element explicit groups are unwrapped to the element itself
+/// - Multi-element groups become implicit groups
+/// - Empty groups remain as empty implicit groups
 fn normalize_argument_value(mode: ContentMode, node: SyntaxNode) -> SyntaxNode {
-    match (mode, node) {
-        (ContentMode::Text, SyntaxNode::Group { children, .. }) => {
-            fold_items(ContentMode::Text, children)
-        }
-        (_, other) => other,
+    match node {
+        SyntaxNode::Group { children, .. } => fold_items(mode, children),
+        other => other,
     }
 }
 
