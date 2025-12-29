@@ -46,6 +46,10 @@ impl KnowledgeBase {
     pub fn is_delimiter_control(&self, name: &str) -> bool {
         self.delimiter_controls.contains(name)
     }
+
+    pub fn lookup_delimiter_control(&self, name: &str) -> Option<&'static str> {
+        self.delimiter_controls.get(name).copied()
+    }
 }
 
 #[derive(Debug, Default)]
@@ -190,6 +194,9 @@ fn build_default_kb(packages: Option<&[&str]>) -> KnowledgeBase {
             .collect::<Vec<_>>(),
         Some(list) => {
             let mut out = vec![];
+            // Loading order is intentional:
+            // - `base` always loads first (if present)
+            // - later packages can override earlier definitions by name
             if texform_specs::packages::get("base").is_some() {
                 out.push("base");
             }
@@ -236,6 +243,14 @@ pub fn is_blacklisted(name: &str) -> Option<&'static str> {
 /// Check if control sequence acts as a delimiter usable by \left...\right.
 pub fn is_delimiter_control(name: &str) -> bool {
     kb().is_delimiter_control(name)
+}
+
+/// Lookup the canonical delimiter control name.
+///
+/// This returns the interned `&'static str` stored in the knowledge base.
+/// Parser code should prefer this over allocating/leaking new strings.
+pub fn lookup_delimiter_control(name: &str) -> Option<&'static str> {
+    kb().lookup_delimiter_control(name)
 }
 
 #[cfg(test)]

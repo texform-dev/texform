@@ -50,8 +50,8 @@ fn delimiter<'a>() -> impl Parser<'a, TokenInput<'a>, Delimiter, ParserError<'a>
         Token::Char('.') => Delimiter::None, // LaTeX use \left. to represent no delimiter
         Token::Char(c) if matches!(c, '(' | ')' | '[' | ']' | '|' | '<' | '>' | '/' | '\\')
             => Delimiter::Char(c),
-        Token::ControlSeq(name) if knowledge::is_delimiter_control(name.as_str()) => {
-            Delimiter::Control(Box::leak(name.into_boxed_str()))
+        Token::ControlSeq(name) if knowledge::lookup_delimiter_control(name.as_str()).is_some() => {
+            Delimiter::Control(knowledge::lookup_delimiter_control(name.as_str()).unwrap())
         }
     }
     .labelled("delimiter")

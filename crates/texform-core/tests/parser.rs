@@ -1698,6 +1698,40 @@ fn test_delimited_group_langle_rangle() {
 }
 
 #[test]
+fn test_delimiter_controls_are_interned() {
+    fn extract_controls(node: SyntaxNode) -> (&'static str, &'static str) {
+        match node {
+            SyntaxNode::Group { children, .. } => match &children[0] {
+                SyntaxNode::Group { kind, .. } => match kind {
+                    GroupKind::Delimited { left, right } => {
+                        let left = match left {
+                            Delimiter::Control(s) => *s,
+                            other => panic!("Expected left control delimiter, got {:?}", other),
+                        };
+                        let right = match right {
+                            Delimiter::Control(s) => *s,
+                            other => panic!("Expected right control delimiter, got {:?}", other),
+                        };
+                        (left, right)
+                    }
+                    other => panic!("Expected Delimited GroupKind, got {:?}", other),
+                },
+                other => panic!("Expected Delimited Group, got {:?}", other),
+            },
+            other => panic!("Expected root Group, got {:?}", other),
+        }
+    }
+
+    let (left1, right1) =
+        extract_controls(parse(&lex_tokens!(r"\left\langle x\right\rangle"), false).unwrap());
+    let (left2, right2) =
+        extract_controls(parse(&lex_tokens!(r"\left\langle x\right\rangle"), false).unwrap());
+
+    assert!(std::ptr::eq(left1, left2));
+    assert!(std::ptr::eq(right1, right2));
+}
+
+#[test]
 fn test_delimited_group_lfloor_rfloor() {
     // "\left\lfloor x \right\rfloor"
     let tokens = lex_tokens!(r"\left\lfloor x\right\rfloor");
