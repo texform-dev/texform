@@ -1,6 +1,15 @@
 use texform_core::lexer::Token;
 use texform_core::parser::parse;
-use texform_interface::syntax_node::{ArgumentKind, ContentMode, Delimiter, GroupKind, SyntaxNode};
+use texform_interface::syntax_node::{
+    ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
+};
+
+fn unwrap_content(value: &ArgumentValue) -> &SyntaxNode {
+    match value {
+        ArgumentValue::Content(node) => node,
+        _ => panic!("Expected content argument"),
+    }
+}
 
 // ========================================================================
 // Stage 1-2 Tests (Basic parsing)
@@ -336,7 +345,7 @@ fn test_sqrt_without_optional() {
 
                     // Optional arg should be empty
                     assert_eq!(args[0].kind, ArgumentKind::Optional);
-                    match &args[0].value {
+                    match unwrap_content(&args[0].value) {
                         SyntaxNode::Group { children, .. } => {
                             assert!(children.is_empty());
                         }
@@ -377,11 +386,17 @@ fn test_sqrt_with_optional() {
 
                     // Optional arg - normalized to single Char
                     assert_eq!(args[0].kind, ArgumentKind::Optional);
-                    assert_eq!(args[0].value, SyntaxNode::Char('3'));
+                    assert_eq!(
+                        args[0].value,
+                        ArgumentValue::Content(SyntaxNode::Char('3'))
+                    );
 
                     // Mandatory arg - normalized to single Char
                     assert_eq!(args[1].kind, ArgumentKind::Mandatory);
-                    assert_eq!(args[1].value, SyntaxNode::Char('8'));
+                    assert_eq!(
+                        args[1].value,
+                        ArgumentValue::Content(SyntaxNode::Char('8'))
+                    );
                 }
                 _ => panic!("Expected Command node"),
             }
@@ -411,7 +426,7 @@ fn test_text_command() {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "text");
                 assert_eq!(args.len(), 1);
-                match &args[0].value {
+                match unwrap_content(&args[0].value) {
                     SyntaxNode::Text(s) => {
                         assert_eq!(s, "hello");
                     }
@@ -422,6 +437,384 @@ fn test_text_command() {
         },
         _ => panic!("Expected root Group"),
     }
+}
+
+#[test]
+fn test_delimiter_argument() {
+    // "\delim\langle"
+    let tokens = vec![
+        Token::ControlSeq("delim".to_string()),
+        Token::ControlSeq("langle".to_string()),
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "delim");
+                assert_eq!(args.len(), 1);
+                assert_eq!(args[0].kind, ArgumentKind::Mandatory);
+                assert_eq!(
+                    args[0].value,
+                    ArgumentValue::Delimiter(Delimiter::Control("langle"))
+                );
+            }
+            _ => panic!("Expected Command node"),
+        },
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_dimension_argument() {
+    // "\hspace1em"
+    let tokens = vec![
+        Token::ControlSeq("hspace".to_string()),
+        Token::Char('1'),
+        Token::Char('e'),
+        Token::Char('m'),
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "hspace");
+                assert_eq!(args.len(), 1);
+                assert_eq!(
+                    args[0].value,
+                    ArgumentValue::Dimension("1em".to_string())
+                );
+            }
+            _ => panic!("Expected Command node"),
+        },
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_integer_argument() {
+    // "\romannumeral12"
+    let tokens = vec![
+        Token::ControlSeq("romannumeral".to_string()),
+        Token::Char('1'),
+        Token::Char('2'),
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "romannumeral");
+                assert_eq!(args.len(), 1);
+                assert_eq!(
+                    args[0].value,
+                    ArgumentValue::Integer("12".to_string())
+                );
+            }
+            _ => panic!("Expected Command node"),
+        },
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_keyval_argument() {
+    // "\includegraphics[width=1em,height=2pt]{file}"
+    let tokens = vec![
+        Token::ControlSeq("includegraphics".to_string()),
+        Token::LBracket,
+        Token::Char('w'),
+        Token::Char('i'),
+        Token::Char('d'),
+        Token::Char('t'),
+        Token::Char('h'),
+        Token::Char('='),
+        Token::Char('1'),
+        Token::Char('e'),
+        Token::Char('m'),
+        Token::Char(','),
+        Token::Char('h'),
+        Token::Char('e'),
+        Token::Char('i'),
+        Token::Char('g'),
+        Token::Char('h'),
+        Token::Char('t'),
+        Token::Char('='),
+        Token::Char('2'),
+        Token::Char('p'),
+        Token::Char('t'),
+        Token::RBracket,
+        Token::LBrace,
+        Token::Char('f'),
+        Token::Char('i'),
+        Token::Char('l'),
+        Token::Char('e'),
+        Token::RBrace,
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "includegraphics");
+                assert_eq!(args.len(), 2);
+                assert_eq!(args[0].kind, ArgumentKind::Optional);
+                assert_eq!(
+                    args[0].value,
+                    ArgumentValue::KeyVal("width=1em,height=2pt".to_string())
+                );
+                assert_eq!(
+                    unwrap_content(&args[1].value),
+                    &SyntaxNode::Text("file".to_string())
+                );
+            }
+            _ => panic!("Expected Command node"),
+        },
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_delimiter_argument_braced_matches_inline() {
+    let inline_tokens = vec![
+        Token::ControlSeq("delim".to_string()),
+        Token::ControlSeq("langle".to_string()),
+    ];
+    let braced_tokens = vec![
+        Token::ControlSeq("delim".to_string()),
+        Token::LBrace,
+        Token::ControlSeq("langle".to_string()),
+        Token::RBrace,
+    ];
+
+    let inline = parse(&inline_tokens, false).unwrap();
+    let braced = parse(&braced_tokens, false).unwrap();
+
+    let inline_value = match inline {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { args, .. } => args[0].value.clone(),
+            _ => panic!("Expected Command node"),
+        },
+        _ => panic!("Expected root Group"),
+    };
+
+    let braced_value = match braced {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { args, .. } => args[0].value.clone(),
+            _ => panic!("Expected Command node"),
+        },
+        _ => panic!("Expected root Group"),
+    };
+
+    assert_eq!(inline_value, braced_value);
+}
+
+#[test]
+fn test_integer_argument_braced_matches_inline() {
+    let inline_tokens = vec![
+        Token::ControlSeq("romannumeral".to_string()),
+        Token::Char('1'),
+        Token::Char('2'),
+    ];
+    let braced_tokens = vec![
+        Token::ControlSeq("romannumeral".to_string()),
+        Token::LBrace,
+        Token::Whitespaces,
+        Token::Char('1'),
+        Token::Char('2'),
+        Token::Whitespaces,
+        Token::RBrace,
+    ];
+
+    let inline = parse(&inline_tokens, false).unwrap();
+    let braced = parse(&braced_tokens, false).unwrap();
+
+    let inline_value = match inline {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { args, .. } => args[0].value.clone(),
+            _ => panic!("Expected Command node"),
+        },
+        _ => panic!("Expected root Group"),
+    };
+
+    let braced_value = match braced {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { args, .. } => args[0].value.clone(),
+            _ => panic!("Expected Command node"),
+        },
+        _ => panic!("Expected root Group"),
+    };
+
+    assert_eq!(inline_value, braced_value);
+}
+
+#[test]
+fn test_dimension_argument_braced_matches_inline() {
+    let inline_tokens = vec![
+        Token::ControlSeq("hspace".to_string()),
+        Token::Char('1'),
+        Token::Char('.'),
+        Token::Char('5'),
+        Token::Char('e'),
+        Token::Char('m'),
+    ];
+    let braced_tokens = vec![
+        Token::ControlSeq("hspace".to_string()),
+        Token::LBrace,
+        Token::Whitespaces,
+        Token::Char('1'),
+        Token::Char(','),
+        Token::Char('5'),
+        Token::Whitespaces,
+        Token::Char('e'),
+        Token::Char('m'),
+        Token::Whitespaces,
+        Token::RBrace,
+    ];
+
+    let inline = parse(&inline_tokens, false).unwrap();
+    let braced = parse(&braced_tokens, false).unwrap();
+
+    let inline_value = match inline {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { args, .. } => args[0].value.clone(),
+            _ => panic!("Expected Command node"),
+        },
+        _ => panic!("Expected root Group"),
+    };
+
+    let braced_value = match braced {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { args, .. } => args[0].value.clone(),
+            _ => panic!("Expected Command node"),
+        },
+        _ => panic!("Expected root Group"),
+    };
+
+    assert_eq!(inline_value, braced_value);
+    assert_eq!(
+        inline_value,
+        ArgumentValue::Dimension("1.5em".to_string())
+    );
+}
+
+#[test]
+fn test_optional_bracket_closes_at_top_level() {
+    let tokens = vec![
+        Token::ControlSeq("includegraphics".to_string()),
+        Token::LBracket,
+        Token::Char('k'),
+        Token::Char('e'),
+        Token::Char('y'),
+        Token::Char('='),
+        Token::LBrace,
+        Token::LBracket,
+        Token::LBracket,
+        Token::RBrace,
+        Token::Char(','),
+        Token::Char('w'),
+        Token::Char('i'),
+        Token::Char('d'),
+        Token::Char('t'),
+        Token::Char('h'),
+        Token::Char('='),
+        Token::Char('1'),
+        Token::Char('e'),
+        Token::Char('m'),
+        Token::RBracket,
+        Token::LBrace,
+        Token::Char('f'),
+        Token::Char('i'),
+        Token::Char('l'),
+        Token::Char('e'),
+        Token::RBrace,
+    ];
+
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { args, .. } => {
+                assert_eq!(args.len(), 2);
+                assert_eq!(
+                    args[0].value,
+                    ArgumentValue::KeyVal("key={[[},width=1em".to_string())
+                );
+            }
+            _ => panic!("Expected Command node"),
+        },
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_optional_bracket_missing_closer_errors() {
+    let tokens = vec![
+        Token::ControlSeq("includegraphics".to_string()),
+        Token::LBracket,
+        Token::Char('w'),
+        Token::Char('i'),
+        Token::Char('d'),
+        Token::Char('t'),
+        Token::Char('h'),
+        Token::Char('='),
+        Token::Char('1'),
+        Token::Char('e'),
+        Token::Char('m'),
+        Token::LBrace,
+        Token::Char('f'),
+        Token::Char('i'),
+        Token::Char('l'),
+        Token::Char('e'),
+        Token::RBrace,
+    ];
+
+    let result = parse(&tokens, false);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_invalid_integer_argument_errors() {
+    let tokens = vec![
+        Token::ControlSeq("romannumeral".to_string()),
+        Token::LBrace,
+        Token::Char('1'),
+        Token::Char('2'),
+        Token::Char('.'),
+        Token::Char('5'),
+        Token::RBrace,
+    ];
+
+    let result = parse(&tokens, false);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_invalid_dimension_argument_errors() {
+    let tokens = vec![
+        Token::ControlSeq("hspace".to_string()),
+        Token::LBrace,
+        Token::Char('a'),
+        Token::Char('b'),
+        Token::Char('c'),
+        Token::RBrace,
+    ];
+
+    let result = parse(&tokens, false);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_unclosed_brace_argument_errors() {
+    let tokens = vec![Token::ControlSeq("frac".to_string()), Token::LBrace, Token::Char('a')];
+
+    let result = parse(&tokens, false);
+    assert!(result.is_err());
 }
 
 #[test]
@@ -449,10 +842,13 @@ fn test_nested_commands() {
                     assert_eq!(name, "frac");
 
                     // First argument should be normalized to single Char
-                    assert_eq!(args[0].value, SyntaxNode::Char('a'));
+                    assert_eq!(
+                        unwrap_content(&args[0].value),
+                        &SyntaxNode::Char('a')
+                    );
 
                     // Second argument should be \sqrt command (normalized from single-element group)
-                    match &args[1].value {
+                    match unwrap_content(&args[1].value) {
                         SyntaxNode::Command { name, .. } => {
                             assert_eq!(name, "sqrt");
                         }
@@ -813,7 +1209,7 @@ fn test_text_in_command() {
                 SyntaxNode::Command { name, args, .. } => {
                     assert_eq!(name, "text");
                     assert_eq!(args.len(), 1);
-                    match &args[0].value {
+                    match unwrap_content(&args[0].value) {
                         SyntaxNode::Group { mode, children, .. } => {
                             assert_eq!(*mode, ContentMode::Text);
                             assert_eq!(children.len(), 1);
@@ -841,14 +1237,14 @@ fn test_text_inline_math_segment() {
 
     match result {
         SyntaxNode::Group { children, .. } => match &children[0] {
-            SyntaxNode::Command { name, args, .. } => {
-                assert_eq!(name, "text");
-                assert_eq!(args.len(), 1);
-                match &args[0].value {
-                    SyntaxNode::Group { mode, children, .. } => {
-                        assert_eq!(*mode, ContentMode::Text);
-                        assert_eq!(children.len(), 3);
-                        assert_eq!(children[0], SyntaxNode::Text("foo".to_string()));
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "text");
+                    assert_eq!(args.len(), 1);
+                    match unwrap_content(&args[0].value) {
+                        SyntaxNode::Group { mode, children, .. } => {
+                            assert_eq!(*mode, ContentMode::Text);
+                            assert_eq!(children.len(), 3);
+                            assert_eq!(children[0], SyntaxNode::Text("foo".to_string()));
                         match &children[1] {
                             SyntaxNode::Group {
                                 kind,
@@ -884,7 +1280,7 @@ fn test_text_inline_math_active_char_and_command() {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "text");
                 assert_eq!(args.len(), 1);
-                match &args[0].value {
+                match unwrap_content(&args[0].value) {
                     SyntaxNode::Group { mode, children, .. } => {
                         assert_eq!(*mode, ContentMode::Text);
                         assert!(children.len() >= 5);
@@ -1119,9 +1515,12 @@ fn test_frac_mixed_shorthand() {
                     assert_eq!(name, "frac");
                     assert_eq!(args.len(), 2);
                     // First arg: single char 'a'
-                    assert_eq!(args[0].value, SyntaxNode::Char('a'));
+                    assert_eq!(
+                        unwrap_content(&args[0].value),
+                        &SyntaxNode::Char('a')
+                    );
                     // Second arg: group with 'bc'
-                    match &args[1].value {
+                    match unwrap_content(&args[1].value) {
                         SyntaxNode::Group { children, .. } => {
                             assert_eq!(children.len(), 2);
                             assert_eq!(children[0], SyntaxNode::Char('b'));
@@ -1151,11 +1550,11 @@ fn test_frac_shorthand_with_command() {
                     assert_eq!(name, "frac");
                     assert_eq!(args.len(), 2);
                     // Both args should be Command nodes
-                    match &args[0].value {
+                    match unwrap_content(&args[0].value) {
                         SyntaxNode::Command { name, .. } => assert_eq!(name, "alpha"),
                         _ => panic!("Expected alpha command"),
                     }
-                    match &args[1].value {
+                    match unwrap_content(&args[1].value) {
                         SyntaxNode::Command { name, .. } => assert_eq!(name, "beta"),
                         _ => panic!("Expected beta command"),
                     }
@@ -1913,7 +2312,7 @@ fn test_script_in_argument() {
                 SyntaxNode::Command { name, args, .. } => {
                     assert_eq!(name, "frac");
                     // First arg should contain scripted x^2
-                    match &args[0].value {
+                    match unwrap_content(&args[0].value) {
                         SyntaxNode::Scripted {
                             base, superscript, ..
                         } => {
@@ -1923,7 +2322,10 @@ fn test_script_in_argument() {
                         _ => panic!("Expected Scripted in first arg"),
                     }
                     // Second arg is just 'y'
-                    assert_eq!(args[1].value, SyntaxNode::Char('y'));
+                    assert_eq!(
+                        unwrap_content(&args[1].value),
+                        &SyntaxNode::Char('y')
+                    );
                 }
                 _ => panic!("Expected Command"),
             }
@@ -2016,7 +2418,7 @@ fn test_text_escaped_symbols() {
         SyntaxNode::Group { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "text");
-                match &args[0].value {
+                match unwrap_content(&args[0].value) {
                     SyntaxNode::Group { children, .. } => {
                         assert_eq!(children.len(), 3);
                         assert_eq!(children[0], SyntaxNode::Char('%'));
@@ -2042,7 +2444,7 @@ fn test_text_explicit_group() {
         SyntaxNode::Group { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "text");
-                match &args[0].value {
+                match unwrap_content(&args[0].value) {
                     SyntaxNode::Group {
                         kind: GroupKind::Explicit,
                         children,
@@ -2060,4 +2462,65 @@ fn test_text_explicit_group() {
         },
         _ => panic!("Expected root Group"),
     }
+}
+
+// ========================================================================
+// Additional edge case tests for dimension and keyval arguments
+// ========================================================================
+
+#[test]
+fn test_dimension_with_spaces() {
+    // "\hspace{1.5 cm}" - dimension with spaces between number and unit
+    let tokens = lex_tokens!(r"\hspace{1.5 cm}");
+    let result = parse(&tokens, false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "hspace");
+                assert_eq!(args.len(), 1);
+                // Should be normalized to "1.5cm" (no space)
+                assert_eq!(
+                    args[0].value,
+                    ArgumentValue::Dimension("1.5cm".to_string())
+                );
+            }
+            _ => panic!("Expected Command node"),
+        },
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_dimension_missing_number() {
+    // "\hspace{cm}" - dimension missing number should error
+    let tokens = lex_tokens!(r"\hspace{cm}");
+    let result = parse(&tokens, false);
+    assert!(result.is_err(), "Expected error for dimension missing number");
+}
+
+#[test]
+fn test_dimension_missing_unit() {
+    // "\hspace{1.5}" - dimension missing unit should error
+    let tokens = lex_tokens!(r"\hspace{1.5}");
+    let result = parse(&tokens, false);
+    assert!(result.is_err(), "Expected error for dimension missing unit");
+}
+
+#[test]
+fn test_keyval_empty() {
+    // "\includegraphics[{}]{file}" - empty braces in optional keyval argument
+    // This should error because keyval requires at least one key=value pair
+    let tokens = lex_tokens!(r"\includegraphics[{}]{file}");
+    let result = parse(&tokens, false);
+    assert!(result.is_err(), "Expected error for empty keyval");
+}
+
+#[test]
+fn test_keyval_empty_brackets() {
+    // "\includegraphics[]{file}" - empty optional argument brackets
+    // This should also error because the brackets exist but contain no valid keyval
+    let tokens = lex_tokens!(r"\includegraphics[]{file}");
+    let result = parse(&tokens, false);
+    assert!(result.is_err(), "Expected error for empty optional keyval brackets");
 }

@@ -1,5 +1,5 @@
 use texform_interface::syntax_node::{
-    Argument, ArgumentKind, ContentMode, Delimiter, GroupKind, SyntaxNode,
+    Argument, ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
 };
 
 #[test]
@@ -58,9 +58,17 @@ fn test_argument_creation() {
     let node = SyntaxNode::Char('x');
     let mandatory = Argument::mandatory(node.clone());
     assert_eq!(mandatory.kind, ArgumentKind::Mandatory);
+    assert_eq!(
+        mandatory.value,
+        ArgumentValue::Content(SyntaxNode::Char('x'))
+    );
 
     let optional = Argument::optional(node);
     assert_eq!(optional.kind, ArgumentKind::Optional);
+    assert_eq!(
+        optional.value,
+        ArgumentValue::Content(SyntaxNode::Char('x'))
+    );
 }
 
 #[test]

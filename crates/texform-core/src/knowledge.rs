@@ -8,7 +8,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
-pub use texform_specs::specs::{ArgSpec, CommandKind, CommandMeta, EnvMeta};
+pub use texform_specs::specs::{ArgSpec, CommandKind, CommandMeta, EnvMeta, ValueKind};
 
 #[derive(Debug)]
 pub struct KnowledgeBase {
@@ -256,7 +256,6 @@ pub fn lookup_delimiter_control(name: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use texform_interface::syntax_node::ArgumentKind;
     use texform_interface::syntax_node::ContentMode;
 
     #[test]
@@ -268,8 +267,14 @@ mod tests {
 
         let sqrt = lookup_command("sqrt").unwrap();
         assert_eq!(sqrt.args.len(), 2);
-        assert_eq!(sqrt.args[0].kind, ArgumentKind::Optional);
-        assert_eq!(sqrt.args[1].kind, ArgumentKind::Mandatory);
+        assert!(!sqrt.args[0].required);
+        assert!(sqrt.args[1].required);
+        assert_eq!(
+            sqrt.args[0].kind,
+            ValueKind::Content {
+                mode: ContentMode::Math
+            }
+        );
 
         let over = lookup_command("over").unwrap();
         assert_eq!(over.kind, CommandKind::Infix);
@@ -304,12 +309,22 @@ mod tests {
     #[test]
     fn test_arg_spec_helpers() {
         let mandatory_math = ArgSpec::mandatory(ContentMode::Math);
-        assert_eq!(mandatory_math.kind, ArgumentKind::Mandatory);
-        assert_eq!(mandatory_math.mode, ContentMode::Math);
+        assert!(mandatory_math.required);
+        assert_eq!(
+            mandatory_math.kind,
+            ValueKind::Content {
+                mode: ContentMode::Math
+            }
+        );
 
         let optional_text = ArgSpec::optional(ContentMode::Text);
-        assert_eq!(optional_text.kind, ArgumentKind::Optional);
-        assert_eq!(optional_text.mode, ContentMode::Text);
+        assert!(!optional_text.required);
+        assert_eq!(
+            optional_text.kind,
+            ValueKind::Content {
+                mode: ContentMode::Text
+            }
+        );
     }
 
     #[test]

@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use serde::Deserialize;
-use texform_interface::syntax_node::{ArgumentKind, ContentMode};
+use texform_interface::syntax_node::ContentMode;
 
 /// Command type in knowledge base (determines AST node type)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,31 +27,98 @@ pub enum CommandKind {
     Declarative,
 }
 
+impl CommandKind {
+    /// Return a human-readable label for error messages.
+    pub const fn label(&self) -> &'static str {
+        match self {
+            CommandKind::Prefix => "prefix",
+            CommandKind::Infix => "infix",
+            CommandKind::Declarative => "declarative",
+        }
+    }
+}
+
+/// Argument value kind (parsing strategy)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueKind {
+    /// Content argument parsed recursively (math/text mode)
+    Content { mode: ContentMode },
+    /// Single delimiter token (including '.' for empty)
+    Delimiter,
+    /// Dimension / length value (e.g., 1em, -2pt)
+    Dimension,
+    /// Integer value (e.g., 2, -10)
+    Integer,
+    /// Key=Value list (validated format, stored as raw string)
+    KeyVal,
+}
+
+impl ValueKind {
+    pub const fn is_content(&self) -> bool {
+        matches!(self, ValueKind::Content { .. })
+    }
+
+    pub const fn is_delimiter(&self) -> bool {
+        matches!(self, ValueKind::Delimiter)
+    }
+
+    pub const fn is_dimension(&self) -> bool {
+        matches!(self, ValueKind::Dimension)
+    }
+
+    pub const fn is_integer(&self) -> bool {
+        matches!(self, ValueKind::Integer)
+    }
+
+    pub const fn is_keyval(&self) -> bool {
+        matches!(self, ValueKind::KeyVal)
+    }
+
+    pub const fn content_mode(&self) -> Option<ContentMode> {
+        match self {
+            ValueKind::Content { mode } => Some(*mode),
+            _ => None,
+        }
+    }
+}
+
 /// Argument specification
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ArgSpec {
-    /// Argument type (Mandatory or Optional)
-    pub kind: ArgumentKind,
+    /// Whether the argument is required (true) or optional (false)
+    pub required: bool,
 
-    /// Content mode for this argument (Math or Text)
-    pub mode: ContentMode,
+    /// Argument value kind (parsing strategy)
+    pub kind: ValueKind,
 }
 
 impl ArgSpec {
-    /// Create a mandatory argument spec
+    pub const fn new(required: bool, kind: ValueKind) -> Self {
+        ArgSpec { required, kind }
+    }
+
+    /// Create a mandatory content argument spec
     pub const fn mandatory(mode: ContentMode) -> Self {
         ArgSpec {
-            kind: ArgumentKind::Mandatory,
-            mode,
+            required: true,
+            kind: ValueKind::Content { mode },
         }
     }
 
-    /// Create an optional argument spec
+    /// Create an optional content argument spec
     pub const fn optional(mode: ContentMode) -> Self {
         ArgSpec {
-            kind: ArgumentKind::Optional,
-            mode,
+            required: false,
+            kind: ValueKind::Content { mode },
         }
+    }
+
+    pub const fn is_required(&self) -> bool {
+        self.required
+    }
+
+    pub const fn is_optional(&self) -> bool {
+        !self.required
     }
 }
 
@@ -209,31 +276,43 @@ impl From<EnvironmentSpecYaml> for EnvironmentSpec {
 
 #[derive(Debug, Deserialize)]
 struct ArgSpecYaml {
-    kind: ArgumentKindYaml,
-    mode: ContentModeYaml,
+    required: bool,
+    kind: ValueKindYaml,
 }
 
 impl From<ArgSpecYaml> for ArgSpec {
     fn from(value: ArgSpecYaml) -> Self {
         ArgSpec {
+            required: value.required,
             kind: value.kind.into(),
-            mode: value.mode.into(),
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
-enum ArgumentKindYaml {
-    Mandatory,
-    Optional,
+enum ValueKindYaml {
+    Math,
+    Text,
+    Delimiter,
+    Dimension,
+    Integer,
+    KeyVal,
 }
 
-impl From<ArgumentKindYaml> for ArgumentKind {
-    fn from(value: ArgumentKindYaml) -> Self {
+impl From<ValueKindYaml> for ValueKind {
+    fn from(value: ValueKindYaml) -> Self {
         match value {
-            ArgumentKindYaml::Mandatory => ArgumentKind::Mandatory,
-            ArgumentKindYaml::Optional => ArgumentKind::Optional,
+            ValueKindYaml::Math => ValueKind::Content {
+                mode: ContentMode::Math,
+            },
+            ValueKindYaml::Text => ValueKind::Content {
+                mode: ContentMode::Text,
+            },
+            ValueKindYaml::Delimiter => ValueKind::Delimiter,
+            ValueKindYaml::Dimension => ValueKind::Dimension,
+            ValueKindYaml::Integer => ValueKind::Integer,
+            ValueKindYaml::KeyVal => ValueKind::KeyVal,
         }
     }
 }
@@ -266,8 +345,15 @@ commands:
   - name: frac
     kind: prefix
     args:
-      - kind: mandatory
-        mode: math
+      - required: true
+        kind: math
+      - required: true
+        kind: delimiter
+  - name: text
+    kind: prefix
+    args:
+      - required: true
+        kind: text
 environments:
   - name: matrix
     body_mode: math
@@ -278,10 +364,26 @@ blacklist:
 
         let specs = load_package_specs_from_str(yaml, "test");
         assert_eq!(specs.characters, vec!["alpha", "beta"]);
-        assert_eq!(specs.commands.len(), 1);
+        assert_eq!(specs.commands.len(), 2);
         assert_eq!(specs.commands[0].name, "frac");
         assert!(!specs.commands[0].has_star_variant);
-        assert_eq!(specs.commands[0].args.len(), 1);
+        assert_eq!(specs.commands[0].args.len(), 2);
+        assert_eq!(specs.commands[0].args[0].required, true);
+        assert_eq!(
+            specs.commands[0].args[0].kind,
+            ValueKind::Content {
+                mode: ContentMode::Math
+            }
+        );
+        assert_eq!(specs.commands[0].args[1].kind, ValueKind::Delimiter);
+        assert_eq!(specs.commands[1].name, "text");
+        assert_eq!(specs.commands[1].args.len(), 1);
+        assert_eq!(
+            specs.commands[1].args[0].kind,
+            ValueKind::Content {
+                mode: ContentMode::Text
+            }
+        );
         assert_eq!(specs.environments.len(), 1);
         assert_eq!(specs.environments[0].name, "matrix");
         assert_eq!(specs.delimiter_controls, vec!["langle"]);

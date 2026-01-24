@@ -6,14 +6,14 @@
 //!
 //! After parsing, the syntax tree is converted to the slotmap-based AST via lowering.
 
-/// Command or environment argument
+/// Command or environment argument.
 ///
 /// Arguments can be mandatory {...} or optional [...].
-/// Each argument contains a syntax node representing its content.
+/// Each argument contains an `ArgumentValue` describing its parsed value.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Argument {
     pub kind: ArgumentKind,
-    pub value: SyntaxNode,
+    pub value: ArgumentValue,
 }
 
 /// Argument type: mandatory or optional
@@ -23,6 +23,33 @@ pub enum ArgumentKind {
     Mandatory,
     /// Optional argument: [...]
     Optional,
+}
+
+impl ArgumentKind {
+    /// Create an ArgumentKind from a boolean indicating if it's required.
+    #[inline]
+    pub const fn from_required(required: bool) -> Self {
+        if required {
+            ArgumentKind::Mandatory
+        } else {
+            ArgumentKind::Optional
+        }
+    }
+}
+
+/// Parsed argument value.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArgumentValue {
+    /// Parsed content subtree.
+    Content(SyntaxNode),
+    /// Delimiter argument value.
+    Delimiter(Delimiter),
+    /// Dimension argument value (raw string).
+    Dimension(String),
+    /// Integer argument value (raw string).
+    Integer(String),
+    /// Key-value list argument value (raw string).
+    KeyVal(String),
 }
 
 /// Content mode: math or text
@@ -158,6 +185,7 @@ pub enum SyntaxNode {
     /// In LaTeX, ~ produces a non-breaking space.
     /// This node is produced in both Math and Text modes.
     /// In Text mode, ~ is NOT merged into TextChunk; it remains as a separate node.
+    /// 
     ActiveSpace,
 }
 
@@ -208,11 +236,16 @@ impl SyntaxNode {
 }
 
 impl Argument {
+    /// Create an argument from a kind and value.
+    pub fn from_value(kind: ArgumentKind, value: ArgumentValue) -> Self {
+        Argument { kind, value }
+    }
+
     /// Create a mandatory argument
     pub fn mandatory(value: SyntaxNode) -> Self {
         Argument {
             kind: ArgumentKind::Mandatory,
-            value,
+            value: ArgumentValue::Content(value),
         }
     }
 
@@ -220,7 +253,7 @@ impl Argument {
     pub fn optional(value: SyntaxNode) -> Self {
         Argument {
             kind: ArgumentKind::Optional,
-            value,
+            value: ArgumentValue::Content(value),
         }
     }
 }
@@ -364,6 +397,19 @@ impl Argument {
         let prefix = "  ".repeat(indent);
         writeln!(f, "{}Arg({:?}):", prefix, self.kind)?;
         self.value.fmt_with_indent(f, indent + 1)
+    }
+}
+
+impl ArgumentValue {
+    fn fmt_with_indent(&self, f: &mut std::fmt::Formatter<'_>, indent: usize) -> std::fmt::Result {
+        let prefix = "  ".repeat(indent);
+        match self {
+            ArgumentValue::Content(node) => node.fmt_with_indent(f, indent),
+            ArgumentValue::Delimiter(delim) => writeln!(f, "{}Delimiter({:?})", prefix, delim),
+            ArgumentValue::Dimension(value) => writeln!(f, "{}Dimension(\"{}\")", prefix, value),
+            ArgumentValue::Integer(value) => writeln!(f, "{}Integer(\"{}\")", prefix, value),
+            ArgumentValue::KeyVal(value) => writeln!(f, "{}KeyVal(\"{}\")", prefix, value),
+        }
     }
 }
 

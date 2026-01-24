@@ -10,26 +10,56 @@ commands:
     kind: prefix
     has_star_variant: false
     args:
-      - kind: mandatory
-        mode: math
-      - kind: mandatory
-        mode: math
+      - required: true
+        kind: math
+      - required: true
+        kind: math
 
   - name: sqrt
     kind: prefix
     has_star_variant: false
     args:
-      - kind: optional
-        mode: math
-      - kind: mandatory
-        mode: math
+      - required: false
+        kind: math
+      - required: true
+        kind: math
 
   - name: text
     kind: prefix
     has_star_variant: false
     args:
-      - kind: mandatory
-        mode: text
+      - required: true
+        kind: text
+
+  - name: delim
+    kind: prefix
+    has_star_variant: false
+    args:
+      - required: true
+        kind: delimiter
+
+  - name: hspace
+    kind: prefix
+    has_star_variant: false
+    args:
+      - required: true
+        kind: dimension
+
+  - name: romannumeral
+    kind: prefix
+    has_star_variant: false
+    args:
+      - required: true
+        kind: integer
+
+  - name: includegraphics
+    kind: prefix
+    has_star_variant: false
+    args:
+      - required: false
+        kind: keyval
+      - required: true
+        kind: text
 
   # Infix commands
   - name: over
@@ -52,8 +82,8 @@ commands:
     kind: declarative
     has_star_variant: false
     args:
-      - kind: mandatory
-        mode: text
+      - required: true
+        kind: text
 
 environments:
   - name: matrix
@@ -87,4 +117,3 @@ delimiter_controls:
 blacklist:
   ifnum: Control flow not supported
   csname: Dynamic command names not supported
-

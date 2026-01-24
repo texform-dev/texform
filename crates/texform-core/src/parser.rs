@@ -1,20 +1,44 @@
-//! Parser module - content-first combinator architecture
+//! Parser module - core combinator architecture
 //!
-//! - Base parsers: delimiters, escapes, characters, whitespace
-//! - Group builders: implicit/braced/bracket/delimited/env_body
 //! - Content & arguments: mode content factories + argument_parser/arguments_parser
 //! - Commands & environments: custom heads with combinator arguments/body
 //! - Mode entry: mode_group_parsers + math_block_parser/text_block_parser
 
 use chumsky::prelude::*;
 
-use crate::knowledge::{self, ArgSpec, CommandKind, CommandMeta, EnvMeta};
+use crate::knowledge::{self, ArgSpec, CommandKind, CommandMeta, EnvMeta, ValueKind};
 use crate::lexer::Token;
 use crate::parser_utils::{
-    ParserError, ParserInput, ParserInputExt, TokenInput, parse_scripted_components,
+    ParserError,
+    ParserInput,
+    ParserInputExt,
+    TokenInput,
+    // Base parsers
+    active_char,
+    braced_group_parser,
+    bracket_group_parser,
+    control_seq,
+    delimiter,
+    delimited_group_parser,
+    escaped_symbol,
+    // Helpers
+    fold_items,
+    implicit_group_parser,
+    // Token-level parsers
+    insignificant_whitespace,
+    math_char,
+    maybe_braced,
+    normalize_argument_value,
+    optional_bracketed,
+    parse_scripted_components,
+    text_chunk,
+    // Value parsers
+    dimension_value,
+    integer_value,
+    keyval_value,
 };
 use texform_interface::syntax_node::{
-    Argument, ArgumentKind, ContentMode, Delimiter, GroupKind, SyntaxNode,
+    Argument, ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
 };
 
 type ContentParser<'a> = Boxed<'a, 'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>>;
@@ -35,171 +59,15 @@ pub fn parse(tokens: &[Token], strict: bool) -> Result<SyntaxNode, Vec<Rich<'_, 
 }
 
 // ============================================================================
-// Layer 1: Base Parsers (no recursive dependencies)
+// Environment Body Parser
 // ============================================================================
-
-/// Parse a math delimiter token into a typed `Delimiter`.
-///
-/// Supports:
-/// - '.' => Delimiter::None
-/// - '(', ')', '[', ']', '|' etc => Delimiter::Char
-/// - \langle, \rangle etc => Delimiter::Control
-/// TODO: Integrate MathJax delimiter map and distinguish left/right.
-fn delimiter<'a>() -> impl Parser<'a, TokenInput<'a>, Delimiter, ParserError<'a>> + Clone {
-    select! {
-        Token::Char('.') => Delimiter::None, // LaTeX use \left. to represent no delimiter
-        Token::Char(c) if matches!(c, '(' | ')' | '[' | ']' | '|' | '<' | '>' | '/' | '\\')
-            => Delimiter::Char(c),
-        Token::ControlSeq(name) if knowledge::lookup_delimiter_control(name.as_str()).is_some() => {
-            Delimiter::Control(knowledge::lookup_delimiter_control(name.as_str()).unwrap())
-        }
-    }
-    .labelled("delimiter")
-}
-
-/// Parse escaped symbol control sequences into raw `Char` nodes.
-/// TODO: Confirm the full list of escapable symbols.
-fn escaped_symbol<'a>() -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
-    select! {
-        Token::ControlSeq(name) if matches!(name.as_str(), "%" | "$" | "&" | "#" | "_" | "{" | "}") => {
-            SyntaxNode::Char(name.chars().next().unwrap())
-        }
-    }
-    .labelled("escaped symbol")
-}
-
-/// Parse the active character `~` into `ActiveSpace`.
-fn active_char<'a>() -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
-    just(&Token::ActiveChar).to(SyntaxNode::ActiveSpace)
-}
-
-/// Parse plain math characters (including `*` and `&` tokens).
-fn math_char<'a>() -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
-    select! {
-        Token::Char(c) => SyntaxNode::Char(c),
-        Token::Star => SyntaxNode::Char('*'),
-        Token::Alignment => SyntaxNode::Char('&'),
-    }
-    .labelled("math character")
-}
-
-/// Parse and coalesce consecutive text characters/whitespace into a single `Text` node.
-fn text_chunk<'a>() -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
-    select! {
-        Token::Char(c) => c,
-        Token::Whitespaces => ' ',
-    }
-    .repeated()
-    .at_least(1)
-    .collect::<Vec<_>>()
-    .labelled("text")
-    .map(|chars| {
-        let mut buf = String::new();
-        let mut last_was_space = false;
-        for ch in chars {
-            if ch == ' ' {
-                if !last_was_space {
-                    buf.push(' ');
-                    last_was_space = true;
-                }
-            } else {
-                buf.push(ch);
-                last_was_space = false;
-            }
-        }
-        SyntaxNode::Text(buf)
-    })
-}
-
-/// Consume insignificant whitespace tokens and produce no output.
-fn insignificant_whitespace<'a>() -> impl Parser<'a, TokenInput<'a>, (), ParserError<'a>> + Clone {
-    select! { Token::Whitespaces => () }.repeated().ignored()
-}
-
-/// Match an exact control sequence.
-fn control_seq<'a>(
-    target: &'static str,
-) -> impl Parser<'a, TokenInput<'a>, (), ParserError<'a>> + Clone {
-    select! {
-        Token::ControlSeq(name) if name == target => (),
-    }
-    .labelled(target)
-}
-
-/// Build an implicit group from a content parser.
-fn implicit_group_parser<'a>(
-    mode: ContentMode,
-    content: ContentParser<'a>,
-) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
-    content.map(move |children| SyntaxNode::Group {
-        mode,
-        kind: GroupKind::Implicit,
-        children,
-    })
-}
-
-/// Parse an explicit `{...}` group with the given content parser.
-fn braced_group_parser<'a, P>(
-    mode: ContentMode,
-    content: P,
-) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone
-where
-    P: Parser<'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
-{
-    just(&Token::LBrace)
-        .ignore_then(content)
-        .then_ignore(just(&Token::RBrace))
-        .map(move |children| SyntaxNode::Group {
-            mode,
-            kind: GroupKind::Explicit,
-            children,
-        })
-}
-
-/// Parse a bracketed `[...]` group with the given content parser.
-fn bracket_group_parser<'a, P>(
-    mode: ContentMode,
-    content: P,
-) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone
-where
-    P: Parser<'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
-{
-    just(&Token::LBracket)
-        .ignore_then(content)
-        .then_ignore(just(&Token::RBracket))
-        .map(move |children| SyntaxNode::Group {
-            mode,
-            kind: GroupKind::Explicit,
-            children,
-        })
-}
-
-/// Parse `\\left ... \\right` delimited math group.
-fn delimited_group_parser<'a>(
-    math_content: ContentParser<'a>,
-) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
-    control_seq("left")
-        .ignore_then(delimiter())
-        .then(math_content)
-        .then_ignore(control_seq("right"))
-        .then(delimiter())
-        .map(|((left, children), right)| SyntaxNode::Group {
-            mode: ContentMode::Math,
-            kind: GroupKind::Delimited { left, right },
-            children,
-        })
-}
 
 /// Pick the correct implicit group parser for an environment body.
 fn env_body_parser<'a>(
     mode: ContentMode,
-    math_content: ContentParser<'a>,
-    text_content: ContentParser<'a>,
+    content: ContentParser<'a>,
 ) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
-    match mode {
-        ContentMode::Math => implicit_group_parser(ContentMode::Math, math_content),
-        ContentMode::Text => implicit_group_parser(ContentMode::Text, text_content),
-    }
+    implicit_group_parser(mode, content)
 }
 
 /// Parse a control sequence and ensure it matches the expected command kind.
@@ -225,18 +93,12 @@ fn command_head_parser<'src, 'parse>(
         ));
     }
 
-    let kind_label = |kind: CommandKind| match kind {
-        CommandKind::Prefix => "prefix",
-        CommandKind::Infix => "infix",
-        CommandKind::Declarative => "declarative",
-    };
-
     let meta = match knowledge::lookup_command(&name) {
         Some(meta) if meta.kind == expected_kind => meta,
         Some(_) => {
             return Err(Rich::custom(
                 cmd_span,
-                format!("not {}", kind_label(expected_kind)),
+                format!("not {}", expected_kind.label()),
             ));
         }
         None => {
@@ -283,8 +145,8 @@ fn math_infix_or_decl_guard<'a>() -> impl Parser<'a, TokenInput<'a>, (), ParserE
     }
 }
 
-/// Guard used to stop text content before declarative commands.
-fn text_declarative_guard<'a>() -> impl Parser<'a, TokenInput<'a>, (), ParserError<'a>> + Clone {
+/// Guard used to stop content parsing before declarative commands.
+fn declarative_guard<'a>() -> impl Parser<'a, TokenInput<'a>, (), ParserError<'a>> + Clone {
     select! {
         Token::ControlSeq(name)
             if knowledge::lookup_command(name.as_str())
@@ -319,7 +181,7 @@ fn text_item_parser<'a>(
 ) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
     let normal_item = text_atom_parser(text_content.clone(), math_content, text_content, strict);
 
-    text_declarative_guard()
+    declarative_guard()
         .or(control_seq("end"))
         .not()
         .ignore_then(normal_item)
@@ -332,31 +194,72 @@ fn argument_parser<'a>(
     spec: ArgSpec,
     strict: bool,
 ) -> ArgumentParser<'a> {
-    let content = match spec.mode {
-        ContentMode::Math => math_content.clone(),
-        ContentMode::Text => text_content.clone(),
-    };
-
     match spec.kind {
-        ArgumentKind::Mandatory => {
-            let braced = braced_group_parser(spec.mode, content.clone());
-            let single_item: NodeParser<'a> = match spec.mode {
-                ContentMode::Math => math_item_parser(math_content, text_content, strict).boxed(),
-                ContentMode::Text => text_item_parser(math_content, text_content, strict).boxed(),
+        ValueKind::Content { mode } => {
+            let content = match mode {
+                ContentMode::Math => math_content.clone(),
+                ContentMode::Text => text_content.clone(),
             };
-            choice((braced, single_item))
-                .labelled("mandatory argument")
-                .map(move |node| Argument::mandatory(normalize_argument_value(spec.mode, node)))
+
+            if spec.required {
+                let braced = braced_group_parser(mode, content.clone());
+                let single_item: NodeParser<'a> = match mode {
+                    ContentMode::Math => {
+                        math_item_parser(math_content, text_content, strict).boxed()
+                    }
+                    ContentMode::Text => {
+                        text_item_parser(math_content, text_content, strict).boxed()
+                    }
+                };
+                choice((braced, single_item))
+                    .labelled("mandatory argument")
+                    .map(move |node| Argument::mandatory(normalize_argument_value(mode, node)))
+                    .boxed()
+            } else {
+                bracket_group_parser(mode, content)
+                    .labelled("optional argument")
+                    .or_not()
+                    .map(move |opt| match opt {
+                        Some(node) => Argument::optional(normalize_argument_value(mode, node)),
+                        None => Argument::optional(SyntaxNode::empty_group(mode)),
+                    })
+                    .boxed()
+            }
+        }
+        ValueKind::Delimiter => {
+            let kind = ArgumentKind::from_required(spec.required);
+
+            if spec.required {
+                maybe_braced(delimiter())
+                    .map(move |value| Argument::from_value(kind, ArgumentValue::Delimiter(value)))
+                    .boxed()
+            } else {
+                optional_bracketed(delimiter())
+                    .map(move |opt| {
+                        let value = opt.unwrap_or(Delimiter::None);
+                        Argument::from_value(kind, ArgumentValue::Delimiter(value))
+                    })
+                    .boxed()
+            }
+        }
+        ValueKind::Dimension => {
+            let kind = ArgumentKind::from_required(spec.required);
+            dimension_value(spec.required)
+                .map(move |value| Argument::from_value(kind, ArgumentValue::Dimension(value)))
                 .boxed()
         }
-        ArgumentKind::Optional => bracket_group_parser(spec.mode, content)
-            .labelled("optional argument")
-            .or_not()
-            .map(move |opt| match opt {
-                Some(node) => Argument::optional(normalize_argument_value(spec.mode, node)),
-                None => Argument::optional(SyntaxNode::empty_group(spec.mode)),
-            })
-            .boxed(),
+        ValueKind::Integer => {
+            let kind = ArgumentKind::from_required(spec.required);
+            integer_value(spec.required)
+                .map(move |value| Argument::from_value(kind, ArgumentValue::Integer(value)))
+                .boxed()
+        }
+        ValueKind::KeyVal => {
+            let kind = ArgumentKind::from_required(spec.required);
+            keyval_value(spec.required)
+                .map(move |value| Argument::from_value(kind, ArgumentValue::KeyVal(value)))
+                .boxed()
+        }
     }
 }
 
@@ -515,11 +418,11 @@ fn environment_parser<'a>(
             strict,
         ))?;
 
-        let body = input.parse(env_body_parser(
-            meta.body_mode,
-            math_content.clone(),
-            text_content.clone(),
-        ))?;
+        let body_content = match meta.body_mode {
+            ContentMode::Math => math_content.clone(),
+            ContentMode::Text => text_content.clone(),
+        };
+        let body = input.parse(env_body_parser(meta.body_mode, body_content))?;
 
         let end_tag = just(Token::ControlSeq("end".into()))
             .ignore_then(env_name_parser())
@@ -685,7 +588,7 @@ where
         Ok((name, starred, args))
     });
 
-    let stop_declarative = text_declarative_guard();
+    let stop_declarative = declarative_guard();
 
     let guarded_item = stop_declarative
         .not()
@@ -819,7 +722,7 @@ fn text_group_content_parser<'a, P>(
 where
     P: Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
 {
-    let stop_declarative = text_declarative_guard();
+    let stop_declarative = declarative_guard();
 
     let guarded_item = stop_declarative
         .or(control_seq("end"))
@@ -905,37 +808,4 @@ fn math_block_parser<'a>(strict: bool) -> NodeParser<'a> {
 fn text_block_parser<'a>(strict: bool) -> NodeParser<'a> {
     let (_, text_parser) = mode_group_parsers(strict);
     text_parser
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Normalize argument value by collapsing groups to a single node when possible.
-///
-/// This ensures `\frac{a}{b}` and `\frac ab` produce identical AST:
-/// - Single-element explicit groups are unwrapped to the element itself
-/// - Multi-element groups become implicit groups
-/// - Empty groups remain as empty implicit groups
-fn normalize_argument_value(mode: ContentMode, node: SyntaxNode) -> SyntaxNode {
-    match node {
-        SyntaxNode::Group { children, .. } => fold_items(mode, children),
-        other => other,
-    }
-}
-
-fn fold_items(mode: ContentMode, items: Vec<SyntaxNode>) -> SyntaxNode {
-    match items.len() {
-        0 => SyntaxNode::Group {
-            mode,
-            kind: GroupKind::Implicit,
-            children: vec![],
-        },
-        1 => items.into_iter().next().unwrap(),
-        _ => SyntaxNode::Group {
-            mode,
-            kind: GroupKind::Implicit,
-            children: items,
-        },
-    }
 }
