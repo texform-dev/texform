@@ -16,7 +16,7 @@ pub struct KnowledgeBase {
     command_idx_by_name: HashMap<&'static str, usize>,
     envs: Vec<EnvMeta>,
     env_idx_by_name: HashMap<&'static str, usize>,
-    blacklist: HashMap<&'static str, &'static str>,
+    blocklist: HashSet<&'static str>,
     delimiter_controls: HashSet<&'static str>,
 }
 
@@ -39,8 +39,8 @@ impl KnowledgeBase {
             .map(|idx| &self.envs[idx])
     }
 
-    pub fn is_blacklisted(&self, name: &str) -> Option<&'static str> {
-        self.blacklist.get(name).copied()
+    pub fn is_blocklisted(&self, name: &str) -> bool {
+        self.blocklist.contains(name)
     }
 
     pub fn is_delimiter_control(&self, name: &str) -> bool {
@@ -58,7 +58,7 @@ pub struct KnowledgeBaseBuilder {
     command_idx_by_name: HashMap<&'static str, usize>,
     envs: Vec<EnvMeta>,
     env_idx_by_name: HashMap<&'static str, usize>,
-    blacklist: HashMap<&'static str, &'static str>,
+    blocklist: HashSet<&'static str>,
     delimiter_controls: HashSet<&'static str>,
 }
 
@@ -122,14 +122,9 @@ impl KnowledgeBaseBuilder {
         }
     }
 
-    pub fn insert_or_override_blacklist(
-        &mut self,
-        name: impl Into<String>,
-        reason: impl Into<String>,
-    ) {
+    pub fn insert_blocklist(&mut self, name: impl Into<String>) {
         let name: &'static str = Box::leak(name.into().into_boxed_str());
-        let reason: &'static str = Box::leak(reason.into().into_boxed_str());
-        self.blacklist.insert(name, reason);
+        self.blocklist.insert(name);
     }
 
     pub fn insert_delimiter_control(&mut self, name: impl Into<String>) {
@@ -150,8 +145,8 @@ impl KnowledgeBaseBuilder {
         for name in specs.delimiter_controls {
             self.insert_delimiter_control(name);
         }
-        for (name, reason) in specs.blacklist {
-            self.insert_or_override_blacklist(name, reason);
+        for name in specs.blocklist {
+            self.insert_blocklist(name);
         }
     }
 
@@ -161,7 +156,7 @@ impl KnowledgeBaseBuilder {
             command_idx_by_name: self.command_idx_by_name,
             envs: self.envs,
             env_idx_by_name: self.env_idx_by_name,
-            blacklist: self.blacklist,
+            blocklist: self.blocklist,
             delimiter_controls: self.delimiter_controls,
         }
     }
@@ -233,11 +228,9 @@ pub fn lookup_env(name: &str) -> Option<&'static EnvMeta> {
     kb().lookup_env(name)
 }
 
-/// Check if command is blacklisted.
-///
-/// Returns Some(reason) if blacklisted, None otherwise.
-pub fn is_blacklisted(name: &str) -> Option<&'static str> {
-    kb().is_blacklisted(name)
+/// Check if command is blocklisted.
+pub fn is_blocklisted(name: &str) -> bool {
+    kb().is_blocklisted(name)
 }
 
 /// Check if control sequence acts as a delimiter usable by \left...\right.
@@ -297,13 +290,10 @@ mod tests {
     }
 
     #[test]
-    fn test_blacklist() {
-        assert_eq!(is_blacklisted("ifnum"), Some("Control flow not supported"));
-        assert_eq!(
-            is_blacklisted("csname"),
-            Some("Dynamic command names not supported")
-        );
-        assert_eq!(is_blacklisted("frac"), None);
+    fn test_blocklist() {
+        assert!(is_blocklisted("ifnum"));
+        assert!(is_blocklisted("csname"));
+        assert!(!is_blocklisted("frac"));
     }
 
     #[test]
@@ -354,7 +344,7 @@ mod tests {
             }],
             environments: vec![],
             delimiter_controls: vec![],
-            blacklist: std::collections::HashMap::new(),
+            blocklist: vec![],
         });
 
         let kb = builder.build();

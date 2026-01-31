@@ -6,8 +6,6 @@
 //!
 //! For rapid prototyping, configuration errors fail fast (panic).
 
-use std::collections::HashMap;
-
 use serde::Deserialize;
 use texform_interface::syntax_node::ContentMode;
 
@@ -179,7 +177,7 @@ pub struct PackageSpecs {
     pub commands: Vec<CommandSpec>,
     pub environments: Vec<EnvironmentSpec>,
     pub delimiter_controls: Vec<String>,
-    pub blacklist: HashMap<String, String>,
+    pub blocklist: Vec<String>,
 }
 
 pub fn load_package_specs_from_str(yaml: &str, context: &str) -> PackageSpecs {
@@ -199,7 +197,7 @@ struct PackageSpecsYaml {
     #[serde(default)]
     delimiter_controls: Vec<String>,
     #[serde(default)]
-    blacklist: HashMap<String, String>,
+    blocklist: Vec<String>,
 }
 
 impl PackageSpecsYaml {
@@ -209,7 +207,7 @@ impl PackageSpecsYaml {
             commands: self.commands.into_iter().map(|c| c.into()).collect(),
             environments: self.environments.into_iter().map(|e| e.into()).collect(),
             delimiter_controls: self.delimiter_controls,
-            blacklist: self.blacklist,
+            blocklist: self.blocklist,
         }
     }
 }
@@ -358,8 +356,7 @@ environments:
   - name: matrix
     body_mode: math
 delimiter_controls: [langle]
-blacklist:
-  ifnum: nope
+blocklist: [ifnum]
 "#;
 
         let specs = load_package_specs_from_str(yaml, "test");
@@ -387,7 +384,7 @@ blacklist:
         assert_eq!(specs.environments.len(), 1);
         assert_eq!(specs.environments[0].name, "matrix");
         assert_eq!(specs.delimiter_controls, vec!["langle"]);
-        assert_eq!(specs.blacklist.get("ifnum").unwrap(), "nope");
+        assert_eq!(specs.blocklist, vec!["ifnum"]);
     }
 
     // Knowledge-base construction lives in texform-core.

@@ -919,8 +919,8 @@ fn test_unknown_command_strict() {
 }
 
 #[test]
-fn test_blacklisted_command() {
-    // "\ifnum" is blacklisted
+fn test_blocklisted_command() {
+    // "\ifnum" is blocklisted
     let tokens = vec![Token::ControlSeq("ifnum".to_string())];
 
     let result = parse(&tokens, false);

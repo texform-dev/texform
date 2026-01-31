@@ -86,10 +86,10 @@ fn command_head_parser<'src, 'parse>(
 
     let cmd_span = input.span_from_cursor(&cmd_start);
 
-    if let Some(reason) = knowledge::is_blacklisted(&name) {
+    if knowledge::is_blocklisted(&name) {
         return Err(Rich::custom(
             cmd_span,
-            format!("Banned command: \\{} ({})", name, reason),
+            format!("Banned command: \\{}", name),
         ));
     }
 
@@ -322,10 +322,10 @@ fn unknown_command_parser<'a>(
 ) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
     select! { Token::ControlSeq(name) => name }
         .try_map(move |name, span| {
-            if let Some(reason) = knowledge::is_blacklisted(&name) {
+            if knowledge::is_blocklisted(&name) {
                 return Err(Rich::custom(
                     span,
-                    format!("Banned command: \\{} ({})", name, reason),
+                    format!("Banned command: \\{}", name),
                 ));
             }
             if knowledge::lookup_command(name.as_str()).is_some() {
