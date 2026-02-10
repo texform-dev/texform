@@ -16,6 +16,7 @@ logos = "0.15.1"
 serde = { version = "1.0.216", features = ["derive"] }
 serde_yaml = "0.9.34"
 slotmap = "1.0.7"
+ariadne = "0.5"
 
 texform-interface = { path = "crates/texform-interface" }
 texform-specs = { path = "crates/texform-specs" }

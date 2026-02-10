@@ -1,6 +1,5 @@
-use logos::Logos;
+use ariadne::{Config, IndexType, Label, Report, ReportKind, Source};
 use std::env;
-use texform_core::lexer::Token;
 use texform_core::parser;
 
 fn main() {
@@ -46,43 +45,34 @@ fn main() {
     println!("Strict mode: {}", strict);
     println!();
 
-    // Step 1: Lexical analysis
-    println!("--- Step 1: Lexical Analysis ---");
-    let mut lexer = Token::lexer(&input);
-    let mut all_tokens = Vec::new();
-
-    while let Some(result) = lexer.next() {
-        match result {
-            Ok(token) => {
-                all_tokens.push(token.clone());
-                println!("  {:?}", token);
-            }
-            Err(err) => {
-                eprintln!(
-                    "Lexical error at position {}: {:?}",
-                    lexer.span().start,
-                    err
-                );
-                return;
-            }
-        }
-    }
-    println!("Total tokens: {}", all_tokens.len());
-    println!();
-
-    // Step 2: Parsing (comments are skipped by the lexer)
-    println!("--- Step 2: Parsing ---");
-    match parser::parse(&all_tokens, strict) {
-        Ok(syntax_node) => {
+    // Parse directly from source string
+    println!("--- Parsing ---");
+    match parser::parse(&input, strict) {
+        Ok((syntax_node, span)) => {
             println!("Parse successful!");
+            println!("Root span: {}..{}", span.start, span.end);
             println!();
             println!("--- Syntax Tree ---");
             println!("{}", syntax_node);
         }
         Err(errors) => {
             eprintln!("Parse error(s):");
+            let config = Config::default().with_index_type(IndexType::Byte);
+            let source = Source::from(input.as_str());
+
             for error in &errors {
-                eprintln!("  {:?}", error);
+                let span = error.span();
+                let range = span.start..span.end;
+
+                let mut builder = Report::build(ReportKind::Error, range.clone())
+                    .with_config(config)
+                    .with_message(format!("{:?}", error));
+
+                builder = builder.with_label(
+                    Label::new(range).with_message(format!("{:?}", error.reason())),
+                );
+
+                builder.finish().eprint(source.clone()).unwrap();
             }
         }
     }

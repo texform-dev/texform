@@ -9,52 +9,57 @@ use chumsky::prelude::*;
 use crate::knowledge::{self, ArgSpec, CommandKind, CommandMeta, EnvMeta, ValueKind};
 use crate::lexer::Token;
 use crate::parser_utils::{
-    ParserError,
-    ParserInput,
-    ParserInputExt,
-    TokenInput,
     // Base parsers
     active_char,
     braced_group_parser,
     bracket_group_parser,
+    build_token_stream,
     control_seq,
-    delimiter,
     delimited_group_parser,
+    delimiter,
+    // Value parsers
+    dimension_value,
     escaped_symbol,
     // Helpers
     fold_items,
     implicit_group_parser,
     // Token-level parsers
     insignificant_whitespace,
+    integer_value,
+    keyval_value,
     math_char,
     maybe_braced,
     normalize_argument_value,
     optional_bracketed,
     parse_scripted_components,
     text_chunk,
-    // Value parsers
-    dimension_value,
-    integer_value,
-    keyval_value,
+    ParserError,
+    ParserInput,
+    ParserInputExt,
+    Spanned,
+    TokenStream,
 };
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
 };
 
-type ContentParser<'a> = Boxed<'a, 'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>>;
-type NodeParser<'a> = Boxed<'a, 'a, TokenInput<'a>, SyntaxNode, ParserError<'a>>;
-type ArgumentParser<'a> = Boxed<'a, 'a, TokenInput<'a>, Argument, ParserError<'a>>;
+type ContentParser<'a> = Boxed<'a, 'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>>;
+type NodeParser<'a> = Boxed<'a, 'a, TokenStream<'a>, SyntaxNode, ParserError<'a>>;
+type ArgumentParser<'a> = Boxed<'a, 'a, TokenStream<'a>, Argument, ParserError<'a>>;
 type TailParseOutput = ((String, bool, Vec<Argument>), Vec<SyntaxNode>);
 
 // ============================================================================
 // Public Interface
 // ============================================================================
 
-/// Parse entry point - Math mode.
-pub fn parse(tokens: &[Token], strict: bool) -> Result<SyntaxNode, Vec<Rich<'_, Token>>> {
+/// Parse entry point - Math mode. Accepts source string directly.
+/// Returns a `Spanned<SyntaxNode>` where the span covers the full input range.
+pub fn parse(src: &str, strict: bool) -> Result<Spanned<SyntaxNode>, Vec<Rich<'_, Token>>> {
+    let token_stream = build_token_stream(src);
     math_block_parser(strict)
+        .map_with(|node, e| (node, e.span()))
         .then_ignore(end())
-        .parse(tokens)
+        .parse(token_stream)
         .into_result()
 }
 
@@ -66,7 +71,7 @@ pub fn parse(tokens: &[Token], strict: bool) -> Result<SyntaxNode, Vec<Rich<'_, 
 fn env_body_parser<'a>(
     mode: ContentMode,
     content: ContentParser<'a>,
-) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     implicit_group_parser(mode, content)
 }
 
@@ -136,7 +141,7 @@ fn command_head_parser<'src, 'parse>(
 // ============================================================================
 
 /// Guard used to stop math content before infix/declarative commands.
-fn math_infix_or_decl_guard<'a>() -> impl Parser<'a, TokenInput<'a>, (), ParserError<'a>> + Clone {
+fn math_infix_or_decl_guard<'a>() -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
     select! {
         Token::ControlSeq(name)
             if knowledge::lookup_command(name.as_str())
@@ -146,7 +151,7 @@ fn math_infix_or_decl_guard<'a>() -> impl Parser<'a, TokenInput<'a>, (), ParserE
 }
 
 /// Guard used to stop content parsing before declarative commands.
-fn declarative_guard<'a>() -> impl Parser<'a, TokenInput<'a>, (), ParserError<'a>> + Clone {
+fn declarative_guard<'a>() -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
     select! {
         Token::ControlSeq(name)
             if knowledge::lookup_command(name.as_str())
@@ -160,7 +165,7 @@ fn math_item_parser<'a>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     let ws = insignificant_whitespace();
     let atom = math_atom_parser(math_content.clone(), math_content, text_content, strict);
     let scripted = scripted_atom_parser(atom);
@@ -178,7 +183,7 @@ fn text_item_parser<'a>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     let normal_item = text_atom_parser(text_content.clone(), math_content, text_content, strict);
 
     declarative_guard()
@@ -270,7 +275,7 @@ fn arguments_parser<'a>(
     specs: &'static [ArgSpec],
     strict: bool,
     context: &'static str,
-) -> impl Parser<'a, TokenInput<'a>, Vec<Argument>, ParserError<'a>> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, Vec<Argument>, ParserError<'a>> + Clone {
     custom(move |input| {
         let mut args = Vec::with_capacity(specs.len());
 
@@ -294,7 +299,7 @@ fn prefix_command_parser<'a>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     custom(move |input| {
         let (name, meta, starred) = match command_head_parser(input, CommandKind::Prefix, strict) {
             Ok(data) => data,
@@ -319,14 +324,11 @@ fn prefix_command_parser<'a>(
 
 fn unknown_command_parser<'a>(
     strict: bool,
-) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     select! { Token::ControlSeq(name) => name }
         .try_map(move |name, span| {
             if knowledge::is_blocklisted(&name) {
-                return Err(Rich::custom(
-                    span,
-                    format!("Banned command: \\{}", name),
-                ));
+                return Err(Rich::custom(span, format!("Banned command: \\{}", name)));
             }
             if knowledge::lookup_command(name.as_str()).is_some() {
                 return Err(Rich::custom(span, "Unexpected known command"));
@@ -345,7 +347,7 @@ fn unknown_command_parser<'a>(
 }
 
 /// Parse `{name}` or `{name*}` inside environment delimiters.
-fn env_name_parser<'a>() -> impl Parser<'a, TokenInput<'a>, (String, bool), ParserError<'a>> + Clone
+fn env_name_parser<'a>() -> impl Parser<'a, TokenStream<'a>, (String, bool), ParserError<'a>> + Clone
 {
     let base_name = select! {
         Token::Char(c) => c,
@@ -367,8 +369,8 @@ fn parse_env_header<'a>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenInput<'a>, (String, bool, Vec<Argument>, &'static EnvMeta), ParserError<'a>>
-+ Clone {
+) -> impl Parser<'a, TokenStream<'a>, (String, bool, Vec<Argument>, &'static EnvMeta), ParserError<'a>>
+       + Clone {
     custom(move |input| {
         input.parse(control_seq("begin"))?;
 
@@ -410,7 +412,7 @@ fn environment_parser<'a>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     custom(move |input| {
         let (name, starred, args, meta) = input.parse(parse_env_header(
             math_content.clone(),
@@ -471,9 +473,9 @@ fn math_atom_parser<'a, P>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
 {
     let explicit_group = braced_group_parser(ContentMode::Math, group_content.clone());
     let delimited_group = delimited_group_parser(math_content.clone());
@@ -496,9 +498,9 @@ where
 /// Wrap a base atom with script parsing (`^`, `_`, primes).
 fn scripted_atom_parser<'a, P>(
     atom: P,
-) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
 {
     let ws = insignificant_whitespace();
     let atom_for_scripts = atom.clone().padded_by(ws.clone());
@@ -525,16 +527,16 @@ fn text_atom_parser<'a, P>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
 {
-    let inline_math = just(&Token::MathShift)
+    let inline_math = just(Token::MathShift)
         .ignore_then(implicit_group_parser(
             ContentMode::Math,
             math_content.clone(),
         ))
-        .then_ignore(just(&Token::MathShift))
+        .then_ignore(just(Token::MathShift))
         .map(|node| match node {
             SyntaxNode::Group { mode, children, .. } => SyntaxNode::Group {
                 mode,
@@ -567,9 +569,9 @@ fn infix_tail_parser<'a, P>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenInput<'a>, TailParseOutput, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, TailParseOutput, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
 {
     let infix_cmd = custom(move |input| {
         let (name, meta, starred) = match command_head_parser(input, CommandKind::Infix, strict) {
@@ -605,9 +607,9 @@ fn declarative_tail_parser<'a, P>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenInput<'a>, TailParseOutput, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, TailParseOutput, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
 {
     let decl_cmd = custom(move |input| {
         let (name, meta, starred) =
@@ -637,9 +639,9 @@ fn math_group_content_parser<'a, P>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
 {
     let stop_infix_or_decl = math_infix_or_decl_guard();
     let guarded_item = stop_infix_or_decl
@@ -718,9 +720,9 @@ fn text_group_content_parser<'a, P>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
 {
     let stop_declarative = declarative_guard();
 

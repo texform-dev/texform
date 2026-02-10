@@ -8,9 +8,10 @@
 //! - Helper functions for AST normalization
 
 use chumsky::{
-    input::{Cursor, InputRef},
+    input::{Cursor, InputRef, Stream},
     prelude::*,
 };
+use logos::Logos;
 
 use crate::knowledge;
 use crate::lexer::Token;
@@ -20,9 +21,45 @@ use texform_interface::syntax_node::{ContentMode, Delimiter, GroupKind, SyntaxNo
 // Type Aliases
 // ============================================================================
 
+/// A value paired with its source byte span.
+pub type Spanned<T> = (T, SimpleSpan);
+
+/// The concrete mapped input type produced by `build_token_stream`.
+/// `Stream<...>.map(eoi, |(tok, span)| (tok, span))` yields this.
+pub type TokenStream<'a> = chumsky::input::MappedInput<
+    Token,
+    SimpleSpan,
+    Stream<std::vec::IntoIter<(Token, SimpleSpan)>>,
+    fn((Token, SimpleSpan)) -> (Token, SimpleSpan),
+>;
+
 pub type ParserError<'a> = extra::Err<Rich<'a, Token>>;
-pub type TokenInput<'a> = &'a [Token];
-pub type ParserInput<'src, 'parse> = InputRef<'src, 'parse, TokenInput<'src>, ParserError<'src>>;
+pub type ParserInput<'src, 'parse> = InputRef<'src, 'parse, TokenStream<'src>, ParserError<'src>>;
+
+/// Build a chumsky token stream from a source string.
+///
+/// Performs lexing via logos and wraps the result in a `Stream` + `MappedInput`
+/// so that chumsky automatically propagates byte-level spans.
+pub fn build_token_stream(src: &str) -> TokenStream<'_> {
+    let tokens: Vec<(Token, SimpleSpan)> = Token::lexer(src)
+        .spanned()
+        .map(|(tok, span)| {
+            let tok = tok.unwrap_or_else(|()| {
+                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
+            });
+            (tok, SimpleSpan::from(span))
+        })
+        .collect();
+    let eoi: SimpleSpan = SimpleSpan::new((), src.len()..src.len());
+    let stream = Stream::from_iter(tokens);
+    fn identity(pair: (Token, SimpleSpan)) -> (Token, SimpleSpan) {
+        pair
+    }
+    stream.map(
+        eoi,
+        identity as fn((Token, SimpleSpan)) -> (Token, SimpleSpan),
+    )
+}
 
 // ============================================================================
 // Parser Input Extensions
@@ -30,14 +67,11 @@ pub type ParserInput<'src, 'parse> = InputRef<'src, 'parse, TokenInput<'src>, Pa
 
 /// Ergonomic helpers for building spans and custom errors in imperative parsers.
 pub trait ParserInputExt<'src, 'parse> {
-    fn span_from_cursor(
-        &mut self,
-        start: &Cursor<'src, 'parse, TokenInput<'src>>,
-    ) -> SimpleSpan<usize>;
+    fn span_from_cursor(&mut self, start: &Cursor<'src, 'parse, TokenStream<'src>>) -> SimpleSpan;
 
     fn err_since(
         &mut self,
-        start: &Cursor<'src, 'parse, TokenInput<'src>>,
+        start: &Cursor<'src, 'parse, TokenStream<'src>>,
         msg: impl ToString,
     ) -> Rich<'src, Token>;
 
@@ -45,24 +79,21 @@ pub trait ParserInputExt<'src, 'parse> {
     /// point span at EOF.
     fn err_peek_or_point(
         &mut self,
-        start: &Cursor<'src, 'parse, TokenInput<'src>>,
+        start: &Cursor<'src, 'parse, TokenStream<'src>>,
         msg: impl ToString,
     ) -> Rich<'src, Token>;
 }
 
 impl<'src, 'parse> ParserInputExt<'src, 'parse> for ParserInput<'src, 'parse> {
     #[inline]
-    fn span_from_cursor(
-        &mut self,
-        start: &Cursor<'src, 'parse, TokenInput<'src>>,
-    ) -> SimpleSpan<usize> {
+    fn span_from_cursor(&mut self, start: &Cursor<'src, 'parse, TokenStream<'src>>) -> SimpleSpan {
         self.span_since(start)
     }
 
     #[inline]
     fn err_since(
         &mut self,
-        start: &Cursor<'src, 'parse, TokenInput<'src>>,
+        start: &Cursor<'src, 'parse, TokenStream<'src>>,
         msg: impl ToString,
     ) -> Rich<'src, Token> {
         Rich::custom(self.span_from_cursor(start), msg)
@@ -71,16 +102,13 @@ impl<'src, 'parse> ParserInputExt<'src, 'parse> for ParserInput<'src, 'parse> {
     #[inline]
     fn err_peek_or_point(
         &mut self,
-        start: &Cursor<'src, 'parse, TokenInput<'src>>,
+        start: &Cursor<'src, 'parse, TokenStream<'src>>,
         msg: impl ToString,
     ) -> Rich<'src, Token> {
-        let start_pos = *start.inner();
-        let end = if self.peek().is_some() {
-            start_pos + 1
-        } else {
-            start_pos
-        };
-        Rich::custom(SimpleSpan::new((), start_pos..end), msg)
+        // Use span_since to get a byte-level span from the cursor position.
+        // If there's a next token, the span covers it; otherwise it's zero-width.
+        let span = self.span_since(start);
+        Rich::custom(span, msg)
     }
 }
 
@@ -89,25 +117,25 @@ impl<'src, 'parse> ParserInputExt<'src, 'parse> for ParserInput<'src, 'parse> {
 // ============================================================================
 
 /// Consume insignificant whitespace tokens and produce no output.
-pub fn insignificant_whitespace<'a>() -> impl Parser<'a, TokenInput<'a>, (), ParserError<'a>> + Clone
-{
+pub fn insignificant_whitespace<'a>(
+) -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
     select! { Token::Whitespaces => () }.repeated().ignored()
 }
 
 /// Wrap a parser to accept either `{...}` or inline input.
 pub fn maybe_braced<'a, T, P>(
     inner: P,
-) -> impl Parser<'a, TokenInput<'a>, T, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, T, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenInput<'a>, T, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, T, ParserError<'a>> + Clone + 'a,
     T: 'a,
 {
     let ws = insignificant_whitespace();
-    let braced = just(&Token::LBrace)
+    let braced = just(Token::LBrace)
         .ignore_then(ws.clone())
         .ignore_then(inner.clone())
         .then_ignore(ws)
-        .then_ignore(just(&Token::RBrace));
+        .then_ignore(just(Token::RBrace));
 
     choice((braced, inner))
 }
@@ -115,17 +143,17 @@ where
 /// Wrap a parser to accept an optional `[...]` argument.
 pub fn optional_bracketed<'a, T, P>(
     inner: P,
-) -> impl Parser<'a, TokenInput<'a>, Option<T>, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, Option<T>, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenInput<'a>, T, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, T, ParserError<'a>> + Clone + 'a,
     T: 'a,
 {
     let ws = insignificant_whitespace();
-    just(&Token::LBracket)
+    just(Token::LBracket)
         .ignore_then(ws.clone())
         .ignore_then(inner)
         .then_ignore(ws)
-        .then_ignore(just(&Token::RBracket))
+        .then_ignore(just(Token::RBracket))
         .or_not()
 }
 
@@ -135,7 +163,7 @@ where
 /// - '.' => Delimiter::None
 /// - '(', ')', '[', ']', '|' etc => Delimiter::Char
 /// - \langle, \rangle etc => Delimiter::Control
-pub fn delimiter<'a>() -> impl Parser<'a, TokenInput<'a>, Delimiter, ParserError<'a>> + Clone {
+pub fn delimiter<'a>() -> impl Parser<'a, TokenStream<'a>, Delimiter, ParserError<'a>> + Clone {
     select! {
         Token::Char('.') => Delimiter::None,
         Token::Char(c) if matches!(c, '(' | ')' | '[' | ']' | '|' | '<' | '>' | '/' | '\\')
@@ -148,8 +176,9 @@ pub fn delimiter<'a>() -> impl Parser<'a, TokenInput<'a>, Delimiter, ParserError
 }
 
 /// Parse escaped symbol control sequences into raw `Char` nodes.
-/// 
-pub fn escaped_symbol<'a>() -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
+///
+pub fn escaped_symbol<'a>() -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
+{
     select! {
         Token::ControlSeq(name) if matches!(name.as_str(), "%" | "$" | "&" | "#" | "_" | "{" | "}") => {
             SyntaxNode::Char(name.chars().next().unwrap())
@@ -159,12 +188,12 @@ pub fn escaped_symbol<'a>() -> impl Parser<'a, TokenInput<'a>, SyntaxNode, Parse
 }
 
 /// Parse the active character `~` into `ActiveSpace`.
-pub fn active_char<'a>() -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
-    just(&Token::ActiveChar).to(SyntaxNode::ActiveSpace)
+pub fn active_char<'a>() -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
+    just(Token::ActiveChar).to(SyntaxNode::ActiveSpace)
 }
 
 /// Parse plain math characters (including `*` and `&` tokens).
-pub fn math_char<'a>() -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
+pub fn math_char<'a>() -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     select! {
         Token::Char(c) => SyntaxNode::Char(c),
         Token::Star => SyntaxNode::Char('*'),
@@ -174,7 +203,7 @@ pub fn math_char<'a>() -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserErro
 }
 
 /// Parse and coalesce consecutive text characters/whitespace into a single `Text` node.
-pub fn text_chunk<'a>() -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone {
+pub fn text_chunk<'a>() -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     select! {
         Token::Char(c) => c,
         Token::Whitespaces => ' ',
@@ -204,7 +233,7 @@ pub fn text_chunk<'a>() -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserErr
 /// Match an exact control sequence.
 pub fn control_seq<'a>(
     target: &'static str,
-) -> impl Parser<'a, TokenInput<'a>, (), ParserError<'a>> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
     select! {
         Token::ControlSeq(name) if name == target => (),
     }
@@ -219,9 +248,9 @@ pub fn control_seq<'a>(
 pub fn implicit_group_parser<'a, P>(
     mode: ContentMode,
     content: P,
-) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
 {
     content.map(move |children| SyntaxNode::Group {
         mode,
@@ -234,13 +263,13 @@ where
 pub fn braced_group_parser<'a, P>(
     mode: ContentMode,
     content: P,
-) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
 {
-    just(&Token::LBrace)
+    just(Token::LBrace)
         .ignore_then(content)
-        .then_ignore(just(&Token::RBrace))
+        .then_ignore(just(Token::RBrace))
         .map(move |children| SyntaxNode::Group {
             mode,
             kind: GroupKind::Explicit,
@@ -252,13 +281,13 @@ where
 pub fn bracket_group_parser<'a, P>(
     mode: ContentMode,
     content: P,
-) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
 {
-    just(&Token::LBracket)
+    just(Token::LBracket)
         .ignore_then(content)
-        .then_ignore(just(&Token::RBracket))
+        .then_ignore(just(Token::RBracket))
         .map(move |children| SyntaxNode::Group {
             mode,
             kind: GroupKind::Explicit,
@@ -269,9 +298,9 @@ where
 /// Parse `\left ... \right` delimited math group.
 pub fn delimited_group_parser<'a, P>(
     math_content: P,
-) -> impl Parser<'a, TokenInput<'a>, SyntaxNode, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenInput<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
 {
     control_seq("left")
         .ignore_then(delimiter())
@@ -333,7 +362,7 @@ pub fn parse_scripted_components<'src, 'parse, P>(
     atom_for_scripts: P,
 ) -> Result<ScriptComponents, Rich<'src, Token>>
 where
-    P: Parser<'src, TokenInput<'src>, SyntaxNode, ParserError<'src>> + Clone + 'src,
+    P: Parser<'src, TokenStream<'src>, SyntaxNode, ParserError<'src>> + Clone + 'src,
 {
     let ws = insignificant_whitespace();
 
@@ -851,7 +880,7 @@ pub(crate) fn normalize_keyval_string(raw: &str) -> String {
 /// - Optional: accepts `[...]` or returns empty string
 pub fn integer_value<'a>(
     required: bool,
-) -> impl Parser<'a, TokenInput<'a>, String, ParserError<'a>> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, String, ParserError<'a>> + Clone {
     custom(move |input| {
         let raw = if required {
             if matches!(input.peek(), Some(Token::LBrace)) {
@@ -881,7 +910,7 @@ pub fn integer_value<'a>(
 /// - Optional: accepts `[...]` or returns empty string
 pub fn dimension_value<'a>(
     required: bool,
-) -> impl Parser<'a, TokenInput<'a>, String, ParserError<'a>> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, String, ParserError<'a>> + Clone {
     custom(move |input| {
         let raw = if required {
             if matches!(input.peek(), Some(Token::LBrace)) {
@@ -914,7 +943,7 @@ pub fn dimension_value<'a>(
 /// - Optional: accepts `[...]` or returns empty string
 pub fn keyval_value<'a>(
     required: bool,
-) -> impl Parser<'a, TokenInput<'a>, String, ParserError<'a>> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, String, ParserError<'a>> + Clone {
     custom(move |input| {
         let raw = if required {
             let start = input.cursor();

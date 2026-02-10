@@ -1,4 +1,3 @@
-use texform_core::lexer::Token;
 use texform_core::parser::parse;
 use texform_interface::syntax_node::{
     ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
@@ -17,8 +16,7 @@ fn unwrap_content(value: &ArgumentValue) -> &SyntaxNode {
 
 #[test]
 fn test_parse_simple_chars() {
-    let tokens = vec![Token::Char('a'), Token::Char('b'), Token::Char('c')];
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse("abc", false).unwrap();
 
     match result {
         SyntaxNode::Group {
@@ -39,8 +37,7 @@ fn test_parse_simple_chars() {
 
 #[test]
 fn test_parse_empty() {
-    let tokens = vec![];
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse("", false).unwrap();
 
     match result {
         SyntaxNode::Group {
@@ -58,13 +55,7 @@ fn test_parse_empty() {
 
 #[test]
 fn test_escaped_symbols() {
-    let tokens = vec![
-        Token::ControlSeq("%".to_string()),
-        Token::ControlSeq("$".to_string()),
-        Token::ControlSeq("&".to_string()),
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\%\$\&", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -79,9 +70,7 @@ fn test_escaped_symbols() {
 
 #[test]
 fn test_active_char() {
-    let tokens = vec![Token::Char('a'), Token::ActiveChar, Token::Char('b')];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse("a~b", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -96,9 +85,7 @@ fn test_active_char() {
 
 #[test]
 fn test_explicit_group() {
-    let tokens = vec![Token::LBrace, Token::Char('a'), Token::RBrace];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse("{a}", false).unwrap();
 
     match result {
         SyntaxNode::Group {
@@ -130,17 +117,7 @@ fn test_explicit_group() {
 
 #[test]
 fn test_nested_groups() {
-    let tokens = vec![
-        Token::Char('a'),
-        Token::LBrace,
-        Token::Char('b'),
-        Token::LBrace,
-        Token::Char('c'),
-        Token::RBrace,
-        Token::RBrace,
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse("a{b{c}}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -177,9 +154,7 @@ fn test_nested_groups() {
 
 #[test]
 fn test_simple_script() {
-    let tokens = vec![Token::Char('x'), Token::Superscript, Token::Char('2')];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse("x^2", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -205,24 +180,8 @@ fn test_simple_script() {
 #[test]
 fn test_script_normalization() {
     // "x^a_b" and "x_b^a" should produce equivalent AST
-    let tokens1 = vec![
-        Token::Char('x'),
-        Token::Superscript,
-        Token::Char('a'),
-        Token::Subscript,
-        Token::Char('b'),
-    ];
-
-    let tokens2 = vec![
-        Token::Char('x'),
-        Token::Subscript,
-        Token::Char('b'),
-        Token::Superscript,
-        Token::Char('a'),
-    ];
-
-    let result1 = parse(&tokens1, false).unwrap();
-    let result2 = parse(&tokens2, false).unwrap();
+    let (result1, _) = parse("x^a_b", false).unwrap();
+    let (result2, _) = parse("x_b^a", false).unwrap();
 
     assert_eq!(result1, result2);
 }
@@ -230,31 +189,14 @@ fn test_script_normalization() {
 #[test]
 fn test_script_duplicate_last_wins() {
     // "x^a^b" -> double exponent should error
-    let tokens = vec![
-        Token::Char('x'),
-        Token::Superscript,
-        Token::Char('a'),
-        Token::Superscript,
-        Token::Char('b'),
-    ];
-
-    let result = parse(&tokens, false);
+    let result = parse("x^a^b", false);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_script_with_group() {
     // "x^{ab}" -> Scripted with group as superscript
-    let tokens = vec![
-        Token::Char('x'),
-        Token::Superscript,
-        Token::LBrace,
-        Token::Char('a'),
-        Token::Char('b'),
-        Token::RBrace,
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse("x^{ab}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => match &children[0] {
@@ -288,17 +230,7 @@ fn test_script_with_group() {
 #[test]
 fn test_frac_command() {
     // "\frac{a}{b}"
-    let tokens = vec![
-        Token::ControlSeq("frac".to_string()),
-        Token::LBrace,
-        Token::Char('a'),
-        Token::RBrace,
-        Token::LBrace,
-        Token::Char('b'),
-        Token::RBrace,
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\frac{a}{b}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -327,14 +259,7 @@ fn test_frac_command() {
 #[test]
 fn test_sqrt_without_optional() {
     // "\sqrt{x}"
-    let tokens = vec![
-        Token::ControlSeq("sqrt".to_string()),
-        Token::LBrace,
-        Token::Char('x'),
-        Token::RBrace,
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\sqrt{x}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -365,17 +290,7 @@ fn test_sqrt_without_optional() {
 #[test]
 fn test_sqrt_with_optional() {
     // "\sqrt[3]{8}"
-    let tokens = vec![
-        Token::ControlSeq("sqrt".to_string()),
-        Token::LBracket,
-        Token::Char('3'),
-        Token::RBracket,
-        Token::LBrace,
-        Token::Char('8'),
-        Token::RBrace,
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\sqrt[3]{8}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -408,18 +323,7 @@ fn test_sqrt_with_optional() {
 #[test]
 fn test_text_command() {
     // "\text{hello}"
-    let tokens = vec![
-        Token::ControlSeq("text".to_string()),
-        Token::LBrace,
-        Token::Char('h'),
-        Token::Char('e'),
-        Token::Char('l'),
-        Token::Char('l'),
-        Token::Char('o'),
-        Token::RBrace,
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\text{hello}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => match &children[0] {
@@ -442,12 +346,7 @@ fn test_text_command() {
 #[test]
 fn test_delimiter_argument() {
     // "\delim\langle"
-    let tokens = vec![
-        Token::ControlSeq("delim".to_string()),
-        Token::ControlSeq("langle".to_string()),
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\delim\langle", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => match &children[0] {
@@ -469,14 +368,7 @@ fn test_delimiter_argument() {
 #[test]
 fn test_dimension_argument() {
     // "\hspace1em"
-    let tokens = vec![
-        Token::ControlSeq("hspace".to_string()),
-        Token::Char('1'),
-        Token::Char('e'),
-        Token::Char('m'),
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\hspace1em", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => match &children[0] {
@@ -497,13 +389,7 @@ fn test_dimension_argument() {
 #[test]
 fn test_integer_argument() {
     // "\romannumeral12"
-    let tokens = vec![
-        Token::ControlSeq("romannumeral".to_string()),
-        Token::Char('1'),
-        Token::Char('2'),
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\romannumeral12", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => match &children[0] {
@@ -524,39 +410,7 @@ fn test_integer_argument() {
 #[test]
 fn test_keyval_argument() {
     // "\includegraphics[width=1em,height=2pt]{file}"
-    let tokens = vec![
-        Token::ControlSeq("includegraphics".to_string()),
-        Token::LBracket,
-        Token::Char('w'),
-        Token::Char('i'),
-        Token::Char('d'),
-        Token::Char('t'),
-        Token::Char('h'),
-        Token::Char('='),
-        Token::Char('1'),
-        Token::Char('e'),
-        Token::Char('m'),
-        Token::Char(','),
-        Token::Char('h'),
-        Token::Char('e'),
-        Token::Char('i'),
-        Token::Char('g'),
-        Token::Char('h'),
-        Token::Char('t'),
-        Token::Char('='),
-        Token::Char('2'),
-        Token::Char('p'),
-        Token::Char('t'),
-        Token::RBracket,
-        Token::LBrace,
-        Token::Char('f'),
-        Token::Char('i'),
-        Token::Char('l'),
-        Token::Char('e'),
-        Token::RBrace,
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\includegraphics[width=1em,height=2pt]{file}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => match &children[0] {
@@ -581,19 +435,8 @@ fn test_keyval_argument() {
 
 #[test]
 fn test_delimiter_argument_braced_matches_inline() {
-    let inline_tokens = vec![
-        Token::ControlSeq("delim".to_string()),
-        Token::ControlSeq("langle".to_string()),
-    ];
-    let braced_tokens = vec![
-        Token::ControlSeq("delim".to_string()),
-        Token::LBrace,
-        Token::ControlSeq("langle".to_string()),
-        Token::RBrace,
-    ];
-
-    let inline = parse(&inline_tokens, false).unwrap();
-    let braced = parse(&braced_tokens, false).unwrap();
+    let (inline, _) = parse(r"\delim\langle", false).unwrap();
+    let (braced, _) = parse(r"\delim{\langle}", false).unwrap();
 
     let inline_value = match inline {
         SyntaxNode::Group { children, .. } => match &children[0] {
@@ -616,23 +459,8 @@ fn test_delimiter_argument_braced_matches_inline() {
 
 #[test]
 fn test_integer_argument_braced_matches_inline() {
-    let inline_tokens = vec![
-        Token::ControlSeq("romannumeral".to_string()),
-        Token::Char('1'),
-        Token::Char('2'),
-    ];
-    let braced_tokens = vec![
-        Token::ControlSeq("romannumeral".to_string()),
-        Token::LBrace,
-        Token::Whitespaces,
-        Token::Char('1'),
-        Token::Char('2'),
-        Token::Whitespaces,
-        Token::RBrace,
-    ];
-
-    let inline = parse(&inline_tokens, false).unwrap();
-    let braced = parse(&braced_tokens, false).unwrap();
+    let (inline, _) = parse(r"\romannumeral12", false).unwrap();
+    let (braced, _) = parse(r"\romannumeral{ 12 }", false).unwrap();
 
     let inline_value = match inline {
         SyntaxNode::Group { children, .. } => match &children[0] {
@@ -655,30 +483,8 @@ fn test_integer_argument_braced_matches_inline() {
 
 #[test]
 fn test_dimension_argument_braced_matches_inline() {
-    let inline_tokens = vec![
-        Token::ControlSeq("hspace".to_string()),
-        Token::Char('1'),
-        Token::Char('.'),
-        Token::Char('5'),
-        Token::Char('e'),
-        Token::Char('m'),
-    ];
-    let braced_tokens = vec![
-        Token::ControlSeq("hspace".to_string()),
-        Token::LBrace,
-        Token::Whitespaces,
-        Token::Char('1'),
-        Token::Char(','),
-        Token::Char('5'),
-        Token::Whitespaces,
-        Token::Char('e'),
-        Token::Char('m'),
-        Token::Whitespaces,
-        Token::RBrace,
-    ];
-
-    let inline = parse(&inline_tokens, false).unwrap();
-    let braced = parse(&braced_tokens, false).unwrap();
+    let (inline, _) = parse(r"\hspace1.5em", false).unwrap();
+    let (braced, _) = parse(r"\hspace{ 1,5 em }", false).unwrap();
 
     let inline_value = match inline {
         SyntaxNode::Group { children, .. } => match &children[0] {
@@ -705,37 +511,7 @@ fn test_dimension_argument_braced_matches_inline() {
 
 #[test]
 fn test_optional_bracket_closes_at_top_level() {
-    let tokens = vec![
-        Token::ControlSeq("includegraphics".to_string()),
-        Token::LBracket,
-        Token::Char('k'),
-        Token::Char('e'),
-        Token::Char('y'),
-        Token::Char('='),
-        Token::LBrace,
-        Token::LBracket,
-        Token::LBracket,
-        Token::RBrace,
-        Token::Char(','),
-        Token::Char('w'),
-        Token::Char('i'),
-        Token::Char('d'),
-        Token::Char('t'),
-        Token::Char('h'),
-        Token::Char('='),
-        Token::Char('1'),
-        Token::Char('e'),
-        Token::Char('m'),
-        Token::RBracket,
-        Token::LBrace,
-        Token::Char('f'),
-        Token::Char('i'),
-        Token::Char('l'),
-        Token::Char('e'),
-        Token::RBrace,
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\includegraphics[key={[[},width=1em]{file}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => match &children[0] {
@@ -754,86 +530,32 @@ fn test_optional_bracket_closes_at_top_level() {
 
 #[test]
 fn test_optional_bracket_missing_closer_errors() {
-    let tokens = vec![
-        Token::ControlSeq("includegraphics".to_string()),
-        Token::LBracket,
-        Token::Char('w'),
-        Token::Char('i'),
-        Token::Char('d'),
-        Token::Char('t'),
-        Token::Char('h'),
-        Token::Char('='),
-        Token::Char('1'),
-        Token::Char('e'),
-        Token::Char('m'),
-        Token::LBrace,
-        Token::Char('f'),
-        Token::Char('i'),
-        Token::Char('l'),
-        Token::Char('e'),
-        Token::RBrace,
-    ];
-
-    let result = parse(&tokens, false);
+    let result = parse(r"\includegraphics[width=1em{file}", false);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_invalid_integer_argument_errors() {
-    let tokens = vec![
-        Token::ControlSeq("romannumeral".to_string()),
-        Token::LBrace,
-        Token::Char('1'),
-        Token::Char('2'),
-        Token::Char('.'),
-        Token::Char('5'),
-        Token::RBrace,
-    ];
-
-    let result = parse(&tokens, false);
+    let result = parse(r"\romannumeral{12.5}", false);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_invalid_dimension_argument_errors() {
-    let tokens = vec![
-        Token::ControlSeq("hspace".to_string()),
-        Token::LBrace,
-        Token::Char('a'),
-        Token::Char('b'),
-        Token::Char('c'),
-        Token::RBrace,
-    ];
-
-    let result = parse(&tokens, false);
+    let result = parse(r"\hspace{abc}", false);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_unclosed_brace_argument_errors() {
-    let tokens = vec![Token::ControlSeq("frac".to_string()), Token::LBrace, Token::Char('a')];
-
-    let result = parse(&tokens, false);
+    let result = parse(r"\frac{a", false);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_nested_commands() {
     // "\frac{a}{\sqrt{b}}"
-    let tokens = vec![
-        Token::ControlSeq("frac".to_string()),
-        Token::LBrace,
-        Token::Char('a'),
-        Token::RBrace,
-        Token::LBrace,
-        Token::ControlSeq("sqrt".to_string()),
-        Token::LBrace,
-        Token::Char('b'),
-        Token::RBrace,
-        Token::RBrace,
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\frac{a}{\sqrt{b}}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -865,14 +587,7 @@ fn test_nested_commands() {
 #[test]
 fn test_unknown_command_nonstrict() {
     // "\unknown{x}" in non-strict mode
-    let tokens = vec![
-        Token::ControlSeq("unknown".to_string()),
-        Token::LBrace,
-        Token::Char('x'),
-        Token::RBrace,
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\unknown{x}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -907,23 +622,14 @@ fn test_unknown_command_nonstrict() {
 #[test]
 fn test_unknown_command_strict() {
     // "\unknown{x}" in strict mode should error
-    let tokens = vec![
-        Token::ControlSeq("unknown".to_string()),
-        Token::LBrace,
-        Token::Char('x'),
-        Token::RBrace,
-    ];
-
-    let result = parse(&tokens, true);
+    let result = parse(r"\unknown{x}", true);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_blocklisted_command() {
     // "\ifnum" is blocklisted
-    let tokens = vec![Token::ControlSeq("ifnum".to_string())];
-
-    let result = parse(&tokens, false);
+    let result = parse(r"\ifnum", false);
     assert!(result.is_err());
 }
 
@@ -934,13 +640,7 @@ fn test_blocklisted_command() {
 #[test]
 fn test_infix_over_simple() {
     // "a \over b"
-    let tokens = vec![
-        Token::Char('a'),
-        Token::ControlSeq("over".to_string()),
-        Token::Char('b'),
-    ];
-
-    let result = match parse(&tokens, false) {
+    let (result, _) = match parse(r"a \over b", false) {
         Ok(r) => r,
         Err(errors) => {
             eprintln!("Parse errors:");
@@ -979,13 +679,7 @@ fn test_infix_over_simple() {
 #[test]
 fn test_infix_choose() {
     // "n \choose k"
-    let tokens = vec![
-        Token::Char('n'),
-        Token::ControlSeq("choose".to_string()),
-        Token::Char('k'),
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"n \choose k", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1009,17 +703,7 @@ fn test_infix_choose() {
 #[test]
 fn test_infix_multiple_items() {
     // "a+b \over c+d"
-    let tokens = vec![
-        Token::Char('a'),
-        Token::Char('+'),
-        Token::Char('b'),
-        Token::ControlSeq("over".to_string()),
-        Token::Char('c'),
-        Token::Char('+'),
-        Token::Char('d'),
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"a+b \over c+d", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1061,15 +745,7 @@ fn test_infix_multiple_items() {
 #[test]
 fn test_declarative_bfseries() {
     // "\bfseries text" -> Declarative with scope containing "text"
-    let tokens = vec![
-        Token::ControlSeq("bfseries".to_string()),
-        Token::Char('t'),
-        Token::Char('e'),
-        Token::Char('x'),
-        Token::Char('t'),
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\bfseries text", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1105,14 +781,7 @@ fn test_declarative_bfseries() {
 #[test]
 fn test_declarative_with_leading() {
     // "a \bfseries b c"
-    let tokens = vec![
-        Token::Char('a'),
-        Token::ControlSeq("bfseries".to_string()),
-        Token::Char('b'),
-        Token::Char('c'),
-    ];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"a \bfseries bc", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1145,9 +814,7 @@ fn test_declarative_with_leading() {
 #[test]
 fn test_declarative_empty_scope() {
     // "\bfseries" with nothing after it
-    let tokens = vec![Token::ControlSeq("bfseries".to_string())];
-
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\bfseries", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1175,31 +842,13 @@ fn test_declarative_empty_scope() {
 // Stage 5 Tests (Text mode, inline math, delimited groups, environments)
 // ========================================================================
 
-// Note: These tests use the lexer to generate tokens from LaTeX source
-use logos::Logos;
-use texform_core::lexer::Token as LexerToken;
-
-macro_rules! lex_tokens {
-    ($source:expr) => {{
-        let mut tokens = Vec::new();
-        for result in LexerToken::lexer($source) {
-            match result {
-                Ok(tok) => tokens.push(tok),
-                Err(_) => panic!("Lexer error in test: {}", $source),
-            }
-        }
-        tokens
-    }};
-}
-
 // TODO: Add test for text mode - currently parse_text_block is not exposed
 // We can test text mode through \text{} command which uses Text mode args
 
 #[test]
 fn test_text_in_command() {
     // "\text{Hello World}" - text mode in command argument
-    let tokens = lex_tokens!(r"\text{Hello World}");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\text{Hello World}", false).unwrap();
 
     // Debug print the result
     match result {
@@ -1232,8 +881,7 @@ fn test_text_in_command() {
 
 #[test]
 fn test_text_inline_math_segment() {
-    let tokens = lex_tokens!(r"\text{foo$a+b$bar}");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\text{foo$a+b$bar}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => match &children[0] {
@@ -1272,8 +920,7 @@ fn test_text_inline_math_segment() {
 
 #[test]
 fn test_text_inline_math_active_char_and_command() {
-    let tokens = lex_tokens!(r"\text{A~$x$B\frac{a}{b}}");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\text{A~$x$B\frac{a}{b}}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => match &children[0] {
@@ -1319,8 +966,7 @@ fn test_text_inline_math_active_char_and_command() {
 #[test]
 fn test_delimited_group_simple() {
     // "\left( a+b \right)"
-    let tokens = lex_tokens!(r"\left(a+b\right)");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\left(a+b\right)", false).unwrap();
 
     eprintln!("Parsed result:\n{:#?}", result);
 
@@ -1361,8 +1007,7 @@ fn test_delimited_group_simple() {
 #[test]
 fn test_delimited_group_with_dot() {
     // "\left. x \right|" - dot means no delimiter
-    let tokens = lex_tokens!(r"\left.x\right|");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\left.x\right|", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1387,8 +1032,7 @@ fn test_delimited_group_with_dot() {
 #[test]
 fn test_delimited_group_nested() {
     // "\left( \frac{a}{b} \right)"
-    let tokens = lex_tokens!(r"\left(\frac{a}{b}\right)");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\left(\frac{a}{b}\right)", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1417,8 +1061,7 @@ fn test_delimited_group_nested() {
 
 #[test]
 fn test_environment_basic() {
-    let tokens = lex_tokens!(r"\begin{matrix}ab\end{matrix}");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\begin{matrix}ab\end{matrix}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1451,8 +1094,7 @@ fn test_environment_basic() {
 
 #[test]
 fn test_environment_nested() {
-    let tokens = lex_tokens!(r"\begin{matrix}\begin{matrix}x\end{matrix}\end{matrix}");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\begin{matrix}\begin{matrix}x\end{matrix}\end{matrix}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => match &children[0] {
@@ -1480,8 +1122,7 @@ fn test_environment_nested() {
 
 #[test]
 fn test_environment_name_mismatch() {
-    let tokens = lex_tokens!(r"\begin{matrix}a\end{align}");
-    let result = parse(&tokens, false);
+    let result = parse(r"\begin{matrix}a\end{align}", false);
     assert!(result.is_err());
 }
 
@@ -1492,11 +1133,8 @@ fn test_environment_name_mismatch() {
 #[test]
 fn test_frac_shorthand_equivalence() {
     // "\frac ab" should produce the same AST as "\frac{a}{b}"
-    let tokens_short = lex_tokens!(r"\frac ab");
-    let tokens_full = lex_tokens!(r"\frac{a}{b}");
-
-    let result_short = parse(&tokens_short, false).unwrap();
-    let result_full = parse(&tokens_full, false).unwrap();
+    let (result_short, _) = parse(r"\frac ab", false).unwrap();
+    let (result_full, _) = parse(r"\frac{a}{b}", false).unwrap();
 
     assert_eq!(result_short, result_full);
 }
@@ -1504,8 +1142,7 @@ fn test_frac_shorthand_equivalence() {
 #[test]
 fn test_frac_mixed_shorthand() {
     // "\frac a{bc}" - one shorthand, one braced
-    let tokens_mixed = lex_tokens!(r"\frac a{bc}");
-    let result = parse(&tokens_mixed, false).unwrap();
+    let (result, _) = parse(r"\frac a{bc}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1539,8 +1176,7 @@ fn test_frac_mixed_shorthand() {
 #[test]
 fn test_frac_shorthand_with_command() {
     // "\frac\alpha\beta" - shorthand with commands as arguments
-    let tokens = lex_tokens!(r"\frac\alpha\beta");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\frac\alpha\beta", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1569,11 +1205,8 @@ fn test_frac_shorthand_with_command() {
 #[test]
 fn test_sqrt_shorthand_equivalence() {
     // "\sqrt 2" should produce the same AST as "\sqrt{2}"
-    let tokens_short = lex_tokens!(r"\sqrt 2");
-    let tokens_full = lex_tokens!(r"\sqrt{2}");
-
-    let result_short = parse(&tokens_short, false).unwrap();
-    let result_full = parse(&tokens_full, false).unwrap();
+    let (result_short, _) = parse(r"\sqrt 2", false).unwrap();
+    let (result_full, _) = parse(r"\sqrt{2}", false).unwrap();
 
     assert_eq!(result_short, result_full);
 }
@@ -1581,11 +1214,8 @@ fn test_sqrt_shorthand_equivalence() {
 #[test]
 fn test_sqrt_with_optional_shorthand() {
     // "\sqrt[3]8" vs "\sqrt[3]{8}"
-    let tokens_short = lex_tokens!(r"\sqrt[3]8");
-    let tokens_full = lex_tokens!(r"\sqrt[3]{8}");
-
-    let result_short = parse(&tokens_short, false).unwrap();
-    let result_full = parse(&tokens_full, false).unwrap();
+    let (result_short, _) = parse(r"\sqrt[3]8", false).unwrap();
+    let (result_full, _) = parse(r"\sqrt[3]{8}", false).unwrap();
 
     assert_eq!(result_short, result_full);
 }
@@ -1597,8 +1227,7 @@ fn test_sqrt_with_optional_shorthand() {
 #[test]
 fn test_prime_single() {
     // "f'" -> Scripted with prime as superscript
-    let tokens = lex_tokens!(r"f'");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"f'", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1623,8 +1252,7 @@ fn test_prime_single() {
 #[test]
 fn test_prime_multiple() {
     // "f'''" -> Scripted with 3 primes grouped as superscript
-    let tokens = lex_tokens!(r"f'''");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"f'''", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1652,8 +1280,7 @@ fn test_prime_multiple() {
 #[test]
 fn test_prime_with_superscript() {
     // "f'^2" -> prime and superscript combined
-    let tokens = lex_tokens!(r"f'^2");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"f'^2", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1683,8 +1310,7 @@ fn test_prime_with_superscript() {
 #[test]
 fn test_prime_with_subscript() {
     // "f'_n" -> prime as superscript, n as subscript
-    let tokens = lex_tokens!(r"f'_n");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"f'_n", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1709,8 +1335,7 @@ fn test_prime_with_subscript() {
 #[test]
 fn test_prime_on_sub_grouped() {
     // "x^{'_{a}}" -> prime with grouped subscript inside superscript
-    let tokens = lex_tokens!(r"x^{'_{a}}");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"x^{'_{a}}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1732,7 +1357,7 @@ fn test_prime_on_sub_grouped() {
                                 assert!(subscript.is_some());
                                 assert_eq!(**superscript.as_ref().unwrap(), SyntaxNode::Char('\''));
                                 match base.as_ref() {
-                                    SyntaxNode::Group { .. } => {} // empty base inside nested scripted
+                                    SyntaxNode::Group { .. } => {}
                                     _ => panic!("Expected nested empty base"),
                                 }
                             }
@@ -1754,8 +1379,7 @@ fn test_prime_on_sub_grouped() {
 #[test]
 fn test_empty_base_superscript() {
     // "^2" -> empty base with superscript
-    let tokens = lex_tokens!(r"^2");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse("^2", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1786,8 +1410,7 @@ fn test_empty_base_superscript() {
 #[test]
 fn test_empty_base_subscript() {
     // "_3" -> empty base with subscript
-    let tokens = lex_tokens!(r"_3");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse("_3", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1818,8 +1441,7 @@ fn test_empty_base_subscript() {
 #[test]
 fn test_preprime() {
     // "'x" -> prime with empty base then x
-    let tokens = lex_tokens!(r"'x");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse("'x", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -1850,34 +1472,29 @@ fn test_preprime() {
 
 #[test]
 fn test_double_superscript_error() {
-    let tokens = lex_tokens!(r"x^2^3");
-    assert!(parse(&tokens, false).is_err());
+    assert!(parse(r"x^2^3", false).is_err());
 }
 
 #[test]
 fn test_double_subscript_error() {
-    let tokens = lex_tokens!(r"x_2_3");
-    assert!(parse(&tokens, false).is_err());
+    assert!(parse(r"x_2_3", false).is_err());
 }
 
 #[test]
 fn test_prime_after_superscript_error() {
-    let tokens = lex_tokens!(r"x^a'");
-    assert!(parse(&tokens, false).is_err());
+    assert!(parse(r"x^a'", false).is_err());
 }
 
 #[test]
 fn test_prime_brace_superscript_error() {
     // x'^' should fail because ^ expects a superscript atom, not a prime marker
-    let tokens = lex_tokens!(r"x'^'");
-    assert!(parse(&tokens, false).is_err());
+    assert!(parse(r"x'^'", false).is_err());
 }
 
 #[test]
 fn test_prime_on_prime_nested() {
     // "x^{'^{'}}" - prime on prime nesting
-    let tokens = lex_tokens!(r"x^{'^{'}}");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"x^{'^{'}}", false).unwrap();
 
     fn count_primes(node: &SyntaxNode) -> usize {
         match node {
@@ -1903,7 +1520,6 @@ fn test_prime_on_prime_nested() {
                 SyntaxNode::Scripted { superscript, .. } => {
                     match superscript.as_ref().unwrap().as_ref() {
                         node => {
-                            // Expect at least two primes somewhere inside the superscript tree
                             assert!(
                                 count_primes(node) >= 2,
                                 "expected at least two primes, got {}",
@@ -1922,8 +1538,7 @@ fn test_prime_on_prime_nested() {
 #[test]
 fn test_prime_on_sup_nested() {
     // "x^{a^{'}}" - superscript contains a prime on its own empty base
-    let tokens = lex_tokens!(r"x^{a^{'}}");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"x^{a^{'}}", false).unwrap();
 
     fn count_primes(node: &SyntaxNode) -> usize {
         match node {
@@ -1966,8 +1581,7 @@ fn test_prime_on_sup_nested() {
 #[test]
 fn test_sup_on_prime_nested() {
     // "x^{'^{a}}" - prime that itself has a superscript a
-    let tokens = lex_tokens!(r"x^{'^{a}}");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"x^{'^{a}}", false).unwrap();
 
     fn count_a(node: &SyntaxNode) -> usize {
         match node {
@@ -2006,8 +1620,7 @@ fn test_sup_on_prime_nested() {
 
 #[test]
 fn test_prime_then_superscript_merge() {
-    let tokens = lex_tokens!(r"x'^a");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"x'^a", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -2032,8 +1645,7 @@ fn test_prime_then_superscript_merge() {
 
 #[test]
 fn test_double_prime_then_superscript_merge() {
-    let tokens = lex_tokens!(r"x''^a");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"x''^a", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -2073,8 +1685,7 @@ fn test_double_prime_then_superscript_merge() {
 #[test]
 fn test_delimited_group_langle_rangle() {
     // "\left\langle x \right\rangle"
-    let tokens = lex_tokens!(r"\left\langle x\right\rangle");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\left\langle x\right\rangle", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -2122,9 +1733,9 @@ fn test_delimiter_controls_are_interned() {
     }
 
     let (left1, right1) =
-        extract_controls(parse(&lex_tokens!(r"\left\langle x\right\rangle"), false).unwrap());
+        extract_controls(parse(r"\left\langle x\right\rangle", false).unwrap().0);
     let (left2, right2) =
-        extract_controls(parse(&lex_tokens!(r"\left\langle x\right\rangle"), false).unwrap());
+        extract_controls(parse(r"\left\langle x\right\rangle", false).unwrap().0);
 
     assert!(std::ptr::eq(left1, left2));
     assert!(std::ptr::eq(right1, right2));
@@ -2133,8 +1744,7 @@ fn test_delimiter_controls_are_interned() {
 #[test]
 fn test_delimited_group_lfloor_rfloor() {
     // "\left\lfloor x \right\rfloor"
-    let tokens = lex_tokens!(r"\left\lfloor x\right\rfloor");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\left\lfloor x\right\rfloor", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -2161,8 +1771,7 @@ fn test_delimited_group_lfloor_rfloor() {
 #[test]
 fn test_starred_environment() {
     // "\begin{align*}...\end{align*}"
-    let tokens = lex_tokens!(r"\begin{align*}a+b\end{align*}");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\begin{align*}a+b\end{align*}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -2197,11 +1806,8 @@ fn test_starred_environment() {
 #[test]
 fn test_whitespace_ignored_in_frac_args() {
     // "\frac  {a}  {b}" should equal "\frac{a}{b}"
-    let tokens_spaces = lex_tokens!(r"\frac  {a}  {b}");
-    let tokens_no_spaces = lex_tokens!(r"\frac{a}{b}");
-
-    let result_spaces = parse(&tokens_spaces, false).unwrap();
-    let result_no_spaces = parse(&tokens_no_spaces, false).unwrap();
+    let (result_spaces, _) = parse(r"\frac  {a}  {b}", false).unwrap();
+    let (result_no_spaces, _) = parse(r"\frac{a}{b}", false).unwrap();
 
     assert_eq!(result_spaces, result_no_spaces);
 }
@@ -2209,11 +1815,8 @@ fn test_whitespace_ignored_in_frac_args() {
 #[test]
 fn test_whitespace_ignored_in_scripts() {
     // "x ^ 2" should equal "x^2"
-    let tokens_spaces = lex_tokens!(r"x ^ 2");
-    let tokens_no_spaces = lex_tokens!(r"x^2");
-
-    let result_spaces = parse(&tokens_spaces, false).unwrap();
-    let result_no_spaces = parse(&tokens_no_spaces, false).unwrap();
+    let (result_spaces, _) = parse(r"x ^ 2", false).unwrap();
+    let (result_no_spaces, _) = parse(r"x^2", false).unwrap();
 
     assert_eq!(result_spaces, result_no_spaces);
 }
@@ -2221,8 +1824,7 @@ fn test_whitespace_ignored_in_scripts() {
 #[test]
 fn test_whitespace_ignored_between_items() {
     // "a  b  c" should produce 3 Char nodes
-    let tokens = lex_tokens!(r"a  b  c");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"a  b  c", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -2242,8 +1844,7 @@ fn test_whitespace_ignored_between_items() {
 #[test]
 fn test_empty_group() {
     // "{}" should parse as empty explicit group
-    let tokens = lex_tokens!(r"{}");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"{}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -2266,8 +1867,7 @@ fn test_empty_group() {
 #[test]
 fn test_consecutive_groups() {
     // "{a}{b}" should parse as two groups
-    let tokens = lex_tokens!(r"{a}{b}");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"{a}{b}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -2302,8 +1902,7 @@ fn test_consecutive_groups() {
 #[test]
 fn test_script_in_argument() {
     // "\frac{x^2}{y}" - script inside argument
-    let tokens = lex_tokens!(r"\frac{x^2}{y}");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\frac{x^2}{y}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -2337,8 +1936,7 @@ fn test_script_in_argument() {
 #[test]
 fn test_consecutive_commands() {
     // "\alpha\beta\gamma" should parse as 3 commands
-    let tokens = lex_tokens!(r"\alpha\beta\gamma");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\alpha\beta\gamma", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -2359,8 +1957,7 @@ fn test_consecutive_commands() {
 #[test]
 fn test_infix_then_declarative() {
     // "a \over b \bfseries c" - infix followed by declarative
-    let tokens = lex_tokens!(r"a \over b \bfseries c");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"a \over b \bfseries c", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -2394,8 +1991,7 @@ fn test_infix_then_declarative() {
 #[test]
 fn test_alignment_char() {
     // "&" should parse as Char('&') in math mode
-    let tokens = lex_tokens!(r"a & b");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"a & b", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => {
@@ -2411,8 +2007,7 @@ fn test_alignment_char() {
 #[test]
 fn test_text_escaped_symbols() {
     // "\text{\%\$\&}" - escaped symbols in text mode
-    let tokens = lex_tokens!(r"\text{\%\$\&}");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\text{\%\$\&}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => match &children[0] {
@@ -2437,8 +2032,7 @@ fn test_text_escaped_symbols() {
 #[test]
 fn test_text_explicit_group() {
     // "\text{{a}}" - explicit group inside text
-    let tokens = lex_tokens!(r"\text{{a}}");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\text{{a}}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => match &children[0] {
@@ -2471,8 +2065,7 @@ fn test_text_explicit_group() {
 #[test]
 fn test_dimension_with_spaces() {
     // "\hspace{1.5 cm}" - dimension with spaces between number and unit
-    let tokens = lex_tokens!(r"\hspace{1.5 cm}");
-    let result = parse(&tokens, false).unwrap();
+    let (result, _) = parse(r"\hspace{1.5 cm}", false).unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => match &children[0] {
@@ -2494,16 +2087,14 @@ fn test_dimension_with_spaces() {
 #[test]
 fn test_dimension_missing_number() {
     // "\hspace{cm}" - dimension missing number should error
-    let tokens = lex_tokens!(r"\hspace{cm}");
-    let result = parse(&tokens, false);
+    let result = parse(r"\hspace{cm}", false);
     assert!(result.is_err(), "Expected error for dimension missing number");
 }
 
 #[test]
 fn test_dimension_missing_unit() {
     // "\hspace{1.5}" - dimension missing unit should error
-    let tokens = lex_tokens!(r"\hspace{1.5}");
-    let result = parse(&tokens, false);
+    let result = parse(r"\hspace{1.5}", false);
     assert!(result.is_err(), "Expected error for dimension missing unit");
 }
 
@@ -2511,8 +2102,7 @@ fn test_dimension_missing_unit() {
 fn test_keyval_empty() {
     // "\includegraphics[{}]{file}" - empty braces in optional keyval argument
     // This should error because keyval requires at least one key=value pair
-    let tokens = lex_tokens!(r"\includegraphics[{}]{file}");
-    let result = parse(&tokens, false);
+    let result = parse(r"\includegraphics[{}]{file}", false);
     assert!(result.is_err(), "Expected error for empty keyval");
 }
 
@@ -2520,7 +2110,63 @@ fn test_keyval_empty() {
 fn test_keyval_empty_brackets() {
     // "\includegraphics[]{file}" - empty optional argument brackets
     // This should also error because the brackets exist but contain no valid keyval
-    let tokens = lex_tokens!(r"\includegraphics[]{file}");
-    let result = parse(&tokens, false);
+    let result = parse(r"\includegraphics[]{file}", false);
     assert!(result.is_err(), "Expected error for empty optional keyval brackets");
+}
+
+// ========================================================================
+// Span Correctness Tests
+// ========================================================================
+
+#[test]
+fn test_span_covers_full_input() {
+    let src = r"\frac{a}{b}";
+    let (_, span) = parse(src, false).unwrap();
+    assert_eq!(span.start, 0);
+    assert_eq!(span.end, src.len());
+}
+
+#[test]
+fn test_span_empty_input() {
+    let src = "";
+    let (_, span) = parse(src, false).unwrap();
+    assert_eq!(span.start, 0);
+    assert_eq!(span.end, 0);
+}
+
+#[test]
+fn test_span_simple_chars() {
+    let src = "abc";
+    let (_, span) = parse(src, false).unwrap();
+    assert_eq!(&src[span.start..span.end], "abc");
+}
+
+#[test]
+fn test_span_command_with_args() {
+    let src = r"\sqrt[3]{x}";
+    let (_, span) = parse(src, false).unwrap();
+    assert_eq!(&src[span.start..span.end], src);
+}
+
+#[test]
+fn test_span_with_whitespace() {
+    let src = r" a + b ";
+    let (_, span) = parse(src, false).unwrap();
+    // Span should cover the full input range
+    assert_eq!(span.start, 0);
+    assert_eq!(span.end, src.len());
+}
+
+#[test]
+fn test_span_environment() {
+    let src = r"\begin{matrix}x\end{matrix}";
+    let (_, span) = parse(src, false).unwrap();
+    assert_eq!(&src[span.start..span.end], src);
+}
+
+#[test]
+fn test_span_scripted() {
+    let src = "x^{2}_{i}";
+    let (_, span) = parse(src, false).unwrap();
+    assert_eq!(&src[span.start..span.end], src);
 }
