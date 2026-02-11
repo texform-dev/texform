@@ -1,3 +1,4 @@
+pub mod api;
 pub mod ast;
 pub mod knowledge;
 pub mod lexer;

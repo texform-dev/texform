@@ -1,0 +1,13 @@
+[package]
+name = "texform-python"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "pytexform"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { workspace = true, features = ["extension-module"] }
+pythonize.workspace = true
+texform-core.workspace = true

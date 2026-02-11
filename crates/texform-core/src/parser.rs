@@ -800,7 +800,7 @@ fn mode_group_parsers<'a>(strict: bool) -> (NodeParser<'a>, NodeParser<'a>) {
 }
 
 /// Entry point parser for math mode.
-fn math_block_parser<'a>(strict: bool) -> NodeParser<'a> {
+pub(crate) fn math_block_parser<'a>(strict: bool) -> NodeParser<'a> {
     let (math_parser, _) = mode_group_parsers(strict);
     math_parser
 }

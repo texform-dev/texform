@@ -4,4 +4,9 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+serde.workspace = true
+tsify-next = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
 
+[features]
+tsify = ["dep:tsify-next", "dep:wasm-bindgen"]

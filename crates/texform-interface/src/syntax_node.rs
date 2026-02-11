@@ -6,18 +6,22 @@
 //!
 //! After parsing, the syntax tree is converted to the slotmap-based AST via lowering.
 
+use serde::Serialize;
+
 /// Command or environment argument.
 ///
 /// Arguments can be mandatory {...} or optional [...].
 /// Each argument contains an `ArgumentValue` describing its parsed value.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub struct Argument {
     pub kind: ArgumentKind,
     pub value: ArgumentValue,
 }
 
 /// Argument type: mandatory or optional
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub enum ArgumentKind {
     /// Mandatory argument: {...}
     Mandatory,
@@ -38,7 +42,8 @@ impl ArgumentKind {
 }
 
 /// Parsed argument value.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub enum ArgumentValue {
     /// Parsed content subtree.
     Content(SyntaxNode),
@@ -55,7 +60,8 @@ pub enum ArgumentValue {
 /// Content mode: math or text
 ///
 /// Determines how content is parsed and interpreted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub enum ContentMode {
     /// Math mode: default mode, supports formulas, scripts, infix commands
     Math,
@@ -64,7 +70,8 @@ pub enum ContentMode {
 }
 
 /// Delimiter type for delimited groups
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub enum Delimiter {
     /// No delimiter (corresponds to '.' in LaTeX)
     None,
@@ -75,7 +82,8 @@ pub enum Delimiter {
 }
 
 /// Group type for different grouping constructs
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub enum GroupKind {
     /// Explicit group: {...}
     Explicit,
@@ -100,7 +108,8 @@ pub enum GroupKind {
 ///
 /// Represents the structure of parsed LaTeX source code.
 /// Each variant corresponds to a different syntactic construct.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub enum SyntaxNode {
     /// Group: explicit {...}, implicit, delimited \left...\right, or inline math $...$
     Group {

@@ -127,6 +127,34 @@ pub enum Token {
     Char(char),
 }
 
+impl std::fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Token::ControlSeq(name) => write!(f, "\\{name}"),
+            Token::ActiveChar => write!(f, "~"),
+            Token::LBrace => write!(f, "{{"),
+            Token::RBrace => write!(f, "}}"),
+            Token::MathShift => write!(f, "$"),
+            Token::Alignment => write!(f, "&"),
+            Token::Parameter => write!(f, "#"),
+            Token::Superscript => write!(f, "^"),
+            Token::Subscript => write!(f, "_"),
+            Token::Star => write!(f, "*"),
+            Token::LBracket => write!(f, "["),
+            Token::RBracket => write!(f, "]"),
+            Token::Prime(n) => {
+                for _ in 0..*n {
+                    write!(f, "'")?;
+                }
+                Ok(())
+            }
+            Token::Whitespaces => write!(f, " "),
+            Token::Comment => write!(f, "%"),
+            Token::Char(c) => write!(f, "{c}"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
