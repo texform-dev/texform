@@ -17,15 +17,15 @@ use crate::parser_utils::{
     control_seq,
     delimited_group_parser,
     delimiter,
-    // Value parsers
-    dimension_value,
+    // Value combinators
+    dimension,
     escaped_symbol,
     // Helpers
     fold_items,
     implicit_group_parser,
     // Token-level parsers
     insignificant_whitespace,
-    integer_value,
+    integer,
     keyval_value,
     math_char,
     maybe_braced,
@@ -249,15 +249,33 @@ fn argument_parser<'a>(
         }
         ValueKind::Dimension => {
             let kind = ArgumentKind::from_required(spec.required);
-            dimension_value(spec.required)
-                .map(move |value| Argument::from_value(kind, ArgumentValue::Dimension(value)))
-                .boxed()
+            if spec.required {
+                maybe_braced(dimension())
+                    .map(move |value| Argument::from_value(kind, ArgumentValue::Dimension(value)))
+                    .boxed()
+            } else {
+                optional_bracketed(dimension())
+                    .map(move |opt| {
+                        let value = opt.unwrap_or_default();
+                        Argument::from_value(kind, ArgumentValue::Dimension(value))
+                    })
+                    .boxed()
+            }
         }
         ValueKind::Integer => {
             let kind = ArgumentKind::from_required(spec.required);
-            integer_value(spec.required)
-                .map(move |value| Argument::from_value(kind, ArgumentValue::Integer(value)))
-                .boxed()
+            if spec.required {
+                maybe_braced(integer())
+                    .map(move |value| Argument::from_value(kind, ArgumentValue::Integer(value)))
+                    .boxed()
+            } else {
+                optional_bracketed(integer())
+                    .map(move |opt| {
+                        let value = opt.unwrap_or_default();
+                        Argument::from_value(kind, ArgumentValue::Integer(value))
+                    })
+                    .boxed()
+            }
         }
         ValueKind::KeyVal => {
             let kind = ArgumentKind::from_required(spec.required);

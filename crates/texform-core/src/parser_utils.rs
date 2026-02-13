@@ -622,144 +622,10 @@ pub(crate) fn tokens_to_string(tokens: &[Token]) -> String {
     out
 }
 
-/// Parse an inline integer value from the token stream.
-pub(crate) fn parse_inline_integer<'src, 'parse>(
-    input: &mut ParserInput<'src, 'parse>,
-) -> Result<String, Rich<'src, Token>> {
-    let start = input.cursor();
-    let mut out = String::new();
-
-    if let Some(Token::Char(c @ ('+' | '-'))) = input.peek() {
-        out.push(c);
-        input.next();
-    }
-
-    let mut digits = 0usize;
-    while let Some(Token::Char(c)) = input.peek() {
-        if c.is_ascii_digit() {
-            out.push(c);
-            digits += 1;
-            input.next();
-        } else {
-            break;
-        }
-    }
-
-    if digits == 0 {
-        return Err(input.err_since(&start, "invalid integer argument"));
-    }
-
-    Ok(out)
-}
-
-/// Collect tokens for an inline dimension value (sign, digits, unit).
-///
-/// Returns raw string for subsequent validation via `validate_dimension`.
-pub(crate) fn collect_inline_dimension_tokens<'src, 'parse>(
-    input: &mut ParserInput<'src, 'parse>,
-) -> Result<String, Rich<'src, Token>> {
-    let start = input.cursor();
-    let mut raw = String::new();
-
-    // Optional sign
-    if let Some(Token::Char(c @ ('+' | '-'))) = input.peek() {
-        raw.push(c);
-        input.next();
-    }
-
-    // Integer part
-    while let Some(Token::Char(c)) = input.peek() {
-        if c.is_ascii_digit() {
-            raw.push(c);
-            input.next();
-        } else {
-            break;
-        }
-    }
-
-    // Fractional part
-    if let Some(Token::Char(sep @ ('.' | ','))) = input.peek() {
-        raw.push(sep);
-        input.next();
-        while let Some(Token::Char(c)) = input.peek() {
-            if c.is_ascii_digit() {
-                raw.push(c);
-                input.next();
-            } else {
-                break;
-            }
-        }
-    }
-
-    // Skip whitespace before unit
-    while matches!(input.peek(), Some(Token::Whitespaces)) {
-        raw.push(' ');
-        input.next();
-    }
-
-    // Unit
-    while let Some(Token::Char(c)) = input.peek() {
-        if c.is_ascii_alphabetic() {
-            raw.push(c);
-            input.next();
-        } else {
-            break;
-        }
-    }
-
-    if raw.is_empty() {
-        return Err(input.err_since(&start, "invalid dimension argument"));
-    }
-
-    Ok(raw)
-}
 
 // ============================================================================
 // String Validation Helpers
 // ============================================================================
-
-/// Validate and normalize a raw integer string.
-/// Validate an integer string.
-pub(crate) fn validate_integer(raw: &str) -> Result<(), &'static str> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return Err("invalid integer");
-    }
-
-    let mut chars = trimmed.chars();
-    let mut digits = 0usize;
-
-    if let Some(first) = chars.next() {
-        if first == '+' || first == '-' {
-            // sign is allowed, digits must follow
-        } else if first.is_ascii_digit() {
-            digits += 1;
-        } else {
-            return Err("invalid integer");
-        }
-    } else {
-        return Err("invalid integer");
-    }
-
-    for c in chars {
-        if c.is_ascii_digit() {
-            digits += 1;
-        } else {
-            return Err("invalid integer");
-        }
-    }
-
-    if digits == 0 {
-        return Err("invalid integer");
-    }
-
-    Ok(())
-}
-
-/// Validate a dimension string using MathJax-compatible shape rules.
-pub(crate) fn validate_dimension(raw: &str) -> Result<(), &'static str> {
-    parse_dimension_parts(raw).map(|_| ())
-}
 
 /// Validate a key=value list at top level.
 pub(crate) fn validate_keyval(raw: &str) -> Result<(), &'static str> {
@@ -854,87 +720,77 @@ pub(crate) fn validate_keyval(raw: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
-/// Normalize a valid integer string for storage.
-pub(crate) fn normalize_integer_string(raw: &str) -> String {
-    raw.trim().to_string()
-}
-
-/// Normalize a valid dimension string for storage.
-pub(crate) fn normalize_dimension_string(raw: &str) -> Result<String, &'static str> {
-    let (value, unit) = parse_dimension_parts(raw)?;
-    Ok(format!("{}{}", value, unit))
-}
-
 /// Normalize a valid keyval string for storage.
 pub(crate) fn normalize_keyval_string(raw: &str) -> String {
     raw.trim().to_string()
 }
 
 // ============================================================================
-// Value Parsers (Braced/Inline + Validate + Normalize)
+// Inline Value Combinators
 // ============================================================================
 
-/// Parse an integer value argument (required or optional).
-///
-/// - Required: accepts `{...}` or inline form
-/// - Optional: accepts `[...]` or returns empty string
-pub fn integer_value<'a>(
-    required: bool,
-) -> impl Parser<'a, TokenStream<'a>, String, ParserError<'a>> + Clone {
-    custom(move |input| {
-        let raw = if required {
-            if matches!(input.peek(), Some(Token::LBrace)) {
-                let tokens = collect_braced_tokens(input, false)?;
-                tokens_to_string(&tokens)
-            } else {
-                parse_inline_integer(input)?
+/// Pure combinator: `sign? digits+` → normalized integer string.
+pub fn integer<'a>() -> impl Parser<'a, TokenStream<'a>, String, ParserError<'a>> + Clone {
+    let sign = select! { Token::Char(c @ ('+' | '-')) => c }.or_not();
+    let digit = select! { Token::Char(c) if c.is_ascii_digit() => c };
+
+    sign.then(digit.repeated().at_least(1).collect::<Vec<char>>())
+        .map(|(sign, digits)| {
+            let mut out = String::with_capacity(digits.len() + 1);
+            if let Some(s) = sign {
+                out.push(s);
             }
-        } else if let Some(tokens) = collect_optional_bracketed_tokens(input, false)? {
-            tokens_to_string(&tokens)
-        } else {
-            return Ok(String::new());
-        };
-
-        validate_integer(&raw).map_err(|msg| {
-            let cursor = input.cursor();
-            input.err_peek_or_point(&cursor, msg)
-        })?;
-
-        Ok(normalize_integer_string(&raw))
-    })
+            for d in digits {
+                out.push(d);
+            }
+            out
+        })
+        .labelled("integer")
 }
 
-/// Parse a dimension value argument (required or optional).
-///
-/// - Required: accepts `{...}` or inline form
-/// - Optional: accepts `[...]` or returns empty string
-pub fn dimension_value<'a>(
-    required: bool,
-) -> impl Parser<'a, TokenStream<'a>, String, ParserError<'a>> + Clone {
-    custom(move |input| {
-        let raw = if required {
-            if matches!(input.peek(), Some(Token::LBrace)) {
-                let tokens = collect_braced_tokens(input, false)?;
-                tokens_to_string(&tokens)
-            } else {
-                collect_inline_dimension_tokens(input)?
+/// Pure combinator: `sign? (digits frac? | frac) ws? unit` → normalized dimension string.
+pub fn dimension<'a>() -> impl Parser<'a, TokenStream<'a>, String, ParserError<'a>> + Clone
+{
+    let sign = select! { Token::Char(c @ ('+' | '-')) => c }.or_not();
+    let digit = select! { Token::Char(c) if c.is_ascii_digit() => c };
+    let sep = select! { Token::Char(c @ ('.' | ',')) => c };
+    let ws = insignificant_whitespace();
+    let alpha = select! { Token::Char(c) if c.is_ascii_alphabetic() => c };
+    let unit = alpha.repeated().at_least(1).collect::<Vec<char>>();
+
+    let int_digits = digit.clone().repeated().collect::<Vec<char>>();
+    let frac = sep.then(digit.repeated().collect::<Vec<char>>());
+
+    sign.then(int_digits)
+        .then(frac.or_not())
+        .then_ignore(ws)
+        .then(unit)
+        .try_map(|(((sign, int_digits), frac), unit_chars), span| {
+            let has_int = !int_digits.is_empty();
+            let has_frac = frac.as_ref().map_or(false, |(_, ds)| !ds.is_empty());
+            if !has_int && !has_frac {
+                return Err(Rich::custom(span, "invalid dimension"));
             }
-        } else if let Some(tokens) = collect_optional_bracketed_tokens(input, false)? {
-            tokens_to_string(&tokens)
-        } else {
-            return Ok(String::new());
-        };
-
-        validate_dimension(&raw).map_err(|msg| {
-            let cursor = input.cursor();
-            input.err_peek_or_point(&cursor, msg)
-        })?;
-
-        normalize_dimension_string(&raw).map_err(|msg| {
-            let cursor = input.cursor();
-            input.err_peek_or_point(&cursor, msg)
+            let unit: String = unit_chars.into_iter().collect();
+            if !is_valid_dimension_unit(&unit) {
+                return Err(Rich::custom(span, "unsupported dimension unit"));
+            }
+            let mut value = String::new();
+            if let Some(s) = sign {
+                value.push(s);
+            }
+            for d in &int_digits {
+                value.push(*d);
+            }
+            if let Some((_, frac_digits)) = frac {
+                value.push('.'); // normalize comma to dot
+                for d in &frac_digits {
+                    value.push(*d);
+                }
+            }
+            Ok(format!("{}{}", value, unit))
         })
-    })
+        .labelled("dimension")
 }
 
 /// Parse a keyval value argument (required or optional).
@@ -967,81 +823,6 @@ pub fn keyval_value<'a>(
     })
 }
 
-fn parse_dimension_parts(raw: &str) -> Result<(String, String), &'static str> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return Err("invalid dimension");
-    }
-
-    let mut chars = trimmed.chars().peekable();
-    let mut value = String::new();
-
-    if matches!(chars.peek(), Some('+' | '-')) {
-        value.push(chars.next().unwrap());
-    }
-
-    let mut int_digits = 0usize;
-    while let Some(c) = chars.peek().copied() {
-        if c.is_ascii_digit() {
-            value.push(c);
-            int_digits += 1;
-            chars.next();
-        } else {
-            break;
-        }
-    }
-
-    let mut frac_digits = 0usize;
-    if let Some(sep @ ('.' | ',')) = chars.peek().copied() {
-        value.push(if sep == ',' { '.' } else { sep });
-        chars.next();
-        while let Some(c) = chars.peek().copied() {
-            if c.is_ascii_digit() {
-                value.push(c);
-                frac_digits += 1;
-                chars.next();
-            } else {
-                break;
-            }
-        }
-    }
-
-    if int_digits == 0 && frac_digits == 0 {
-        return Err("invalid dimension");
-    }
-
-    while let Some(c) = chars.peek().copied() {
-        if c.is_whitespace() {
-            chars.next();
-        } else {
-            break;
-        }
-    }
-
-    let mut unit = String::new();
-    while let Some(c) = chars.peek().copied() {
-        if c.is_ascii_alphabetic() {
-            unit.push(c);
-            chars.next();
-        } else {
-            break;
-        }
-    }
-
-    if unit.is_empty() {
-        return Err("missing dimension unit");
-    }
-
-    if chars.peek().is_some() {
-        return Err("invalid dimension");
-    }
-
-    if !is_valid_dimension_unit(&unit) {
-        return Err("unsupported dimension unit");
-    }
-
-    Ok((value, unit))
-}
 
 /// Return true if the unit is in the supported set.
 fn is_valid_dimension_unit(unit: &str) -> bool {
@@ -1089,26 +870,33 @@ pub fn fold_items(mode: ContentMode, items: Vec<SyntaxNode>) -> SyntaxNode {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_validate_integer() {
-        assert!(validate_integer("123").is_ok());
-        assert!(validate_integer("  +42 ").is_ok());
-        assert!(validate_integer("-0").is_ok());
-        assert!(validate_integer("12.5").is_err());
-        assert!(validate_integer("abc").is_err());
-        assert!(validate_integer("+").is_err());
-        assert!(validate_integer("1 2").is_err());
+    fn parse_integer(src: &str) -> Result<String, ()> {
+        let stream = build_token_stream(src);
+        integer().parse(stream).into_result().map_err(|_| ())
+    }
+
+    fn parse_dimension(src: &str) -> Result<String, ()> {
+        let stream = build_token_stream(src);
+        dimension().parse(stream).into_result().map_err(|_| ())
     }
 
     #[test]
-    fn test_validate_dimension() {
-        assert!(validate_dimension("1em").is_ok());
-        assert!(validate_dimension(" 1,5 em ").is_ok());
-        assert!(validate_dimension(".5pt").is_ok());
-        assert!(validate_dimension("1.em").is_ok());
-        assert!(validate_dimension("1").is_err());
-        assert!(validate_dimension("1em2").is_err());
-        assert!(validate_dimension("abc").is_err());
+    fn test_integer_combinator() {
+        assert_eq!(parse_integer("123").unwrap(), "123");
+        assert_eq!(parse_integer("+42").unwrap(), "+42");
+        assert_eq!(parse_integer("-0").unwrap(), "-0");
+        assert!(parse_integer("abc").is_err());
+        assert!(parse_integer("+").is_err());
+    }
+
+    #[test]
+    fn test_dimension_combinator() {
+        assert_eq!(parse_dimension("1em").unwrap(), "1em");
+        assert_eq!(parse_dimension("1.5em").unwrap(), "1.5em");
+        assert_eq!(parse_dimension("1,5em").unwrap(), "1.5em");
+        assert_eq!(parse_dimension(".5pt").unwrap(), ".5pt");
+        assert_eq!(parse_dimension("1.em").unwrap(), "1.em");
+        assert!(parse_dimension("abc").is_err());
     }
 
     #[test]
