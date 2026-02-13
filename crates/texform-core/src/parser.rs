@@ -9,15 +9,21 @@ use chumsky::prelude::*;
 use crate::knowledge::{self, ArgSpec, CommandKind, CommandMeta, EnvMeta, ValueKind};
 use crate::lexer::Token;
 use crate::parser_utils::{
+    ParserError,
+    ParserInput,
+    ParserInputExt,
+    Spanned,
+    TokenStream,
     // Base parsers
     active_char,
     braced_group_parser,
     bracket_group_parser,
     build_token_stream,
+    // Value combinators
+    column_spec_value,
     control_seq,
     delimited_group_parser,
     delimiter,
-    // Value combinators
     dimension,
     escaped_symbol,
     // Helpers
@@ -33,11 +39,6 @@ use crate::parser_utils::{
     optional_bracketed,
     parse_scripted_components,
     text_chunk,
-    ParserError,
-    ParserInput,
-    ParserInputExt,
-    Spanned,
-    TokenStream,
 };
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
@@ -283,6 +284,12 @@ fn argument_parser<'a>(
                 .map(move |value| Argument::from_value(kind, ArgumentValue::KeyVal(value)))
                 .boxed()
         }
+        ValueKind::Column => {
+            let kind = ArgumentKind::from_required(spec.required);
+            column_spec_value(spec.required)
+                .map(move |value| Argument::from_value(kind, ArgumentValue::Column(value)))
+                .boxed()
+        }
     }
 }
 
@@ -388,7 +395,7 @@ fn parse_env_header<'a>(
     text_content: ContentParser<'a>,
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, (String, bool, Vec<Argument>, &'static EnvMeta), ParserError<'a>>
-       + Clone {
++ Clone {
     custom(move |input| {
         input.parse(control_seq("begin"))?;
 

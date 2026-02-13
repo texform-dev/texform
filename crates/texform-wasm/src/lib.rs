@@ -1,5 +1,5 @@
-use wasm_bindgen::prelude::*;
 use texform_core::api::{self, ParseResult};
+use wasm_bindgen::prelude::*;
 
 // MANUAL TypeScript type declarations for SyntaxNode and related types.
 //
@@ -54,7 +54,8 @@ export type ArgumentValue =
     | { Delimiter: Delimiter }
     | { Dimension: string }
     | { Integer: string }
-    | { KeyVal: string };
+    | { KeyVal: string }
+    | { Column: string };
 "#;
 
 /// Parse a LaTeX formula.
@@ -80,8 +81,9 @@ pub fn parse(src: &str, strict: Option<bool>) -> Result<ParseResult, JsValue> {
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
         let partial_result = match &output.result {
-            Some(r) => serde_wasm_bindgen::to_value(r)
-                .map_err(|e| JsValue::from_str(&e.to_string()))?,
+            Some(r) => {
+                serde_wasm_bindgen::to_value(r).map_err(|e| JsValue::from_str(&e.to_string()))?
+            }
             None => JsValue::NULL,
         };
 

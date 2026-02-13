@@ -13,6 +13,7 @@ use chumsky::{
 };
 use logos::Logos;
 
+use crate::column_parser::parse_column_template;
 use crate::knowledge;
 use crate::lexer::Token;
 use texform_interface::syntax_node::{ContentMode, Delimiter, GroupKind, SyntaxNode};
@@ -117,8 +118,8 @@ impl<'src, 'parse> ParserInputExt<'src, 'parse> for ParserInput<'src, 'parse> {
 // ============================================================================
 
 /// Consume insignificant whitespace tokens and produce no output.
-pub fn insignificant_whitespace<'a>(
-) -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
+pub fn insignificant_whitespace<'a>()
+-> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
     select! { Token::Whitespaces => () }.repeated().ignored()
 }
 
@@ -622,7 +623,6 @@ pub(crate) fn tokens_to_string(tokens: &[Token]) -> String {
     out
 }
 
-
 // ============================================================================
 // String Validation Helpers
 // ============================================================================
@@ -749,8 +749,7 @@ pub fn integer<'a>() -> impl Parser<'a, TokenStream<'a>, String, ParserError<'a>
 }
 
 /// Pure combinator: `sign? (digits frac? | frac) ws? unit` → normalized dimension string.
-pub fn dimension<'a>() -> impl Parser<'a, TokenStream<'a>, String, ParserError<'a>> + Clone
-{
+pub fn dimension<'a>() -> impl Parser<'a, TokenStream<'a>, String, ParserError<'a>> + Clone {
     let sign = select! { Token::Char(c @ ('+' | '-')) => c }.or_not();
     let digit = select! { Token::Char(c) if c.is_ascii_digit() => c };
     let sep = select! { Token::Char(c @ ('.' | ',')) => c };
@@ -823,6 +822,40 @@ pub fn keyval_value<'a>(
     })
 }
 
+/// Parse a column template argument (required or optional) into a normalized string.
+///
+/// - Required: must be `{...}` form
+/// - Optional: accepts `[...]` or returns an empty string
+///
+/// The parser validates the template by attempting to parse it with ColumnParser,
+/// but stores the trimmed raw string in syntax node arguments.
+pub fn column_spec_value<'a>(
+    required: bool,
+) -> impl Parser<'a, TokenStream<'a>, String, ParserError<'a>> + Clone
+{
+    custom(move |input| {
+        let raw = if required {
+            let start = input.cursor();
+            if !matches!(input.peek(), Some(Token::LBrace)) {
+                return Err(input.err_since(&start, "expected column argument"));
+            }
+            let tokens = collect_braced_tokens(input, true)?;
+            tokens_to_string(&tokens)
+        } else if let Some(tokens) = collect_optional_bracketed_tokens(input, false)? {
+            tokens_to_string(&tokens)
+        } else {
+            String::new()
+        };
+        let normalized = raw.trim().to_string();
+
+        parse_column_template(&normalized).map_err(|msg| {
+            let cursor = input.cursor();
+            input.err_peek_or_point(&cursor, msg.to_string())
+        })?;
+
+        Ok(normalized)
+    })
+}
 
 /// Return true if the unit is in the supported set.
 fn is_valid_dimension_unit(unit: &str) -> bool {

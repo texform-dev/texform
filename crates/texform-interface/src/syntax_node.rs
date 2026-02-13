@@ -55,6 +55,8 @@ pub enum ArgumentValue {
     Integer(String),
     /// Key-value list argument value (raw string).
     KeyVal(String),
+    /// Parsed column template string.
+    Column(String),
 }
 
 /// Content mode: math or text
@@ -194,7 +196,7 @@ pub enum SyntaxNode {
     /// In LaTeX, ~ produces a non-breaking space.
     /// This node is produced in both Math and Text modes.
     /// In Text mode, ~ is NOT merged into TextChunk; it remains as a separate node.
-    /// 
+    ///
     ActiveSpace,
 }
 
@@ -418,6 +420,7 @@ impl ArgumentValue {
             ArgumentValue::Dimension(value) => writeln!(f, "{}Dimension(\"{}\")", prefix, value),
             ArgumentValue::Integer(value) => writeln!(f, "{}Integer(\"{}\")", prefix, value),
             ArgumentValue::KeyVal(value) => writeln!(f, "{}KeyVal(\"{}\")", prefix, value),
+            ArgumentValue::Column(value) => writeln!(f, "{}Column(\"{}\")", prefix, value),
         }
     }
 }

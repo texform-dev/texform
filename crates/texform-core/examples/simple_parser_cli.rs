@@ -68,9 +68,8 @@ fn main() {
                     .with_config(config)
                     .with_message(format!("{:?}", error));
 
-                builder = builder.with_label(
-                    Label::new(range).with_message(format!("{:?}", error.reason())),
-                );
+                builder = builder
+                    .with_label(Label::new(range).with_message(format!("{:?}", error.reason())));
 
                 builder.finish().eprint(source.clone()).unwrap();
             }

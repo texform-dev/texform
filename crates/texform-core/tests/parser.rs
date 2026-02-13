@@ -301,17 +301,11 @@ fn test_sqrt_with_optional() {
 
                     // Optional arg - normalized to single Char
                     assert_eq!(args[0].kind, ArgumentKind::Optional);
-                    assert_eq!(
-                        args[0].value,
-                        ArgumentValue::Content(SyntaxNode::Char('3'))
-                    );
+                    assert_eq!(args[0].value, ArgumentValue::Content(SyntaxNode::Char('3')));
 
                     // Mandatory arg - normalized to single Char
                     assert_eq!(args[1].kind, ArgumentKind::Mandatory);
-                    assert_eq!(
-                        args[1].value,
-                        ArgumentValue::Content(SyntaxNode::Char('8'))
-                    );
+                    assert_eq!(args[1].value, ArgumentValue::Content(SyntaxNode::Char('8')));
                 }
                 _ => panic!("Expected Command node"),
             }
@@ -375,10 +369,7 @@ fn test_dimension_argument() {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "hspace");
                 assert_eq!(args.len(), 1);
-                assert_eq!(
-                    args[0].value,
-                    ArgumentValue::Dimension("1em".to_string())
-                );
+                assert_eq!(args[0].value, ArgumentValue::Dimension("1em".to_string()));
             }
             _ => panic!("Expected Command node"),
         },
@@ -396,10 +387,7 @@ fn test_integer_argument() {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "romannumeral");
                 assert_eq!(args.len(), 1);
-                assert_eq!(
-                    args[0].value,
-                    ArgumentValue::Integer("12".to_string())
-                );
+                assert_eq!(args[0].value, ArgumentValue::Integer("12".to_string()));
             }
             _ => panic!("Expected Command node"),
         },
@@ -503,10 +491,7 @@ fn test_dimension_argument_braced_matches_inline() {
     };
 
     assert_eq!(inline_value, braced_value);
-    assert_eq!(
-        inline_value,
-        ArgumentValue::Dimension("1.5em".to_string())
-    );
+    assert_eq!(inline_value, ArgumentValue::Dimension("1.5em".to_string()));
 }
 
 #[test]
@@ -564,10 +549,7 @@ fn test_nested_commands() {
                     assert_eq!(name, "frac");
 
                     // First argument should be normalized to single Char
-                    assert_eq!(
-                        unwrap_content(&args[0].value),
-                        &SyntaxNode::Char('a')
-                    );
+                    assert_eq!(unwrap_content(&args[0].value), &SyntaxNode::Char('a'));
 
                     // Second argument should be \sqrt command (normalized from single-element group)
                     match unwrap_content(&args[1].value) {
@@ -885,14 +867,14 @@ fn test_text_inline_math_segment() {
 
     match result {
         SyntaxNode::Group { children, .. } => match &children[0] {
-                SyntaxNode::Command { name, args, .. } => {
-                    assert_eq!(name, "text");
-                    assert_eq!(args.len(), 1);
-                    match unwrap_content(&args[0].value) {
-                        SyntaxNode::Group { mode, children, .. } => {
-                            assert_eq!(*mode, ContentMode::Text);
-                            assert_eq!(children.len(), 3);
-                            assert_eq!(children[0], SyntaxNode::Text("foo".to_string()));
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "text");
+                assert_eq!(args.len(), 1);
+                match unwrap_content(&args[0].value) {
+                    SyntaxNode::Group { mode, children, .. } => {
+                        assert_eq!(*mode, ContentMode::Text);
+                        assert_eq!(children.len(), 3);
+                        assert_eq!(children[0], SyntaxNode::Text("foo".to_string()));
                         match &children[1] {
                             SyntaxNode::Group {
                                 kind,
@@ -1094,7 +1076,11 @@ fn test_environment_basic() {
 
 #[test]
 fn test_environment_nested() {
-    let (result, _) = parse(r"\begin{matrix}\begin{matrix}x\end{matrix}\end{matrix}", false).unwrap();
+    let (result, _) = parse(
+        r"\begin{matrix}\begin{matrix}x\end{matrix}\end{matrix}",
+        false,
+    )
+    .unwrap();
 
     match result {
         SyntaxNode::Group { children, .. } => match &children[0] {
@@ -1152,10 +1138,7 @@ fn test_frac_mixed_shorthand() {
                     assert_eq!(name, "frac");
                     assert_eq!(args.len(), 2);
                     // First arg: single char 'a'
-                    assert_eq!(
-                        unwrap_content(&args[0].value),
-                        &SyntaxNode::Char('a')
-                    );
+                    assert_eq!(unwrap_content(&args[0].value), &SyntaxNode::Char('a'));
                     // Second arg: group with 'bc'
                     match unwrap_content(&args[1].value) {
                         SyntaxNode::Group { children, .. } => {
@@ -1732,10 +1715,8 @@ fn test_delimiter_controls_are_interned() {
         }
     }
 
-    let (left1, right1) =
-        extract_controls(parse(r"\left\langle x\right\rangle", false).unwrap().0);
-    let (left2, right2) =
-        extract_controls(parse(r"\left\langle x\right\rangle", false).unwrap().0);
+    let (left1, right1) = extract_controls(parse(r"\left\langle x\right\rangle", false).unwrap().0);
+    let (left2, right2) = extract_controls(parse(r"\left\langle x\right\rangle", false).unwrap().0);
 
     assert!(std::ptr::eq(left1, left2));
     assert!(std::ptr::eq(right1, right2));
@@ -1921,10 +1902,7 @@ fn test_script_in_argument() {
                         _ => panic!("Expected Scripted in first arg"),
                     }
                     // Second arg is just 'y'
-                    assert_eq!(
-                        unwrap_content(&args[1].value),
-                        &SyntaxNode::Char('y')
-                    );
+                    assert_eq!(unwrap_content(&args[1].value), &SyntaxNode::Char('y'));
                 }
                 _ => panic!("Expected Command"),
             }
@@ -2073,10 +2051,7 @@ fn test_dimension_with_spaces() {
                 assert_eq!(name, "hspace");
                 assert_eq!(args.len(), 1);
                 // Should be normalized to "1.5cm" (no space)
-                assert_eq!(
-                    args[0].value,
-                    ArgumentValue::Dimension("1.5cm".to_string())
-                );
+                assert_eq!(args[0].value, ArgumentValue::Dimension("1.5cm".to_string()));
             }
             _ => panic!("Expected Command node"),
         },
@@ -2088,7 +2063,10 @@ fn test_dimension_with_spaces() {
 fn test_dimension_missing_number() {
     // "\hspace{cm}" - dimension missing number should error
     let result = parse(r"\hspace{cm}", false);
-    assert!(result.is_err(), "Expected error for dimension missing number");
+    assert!(
+        result.is_err(),
+        "Expected error for dimension missing number"
+    );
 }
 
 #[test]
@@ -2111,7 +2089,10 @@ fn test_keyval_empty_brackets() {
     // "\includegraphics[]{file}" - empty optional argument brackets
     // This should also error because the brackets exist but contain no valid keyval
     let result = parse(r"\includegraphics[]{file}", false);
-    assert!(result.is_err(), "Expected error for empty optional keyval brackets");
+    assert!(
+        result.is_err(),
+        "Expected error for empty optional keyval brackets"
+    );
 }
 
 // ========================================================================

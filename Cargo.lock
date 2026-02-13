@@ -505,6 +505,7 @@ name = "texform-interface"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
  "tsify-next",
  "wasm-bindgen",
 ]

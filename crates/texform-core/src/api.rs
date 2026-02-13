@@ -16,7 +16,7 @@ use serde::Serialize;
 
 use crate::lexer::Token;
 use crate::parser;
-use crate::parser_utils::{build_token_stream, Spanned, TokenStream};
+use crate::parser_utils::{Spanned, TokenStream, build_token_stream};
 use texform_interface::syntax_node::SyntaxNode;
 
 /// Byte-offset span.
@@ -85,10 +85,7 @@ pub fn parse_latex(src: &str, strict: bool) -> ParseOutput {
 fn parse_raw(
     token_stream: TokenStream<'_>,
     strict: bool,
-) -> (
-    Option<Spanned<SyntaxNode>>,
-    Vec<Rich<'static, Token>>,
-) {
+) -> (Option<Spanned<SyntaxNode>>, Vec<Rich<'static, Token>>) {
     let (output, errors) = parser::math_block_parser(strict)
         .map_with(|node, e| (node, e.span()))
         .then_ignore(end())
@@ -113,16 +110,17 @@ fn convert_diagnostic(err: Rich<'static, Token>) -> ParseDiagnostic {
     let reason = err.reason();
 
     let (message, expected, found) = match reason {
-        chumsky::error::RichReason::ExpectedFound { expected: exp, found: f } => {
+        chumsky::error::RichReason::ExpectedFound {
+            expected: exp,
+            found: f,
+        } => {
             let expected: Vec<String> = exp.iter().map(|p| format!("{p}")).collect();
             let found = f.as_ref().map(|t| format!("{}", &**t));
 
             let msg = format!("{reason}");
             (msg, expected, found)
         }
-        chumsky::error::RichReason::Custom(msg) => {
-            (msg.clone(), Vec::new(), None)
-        }
+        chumsky::error::RichReason::Custom(msg) => (msg.clone(), Vec::new(), None),
     };
 
     ParseDiagnostic {

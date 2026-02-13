@@ -49,6 +49,8 @@ pub enum ValueKind {
     Integer,
     /// Key=Value list (validated format, stored as raw string)
     KeyVal,
+    /// Array column template argument
+    Column,
 }
 
 impl ValueKind {
@@ -70,6 +72,10 @@ impl ValueKind {
 
     pub const fn is_keyval(&self) -> bool {
         matches!(self, ValueKind::KeyVal)
+    }
+
+    pub const fn is_column(&self) -> bool {
+        matches!(self, ValueKind::Column)
     }
 
     pub const fn content_mode(&self) -> Option<ContentMode> {
@@ -296,6 +302,7 @@ enum ValueKindYaml {
     Dimension,
     Integer,
     KeyVal,
+    Column,
 }
 
 impl From<ValueKindYaml> for ValueKind {
@@ -311,6 +318,7 @@ impl From<ValueKindYaml> for ValueKind {
             ValueKindYaml::Dimension => ValueKind::Dimension,
             ValueKindYaml::Integer => ValueKind::Integer,
             ValueKindYaml::KeyVal => ValueKind::KeyVal,
+            ValueKindYaml::Column => ValueKind::Column,
         }
     }
 }

@@ -173,6 +173,17 @@ pub fn init(packages: Option<&[&str]>) {
         .unwrap_or_else(|_| panic!("knowledge base already initialized"));
 }
 
+/// Initialize the global knowledge base from a pre-built builder.
+///
+/// This is primarily useful for integration tests that need inline command
+/// metadata without modifying package YAML files.
+///
+/// This function may only be called once. Subsequent calls will panic.
+pub fn init_with_builder(builder: KnowledgeBaseBuilder) {
+    KB.set(builder.build())
+        .unwrap_or_else(|_| panic!("knowledge base already initialized"));
+}
+
 static KB: OnceLock<KnowledgeBase> = OnceLock::new();
 
 fn kb() -> &'static KnowledgeBase {

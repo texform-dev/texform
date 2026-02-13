@@ -10,3 +10,6 @@ wasm-bindgen = { workspace = true, optional = true }
 
 [features]
 tsify = ["dep:tsify-next", "dep:wasm-bindgen"]
+
+[dev-dependencies]
+serde_json.workspace = true
