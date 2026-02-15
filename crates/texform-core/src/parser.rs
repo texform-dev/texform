@@ -345,6 +345,13 @@ fn unknown_command_parser<'a>(
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     select! { Token::ControlSeq(name) => name }
         .try_map(move |name, span| {
+            if matches!(name.as_str(), "begin" | "end") {
+                return Err(Rich::custom(
+                    span,
+                    format!("Reserved environment delimiter: \\{}", name),
+                ));
+            }
+
             if knowledge::lookup_command(name.as_str()).is_some() {
                 return Err(Rich::custom(span, "Unexpected known command"));
             }
@@ -441,20 +448,35 @@ fn environment_parser<'a>(
         };
         let body = input.parse(env_body_parser(meta.body_mode, body_content))?;
 
-        let end_tag = just(Token::ControlSeq("end".into()))
-            .ignore_then(env_name_parser())
-            .labelled("environment end tag");
+        let expected_end = if starred {
+            format!("{name}*")
+        } else {
+            name.clone()
+        };
 
         let end_start = input.cursor();
-        let (end_name, end_starred) = input.parse(end_tag)?;
+        input.parse(control_seq("end")).map_err(|_| {
+            Rich::custom(
+                input.span_from_cursor(&end_start),
+                format!(
+                    "Environment {} missing closing \\end{{{}}}",
+                    expected_end, expected_end
+                ),
+            )
+        })?;
+
+        let (end_name, end_starred) = input.parse(env_name_parser()).map_err(|_| {
+            Rich::custom(
+                input.span_from_cursor(&end_start),
+                format!(
+                    "Environment {} missing closing \\end{{{}}}",
+                    expected_end, expected_end
+                ),
+            )
+        })?;
         let end_span = input.span_from_cursor(&end_start);
 
         if end_name != name || end_starred != starred {
-            let expected = if starred {
-                format!("{name}*")
-            } else {
-                name.clone()
-            };
             let found = if end_starred {
                 format!("{end_name}*")
             } else {
@@ -464,7 +486,7 @@ fn environment_parser<'a>(
                 end_span,
                 format!(
                     "Environment name mismatch: expected \\end{{{}}}, found \\end{{{}}}",
-                    expected, found
+                    expected_end, found
                 ),
             ));
         }

@@ -1105,6 +1105,16 @@ fn test_environment_name_mismatch() {
     assert!(result.is_err());
 }
 
+#[test]
+fn test_environment_missing_end_errors() {
+    let errors = parse(r"\begin{matrix}", false).expect_err("expected missing end error");
+    let debug = format!("{errors:?}");
+    assert!(
+        debug.contains("missing closing \\end{matrix}"),
+        "Unexpected errors: {debug}"
+    );
+}
+
 // ========================================================================
 // Stage 6 Tests (Argument normalization and shorthand syntax)
 // ========================================================================
