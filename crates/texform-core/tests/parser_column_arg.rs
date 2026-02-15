@@ -16,6 +16,7 @@ fn init_inline_column_command() {
             CommandKind::Prefix,
             false,
             vec![ArgSpec::new(true, ValueKind::Column)],
+            vec![],
         );
         knowledge::init_with_builder(builder);
     });

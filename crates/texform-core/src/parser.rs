@@ -92,13 +92,6 @@ fn command_head_parser<'src, 'parse>(
 
     let cmd_span = input.span_from_cursor(&cmd_start);
 
-    if knowledge::is_blocklisted(&name) {
-        return Err(Rich::custom(
-            cmd_span,
-            format!("Banned command: \\{}", name),
-        ));
-    }
-
     let meta = match knowledge::lookup_command(&name) {
         Some(meta) if meta.kind == expected_kind => meta,
         Some(_) => {
@@ -352,9 +345,6 @@ fn unknown_command_parser<'a>(
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     select! { Token::ControlSeq(name) => name }
         .try_map(move |name, span| {
-            if knowledge::is_blocklisted(&name) {
-                return Err(Rich::custom(span, format!("Banned command: \\{}", name)));
-            }
             if knowledge::lookup_command(name.as_str()).is_some() {
                 return Err(Rich::custom(span, "Unexpected known command"));
             }

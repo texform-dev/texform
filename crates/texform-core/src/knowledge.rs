@@ -16,7 +16,6 @@ pub struct KnowledgeBase {
     command_idx_by_name: HashMap<&'static str, usize>,
     envs: Vec<EnvMeta>,
     env_idx_by_name: HashMap<&'static str, usize>,
-    blocklist: HashSet<&'static str>,
     delimiter_controls: HashSet<&'static str>,
 }
 
@@ -39,10 +38,6 @@ impl KnowledgeBase {
             .map(|idx| &self.envs[idx])
     }
 
-    pub fn is_blocklisted(&self, name: &str) -> bool {
-        self.blocklist.contains(name)
-    }
-
     pub fn is_delimiter_control(&self, name: &str) -> bool {
         self.delimiter_controls.contains(name)
     }
@@ -58,14 +53,13 @@ pub struct KnowledgeBaseBuilder {
     command_idx_by_name: HashMap<&'static str, usize>,
     envs: Vec<EnvMeta>,
     env_idx_by_name: HashMap<&'static str, usize>,
-    blocklist: HashSet<&'static str>,
     delimiter_controls: HashSet<&'static str>,
 }
 
 impl KnowledgeBaseBuilder {
     pub fn insert_character(&mut self, name: impl Into<String>) {
         let name = name.into();
-        self.insert_or_override_command(name, CommandKind::Prefix, false, vec![]);
+        self.insert_or_override_command(name, CommandKind::Prefix, false, vec![], vec![]);
     }
 
     pub fn insert_or_override_command(
@@ -74,15 +68,22 @@ impl KnowledgeBaseBuilder {
         kind: CommandKind,
         has_star_variant: bool,
         args: Vec<ArgSpec>,
+        tags: Vec<String>,
     ) {
         let name: &'static str = Box::leak(name.into().into_boxed_str());
         let args: &'static [ArgSpec] = Box::leak(args.into_boxed_slice());
+        let tags: Vec<&'static str> = tags
+            .into_iter()
+            .map(|tag| Box::leak(tag.into_boxed_str()) as &'static str)
+            .collect();
+        let tags: &'static [&'static str] = Box::leak(tags.into_boxed_slice());
 
         let meta = CommandMeta {
             name,
             kind,
             has_star_variant,
             args,
+            tags,
         };
 
         match self.command_idx_by_name.get(name).copied() {
@@ -101,15 +102,22 @@ impl KnowledgeBaseBuilder {
         has_star_variant: bool,
         args: Vec<ArgSpec>,
         body_mode: texform_interface::syntax_node::ContentMode,
+        tags: Vec<String>,
     ) {
         let name: &'static str = Box::leak(name.into().into_boxed_str());
         let args: &'static [ArgSpec] = Box::leak(args.into_boxed_slice());
+        let tags: Vec<&'static str> = tags
+            .into_iter()
+            .map(|tag| Box::leak(tag.into_boxed_str()) as &'static str)
+            .collect();
+        let tags: &'static [&'static str] = Box::leak(tags.into_boxed_slice());
 
         let meta = EnvMeta {
             name,
             has_star_variant,
             args,
             body_mode,
+            tags,
         };
 
         match self.env_idx_by_name.get(name).copied() {
@@ -122,11 +130,6 @@ impl KnowledgeBaseBuilder {
         }
     }
 
-    pub fn insert_blocklist(&mut self, name: impl Into<String>) {
-        let name: &'static str = Box::leak(name.into().into_boxed_str());
-        self.blocklist.insert(name);
-    }
-
     pub fn insert_delimiter_control(&mut self, name: impl Into<String>) {
         let name: &'static str = Box::leak(name.into().into_boxed_str());
         self.delimiter_controls.insert(name);
@@ -137,16 +140,13 @@ impl KnowledgeBaseBuilder {
             self.insert_character(name);
         }
         for cmd in specs.commands {
-            self.insert_or_override_command(cmd.name, cmd.kind, cmd.has_star_variant, cmd.args);
+            self.insert_or_override_command(cmd.name, cmd.kind, cmd.has_star_variant, cmd.args, cmd.tags);
         }
         for env in specs.environments {
-            self.insert_or_override_env(env.name, env.has_star_variant, env.args, env.body_mode);
+            self.insert_or_override_env(env.name, env.has_star_variant, env.args, env.body_mode, env.tags);
         }
         for name in specs.delimiter_controls {
             self.insert_delimiter_control(name);
-        }
-        for name in specs.blocklist {
-            self.insert_blocklist(name);
         }
     }
 
@@ -156,7 +156,6 @@ impl KnowledgeBaseBuilder {
             command_idx_by_name: self.command_idx_by_name,
             envs: self.envs,
             env_idx_by_name: self.env_idx_by_name,
-            blocklist: self.blocklist,
             delimiter_controls: self.delimiter_controls,
         }
     }
@@ -239,11 +238,6 @@ pub fn lookup_env(name: &str) -> Option<&'static EnvMeta> {
     kb().lookup_env(name)
 }
 
-/// Check if command is blocklisted.
-pub fn is_blocklisted(name: &str) -> bool {
-    kb().is_blocklisted(name)
-}
-
 /// Check if control sequence acts as a delimiter usable by \left...\right.
 pub fn is_delimiter_control(name: &str) -> bool {
     kb().is_delimiter_control(name)
@@ -301,13 +295,6 @@ mod tests {
     }
 
     #[test]
-    fn test_blocklist() {
-        assert!(is_blocklisted("ifnum"));
-        assert!(is_blocklisted("csname"));
-        assert!(!is_blocklisted("frac"));
-    }
-
-    #[test]
     fn test_arg_spec_helpers() {
         let mandatory_math = ArgSpec::mandatory(ContentMode::Math);
         assert!(mandatory_math.required);
@@ -343,6 +330,7 @@ mod tests {
             CommandKind::Prefix,
             false,
             vec![ArgSpec::mandatory(ContentMode::Math)],
+            vec![],
         );
 
         builder.import_package(texform_specs::specs::PackageSpecs {
@@ -352,10 +340,10 @@ mod tests {
                 kind: CommandKind::Prefix,
                 has_star_variant: true,
                 args: vec![],
+                tags: vec![],
             }],
             environments: vec![],
             delimiter_controls: vec![],
-            blocklist: vec![],
         });
 
         let kb = builder.build();

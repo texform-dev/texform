@@ -143,6 +143,9 @@ pub struct CommandMeta {
     /// - For Infix: command's own args (usually empty), left/right collected separately
     /// - For Declarative: command's own args, scope collected separately
     pub args: &'static [ArgSpec],
+
+    /// Metadata tags (kebab-case)
+    pub tags: &'static [&'static str],
 }
 
 /// Environment metadata in knowledge base
@@ -159,6 +162,9 @@ pub struct EnvMeta {
 
     /// Content mode for environment body
     pub body_mode: ContentMode,
+
+    /// Metadata tags (kebab-case)
+    pub tags: &'static [&'static str],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -167,6 +173,7 @@ pub struct CommandSpec {
     pub kind: CommandKind,
     pub has_star_variant: bool,
     pub args: Vec<ArgSpec>,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -175,6 +182,7 @@ pub struct EnvironmentSpec {
     pub has_star_variant: bool,
     pub args: Vec<ArgSpec>,
     pub body_mode: ContentMode,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -183,7 +191,6 @@ pub struct PackageSpecs {
     pub commands: Vec<CommandSpec>,
     pub environments: Vec<EnvironmentSpec>,
     pub delimiter_controls: Vec<String>,
-    pub blocklist: Vec<String>,
 }
 
 pub fn load_package_specs_from_str(yaml: &str, context: &str) -> PackageSpecs {
@@ -202,8 +209,6 @@ struct PackageSpecsYaml {
     environments: Vec<EnvironmentSpecYaml>,
     #[serde(default)]
     delimiter_controls: Vec<String>,
-    #[serde(default)]
-    blocklist: Vec<String>,
 }
 
 impl PackageSpecsYaml {
@@ -213,7 +218,6 @@ impl PackageSpecsYaml {
             commands: self.commands.into_iter().map(|c| c.into()).collect(),
             environments: self.environments.into_iter().map(|e| e.into()).collect(),
             delimiter_controls: self.delimiter_controls,
-            blocklist: self.blocklist,
         }
     }
 }
@@ -226,6 +230,8 @@ struct CommandSpecYaml {
     has_star_variant: bool,
     #[serde(default)]
     args: Vec<ArgSpecYaml>,
+    #[serde(default)]
+    tags: Vec<String>,
 }
 
 impl From<CommandSpecYaml> for CommandSpec {
@@ -235,6 +241,7 @@ impl From<CommandSpecYaml> for CommandSpec {
             kind: value.kind.into(),
             has_star_variant: value.has_star_variant,
             args: value.args.into_iter().map(|a| a.into()).collect(),
+            tags: value.tags,
         }
     }
 }
@@ -265,6 +272,8 @@ struct EnvironmentSpecYaml {
     #[serde(default)]
     args: Vec<ArgSpecYaml>,
     body_mode: ContentModeYaml,
+    #[serde(default)]
+    tags: Vec<String>,
 }
 
 impl From<EnvironmentSpecYaml> for EnvironmentSpec {
@@ -274,6 +283,7 @@ impl From<EnvironmentSpecYaml> for EnvironmentSpec {
             has_star_variant: value.has_star_variant,
             args: value.args.into_iter().map(|a| a.into()).collect(),
             body_mode: value.body_mode.into(),
+            tags: value.tags,
         }
     }
 }
@@ -350,6 +360,7 @@ characters: [alpha, beta]
 commands:
   - name: frac
     kind: prefix
+    tags: [deprecated]
     args:
       - required: true
         kind: math
@@ -363,8 +374,8 @@ commands:
 environments:
   - name: matrix
     body_mode: math
+    tags: [matrix]
 delimiter_controls: [langle]
-blocklist: [ifnum]
 "#;
 
         let specs = load_package_specs_from_str(yaml, "test");
@@ -373,6 +384,7 @@ blocklist: [ifnum]
         assert_eq!(specs.commands[0].name, "frac");
         assert!(!specs.commands[0].has_star_variant);
         assert_eq!(specs.commands[0].args.len(), 2);
+        assert_eq!(specs.commands[0].tags, vec!["deprecated"]);
         assert_eq!(specs.commands[0].args[0].required, true);
         assert_eq!(
             specs.commands[0].args[0].kind,
@@ -383,6 +395,7 @@ blocklist: [ifnum]
         assert_eq!(specs.commands[0].args[1].kind, ValueKind::Delimiter);
         assert_eq!(specs.commands[1].name, "text");
         assert_eq!(specs.commands[1].args.len(), 1);
+        assert!(specs.commands[1].tags.is_empty());
         assert_eq!(
             specs.commands[1].args[0].kind,
             ValueKind::Content {
@@ -391,8 +404,8 @@ blocklist: [ifnum]
         );
         assert_eq!(specs.environments.len(), 1);
         assert_eq!(specs.environments[0].name, "matrix");
+        assert_eq!(specs.environments[0].tags, vec!["matrix"]);
         assert_eq!(specs.delimiter_controls, vec!["langle"]);
-        assert_eq!(specs.blocklist, vec!["ifnum"]);
     }
 
     // Knowledge-base construction lives in texform-core.

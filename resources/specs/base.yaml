@@ -113,5 +113,3 @@ delimiter_controls:
   - rgroup
   - lmoustache
   - rmoustache
-
-blocklist: [ifnum, csname]

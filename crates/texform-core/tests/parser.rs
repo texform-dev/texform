@@ -608,13 +608,6 @@ fn test_unknown_command_strict() {
     assert!(result.is_err());
 }
 
-#[test]
-fn test_blocklisted_command() {
-    // "\ifnum" is blocklisted
-    let result = parse(r"\ifnum", false);
-    assert!(result.is_err());
-}
-
 // ========================================================================
 // Stage 4 Tests (Infix and Declarative commands)
 // ========================================================================
