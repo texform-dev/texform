@@ -360,7 +360,7 @@ characters: [alpha, beta]
 commands:
   - name: frac
     kind: prefix
-    tags: [deprecated]
+    tags: [discouraged]
     args:
       - required: true
         kind: math
@@ -384,7 +384,7 @@ delimiter_controls: [langle]
         assert_eq!(specs.commands[0].name, "frac");
         assert!(!specs.commands[0].has_star_variant);
         assert_eq!(specs.commands[0].args.len(), 2);
-        assert_eq!(specs.commands[0].tags, vec!["deprecated"]);
+        assert_eq!(specs.commands[0].tags, vec!["discouraged"]);
         assert_eq!(specs.commands[0].args[0].required, true);
         assert_eq!(
             specs.commands[0].args[0].kind,
