@@ -7,8 +7,11 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
+use texform_interface::syntax_node::ContentMode;
 
-pub use texform_specs::specs::{ArgSpec, CommandKind, CommandMeta, EnvMeta, ValueKind};
+pub use texform_specs::specs::{
+    AllowedMode, ArgSpec, CommandKind, CommandMeta, EnvMeta, ValueKind,
+};
 
 #[derive(Debug)]
 pub struct KnowledgeBase {
@@ -57,9 +60,16 @@ pub struct KnowledgeBaseBuilder {
 }
 
 impl KnowledgeBaseBuilder {
-    pub fn insert_character(&mut self, name: impl Into<String>) {
+    pub fn insert_character(&mut self, name: impl Into<String>, allowed_mode: AllowedMode) {
         let name = name.into();
-        self.insert_or_override_command(name, CommandKind::Prefix, false, vec![], vec![]);
+        self.insert_or_override_command(
+            name,
+            CommandKind::Prefix,
+            false,
+            allowed_mode,
+            vec![],
+            vec![],
+        );
     }
 
     pub fn insert_or_override_command(
@@ -67,6 +77,7 @@ impl KnowledgeBaseBuilder {
         name: impl Into<String>,
         kind: CommandKind,
         has_star_variant: bool,
+        allowed_mode: AllowedMode,
         args: Vec<ArgSpec>,
         tags: Vec<String>,
     ) {
@@ -82,6 +93,7 @@ impl KnowledgeBaseBuilder {
             name,
             kind,
             has_star_variant,
+            allowed_mode,
             args,
             tags,
         };
@@ -100,8 +112,9 @@ impl KnowledgeBaseBuilder {
         &mut self,
         name: impl Into<String>,
         has_star_variant: bool,
+        allowed_mode: AllowedMode,
         args: Vec<ArgSpec>,
-        body_mode: texform_interface::syntax_node::ContentMode,
+        body_mode: ContentMode,
         tags: Vec<String>,
     ) {
         let name: &'static str = Box::leak(name.into().into_boxed_str());
@@ -115,6 +128,7 @@ impl KnowledgeBaseBuilder {
         let meta = EnvMeta {
             name,
             has_star_variant,
+            allowed_mode,
             args,
             body_mode,
             tags,
@@ -136,14 +150,28 @@ impl KnowledgeBaseBuilder {
     }
 
     pub fn import_package(&mut self, specs: texform_specs::specs::PackageSpecs) {
-        for name in specs.characters {
-            self.insert_character(name);
+        for character in specs.characters {
+            self.insert_character(character.name, character.allowed_mode);
         }
         for cmd in specs.commands {
-            self.insert_or_override_command(cmd.name, cmd.kind, cmd.has_star_variant, cmd.args, cmd.tags);
+            self.insert_or_override_command(
+                cmd.name,
+                cmd.kind,
+                cmd.has_star_variant,
+                cmd.allowed_mode,
+                cmd.args,
+                cmd.tags,
+            );
         }
         for env in specs.environments {
-            self.insert_or_override_env(env.name, env.has_star_variant, env.args, env.body_mode, env.tags);
+            self.insert_or_override_env(
+                env.name,
+                env.has_star_variant,
+                env.allowed_mode,
+                env.args,
+                env.body_mode,
+                env.tags,
+            );
         }
         for name in specs.delimiter_controls {
             self.insert_delimiter_control(name);
@@ -289,6 +317,7 @@ mod tests {
     fn test_lookup_env() {
         let matrix = lookup_env("matrix").unwrap();
         assert_eq!(matrix.name, "matrix");
+        assert_eq!(matrix.allowed_mode, AllowedMode::Math);
         assert_eq!(matrix.body_mode, ContentMode::Math);
 
         assert!(lookup_env("unknown").is_none());
@@ -329,6 +358,7 @@ mod tests {
             "foo",
             CommandKind::Prefix,
             false,
+            AllowedMode::Math,
             vec![ArgSpec::mandatory(ContentMode::Math)],
             vec![],
         );
@@ -339,6 +369,7 @@ mod tests {
                 name: "foo".to_string(),
                 kind: CommandKind::Prefix,
                 has_star_variant: true,
+                allowed_mode: AllowedMode::Text,
                 args: vec![],
                 tags: vec![],
             }],
@@ -349,6 +380,45 @@ mod tests {
         let kb = builder.build();
         let foo = kb.lookup_command("foo").unwrap();
         assert!(foo.has_star_variant);
+        assert_eq!(foo.allowed_mode, AllowedMode::Text);
         assert!(foo.args.is_empty());
+    }
+
+    #[test]
+    fn test_character_import_preserves_allowed_mode() {
+        let mut builder = KnowledgeBase::builder();
+        builder.import_package(texform_specs::specs::PackageSpecs {
+            characters: vec![texform_specs::specs::CharacterSpec {
+                name: "alpha".to_string(),
+                allowed_mode: AllowedMode::Text,
+            }],
+            commands: vec![],
+            environments: vec![],
+            delimiter_controls: vec![],
+        });
+
+        let kb = builder.build();
+        let alpha = kb.lookup_command("alpha").unwrap();
+        assert_eq!(alpha.kind, CommandKind::Prefix);
+        assert_eq!(alpha.allowed_mode, AllowedMode::Text);
+        assert!(alpha.args.is_empty());
+    }
+
+    #[test]
+    fn test_insert_env_accepts_text_body_mode() {
+        let mut builder = KnowledgeBase::builder();
+        builder.insert_or_override_env(
+            "textenv",
+            false,
+            AllowedMode::Text,
+            vec![],
+            ContentMode::Text,
+            vec![],
+        );
+
+        let kb = builder.build();
+        let env = kb.lookup_env("textenv").unwrap();
+        assert_eq!(env.body_mode, ContentMode::Text);
+        assert_eq!(env.allowed_mode, AllowedMode::Text);
     }
 }

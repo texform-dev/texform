@@ -270,6 +270,13 @@ impl Argument {
 }
 
 impl ContentMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            ContentMode::Math => "math",
+            ContentMode::Text => "text",
+        }
+    }
+
     /// Check if this is Math mode
     pub fn is_math(&self) -> bool {
         matches!(self, ContentMode::Math)
@@ -278,6 +285,12 @@ impl ContentMode {
     /// Check if this is Text mode
     pub fn is_text(&self) -> bool {
         matches!(self, ContentMode::Text)
+    }
+}
+
+impl std::fmt::Display for ContentMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str((*self).as_str())
     }
 }
 

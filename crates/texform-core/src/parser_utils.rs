@@ -831,8 +831,7 @@ pub fn keyval_value<'a>(
 /// but stores the trimmed raw string in syntax node arguments.
 pub fn column_spec_value<'a>(
     required: bool,
-) -> impl Parser<'a, TokenStream<'a>, String, ParserError<'a>> + Clone
-{
+) -> impl Parser<'a, TokenStream<'a>, String, ParserError<'a>> + Clone {
     custom(move |input| {
         let raw = if required {
             let start = input.cursor();

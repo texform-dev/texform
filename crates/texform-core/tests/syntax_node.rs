@@ -77,6 +77,8 @@ fn test_content_mode_helpers() {
     assert!(!ContentMode::Math.is_text());
     assert!(ContentMode::Text.is_text());
     assert!(!ContentMode::Text.is_math());
+    assert_eq!(ContentMode::Math.to_string(), "math");
+    assert_eq!(ContentMode::Text.to_string(), "text");
 }
 
 #[test]

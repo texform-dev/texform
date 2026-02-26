@@ -80,6 +80,7 @@ fn env_body_parser<'a>(
 fn command_head_parser<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
     expected_kind: CommandKind,
+    current_mode: ContentMode,
     strict: bool,
 ) -> Result<(String, &'static CommandMeta, bool), Rich<'src, Token>> {
     let cmd_start = input.cursor();
@@ -111,6 +112,13 @@ fn command_head_parser<'src, 'parse>(
             }
         }
     };
+
+    if !meta.allowed_mode.allows(current_mode) {
+        return Err(Rich::custom(
+            cmd_span,
+            format!("Command \\{} is not allowed in {} mode", name, current_mode),
+        ));
+    }
 
     let starred = if matches!(input.peek(), Some(Token::Star)) {
         let star_cursor = input.cursor();
@@ -316,13 +324,15 @@ fn arguments_parser<'a>(
 fn prefix_command_parser<'a>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
+    current_mode: ContentMode,
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     custom(move |input| {
-        let (name, meta, starred) = match command_head_parser(input, CommandKind::Prefix, strict) {
-            Ok(data) => data,
-            Err(err) => return Err(err),
-        };
+        let (name, meta, starred) =
+            match command_head_parser(input, CommandKind::Prefix, current_mode, strict) {
+                Ok(data) => data,
+                Err(err) => return Err(err),
+            };
 
         let args = input.parse(arguments_parser(
             math_content.clone(),
@@ -343,29 +353,28 @@ fn prefix_command_parser<'a>(
 fn unknown_command_parser<'a>(
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
-    select! { Token::ControlSeq(name) => name }
-        .try_map(move |name, span| {
-            if matches!(name.as_str(), "begin" | "end") {
-                return Err(Rich::custom(
-                    span,
-                    format!("Reserved environment delimiter: \\{}", name),
-                ));
-            }
+    select! {
+        Token::ControlSeq(name)
+            if knowledge::lookup_command(name.as_str()).is_none() => name
+    }
+    .try_map(move |name, span| {
+        if matches!(name.as_str(), "begin" | "end") {
+            return Err(Rich::custom(
+                span,
+                format!("Reserved environment delimiter: \\{}", name),
+            ));
+        }
 
-            if knowledge::lookup_command(name.as_str()).is_some() {
-                return Err(Rich::custom(span, "Unexpected known command"));
-            }
-
-            if strict {
-                Err(Rich::custom(span, format!("Unknown command: \\{}", name)))
-            } else {
-                Ok(SyntaxNode::UnknownCommand {
-                    name,
-                    starred: false,
-                })
-            }
-        })
-        .labelled("unknown command")
+        if strict {
+            Err(Rich::custom(span, format!("Unknown command: \\{}", name)))
+        } else {
+            Ok(SyntaxNode::UnknownCommand {
+                name,
+                starred: false,
+            })
+        }
+    })
+    .labelled("unknown command")
 }
 
 /// Parse `{name}` or `{name*}` inside environment delimiters.
@@ -390,6 +399,7 @@ fn env_name_parser<'a>() -> impl Parser<'a, TokenStream<'a>, (String, bool), Par
 fn parse_env_header<'a>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
+    current_mode: ContentMode,
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, (String, bool, Vec<Argument>, &'static EnvMeta), ParserError<'a>>
 + Clone {
@@ -409,6 +419,16 @@ fn parse_env_header<'a>(
                 ));
             }
         };
+
+        if !meta.allowed_mode.allows(current_mode) {
+            return Err(Rich::custom(
+                name_span,
+                format!(
+                    "Environment {} is not allowed in {} mode",
+                    base_name, current_mode
+                ),
+            ));
+        }
 
         if starred && !meta.has_star_variant {
             return Err(Rich::custom(
@@ -433,12 +453,14 @@ fn parse_env_header<'a>(
 fn environment_parser<'a>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
+    current_mode: ContentMode,
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     custom(move |input| {
         let (name, starred, args, meta) = input.parse(parse_env_header(
             math_content.clone(),
             text_content.clone(),
+            current_mode,
             strict,
         ))?;
 
@@ -516,8 +538,14 @@ where
 {
     let explicit_group = braced_group_parser(ContentMode::Math, group_content.clone());
     let delimited_group = delimited_group_parser(math_content.clone());
-    let environment = environment_parser(math_content.clone(), text_content.clone(), strict);
-    let prefix_command = prefix_command_parser(math_content, text_content, strict);
+    let environment = environment_parser(
+        math_content.clone(),
+        text_content.clone(),
+        ContentMode::Math,
+        strict,
+    );
+    let prefix_command =
+        prefix_command_parser(math_content, text_content, ContentMode::Math, strict);
     let unknown_command = unknown_command_parser(strict);
 
     choice((
@@ -584,8 +612,14 @@ where
         });
 
     let explicit_group = braced_group_parser(ContentMode::Text, group_content);
-    let environment = environment_parser(math_content.clone(), text_content.clone(), strict);
-    let prefix_command = prefix_command_parser(math_content, text_content, strict);
+    let environment = environment_parser(
+        math_content.clone(),
+        text_content.clone(),
+        ContentMode::Text,
+        strict,
+    );
+    let prefix_command =
+        prefix_command_parser(math_content, text_content, ContentMode::Text, strict);
     let unknown_command = unknown_command_parser(strict);
 
     choice((
@@ -611,10 +645,11 @@ where
     P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
 {
     let infix_cmd = custom(move |input| {
-        let (name, meta, starred) = match command_head_parser(input, CommandKind::Infix, strict) {
-            Ok(data) => data,
-            Err(err) => return Err(err),
-        };
+        let (name, meta, starred) =
+            match command_head_parser(input, CommandKind::Infix, ContentMode::Math, strict) {
+                Ok(data) => data,
+                Err(err) => return Err(err),
+            };
 
         let args = input.parse(arguments_parser(
             math_content.clone(),
@@ -643,6 +678,7 @@ fn declarative_tail_parser<'a, P>(
     normal_item: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
+    current_mode: ContentMode,
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, TailParseOutput, ParserError<'a>> + Clone
 where
@@ -650,7 +686,7 @@ where
 {
     let decl_cmd = custom(move |input| {
         let (name, meta, starred) =
-            match command_head_parser(input, CommandKind::Declarative, strict) {
+            match command_head_parser(input, CommandKind::Declarative, current_mode, strict) {
                 Ok(data) => data,
                 Err(err) => return Err(err),
             };
@@ -696,7 +732,13 @@ where
         strict,
     );
 
-    let declarative_tail = declarative_tail_parser(normal_item, math_content, text_content, strict);
+    let declarative_tail = declarative_tail_parser(
+        normal_item,
+        math_content,
+        text_content,
+        ContentMode::Math,
+        strict,
+    );
 
     leading
         .then(infix_tail.or_not())
@@ -770,7 +812,13 @@ where
         .map(|(_, item)| item);
     let leading = guarded_item.repeated().collect::<Vec<_>>();
 
-    let declarative_tail = declarative_tail_parser(normal_item, math_content, text_content, strict);
+    let declarative_tail = declarative_tail_parser(
+        normal_item,
+        math_content,
+        text_content,
+        ContentMode::Text,
+        strict,
+    );
 
     leading
         .then(declarative_tail.or_not())

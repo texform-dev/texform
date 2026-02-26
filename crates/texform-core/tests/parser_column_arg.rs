@@ -1,6 +1,6 @@
 use std::sync::Once;
 
-use texform_core::knowledge::{self, ArgSpec, CommandKind, ValueKind};
+use texform_core::knowledge::{self, AllowedMode, ArgSpec, CommandKind, ValueKind};
 use texform_core::parser::parse;
 use texform_interface::syntax_node::{ArgumentValue, SyntaxNode};
 
@@ -15,6 +15,7 @@ fn init_inline_column_command() {
             "colspec",
             CommandKind::Prefix,
             false,
+            AllowedMode::Math,
             vec![ArgSpec::new(true, ValueKind::Column)],
             vec![],
         );

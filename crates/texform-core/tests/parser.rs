@@ -895,47 +895,23 @@ fn test_text_inline_math_segment() {
 
 #[test]
 fn test_text_inline_math_active_char_and_command() {
-    let (result, _) = parse(r"\text{A~$x$B\frac{a}{b}}", false).unwrap();
+    let errors = parse(r"\text{A~$x$B\frac{a}{b}}", false)
+        .expect_err("frac is math-only and must fail in text mode");
+    assert!(!errors.is_empty());
+}
 
-    match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
-            SyntaxNode::Command { name, args, .. } => {
-                assert_eq!(name, "text");
-                assert_eq!(args.len(), 1);
-                match unwrap_content(&args[0].value) {
-                    SyntaxNode::Group { mode, children, .. } => {
-                        assert_eq!(*mode, ContentMode::Text);
-                        assert!(children.len() >= 5);
-                        assert_eq!(children[0], SyntaxNode::Text("A".to_string()));
-                        assert_eq!(children[1], SyntaxNode::ActiveSpace);
-                        match &children[2] {
-                            SyntaxNode::Group {
-                                kind,
-                                children: math_children,
-                                ..
-                            } => {
-                                assert_eq!(*kind, GroupKind::InlineMath);
-                                assert_eq!(math_children.len(), 1);
-                                assert_eq!(math_children[0], SyntaxNode::Char('x'));
-                            }
-                            _ => panic!("Expected inline math for $x$"),
-                        }
-                        assert_eq!(children[3], SyntaxNode::Text("B".to_string()));
-                        match &children[4] {
-                            SyntaxNode::Command { name, args, .. } => {
-                                assert_eq!(name, "frac");
-                                assert_eq!(args.len(), 2);
-                            }
-                            _ => panic!("Expected fraction command"),
-                        }
-                    }
-                    _ => panic!("Expected text group"),
-                }
-            }
-            _ => panic!("Expected text command"),
-        },
-        _ => panic!("Expected root group"),
-    }
+#[test]
+fn test_command_mode_mismatch_reports_explicit_error() {
+    let errors =
+        parse(r"\text{\frac{a}{b}}", true).expect_err("expected strict mode mismatch error");
+    assert!(!errors.is_empty());
+}
+
+#[test]
+fn test_environment_mode_mismatch_reports_explicit_error() {
+    let errors = parse(r"\text{\begin{matrix}a\end{matrix}}", true)
+        .expect_err("expected strict mode mismatch error");
+    assert!(!errors.is_empty());
 }
 
 #[test]

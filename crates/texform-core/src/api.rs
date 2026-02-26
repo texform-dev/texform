@@ -172,6 +172,18 @@ mod tests {
     }
 
     #[test]
+    fn mode_error_for_math_only_command_in_text() {
+        let output = parse_latex(r"\text{\frac{a}{b}}", true);
+        assert!(!output.diagnostics.is_empty(), "should have diagnostics");
+    }
+
+    #[test]
+    fn mode_error_for_math_only_environment_in_text() {
+        let output = parse_latex(r"\text\begin{matrix}a\end{matrix}", true);
+        assert!(!output.diagnostics.is_empty(), "should have diagnostics");
+    }
+
+    #[test]
     fn diagnostics_serialize() {
         let output = parse_latex(r"\unknowncmd", true);
         let json = serde_json::to_value(&output).unwrap();
