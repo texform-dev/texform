@@ -10,8 +10,7 @@ use serde::Serialize;
 
 /// Command or environment argument.
 ///
-/// Arguments can be mandatory {...} or optional [...].
-/// Each argument contains an `ArgumentValue` describing its parsed value.
+/// Each argument contains an `ArgumentKind` + `ArgumentValue`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub struct Argument {
@@ -19,18 +18,29 @@ pub struct Argument {
     pub value: ArgumentValue,
 }
 
-/// Argument type: mandatory or optional
+/// Optional slot for argument lists.
+pub type ArgumentSlot = Option<Argument>;
+
+/// Argument type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub enum ArgumentKind {
-    /// Mandatory argument: {...}
+    /// Standard mandatory argument (`m`).
     Mandatory,
-    /// Optional argument: [...]
+    /// Standard optional bracket argument (`o`).
     Optional,
+    /// Star argument (`s`).
+    Star,
+    /// Optional group argument (`g`).
+    Group,
+    /// Single delimited argument (`r` / `d`) with matched delimiters.
+    Delimited { open: Delimiter, close: Delimiter },
+    /// Paired-candidate argument (`P` / `p`) with matched delimiters.
+    Paired { open: Delimiter, close: Delimiter },
 }
 
 impl ArgumentKind {
-    /// Create an ArgumentKind from a boolean indicating if it's required.
+    /// Create an ArgumentKind for standard forms from requiredness.
     #[inline]
     pub const fn from_required(required: bool) -> Self {
         if required {
@@ -57,6 +67,8 @@ pub enum ArgumentValue {
     KeyVal(String),
     /// Parsed column template string.
     Column(String),
+    /// Boolean argument value, used by star slots.
+    Boolean(bool),
 }
 
 /// Content mode: math or text
@@ -72,7 +84,7 @@ pub enum ContentMode {
 }
 
 /// Delimiter type for delimited groups
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub enum Delimiter {
     /// No delimiter (corresponds to '.' in LaTeX)
@@ -126,7 +138,7 @@ pub enum SyntaxNode {
     Command {
         name: String,
         starred: bool,
-        args: Vec<Argument>,
+        args: Vec<ArgumentSlot>,
     },
 
     /// Infix command: a \over b, {n \choose k}
@@ -136,7 +148,7 @@ pub enum SyntaxNode {
     Infix {
         name: String,
         starred: bool,
-        args: Vec<Argument>, // Command's own arguments (usually empty)
+        args: Vec<ArgumentSlot>, // Command's own arguments (usually empty)
         left: Box<SyntaxNode>,
         right: Box<SyntaxNode>,
     },
@@ -147,7 +159,7 @@ pub enum SyntaxNode {
     Declarative {
         name: String,
         starred: bool,
-        args: Vec<Argument>,
+        args: Vec<ArgumentSlot>,
         scope: Box<SyntaxNode>, // Content from command to end of group
     },
 
@@ -157,7 +169,7 @@ pub enum SyntaxNode {
     Environment {
         name: String,
         starred: bool,
-        args: Vec<Argument>,
+        args: Vec<ArgumentSlot>,
         body: Box<SyntaxNode>, // Environment body (always a Group node)
     },
 
@@ -267,6 +279,14 @@ impl Argument {
             value: ArgumentValue::Content(value),
         }
     }
+
+    /// Create a star argument with boolean presence.
+    pub fn star(present: bool) -> Self {
+        Argument {
+            kind: ArgumentKind::Star,
+            value: ArgumentValue::Boolean(present),
+        }
+    }
 }
 
 impl ContentMode {
@@ -326,7 +346,7 @@ impl SyntaxNode {
                 let star = if *starred { "*" } else { "" };
                 writeln!(f, "{}Command(\\{}{}) [", prefix, name, star)?;
                 for arg in args {
-                    arg.fmt_with_indent(f, indent + 1)?;
+                    fmt_argument_slot(f, arg, indent + 1)?;
                 }
                 writeln!(f, "{}]", prefix)
             }
@@ -346,7 +366,7 @@ impl SyntaxNode {
                 if !args.is_empty() {
                     writeln!(f, "{}  args:", prefix)?;
                     for arg in args {
-                        arg.fmt_with_indent(f, indent + 2)?;
+                        fmt_argument_slot(f, arg, indent + 2)?;
                     }
                 }
                 writeln!(f, "{}]", prefix)
@@ -362,7 +382,7 @@ impl SyntaxNode {
                 if !args.is_empty() {
                     writeln!(f, "{}  args:", prefix)?;
                     for arg in args {
-                        arg.fmt_with_indent(f, indent + 2)?;
+                        fmt_argument_slot(f, arg, indent + 2)?;
                     }
                 }
                 writeln!(f, "{}  scope:", prefix)?;
@@ -380,7 +400,7 @@ impl SyntaxNode {
                 if !args.is_empty() {
                     writeln!(f, "{}  args:", prefix)?;
                     for arg in args {
-                        arg.fmt_with_indent(f, indent + 2)?;
+                        fmt_argument_slot(f, arg, indent + 2)?;
                     }
                 }
                 writeln!(f, "{}  body:", prefix)?;
@@ -434,7 +454,20 @@ impl ArgumentValue {
             ArgumentValue::Integer(value) => writeln!(f, "{}Integer(\"{}\")", prefix, value),
             ArgumentValue::KeyVal(value) => writeln!(f, "{}KeyVal(\"{}\")", prefix, value),
             ArgumentValue::Column(value) => writeln!(f, "{}Column(\"{}\")", prefix, value),
+            ArgumentValue::Boolean(value) => writeln!(f, "{}Boolean({})", prefix, value),
         }
+    }
+}
+
+fn fmt_argument_slot(
+    f: &mut std::fmt::Formatter<'_>,
+    slot: &ArgumentSlot,
+    indent: usize,
+) -> std::fmt::Result {
+    let prefix = "  ".repeat(indent);
+    match slot {
+        Some(argument) => argument.fmt_with_indent(f, indent),
+        None => writeln!(f, "{}Arg(None)", prefix),
     }
 }
 

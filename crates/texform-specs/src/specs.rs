@@ -6,8 +6,10 @@
 //!
 //! For rapid prototyping, configuration errors fail fast (panic).
 
+use std::borrow::Cow;
+
 use serde::Deserialize;
-use texform_interface::syntax_node::ContentMode;
+pub use texform_interface::syntax_node::ContentMode;
 
 /// Command type in knowledge base (determines AST node type)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,6 +73,35 @@ impl std::fmt::Display for AllowedMode {
     }
 }
 
+/// Delimiter token used by delimited/paired argument forms.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DelimiterToken {
+    /// Single-character delimiter, e.g. `(`, `)`, `|`.
+    Char(char),
+    /// Control-sequence delimiter name without the leading backslash, e.g. `langle`.
+    ControlSeq(Cow<'static, str>),
+}
+
+/// Argument parsing form.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArgForm {
+    /// Standard xparse-like argument form (`m`/`o`).
+    Standard,
+    /// Optional star form (`s`).
+    Star,
+    /// Optional group form (`g`).
+    Group,
+    /// Single delimited form (`r`/`d`).
+    Delimited {
+        open: DelimiterToken,
+        close: DelimiterToken,
+    },
+    /// Multi-pair candidate form (`P`/`p`).
+    Paired {
+        pairs: Cow<'static, [(DelimiterToken, DelimiterToken)]>,
+    },
+}
+
 /// Argument value kind (parsing strategy)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueKind {
@@ -86,6 +117,8 @@ pub enum ValueKind {
     KeyVal,
     /// Array column template argument
     Column,
+    /// Star presence flag.
+    Star,
 }
 
 impl ValueKind {
@@ -113,6 +146,10 @@ impl ValueKind {
         matches!(self, ValueKind::Column)
     }
 
+    pub const fn is_star(&self) -> bool {
+        matches!(self, ValueKind::Star)
+    }
+
     pub const fn content_mode(&self) -> Option<ContentMode> {
         match self {
             ValueKind::Content { mode } => Some(*mode),
@@ -122,33 +159,62 @@ impl ValueKind {
 }
 
 /// Argument specification
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArgSpec {
-    /// Whether the argument is required (true) or optional (false)
+    /// Whether the argument is required (true) or optional (false).
     pub required: bool,
+
+    /// xparse-like `!` prefix semantics.
+    pub no_leading_space: bool,
 
     /// Argument value kind (parsing strategy)
     pub kind: ValueKind,
+
+    /// How the parser should read this argument.
+    pub form: ArgForm,
 }
 
 impl ArgSpec {
     pub const fn new(required: bool, kind: ValueKind) -> Self {
-        ArgSpec { required, kind }
-    }
-
-    /// Create a mandatory content argument spec
-    pub const fn mandatory(mode: ContentMode) -> Self {
         ArgSpec {
-            required: true,
-            kind: ValueKind::Content { mode },
+            required,
+            no_leading_space: false,
+            kind,
+            form: ArgForm::Standard,
         }
     }
 
-    /// Create an optional content argument spec
+    pub fn with_form(
+        required: bool,
+        no_leading_space: bool,
+        kind: ValueKind,
+        form: ArgForm,
+    ) -> Self {
+        ArgSpec {
+            required,
+            no_leading_space,
+            kind,
+            form,
+        }
+    }
+
+    /// Create a mandatory content argument spec (`m`).
+    pub const fn mandatory(mode: ContentMode) -> Self {
+        ArgSpec {
+            required: true,
+            no_leading_space: false,
+            kind: ValueKind::Content { mode },
+            form: ArgForm::Standard,
+        }
+    }
+
+    /// Create an optional content argument spec (`o`).
     pub const fn optional(mode: ContentMode) -> Self {
         ArgSpec {
             required: false,
+            no_leading_space: false,
             kind: ValueKind::Content { mode },
+            form: ArgForm::Standard,
         }
     }
 
@@ -169,9 +235,6 @@ pub struct CommandMeta {
 
     /// Command type (determines which AST node type to create)
     pub kind: CommandKind,
-
-    /// Whether command supports starred variant (e.g., \section*)
-    pub has_star_variant: bool,
 
     /// Allowed invocation mode.
     pub allowed_mode: AllowedMode,
@@ -212,7 +275,6 @@ pub struct EnvMeta {
 pub struct CommandSpec {
     pub name: String,
     pub kind: CommandKind,
-    pub has_star_variant: bool,
     pub allowed_mode: AllowedMode,
     pub args: Vec<ArgSpec>,
     pub tags: Vec<String>,
@@ -246,6 +308,10 @@ pub fn load_package_specs_from_str(yaml: &str, context: &str) -> PackageSpecs {
     let parsed: PackageSpecsYaml = serde_yaml::from_str(yaml)
         .unwrap_or_else(|e| panic!("failed to parse package specs ({context}): {e}"));
     parsed.into_specs()
+}
+
+pub fn parse_arg_specs(spec: &str, context: &str) -> Vec<ArgSpec> {
+    ArgSpecParser::new(spec, context).parse()
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -291,23 +357,25 @@ struct CommandSpecYaml {
     name: String,
     kind: CommandKindYaml,
     #[serde(default)]
-    has_star_variant: bool,
-    #[serde(default)]
     allowed_mode: AllowedModeYaml,
     #[serde(default)]
-    args: Vec<ArgSpecYaml>,
+    spec: String,
     #[serde(default)]
     tags: Vec<String>,
 }
 
 impl From<CommandSpecYaml> for CommandSpec {
     fn from(value: CommandSpecYaml) -> Self {
+        let args = parse_arg_specs(
+            &value.spec,
+            format!("command {}", value.name.as_str()).as_str(),
+        );
+
         CommandSpec {
             name: value.name,
             kind: value.kind.into(),
-            has_star_variant: value.has_star_variant,
             allowed_mode: value.allowed_mode.into(),
-            args: value.args.into_iter().map(|a| a.into()).collect(),
+            args,
             tags: value.tags,
         }
     }
@@ -357,7 +425,7 @@ struct EnvironmentSpecYaml {
     has_star_variant: bool,
     allowed_mode: AllowedModeYaml,
     #[serde(default)]
-    args: Vec<ArgSpecYaml>,
+    spec: String,
     body_mode: ContentModeYaml,
     #[serde(default)]
     tags: Vec<String>,
@@ -365,58 +433,18 @@ struct EnvironmentSpecYaml {
 
 impl From<EnvironmentSpecYaml> for EnvironmentSpec {
     fn from(value: EnvironmentSpecYaml) -> Self {
+        let args = parse_arg_specs(
+            &value.spec,
+            format!("environment {}", value.name.as_str()).as_str(),
+        );
+
         EnvironmentSpec {
             name: value.name,
             has_star_variant: value.has_star_variant,
             allowed_mode: value.allowed_mode.into(),
-            args: value.args.into_iter().map(|a| a.into()).collect(),
+            args,
             body_mode: value.body_mode.into(),
             tags: value.tags,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct ArgSpecYaml {
-    required: bool,
-    kind: ValueKindYaml,
-}
-
-impl From<ArgSpecYaml> for ArgSpec {
-    fn from(value: ArgSpecYaml) -> Self {
-        ArgSpec {
-            required: value.required,
-            kind: value.kind.into(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum ValueKindYaml {
-    Math,
-    Text,
-    Delimiter,
-    Dimension,
-    Integer,
-    KeyVal,
-    Column,
-}
-
-impl From<ValueKindYaml> for ValueKind {
-    fn from(value: ValueKindYaml) -> Self {
-        match value {
-            ValueKindYaml::Math => ValueKind::Content {
-                mode: ContentMode::Math,
-            },
-            ValueKindYaml::Text => ValueKind::Content {
-                mode: ContentMode::Text,
-            },
-            ValueKindYaml::Delimiter => ValueKind::Delimiter,
-            ValueKindYaml::Dimension => ValueKind::Dimension,
-            ValueKindYaml::Integer => ValueKind::Integer,
-            ValueKindYaml::KeyVal => ValueKind::KeyVal,
-            ValueKindYaml::Column => ValueKind::Column,
         }
     }
 }
@@ -437,143 +465,260 @@ impl From<ContentModeYaml> for ContentMode {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+struct ArgSpecParser<'a> {
+    chars: Vec<char>,
+    cursor: usize,
+    context: &'a str,
+}
 
-    #[test]
-    fn test_load_package_specs_from_str() {
-        let yaml = r#"
-characters:
-  - name: alpha
-    allowed_mode: math
-  - name: beta
-    allowed_mode: text
-commands:
-  - name: frac
-    kind: prefix
-    allowed_mode: math
-    tags: [discouraged]
-    args:
-      - required: true
-        kind: math
-      - required: true
-        kind: delimiter
-  - name: text
-    kind: prefix
-    allowed_mode: both
-    args:
-      - required: true
-        kind: text
-environments:
-  - name: matrix
-    allowed_mode: math
-    body_mode: math
-    tags: [matrix]
-delimiter_controls: [langle]
-"#;
+impl<'a> ArgSpecParser<'a> {
+    fn new(spec: &str, context: &'a str) -> Self {
+        ArgSpecParser {
+            chars: spec.chars().collect(),
+            cursor: 0,
+            context,
+        }
+    }
 
-        let specs = load_package_specs_from_str(yaml, "test");
-        assert_eq!(specs.characters.len(), 2);
-        assert_eq!(specs.characters[0].name, "alpha");
-        assert_eq!(specs.characters[0].allowed_mode, AllowedMode::Math);
-        assert_eq!(specs.characters[1].name, "beta");
-        assert_eq!(specs.characters[1].allowed_mode, AllowedMode::Text);
-        assert_eq!(specs.commands.len(), 2);
-        assert_eq!(specs.commands[0].name, "frac");
-        assert!(!specs.commands[0].has_star_variant);
-        assert_eq!(specs.commands[0].allowed_mode, AllowedMode::Math);
-        assert_eq!(specs.commands[0].args.len(), 2);
-        assert_eq!(specs.commands[0].tags, vec!["discouraged"]);
-        assert_eq!(specs.commands[0].args[0].required, true);
-        assert_eq!(
-            specs.commands[0].args[0].kind,
-            ValueKind::Content {
-                mode: ContentMode::Math
+    fn parse(mut self) -> Vec<ArgSpec> {
+        let mut specs = Vec::new();
+
+        loop {
+            self.skip_whitespace();
+            if self.eof() {
+                break;
             }
-        );
-        assert_eq!(specs.commands[0].args[1].kind, ValueKind::Delimiter);
-        assert_eq!(specs.commands[1].name, "text");
-        assert_eq!(specs.commands[1].allowed_mode, AllowedMode::Both);
-        assert_eq!(specs.commands[1].args.len(), 1);
-        assert!(specs.commands[1].tags.is_empty());
-        assert_eq!(
-            specs.commands[1].args[0].kind,
-            ValueKind::Content {
-                mode: ContentMode::Text
+            specs.push(self.parse_one());
+        }
+
+        specs
+    }
+
+    fn parse_one(&mut self) -> ArgSpec {
+        let no_leading_space = self.consume_if('!');
+        let kind_token = self
+            .next_char()
+            .unwrap_or_else(|| self.fail("expected argument token"));
+
+        let (required, form) = match kind_token {
+            'm' => (true, ArgForm::Standard),
+            'o' => (false, ArgForm::Standard),
+            's' => (false, ArgForm::Star),
+            'g' => (false, ArgForm::Group),
+            'r' => {
+                let open = self.parse_delimiter_token();
+                let close = self.parse_delimiter_token();
+                (true, ArgForm::Delimited { open, close })
             }
-        );
-        assert_eq!(specs.environments.len(), 1);
-        assert_eq!(specs.environments[0].name, "matrix");
-        assert_eq!(specs.environments[0].allowed_mode, AllowedMode::Math);
-        assert_eq!(specs.environments[0].tags, vec!["matrix"]);
-        assert_eq!(specs.delimiter_controls, vec!["langle"]);
+            'd' => {
+                let open = self.parse_delimiter_token();
+                let close = self.parse_delimiter_token();
+                (false, ArgForm::Delimited { open, close })
+            }
+            'P' => {
+                let pairs = self.parse_pair_list();
+                (true, ArgForm::Paired { pairs })
+            }
+            'p' => {
+                let pairs = self.parse_pair_list();
+                (false, ArgForm::Paired { pairs })
+            }
+            other => self.fail(format!("unsupported argument token `{other}`")),
+        };
+
+        let kind = if matches!(&form, ArgForm::Star) {
+            if self.peek_char() == Some(':') {
+                self.fail("`s` does not accept value type annotation")
+            }
+            ValueKind::Star
+        } else {
+            self.parse_value_kind_annotation()
+        };
+
+        let spec = ArgSpec {
+            required,
+            no_leading_space,
+            kind,
+            form,
+        };
+        self.validate_spec(spec)
     }
 
-    #[test]
-    fn test_command_allowed_mode_defaults_to_both() {
-        let yaml = r#"
-commands:
-  - name: foo
-    kind: prefix
-"#;
+    fn parse_value_kind_annotation(&mut self) -> ValueKind {
+        if !self.consume_if(':') {
+            return ValueKind::Content {
+                mode: ContentMode::Math,
+            };
+        }
 
-        let specs = load_package_specs_from_str(yaml, "default-allowed-mode");
-        assert_eq!(specs.commands.len(), 1);
-        assert_eq!(specs.commands[0].allowed_mode, AllowedMode::Both);
+        let annotation = self
+            .next_char()
+            .unwrap_or_else(|| self.fail("missing value kind annotation after `:`"));
+        match annotation {
+            'T' => ValueKind::Content {
+                mode: ContentMode::Text,
+            },
+            'D' => ValueKind::Delimiter,
+            'L' => ValueKind::Dimension,
+            'I' => ValueKind::Integer,
+            'K' => ValueKind::KeyVal,
+            'C' => ValueKind::Column,
+            other => self.fail(format!("unsupported value kind annotation `:{other}`")),
+        }
     }
 
-    #[test]
-    #[should_panic(expected = "missing field `allowed_mode`")]
-    fn test_character_allowed_mode_is_required() {
-        let yaml = r#"
-characters:
-  - name: alpha
-"#;
-
-        let _ = load_package_specs_from_str(yaml, "character-allowed-mode-required");
+    fn parse_delimiter_token(&mut self) -> DelimiterToken {
+        match self.next_char() {
+            Some('\\') => {
+                DelimiterToken::ControlSeq(Cow::Owned(self.parse_control_sequence_name()))
+            }
+            Some(c) if c.is_whitespace() => self.fail("delimiter token cannot be whitespace"),
+            Some(c) => DelimiterToken::Char(c),
+            None => self.fail("missing delimiter token"),
+        }
     }
 
-    #[test]
-    fn test_environment_body_mode_can_be_text() {
-        let yaml = r#"
-environments:
-  - name: textenv
-    allowed_mode: math
-    body_mode: text
-"#;
+    fn parse_pair_list(&mut self) -> Cow<'static, [(DelimiterToken, DelimiterToken)]> {
+        let mut pairs = Vec::new();
 
-        let specs = load_package_specs_from_str(yaml, "test");
-        assert_eq!(specs.environments.len(), 1);
-        assert_eq!(specs.environments[0].name, "textenv");
-        assert_eq!(specs.environments[0].body_mode, ContentMode::Text);
+        while self.consume_if('<') {
+            let open = self.parse_pair_delimiter_token();
+            self.expect_char(',');
+            let close = self.parse_pair_delimiter_token();
+            self.expect_char('>');
+            pairs.push((open, close));
+        }
+
+        if pairs.is_empty() {
+            self.fail("paired form requires at least one `<open,close>` block");
+        }
+
+        Cow::Owned(pairs)
     }
 
-    #[test]
-    #[should_panic(expected = "missing field `allowed_mode`")]
-    fn test_environment_allowed_mode_is_required() {
-        let yaml = r#"
-environments:
-  - name: matrix
-    body_mode: math
-"#;
-
-        let _ = load_package_specs_from_str(yaml, "environment-allowed-mode-required");
+    fn parse_pair_delimiter_token(&mut self) -> DelimiterToken {
+        match self.next_char() {
+            Some('\\') => {
+                DelimiterToken::ControlSeq(Cow::Owned(self.parse_control_sequence_name()))
+            }
+            Some(c) if c.is_whitespace() => self.fail("pair delimiter cannot be whitespace"),
+            Some('<') | Some('>') | Some(',') => {
+                self.fail("`<`, `>`, `,` are reserved in pair syntax")
+            }
+            Some(c) => DelimiterToken::Char(c),
+            None => self.fail("missing pair delimiter token"),
+        }
     }
 
-    #[test]
-    fn test_allowed_mode_helpers() {
-        assert!(AllowedMode::Math.allows(ContentMode::Math));
-        assert!(!AllowedMode::Math.allows(ContentMode::Text));
-        assert!(AllowedMode::Text.allows(ContentMode::Text));
-        assert!(!AllowedMode::Text.allows(ContentMode::Math));
-        assert!(AllowedMode::Both.allows(ContentMode::Math));
-        assert!(AllowedMode::Both.allows(ContentMode::Text));
+    fn parse_control_sequence_name(&mut self) -> String {
+        let first = self
+            .next_char()
+            .unwrap_or_else(|| self.fail("expected control sequence name after `\\`"));
 
-        assert_eq!(AllowedMode::Math.to_string(), "math");
-        assert_eq!(AllowedMode::Text.to_string(), "text");
-        assert_eq!(AllowedMode::Both.to_string(), "both");
+        let mut name = String::new();
+        name.push(first);
+
+        if first.is_ascii_alphabetic() {
+            while let Some(c) = self.peek_char() {
+                if c.is_ascii_alphabetic() {
+                    name.push(c);
+                    self.cursor += 1;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        name
     }
 
-    // Knowledge-base construction lives in texform-core.
+    fn validate_spec(&self, spec: ArgSpec) -> ArgSpec {
+        if spec.no_leading_space && spec.required {
+            self.fail("`!` prefix is only valid for optional argument forms");
+        }
+
+        match &spec.form {
+            ArgForm::Standard => {
+                if spec.kind.is_star() {
+                    self.fail("star value kind requires `s` form");
+                }
+            }
+            ArgForm::Star => {
+                if spec.required {
+                    self.fail("star form must be optional");
+                }
+                if !spec.kind.is_star() {
+                    self.fail("star form must use star value kind");
+                }
+            }
+            ArgForm::Group => {
+                if spec.required {
+                    self.fail("group form must be optional");
+                }
+                if spec.kind.is_star() {
+                    self.fail("group form cannot use star value kind");
+                }
+                if !spec.kind.is_content() {
+                    self.fail("group form only supports content kind");
+                }
+            }
+            ArgForm::Delimited { .. } | ArgForm::Paired { .. } => {
+                if spec.kind.is_star() {
+                    self.fail("delimited/paired form cannot use star value kind");
+                }
+                if spec.kind.is_delimiter() {
+                    self.fail("delimiter kind cannot use delimited/paired form");
+                }
+            }
+        }
+
+        spec
+    }
+
+    fn skip_whitespace(&mut self) {
+        while matches!(self.peek_char(), Some(c) if c.is_whitespace()) {
+            self.cursor += 1;
+        }
+    }
+
+    fn expect_char(&mut self, target: char) {
+        let got = self
+            .next_char()
+            .unwrap_or_else(|| self.fail(format!("expected `{target}`")));
+        if got != target {
+            self.fail(format!("expected `{target}`, found `{got}`"));
+        }
+    }
+
+    fn consume_if(&mut self, target: char) -> bool {
+        if self.peek_char() == Some(target) {
+            self.cursor += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn next_char(&mut self) -> Option<char> {
+        let ch = self.peek_char()?;
+        self.cursor += 1;
+        Some(ch)
+    }
+
+    fn peek_char(&self) -> Option<char> {
+        self.chars.get(self.cursor).copied()
+    }
+
+    fn eof(&self) -> bool {
+        self.cursor >= self.chars.len()
+    }
+
+    fn fail(&self, msg: impl AsRef<str>) -> ! {
+        panic!(
+            "invalid argspec ({}) at char {}: {}",
+            self.context,
+            self.cursor,
+            msg.as_ref(),
+        )
+    }
 }

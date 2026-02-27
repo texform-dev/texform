@@ -1,10 +1,35 @@
-use texform_core::parser::parse;
+use std::sync::Once;
+
+use texform_core::knowledge;
+use texform_core::lexer::Token;
+use texform_core::parser::parse as raw_parse;
 use texform_interface::syntax_node::{
-    ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
+    Argument, ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
 };
 
-fn unwrap_content(value: &ArgumentValue) -> &SyntaxNode {
-    match value {
+fn parse(
+    src: &str,
+    strict: bool,
+) -> Result<
+    (SyntaxNode, chumsky::span::SimpleSpan),
+    Vec<chumsky::error::Rich<'static, Token>>,
+> {
+    init_test_kb();
+    raw_parse(src, strict).map_err(|errors| errors.into_iter().map(|e| e.into_owned()).collect())
+}
+
+fn init_test_kb() {
+    static INIT: Once = Once::new();
+    INIT.call_once(knowledge::init_test_defaults);
+}
+
+fn expect_arg(slot: &Option<Argument>) -> &Argument {
+    slot.as_ref()
+        .unwrap_or_else(|| panic!("Expected argument slot to be present"))
+}
+
+fn unwrap_content(slot: &Option<Argument>) -> &SyntaxNode {
+    match &expect_arg(slot).value {
         ArgumentValue::Content(node) => node,
         _ => panic!("Expected content argument"),
     }
@@ -246,8 +271,8 @@ fn test_frac_command() {
                     assert!(!starred);
                     assert_eq!(args.len(), 2);
 
-                    assert_eq!(args[0].kind, ArgumentKind::Mandatory);
-                    assert_eq!(args[1].kind, ArgumentKind::Mandatory);
+                    assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Mandatory);
+                    assert_eq!(expect_arg(&args[1]).kind, ArgumentKind::Mandatory);
                 }
                 _ => panic!("Expected Command node"),
             }
@@ -268,17 +293,11 @@ fn test_sqrt_without_optional() {
                     assert_eq!(name, "sqrt");
                     assert_eq!(args.len(), 2);
 
-                    // Optional arg should be empty
-                    assert_eq!(args[0].kind, ArgumentKind::Optional);
-                    match unwrap_content(&args[0].value) {
-                        SyntaxNode::Group { children, .. } => {
-                            assert!(children.is_empty());
-                        }
-                        _ => panic!("Expected Group in optional arg"),
-                    }
+                    // Optional slot should be absent
+                    assert!(args[0].is_none());
 
                     // Mandatory arg
-                    assert_eq!(args[1].kind, ArgumentKind::Mandatory);
+                    assert_eq!(expect_arg(&args[1]).kind, ArgumentKind::Mandatory);
                 }
                 _ => panic!("Expected Command node"),
             }
@@ -300,12 +319,18 @@ fn test_sqrt_with_optional() {
                     assert_eq!(args.len(), 2);
 
                     // Optional arg - normalized to single Char
-                    assert_eq!(args[0].kind, ArgumentKind::Optional);
-                    assert_eq!(args[0].value, ArgumentValue::Content(SyntaxNode::Char('3')));
+                    assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Optional);
+                    assert_eq!(
+                        expect_arg(&args[0]).value,
+                        ArgumentValue::Content(SyntaxNode::Char('3'))
+                    );
 
                     // Mandatory arg - normalized to single Char
-                    assert_eq!(args[1].kind, ArgumentKind::Mandatory);
-                    assert_eq!(args[1].value, ArgumentValue::Content(SyntaxNode::Char('8')));
+                    assert_eq!(expect_arg(&args[1]).kind, ArgumentKind::Mandatory);
+                    assert_eq!(
+                        expect_arg(&args[1]).value,
+                        ArgumentValue::Content(SyntaxNode::Char('8'))
+                    );
                 }
                 _ => panic!("Expected Command node"),
             }
@@ -324,7 +349,7 @@ fn test_text_command() {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "text");
                 assert_eq!(args.len(), 1);
-                match unwrap_content(&args[0].value) {
+                match unwrap_content(&args[0]) {
                     SyntaxNode::Text(s) => {
                         assert_eq!(s, "hello");
                     }
@@ -347,9 +372,9 @@ fn test_delimiter_argument() {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "delim");
                 assert_eq!(args.len(), 1);
-                assert_eq!(args[0].kind, ArgumentKind::Mandatory);
+                assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Mandatory);
                 assert_eq!(
-                    args[0].value,
+                    expect_arg(&args[0]).value,
                     ArgumentValue::Delimiter(Delimiter::Control("langle"))
                 );
             }
@@ -369,7 +394,10 @@ fn test_dimension_argument() {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "hspace");
                 assert_eq!(args.len(), 1);
-                assert_eq!(args[0].value, ArgumentValue::Dimension("1em".to_string()));
+                assert_eq!(
+                    expect_arg(&args[0]).value,
+                    ArgumentValue::Dimension("1em".to_string())
+                );
             }
             _ => panic!("Expected Command node"),
         },
@@ -387,7 +415,10 @@ fn test_integer_argument() {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "romannumeral");
                 assert_eq!(args.len(), 1);
-                assert_eq!(args[0].value, ArgumentValue::Integer("12".to_string()));
+                assert_eq!(
+                    expect_arg(&args[0]).value,
+                    ArgumentValue::Integer("12".to_string())
+                );
             }
             _ => panic!("Expected Command node"),
         },
@@ -405,13 +436,13 @@ fn test_keyval_argument() {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "includegraphics");
                 assert_eq!(args.len(), 2);
-                assert_eq!(args[0].kind, ArgumentKind::Optional);
+                assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Optional);
                 assert_eq!(
-                    args[0].value,
+                    expect_arg(&args[0]).value,
                     ArgumentValue::KeyVal("width=1em,height=2pt".to_string())
                 );
                 assert_eq!(
-                    unwrap_content(&args[1].value),
+                    unwrap_content(&args[1]),
                     &SyntaxNode::Text("file".to_string())
                 );
             }
@@ -428,7 +459,7 @@ fn test_delimiter_argument_braced_matches_inline() {
 
     let inline_value = match inline {
         SyntaxNode::Group { children, .. } => match &children[0] {
-            SyntaxNode::Command { args, .. } => args[0].value.clone(),
+            SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
             _ => panic!("Expected Command node"),
         },
         _ => panic!("Expected root Group"),
@@ -436,7 +467,7 @@ fn test_delimiter_argument_braced_matches_inline() {
 
     let braced_value = match braced {
         SyntaxNode::Group { children, .. } => match &children[0] {
-            SyntaxNode::Command { args, .. } => args[0].value.clone(),
+            SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
             _ => panic!("Expected Command node"),
         },
         _ => panic!("Expected root Group"),
@@ -452,7 +483,7 @@ fn test_integer_argument_braced_matches_inline() {
 
     let inline_value = match inline {
         SyntaxNode::Group { children, .. } => match &children[0] {
-            SyntaxNode::Command { args, .. } => args[0].value.clone(),
+            SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
             _ => panic!("Expected Command node"),
         },
         _ => panic!("Expected root Group"),
@@ -460,7 +491,7 @@ fn test_integer_argument_braced_matches_inline() {
 
     let braced_value = match braced {
         SyntaxNode::Group { children, .. } => match &children[0] {
-            SyntaxNode::Command { args, .. } => args[0].value.clone(),
+            SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
             _ => panic!("Expected Command node"),
         },
         _ => panic!("Expected root Group"),
@@ -476,7 +507,7 @@ fn test_dimension_argument_braced_matches_inline() {
 
     let inline_value = match inline {
         SyntaxNode::Group { children, .. } => match &children[0] {
-            SyntaxNode::Command { args, .. } => args[0].value.clone(),
+            SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
             _ => panic!("Expected Command node"),
         },
         _ => panic!("Expected root Group"),
@@ -484,7 +515,7 @@ fn test_dimension_argument_braced_matches_inline() {
 
     let braced_value = match braced {
         SyntaxNode::Group { children, .. } => match &children[0] {
-            SyntaxNode::Command { args, .. } => args[0].value.clone(),
+            SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
             _ => panic!("Expected Command node"),
         },
         _ => panic!("Expected root Group"),
@@ -503,7 +534,7 @@ fn test_optional_bracket_closes_at_top_level() {
             SyntaxNode::Command { args, .. } => {
                 assert_eq!(args.len(), 2);
                 assert_eq!(
-                    args[0].value,
+                    expect_arg(&args[0]).value,
                     ArgumentValue::KeyVal("key={[[},width=1em".to_string())
                 );
             }
@@ -549,10 +580,10 @@ fn test_nested_commands() {
                     assert_eq!(name, "frac");
 
                     // First argument should be normalized to single Char
-                    assert_eq!(unwrap_content(&args[0].value), &SyntaxNode::Char('a'));
+                    assert_eq!(unwrap_content(&args[0]), &SyntaxNode::Char('a'));
 
                     // Second argument should be \sqrt command (normalized from single-element group)
-                    match unwrap_content(&args[1].value) {
+                    match unwrap_content(&args[1]) {
                         SyntaxNode::Command { name, .. } => {
                             assert_eq!(name, "sqrt");
                         }
@@ -833,7 +864,7 @@ fn test_text_in_command() {
                 SyntaxNode::Command { name, args, .. } => {
                     assert_eq!(name, "text");
                     assert_eq!(args.len(), 1);
-                    match unwrap_content(&args[0].value) {
+                    match unwrap_content(&args[0]) {
                         SyntaxNode::Group { mode, children, .. } => {
                             assert_eq!(*mode, ContentMode::Text);
                             assert_eq!(children.len(), 1);
@@ -863,7 +894,7 @@ fn test_text_inline_math_segment() {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "text");
                 assert_eq!(args.len(), 1);
-                match unwrap_content(&args[0].value) {
+                match unwrap_content(&args[0]) {
                     SyntaxNode::Group { mode, children, .. } => {
                         assert_eq!(*mode, ContentMode::Text);
                         assert_eq!(children.len(), 3);
@@ -1117,9 +1148,9 @@ fn test_frac_mixed_shorthand() {
                     assert_eq!(name, "frac");
                     assert_eq!(args.len(), 2);
                     // First arg: single char 'a'
-                    assert_eq!(unwrap_content(&args[0].value), &SyntaxNode::Char('a'));
+                    assert_eq!(unwrap_content(&args[0]), &SyntaxNode::Char('a'));
                     // Second arg: group with 'bc'
-                    match unwrap_content(&args[1].value) {
+                    match unwrap_content(&args[1]) {
                         SyntaxNode::Group { children, .. } => {
                             assert_eq!(children.len(), 2);
                             assert_eq!(children[0], SyntaxNode::Char('b'));
@@ -1148,11 +1179,11 @@ fn test_frac_shorthand_with_command() {
                     assert_eq!(name, "frac");
                     assert_eq!(args.len(), 2);
                     // Both args should be Command nodes
-                    match unwrap_content(&args[0].value) {
+                    match unwrap_content(&args[0]) {
                         SyntaxNode::Command { name, .. } => assert_eq!(name, "alpha"),
                         _ => panic!("Expected alpha command"),
                     }
-                    match unwrap_content(&args[1].value) {
+                    match unwrap_content(&args[1]) {
                         SyntaxNode::Command { name, .. } => assert_eq!(name, "beta"),
                         _ => panic!("Expected beta command"),
                     }
@@ -1180,6 +1211,55 @@ fn test_sqrt_with_optional_shorthand() {
     let (result_full, _) = parse(r"\sqrt[3]{8}", false).unwrap();
 
     assert_eq!(result_short, result_full);
+}
+
+#[test]
+fn test_optional_content_stops_at_first_closing_bracket() {
+    let (result, _) = parse(r"\sqrt[a[b]c]{x}", false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 3);
+
+            match &children[0] {
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "sqrt");
+                    assert_eq!(args.len(), 2);
+
+                    match &expect_arg(&args[0]).value {
+                        ArgumentValue::Content(SyntaxNode::Group { children, .. }) => {
+                            assert_eq!(
+                                children,
+                                &vec![
+                                    SyntaxNode::Char('a'),
+                                    SyntaxNode::Char('['),
+                                    SyntaxNode::Char('b'),
+                                ]
+                            );
+                        }
+                        other => panic!("Expected grouped optional content, got {:?}", other),
+                    }
+
+                    assert_eq!(
+                        expect_arg(&args[1]).value,
+                        ArgumentValue::Content(SyntaxNode::Char('c'))
+                    );
+                }
+                other => panic!("Expected sqrt command, got {:?}", other),
+            }
+
+            assert_eq!(children[1], SyntaxNode::Char(']'));
+            assert_eq!(
+                children[2],
+                SyntaxNode::Group {
+                    mode: ContentMode::Math,
+                    kind: GroupKind::Explicit,
+                    children: vec![SyntaxNode::Char('x')],
+                }
+            );
+        }
+        other => panic!("Expected root Group, got {:?}", other),
+    }
 }
 
 // ========================================================================
@@ -1871,7 +1951,7 @@ fn test_script_in_argument() {
                 SyntaxNode::Command { name, args, .. } => {
                     assert_eq!(name, "frac");
                     // First arg should contain scripted x^2
-                    match unwrap_content(&args[0].value) {
+                    match unwrap_content(&args[0]) {
                         SyntaxNode::Scripted {
                             base, superscript, ..
                         } => {
@@ -1881,7 +1961,7 @@ fn test_script_in_argument() {
                         _ => panic!("Expected Scripted in first arg"),
                     }
                     // Second arg is just 'y'
-                    assert_eq!(unwrap_content(&args[1].value), &SyntaxNode::Char('y'));
+                    assert_eq!(unwrap_content(&args[1]), &SyntaxNode::Char('y'));
                 }
                 _ => panic!("Expected Command"),
             }
@@ -1970,7 +2050,7 @@ fn test_text_escaped_symbols() {
         SyntaxNode::Group { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "text");
-                match unwrap_content(&args[0].value) {
+                match unwrap_content(&args[0]) {
                     SyntaxNode::Group { children, .. } => {
                         assert_eq!(children.len(), 3);
                         assert_eq!(children[0], SyntaxNode::Char('%'));
@@ -1995,7 +2075,7 @@ fn test_text_explicit_group() {
         SyntaxNode::Group { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "text");
-                match unwrap_content(&args[0].value) {
+                match unwrap_content(&args[0]) {
                     SyntaxNode::Group {
                         kind: GroupKind::Explicit,
                         children,
@@ -2030,7 +2110,10 @@ fn test_dimension_with_spaces() {
                 assert_eq!(name, "hspace");
                 assert_eq!(args.len(), 1);
                 // Should be normalized to "1.5cm" (no space)
-                assert_eq!(args[0].value, ArgumentValue::Dimension("1.5cm".to_string()));
+                assert_eq!(
+                    expect_arg(&args[0]).value,
+                    ArgumentValue::Dimension("1.5cm".to_string())
+                );
             }
             _ => panic!("Expected Command node"),
         },
@@ -2072,6 +2155,301 @@ fn test_keyval_empty_brackets() {
         result.is_err(),
         "Expected error for empty optional keyval brackets"
     );
+}
+
+// ========================================================================
+// XParse-inspired ArgSpec Tests
+// ========================================================================
+
+fn extract_first_command(node: SyntaxNode) -> (String, bool, Vec<Option<Argument>>) {
+    match node {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command {
+                name,
+                starred,
+                args,
+            } => (name.clone(), *starred, args.clone()),
+            other => panic!("Expected command node, got {:?}", other),
+        },
+        other => panic!("Expected root group, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_qty_supports_multiple_delimiter_pairs() {
+    let cases = [
+        (r"\qty(x)", Delimiter::Char('('), Delimiter::Char(')')),
+        (r"\qty[x]", Delimiter::Char('['), Delimiter::Char(']')),
+        (r"\qty{x}", Delimiter::Char('{'), Delimiter::Char('}')),
+        (r"\qty|x|", Delimiter::Char('|'), Delimiter::Char('|')),
+    ];
+
+    for (src, open, close) in cases {
+        let (result, _) = parse(src, false).unwrap();
+        let (name, starred, args) = extract_first_command(result);
+        assert_eq!(name, "qty");
+        assert!(!starred);
+        assert_eq!(args.len(), 1);
+
+        let arg = expect_arg(&args[0]);
+        assert_eq!(arg.value, ArgumentValue::Content(SyntaxNode::Char('x')));
+        match arg.kind {
+            ArgumentKind::Paired {
+                open: matched_open,
+                close: matched_close,
+            } => {
+                assert_eq!(matched_open, open);
+                assert_eq!(matched_close, close);
+            }
+            other => panic!("Expected paired argument kind, got {:?}", other),
+        }
+    }
+}
+
+#[test]
+fn test_qty_optional_slot_can_be_missing() {
+    let (result, _) = parse(r"\qty", false).unwrap();
+    let (name, starred, args) = extract_first_command(result);
+    assert_eq!(name, "qty");
+    assert!(!starred);
+    assert_eq!(args.len(), 1);
+    assert!(args[0].is_none());
+}
+
+#[test]
+fn test_arg_true_quantity_commands_require_braces() {
+    let (pqty_ok, _) = parse(r"\pqty{x}", false).unwrap();
+    let (name, starred, args) = extract_first_command(pqty_ok);
+    assert_eq!(name, "pqty");
+    assert!(!starred);
+    assert_eq!(args.len(), 2);
+    assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(false));
+
+    let content = expect_arg(&args[1]);
+    assert_eq!(content.value, ArgumentValue::Content(SyntaxNode::Char('x')));
+    match content.kind {
+        ArgumentKind::Delimited { open, close } => {
+            assert_eq!(open, Delimiter::Char('{'));
+            assert_eq!(close, Delimiter::Char('}'));
+        }
+        other => panic!("Expected brace-delimited argument, got {:?}", other),
+    }
+
+    let (abs_ok, _) = parse(r"\abs{x}", false).unwrap();
+    let (name, _, args) = extract_first_command(abs_ok);
+    assert_eq!(name, "abs");
+    assert_eq!(
+        expect_arg(&args[1]).value,
+        ArgumentValue::Content(SyntaxNode::Char('x'))
+    );
+
+    assert!(parse(r"\pqty(x)", false).is_err());
+    assert!(parse(r"\abs|x|", false).is_err());
+}
+
+#[test]
+fn test_eval_uses_nonsymmetric_paired_delimiter() {
+    let (result, _) = parse(r"\eval(x|", false).unwrap();
+    let (name, starred, args) = extract_first_command(result);
+    assert_eq!(name, "eval");
+    assert!(!starred);
+    assert_eq!(args.len(), 2);
+
+    let star = expect_arg(&args[0]);
+    assert_eq!(star.kind, ArgumentKind::Star);
+    assert_eq!(star.value, ArgumentValue::Boolean(false));
+
+    let paired = expect_arg(&args[1]);
+    assert_eq!(paired.value, ArgumentValue::Content(SyntaxNode::Char('x')));
+    match paired.kind {
+        ArgumentKind::Paired { open, close } => {
+            assert_eq!(open, Delimiter::Char('('));
+            assert_eq!(close, Delimiter::Char('|'));
+        }
+        other => panic!("Expected paired argument kind, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_dv_and_pdv_group_slots_are_stable() {
+    let (dv_result, _) = parse(r"\dv{f}", false).unwrap();
+    let (name, starred, args) = extract_first_command(dv_result);
+    assert_eq!(name, "dv");
+    assert!(!starred);
+    assert_eq!(args.len(), 4);
+    assert_eq!(
+        expect_arg(&args[0]).value,
+        ArgumentValue::Boolean(false),
+        "star slot should always exist",
+    );
+    assert!(args[1].is_none(), "optional bracket slot should be None");
+    assert_eq!(
+        expect_arg(&args[2]).value,
+        ArgumentValue::Content(SyntaxNode::Char('f'))
+    );
+    assert!(args[3].is_none(), "group slot should be None when absent");
+
+    let (pdv_result, _) = parse(r"\pdv{f}{x}{y}", false).unwrap();
+    let (name, starred, args) = extract_first_command(pdv_result);
+    assert_eq!(name, "pdv");
+    assert!(!starred);
+    assert_eq!(args.len(), 5);
+    assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(false));
+    assert!(args[1].is_none());
+    assert_eq!(
+        expect_arg(&args[2]).value,
+        ArgumentValue::Content(SyntaxNode::Char('f'))
+    );
+    assert_eq!(expect_arg(&args[3]).kind, ArgumentKind::Group);
+    assert_eq!(expect_arg(&args[4]).kind, ArgumentKind::Group);
+}
+
+#[test]
+fn test_braket_optional_group_slot() {
+    let (result_full, _) = parse(r"\braket{a}{b}", false).unwrap();
+    let (_, _, args_full) = extract_first_command(result_full);
+    assert_eq!(args_full.len(), 3);
+    assert_eq!(
+        expect_arg(&args_full[0]).value,
+        ArgumentValue::Boolean(false)
+    );
+    assert_eq!(
+        expect_arg(&args_full[1]).value,
+        ArgumentValue::Content(SyntaxNode::Char('a'))
+    );
+    assert_eq!(expect_arg(&args_full[2]).kind, ArgumentKind::Group);
+
+    let (result_short, _) = parse(r"\braket{a}", false).unwrap();
+    let (_, _, args_short) = extract_first_command(result_short);
+    assert_eq!(args_short.len(), 3);
+    assert!(args_short[2].is_none());
+}
+
+#[test]
+fn test_exp_does_not_consume_star_without_s_slot() {
+    let (result, _) = parse(r"\exp*", false).unwrap();
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 2);
+            match &children[0] {
+                SyntaxNode::Command {
+                    name,
+                    starred,
+                    args,
+                } => {
+                    assert_eq!(name, "exp");
+                    assert!(!starred);
+                    assert!(args.is_empty());
+                }
+                other => panic!("Expected exp command, got {:?}", other),
+            }
+            assert_eq!(children[1], SyntaxNode::Char('*'));
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_exp_does_not_consume_brackets_without_optional_slot() {
+    let (result, _) = parse(r"\exp[x]", false).unwrap();
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 4);
+            match &children[0] {
+                SyntaxNode::Command {
+                    name,
+                    starred,
+                    args,
+                } => {
+                    assert_eq!(name, "exp");
+                    assert!(!starred);
+                    assert!(args.is_empty());
+                }
+                other => panic!("Expected exp command, got {:?}", other),
+            }
+            assert_eq!(children[1], SyntaxNode::Char('['));
+            assert_eq!(children[2], SyntaxNode::Char('x'));
+            assert_eq!(children[3], SyntaxNode::Char(']'));
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_bare_brackets_parse_as_regular_characters() {
+    let (result, _) = parse("[a]", false).unwrap();
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 3);
+            assert_eq!(children[0], SyntaxNode::Char('['));
+            assert_eq!(children[1], SyntaxNode::Char('a'));
+            assert_eq!(children[2], SyntaxNode::Char(']'));
+        }
+        other => panic!("Expected root group, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_no_leading_space_prefix_for_linebreak_command() {
+    let (immediate, _) = parse(r"\\*[1cm]", false).unwrap();
+    let (name, starred, args) = extract_first_command(immediate);
+    assert_eq!(name, "\\");
+    assert!(starred);
+    assert_eq!(args.len(), 2);
+    assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(true));
+    assert_eq!(
+        expect_arg(&args[1]).value,
+        ArgumentValue::Dimension("1cm".to_string())
+    );
+
+    let (spaced_star, _) = parse(r"\\ *", false).unwrap();
+    match spaced_star {
+        SyntaxNode::Group { children, .. } => {
+            assert!(!children.is_empty());
+            match &children[0] {
+                SyntaxNode::Command {
+                    name,
+                    starred,
+                    args,
+                } => {
+                    assert_eq!(name, "\\");
+                    assert!(!starred);
+                    assert_eq!(args.len(), 2);
+                    assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(false));
+                    assert!(args[1].is_none());
+                }
+                other => panic!("Expected linebreak command, got {:?}", other),
+            }
+            assert_eq!(children[1], SyntaxNode::Char('*'));
+        }
+        _ => panic!("Expected root group"),
+    }
+
+    let (spaced_dimension, _) = parse(r"\\ [1cm]", false).unwrap();
+    match spaced_dimension {
+        SyntaxNode::Group { children, .. } => {
+            assert!(!children.is_empty());
+            match &children[0] {
+                SyntaxNode::Command {
+                    name,
+                    starred,
+                    args,
+                } => {
+                    assert_eq!(name, "\\");
+                    assert!(!starred);
+                    assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(false));
+                    assert!(args[1].is_none());
+                }
+                other => panic!("Expected linebreak command, got {:?}", other),
+            }
+            assert_eq!(children[1], SyntaxNode::Char('['));
+            assert_eq!(children[2], SyntaxNode::Char('1'));
+            assert_eq!(children[3], SyntaxNode::Char('c'));
+            assert_eq!(children[4], SyntaxNode::Char('m'));
+            assert_eq!(children[5], SyntaxNode::Char(']'));
+        }
+        _ => panic!("Expected root group"),
+    }
 }
 
 // ========================================================================

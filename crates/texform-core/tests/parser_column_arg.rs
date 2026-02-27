@@ -8,13 +8,14 @@ fn init_inline_column_command() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
         let mut builder = knowledge::KnowledgeBase::builder();
-        for pkg in texform_specs::packages::ALL_PACKAGES {
+        for &pkg_name in texform_specs::packages::TEST_DEFAULT_PACKAGES {
+            let pkg = texform_specs::packages::get(pkg_name)
+                .unwrap_or_else(|| panic!("unknown package: {}", pkg_name));
             builder.import_package((pkg.load)());
         }
         builder.insert_or_override_command(
             "colspec",
             CommandKind::Prefix,
-            false,
             AllowedMode::Math,
             vec![ArgSpec::new(true, ValueKind::Column)],
             vec![],
@@ -33,7 +34,11 @@ fn parse_column_arg_success() {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "colspec");
                 assert_eq!(args.len(), 1);
-                match &args[0].value {
+                match &args[0]
+                    .as_ref()
+                    .unwrap_or_else(|| panic!("expected colspec argument"))
+                    .value
+                {
                     ArgumentValue::Column(value) => {
                         assert_eq!(value, "c|c|c");
                     }

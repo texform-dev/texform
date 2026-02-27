@@ -5,127 +5,29 @@ characters:
     allowed_mode: math
   - name: gamma
     allowed_mode: math
-  # ... more character commands ...
 
 commands:
-  # Prefix commands
+  # Core prefix commands
   - name: frac
     kind: prefix
-    has_star_variant: false
     allowed_mode: math
-    args:
-      - required: true
-        kind: math
-      - required: true
-        kind: math
+    spec: "m m"
 
   - name: sqrt
     kind: prefix
-    has_star_variant: false
     allowed_mode: math
-    args:
-      - required: false
-        kind: math
-      - required: true
-        kind: math
+    spec: "o m"
 
   - name: text
     kind: prefix
-    has_star_variant: false
     allowed_mode: math
-    args:
-      - required: true
-        kind: text
-
-  - name: delim
-    kind: prefix
-    has_star_variant: false
-    allowed_mode: math
-    args:
-      - required: true
-        kind: delimiter
-
-  - name: hspace
-    kind: prefix
-    has_star_variant: false
-    allowed_mode: both
-    args:
-      - required: true
-        kind: dimension
-
-  - name: romannumeral
-    kind: prefix
-    has_star_variant: false
-    allowed_mode: both
-    args:
-      - required: true
-        kind: integer
-
-  - name: includegraphics
-    kind: prefix
-    has_star_variant: false
-    allowed_mode: both
-    args:
-      - required: false
-        kind: keyval
-      - required: true
-        kind: text
-
-  # Infix commands
-  - name: over
-    kind: infix
-    has_star_variant: false
-    allowed_mode: math
-    args: []
-
-  - name: choose
-    kind: infix
-    has_star_variant: false
-    allowed_mode: math
-    args: []
-
-  # Declarative commands
-  - name: bfseries
-    kind: declarative
-    has_star_variant: false
-    allowed_mode: both
-    args: []
-
-  - name: color
-    kind: declarative
-    has_star_variant: false
-    allowed_mode: both
-    args:
-      - required: true
-        kind: text
+    spec: "m:T"
 
 environments:
   - name: matrix
     has_star_variant: false
     allowed_mode: math
-    args: []
+    spec: ""
     body_mode: math
 
-  - name: align
-    has_star_variant: true
-    allowed_mode: math
-    args: []
-    body_mode: math
-
-delimiter_controls:
-  - langle
-  - rangle
-  - "{"
-  - "}"
-  - lfloor
-  - rfloor
-  - lceil
-  - rceil
-  - lvert
-  - rvert
-  - lVert
-  - rVert
-  - lgroup
-  - rgroup
-  - lmoustache
-  - rmoustache
+delimiter_controls: []

@@ -1,0 +1,124 @@
+commands:
+  # Prefix commands for development and parser test coverage
+  - name: delim
+    kind: prefix
+    allowed_mode: math
+    spec: "m:D"
+
+  - name: hspace
+    kind: prefix
+    allowed_mode: both
+    spec: "m:L"
+
+  - name: romannumeral
+    kind: prefix
+    allowed_mode: both
+    spec: "m:I"
+
+  - name: includegraphics
+    kind: prefix
+    allowed_mode: both
+    spec: "o:K m:T"
+
+  # Infix commands
+  - name: over
+    kind: infix
+    allowed_mode: math
+    spec: ""
+
+  - name: choose
+    kind: infix
+    allowed_mode: math
+    spec: ""
+
+  # Declarative commands
+  - name: bfseries
+    kind: declarative
+    allowed_mode: both
+    spec: ""
+
+  - name: color
+    kind: declarative
+    allowed_mode: both
+    spec: "m:T"
+
+  # Experimental xparse-inspired commands from real knowledge samples
+  - name: qty
+    kind: prefix
+    allowed_mode: math
+    spec: "p<(,)><[,]><{,}><|,|>"
+
+  - name: pqty
+    kind: prefix
+    allowed_mode: math
+    spec: "s r{}"
+
+  - name: abs
+    kind: prefix
+    allowed_mode: math
+    spec: "s r{}"
+
+  - name: eval
+    kind: prefix
+    allowed_mode: math
+    spec: "s p<(,|><[,|><{,}>"
+
+  - name: mqty
+    kind: prefix
+    allowed_mode: math
+    spec: "s p<(,)><[,]><{,}><|,|>"
+
+  - name: dd
+    kind: prefix
+    allowed_mode: math
+    spec: "o p<(,)><{,}>"
+
+  - name: dv
+    kind: prefix
+    allowed_mode: math
+    spec: "s o m g"
+
+  - name: pdv
+    kind: prefix
+    allowed_mode: math
+    spec: "s o m g g"
+
+  - name: braket
+    kind: prefix
+    allowed_mode: math
+    spec: "s m g"
+
+  - name: exp
+    kind: prefix
+    allowed_mode: math
+    spec: ""
+
+  - name: "\\"
+    kind: prefix
+    allowed_mode: both
+    spec: "!s !o:L"
+
+environments:
+  - name: align
+    has_star_variant: true
+    allowed_mode: math
+    spec: ""
+    body_mode: math
+
+delimiter_controls:
+  - langle
+  - rangle
+  - "{"
+  - "}"
+  - lfloor
+  - rfloor
+  - lceil
+  - rceil
+  - lvert
+  - rvert
+  - lVert
+  - rVert
+  - lgroup
+  - rgroup
+  - lmoustache
+  - rmoustache

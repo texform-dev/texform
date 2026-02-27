@@ -87,8 +87,8 @@ fn test_command_node() {
         name: "frac".to_string(),
         starred: false,
         args: vec![
-            Argument::mandatory(SyntaxNode::Char('a')),
-            Argument::mandatory(SyntaxNode::Char('b')),
+            Some(Argument::mandatory(SyntaxNode::Char('a'))),
+            Some(Argument::mandatory(SyntaxNode::Char('b'))),
         ],
     };
 
@@ -260,7 +260,9 @@ fn test_declarative_structure() {
     let decl = SyntaxNode::Declarative {
         name: "color".to_string(),
         starred: false,
-        args: vec![Argument::mandatory(SyntaxNode::Text("red".to_string()))],
+        args: vec![Some(Argument::mandatory(SyntaxNode::Text(
+            "red".to_string(),
+        )))],
         scope: Box::new(SyntaxNode::Text("text".to_string())),
     };
 

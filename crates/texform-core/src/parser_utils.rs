@@ -199,6 +199,8 @@ pub fn math_char<'a>() -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserErr
         Token::Char(c) => SyntaxNode::Char(c),
         Token::Star => SyntaxNode::Char('*'),
         Token::Alignment => SyntaxNode::Char('&'),
+        Token::LBracket => SyntaxNode::Char('['),
+        Token::RBracket => SyntaxNode::Char(']'),
     }
     .labelled("math character")
 }
@@ -208,6 +210,8 @@ pub fn text_chunk<'a>() -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserEr
     select! {
         Token::Char(c) => c,
         Token::Whitespaces => ' ',
+        Token::LBracket => '[',
+        Token::RBracket => ']',
     }
     .repeated()
     .at_least(1)
@@ -271,24 +275,6 @@ where
     just(Token::LBrace)
         .ignore_then(content)
         .then_ignore(just(Token::RBrace))
-        .map(move |children| SyntaxNode::Group {
-            mode,
-            kind: GroupKind::Explicit,
-            children,
-        })
-}
-
-/// Parse a bracketed `[...]` group with the given content parser.
-pub fn bracket_group_parser<'a, P>(
-    mode: ContentMode,
-    content: P,
-) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
-where
-    P: Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
-{
-    just(Token::LBracket)
-        .ignore_then(content)
-        .then_ignore(just(Token::RBracket))
         .map(move |children| SyntaxNode::Group {
             mode,
             kind: GroupKind::Explicit,

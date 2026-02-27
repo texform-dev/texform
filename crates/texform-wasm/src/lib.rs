@@ -19,10 +19,10 @@ use wasm_bindgen::prelude::*;
 const SYNTAX_NODE_TYPES: &str = r#"
 export type SyntaxNode =
     | { Group: { mode: ContentMode; kind: GroupKind; children: SyntaxNode[] } }
-    | { Command: { name: string; starred: boolean; args: Argument[] } }
-    | { Infix: { name: string; starred: boolean; args: Argument[]; left: SyntaxNode; right: SyntaxNode } }
-    | { Declarative: { name: string; starred: boolean; args: Argument[]; scope: SyntaxNode } }
-    | { Environment: { name: string; starred: boolean; args: Argument[]; body: SyntaxNode } }
+    | { Command: { name: string; starred: boolean; args: ArgumentSlot[] } }
+    | { Infix: { name: string; starred: boolean; args: ArgumentSlot[]; left: SyntaxNode; right: SyntaxNode } }
+    | { Declarative: { name: string; starred: boolean; args: ArgumentSlot[]; scope: SyntaxNode } }
+    | { Environment: { name: string; starred: boolean; args: ArgumentSlot[]; body: SyntaxNode } }
     | { Scripted: { base: SyntaxNode; subscript?: SyntaxNode; superscript?: SyntaxNode } }
     | { UnknownCommand: { name: string; starred: boolean } }
     | { Text: string }
@@ -47,7 +47,15 @@ export type Argument = {
     value: ArgumentValue;
 };
 
-export type ArgumentKind = "Mandatory" | "Optional";
+export type ArgumentSlot = Argument | null;
+
+export type ArgumentKind =
+    | "Mandatory"
+    | "Optional"
+    | "Star"
+    | "Group"
+    | { Delimited: { open: Delimiter; close: Delimiter } }
+    | { Paired: { open: Delimiter; close: Delimiter } };
 
 export type ArgumentValue =
     | { Content: SyntaxNode }
@@ -55,7 +63,8 @@ export type ArgumentValue =
     | { Dimension: string }
     | { Integer: string }
     | { KeyVal: string }
-    | { Column: string };
+    | { Column: string }
+    | { Boolean: boolean };
 "#;
 
 /// Parse a LaTeX formula.

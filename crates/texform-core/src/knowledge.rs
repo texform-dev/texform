@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 use texform_interface::syntax_node::ContentMode;
 
 pub use texform_specs::specs::{
-    AllowedMode, ArgSpec, CommandKind, CommandMeta, EnvMeta, ValueKind,
+    AllowedMode, ArgForm, ArgSpec, CommandKind, CommandMeta, DelimiterToken, EnvMeta, ValueKind,
 };
 
 #[derive(Debug)]
@@ -62,21 +62,13 @@ pub struct KnowledgeBaseBuilder {
 impl KnowledgeBaseBuilder {
     pub fn insert_character(&mut self, name: impl Into<String>, allowed_mode: AllowedMode) {
         let name = name.into();
-        self.insert_or_override_command(
-            name,
-            CommandKind::Prefix,
-            false,
-            allowed_mode,
-            vec![],
-            vec![],
-        );
+        self.insert_or_override_command(name, CommandKind::Prefix, allowed_mode, vec![], vec![]);
     }
 
     pub fn insert_or_override_command(
         &mut self,
         name: impl Into<String>,
         kind: CommandKind,
-        has_star_variant: bool,
         allowed_mode: AllowedMode,
         args: Vec<ArgSpec>,
         tags: Vec<String>,
@@ -92,7 +84,6 @@ impl KnowledgeBaseBuilder {
         let meta = CommandMeta {
             name,
             kind,
-            has_star_variant,
             allowed_mode,
             args,
             tags,
@@ -157,7 +148,6 @@ impl KnowledgeBaseBuilder {
             self.insert_or_override_command(
                 cmd.name,
                 cmd.kind,
-                cmd.has_star_variant,
                 cmd.allowed_mode,
                 cmd.args,
                 cmd.tags,
@@ -191,13 +181,25 @@ impl KnowledgeBaseBuilder {
 
 /// Initialize the global knowledge base.
 ///
-/// - If `packages` is `None`, loads all packages.
+/// - If `packages` is `None`, loads default packages.
+///   - Runtime default: `base`
+///   - Unit test default (`cfg(test)`): `base + dev`
 /// - If `packages` is `Some`, loads `base` (if available) then the given packages in order.
 ///
 /// This function may only be called once. Subsequent calls will panic.
 pub fn init(packages: Option<&[&str]>) {
     KB.set(build_default_kb(packages))
         .unwrap_or_else(|_| panic!("knowledge base already initialized"));
+}
+
+/// Initialize the global knowledge base with runtime defaults (`base` only).
+pub fn init_runtime_defaults() {
+    init(Some(texform_specs::packages::RUNTIME_DEFAULT_PACKAGES));
+}
+
+/// Initialize the global knowledge base with test defaults (`base + dev`).
+pub fn init_test_defaults() {
+    init(Some(texform_specs::packages::TEST_DEFAULT_PACKAGES));
 }
 
 /// Initialize the global knowledge base from a pre-built builder.
@@ -217,31 +219,40 @@ fn kb() -> &'static KnowledgeBase {
     KB.get_or_init(|| build_default_kb(None))
 }
 
+#[cfg(test)]
+fn implicit_default_packages() -> &'static [&'static str] {
+    texform_specs::packages::TEST_DEFAULT_PACKAGES
+}
+
+#[cfg(not(test))]
+fn implicit_default_packages() -> &'static [&'static str] {
+    texform_specs::packages::RUNTIME_DEFAULT_PACKAGES
+}
+
+fn ordered_package_names<'a>(requested: &[&'a str]) -> Vec<&'a str> {
+    let mut out = vec![];
+    // Loading order is intentional:
+    // - `base` always loads first (if present)
+    // - later packages can override earlier definitions by name
+    if texform_specs::packages::get("base").is_some() {
+        out.push("base");
+    }
+    for &name in requested {
+        if name == "base" {
+            continue;
+        }
+        out.push(name);
+    }
+    out
+}
+
 fn build_default_kb(packages: Option<&[&str]>) -> KnowledgeBase {
     let mut builder = KnowledgeBase::builder();
-
-    let to_load = match packages {
-        None => texform_specs::packages::ALL_PACKAGES
-            .iter()
-            .map(|p| p.name)
-            .collect::<Vec<_>>(),
-        Some(list) => {
-            let mut out = vec![];
-            // Loading order is intentional:
-            // - `base` always loads first (if present)
-            // - later packages can override earlier definitions by name
-            if texform_specs::packages::get("base").is_some() {
-                out.push("base");
-            }
-            for &name in list {
-                if name == "base" {
-                    continue;
-                }
-                out.push(name);
-            }
-            out
-        }
+    let requested = match packages {
+        Some(list) => list,
+        None => implicit_default_packages(),
     };
+    let to_load = ordered_package_names(requested);
 
     for &name in &to_load {
         let pkg = texform_specs::packages::get(name)
@@ -357,7 +368,6 @@ mod tests {
         builder.insert_or_override_command(
             "foo",
             CommandKind::Prefix,
-            false,
             AllowedMode::Math,
             vec![ArgSpec::mandatory(ContentMode::Math)],
             vec![],
@@ -368,7 +378,6 @@ mod tests {
             commands: vec![texform_specs::specs::CommandSpec {
                 name: "foo".to_string(),
                 kind: CommandKind::Prefix,
-                has_star_variant: true,
                 allowed_mode: AllowedMode::Text,
                 args: vec![],
                 tags: vec![],
@@ -379,7 +388,6 @@ mod tests {
 
         let kb = builder.build();
         let foo = kb.lookup_command("foo").unwrap();
-        assert!(foo.has_star_variant);
         assert_eq!(foo.allowed_mode, AllowedMode::Text);
         assert!(foo.args.is_empty());
     }
@@ -420,5 +428,21 @@ mod tests {
         let env = kb.lookup_env("textenv").unwrap();
         assert_eq!(env.body_mode, ContentMode::Text);
         assert_eq!(env.allowed_mode, AllowedMode::Text);
+    }
+
+    #[test]
+    fn test_runtime_defaults_exclude_dev_entries() {
+        let kb = build_default_kb(Some(texform_specs::packages::RUNTIME_DEFAULT_PACKAGES));
+        assert!(kb.lookup_command("frac").is_some());
+        assert!(kb.lookup_command("over").is_none());
+        assert!(kb.lookup_delimiter_control("langle").is_none());
+    }
+
+    #[test]
+    fn test_test_defaults_include_dev_entries() {
+        let kb = build_default_kb(Some(texform_specs::packages::TEST_DEFAULT_PACKAGES));
+        assert!(kb.lookup_command("frac").is_some());
+        assert!(kb.lookup_command("over").is_some());
+        assert!(kb.lookup_delimiter_control("langle").is_some());
     }
 }
