@@ -11,3 +11,4 @@ js-sys.workspace = true
 wasm-bindgen.workspace = true
 serde-wasm-bindgen.workspace = true
 texform-core = { workspace = true, features = ["tsify"] }
+texform-specs = { workspace = true }
