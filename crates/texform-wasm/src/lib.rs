@@ -22,12 +22,12 @@ use wasm_bindgen::prelude::*;
 const SYNTAX_NODE_TYPES: &str = r#"
 export type SyntaxNode =
     | { Group: { mode: ContentMode; kind: GroupKind; children: SyntaxNode[] } }
-    | { Command: { name: string; starred: boolean; args: ArgumentSlot[] } }
-    | { Infix: { name: string; starred: boolean; args: ArgumentSlot[]; left: SyntaxNode; right: SyntaxNode } }
-    | { Declarative: { name: string; starred: boolean; args: ArgumentSlot[]; scope: SyntaxNode } }
-    | { Environment: { name: string; starred: boolean; args: ArgumentSlot[]; body: SyntaxNode } }
+    | { Command: { name: string; args: ArgumentSlot[] } }
+    | { Infix: { name: string; args: ArgumentSlot[]; left: SyntaxNode; right: SyntaxNode } }
+    | { Declarative: { name: string; args: ArgumentSlot[]; scope: SyntaxNode } }
+    | { Environment: { name: string; is_star_variant: boolean; args: ArgumentSlot[]; body: SyntaxNode } }
     | { Scripted: { base: SyntaxNode; subscript?: SyntaxNode; superscript?: SyntaxNode } }
-    | { UnknownCommand: { name: string; starred: boolean } }
+    | { UnknownCommand: { name: string } }
     | { Text: string }
     | { Char: string }
     | "ActiveSpace";

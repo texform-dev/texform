@@ -110,7 +110,6 @@ pub enum Node {
     /// as Command nodes with is_unknown=true and empty args.
     Command {
         name: String,
-        starred: bool,    // Has * suffix (e.g., \section*)
         is_unknown: bool, // True if this was an unknown command in non-strict mode
         args: Vec<Argument>,
     },
@@ -120,7 +119,6 @@ pub enum Node {
     /// Only ONE infix command allowed per group
     InfixCommand {
         name: String,
-        starred: bool,
         args: Vec<Argument>, // Command's own arguments (usually empty)
         left: NodeId,        // Left operand (Char, Command, Scripted, or Group)
         right: NodeId,       // Right operand (Char, Command, Scripted, or Group)
@@ -129,7 +127,6 @@ pub enum Node {
     /// Declarative command affecting scope from command to end of group
     DeclarativeCommand {
         name: String,
-        starred: bool,
         args: Vec<Argument>, // Command's own arguments (e.g., {red} in \color{red})
         scope: NodeId,       // Scope content (from command to end of group)
     },
@@ -148,7 +145,7 @@ pub enum Node {
 
     Environment {
         name: String,
-        starred: bool,
+        is_star_variant: bool,
         args: Vec<Argument>,
         body: NodeId, // Must be a Group node
     },

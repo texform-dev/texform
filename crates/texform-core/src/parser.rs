@@ -54,7 +54,7 @@ use texform_interface::syntax_node::{
 type ContentParser<'a> = Boxed<'a, 'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>>;
 type NodeParser<'a> = Boxed<'a, 'a, TokenStream<'a>, SyntaxNode, ParserError<'a>>;
 type ArgumentParser<'a> = Boxed<'a, 'a, TokenStream<'a>, ArgumentSlot, ParserError<'a>>;
-type TailParseOutput = ((String, bool, Vec<ArgumentSlot>), Vec<SyntaxNode>);
+type TailParseOutput = ((String, Vec<ArgumentSlot>), Vec<SyntaxNode>);
 
 // ============================================================================
 // Public Interface
@@ -212,12 +212,6 @@ fn syntax_delimiter(delimiter: &'static DelimiterToken) -> Delimiter {
         DelimiterToken::Char(c) => Delimiter::Char(*c),
         DelimiterToken::ControlSeq(name) => Delimiter::Control(name.as_ref()),
     }
-}
-
-fn derive_starred(args: &[ArgumentSlot]) -> bool {
-    args.iter()
-        .flatten()
-        .any(|arg| matches!(arg.value, ArgumentValue::Boolean(true)))
 }
 
 fn collect_delimited_tokens<'src, 'parse>(
@@ -682,12 +676,7 @@ fn prefix_command_parser<'a>(
             "command argument",
         ))?;
 
-        let starred = derive_starred(args.as_slice());
-        Ok(SyntaxNode::Command {
-            name,
-            starred,
-            args,
-        })
+        Ok(SyntaxNode::Command { name, args })
     })
 }
 
@@ -710,10 +699,7 @@ fn unknown_command_parser<'a>(
         if strict {
             Err(Rich::custom(span, format!("Unknown command: \\{}", name)))
         } else {
-            Ok(SyntaxNode::UnknownCommand {
-                name,
-                starred: false,
-            })
+            Ok(SyntaxNode::UnknownCommand { name })
         }
     })
     .labelled("unknown command")
@@ -729,10 +715,10 @@ fn env_name_parser<'a>() -> impl Parser<'a, TokenStream<'a>, (String, bool), Par
     .at_least(1)
     .collect::<String>();
 
-    let starred = just(Token::Star).or_not().map(|s| s.is_some());
+    let is_star_variant = just(Token::Star).or_not().map(|s| s.is_some());
 
     base_name
-        .then(starred)
+        .then(is_star_variant)
         .delimited_by(just(Token::LBrace), just(Token::RBrace))
         .labelled("environment name")
 }
@@ -750,7 +736,7 @@ fn parse_env_header<'a>(
         input.parse(control_seq("begin"))?;
 
         let name_start = input.cursor();
-        let (base_name, starred) = input.parse(env_name_parser())?;
+        let (base_name, is_star_variant) = input.parse(env_name_parser())?;
         let name_span = input.span_from_cursor(&name_start);
 
         let meta = match kb.lookup_env(base_name.as_str()) {
@@ -773,7 +759,7 @@ fn parse_env_header<'a>(
             ));
         }
 
-        if starred && !meta.has_star_variant {
+        if is_star_variant && !meta.has_star_variant {
             return Err(Rich::custom(
                 name_span,
                 format!("Environment {} has no starred variant", base_name),
@@ -789,7 +775,7 @@ fn parse_env_header<'a>(
             "environment argument",
         ))?;
 
-        Ok((base_name, starred, args, meta))
+        Ok((base_name, is_star_variant, args, meta))
     })
 }
 
@@ -802,7 +788,7 @@ fn environment_parser<'a>(
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     custom(move |input| {
-        let (name, starred, args, meta) = input.parse(parse_env_header(
+        let (name, is_star_variant, args, meta) = input.parse(parse_env_header(
             kb,
             math_content.clone(),
             text_content.clone(),
@@ -816,7 +802,7 @@ fn environment_parser<'a>(
         };
         let body = input.parse(env_body_parser(meta.body_mode, body_content))?;
 
-        let expected_end = if starred {
+        let expected_end = if is_star_variant {
             format!("{name}*")
         } else {
             name.clone()
@@ -844,7 +830,7 @@ fn environment_parser<'a>(
         })?;
         let end_span = input.span_from_cursor(&end_start);
 
-        if end_name != name || end_starred != starred {
+        if end_name != name || end_starred != is_star_variant {
             let found = if end_starred {
                 format!("{end_name}*")
             } else {
@@ -861,7 +847,7 @@ fn environment_parser<'a>(
 
         Ok(SyntaxNode::Environment {
             name,
-            starred,
+            is_star_variant,
             args,
             body: Box::new(body),
         })
@@ -1011,8 +997,7 @@ where
             "infix command argument",
         ))?;
 
-        let starred = derive_starred(args.as_slice());
-        Ok((name, starred, args))
+        Ok((name, args))
     });
 
     let stop_declarative = declarative_guard(kb);
@@ -1054,8 +1039,7 @@ where
             "declarative command argument",
         ))?;
 
-        let starred = derive_starred(args.as_slice());
-        Ok((name, starred, args))
+        Ok((name, args))
     });
 
     let scope_items = normal_item.repeated().collect::<Vec<_>>();
@@ -1111,13 +1095,12 @@ where
                     ));
                 }
 
-                let (name, starred, args) = infix_info;
+                let (name, args) = infix_info;
                 let left = fold_items(ContentMode::Math, leading);
                 let right = fold_items(ContentMode::Math, right_items);
 
                 let infix_node = SyntaxNode::Infix {
                     name,
-                    starred,
                     args,
                     left: Box::new(left),
                     right: Box::new(right),
@@ -1125,11 +1108,10 @@ where
 
                 let mut nodes = vec![infix_node];
                 if let Some((decl_info, scope_items)) = declarative_tail {
-                    let (decl_name, decl_starred, decl_args) = decl_info;
+                    let (decl_name, decl_args) = decl_info;
                     let scope = fold_items(ContentMode::Math, scope_items);
                     nodes.push(SyntaxNode::Declarative {
                         name: decl_name,
-                        starred: decl_starred,
                         args: decl_args,
                         scope: Box::new(scope),
                     });
@@ -1138,11 +1120,10 @@ where
             } else {
                 let mut items = leading;
                 if let Some((decl_info, scope_items)) = declarative_tail {
-                    let (decl_name, decl_starred, decl_args) = decl_info;
+                    let (decl_name, decl_args) = decl_info;
                     let scope = fold_items(ContentMode::Math, scope_items);
                     items.push(SyntaxNode::Declarative {
                         name: decl_name,
-                        starred: decl_starred,
                         args: decl_args,
                         scope: Box::new(scope),
                     });
@@ -1185,11 +1166,10 @@ where
         .then(declarative_tail.or_not())
         .map(|(mut leading, declarative_tail)| {
             if let Some((decl_info, scope_items)) = declarative_tail {
-                let (decl_name, decl_starred, decl_args) = decl_info;
+                let (decl_name, decl_args) = decl_info;
                 let scope = fold_items(ContentMode::Text, scope_items);
                 leading.push(SyntaxNode::Declarative {
                     name: decl_name,
-                    starred: decl_starred,
                     args: decl_args,
                     scope: Box::new(scope),
                 });

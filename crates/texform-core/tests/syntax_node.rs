@@ -85,7 +85,6 @@ fn test_content_mode_helpers() {
 fn test_command_node() {
     let cmd = SyntaxNode::Command {
         name: "frac".to_string(),
-        starred: false,
         args: vec![
             Some(Argument::mandatory(SyntaxNode::Char('a'))),
             Some(Argument::mandatory(SyntaxNode::Char('b'))),
@@ -93,13 +92,8 @@ fn test_command_node() {
     };
 
     match cmd {
-        SyntaxNode::Command {
-            name,
-            starred,
-            args,
-        } => {
+        SyntaxNode::Command { name, args } => {
             assert_eq!(name, "frac");
-            assert!(!starred);
             assert_eq!(args.len(), 2);
         }
         _ => panic!("Expected Command"),
@@ -110,7 +104,6 @@ fn test_command_node() {
 fn test_infix_node() {
     let infix = SyntaxNode::Infix {
         name: "over".to_string(),
-        starred: false,
         args: vec![],
         left: Box::new(SyntaxNode::Char('a')),
         right: Box::new(SyntaxNode::Char('b')),
@@ -216,15 +209,13 @@ fn test_display_simple() {
 fn test_unknown_command() {
     let unknown = SyntaxNode::UnknownCommand {
         name: "foo".to_string(),
-        starred: false,
     };
 
     assert!(unknown.is_leaf());
 
     match unknown {
-        SyntaxNode::UnknownCommand { name, starred } => {
+        SyntaxNode::UnknownCommand { name } => {
             assert_eq!(name, "foo");
-            assert!(!starred);
         }
         _ => panic!("Expected UnknownCommand"),
     }
@@ -234,7 +225,7 @@ fn test_unknown_command() {
 fn test_environment_structure() {
     let env = SyntaxNode::Environment {
         name: "matrix".to_string(),
-        starred: false,
+        is_star_variant: false,
         args: vec![],
         body: Box::new(SyntaxNode::empty_group(ContentMode::Math)),
     };
@@ -242,12 +233,12 @@ fn test_environment_structure() {
     match env {
         SyntaxNode::Environment {
             name,
-            starred,
+            is_star_variant,
             args,
             body,
         } => {
             assert_eq!(name, "matrix");
-            assert!(!starred);
+            assert!(!is_star_variant);
             assert!(args.is_empty());
             assert!(body.is_group());
         }
@@ -259,7 +250,6 @@ fn test_environment_structure() {
 fn test_declarative_structure() {
     let decl = SyntaxNode::Declarative {
         name: "color".to_string(),
-        starred: false,
         args: vec![Some(Argument::mandatory(SyntaxNode::Text(
             "red".to_string(),
         )))],
@@ -267,14 +257,8 @@ fn test_declarative_structure() {
     };
 
     match decl {
-        SyntaxNode::Declarative {
-            name,
-            starred,
-            args,
-            scope,
-        } => {
+        SyntaxNode::Declarative { name, args, scope } => {
             assert_eq!(name, "color");
-            assert!(!starred);
             assert_eq!(args.len(), 1);
             assert!(matches!(*scope, SyntaxNode::Text(_)));
         }

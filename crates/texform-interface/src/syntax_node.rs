@@ -137,7 +137,6 @@ pub enum SyntaxNode {
     /// This is the most common command type where arguments follow the command name.
     Command {
         name: String,
-        starred: bool,
         args: Vec<ArgumentSlot>,
     },
 
@@ -147,7 +146,6 @@ pub enum SyntaxNode {
     /// The left and right operands are collected during parsing.
     Infix {
         name: String,
-        starred: bool,
         args: Vec<ArgumentSlot>, // Command's own arguments (usually empty)
         left: Box<SyntaxNode>,
         right: Box<SyntaxNode>,
@@ -158,7 +156,6 @@ pub enum SyntaxNode {
     /// The scope extends from the command to the end of the current group.
     Declarative {
         name: String,
-        starred: bool,
         args: Vec<ArgumentSlot>,
         scope: Box<SyntaxNode>, // Content from command to end of group
     },
@@ -168,7 +165,7 @@ pub enum SyntaxNode {
     /// Examples: \begin{matrix}...\end{matrix}, \begin{align*}...\end{align*}
     Environment {
         name: String,
-        starred: bool,
+        is_star_variant: bool,
         args: Vec<ArgumentSlot>,
         body: Box<SyntaxNode>, // Environment body (always a Group node)
     },
@@ -187,8 +184,8 @@ pub enum SyntaxNode {
     /// Unknown command (non-strict mode only)
     ///
     /// Produced when a command is not found in the knowledge base
-    /// and strict mode is disabled. Starred is always false for unknown commands.
-    UnknownCommand { name: String, starred: bool },
+    /// and strict mode is disabled.
+    UnknownCommand { name: String },
 
     /// Text string (Text mode only)
     ///
@@ -340,11 +337,9 @@ impl SyntaxNode {
             }
             SyntaxNode::Command {
                 name,
-                starred,
                 args,
             } => {
-                let star = if *starred { "*" } else { "" };
-                writeln!(f, "{}Command(\\{}{}) [", prefix, name, star)?;
+                writeln!(f, "{}Command(\\{}) [", prefix, name)?;
                 for arg in args {
                     fmt_argument_slot(f, arg, indent + 1)?;
                 }
@@ -352,13 +347,11 @@ impl SyntaxNode {
             }
             SyntaxNode::Infix {
                 name,
-                starred,
                 args,
                 left,
                 right,
             } => {
-                let star = if *starred { "*" } else { "" };
-                writeln!(f, "{}Infix(\\{}{}) [", prefix, name, star)?;
+                writeln!(f, "{}Infix(\\{}) [", prefix, name)?;
                 writeln!(f, "{}  left:", prefix)?;
                 left.fmt_with_indent(f, indent + 2)?;
                 writeln!(f, "{}  right:", prefix)?;
@@ -373,12 +366,10 @@ impl SyntaxNode {
             }
             SyntaxNode::Declarative {
                 name,
-                starred,
                 args,
                 scope,
             } => {
-                let star = if *starred { "*" } else { "" };
-                writeln!(f, "{}Declarative(\\{}{}) [", prefix, name, star)?;
+                writeln!(f, "{}Declarative(\\{}) [", prefix, name)?;
                 if !args.is_empty() {
                     writeln!(f, "{}  args:", prefix)?;
                     for arg in args {
@@ -391,11 +382,11 @@ impl SyntaxNode {
             }
             SyntaxNode::Environment {
                 name,
-                starred,
+                is_star_variant,
                 args,
                 body,
             } => {
-                let star = if *starred { "*" } else { "" };
+                let star = if *is_star_variant { "*" } else { "" };
                 writeln!(f, "{}Environment({}{}) [", prefix, name, star)?;
                 if !args.is_empty() {
                     writeln!(f, "{}  args:", prefix)?;
@@ -425,9 +416,8 @@ impl SyntaxNode {
                 }
                 writeln!(f, "{}]", prefix)
             }
-            SyntaxNode::UnknownCommand { name, starred } => {
-                let star = if *starred { "*" } else { "" };
-                writeln!(f, "{}UnknownCommand(\\{}{})", prefix, name, star)
+            SyntaxNode::UnknownCommand { name } => {
+                writeln!(f, "{}UnknownCommand(\\{})", prefix, name)
             }
             SyntaxNode::Text(s) => writeln!(f, "{}Text(\"{}\")", prefix, s),
             SyntaxNode::Char(c) => writeln!(f, "{}Char('{}')", prefix, c),

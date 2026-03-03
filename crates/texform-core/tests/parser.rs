@@ -261,13 +261,8 @@ fn test_frac_command() {
             assert_eq!(children.len(), 1);
 
             match &children[0] {
-                SyntaxNode::Command {
-                    name,
-                    starred,
-                    args,
-                } => {
+                SyntaxNode::Command { name, args } => {
                     assert_eq!(name, "frac");
-                    assert!(!starred);
                     assert_eq!(args.len(), 2);
 
                     assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Mandatory);
@@ -607,9 +602,8 @@ fn test_unknown_command_nonstrict() {
 
             // First: UnknownCommand node
             match &children[0] {
-                SyntaxNode::UnknownCommand { name, starred } => {
+                SyntaxNode::UnknownCommand { name } => {
                     assert_eq!(name, "unknown");
-                    assert!(!starred);
                 }
                 _ => panic!("Expected UnknownCommand node"),
             }
@@ -663,13 +657,11 @@ fn test_infix_over_simple() {
             match &children[0] {
                 SyntaxNode::Infix {
                     name,
-                    starred,
                     left,
                     right,
                     args,
                 } => {
                     assert_eq!(name, "over");
-                    assert!(!starred);
                     assert!(args.is_empty());
                     assert_eq!(**left, SyntaxNode::Char('a'));
                     assert_eq!(**right, SyntaxNode::Char('b'));
@@ -759,12 +751,10 @@ fn test_declarative_bfseries() {
             match &children[0] {
                 SyntaxNode::Declarative {
                     name,
-                    starred,
                     args,
                     scope,
                 } => {
                     assert_eq!(name, "bfseries");
-                    assert!(!starred);
                     assert!(args.is_empty());
 
                     // Scope should contain 4 chars
@@ -1050,12 +1040,12 @@ fn test_environment_basic() {
             match &children[0] {
                 SyntaxNode::Environment {
                     name,
-                    starred,
+                    is_star_variant,
                     args,
                     body,
                 } => {
                     assert_eq!(name, "matrix");
-                    assert!(!starred);
+                    assert!(!is_star_variant);
                     assert!(args.is_empty());
                     match &**body {
                         SyntaxNode::Group { children, .. } => {
@@ -1818,12 +1808,12 @@ fn test_starred_environment() {
             match &children[0] {
                 SyntaxNode::Environment {
                     name,
-                    starred,
+                    is_star_variant,
                     body,
                     ..
                 } => {
                     assert_eq!(name, "align");
-                    assert!(*starred);
+                    assert!(*is_star_variant);
                     match &**body {
                         SyntaxNode::Group { children, .. } => {
                             assert_eq!(children.len(), 3);
@@ -2160,14 +2150,10 @@ fn test_keyval_empty_brackets() {
 // XParse-inspired ArgSpec Tests
 // ========================================================================
 
-fn extract_first_command(node: SyntaxNode) -> (String, bool, Vec<Option<Argument>>) {
+fn extract_first_command(node: SyntaxNode) -> (String, Vec<Option<Argument>>) {
     match node {
         SyntaxNode::Group { children, .. } => match &children[0] {
-            SyntaxNode::Command {
-                name,
-                starred,
-                args,
-            } => (name.clone(), *starred, args.clone()),
+            SyntaxNode::Command { name, args } => (name.clone(), args.clone()),
             other => panic!("Expected command node, got {:?}", other),
         },
         other => panic!("Expected root group, got {:?}", other),
@@ -2185,9 +2171,8 @@ fn test_qty_supports_multiple_delimiter_pairs() {
 
     for (src, open, close) in cases {
         let (result, _) = parse(src, false).unwrap();
-        let (name, starred, args) = extract_first_command(result);
+        let (name, args) = extract_first_command(result);
         assert_eq!(name, "qty");
-        assert!(!starred);
         assert_eq!(args.len(), 1);
 
         let arg = expect_arg(&args[0]);
@@ -2208,9 +2193,8 @@ fn test_qty_supports_multiple_delimiter_pairs() {
 #[test]
 fn test_qty_optional_slot_can_be_missing() {
     let (result, _) = parse(r"\qty", false).unwrap();
-    let (name, starred, args) = extract_first_command(result);
+    let (name, args) = extract_first_command(result);
     assert_eq!(name, "qty");
-    assert!(!starred);
     assert_eq!(args.len(), 1);
     assert!(args[0].is_none());
 }
@@ -2218,9 +2202,8 @@ fn test_qty_optional_slot_can_be_missing() {
 #[test]
 fn test_arg_true_quantity_commands_require_braces() {
     let (pqty_ok, _) = parse(r"\pqty{x}", false).unwrap();
-    let (name, starred, args) = extract_first_command(pqty_ok);
+    let (name, args) = extract_first_command(pqty_ok);
     assert_eq!(name, "pqty");
-    assert!(!starred);
     assert_eq!(args.len(), 2);
     assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(false));
 
@@ -2235,7 +2218,7 @@ fn test_arg_true_quantity_commands_require_braces() {
     }
 
     let (abs_ok, _) = parse(r"\abs{x}", false).unwrap();
-    let (name, _, args) = extract_first_command(abs_ok);
+    let (name, args) = extract_first_command(abs_ok);
     assert_eq!(name, "abs");
     assert_eq!(
         expect_arg(&args[1]).value,
@@ -2249,9 +2232,8 @@ fn test_arg_true_quantity_commands_require_braces() {
 #[test]
 fn test_eval_uses_nonsymmetric_paired_delimiter() {
     let (result, _) = parse(r"\eval(x|", false).unwrap();
-    let (name, starred, args) = extract_first_command(result);
+    let (name, args) = extract_first_command(result);
     assert_eq!(name, "eval");
-    assert!(!starred);
     assert_eq!(args.len(), 2);
 
     let star = expect_arg(&args[0]);
@@ -2272,9 +2254,8 @@ fn test_eval_uses_nonsymmetric_paired_delimiter() {
 #[test]
 fn test_dv_and_pdv_group_slots_are_stable() {
     let (dv_result, _) = parse(r"\dv{f}", false).unwrap();
-    let (name, starred, args) = extract_first_command(dv_result);
+    let (name, args) = extract_first_command(dv_result);
     assert_eq!(name, "dv");
-    assert!(!starred);
     assert_eq!(args.len(), 4);
     assert_eq!(
         expect_arg(&args[0]).value,
@@ -2289,9 +2270,8 @@ fn test_dv_and_pdv_group_slots_are_stable() {
     assert!(args[3].is_none(), "group slot should be None when absent");
 
     let (pdv_result, _) = parse(r"\pdv{f}{x}{y}", false).unwrap();
-    let (name, starred, args) = extract_first_command(pdv_result);
+    let (name, args) = extract_first_command(pdv_result);
     assert_eq!(name, "pdv");
-    assert!(!starred);
     assert_eq!(args.len(), 5);
     assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(false));
     assert!(args[1].is_none());
@@ -2306,7 +2286,7 @@ fn test_dv_and_pdv_group_slots_are_stable() {
 #[test]
 fn test_braket_optional_group_slot() {
     let (result_full, _) = parse(r"\braket{a}{b}", false).unwrap();
-    let (_, _, args_full) = extract_first_command(result_full);
+    let (_, args_full) = extract_first_command(result_full);
     assert_eq!(args_full.len(), 3);
     assert_eq!(
         expect_arg(&args_full[0]).value,
@@ -2319,7 +2299,7 @@ fn test_braket_optional_group_slot() {
     assert_eq!(expect_arg(&args_full[2]).kind, ArgumentKind::Group);
 
     let (result_short, _) = parse(r"\braket{a}", false).unwrap();
-    let (_, _, args_short) = extract_first_command(result_short);
+    let (_, args_short) = extract_first_command(result_short);
     assert_eq!(args_short.len(), 3);
     assert!(args_short[2].is_none());
 }
@@ -2331,13 +2311,8 @@ fn test_exp_does_not_consume_star_without_s_slot() {
         SyntaxNode::Group { children, .. } => {
             assert_eq!(children.len(), 2);
             match &children[0] {
-                SyntaxNode::Command {
-                    name,
-                    starred,
-                    args,
-                } => {
+                SyntaxNode::Command { name, args } => {
                     assert_eq!(name, "exp");
-                    assert!(!starred);
                     assert!(args.is_empty());
                 }
                 other => panic!("Expected exp command, got {:?}", other),
@@ -2355,13 +2330,8 @@ fn test_exp_does_not_consume_brackets_without_optional_slot() {
         SyntaxNode::Group { children, .. } => {
             assert_eq!(children.len(), 4);
             match &children[0] {
-                SyntaxNode::Command {
-                    name,
-                    starred,
-                    args,
-                } => {
+                SyntaxNode::Command { name, args } => {
                     assert_eq!(name, "exp");
-                    assert!(!starred);
                     assert!(args.is_empty());
                 }
                 other => panic!("Expected exp command, got {:?}", other),
@@ -2391,9 +2361,8 @@ fn test_bare_brackets_parse_as_regular_characters() {
 #[test]
 fn test_no_leading_space_prefix_for_linebreak_command() {
     let (immediate, _) = parse(r"\\*[1cm]", false).unwrap();
-    let (name, starred, args) = extract_first_command(immediate);
+    let (name, args) = extract_first_command(immediate);
     assert_eq!(name, "\\");
-    assert!(starred);
     assert_eq!(args.len(), 2);
     assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(true));
     assert_eq!(
@@ -2406,13 +2375,8 @@ fn test_no_leading_space_prefix_for_linebreak_command() {
         SyntaxNode::Group { children, .. } => {
             assert!(!children.is_empty());
             match &children[0] {
-                SyntaxNode::Command {
-                    name,
-                    starred,
-                    args,
-                } => {
+                SyntaxNode::Command { name, args } => {
                     assert_eq!(name, "\\");
-                    assert!(!starred);
                     assert_eq!(args.len(), 2);
                     assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(false));
                     assert!(args[1].is_none());
@@ -2429,13 +2393,8 @@ fn test_no_leading_space_prefix_for_linebreak_command() {
         SyntaxNode::Group { children, .. } => {
             assert!(!children.is_empty());
             match &children[0] {
-                SyntaxNode::Command {
-                    name,
-                    starred,
-                    args,
-                } => {
+                SyntaxNode::Command { name, args } => {
                     assert_eq!(name, "\\");
-                    assert!(!starred);
                     assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(false));
                     assert!(args[1].is_none());
                 }

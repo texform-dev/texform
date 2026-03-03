@@ -131,7 +131,6 @@ fn test_command_with_arguments() {
 
     let frac = ast.new_node(Node::Command {
         name: "frac".to_string(),
-        starred: false,
         is_unknown: false,
         args: vec![
             Argument {
@@ -173,7 +172,7 @@ fn test_environment_body_parent_links() {
 
     let env = ast.new_node(Node::Environment {
         name: "aligned".to_string(),
-        starred: false,
+        is_star_variant: false,
         args: vec![],
         body,
     });
@@ -192,7 +191,7 @@ fn test_environment_body_must_be_group() {
     let not_group = ast.new_node(Node::Char('x'));
     let env = ast.new_node(Node::Environment {
         name: "aligned".to_string(),
-        starred: false,
+        is_star_variant: false,
         args: vec![],
         body: not_group,
     });
@@ -302,7 +301,6 @@ fn test_delete_subtree() {
 
     let frac = ast.new_node(Node::Command {
         name: "frac".to_string(),
-        starred: false,
         is_unknown: false,
         args: vec![
             Argument {
@@ -439,7 +437,6 @@ fn test_replace_node_with_attached_children_panics() {
     // Try to replace old_node with a Command that uses the attached child
     let new_node = Node::Command {
         name: "test".to_string(),
-        starred: false,
         is_unknown: false,
         args: vec![Argument {
             kind: ArgumentKind::Mandatory,
@@ -460,7 +457,6 @@ fn test_replace_node_with_detached_children() {
 
     let new_node = Node::Command {
         name: "test".to_string(),
-        starred: false,
         is_unknown: false,
         args: vec![Argument {
             kind: ArgumentKind::Mandatory,
