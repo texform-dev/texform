@@ -186,13 +186,7 @@ fn math_item_parser<'a>(
     text_content: ContentParser<'a>,
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
-    let item = math_item_node_parser(
-        kb,
-        math_content.clone(),
-        math_content,
-        text_content,
-        strict,
-    );
+    let item = math_item_node_parser(kb, math_content.clone(), math_content, text_content, strict);
 
     math_infix_or_decl_guard(kb)
         .or(control_seq("right"))
@@ -367,9 +361,19 @@ fn parse_delimited_value<'src, 'parse>(
             Ok(ArgumentValue::Column(normalized))
         }
         ValueKind::Delimiter => {
-            panic!("delimiter kind is invalid for delimited/paired argument forms")
+            let cursor = input.cursor();
+            Err(input.err_peek_or_point(
+                &cursor,
+                "invalid spec: delimiter kind is not supported by delimited/paired forms",
+            ))
         }
-        ValueKind::Star => panic!("star kind is invalid for delimited/paired argument forms"),
+        ValueKind::Star => {
+            let cursor = input.cursor();
+            Err(input.err_peek_or_point(
+                &cursor,
+                "invalid spec: star kind is not supported by delimited/paired forms",
+            ))
+        }
     }
 }
 
@@ -393,13 +397,8 @@ fn argument_parser<'a>(
                     let braced = braced_group_parser(mode, content.clone());
                     let single_item: NodeParser<'a> = match mode {
                         ContentMode::Math => {
-                            math_item_parser(
-                                kb,
-                                math_content.clone(),
-                                text_content.clone(),
-                                strict,
-                            )
-                            .boxed()
+                            math_item_parser(kb, math_content.clone(), text_content.clone(), strict)
+                                .boxed()
                         }
                         ContentMode::Text => {
                             text_item_parser(kb, math_content.clone(), text_content.clone(), strict)
@@ -557,7 +556,8 @@ fn argument_parser<'a>(
                 }
             }
             ValueKind::Star => {
-                panic!("star kind is invalid for standard form")
+                let cursor = input.cursor();
+                Err(input.err_peek_or_point(&cursor, "invalid spec: star kind requires star form"))
             }
         },
         ArgForm::Star => {

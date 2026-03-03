@@ -12,11 +12,46 @@ use texform_interface::syntax_node::ContentMode;
 use crate::context::ParseContext;
 
 pub use texform_specs::specs::{
-    AllowedMode, ArgForm, ArgSpec, CommandKind, CommandMeta, DelimiterToken, EnvMeta, ValueKind,
+    AllowedMode, ArgForm, ArgSpec, ArgSpecParseError, CommandKind, CommandMeta, DelimiterToken,
+    EnvMeta, ValueKind,
 };
 
 const RUNTIME_PACKAGE_NAME: &str = "runtime";
 const UNKNOWN_PACKAGE_NAME: &str = "unknown";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PackageLoadError {
+    UnknownPackage { name: String },
+}
+
+impl std::fmt::Display for PackageLoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PackageLoadError::UnknownPackage { name } => {
+                write!(f, "unknown package: {name}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for PackageLoadError {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InitError {
+    PackageLoad(PackageLoadError),
+    AlreadyInitialized,
+}
+
+impl std::fmt::Display for InitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InitError::PackageLoad(error) => write!(f, "{error}"),
+            InitError::AlreadyInitialized => write!(f, "knowledge base already initialized"),
+        }
+    }
+}
+
+impl std::error::Error for InitError {}
 
 #[derive(Debug, Clone)]
 pub struct KnowledgeBase {
@@ -61,7 +96,7 @@ impl KnowledgeBase {
         allowed_mode: AllowedMode,
         spec_string: impl Into<String>,
         tags: &[String],
-    ) {
+    ) -> Result<(), ArgSpecParseError> {
         self.insert_command_with_package(
             name,
             kind,
@@ -69,7 +104,7 @@ impl KnowledgeBase {
             spec_string,
             tags,
             RUNTIME_PACKAGE_NAME,
-        );
+        )
     }
 
     pub fn insert_command_with_package(
@@ -80,11 +115,11 @@ impl KnowledgeBase {
         spec_string: impl Into<String>,
         tags: &[String],
         package: impl Into<String>,
-    ) {
+    ) -> Result<(), ArgSpecParseError> {
         let name = name.into();
         let spec_string = spec_string.into();
         let context = format!("command {}", name);
-        let args = texform_specs::specs::parse_arg_specs(spec_string.as_str(), context.as_str());
+        let args = texform_specs::specs::parse_arg_specs(spec_string.as_str(), context.as_str())?;
         let meta = make_command_meta(
             name,
             kind,
@@ -95,6 +130,7 @@ impl KnowledgeBase {
             package.into(),
         );
         self.upsert_command_meta(meta);
+        Ok(())
     }
 
     pub fn remove_command(&mut self, name: &str) -> bool {
@@ -109,7 +145,7 @@ impl KnowledgeBase {
         spec_string: impl Into<String>,
         body_mode: ContentMode,
         tags: &[String],
-    ) {
+    ) -> Result<(), ArgSpecParseError> {
         self.insert_env_with_package(
             name,
             has_star_variant,
@@ -118,7 +154,7 @@ impl KnowledgeBase {
             body_mode,
             tags,
             RUNTIME_PACKAGE_NAME,
-        );
+        )
     }
 
     pub fn insert_env_with_package(
@@ -130,11 +166,11 @@ impl KnowledgeBase {
         body_mode: ContentMode,
         tags: &[String],
         package: impl Into<String>,
-    ) {
+    ) -> Result<(), ArgSpecParseError> {
         let name = name.into();
         let spec_string = spec_string.into();
         let context = format!("environment {}", name);
-        let args = texform_specs::specs::parse_arg_specs(spec_string.as_str(), context.as_str());
+        let args = texform_specs::specs::parse_arg_specs(spec_string.as_str(), context.as_str())?;
         let meta = make_env_meta(
             name,
             has_star_variant,
@@ -146,6 +182,7 @@ impl KnowledgeBase {
             package.into(),
         );
         self.upsert_env_meta(meta);
+        Ok(())
     }
 
     pub fn remove_env(&mut self, name: &str) -> bool {
@@ -414,13 +451,21 @@ fn leak_tags(tags: Vec<String>) -> &'static [&'static str] {
 ///
 /// This function may only be called once. Subsequent calls will panic.
 pub fn init(packages: Option<&[&str]>) {
+    try_init(packages).unwrap_or_else(|error| panic!("{error}"));
+}
+
+/// Fallible variant of [`init`].
+///
+/// Returns [`InitError::AlreadyInitialized`] when called more than once.
+pub fn try_init(packages: Option<&[&str]>) -> Result<(), InitError> {
     let requested = match packages {
         Some(list) => list,
         None => implicit_default_packages(),
     };
+    let ctx = ParseContext::try_from_packages(requested).map_err(InitError::PackageLoad)?;
     DEFAULT_CTX
-        .set(ParseContext::from_packages(requested))
-        .unwrap_or_else(|_| panic!("knowledge base already initialized"));
+        .set(ctx)
+        .map_err(|_| InitError::AlreadyInitialized)
 }
 
 /// Initialize the global parse context with runtime defaults (`base` only).
@@ -440,9 +485,16 @@ pub fn init_test_defaults() {
 ///
 /// This function may only be called once. Subsequent calls will panic.
 pub fn init_with_builder(builder: KnowledgeBaseBuilder) {
+    try_init_with_builder(builder).unwrap_or_else(|error| panic!("{error}"));
+}
+
+/// Fallible variant of [`init_with_builder`].
+///
+/// Returns [`InitError::AlreadyInitialized`] when called more than once.
+pub fn try_init_with_builder(builder: KnowledgeBaseBuilder) -> Result<(), InitError> {
     DEFAULT_CTX
         .set(ParseContext::from_kb(builder.build()))
-        .unwrap_or_else(|_| panic!("knowledge base already initialized"));
+        .map_err(|_| InitError::AlreadyInitialized)
 }
 
 static DEFAULT_CTX: OnceLock<ParseContext> = OnceLock::new();
@@ -483,16 +535,24 @@ fn ordered_package_names<'a>(requested: &[&'a str]) -> Vec<&'a str> {
 }
 
 pub(crate) fn build_kb_from_packages(requested: &[&str]) -> KnowledgeBase {
+    try_build_kb_from_packages(requested).unwrap_or_else(|error| panic!("{error}"))
+}
+
+pub(crate) fn try_build_kb_from_packages(
+    requested: &[&str],
+) -> Result<KnowledgeBase, PackageLoadError> {
     let mut builder = KnowledgeBase::builder();
     let to_load = ordered_package_names(requested);
 
     for &name in &to_load {
-        let pkg = texform_specs::packages::get(name)
-            .unwrap_or_else(|| panic!("unknown package: {}", name));
+        let pkg =
+            texform_specs::packages::get(name).ok_or_else(|| PackageLoadError::UnknownPackage {
+                name: name.to_string(),
+            })?;
         builder.import_package_with_name(name, (pkg.load)());
     }
 
-    builder.build()
+    Ok(builder.build())
 }
 
 #[cfg(test)]

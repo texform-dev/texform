@@ -111,23 +111,44 @@ pub fn parse_once_with_spec(
     packages: Option<&[&str]>,
 ) -> ParseOutput {
     let mut ctx = match packages {
-        Some(pkgs) => ParseContext::from_packages(pkgs),
+        Some(pkgs) => match ParseContext::try_from_packages(pkgs) {
+            Ok(ctx) => ctx,
+            Err(error) => {
+                return invalid_input_output(format!("package loading failed: {}", error));
+            }
+        },
         None => ParseContext::clone_runtime_default(),
     };
 
     match target {
         SpecTarget::Command { kind, mode } => {
-            ctx.insert_command(name, kind, mode, spec, &[]);
+            if let Err(error) = ctx.insert_command(name, kind, mode, spec, &[]) {
+                return invalid_input_output(format!("spec validation failed: {}", error));
+            }
         }
         SpecTarget::Environment {
             has_star_variant,
             mode,
             body_mode,
         } => {
-            ctx.insert_env(name, has_star_variant, mode, spec, body_mode, &[]);
+            if let Err(error) = ctx.insert_env(name, has_star_variant, mode, spec, body_mode, &[]) {
+                return invalid_input_output(format!("spec validation failed: {}", error));
+            }
         }
     }
     ctx.parse(input, strict)
+}
+
+fn invalid_input_output(message: String) -> ParseOutput {
+    ParseOutput {
+        result: None,
+        diagnostics: vec![ParseDiagnostic {
+            message,
+            span: Span { start: 0, end: 0 },
+            expected: Vec::new(),
+            found: None,
+        }],
+    }
 }
 
 /// Run the parser with output+errors semantics.
@@ -278,5 +299,65 @@ mod tests {
         );
         assert!(output.result.is_some(), "environment target should parse");
         assert!(output.diagnostics.is_empty(), "no diagnostics expected");
+    }
+
+    #[test]
+    fn parse_once_with_spec_reports_invalid_spec() {
+        let output = parse_once_with_spec(
+            "probe",
+            SpecTarget::Command {
+                kind: CommandKind::Prefix,
+                mode: AllowedMode::Math,
+            },
+            "s:T",
+            r"\probe",
+            true,
+            None,
+        );
+        assert!(
+            output.result.is_none(),
+            "invalid spec should not produce result"
+        );
+        assert_eq!(output.diagnostics.len(), 1);
+        assert!(
+            output.diagnostics[0]
+                .message
+                .contains("spec validation failed"),
+            "unexpected diagnostic: {}",
+            output.diagnostics[0].message
+        );
+    }
+
+    #[test]
+    fn parse_once_with_spec_reports_unknown_package() {
+        let output = parse_once_with_spec(
+            "probe",
+            SpecTarget::Command {
+                kind: CommandKind::Prefix,
+                mode: AllowedMode::Math,
+            },
+            "m",
+            r"\probe{a}",
+            true,
+            Some(&["definitely-not-a-real-package"]),
+        );
+
+        assert!(
+            output.result.is_none(),
+            "unknown package should not produce parse result"
+        );
+        assert_eq!(output.diagnostics.len(), 1);
+        assert!(
+            output.diagnostics[0]
+                .message
+                .contains("package loading failed"),
+            "unexpected diagnostic: {}",
+            output.diagnostics[0].message
+        );
+        assert!(
+            output.diagnostics[0].message.contains("unknown package"),
+            "unexpected diagnostic: {}",
+            output.diagnostics[0].message
+        );
     }
 }

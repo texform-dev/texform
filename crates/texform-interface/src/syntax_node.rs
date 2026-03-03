@@ -335,10 +335,7 @@ impl SyntaxNode {
                 }
                 writeln!(f, "{}]", prefix)
             }
-            SyntaxNode::Command {
-                name,
-                args,
-            } => {
+            SyntaxNode::Command { name, args } => {
                 writeln!(f, "{}Command(\\{}) [", prefix, name)?;
                 for arg in args {
                     fmt_argument_slot(f, arg, indent + 1)?;
@@ -364,11 +361,7 @@ impl SyntaxNode {
                 }
                 writeln!(f, "{}]", prefix)
             }
-            SyntaxNode::Declarative {
-                name,
-                args,
-                scope,
-            } => {
+            SyntaxNode::Declarative { name, args, scope } => {
                 writeln!(f, "{}Declarative(\\{}) [", prefix, name)?;
                 if !args.is_empty() {
                     writeln!(f, "{}  args:", prefix)?;

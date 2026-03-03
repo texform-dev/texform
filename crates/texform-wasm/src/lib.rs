@@ -106,22 +106,31 @@ pub struct ParseContext {
 #[wasm_bindgen]
 impl ParseContext {
     #[wasm_bindgen(constructor)]
-    pub fn new(packages: Option<Vec<String>>) -> Self {
+    pub fn new(packages: Option<Vec<String>>) -> Result<ParseContext, JsValue> {
         let inner = match packages {
             Some(pkgs) if !pkgs.is_empty() => {
                 let refs: Vec<&str> = pkgs.iter().map(String::as_str).collect();
-                CoreParseContext::from_packages(refs.as_slice())
+                CoreParseContext::try_from_packages(refs.as_slice()).map_err(|error| {
+                    JsValue::from_str(&format!("package loading failed: {}", error))
+                })?
             }
             _ => CoreParseContext::clone_runtime_default(),
         };
-        ParseContext { inner }
+        Ok(ParseContext { inner })
     }
 
-    pub fn insert_command(&mut self, name: &str, kind: &str, mode: &str, spec: &str) {
-        let kind = parse_command_kind(kind);
-        let allowed_mode = parse_allowed_mode(mode);
+    pub fn insert_command(
+        &mut self,
+        name: &str,
+        kind: &str,
+        mode: &str,
+        spec: &str,
+    ) -> Result<(), JsValue> {
+        let kind = parse_command_kind(kind)?;
+        let allowed_mode = parse_allowed_mode(mode)?;
         self.inner
-            .insert_command(name, kind, allowed_mode, spec, &[]);
+            .insert_command(name, kind, allowed_mode, spec, &[])
+            .map_err(|error| JsValue::from_str(&format!("spec validation failed: {}", error)))
     }
 
     pub fn remove_command(&mut self, name: &str) -> bool {
@@ -135,11 +144,12 @@ impl ParseContext {
         mode: &str,
         spec: &str,
         body_mode: &str,
-    ) {
-        let allowed_mode = parse_allowed_mode(mode);
-        let body_mode = parse_content_mode(body_mode);
+    ) -> Result<(), JsValue> {
+        let allowed_mode = parse_allowed_mode(mode)?;
+        let body_mode = parse_content_mode(body_mode)?;
         self.inner
-            .insert_env(name, has_star_variant, allowed_mode, spec, body_mode, &[]);
+            .insert_env(name, has_star_variant, allowed_mode, spec, body_mode, &[])
+            .map_err(|error| JsValue::from_str(&format!("spec validation failed: {}", error)))
     }
 
     pub fn remove_env(&mut self, name: &str) -> bool {
@@ -191,19 +201,19 @@ pub fn parse_once_with_spec(
     body_mode: Option<String>,
 ) -> Result<ParseResult, JsValue> {
     let strict = strict.unwrap_or(false);
-    let mode = parse_allowed_mode(mode);
+    let mode = parse_allowed_mode(mode)?;
     let target = match target {
         "command" => {
             let kind = match kind.as_deref() {
-                Some(value) => parse_command_kind(value),
-                None => panic!("command target requires kind"),
+                Some(value) => parse_command_kind(value)?,
+                None => return Err(JsValue::from_str("command target requires kind")),
             };
             api::SpecTarget::Command { kind, mode }
         }
         "environment" => {
             let body_mode = match body_mode.as_deref() {
-                Some(value) => parse_content_mode(value),
-                None => panic!("environment target requires body_mode"),
+                Some(value) => parse_content_mode(value)?,
+                None => return Err(JsValue::from_str("environment target requires body_mode")),
             };
             api::SpecTarget::Environment {
                 has_star_variant: has_star_variant.unwrap_or(false),
@@ -211,7 +221,12 @@ pub fn parse_once_with_spec(
                 body_mode,
             }
         }
-        _ => panic!("unsupported spec target: {}", target),
+        _ => {
+            return Err(JsValue::from_str(&format!(
+                "unsupported spec target: {}",
+                target
+            )));
+        }
     };
 
     let output = match packages {
@@ -243,11 +258,9 @@ pub fn lookup_env_info(name: &str) -> JsValue {
 
 #[wasm_bindgen]
 pub fn validate_spec(spec: &str) -> JsValue {
-    let result =
-        std::panic::catch_unwind(|| texform_specs::specs::parse_arg_specs(spec, "validate_spec"));
     let value = js_sys::Object::new();
 
-    match result {
+    match texform_specs::specs::parse_arg_specs(spec, "validate_spec") {
         Ok(args) => {
             let parsed = js_sys::Array::new();
             for arg in &args {
@@ -263,14 +276,9 @@ pub fn validate_spec(spec: &str) -> JsValue {
             js_sys::Reflect::set(&value, &"parsed".into(), &parsed.into()).unwrap();
             js_sys::Reflect::set(&value, &"error".into(), &JsValue::NULL).unwrap();
         }
-        Err(payload) => {
+        Err(error) => {
             js_sys::Reflect::set(&value, &"valid".into(), &JsValue::FALSE).unwrap();
-            js_sys::Reflect::set(
-                &value,
-                &"error".into(),
-                &panic_payload_to_string(payload).into(),
-            )
-            .unwrap();
+            js_sys::Reflect::set(&value, &"error".into(), &error.to_string().into()).unwrap();
             js_sys::Reflect::set(&value, &"parsed".into(), &JsValue::NULL).unwrap();
         }
     }
@@ -299,19 +307,28 @@ fn parse_output_to_result(output: ParseOutput) -> Result<ParseResult, JsValue> {
         };
 
         let err = js_sys::Object::new();
+        let message = output
+            .diagnostics
+            .first()
+            .map(|diag| diag.message.clone())
+            .unwrap_or_else(|| "parse failed".to_string());
         js_sys::Reflect::set(&err, &"diagnostics".into(), &diagnostics).unwrap();
         js_sys::Reflect::set(&err, &"partial_result".into(), &partial_result).unwrap();
+        js_sys::Reflect::set(&err, &"message".into(), &message.into()).unwrap();
 
         Err(err.into())
     }
 }
 
-fn parse_command_kind(value: &str) -> CommandKind {
+fn parse_command_kind(value: &str) -> Result<CommandKind, JsValue> {
     match value {
-        "prefix" => CommandKind::Prefix,
-        "infix" => CommandKind::Infix,
-        "declarative" => CommandKind::Declarative,
-        _ => panic!("unsupported command kind: {}", value),
+        "prefix" => Ok(CommandKind::Prefix),
+        "infix" => Ok(CommandKind::Infix),
+        "declarative" => Ok(CommandKind::Declarative),
+        _ => Err(JsValue::from_str(&format!(
+            "unsupported command kind: {}",
+            value
+        ))),
     }
 }
 
@@ -323,20 +340,26 @@ fn command_kind_to_string(kind: CommandKind) -> &'static str {
     }
 }
 
-fn parse_allowed_mode(value: &str) -> AllowedMode {
+fn parse_allowed_mode(value: &str) -> Result<AllowedMode, JsValue> {
     match value {
-        "math" => AllowedMode::Math,
-        "text" => AllowedMode::Text,
-        "both" => AllowedMode::Both,
-        _ => panic!("unsupported allowed mode: {}", value),
+        "math" => Ok(AllowedMode::Math),
+        "text" => Ok(AllowedMode::Text),
+        "both" => Ok(AllowedMode::Both),
+        _ => Err(JsValue::from_str(&format!(
+            "unsupported allowed mode: {}",
+            value
+        ))),
     }
 }
 
-fn parse_content_mode(value: &str) -> ContentMode {
+fn parse_content_mode(value: &str) -> Result<ContentMode, JsValue> {
     match value {
-        "math" => ContentMode::Math,
-        "text" => ContentMode::Text,
-        _ => panic!("unsupported content mode: {}", value),
+        "math" => Ok(ContentMode::Math),
+        "text" => Ok(ContentMode::Text),
+        _ => Err(JsValue::from_str(&format!(
+            "unsupported content mode: {}",
+            value
+        ))),
     }
 }
 
@@ -517,14 +540,4 @@ fn delimiter_token_to_js(token: &DelimiterToken) -> JsValue {
         }
     }
     value.into()
-}
-
-fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
-    if let Some(message) = payload.downcast_ref::<&str>() {
-        return (*message).to_string();
-    }
-    if let Some(message) = payload.downcast_ref::<String>() {
-        return message.clone();
-    }
-    "validate_spec panic".to_string()
 }

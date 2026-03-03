@@ -5,7 +5,10 @@ use std::sync::OnceLock;
 use texform_interface::syntax_node::ContentMode;
 
 use crate::api::{self, ParseOutput};
-use crate::knowledge::{self, AllowedMode, CommandKind, CommandMeta, EnvMeta, KnowledgeBase};
+use crate::knowledge::{
+    self, AllowedMode, ArgSpecParseError, CommandKind, CommandMeta, EnvMeta, KnowledgeBase,
+    PackageLoadError,
+};
 
 #[derive(Debug, Clone)]
 pub struct ParseContext {
@@ -24,6 +27,13 @@ impl ParseContext {
         ParseContext {
             kb: knowledge::build_kb_from_packages(packages),
         }
+    }
+
+    /// Build a context from package names, returning an error for unknown package names.
+    pub fn try_from_packages(packages: &[&str]) -> Result<Self, PackageLoadError> {
+        Ok(ParseContext {
+            kb: knowledge::try_build_kb_from_packages(packages)?,
+        })
     }
 
     /// Build runtime default context (`base` package).
@@ -48,10 +58,10 @@ impl ParseContext {
         allowed_mode: AllowedMode,
         spec_string: &str,
         tags: &[&str],
-    ) {
+    ) -> Result<(), ArgSpecParseError> {
         let tags: Vec<String> = tags.iter().map(|tag| (*tag).to_string()).collect();
         self.kb
-            .insert_command(name, kind, allowed_mode, spec_string, tags.as_slice());
+            .insert_command(name, kind, allowed_mode, spec_string, tags.as_slice())
     }
 
     pub fn remove_command(&mut self, name: &str) -> bool {
@@ -66,7 +76,7 @@ impl ParseContext {
         spec_string: &str,
         body_mode: ContentMode,
         tags: &[&str],
-    ) {
+    ) -> Result<(), ArgSpecParseError> {
         let tags: Vec<String> = tags.iter().map(|tag| (*tag).to_string()).collect();
         self.kb.insert_env(
             name,
@@ -75,7 +85,7 @@ impl ParseContext {
             spec_string,
             body_mode,
             tags.as_slice(),
-        );
+        )
     }
 
     pub fn remove_env(&mut self, name: &str) -> bool {

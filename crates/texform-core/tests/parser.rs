@@ -749,11 +749,7 @@ fn test_declarative_bfseries() {
             assert_eq!(children.len(), 1);
 
             match &children[0] {
-                SyntaxNode::Declarative {
-                    name,
-                    args,
-                    scope,
-                } => {
+                SyntaxNode::Declarative { name, args, scope } => {
                     assert_eq!(name, "bfseries");
                     assert!(args.is_empty());
 
@@ -2413,7 +2409,8 @@ fn test_no_leading_space_prefix_for_linebreak_command() {
 #[test]
 fn test_no_leading_space_after_single_token_m_for_optional_brackets() {
     let mut ctx = ParseContext::test_default();
-    ctx.insert_command("probe", CommandKind::Prefix, AllowedMode::Math, "m !o", &[]);
+    ctx.insert_command("probe", CommandKind::Prefix, AllowedMode::Math, "m !o", &[])
+        .expect("probe argspec should be valid");
 
     let spaced = ctx.parse(r"\probe a [b]", true);
     assert!(
@@ -2489,7 +2486,14 @@ fn test_no_leading_space_after_single_token_m_for_optional_brackets() {
 #[test]
 fn test_no_leading_space_after_single_token_m_for_group_slot() {
     let mut ctx = ParseContext::test_default();
-    ctx.insert_command("probe", CommandKind::Prefix, AllowedMode::Math, "s o m !g", &[]);
+    ctx.insert_command(
+        "probe",
+        CommandKind::Prefix,
+        AllowedMode::Math,
+        "s o m !g",
+        &[],
+    )
+    .expect("probe argspec should be valid");
 
     let spaced = ctx.parse(r"\probe*[n]f {x}", true);
     assert!(
@@ -2581,6 +2585,356 @@ fn test_no_leading_space_after_single_token_m_for_group_slot() {
     }
 }
 
+#[test]
+fn test_mqty_supports_star_plus_optional_paired_slot() {
+    let (starred, _) = parse(r"\mqty*|x|", false).unwrap();
+    let (name, args) = extract_first_command(starred);
+    assert_eq!(name, "mqty");
+    assert_eq!(args.len(), 2);
+    assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Star);
+    assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(true));
+    assert_eq!(
+        expect_arg(&args[1]).value,
+        ArgumentValue::Content(SyntaxNode::Char('x'))
+    );
+    match expect_arg(&args[1]).kind {
+        ArgumentKind::Paired { open, close } => {
+            assert_eq!(open, Delimiter::Char('|'));
+            assert_eq!(close, Delimiter::Char('|'));
+        }
+        other => panic!("Expected paired argument kind, got {:?}", other),
+    }
+
+    let (missing, _) = parse(r"\mqty*", false).unwrap();
+    let (_, missing_args) = extract_first_command(missing);
+    assert_eq!(missing_args.len(), 2);
+    assert!(missing_args[1].is_none(), "paired slot should be optional");
+}
+
+#[test]
+fn test_dd_supports_optional_then_paired_slots() {
+    let (basic, _) = parse(r"\dd{x}", false).unwrap();
+    let (name, args) = extract_first_command(basic);
+    assert_eq!(name, "dd");
+    assert_eq!(args.len(), 2);
+    assert!(args[0].is_none(), "optional bracket slot should be None");
+    assert_eq!(
+        expect_arg(&args[1]).value,
+        ArgumentValue::Content(SyntaxNode::Char('x'))
+    );
+    match expect_arg(&args[1]).kind {
+        ArgumentKind::Paired { open, close } => {
+            assert_eq!(open, Delimiter::Char('{'));
+            assert_eq!(close, Delimiter::Char('}'));
+        }
+        other => panic!("Expected paired argument kind, got {:?}", other),
+    }
+
+    let (with_opt, _) = parse(r"\dd[y](x)", false).unwrap();
+    let (_, args_with_opt) = extract_first_command(with_opt);
+    assert_eq!(
+        expect_arg(&args_with_opt[0]).value,
+        ArgumentValue::Content(SyntaxNode::Char('y'))
+    );
+    match expect_arg(&args_with_opt[1]).kind {
+        ArgumentKind::Paired { open, close } => {
+            assert_eq!(open, Delimiter::Char('('));
+            assert_eq!(close, Delimiter::Char(')'));
+        }
+        other => panic!("Expected paired argument kind, got {:?}", other),
+    }
+
+    let (unmatched, _) = parse(r"\dd[y]|x|", false).unwrap();
+    match unmatched {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 4);
+            match &children[0] {
+                SyntaxNode::Command { name, args } => {
+                    assert_eq!(name, "dd");
+                    assert_eq!(args.len(), 2);
+                    assert!(
+                        args[1].is_none(),
+                        "non-candidate delimiter should not be consumed"
+                    );
+                }
+                other => panic!("Expected dd command, got {:?}", other),
+            }
+            assert_eq!(children[1], SyntaxNode::Char('|'));
+            assert_eq!(children[2], SyntaxNode::Char('x'));
+            assert_eq!(children[3], SyntaxNode::Char('|'));
+        }
+        other => panic!("Expected root group, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_paired_form_required_vs_optional_semantics() {
+    let mut ctx = ParseContext::test_default();
+    ctx.insert_command(
+        "mustpair",
+        CommandKind::Prefix,
+        AllowedMode::Math,
+        "P<(,)>",
+        &[],
+    )
+    .expect("required paired argspec should be valid");
+    ctx.insert_command(
+        "maybepair",
+        CommandKind::Prefix,
+        AllowedMode::Math,
+        "p<(,)>",
+        &[],
+    )
+    .expect("optional paired argspec should be valid");
+
+    let required_ok = ctx.parse(r"\mustpair(x)", true);
+    assert!(
+        required_ok.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        required_ok.diagnostics
+    );
+    assert!(
+        required_ok.result.is_some(),
+        "required paired arg should parse"
+    );
+
+    let required_missing = ctx.parse(r"\mustpair", true);
+    assert!(
+        required_missing.result.is_none(),
+        "missing required paired arg should fail"
+    );
+    assert!(
+        !required_missing.diagnostics.is_empty(),
+        "missing required paired arg should report diagnostics, got {:?}",
+        required_missing.diagnostics
+    );
+
+    let optional_unmatched = ctx.parse(r"\maybepair[x]", true);
+    assert!(
+        optional_unmatched.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        optional_unmatched.diagnostics
+    );
+    let node = optional_unmatched
+        .result
+        .as_ref()
+        .unwrap_or_else(|| panic!("expected parse result"))
+        .node
+        .clone();
+    match node {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 4);
+            match &children[0] {
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "maybepair");
+                    assert_eq!(args.len(), 1);
+                    assert!(args[0].is_none(), "optional paired slot should stay empty");
+                }
+                other => panic!("Expected maybepair command, got {:?}", other),
+            }
+            assert_eq!(children[1], SyntaxNode::Char('['));
+            assert_eq!(children[2], SyntaxNode::Char('x'));
+            assert_eq!(children[3], SyntaxNode::Char(']'));
+        }
+        other => panic!("Expected root group, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_newline_command_preserves_no_leading_space_behavior() {
+    let mut ctx = ParseContext::test_default();
+    ctx.insert_command(
+        "newline",
+        CommandKind::Prefix,
+        AllowedMode::Both,
+        "!s !o:L",
+        &[],
+    )
+    .expect("newline argspec should be valid");
+
+    let immediate = ctx.parse(r"\newline*[1cm]", true);
+    assert!(
+        immediate.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        immediate.diagnostics
+    );
+    let immediate_node = immediate
+        .result
+        .as_ref()
+        .unwrap_or_else(|| panic!("expected parse result"))
+        .node
+        .clone();
+    match immediate_node {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "newline");
+                assert_eq!(args.len(), 2);
+                assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(true));
+                assert_eq!(
+                    expect_arg(&args[1]).value,
+                    ArgumentValue::Dimension("1cm".to_string())
+                );
+            }
+            other => panic!("Expected newline command, got {:?}", other),
+        },
+        other => panic!("Expected root group, got {:?}", other),
+    }
+
+    let spaced = ctx.parse(r"\newline * [1cm]", true);
+    assert!(
+        spaced.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        spaced.diagnostics
+    );
+    let spaced_node = spaced
+        .result
+        .as_ref()
+        .unwrap_or_else(|| panic!("expected parse result"))
+        .node
+        .clone();
+    match spaced_node {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 7);
+            match &children[0] {
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "newline");
+                    assert_eq!(args.len(), 2);
+                    assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(false));
+                    assert!(
+                        args[1].is_none(),
+                        "spaced optional dimension should not match"
+                    );
+                }
+                other => panic!("Expected newline command, got {:?}", other),
+            }
+            assert_eq!(children[1], SyntaxNode::Char('*'));
+            assert_eq!(children[2], SyntaxNode::Char('['));
+            assert_eq!(children[3], SyntaxNode::Char('1'));
+            assert_eq!(children[4], SyntaxNode::Char('c'));
+            assert_eq!(children[5], SyntaxNode::Char('m'));
+            assert_eq!(children[6], SyntaxNode::Char(']'));
+        }
+        other => panic!("Expected root group, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_environment_star_in_name_is_independent_from_s_arg_slot() {
+    let mut ctx = ParseContext::test_default();
+    ctx.insert_env(
+        "probenv",
+        true,
+        AllowedMode::Math,
+        "s",
+        ContentMode::Math,
+        &[],
+    )
+    .expect("probenv argspec should be valid");
+
+    let starred_name = ctx.parse(r"\begin{probenv*}x\end{probenv*}", true);
+    assert!(
+        starred_name.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        starred_name.diagnostics
+    );
+    let starred_name_node = starred_name
+        .result
+        .as_ref()
+        .unwrap_or_else(|| panic!("expected parse result"))
+        .node
+        .clone();
+    assert!(
+        matches!(starred_name_node, SyntaxNode::Group { .. }),
+        "expected root group"
+    );
+    match starred_name_node {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Environment {
+                is_star_variant,
+                args,
+                ..
+            } => {
+                assert!(
+                    *is_star_variant,
+                    "name star should set environment starred variant"
+                );
+                assert_eq!(args.len(), 1);
+                assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(false));
+            }
+            other => panic!("Expected environment node, got {:?}", other),
+        },
+        other => panic!("Expected root group, got {:?}", other),
+    }
+
+    let star_arg = ctx.parse(r"\begin{probenv}*x\end{probenv}", true);
+    assert!(
+        star_arg.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        star_arg.diagnostics
+    );
+    let node = star_arg
+        .result
+        .as_ref()
+        .unwrap_or_else(|| panic!("expected parse result"))
+        .node
+        .clone();
+    match node {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Environment {
+                name,
+                is_star_variant,
+                args,
+                body,
+            } => {
+                assert_eq!(name, "probenv");
+                assert!(!is_star_variant);
+                assert_eq!(args.len(), 1);
+                assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Star);
+                assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(true));
+                match &**body {
+                    SyntaxNode::Group { children, .. } => {
+                        assert_eq!(children.len(), 1);
+                        assert_eq!(children[0], SyntaxNode::Char('x'));
+                    }
+                    other => panic!("Expected environment body group, got {:?}", other),
+                }
+            }
+            other => panic!("Expected environment node, got {:?}", other),
+        },
+        other => panic!("Expected root group, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_sqrt_accepts_command_token_as_best_fit_argument() {
+    let (result, _) = parse(r"\sqrt\frac{1}{2}", false).unwrap();
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 1);
+            match &children[0] {
+                SyntaxNode::Command { name, args } => {
+                    assert_eq!(name, "sqrt");
+                    assert_eq!(args.len(), 2);
+                    assert!(
+                        args[0].is_none(),
+                        "optional slot should be None when not provided"
+                    );
+                    match unwrap_content(&args[1]) {
+                        SyntaxNode::Command {
+                            name: inner_name, ..
+                        } => {
+                            assert_eq!(inner_name, "frac");
+                        }
+                        other => panic!("Expected frac command as sqrt argument, got {:?}", other),
+                    }
+                }
+                other => panic!("Expected sqrt command, got {:?}", other),
+            }
+        }
+        other => panic!("Expected root group, got {:?}", other),
+    }
+}
+
 // ========================================================================
 // Span Correctness Tests
 // ========================================================================
@@ -2661,7 +3015,8 @@ fn test_optional_argument_reparse_keeps_known_command() {
 #[test]
 fn test_delimited_content_argument_reparse_keeps_known_command() {
     let mut ctx = ParseContext::test_default();
-    ctx.insert_command("probe", CommandKind::Prefix, AllowedMode::Math, "r()", &[]);
+    ctx.insert_command("probe", CommandKind::Prefix, AllowedMode::Math, "r()", &[])
+        .expect("probe argspec should be valid");
 
     let output = ctx.parse(r"\probe(\frac{1}{2})", true);
     assert!(
@@ -2697,7 +3052,8 @@ fn test_delimited_content_argument_reparse_keeps_known_command() {
 #[test]
 fn test_parse_context_isolation_for_custom_commands() {
     let mut ctx1 = ParseContext::test_default();
-    ctx1.insert_command("foo", CommandKind::Prefix, AllowedMode::Math, "m", &[]);
+    ctx1.insert_command("foo", CommandKind::Prefix, AllowedMode::Math, "m", &[])
+        .expect("foo argspec should be valid");
 
     let out1_foo = ctx1.parse(r"\foo{a}", true);
     assert!(out1_foo.diagnostics.is_empty());
@@ -2708,7 +3064,8 @@ fn test_parse_context_isolation_for_custom_commands() {
     assert!(out1_bar.result.is_none());
 
     let mut ctx2 = ParseContext::test_default();
-    ctx2.insert_command("bar", CommandKind::Prefix, AllowedMode::Math, "m", &[]);
+    ctx2.insert_command("bar", CommandKind::Prefix, AllowedMode::Math, "m", &[])
+        .expect("bar argspec should be valid");
 
     let out2_bar = ctx2.parse(r"\bar{a}", true);
     assert!(out2_bar.diagnostics.is_empty());

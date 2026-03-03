@@ -7,7 +7,7 @@ use texform_specs::specs::{
 
 #[test]
 fn test_parse_arg_specs_xparse_style() {
-    let specs = parse_arg_specs("s o m g", "xparse");
+    let specs = parse_arg_specs("s o m g", "xparse").expect("s o m g should be valid");
     assert_eq!(specs.len(), 4);
 
     assert_eq!(specs[0].form, ArgForm::Star);
@@ -30,7 +30,8 @@ fn test_parse_arg_specs_pairs_and_delimited() {
     let specs = parse_arg_specs(
         "P<(,)><[,]><{,}><|,|> p<(,|><[,|><{,}> r() d[] r{}",
         "pairs",
-    );
+    )
+    .expect("paired/delimited argspec should be valid");
     assert_eq!(specs.len(), 5);
 
     match &specs[0].form {
@@ -102,7 +103,8 @@ fn test_parse_arg_specs_pairs_and_delimited() {
 
 #[test]
 fn test_parse_arg_specs_type_annotations() {
-    let specs = parse_arg_specs("m:T o:K m:L m:I m:C m:D !s !o:L", "types");
+    let specs = parse_arg_specs("m:T o:K m:L m:I m:C m:D !s !o:L", "types")
+        .expect("typed argspec should be valid");
     assert_eq!(specs.len(), 8);
 
     assert_eq!(
@@ -128,7 +130,8 @@ fn test_parse_arg_specs_type_annotations() {
 
 #[test]
 fn test_runtime_argspec_uses_owned_storage_for_dynamic_tokens() {
-    let specs = parse_arg_specs(r"p<\langle,\rangle>", "owned-runtime");
+    let specs = parse_arg_specs(r"p<\langle,\rangle>", "owned-runtime")
+        .expect("control-seq delimiter argspec should be valid");
     assert_eq!(specs.len(), 1);
 
     match &specs[0].form {
@@ -149,27 +152,118 @@ fn test_runtime_argspec_uses_owned_storage_for_dynamic_tokens() {
 }
 
 #[test]
-#[should_panic(expected = "`!` prefix is only valid for optional argument forms")]
 fn test_parse_arg_specs_rejects_required_with_no_space_prefix() {
-    let _ = parse_arg_specs("!m", "invalid");
+    let err = parse_arg_specs("!m", "invalid").expect_err("!m should be invalid");
+    assert!(
+        err.to_string()
+            .contains("`!` prefix is only valid for optional argument forms")
+    );
 }
 
 #[test]
-#[should_panic(expected = "delimiter kind cannot use delimited/paired form")]
 fn test_parse_arg_specs_rejects_delimiter_kind_with_paired() {
-    let _ = parse_arg_specs("d():D", "invalid");
+    let err = parse_arg_specs("d():D", "invalid").expect_err("d():D should be invalid");
+    assert!(
+        err.to_string()
+            .contains("delimiter kind cannot use delimited/paired form")
+    );
 }
 
 #[test]
-#[should_panic(expected = "group form only supports content kind")]
 fn test_parse_arg_specs_rejects_group_non_content_kind() {
-    let _ = parse_arg_specs("g:L", "invalid");
+    let err = parse_arg_specs("g:L", "invalid").expect_err("g:L should be invalid");
+    assert!(
+        err.to_string()
+            .contains("group form only supports content kind")
+    );
 }
 
 #[test]
-#[should_panic(expected = "`s` does not accept value type annotation")]
 fn test_parse_arg_specs_rejects_star_annotation() {
-    let _ = parse_arg_specs("s:T", "invalid");
+    let err = parse_arg_specs("s:T", "invalid").expect_err("s:T should be invalid");
+    assert!(
+        err.to_string()
+            .contains("`s` does not accept value type annotation")
+    );
+}
+
+#[test]
+fn test_parse_arg_specs_required_flags_for_paired_and_delimited_forms() {
+    let specs = parse_arg_specs("P<(,)> p<(,)> r{} d[]", "required-flags")
+        .expect("paired and delimited argspec should be valid");
+    assert_eq!(specs.len(), 4);
+
+    assert!(specs[0].required, "P should be required");
+    assert!(!specs[1].required, "p should be optional");
+    assert!(specs[2].required, "r should be required");
+    assert!(!specs[3].required, "d should be optional");
+
+    assert!(matches!(specs[0].form, ArgForm::Paired { .. }));
+    assert!(matches!(specs[1].form, ArgForm::Paired { .. }));
+    assert!(matches!(specs[2].form, ArgForm::Delimited { .. }));
+    assert!(matches!(specs[3].form, ArgForm::Delimited { .. }));
+}
+
+#[test]
+fn test_parse_arg_specs_supports_control_sequence_delimited_form() {
+    let specs = parse_arg_specs(r"r\langle\rangle d\lvert\rvert", "control-delimited")
+        .expect("control-sequence delimited argspec should be valid");
+    assert_eq!(specs.len(), 2);
+
+    match &specs[0].form {
+        ArgForm::Delimited { open, close } => {
+            assert!(matches!(
+                open,
+                DelimiterToken::ControlSeq(Cow::Owned(name)) if name == "langle"
+            ));
+            assert!(matches!(
+                close,
+                DelimiterToken::ControlSeq(Cow::Owned(name)) if name == "rangle"
+            ));
+        }
+        other => panic!("expected delimited form, got {:?}", other),
+    }
+
+    match &specs[1].form {
+        ArgForm::Delimited { open, close } => {
+            assert!(matches!(
+                open,
+                DelimiterToken::ControlSeq(Cow::Owned(name)) if name == "lvert"
+            ));
+            assert!(matches!(
+                close,
+                DelimiterToken::ControlSeq(Cow::Owned(name)) if name == "rvert"
+            ));
+        }
+        other => panic!("expected delimited form, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_arg_specs_rejects_empty_pair_list() {
+    let err = parse_arg_specs("p", "invalid").expect_err("p without pairs should be invalid");
+    assert!(
+        err.to_string()
+            .contains("paired form requires at least one `<open,close>` block")
+    );
+}
+
+#[test]
+fn test_parse_arg_specs_rejects_whitespace_pair_delimiter() {
+    let err = parse_arg_specs("p< ,)>", "invalid").expect_err("whitespace pair delimiter");
+    assert!(
+        err.to_string()
+            .contains("pair delimiter cannot be whitespace")
+    );
+}
+
+#[test]
+fn test_parse_arg_specs_rejects_required_paired_with_no_space_prefix() {
+    let err = parse_arg_specs("!P<(,)>", "invalid").expect_err("!P should be invalid");
+    assert!(
+        err.to_string()
+            .contains("`!` prefix is only valid for optional argument forms")
+    );
 }
 
 #[test]

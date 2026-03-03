@@ -318,13 +318,42 @@ pub struct PackageSpecs {
     pub delimiter_controls: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArgSpecParseError {
+    pub context: String,
+    pub char_index: usize,
+    pub message: String,
+}
+
+impl ArgSpecParseError {
+    fn new(context: &str, char_index: usize, message: impl Into<String>) -> Self {
+        Self {
+            context: context.to_string(),
+            char_index,
+            message: message.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for ArgSpecParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "invalid argspec ({}) at char {}: {}",
+            self.context, self.char_index, self.message
+        )
+    }
+}
+
+impl std::error::Error for ArgSpecParseError {}
+
 pub fn load_package_specs_from_str(yaml: &str, context: &str) -> PackageSpecs {
     let parsed: PackageSpecsYaml = serde_yaml::from_str(yaml)
         .unwrap_or_else(|e| panic!("failed to parse package specs ({context}): {e}"));
     parsed.into_specs()
 }
 
-pub fn parse_arg_specs(spec: &str, context: &str) -> Vec<ArgSpec> {
+pub fn parse_arg_specs(spec: &str, context: &str) -> Result<Vec<ArgSpec>, ArgSpecParseError> {
     ArgSpecParser::new(spec, context).parse()
 }
 
@@ -380,10 +409,9 @@ struct CommandSpecYaml {
 
 impl From<CommandSpecYaml> for CommandSpec {
     fn from(value: CommandSpecYaml) -> Self {
-        let args = parse_arg_specs(
-            &value.spec,
-            format!("command {}", value.name.as_str()).as_str(),
-        );
+        let context = format!("command {}", value.name.as_str());
+        let args = parse_arg_specs(&value.spec, context.as_str())
+            .unwrap_or_else(|error| panic!("{error}"));
 
         CommandSpec {
             name: value.name,
@@ -448,10 +476,9 @@ struct EnvironmentSpecYaml {
 
 impl From<EnvironmentSpecYaml> for EnvironmentSpec {
     fn from(value: EnvironmentSpecYaml) -> Self {
-        let args = parse_arg_specs(
-            &value.spec,
-            format!("environment {}", value.name.as_str()).as_str(),
-        );
+        let context = format!("environment {}", value.name.as_str());
+        let args = parse_arg_specs(&value.spec, context.as_str())
+            .unwrap_or_else(|error| panic!("{error}"));
 
         EnvironmentSpec {
             name: value.name,
@@ -496,7 +523,7 @@ impl<'a> ArgSpecParser<'a> {
         }
     }
 
-    fn parse(mut self) -> Vec<ArgSpec> {
+    fn parse(mut self) -> Result<Vec<ArgSpec>, ArgSpecParseError> {
         let mut specs = Vec::new();
 
         loop {
@@ -504,17 +531,17 @@ impl<'a> ArgSpecParser<'a> {
             if self.eof() {
                 break;
             }
-            specs.push(self.parse_one());
+            specs.push(self.parse_one()?);
         }
 
-        specs
+        Ok(specs)
     }
 
-    fn parse_one(&mut self) -> ArgSpec {
+    fn parse_one(&mut self) -> Result<ArgSpec, ArgSpecParseError> {
         let no_leading_space = self.consume_if('!');
         let kind_token = self
             .next_char()
-            .unwrap_or_else(|| self.fail("expected argument token"));
+            .ok_or_else(|| self.err("expected argument token"))?;
 
         let (required, form) = match kind_token {
             'm' => (true, ArgForm::Standard),
@@ -522,33 +549,35 @@ impl<'a> ArgSpecParser<'a> {
             's' => (false, ArgForm::Star),
             'g' => (false, ArgForm::Group),
             'r' => {
-                let open = self.parse_delimiter_token();
-                let close = self.parse_delimiter_token();
+                let open = self.parse_delimiter_token()?;
+                let close = self.parse_delimiter_token()?;
                 (true, ArgForm::Delimited { open, close })
             }
             'd' => {
-                let open = self.parse_delimiter_token();
-                let close = self.parse_delimiter_token();
+                let open = self.parse_delimiter_token()?;
+                let close = self.parse_delimiter_token()?;
                 (false, ArgForm::Delimited { open, close })
             }
             'P' => {
-                let pairs = self.parse_pair_list();
+                let pairs = self.parse_pair_list()?;
                 (true, ArgForm::Paired { pairs })
             }
             'p' => {
-                let pairs = self.parse_pair_list();
+                let pairs = self.parse_pair_list()?;
                 (false, ArgForm::Paired { pairs })
             }
-            other => self.fail(format!("unsupported argument token `{other}`")),
+            other => {
+                return Err(self.err(format!("unsupported argument token `{other}`")));
+            }
         };
 
         let kind = if matches!(&form, ArgForm::Star) {
             if self.peek_char() == Some(':') {
-                self.fail("`s` does not accept value type annotation")
+                return Err(self.err("`s` does not accept value type annotation"));
             }
             ValueKind::Star
         } else {
-            self.parse_value_kind_annotation()
+            self.parse_value_kind_annotation()?
         };
 
         let spec = ArgSpec {
@@ -560,76 +589,78 @@ impl<'a> ArgSpecParser<'a> {
         self.validate_spec(spec)
     }
 
-    fn parse_value_kind_annotation(&mut self) -> ValueKind {
+    fn parse_value_kind_annotation(&mut self) -> Result<ValueKind, ArgSpecParseError> {
         if !self.consume_if(':') {
-            return ValueKind::Content {
+            return Ok(ValueKind::Content {
                 mode: ContentMode::Math,
-            };
+            });
         }
 
         let annotation = self
             .next_char()
-            .unwrap_or_else(|| self.fail("missing value kind annotation after `:`"));
+            .ok_or_else(|| self.err("missing value kind annotation after `:`"))?;
         match annotation {
-            'T' => ValueKind::Content {
+            'T' => Ok(ValueKind::Content {
                 mode: ContentMode::Text,
-            },
-            'D' => ValueKind::Delimiter,
-            'L' => ValueKind::Dimension,
-            'I' => ValueKind::Integer,
-            'K' => ValueKind::KeyVal,
-            'C' => ValueKind::Column,
-            other => self.fail(format!("unsupported value kind annotation `:{other}`")),
+            }),
+            'D' => Ok(ValueKind::Delimiter),
+            'L' => Ok(ValueKind::Dimension),
+            'I' => Ok(ValueKind::Integer),
+            'K' => Ok(ValueKind::KeyVal),
+            'C' => Ok(ValueKind::Column),
+            other => Err(self.err(format!("unsupported value kind annotation `:{other}`"))),
         }
     }
 
-    fn parse_delimiter_token(&mut self) -> DelimiterToken {
+    fn parse_delimiter_token(&mut self) -> Result<DelimiterToken, ArgSpecParseError> {
         match self.next_char() {
-            Some('\\') => {
-                DelimiterToken::ControlSeq(Cow::Owned(self.parse_control_sequence_name()))
-            }
-            Some(c) if c.is_whitespace() => self.fail("delimiter token cannot be whitespace"),
-            Some(c) => DelimiterToken::Char(c),
-            None => self.fail("missing delimiter token"),
+            Some('\\') => Ok(DelimiterToken::ControlSeq(Cow::Owned(
+                self.parse_control_sequence_name()?,
+            ))),
+            Some(c) if c.is_whitespace() => Err(self.err("delimiter token cannot be whitespace")),
+            Some(c) => Ok(DelimiterToken::Char(c)),
+            None => Err(self.err("missing delimiter token")),
         }
     }
 
-    fn parse_pair_list(&mut self) -> Cow<'static, [(DelimiterToken, DelimiterToken)]> {
+    fn parse_pair_list(
+        &mut self,
+    ) -> Result<Cow<'static, [(DelimiterToken, DelimiterToken)]>, ArgSpecParseError> {
         let mut pairs = Vec::new();
 
         while self.consume_if('<') {
-            let open = self.parse_pair_delimiter_token();
-            self.expect_char(',');
-            let close = self.parse_pair_delimiter_token();
-            self.expect_char('>');
+            let open = self.parse_pair_delimiter_token()?;
+            self.expect_char(',')?;
+            let close = self.parse_pair_delimiter_token()?;
+            self.expect_char('>')?;
             pairs.push((open, close));
         }
 
         if pairs.is_empty() {
-            self.fail("paired form requires at least one `<open,close>` block");
+            return Err(self.err("paired form requires at least one `<open,close>` block"));
         }
 
-        Cow::Owned(pairs)
+        Ok(Cow::Owned(pairs))
     }
 
-    fn parse_pair_delimiter_token(&mut self) -> DelimiterToken {
+    fn parse_pair_delimiter_token(&mut self) -> Result<DelimiterToken, ArgSpecParseError> {
         match self.next_char() {
-            Some('\\') => {
-                DelimiterToken::ControlSeq(Cow::Owned(self.parse_control_sequence_name()))
-            }
-            Some(c) if c.is_whitespace() => self.fail("pair delimiter cannot be whitespace"),
+            Some('\\') => Ok(DelimiterToken::ControlSeq(Cow::Owned(
+                self.parse_control_sequence_name()?,
+            ))),
+            Some(c) if c.is_whitespace() => Err(self.err("pair delimiter cannot be whitespace")),
             Some('<') | Some('>') | Some(',') => {
-                self.fail("`<`, `>`, `,` are reserved in pair syntax")
+                Err(self.err("`<`, `>`, `,` are reserved in pair syntax"))
             }
-            Some(c) => DelimiterToken::Char(c),
-            None => self.fail("missing pair delimiter token"),
+            Some(c) => Ok(DelimiterToken::Char(c)),
+            None => Err(self.err("missing pair delimiter token")),
         }
     }
 
-    fn parse_control_sequence_name(&mut self) -> String {
+    fn parse_control_sequence_name(&mut self) -> Result<String, ArgSpecParseError> {
         let first = self
             .next_char()
-            .unwrap_or_else(|| self.fail("expected control sequence name after `\\`"));
+            .ok_or_else(|| self.err("expected control sequence name after `\\`"))?;
 
         let mut name = String::new();
         name.push(first);
@@ -645,50 +676,50 @@ impl<'a> ArgSpecParser<'a> {
             }
         }
 
-        name
+        Ok(name)
     }
 
-    fn validate_spec(&self, spec: ArgSpec) -> ArgSpec {
+    fn validate_spec(&self, spec: ArgSpec) -> Result<ArgSpec, ArgSpecParseError> {
         if spec.no_leading_space && spec.required {
-            self.fail("`!` prefix is only valid for optional argument forms");
+            return Err(self.err("`!` prefix is only valid for optional argument forms"));
         }
 
         match &spec.form {
             ArgForm::Standard => {
                 if spec.kind.is_star() {
-                    self.fail("star value kind requires `s` form");
+                    return Err(self.err("star value kind requires `s` form"));
                 }
             }
             ArgForm::Star => {
                 if spec.required {
-                    self.fail("star form must be optional");
+                    return Err(self.err("star form must be optional"));
                 }
                 if !spec.kind.is_star() {
-                    self.fail("star form must use star value kind");
+                    return Err(self.err("star form must use star value kind"));
                 }
             }
             ArgForm::Group => {
                 if spec.required {
-                    self.fail("group form must be optional");
+                    return Err(self.err("group form must be optional"));
                 }
                 if spec.kind.is_star() {
-                    self.fail("group form cannot use star value kind");
+                    return Err(self.err("group form cannot use star value kind"));
                 }
                 if !spec.kind.is_content() {
-                    self.fail("group form only supports content kind");
+                    return Err(self.err("group form only supports content kind"));
                 }
             }
             ArgForm::Delimited { .. } | ArgForm::Paired { .. } => {
                 if spec.kind.is_star() {
-                    self.fail("delimited/paired form cannot use star value kind");
+                    return Err(self.err("delimited/paired form cannot use star value kind"));
                 }
                 if spec.kind.is_delimiter() {
-                    self.fail("delimiter kind cannot use delimited/paired form");
+                    return Err(self.err("delimiter kind cannot use delimited/paired form"));
                 }
             }
         }
 
-        spec
+        Ok(spec)
     }
 
     fn skip_whitespace(&mut self) {
@@ -697,13 +728,14 @@ impl<'a> ArgSpecParser<'a> {
         }
     }
 
-    fn expect_char(&mut self, target: char) {
+    fn expect_char(&mut self, target: char) -> Result<(), ArgSpecParseError> {
         let got = self
             .next_char()
-            .unwrap_or_else(|| self.fail(format!("expected `{target}`")));
+            .ok_or_else(|| self.err(format!("expected `{target}`")))?;
         if got != target {
-            self.fail(format!("expected `{target}`, found `{got}`"));
+            return Err(self.err(format!("expected `{target}`, found `{got}`")));
         }
+        Ok(())
     }
 
     fn consume_if(&mut self, target: char) -> bool {
@@ -729,12 +761,7 @@ impl<'a> ArgSpecParser<'a> {
         self.cursor >= self.chars.len()
     }
 
-    fn fail(&self, msg: impl AsRef<str>) -> ! {
-        panic!(
-            "invalid argspec ({}) at char {}: {}",
-            self.context,
-            self.cursor,
-            msg.as_ref(),
-        )
+    fn err(&self, msg: impl Into<String>) -> ArgSpecParseError {
+        ArgSpecParseError::new(self.context, self.cursor, msg)
     }
 }
