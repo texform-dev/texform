@@ -380,6 +380,7 @@ where
     let mut subscript: Option<SyntaxNode> = None;
 
     loop {
+        let checkpoint = input.save();
         let _ = input.parse(ws.clone());
 
         let marker_start = input.cursor();
@@ -415,6 +416,7 @@ where
         };
 
         let Some((kind, node)) = marker else {
+            input.rewind(checkpoint);
             break;
         };
 

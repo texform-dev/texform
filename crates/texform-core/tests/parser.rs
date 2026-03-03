@@ -2410,6 +2410,177 @@ fn test_no_leading_space_prefix_for_linebreak_command() {
     }
 }
 
+#[test]
+fn test_no_leading_space_after_single_token_m_for_optional_brackets() {
+    let mut ctx = ParseContext::test_default();
+    ctx.insert_command("probe", CommandKind::Prefix, AllowedMode::Math, "m !o", &[]);
+
+    let spaced = ctx.parse(r"\probe a [b]", true);
+    assert!(
+        spaced.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        spaced.diagnostics
+    );
+    let spaced_node = spaced
+        .result
+        .as_ref()
+        .unwrap_or_else(|| panic!("expected parse result"))
+        .node
+        .clone();
+
+    match spaced_node {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 4);
+            match &children[0] {
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "probe");
+                    assert_eq!(args.len(), 2);
+                    assert_eq!(
+                        expect_arg(&args[0]).value,
+                        ArgumentValue::Content(SyntaxNode::Char('a'))
+                    );
+                    assert!(args[1].is_none(), "spaced !o slot should not match");
+                }
+                other => panic!("Expected probe command, got {:?}", other),
+            }
+            assert_eq!(children[1], SyntaxNode::Char('['));
+            assert_eq!(children[2], SyntaxNode::Char('b'));
+            assert_eq!(children[3], SyntaxNode::Char(']'));
+        }
+        other => panic!("Expected root group, got {:?}", other),
+    }
+
+    let tight = ctx.parse(r"\probe a[b]", true);
+    assert!(
+        tight.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        tight.diagnostics
+    );
+    let tight_node = tight
+        .result
+        .as_ref()
+        .unwrap_or_else(|| panic!("expected parse result"))
+        .node
+        .clone();
+
+    match tight_node {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 1);
+            match &children[0] {
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "probe");
+                    assert_eq!(args.len(), 2);
+                    assert_eq!(
+                        expect_arg(&args[0]).value,
+                        ArgumentValue::Content(SyntaxNode::Char('a'))
+                    );
+                    assert_eq!(
+                        expect_arg(&args[1]).value,
+                        ArgumentValue::Content(SyntaxNode::Char('b'))
+                    );
+                }
+                other => panic!("Expected probe command, got {:?}", other),
+            }
+        }
+        other => panic!("Expected root group, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_no_leading_space_after_single_token_m_for_group_slot() {
+    let mut ctx = ParseContext::test_default();
+    ctx.insert_command("probe", CommandKind::Prefix, AllowedMode::Math, "s o m !g", &[]);
+
+    let spaced = ctx.parse(r"\probe*[n]f {x}", true);
+    assert!(
+        spaced.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        spaced.diagnostics
+    );
+    let spaced_node = spaced
+        .result
+        .as_ref()
+        .unwrap_or_else(|| panic!("expected parse result"))
+        .node
+        .clone();
+
+    match spaced_node {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 2);
+            match &children[0] {
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "probe");
+                    assert_eq!(args.len(), 4);
+                    assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(true));
+                    assert_eq!(
+                        expect_arg(&args[1]).value,
+                        ArgumentValue::Content(SyntaxNode::Char('n'))
+                    );
+                    assert_eq!(
+                        expect_arg(&args[2]).value,
+                        ArgumentValue::Content(SyntaxNode::Char('f'))
+                    );
+                    assert!(args[3].is_none(), "spaced !g slot should not match");
+                }
+                other => panic!("Expected probe command, got {:?}", other),
+            }
+            match &children[1] {
+                SyntaxNode::Group {
+                    kind: GroupKind::Explicit,
+                    children: group_children,
+                    ..
+                } => {
+                    assert_eq!(group_children.len(), 1);
+                    assert_eq!(group_children[0], SyntaxNode::Char('x'));
+                }
+                other => panic!("Expected trailing explicit group, got {:?}", other),
+            }
+        }
+        other => panic!("Expected root group, got {:?}", other),
+    }
+
+    let tight = ctx.parse(r"\probe*[n]f{x}", true);
+    assert!(
+        tight.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        tight.diagnostics
+    );
+    let tight_node = tight
+        .result
+        .as_ref()
+        .unwrap_or_else(|| panic!("expected parse result"))
+        .node
+        .clone();
+
+    match tight_node {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 1);
+            match &children[0] {
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "probe");
+                    assert_eq!(args.len(), 4);
+                    assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(true));
+                    assert_eq!(
+                        expect_arg(&args[1]).value,
+                        ArgumentValue::Content(SyntaxNode::Char('n'))
+                    );
+                    assert_eq!(
+                        expect_arg(&args[2]).value,
+                        ArgumentValue::Content(SyntaxNode::Char('f'))
+                    );
+                    assert_eq!(expect_arg(&args[3]).kind, ArgumentKind::Group);
+                    assert_eq!(
+                        expect_arg(&args[3]).value,
+                        ArgumentValue::Content(SyntaxNode::Char('x'))
+                    );
+                }
+                other => panic!("Expected probe command, got {:?}", other),
+            }
+        }
+        other => panic!("Expected root group, got {:?}", other),
+    }
+}
+
 // ========================================================================
 // Span Correctness Tests
 // ========================================================================

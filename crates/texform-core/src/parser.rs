@@ -159,23 +159,46 @@ fn declarative_guard<'a>(
     }
 }
 
-/// Parse a single math item (respecting script rules and stop guards).
+/// Parse one math item node (with script handling) without outer spacing policy.
+///
+/// Callers decide whether to wrap it with padding or stop-guards.
+fn math_item_node_parser<'a, P>(
+    kb: &'a KnowledgeBase,
+    group_content: P,
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
+    strict: bool,
+) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
+where
+    P: Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
+{
+    let atom = math_atom_parser(kb, group_content, math_content, text_content, strict);
+    scripted_atom_parser(atom)
+}
+
+/// Parse a single math item in argument contexts.
+///
+/// This parser does not consume trailing whitespace so the following argument
+/// slot can still enforce `no_leading_space`.
 fn math_item_parser<'a>(
     kb: &'a KnowledgeBase,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
-    let ws = insignificant_whitespace();
-    let atom = math_atom_parser(kb, math_content.clone(), math_content, text_content, strict);
-    let scripted = scripted_atom_parser(atom);
-    let normal_item = scripted.padded_by(ws.clone());
+    let item = math_item_node_parser(
+        kb,
+        math_content.clone(),
+        math_content,
+        text_content,
+        strict,
+    );
 
     math_infix_or_decl_guard(kb)
         .or(control_seq("right"))
         .or(control_seq("end"))
         .not()
-        .ignore_then(normal_item)
+        .ignore_then(item)
 }
 
 /// Parse a single text item (respecting stop guards).
@@ -370,8 +393,13 @@ fn argument_parser<'a>(
                     let braced = braced_group_parser(mode, content.clone());
                     let single_item: NodeParser<'a> = match mode {
                         ContentMode::Math => {
-                            math_item_parser(kb, math_content.clone(), text_content.clone(), strict)
-                                .boxed()
+                            math_item_parser(
+                                kb,
+                                math_content.clone(),
+                                text_content.clone(),
+                                strict,
+                            )
+                            .boxed()
                         }
                         ContentMode::Text => {
                             text_item_parser(kb, math_content.clone(), text_content.clone(), strict)
@@ -895,6 +923,9 @@ where
 }
 
 /// Wrap a base atom with script parsing (`^`, `_`, primes).
+///
+/// This parser allows leading whitespace before script atoms but does not
+/// consume trailing whitespace after the parsed item.
 fn scripted_atom_parser<'a, P>(
     atom: P,
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
@@ -902,9 +933,7 @@ where
     P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
 {
     let ws = insignificant_whitespace();
-    let atom_for_scripts = atom.clone().padded_by(ws.clone());
-    // Script parsing is delegated to `parse_scripted_components` so that
-    // the core state machine can be tested in isolation and kept small.
+    let atom_for_scripts = ws.ignore_then(atom.clone());
     custom(move |input| {
         let components = parse_scripted_components(input, atom_for_scripts.clone())?;
 
@@ -1192,15 +1221,14 @@ fn mode_content_parsers<'a>(
         let ws = insignificant_whitespace();
         let math_content = math_for_math.clone().boxed();
         let text_content = text_for_math.clone().boxed();
-        let atom = math_atom_parser(
+        let normal_item = math_item_node_parser(
             kb,
             group_content,
             math_content.clone(),
             text_content.clone(),
             strict,
-        );
-        let scripted = scripted_atom_parser(atom);
-        let normal_item = scripted.padded_by(ws.clone());
+        )
+        .padded_by(ws.clone());
         math_group_content_parser(kb, normal_item, math_content, text_content, strict).padded_by(ws)
     }));
 
