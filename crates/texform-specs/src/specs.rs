@@ -247,6 +247,12 @@ pub struct CommandMeta {
 
     /// Metadata tags (kebab-case)
     pub tags: &'static [&'static str],
+
+    /// Original xparse-style spec string from package definition.
+    pub spec_string: &'static str,
+
+    /// Package name that provided this command metadata.
+    pub package: &'static str,
 }
 
 /// Environment metadata in knowledge base
@@ -269,6 +275,12 @@ pub struct EnvMeta {
 
     /// Metadata tags (kebab-case)
     pub tags: &'static [&'static str],
+
+    /// Original xparse-style spec string from package definition.
+    pub spec_string: &'static str,
+
+    /// Package name that provided this environment metadata.
+    pub package: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -278,6 +290,7 @@ pub struct CommandSpec {
     pub allowed_mode: AllowedMode,
     pub args: Vec<ArgSpec>,
     pub tags: Vec<String>,
+    pub spec_string: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -288,6 +301,7 @@ pub struct EnvironmentSpec {
     pub args: Vec<ArgSpec>,
     pub body_mode: ContentMode,
     pub tags: Vec<String>,
+    pub spec_string: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -377,6 +391,7 @@ impl From<CommandSpecYaml> for CommandSpec {
             allowed_mode: value.allowed_mode.into(),
             args,
             tags: value.tags,
+            spec_string: value.spec,
         }
     }
 }
@@ -445,6 +460,7 @@ impl From<EnvironmentSpecYaml> for EnvironmentSpec {
             args,
             body_mode: value.body_mode.into(),
             tags: value.tags,
+            spec_string: value.spec,
         }
     }
 }

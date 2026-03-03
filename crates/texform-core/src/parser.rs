@@ -8,7 +8,8 @@ use chumsky::prelude::*;
 
 use crate::column_parser::parse_column_template;
 use crate::knowledge::{
-    self, ArgForm, ArgSpec, CommandKind, CommandMeta, DelimiterToken, EnvMeta, ValueKind,
+    self, ArgForm, ArgSpec, CommandKind, CommandMeta, DelimiterToken, EnvMeta, KnowledgeBase,
+    ValueKind,
 };
 use crate::lexer::Token;
 use crate::parser_utils::{
@@ -63,7 +64,7 @@ type TailParseOutput = ((String, bool, Vec<ArgumentSlot>), Vec<SyntaxNode>);
 /// Returns a `Spanned<SyntaxNode>` where the span covers the full input range.
 pub fn parse(src: &str, strict: bool) -> Result<Spanned<SyntaxNode>, Vec<Rich<'_, Token>>> {
     let token_stream = build_token_stream(src);
-    math_block_parser(strict)
+    math_block_parser(knowledge::kb(), strict)
         .map_with(|node, e| (node, e.span()))
         .then_ignore(end())
         .parse(token_stream)
@@ -85,10 +86,11 @@ fn env_body_parser<'a>(
 /// Parse a control sequence and ensure it matches the expected command kind.
 fn command_head_parser<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
+    kb: &'parse KnowledgeBase,
     expected_kind: CommandKind,
     current_mode: ContentMode,
     strict: bool,
-) -> Result<(String, &'static CommandMeta), Rich<'src, Token>> {
+) -> Result<(String, &'parse CommandMeta), Rich<'src, Token>> {
     let cmd_start = input.cursor();
     let token = input.next();
     let name = match token {
@@ -99,7 +101,7 @@ fn command_head_parser<'src, 'parse>(
 
     let cmd_span = input.span_from_cursor(&cmd_start);
 
-    let meta = match knowledge::lookup_command(&name) {
+    let meta = match kb.lookup_command(&name) {
         Some(meta) if meta.kind == expected_kind => meta,
         Some(_) => {
             return Err(Rich::custom(
@@ -134,20 +136,24 @@ fn command_head_parser<'src, 'parse>(
 // ============================================================================
 
 /// Guard used to stop math content before infix/declarative commands.
-fn math_infix_or_decl_guard<'a>() -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
+fn math_infix_or_decl_guard<'a>(
+    kb: &'a KnowledgeBase,
+) -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
     select! {
         Token::ControlSeq(name)
-            if knowledge::lookup_command(name.as_str())
+            if kb.lookup_command(name.as_str())
                 .map(|m| matches!(m.kind, CommandKind::Infix | CommandKind::Declarative))
                 .unwrap_or(false) => ()
     }
 }
 
 /// Guard used to stop content parsing before declarative commands.
-fn declarative_guard<'a>() -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
+fn declarative_guard<'a>(
+    kb: &'a KnowledgeBase,
+) -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
     select! {
         Token::ControlSeq(name)
-            if knowledge::lookup_command(name.as_str())
+            if kb.lookup_command(name.as_str())
                 .map(|m| m.kind == CommandKind::Declarative)
                 .unwrap_or(false) => ()
     }
@@ -155,16 +161,17 @@ fn declarative_guard<'a>() -> impl Parser<'a, TokenStream<'a>, (), ParserError<'
 
 /// Parse a single math item (respecting script rules and stop guards).
 fn math_item_parser<'a>(
+    kb: &'a KnowledgeBase,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     let ws = insignificant_whitespace();
-    let atom = math_atom_parser(math_content.clone(), math_content, text_content, strict);
+    let atom = math_atom_parser(kb, math_content.clone(), math_content, text_content, strict);
     let scripted = scripted_atom_parser(atom);
     let normal_item = scripted.padded_by(ws.clone());
 
-    math_infix_or_decl_guard()
+    math_infix_or_decl_guard(kb)
         .or(control_seq("right"))
         .or(control_seq("end"))
         .not()
@@ -173,13 +180,15 @@ fn math_item_parser<'a>(
 
 /// Parse a single text item (respecting stop guards).
 fn text_item_parser<'a>(
+    kb: &'a KnowledgeBase,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
-    let normal_item = text_atom_parser(text_content.clone(), math_content, text_content, strict);
+    let normal_item =
+        text_atom_parser(kb, text_content.clone(), math_content, text_content, strict);
 
-    declarative_guard()
+    declarative_guard(kb)
         .or(control_seq("end"))
         .not()
         .ignore_then(normal_item)
@@ -259,6 +268,7 @@ fn collect_delimited_tokens<'src, 'parse>(
 
 fn parse_tokens_as_content<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
+    kb: &'parse KnowledgeBase,
     mode: ContentMode,
     tokens: Vec<Token>,
     strict: bool,
@@ -266,8 +276,8 @@ fn parse_tokens_as_content<'src, 'parse>(
     let src = tokens_to_string(&tokens);
     let token_stream = build_token_stream(src.as_str());
     let parser = match mode {
-        ContentMode::Math => math_block_parser(strict),
-        ContentMode::Text => text_block_parser(strict),
+        ContentMode::Math => math_block_parser(kb, strict),
+        ContentMode::Text => text_block_parser(kb, strict),
     };
 
     let node = parser
@@ -284,13 +294,14 @@ fn parse_tokens_as_content<'src, 'parse>(
 
 fn parse_delimited_value<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
+    kb: &'parse KnowledgeBase,
     kind: ValueKind,
     tokens: Vec<Token>,
     strict: bool,
 ) -> Result<ArgumentValue, Rich<'src, Token>> {
     match kind {
         ValueKind::Content { mode } => {
-            let node = parse_tokens_as_content(input, mode, tokens, strict)?;
+            let node = parse_tokens_as_content(input, kb, mode, tokens, strict)?;
             Ok(ArgumentValue::Content(node))
         }
         ValueKind::Dimension => {
@@ -347,6 +358,7 @@ fn parse_delimited_value<'src, 'parse>(
 
 /// Parse one argument slot according to `ArgSpec`.
 fn argument_parser<'a>(
+    kb: &'a KnowledgeBase,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     spec: &'static ArgSpec,
@@ -364,11 +376,11 @@ fn argument_parser<'a>(
                     let braced = braced_group_parser(mode, content.clone());
                     let single_item: NodeParser<'a> = match mode {
                         ContentMode::Math => {
-                            math_item_parser(math_content.clone(), text_content.clone(), strict)
+                            math_item_parser(kb, math_content.clone(), text_content.clone(), strict)
                                 .boxed()
                         }
                         ContentMode::Text => {
-                            text_item_parser(math_content.clone(), text_content.clone(), strict)
+                            text_item_parser(kb, math_content.clone(), text_content.clone(), strict)
                                 .boxed()
                         }
                     };
@@ -384,7 +396,7 @@ fn argument_parser<'a>(
                     let Some(tokens) = collect_optional_bracketed_tokens(input, false)? else {
                         return Ok(None);
                     };
-                    let node = parse_tokens_as_content(input, mode, tokens, strict)?;
+                    let node = parse_tokens_as_content(input, kb, mode, tokens, strict)?;
                     Ok(Some(Argument::from_value(
                         ArgumentKind::Optional,
                         ArgumentValue::Content(node),
@@ -393,7 +405,7 @@ fn argument_parser<'a>(
             }
             ValueKind::Delimiter => {
                 if spec.required {
-                    let parser = maybe_braced(delimiter())
+                    let parser = maybe_braced(delimiter(kb))
                         .map(move |value| {
                             Some(Argument::from_value(
                                 ArgumentKind::Mandatory,
@@ -405,7 +417,7 @@ fn argument_parser<'a>(
                 } else if !matches!(input.peek(), Some(Token::LBracket)) {
                     Ok(None)
                 } else {
-                    let parser = optional_bracketed(delimiter())
+                    let parser = optional_bracketed(delimiter(kb))
                         .map(move |opt| {
                             opt.map(|value| {
                                 Argument::from_value(
@@ -576,7 +588,7 @@ fn argument_parser<'a>(
             }
 
             let tokens = collect_delimited_tokens(input, open, close)?;
-            let value = parse_delimited_value(input, spec.kind, tokens, strict)?;
+            let value = parse_delimited_value(input, kb, spec.kind, tokens, strict)?;
             Ok(Some(Argument::from_value(
                 ArgumentKind::Delimited {
                     open: syntax_delimiter(open),
@@ -603,7 +615,7 @@ fn argument_parser<'a>(
             };
 
             let tokens = collect_delimited_tokens(input, open, close)?;
-            let value = parse_delimited_value(input, spec.kind, tokens, strict)?;
+            let value = parse_delimited_value(input, kb, spec.kind, tokens, strict)?;
             Ok(Some(Argument::from_value(
                 ArgumentKind::Paired {
                     open: syntax_delimiter(open),
@@ -618,6 +630,7 @@ fn argument_parser<'a>(
 
 /// Parse a full argument list driven by metadata specs. This is the only custom loop in the argument layer.
 fn arguments_parser<'a>(
+    kb: &'a KnowledgeBase,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     specs: &'static [ArgSpec],
@@ -631,8 +644,9 @@ fn arguments_parser<'a>(
             if !spec.no_leading_space {
                 let _ = input.parse(insignificant_whitespace());
             }
-            let parser = argument_parser(math_content.clone(), text_content.clone(), spec, strict)
-                .labelled(context);
+            let parser =
+                argument_parser(kb, math_content.clone(), text_content.clone(), spec, strict)
+                    .labelled(context);
             let arg = input.parse(parser)?;
             args.push(arg);
         }
@@ -646,6 +660,7 @@ fn arguments_parser<'a>(
 // ============================================================================
 
 fn prefix_command_parser<'a>(
+    kb: &'a KnowledgeBase,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     current_mode: ContentMode,
@@ -653,12 +668,13 @@ fn prefix_command_parser<'a>(
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     custom(move |input| {
         let (name, meta) =
-            match command_head_parser(input, CommandKind::Prefix, current_mode, strict) {
+            match command_head_parser(input, kb, CommandKind::Prefix, current_mode, strict) {
                 Ok(data) => data,
                 Err(err) => return Err(err),
             };
 
         let args = input.parse(arguments_parser(
+            kb,
             math_content.clone(),
             text_content.clone(),
             meta.args,
@@ -676,11 +692,12 @@ fn prefix_command_parser<'a>(
 }
 
 fn unknown_command_parser<'a>(
+    kb: &'a KnowledgeBase,
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     select! {
         Token::ControlSeq(name)
-            if knowledge::lookup_command(name.as_str()).is_none() => name
+            if kb.lookup_command(name.as_str()).is_none() => name
     }
     .try_map(move |name, span| {
         if matches!(name.as_str(), "begin" | "end") {
@@ -722,16 +739,13 @@ fn env_name_parser<'a>() -> impl Parser<'a, TokenStream<'a>, (String, bool), Par
 
 /// Parse `\begin{name}` plus its arguments, returning metadata.
 fn parse_env_header<'a>(
+    kb: &'a KnowledgeBase,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     current_mode: ContentMode,
     strict: bool,
-) -> impl Parser<
-    'a,
-    TokenStream<'a>,
-    (String, bool, Vec<ArgumentSlot>, &'static EnvMeta),
-    ParserError<'a>,
-> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, (String, bool, Vec<ArgumentSlot>, &'a EnvMeta), ParserError<'a>>
++ Clone {
     custom(move |input| {
         input.parse(control_seq("begin"))?;
 
@@ -739,7 +753,7 @@ fn parse_env_header<'a>(
         let (base_name, starred) = input.parse(env_name_parser())?;
         let name_span = input.span_from_cursor(&name_start);
 
-        let meta = match knowledge::lookup_env(base_name.as_str()) {
+        let meta = match kb.lookup_env(base_name.as_str()) {
             Some(m) => m,
             None => {
                 return Err(Rich::custom(
@@ -767,6 +781,7 @@ fn parse_env_header<'a>(
         }
 
         let args = input.parse(arguments_parser(
+            kb,
             math_content.clone(),
             text_content.clone(),
             meta.args,
@@ -780,6 +795,7 @@ fn parse_env_header<'a>(
 
 /// Parse a full environment including body and closing tag.
 fn environment_parser<'a>(
+    kb: &'a KnowledgeBase,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     current_mode: ContentMode,
@@ -787,6 +803,7 @@ fn environment_parser<'a>(
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     custom(move |input| {
         let (name, starred, args, meta) = input.parse(parse_env_header(
+            kb,
             math_content.clone(),
             text_content.clone(),
             current_mode,
@@ -857,6 +874,7 @@ fn environment_parser<'a>(
 
 /// Parse a math atom (group/command/env/char) without scripts.
 fn math_atom_parser<'a, P>(
+    kb: &'a KnowledgeBase,
     group_content: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
@@ -866,16 +884,17 @@ where
     P: Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
 {
     let explicit_group = braced_group_parser(ContentMode::Math, group_content.clone());
-    let delimited_group = delimited_group_parser(math_content.clone());
+    let delimited_group = delimited_group_parser(kb, math_content.clone());
     let environment = environment_parser(
+        kb,
         math_content.clone(),
         text_content.clone(),
         ContentMode::Math,
         strict,
     );
     let prefix_command =
-        prefix_command_parser(math_content, text_content, ContentMode::Math, strict);
-    let unknown_command = unknown_command_parser(strict);
+        prefix_command_parser(kb, math_content, text_content, ContentMode::Math, strict);
+    let unknown_command = unknown_command_parser(kb, strict);
 
     choice((
         delimited_group,
@@ -917,6 +936,7 @@ where
 
 /// Parse a text atom (text chunk, inline math, group, command, env).
 fn text_atom_parser<'a, P>(
+    kb: &'a KnowledgeBase,
     group_content: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
@@ -942,14 +962,15 @@ where
 
     let explicit_group = braced_group_parser(ContentMode::Text, group_content);
     let environment = environment_parser(
+        kb,
         math_content.clone(),
         text_content.clone(),
         ContentMode::Text,
         strict,
     );
     let prefix_command =
-        prefix_command_parser(math_content, text_content, ContentMode::Text, strict);
-    let unknown_command = unknown_command_parser(strict);
+        prefix_command_parser(kb, math_content, text_content, ContentMode::Text, strict);
+    let unknown_command = unknown_command_parser(kb, strict);
 
     choice((
         text_chunk(),
@@ -965,6 +986,7 @@ where
 
 /// Parse the tail after an infix command: the command head plus right operand items.
 fn infix_tail_parser<'a, P>(
+    kb: &'a KnowledgeBase,
     normal_item: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
@@ -975,12 +997,13 @@ where
 {
     let infix_cmd = custom(move |input| {
         let (name, meta) =
-            match command_head_parser(input, CommandKind::Infix, ContentMode::Math, strict) {
+            match command_head_parser(input, kb, CommandKind::Infix, ContentMode::Math, strict) {
                 Ok(data) => data,
                 Err(err) => return Err(err),
             };
 
         let args = input.parse(arguments_parser(
+            kb,
             math_content.clone(),
             text_content.clone(),
             meta.args,
@@ -992,7 +1015,7 @@ where
         Ok((name, starred, args))
     });
 
-    let stop_declarative = declarative_guard();
+    let stop_declarative = declarative_guard(kb);
 
     let guarded_item = stop_declarative
         .not()
@@ -1005,6 +1028,7 @@ where
 
 /// Parse the tail of a declarative command: command head plus scoped items.
 fn declarative_tail_parser<'a, P>(
+    kb: &'a KnowledgeBase,
     normal_item: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
@@ -1016,12 +1040,13 @@ where
 {
     let decl_cmd = custom(move |input| {
         let (name, meta) =
-            match command_head_parser(input, CommandKind::Declarative, current_mode, strict) {
+            match command_head_parser(input, kb, CommandKind::Declarative, current_mode, strict) {
                 Ok(data) => data,
                 Err(err) => return Err(err),
             };
 
         let args = input.parse(arguments_parser(
+            kb,
             math_content.clone(),
             text_content.clone(),
             meta.args,
@@ -1039,6 +1064,7 @@ where
 
 /// Build math-mode group content (leading items + optional infix/declarative tails).
 fn math_group_content_parser<'a, P>(
+    kb: &'a KnowledgeBase,
     normal_item: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
@@ -1047,7 +1073,7 @@ fn math_group_content_parser<'a, P>(
 where
     P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
 {
-    let stop_infix_or_decl = math_infix_or_decl_guard();
+    let stop_infix_or_decl = math_infix_or_decl_guard(kb);
     let guarded_item = stop_infix_or_decl
         .or(control_seq("right"))
         .or(control_seq("end"))
@@ -1057,6 +1083,7 @@ where
     let leading = guarded_item.repeated().collect::<Vec<_>>();
 
     let infix_tail = infix_tail_parser(
+        kb,
         normal_item.clone(),
         math_content.clone(),
         text_content.clone(),
@@ -1064,6 +1091,7 @@ where
     );
 
     let declarative_tail = declarative_tail_parser(
+        kb,
         normal_item,
         math_content,
         text_content,
@@ -1126,6 +1154,7 @@ where
 
 /// Build text-mode group content (leading items + optional declarative tail).
 fn text_group_content_parser<'a, P>(
+    kb: &'a KnowledgeBase,
     normal_item: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
@@ -1134,7 +1163,7 @@ fn text_group_content_parser<'a, P>(
 where
     P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
 {
-    let stop_declarative = declarative_guard();
+    let stop_declarative = declarative_guard(kb);
 
     let guarded_item = stop_declarative
         .or(control_seq("end"))
@@ -1144,6 +1173,7 @@ where
     let leading = guarded_item.repeated().collect::<Vec<_>>();
 
     let declarative_tail = declarative_tail_parser(
+        kb,
         normal_item,
         math_content,
         text_content,
@@ -1169,7 +1199,10 @@ where
 }
 
 /// Construct paired math/text content parsers using mutually recursive declarations.
-fn mode_content_parsers<'a>(strict: bool) -> (ContentParser<'a>, ContentParser<'a>) {
+fn mode_content_parsers<'a>(
+    kb: &'a KnowledgeBase,
+    strict: bool,
+) -> (ContentParser<'a>, ContentParser<'a>) {
     let mut math = Recursive::declare();
     let mut text = Recursive::declare();
 
@@ -1180,6 +1213,7 @@ fn mode_content_parsers<'a>(strict: bool) -> (ContentParser<'a>, ContentParser<'
         let math_content = math_for_math.clone().boxed();
         let text_content = text_for_math.clone().boxed();
         let atom = math_atom_parser(
+            kb,
             group_content,
             math_content.clone(),
             text_content.clone(),
@@ -1187,7 +1221,7 @@ fn mode_content_parsers<'a>(strict: bool) -> (ContentParser<'a>, ContentParser<'
         );
         let scripted = scripted_atom_parser(atom);
         let normal_item = scripted.padded_by(ws.clone());
-        math_group_content_parser(normal_item, math_content, text_content, strict).padded_by(ws)
+        math_group_content_parser(kb, normal_item, math_content, text_content, strict).padded_by(ws)
     }));
 
     let math_for_text = math.clone();
@@ -1196,34 +1230,35 @@ fn mode_content_parsers<'a>(strict: bool) -> (ContentParser<'a>, ContentParser<'
         let math_content = math_for_text.clone().boxed();
         let text_content = text_for_text.clone().boxed();
         let normal_item = text_atom_parser(
+            kb,
             group_content,
             math_content.clone(),
             text_content.clone(),
             strict,
         );
-        text_group_content_parser(normal_item, math_content, text_content, strict)
+        text_group_content_parser(kb, normal_item, math_content, text_content, strict)
     }));
 
     (math.boxed(), text.boxed())
 }
 
 /// Construct top-level math/text group parsers from content parsers.
-fn mode_group_parsers<'a>(strict: bool) -> (NodeParser<'a>, NodeParser<'a>) {
-    let (math_content, text_content) = mode_content_parsers(strict);
+fn mode_group_parsers<'a>(kb: &'a KnowledgeBase, strict: bool) -> (NodeParser<'a>, NodeParser<'a>) {
+    let (math_content, text_content) = mode_content_parsers(kb, strict);
     let math_group = implicit_group_parser(ContentMode::Math, math_content).boxed();
     let text_group = implicit_group_parser(ContentMode::Text, text_content).boxed();
     (math_group, text_group)
 }
 
 /// Entry point parser for math mode.
-pub(crate) fn math_block_parser<'a>(strict: bool) -> NodeParser<'a> {
-    let (math_parser, _) = mode_group_parsers(strict);
+pub(crate) fn math_block_parser<'a>(kb: &'a KnowledgeBase, strict: bool) -> NodeParser<'a> {
+    let (math_parser, _) = mode_group_parsers(kb, strict);
     math_parser
 }
 
 /// Entry point parser for text mode.
 #[allow(dead_code)] // Text entry point is unused; expose when direct text parsing is needed
-fn text_block_parser<'a>(strict: bool) -> NodeParser<'a> {
-    let (_, text_parser) = mode_group_parsers(strict);
+fn text_block_parser<'a>(kb: &'a KnowledgeBase, strict: bool) -> NodeParser<'a> {
+    let (_, text_parser) = mode_group_parsers(kb, strict);
     text_parser
 }

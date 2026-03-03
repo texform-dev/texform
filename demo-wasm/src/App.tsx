@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  ParseContext as WasmParseContext,
+  type AllowedMode,
+  type ArgSpecInfo,
+  type CommandInfo,
+  type CommandKind,
+  type EnvInfo,
   ensureWasmReady,
-  parseLatex,
   type Argument,
   type ArgumentValue,
   type GroupKind,
@@ -9,6 +14,10 @@ import {
   type ParseResult,
   type SyntaxNode,
 } from './texformWasm'
+import type { CustomCommandEntry, TreeNode } from './appTypes'
+import AppHeader from './components/AppHeader'
+import LatexInputPane from './components/LatexInputPane'
+import SyntaxTreePane from './components/SyntaxTreePane'
 
 const SAMPLE_LATEX = String.raw`\left(\frac{a+b}{\sqrt[3]{x^2_i}}\right) + \text{foo$a+b$bar}`
 
@@ -21,18 +30,6 @@ interface ParseViewState {
 interface ParseThrowLike {
   diagnostics?: unknown
   partial_result?: unknown
-}
-
-interface TreeNode {
-  id: string
-  type: string
-  role?: string
-  subtitle?: string
-  value?: string
-  commandName?: string
-  argKind?: 'Mandatory' | 'Optional'
-  argIndex?: number
-  children: TreeNode[]
 }
 
 // -- Badge color mapping by node type --
@@ -66,7 +63,31 @@ function App() {
   const [strictMode, setStrictMode] = useState(false)
   const [wasmReady, setWasmReady] = useState(false)
   const [wasmInitError, setWasmInitError] = useState<string | null>(null)
+  const [parseContext, setParseContext] = useState<WasmParseContext | null>(null)
+  const [contextVersion, setContextVersion] = useState(0)
   const [collapsedNodes, setCollapsedNodes] = useState<Set<string>>(new Set())
+  const [customCommandName, setCustomCommandName] = useState('')
+  const [customCommandKind, setCustomCommandKind] = useState<CommandKind>('prefix')
+  const [customCommandMode, setCustomCommandMode] = useState<AllowedMode>('math')
+  const [customCommandSpec, setCustomCommandSpec] = useState('m')
+  const [customCommandError, setCustomCommandError] = useState<string | null>(null)
+  const [customCommands, setCustomCommands] = useState<CustomCommandEntry[]>(() => {
+    try {
+      const raw = localStorage.getItem('texform-custom-commands')
+      return raw ? (JSON.parse(raw) as CustomCommandEntry[]) : []
+    } catch {
+      return []
+    }
+  })
+  const [showCommandForm, setShowCommandForm] = useState(false)
+
+  const persistCommands = (commands: CustomCommandEntry[]) => {
+    try {
+      localStorage.setItem('texform-custom-commands', JSON.stringify(commands))
+    } catch {
+      // Ignore storage quota errors
+    }
+  }
 
   useEffect(() => {
     let alive = true
@@ -75,8 +96,35 @@ function App() {
         if (!alive) {
           return
         }
-        setWasmReady(true)
-        setWasmInitError(null)
+        try {
+          const ctx = new WasmParseContext(['base'])
+          if (!alive) {
+            return
+          }
+
+          // Restore persisted custom commands into the new context
+          try {
+            const raw = localStorage.getItem('texform-custom-commands')
+            if (raw) {
+              const saved = JSON.parse(raw) as CustomCommandEntry[]
+              for (const cmd of saved) {
+                ctx.insertCommand(cmd.name, cmd.kind, cmd.mode, cmd.spec)
+              }
+            }
+          } catch {
+            // Ignore malformed localStorage data
+          }
+
+          setParseContext(ctx)
+          setWasmReady(true)
+          setWasmInitError(null)
+        } catch (error) {
+          if (!alive) {
+            return
+          }
+          setWasmReady(false)
+          setWasmInitError(extractFatalMessage(error))
+        }
       })
       .catch((error) => {
         if (!alive) {
@@ -92,7 +140,7 @@ function App() {
   }, [])
 
   const parseState = useMemo<ParseViewState>(() => {
-    if (!wasmReady) {
+    if (!wasmReady || !parseContext) {
       return {
         result: null,
         diagnostics: [],
@@ -101,7 +149,7 @@ function App() {
     }
 
     try {
-      const parsed = parseLatex(source, strictMode)
+      const parsed = parseContext.parse(source, strictMode)
       return {
         result: parsed,
         diagnostics: [],
@@ -120,14 +168,19 @@ function App() {
         fatalMessage,
       }
     }
-  }, [source, strictMode, wasmReady, wasmInitError])
+  }, [source, strictMode, wasmReady, wasmInitError, parseContext, contextVersion])
 
   const treeRoot = useMemo(() => {
-    if (!parseState.result) {
+    if (!parseState.result || !parseContext) {
       return null
     }
-    return buildSyntaxTree(parseState.result.node, 'root')
-  }, [parseState.result])
+    return buildSyntaxTree(
+      parseState.result.node,
+      'root',
+      (name) => parseContext.lookupCommand(name),
+      (name) => parseContext.lookupEnv(name),
+    )
+  }, [parseState.result, parseContext, contextVersion])
 
   const flatNodes = useMemo(() => {
     if (!treeRoot) {
@@ -154,6 +207,16 @@ function App() {
     return computeTreeDepth(treeRoot)
   }, [treeRoot])
 
+  const parseErrorMessage = useMemo(() => {
+    const hasFatal = parseState.fatalMessage !== null
+    const hasDiagnosticsOnlyFailure =
+      parseState.result === null && parseState.diagnostics.length > 0
+    if (!hasFatal && !hasDiagnosticsOnlyFailure) {
+      return null
+    }
+    return formatParseErrorMessage(parseState.fatalMessage, parseState.diagnostics)
+  }, [parseState.result, parseState.fatalMessage, parseState.diagnostics])
+
   const isWasmLoading = !wasmReady && wasmInitError === null
 
   const statusText = isWasmLoading
@@ -161,7 +224,7 @@ function App() {
     : parseState.fatalMessage !== null
       ? 'Parse Failed'
       : parseState.diagnostics.length > 0
-        ? `Partial Parse (${parseState.diagnostics.length})`
+        ? 'Partial Parse'
         : 'Parse OK'
 
   const statusToneClass = isWasmLoading
@@ -176,7 +239,7 @@ function App() {
   const sectionHeadClass = 'flex items-center justify-between gap-2'
   const sectionTitleClass = 'm-0 text-sm font-semibold'
   const buttonClass =
-    'rounded-sm border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs leading-[1.2] transition-colors hover:bg-slate-100'
+    'rounded-sm border border-slate-300 bg-slate-50 px-2 py-1 text-xs leading-tight transition-colors hover:bg-slate-100'
 
   const toggleNode = (nodeId: string) => {
     setCollapsedNodes((prev) => {
@@ -204,11 +267,75 @@ function App() {
     setCollapsedNodes(next)
   }
 
+  const addCustomCommand = () => {
+    if (!parseContext) {
+      setCustomCommandError('Parse context is not ready.')
+      return
+    }
+
+    const name = customCommandName.trim().replace(/^\\/, '')
+    if (!name) {
+      setCustomCommandError('Command name is required.')
+      return
+    }
+
+    try {
+      parseContext.insertCommand(name, customCommandKind, customCommandMode, customCommandSpec)
+      const updated = [
+        ...customCommands.filter((entry) => entry.name !== name),
+        { name, kind: customCommandKind, mode: customCommandMode, spec: customCommandSpec },
+      ]
+      setCustomCommands(updated)
+      persistCommands(updated)
+      setCustomCommandError(null)
+      setContextVersion((v) => v + 1)
+      setCustomCommandName('')
+      setShowCommandForm(false)
+    } catch (error) {
+      setCustomCommandError(extractFatalMessage(error))
+    }
+  }
+
+  const removeCustomCommand = (name: string) => {
+    if (!parseContext) {
+      return
+    }
+
+    try {
+      parseContext.removeCommand(name)
+      const updated = customCommands.filter((entry) => entry.name !== name)
+      setCustomCommands(updated)
+      persistCommands(updated)
+      setCustomCommandError(null)
+      setContextVersion((v) => v + 1)
+    } catch (error) {
+      setCustomCommandError(extractFatalMessage(error))
+    }
+  }
+
+  const resetAllCustomCommands = () => {
+    if (!parseContext) {
+      return
+    }
+    for (const cmd of customCommands) {
+      try {
+        parseContext.removeCommand(cmd.name)
+      } catch {
+        // best-effort removal
+      }
+    }
+    setCustomCommands([])
+    persistCommands([])
+    setCustomCommandError(null)
+    setContextVersion((v) => v + 1)
+  }
+
   const renderTreeNode = (node: TreeNode) => {
     const hasChildren = node.children.length > 0
     const isLeaf = !hasChildren
     const collapsed = effectiveCollapsedNodes.has(node.id)
     const tone = badgeTone(node.type)
+
 
     return (
       <div key={node.id} className="min-w-max">
@@ -222,7 +349,7 @@ function App() {
           ) : (
             <button
               type="button"
-              className="h-4 w-4 rounded-[2px] border-0 bg-transparent p-0 text-center text-[14px] leading-4 text-slate-500 hover:bg-slate-200"
+              className="h-4 w-4 rounded-sm border-0 bg-transparent p-0 text-center text-sm leading-4 text-slate-500 hover:bg-slate-200"
               onClick={(event) => {
                 event.stopPropagation()
                 toggleNode(node.id)
@@ -236,14 +363,14 @@ function App() {
 
           {/* Role label (base, sub, sup, left, right, scope, body) */}
           {node.role ? (
-            <span className="rounded-sm bg-purple-50 px-1 py-px text-[11px] leading-none text-purple-600">
+            <span className="rounded-sm bg-purple-50 px-1 py-px text-xs leading-none text-purple-600">
               {node.role}
             </span>
           ) : null}
 
           {/* Type badge (with inline arg index when applicable) */}
           <span
-            className={`inline-flex items-baseline gap-1 rounded-sm px-1 py-px text-[11px] font-medium leading-none ${tone.bg} ${tone.text}`}
+            className={`inline-flex items-baseline gap-1 rounded-sm px-1 py-px text-xs font-medium leading-none ${tone.bg} ${tone.text}`}
           >
             {node.type}
             {node.argIndex !== undefined ? (
@@ -256,16 +383,24 @@ function App() {
             <span className="font-bold text-slate-950">{node.commandName}</span>
           ) : null}
 
+          {node.specString !== undefined ? (
+            <SpecPopover
+              specString={node.specString}
+              specPackage={node.specPackage}
+              specDetail={node.specDetail}
+            />
+          ) : null}
+
           {/* Arg kind — only show "optional" since mandatory is the default */}
           {node.argKind === 'Optional' ? (
-            <span className="rounded-sm border border-amber-200 bg-amber-50 px-1 py-px text-[10px] leading-none text-amber-700">
+            <span className="rounded-sm border border-amber-200 bg-amber-50 px-1 py-px text-xs leading-none text-amber-700">
               opt
             </span>
           ) : null}
 
           {/* Subtitle (group kind, arg count, etc.) */}
           {node.subtitle ? (
-            <span className="text-[12px] text-slate-400">{node.subtitle}</span>
+            <span className="text-xs text-slate-400">{node.subtitle}</span>
           ) : null}
 
           {/* Value */}
@@ -274,7 +409,7 @@ function App() {
           ) : null}
         </div>
         {hasChildren && !collapsed ? (
-          <div className="ml-[7px] border-l border-slate-200 pl-2.5">
+          <div className="ml-2 border-l border-slate-200 pl-2.5">
             {node.children.map((child) => renderTreeNode(child))}
           </div>
         ) : null}
@@ -284,111 +419,167 @@ function App() {
 
   return (
     <div className="flex min-h-full flex-col p-3.5">
-      <header className="mb-3 flex items-center justify-between gap-3">
-        <h1 className="m-0 text-[22px] font-semibold tracking-[-0.01em]">TeXForm WASM Playground</h1>
-        <span
-          className={`inline-flex items-center rounded-sm border px-2.5 py-[3px] text-xs font-medium ${statusToneClass}`}
-        >
-          {statusText}
-        </span>
-      </header>
+      <AppHeader />
 
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-3.5 lg:grid-cols-[minmax(300px,1fr)_minmax(0,2fr)]">
-        <section className={`${paneClass} min-h-[320px] lg:min-h-0`}>
-          <div className={sectionHeadClass}>
-            <h2 className={sectionTitleClass}>LaTeX Input</h2>
-          </div>
+        <LatexInputPane
+          paneClass={paneClass}
+          sectionHeadClass={sectionHeadClass}
+          sectionTitleClass={sectionTitleClass}
+          buttonClass={buttonClass}
+          source={source}
+          strictMode={strictMode}
+          fatalMessage={parseState.fatalMessage}
+          diagnostics={parseState.diagnostics}
+          customCommands={customCommands}
+          showCommandForm={showCommandForm}
+          customCommandName={customCommandName}
+          customCommandKind={customCommandKind}
+          customCommandMode={customCommandMode}
+          customCommandSpec={customCommandSpec}
+          customCommandError={customCommandError}
+          rootSpanText={
+            parseState.result
+              ? `${parseState.result.span.start}..${parseState.result.span.end}`
+              : '--'
+          }
+          treeDepth={treeDepth}
+          nodesCount={flatNodes.length}
+          onResetSample={() => setSource(SAMPLE_LATEX)}
+          onStrictModeChange={setStrictMode}
+          onSourceChange={setSource}
+          onToggleCommandForm={() => setShowCommandForm((v) => !v)}
+          onCustomCommandNameChange={setCustomCommandName}
+          onCustomCommandSpecChange={setCustomCommandSpec}
+          onCustomCommandKindChange={setCustomCommandKind}
+          onCustomCommandModeChange={setCustomCommandMode}
+          onAddCustomCommand={addCustomCommand}
+          onRemoveCustomCommand={removeCustomCommand}
+          onResetAllCustomCommands={resetAllCustomCommands}
+        />
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" className={buttonClass} onClick={() => setSource(SAMPLE_LATEX)}>
-              Reset Sample
-            </button>
-            <label className="inline-flex select-text items-center gap-1.5 text-xs">
-              <input
-                type="checkbox"
-                className="m-0"
-                checked={strictMode}
-                onChange={(event) => setStrictMode(event.target.checked)}
-              />
-              Strict Mode
-            </label>
-          </div>
-
-          <textarea
-            value={source}
-            onChange={(event) => setSource(event.target.value)}
-            className="min-h-[220px] w-full resize-y rounded-sm border border-slate-300 bg-white p-2.5 text-[13px] leading-[1.5] text-slate-900 [font-family:var(--font-code)]"
-            placeholder="Input LaTeX formula..."
-            spellCheck={false}
-          />
-
-          {parseState.fatalMessage ? (
-            <p className="m-0 text-xs text-red-700">Fatal: {parseState.fatalMessage}</p>
-          ) : null}
-
-          {parseState.diagnostics.length > 0 ? (
-            <div className="border-t border-slate-200 pt-2">
-              <div className="text-xs font-semibold text-slate-700">Diagnostics</div>
-              <ul className="mt-1.5 list-disc pl-[18px] text-xs text-slate-700">
-                {parseState.diagnostics.map((diagnostic, index) => (
-                  <li key={`${diagnostic.message}-${index}`} className="my-0.5 flex flex-wrap items-baseline gap-2">
-                    <span>{diagnostic.message}</span>
-                    <span className="[font-family:var(--font-code)] text-slate-600">
-                      span {diagnostic.span.start}..{diagnostic.span.end}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          <div className="mt-auto border-t border-slate-200 pt-2">
-            <div className="text-xs font-semibold text-slate-700">Statistics (Placeholder)</div>
-            <ul className="mt-1.5 list-disc pl-[18px] text-xs leading-[1.5] text-slate-700">
-              <li>Chars: {source.length}</li>
-              <li>Nodes: {flatNodes.length}</li>
-              <li>Tree Depth: {treeDepth}</li>
-              <li>Diagnostics: {parseState.diagnostics.length}</li>
-              <li>
-                Root Span:{' '}
-                {parseState.result
-                  ? `${parseState.result.span.start}..${parseState.result.span.end}`
-                  : '--'}
-              </li>
-              <li className="text-slate-500">TODO: token stats / complexity score</li>
-            </ul>
-          </div>
-        </section>
-
-        <section className={`${paneClass} min-h-[320px] lg:min-h-0`}>
-          <div className={sectionHeadClass}>
-            <h2 className={sectionTitleClass}>Syntax Tree</h2>
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" className={buttonClass} onClick={expandAll}>
-                Expand All
-              </button>
-              <button type="button" className={buttonClass} onClick={collapseAll}>
-                Collapse All
-              </button>
-            </div>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-auto border-t border-slate-200 pt-2 text-[13px] leading-[1.4] [font-family:var(--font-code)]">
-            {treeRoot ? (
-              renderTreeNode(treeRoot)
-            ) : (
-              <p className="m-0 text-xs text-slate-600">No syntax tree available.</p>
-            )}
-          </div>
-        </section>
+        <SyntaxTreePane
+          paneClass={paneClass}
+          sectionHeadClass={sectionHeadClass}
+          sectionTitleClass={sectionTitleClass}
+          buttonClass={buttonClass}
+          statusText={statusText}
+          statusToneClass={statusToneClass}
+          treeRoot={treeRoot}
+          parseErrorMessage={parseErrorMessage}
+          onExpandAll={expandAll}
+          onCollapseAll={collapseAll}
+          renderTreeNode={renderTreeNode}
+        />
       </main>
+    </div>
+  )
+}
+
+// -- Spec popover component --
+
+function SpecPopover({
+  specString,
+  specPackage,
+  specDetail,
+}: {
+  specString: string
+  specPackage?: string
+  specDetail?: string
+}) {
+  const [show, setShow] = useState(false)
+
+  return (
+    <span
+      className="relative inline-flex"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      <span className="cursor-help rounded-sm border border-emerald-200 bg-emerald-50 px-1 py-px text-xs leading-none text-emerald-700">
+        spec
+      </span>
+      {show ? (
+        <div className="absolute left-0 top-full z-50 mt-1 w-max max-w-sm rounded-md border border-slate-200 bg-white p-2.5 shadow-lg">
+          <div className="space-y-1.5 text-xs">
+            {/* Spec string row */}
+            <div className="flex items-baseline gap-2">
+              <span className="w-14 shrink-0 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">
+                spec
+              </span>
+              <code className="rounded bg-violet-50 px-1.5 py-px font-semibold text-violet-700 [font-family:var(--font-code)]">
+                {specString || '(empty)'}
+              </code>
+            </div>
+            {/* Package row */}
+            <div className="flex items-baseline gap-2">
+              <span className="w-14 shrink-0 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">
+                package
+              </span>
+              <span className="rounded bg-sky-50 px-1.5 py-px text-sky-700">
+                {specPackage ?? 'unknown'}
+              </span>
+            </div>
+            {/* Args section */}
+            {specDetail ? (
+              <div className="border-t border-slate-100 pt-1.5">
+                <SpecArgsList detail={specDetail} />
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </span>
+  )
+}
+
+/** Render each arg line with colored tokens. */
+function SpecArgsList({ detail }: { detail: string }) {
+  const lines = detail.split('\n')
+  return (
+    <div className="space-y-0.5">
+      {lines.map((line, idx) => {
+        // Parse format: "[0] required standard content(math)"
+        const m = line.match(/^\[(\d+)\]\s+(required|optional)\s+(\S+)\s+(.*)/)
+        if (!m) {
+          return (
+            <div key={idx} className="text-xs text-slate-500 [font-family:var(--font-code)]">
+              {line}
+            </div>
+          )
+        }
+        const [, index, req, form, kind] = m
+        return (
+          <div
+            key={idx}
+            className="flex items-baseline gap-1 text-xs [font-family:var(--font-code)]"
+          >
+            <span className="w-14 shrink-0 text-right text-slate-400">[{index}]</span>
+            <span
+              className={`rounded px-1 py-px ${
+                req === 'required'
+                  ? 'bg-orange-50 text-orange-600'
+                  : 'bg-slate-100 text-slate-500'
+              }`}
+            >
+              {req}
+            </span>
+            <span className="rounded bg-indigo-50 px-1 py-px text-indigo-600">{form}</span>
+            <span className="rounded bg-emerald-50 px-1 py-px text-emerald-600">{kind}</span>
+          </div>
+        )
+      })}
     </div>
   )
 }
 
 // -- Tree building --
 
-function buildSyntaxTree(node: SyntaxNode, id: string): TreeNode {
+function buildSyntaxTree(
+  node: SyntaxNode,
+  id: string,
+  lookupCommand: (name: string) => CommandInfo | null,
+  lookupEnv: (name: string) => EnvInfo | null,
+): TreeNode {
   if (node === 'ActiveSpace') {
     return {
       id,
@@ -437,8 +628,8 @@ function buildSyntaxTree(node: SyntaxNode, id: string): TreeNode {
 
   if ('Group' in node) {
     const group = node.Group
-    const rawChildren = group.children.map((child, index) =>
-      buildSyntaxTree(child, `${id}.child.${index}`),
+    const rawChildren = group.children.map((child: SyntaxNode, index: number) =>
+      buildSyntaxTree(child, `${id}.child.${index}`, lookupCommand, lookupEnv),
     )
     return {
       id,
@@ -450,65 +641,105 @@ function buildSyntaxTree(node: SyntaxNode, id: string): TreeNode {
 
   if ('Command' in node) {
     const command = node.Command
+    const spec = lookupCommand(command.name)
     return {
       id,
       type: 'Command',
       commandName: `\\${command.name}${command.starred ? '*' : ''}`,
       subtitle: `${command.args.length} args`,
-      children: command.args.map((arg, index) => buildArgumentNode(arg, `${id}.arg.${index}`, index)),
+      specString: spec?.spec_string,
+      specPackage: spec?.package,
+      specDetail: spec ? formatSpecDetail(spec.args) : undefined,
+      children: command.args.map((arg: Argument | null, index: number) =>
+        buildArgumentNode(arg, `${id}.arg.${index}`, index, lookupCommand, lookupEnv),
+      ),
     }
   }
 
   if ('Infix' in node) {
     const infix = node.Infix
-    const args = infix.args.map((arg, index) => buildArgumentNode(arg, `${id}.arg.${index}`, index))
+    const spec = lookupCommand(infix.name)
+    const args = infix.args.map((arg: Argument | null, index: number) =>
+      buildArgumentNode(arg, `${id}.arg.${index}`, index, lookupCommand, lookupEnv),
+    )
     return {
       id,
       type: 'Infix',
       commandName: `\\${infix.name}${infix.starred ? '*' : ''}`,
       subtitle: `${infix.args.length} args`,
+      specString: spec?.spec_string,
+      specPackage: spec?.package,
+      specDetail: spec ? formatSpecDetail(spec.args) : undefined,
       children: [
-        withRole(buildSyntaxTree(infix.left, `${id}.left`), 'left'),
+        withRole(buildSyntaxTree(infix.left, `${id}.left`, lookupCommand, lookupEnv), 'left'),
         ...args,
-        withRole(buildSyntaxTree(infix.right, `${id}.right`), 'right'),
+        withRole(buildSyntaxTree(infix.right, `${id}.right`, lookupCommand, lookupEnv), 'right'),
       ],
     }
   }
 
   if ('Declarative' in node) {
     const declarative = node.Declarative
-    const args = declarative.args.map((arg, index) =>
-      buildArgumentNode(arg, `${id}.arg.${index}`, index),
+    const spec = lookupCommand(declarative.name)
+    const args = declarative.args.map((arg: Argument | null, index: number) =>
+      buildArgumentNode(arg, `${id}.arg.${index}`, index, lookupCommand, lookupEnv),
     )
     return {
       id,
       type: 'Declarative',
       commandName: `\\${declarative.name}${declarative.starred ? '*' : ''}`,
       subtitle: `${declarative.args.length} args`,
-      children: [...args, withRole(buildSyntaxTree(declarative.scope, `${id}.scope`), 'scope')],
+      specString: spec?.spec_string,
+      specPackage: spec?.package,
+      specDetail: spec ? formatSpecDetail(spec.args) : undefined,
+      children: [
+        ...args,
+        withRole(
+          buildSyntaxTree(declarative.scope, `${id}.scope`, lookupCommand, lookupEnv),
+          'scope',
+        ),
+      ],
     }
   }
 
   if ('Environment' in node) {
     const env = node.Environment
-    const args = env.args.map((arg, index) => buildArgumentNode(arg, `${id}.arg.${index}`, index))
+    const spec = lookupEnv(env.name)
+    const args = env.args.map((arg: Argument | null, index: number) =>
+      buildArgumentNode(arg, `${id}.arg.${index}`, index, lookupCommand, lookupEnv),
+    )
     return {
       id,
       type: 'Environment',
       commandName: `${env.name}${env.starred ? '*' : ''}`,
       subtitle: `${env.args.length} args`,
-      children: [...args, withRole(buildSyntaxTree(env.body, `${id}.body`), 'body')],
+      specString: spec?.spec_string,
+      specPackage: spec?.package,
+      specDetail: spec ? formatSpecDetail(spec.args) : undefined,
+      children: [
+        ...args,
+        withRole(buildSyntaxTree(env.body, `${id}.body`, lookupCommand, lookupEnv), 'body'),
+      ],
     }
   }
 
   if ('Scripted' in node) {
     const scripted = node.Scripted
-    const children: TreeNode[] = [withRole(buildSyntaxTree(scripted.base, `${id}.base`), 'base')]
+    const children: TreeNode[] = [
+      withRole(buildSyntaxTree(scripted.base, `${id}.base`, lookupCommand, lookupEnv), 'base'),
+    ]
     if (scripted.subscript) {
-      children.push(withRole(buildSyntaxTree(scripted.subscript, `${id}.sub`), 'sub'))
+      children.push(
+        withRole(buildSyntaxTree(scripted.subscript, `${id}.sub`, lookupCommand, lookupEnv), 'sub'),
+      )
     }
     if (scripted.superscript) {
-      children.push(withRole(buildSyntaxTree(scripted.superscript, `${id}.sup`), 'sup'))
+      children.push(
+        withRole(
+          buildSyntaxTree(scripted.superscript, `${id}.sup`, lookupCommand, lookupEnv),
+          'sup',
+        ),
+      )
     }
     return {
       id,
@@ -524,18 +755,34 @@ function buildSyntaxTree(node: SyntaxNode, id: string): TreeNode {
   }
 }
 
-function buildArgumentNode(argument: Argument, id: string, index: number): TreeNode {
+function buildArgumentNode(
+  argument: Argument | null,
+  id: string,
+  index: number,
+  lookupCommand: (name: string) => CommandInfo | null,
+  lookupEnv: (name: string) => EnvInfo | null,
+): TreeNode {
+  if (argument === null) {
+    return {
+      id,
+      type: 'Arg',
+      argIndex: index,
+      subtitle: 'missing',
+      children: [],
+    }
+  }
+
   const value = describeArgumentValue(argument.value)
 
   // Flatten: if the arg is Content with a single child, inline it
   if (value.content !== null) {
-    const contentChild = buildSyntaxTree(value.content, `${id}.content`)
+    const contentChild = buildSyntaxTree(value.content, `${id}.content`, lookupCommand, lookupEnv)
     // If the content child is a Group with children, we can still flatten
     // by promoting the content node and annotating it with arg info
     return {
       id,
       type: 'Arg',
-      argKind: argument.kind,
+      argKind: describeArgumentKind(argument.kind),
       argIndex: index,
       subtitle: value.kind,
       value: value.value,
@@ -546,7 +793,7 @@ function buildArgumentNode(argument: Argument, id: string, index: number): TreeN
   return {
     id,
     type: 'Arg',
-    argKind: argument.kind,
+    argKind: describeArgumentKind(argument.kind),
     argIndex: index,
     subtitle: value.kind,
     value: value.value,
@@ -599,6 +846,57 @@ function mergeConsecutiveChars(nodes: TreeNode[], parentId: string): TreeNode[] 
 
 function withRole(node: TreeNode, role: string): TreeNode {
   return { ...node, role }
+}
+
+function describeArgumentKind(kind: Argument['kind']): string {
+  if (
+    kind === 'Mandatory' ||
+    kind === 'Optional' ||
+    kind === 'Star' ||
+    kind === 'Group'
+  ) {
+    return kind
+  }
+  if ('Delimited' in kind) {
+    return 'Delimited'
+  }
+  if ('Paired' in kind) {
+    return 'Paired'
+  }
+  return 'Unknown'
+}
+
+function formatSpecDetail(args: ArgSpecInfo[]): string {
+  if (args.length === 0) {
+    return 'no arguments'
+  }
+  return args
+    .map((arg, index) => {
+      const req = arg.required ? 'required' : 'optional'
+      const kind = describeArgSpecKind(arg.kind)
+      const form = describeArgSpecForm(arg.form)
+      return `[${index}] ${req} ${form} ${kind}`
+    })
+    .join('\n')
+}
+
+function describeArgSpecKind(kind: unknown): string {
+  if (typeof kind === 'string') return kind
+  if (kind && typeof kind === 'object' && 'type' in kind) {
+    const t = kind as { type: string; mode?: string }
+    if (t.type === 'content' && t.mode) return `content(${t.mode})`
+    return t.type
+  }
+  return 'unknown'
+}
+
+function describeArgSpecForm(form: unknown): string {
+  if (typeof form === 'string') return form
+  if (form && typeof form === 'object' && 'type' in form) {
+    const f = form as { type: string }
+    return f.type
+  }
+  return ''
 }
 
 function describeArgumentValue(value: ArgumentValue): {
@@ -725,6 +1023,27 @@ function extractFatalMessage(error: unknown): string {
     return error.message
   }
   return 'Unknown parsing failure'
+}
+
+function formatParseErrorMessage(
+  fatalMessage: string | null,
+  diagnostics: ParseDiagnostic[],
+): string {
+  const sections: string[] = []
+  if (fatalMessage !== null) {
+    sections.push(fatalMessage)
+  }
+  if (diagnostics.length > 0) {
+    const detailLines = diagnostics.map(
+      (diagnostic, index) =>
+        `${index + 1}. ${diagnostic.message} (span ${diagnostic.span.start}..${diagnostic.span.end})`,
+    )
+    sections.push(`Diagnostics:\n${detailLines.join('\n')}`)
+  }
+  if (sections.length === 0) {
+    return 'Unknown parsing failure'
+  }
+  return sections.join('\n\n')
 }
 
 function isParseResult(value: unknown): value is ParseResult {

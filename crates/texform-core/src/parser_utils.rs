@@ -14,7 +14,7 @@ use chumsky::{
 use logos::Logos;
 
 use crate::column_parser::parse_column_template;
-use crate::knowledge;
+use crate::knowledge::KnowledgeBase;
 use crate::lexer::Token;
 use texform_interface::syntax_node::{ContentMode, Delimiter, GroupKind, SyntaxNode};
 
@@ -164,13 +164,15 @@ where
 /// - '.' => Delimiter::None
 /// - '(', ')', '[', ']', '|' etc => Delimiter::Char
 /// - \langle, \rangle etc => Delimiter::Control
-pub fn delimiter<'a>() -> impl Parser<'a, TokenStream<'a>, Delimiter, ParserError<'a>> + Clone {
+pub fn delimiter<'a>(
+    kb: &'a KnowledgeBase,
+) -> impl Parser<'a, TokenStream<'a>, Delimiter, ParserError<'a>> + Clone {
     select! {
         Token::Char('.') => Delimiter::None,
         Token::Char(c) if matches!(c, '(' | ')' | '[' | ']' | '|' | '<' | '>' | '/' | '\\')
             => Delimiter::Char(c),
-        Token::ControlSeq(name) if knowledge::lookup_delimiter_control(name.as_str()).is_some() => {
-            Delimiter::Control(knowledge::lookup_delimiter_control(name.as_str()).unwrap())
+        Token::ControlSeq(name) if kb.lookup_delimiter_control(name.as_str()).is_some() => {
+            Delimiter::Control(kb.lookup_delimiter_control(name.as_str()).unwrap())
         }
     }
     .labelled("delimiter")
@@ -284,16 +286,17 @@ where
 
 /// Parse `\left ... \right` delimited math group.
 pub fn delimited_group_parser<'a, P>(
+    kb: &'a KnowledgeBase,
     math_content: P,
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
 where
     P: Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
 {
     control_seq("left")
-        .ignore_then(delimiter())
+        .ignore_then(delimiter(kb))
         .then(math_content)
         .then_ignore(control_seq("right"))
-        .then(delimiter())
+        .then(delimiter(kb))
         .map(|((left, children), right)| SyntaxNode::Group {
             mode: ContentMode::Math,
             kind: GroupKind::Delimited { left, right },

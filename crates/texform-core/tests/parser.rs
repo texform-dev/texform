@@ -1,6 +1,8 @@
 use std::sync::Once;
 
+use texform_core::context::ParseContext;
 use texform_core::knowledge;
+use texform_core::knowledge::{AllowedMode, CommandKind};
 use texform_core::lexer::Token;
 use texform_core::parser::parse as raw_parse;
 use texform_interface::syntax_node::{
@@ -10,10 +12,7 @@ use texform_interface::syntax_node::{
 fn parse(
     src: &str,
     strict: bool,
-) -> Result<
-    (SyntaxNode, chumsky::span::SimpleSpan),
-    Vec<chumsky::error::Rich<'static, Token>>,
-> {
+) -> Result<(SyntaxNode, chumsky::span::SimpleSpan), Vec<chumsky::error::Rich<'static, Token>>> {
     init_test_kb();
     raw_parse(src, strict).map_err(|errors| errors.into_iter().map(|e| e.into_owned()).collect())
 }
@@ -2507,4 +2506,116 @@ fn test_span_scripted() {
     let src = "x^{2}_{i}";
     let (_, span) = parse(src, false).unwrap();
     assert_eq!(&src[span.start..span.end], src);
+}
+
+#[test]
+fn test_optional_argument_reparse_keeps_known_command() {
+    let (result, _) = parse(r"\sqrt[\frac{1}{2}]{x}", false).unwrap();
+    match result {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "sqrt");
+                match unwrap_content(&args[0]) {
+                    SyntaxNode::Command { name, .. } => {
+                        assert_eq!(name, "frac");
+                    }
+                    other => panic!("Expected frac command in optional slot, got {:?}", other),
+                }
+            }
+            other => panic!("Expected sqrt command, got {:?}", other),
+        },
+        other => panic!("Expected root group, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_delimited_content_argument_reparse_keeps_known_command() {
+    let mut ctx = ParseContext::test_default();
+    ctx.insert_command("probe", CommandKind::Prefix, AllowedMode::Math, "r()", &[]);
+
+    let output = ctx.parse(r"\probe(\frac{1}{2})", true);
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        output.diagnostics
+    );
+
+    let node = output
+        .result
+        .as_ref()
+        .unwrap_or_else(|| panic!("expected parse result"))
+        .node
+        .clone();
+
+    match node {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "probe");
+                match unwrap_content(&args[0]) {
+                    SyntaxNode::Command { name, .. } => {
+                        assert_eq!(name, "frac");
+                    }
+                    other => panic!("Expected frac command in delimited slot, got {:?}", other),
+                }
+            }
+            other => panic!("Expected probe command, got {:?}", other),
+        },
+        other => panic!("Expected root group, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_context_isolation_for_custom_commands() {
+    let mut ctx1 = ParseContext::test_default();
+    ctx1.insert_command("foo", CommandKind::Prefix, AllowedMode::Math, "m", &[]);
+
+    let out1_foo = ctx1.parse(r"\foo{a}", true);
+    assert!(out1_foo.diagnostics.is_empty());
+    assert!(out1_foo.result.is_some());
+
+    let out1_bar = ctx1.parse(r"\bar{a}", true);
+    assert!(!out1_bar.diagnostics.is_empty());
+    assert!(out1_bar.result.is_none());
+
+    let mut ctx2 = ParseContext::test_default();
+    ctx2.insert_command("bar", CommandKind::Prefix, AllowedMode::Math, "m", &[]);
+
+    let out2_bar = ctx2.parse(r"\bar{a}", true);
+    assert!(out2_bar.diagnostics.is_empty());
+    assert!(out2_bar.result.is_some());
+
+    let out2_foo = ctx2.parse(r"\foo{a}", true);
+    assert!(!out2_foo.diagnostics.is_empty());
+    assert!(out2_foo.result.is_none());
+}
+
+#[test]
+fn test_text_mode_inline_math_reparse_keeps_known_command() {
+    let (result, _) = parse(r"\text{$\frac{a}{b}$}", false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "text");
+                match unwrap_content(&args[0]) {
+                    SyntaxNode::Group {
+                        kind: GroupKind::InlineMath,
+                        children,
+                        ..
+                    } => match &children[0] {
+                        SyntaxNode::Command { name, .. } => assert_eq!(name, "frac"),
+                        other => {
+                            panic!(
+                                "Expected frac command inside inline math group, got {:?}",
+                                other
+                            )
+                        }
+                    },
+                    other => panic!("Expected inline math group, got {:?}", other),
+                }
+            }
+            other => panic!("Expected text command, got {:?}", other),
+        },
+        other => panic!("Expected root group, got {:?}", other),
+    }
 }

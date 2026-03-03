@@ -9,11 +9,16 @@ use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 use texform_interface::syntax_node::ContentMode;
 
+use crate::context::ParseContext;
+
 pub use texform_specs::specs::{
     AllowedMode, ArgForm, ArgSpec, CommandKind, CommandMeta, DelimiterToken, EnvMeta, ValueKind,
 };
 
-#[derive(Debug)]
+const RUNTIME_PACKAGE_NAME: &str = "runtime";
+const UNKNOWN_PACKAGE_NAME: &str = "unknown";
+
+#[derive(Debug, Clone)]
 pub struct KnowledgeBase {
     commands: Vec<CommandMeta>,
     command_idx_by_name: HashMap<&'static str, usize>,
@@ -48,6 +53,118 @@ impl KnowledgeBase {
     pub fn lookup_delimiter_control(&self, name: &str) -> Option<&'static str> {
         self.delimiter_controls.get(name).copied()
     }
+
+    pub fn insert_command(
+        &mut self,
+        name: impl Into<String>,
+        kind: CommandKind,
+        allowed_mode: AllowedMode,
+        spec_string: impl Into<String>,
+        tags: &[String],
+    ) {
+        self.insert_command_with_package(
+            name,
+            kind,
+            allowed_mode,
+            spec_string,
+            tags,
+            RUNTIME_PACKAGE_NAME,
+        );
+    }
+
+    pub fn insert_command_with_package(
+        &mut self,
+        name: impl Into<String>,
+        kind: CommandKind,
+        allowed_mode: AllowedMode,
+        spec_string: impl Into<String>,
+        tags: &[String],
+        package: impl Into<String>,
+    ) {
+        let name = name.into();
+        let spec_string = spec_string.into();
+        let context = format!("command {}", name);
+        let args = texform_specs::specs::parse_arg_specs(spec_string.as_str(), context.as_str());
+        let meta = make_command_meta(
+            name,
+            kind,
+            allowed_mode,
+            args,
+            tags.to_vec(),
+            spec_string,
+            package.into(),
+        );
+        self.upsert_command_meta(meta);
+    }
+
+    pub fn remove_command(&mut self, name: &str) -> bool {
+        self.command_idx_by_name.remove(name).is_some()
+    }
+
+    pub fn insert_env(
+        &mut self,
+        name: impl Into<String>,
+        has_star_variant: bool,
+        allowed_mode: AllowedMode,
+        spec_string: impl Into<String>,
+        body_mode: ContentMode,
+        tags: &[String],
+    ) {
+        self.insert_env_with_package(
+            name,
+            has_star_variant,
+            allowed_mode,
+            spec_string,
+            body_mode,
+            tags,
+            RUNTIME_PACKAGE_NAME,
+        );
+    }
+
+    pub fn insert_env_with_package(
+        &mut self,
+        name: impl Into<String>,
+        has_star_variant: bool,
+        allowed_mode: AllowedMode,
+        spec_string: impl Into<String>,
+        body_mode: ContentMode,
+        tags: &[String],
+        package: impl Into<String>,
+    ) {
+        let name = name.into();
+        let spec_string = spec_string.into();
+        let context = format!("environment {}", name);
+        let args = texform_specs::specs::parse_arg_specs(spec_string.as_str(), context.as_str());
+        let meta = make_env_meta(
+            name,
+            has_star_variant,
+            allowed_mode,
+            args,
+            body_mode,
+            tags.to_vec(),
+            spec_string,
+            package.into(),
+        );
+        self.upsert_env_meta(meta);
+    }
+
+    pub fn remove_env(&mut self, name: &str) -> bool {
+        self.env_idx_by_name.remove(name).is_some()
+    }
+
+    fn upsert_command_meta(&mut self, meta: CommandMeta) {
+        let idx = self.commands.len();
+        let name = meta.name;
+        self.commands.push(meta);
+        self.command_idx_by_name.insert(name, idx);
+    }
+
+    fn upsert_env_meta(&mut self, meta: EnvMeta) {
+        let idx = self.envs.len();
+        let name = meta.name;
+        self.envs.push(meta);
+        self.env_idx_by_name.insert(name, idx);
+    }
 }
 
 #[derive(Debug, Default)]
@@ -61,8 +178,25 @@ pub struct KnowledgeBaseBuilder {
 
 impl KnowledgeBaseBuilder {
     pub fn insert_character(&mut self, name: impl Into<String>, allowed_mode: AllowedMode) {
+        self.insert_character_with_package(name, allowed_mode, UNKNOWN_PACKAGE_NAME);
+    }
+
+    pub fn insert_character_with_package(
+        &mut self,
+        name: impl Into<String>,
+        allowed_mode: AllowedMode,
+        package: &str,
+    ) {
         let name = name.into();
-        self.insert_or_override_command(name, CommandKind::Prefix, allowed_mode, vec![], vec![]);
+        self.insert_or_override_command_with_meta(
+            name,
+            CommandKind::Prefix,
+            allowed_mode,
+            vec![],
+            vec![],
+            "",
+            package,
+        );
     }
 
     pub fn insert_or_override_command(
@@ -73,30 +207,40 @@ impl KnowledgeBaseBuilder {
         args: Vec<ArgSpec>,
         tags: Vec<String>,
     ) {
-        let name: &'static str = Box::leak(name.into().into_boxed_str());
-        let args: &'static [ArgSpec] = Box::leak(args.into_boxed_slice());
-        let tags: Vec<&'static str> = tags
-            .into_iter()
-            .map(|tag| Box::leak(tag.into_boxed_str()) as &'static str)
-            .collect();
-        let tags: &'static [&'static str] = Box::leak(tags.into_boxed_slice());
-
-        let meta = CommandMeta {
+        self.insert_or_override_command_with_meta(
             name,
             kind,
             allowed_mode,
             args,
             tags,
-        };
+            "",
+            UNKNOWN_PACKAGE_NAME,
+        );
+    }
 
-        match self.command_idx_by_name.get(name).copied() {
-            Some(idx) => self.commands[idx] = meta,
-            None => {
-                let idx = self.commands.len();
-                self.commands.push(meta);
-                self.command_idx_by_name.insert(name, idx);
-            }
-        }
+    pub fn insert_or_override_command_with_meta(
+        &mut self,
+        name: impl Into<String>,
+        kind: CommandKind,
+        allowed_mode: AllowedMode,
+        args: Vec<ArgSpec>,
+        tags: Vec<String>,
+        spec_string: impl Into<String>,
+        package: &str,
+    ) {
+        let meta = make_command_meta(
+            name.into(),
+            kind,
+            allowed_mode,
+            args,
+            tags,
+            spec_string.into(),
+            package.to_string(),
+        );
+        let idx = self.commands.len();
+        let name = meta.name;
+        self.commands.push(meta);
+        self.command_idx_by_name.insert(name, idx);
     }
 
     pub fn insert_or_override_env(
@@ -108,31 +252,43 @@ impl KnowledgeBaseBuilder {
         body_mode: ContentMode,
         tags: Vec<String>,
     ) {
-        let name: &'static str = Box::leak(name.into().into_boxed_str());
-        let args: &'static [ArgSpec] = Box::leak(args.into_boxed_slice());
-        let tags: Vec<&'static str> = tags
-            .into_iter()
-            .map(|tag| Box::leak(tag.into_boxed_str()) as &'static str)
-            .collect();
-        let tags: &'static [&'static str] = Box::leak(tags.into_boxed_slice());
-
-        let meta = EnvMeta {
+        self.insert_or_override_env_with_meta(
             name,
             has_star_variant,
             allowed_mode,
             args,
             body_mode,
             tags,
-        };
+            "",
+            UNKNOWN_PACKAGE_NAME,
+        );
+    }
 
-        match self.env_idx_by_name.get(name).copied() {
-            Some(idx) => self.envs[idx] = meta,
-            None => {
-                let idx = self.envs.len();
-                self.envs.push(meta);
-                self.env_idx_by_name.insert(name, idx);
-            }
-        }
+    pub fn insert_or_override_env_with_meta(
+        &mut self,
+        name: impl Into<String>,
+        has_star_variant: bool,
+        allowed_mode: AllowedMode,
+        args: Vec<ArgSpec>,
+        body_mode: ContentMode,
+        tags: Vec<String>,
+        spec_string: impl Into<String>,
+        package: &str,
+    ) {
+        let meta = make_env_meta(
+            name.into(),
+            has_star_variant,
+            allowed_mode,
+            args,
+            body_mode,
+            tags,
+            spec_string.into(),
+            package.to_string(),
+        );
+        let idx = self.envs.len();
+        let name = meta.name;
+        self.envs.push(meta);
+        self.env_idx_by_name.insert(name, idx);
     }
 
     pub fn insert_delimiter_control(&mut self, name: impl Into<String>) {
@@ -141,26 +297,38 @@ impl KnowledgeBaseBuilder {
     }
 
     pub fn import_package(&mut self, specs: texform_specs::specs::PackageSpecs) {
+        self.import_package_with_name(UNKNOWN_PACKAGE_NAME, specs);
+    }
+
+    pub fn import_package_with_name(
+        &mut self,
+        package: &str,
+        specs: texform_specs::specs::PackageSpecs,
+    ) {
         for character in specs.characters {
-            self.insert_character(character.name, character.allowed_mode);
+            self.insert_character_with_package(character.name, character.allowed_mode, package);
         }
         for cmd in specs.commands {
-            self.insert_or_override_command(
+            self.insert_or_override_command_with_meta(
                 cmd.name,
                 cmd.kind,
                 cmd.allowed_mode,
                 cmd.args,
                 cmd.tags,
+                cmd.spec_string,
+                package,
             );
         }
         for env in specs.environments {
-            self.insert_or_override_env(
+            self.insert_or_override_env_with_meta(
                 env.name,
                 env.has_star_variant,
                 env.allowed_mode,
                 env.args,
                 env.body_mode,
                 env.tags,
+                env.spec_string,
+                package,
             );
         }
         for name in specs.delimiter_controls {
@@ -179,7 +347,65 @@ impl KnowledgeBaseBuilder {
     }
 }
 
-/// Initialize the global knowledge base.
+fn make_command_meta(
+    name: String,
+    kind: CommandKind,
+    allowed_mode: AllowedMode,
+    args: Vec<ArgSpec>,
+    tags: Vec<String>,
+    spec_string: String,
+    package: String,
+) -> CommandMeta {
+    CommandMeta {
+        name: leak_string(name),
+        kind,
+        allowed_mode,
+        args: leak_arg_specs(args),
+        tags: leak_tags(tags),
+        spec_string: leak_string(spec_string),
+        package: leak_string(package),
+    }
+}
+
+fn make_env_meta(
+    name: String,
+    has_star_variant: bool,
+    allowed_mode: AllowedMode,
+    args: Vec<ArgSpec>,
+    body_mode: ContentMode,
+    tags: Vec<String>,
+    spec_string: String,
+    package: String,
+) -> EnvMeta {
+    EnvMeta {
+        name: leak_string(name),
+        has_star_variant,
+        allowed_mode,
+        args: leak_arg_specs(args),
+        body_mode,
+        tags: leak_tags(tags),
+        spec_string: leak_string(spec_string),
+        package: leak_string(package),
+    }
+}
+
+fn leak_string(value: impl Into<String>) -> &'static str {
+    Box::leak(value.into().into_boxed_str())
+}
+
+fn leak_arg_specs(args: Vec<ArgSpec>) -> &'static [ArgSpec] {
+    Box::leak(args.into_boxed_slice())
+}
+
+fn leak_tags(tags: Vec<String>) -> &'static [&'static str] {
+    let tags: Vec<&'static str> = tags
+        .into_iter()
+        .map(|tag| Box::leak(tag.into_boxed_str()) as &'static str)
+        .collect();
+    Box::leak(tags.into_boxed_slice())
+}
+
+/// Initialize the global parse context.
 ///
 /// - If `packages` is `None`, loads default packages.
 ///   - Runtime default: `base`
@@ -188,35 +414,45 @@ impl KnowledgeBaseBuilder {
 ///
 /// This function may only be called once. Subsequent calls will panic.
 pub fn init(packages: Option<&[&str]>) {
-    KB.set(build_default_kb(packages))
+    let requested = match packages {
+        Some(list) => list,
+        None => implicit_default_packages(),
+    };
+    DEFAULT_CTX
+        .set(ParseContext::from_packages(requested))
         .unwrap_or_else(|_| panic!("knowledge base already initialized"));
 }
 
-/// Initialize the global knowledge base with runtime defaults (`base` only).
+/// Initialize the global parse context with runtime defaults (`base` only).
 pub fn init_runtime_defaults() {
     init(Some(texform_specs::packages::RUNTIME_DEFAULT_PACKAGES));
 }
 
-/// Initialize the global knowledge base with test defaults (`base + dev`).
+/// Initialize the global parse context with test defaults (`base + dev`).
 pub fn init_test_defaults() {
     init(Some(texform_specs::packages::TEST_DEFAULT_PACKAGES));
 }
 
-/// Initialize the global knowledge base from a pre-built builder.
+/// Initialize the global parse context from a pre-built builder.
 ///
 /// This is primarily useful for integration tests that need inline command
 /// metadata without modifying package YAML files.
 ///
 /// This function may only be called once. Subsequent calls will panic.
 pub fn init_with_builder(builder: KnowledgeBaseBuilder) {
-    KB.set(builder.build())
+    DEFAULT_CTX
+        .set(ParseContext::from_kb(builder.build()))
         .unwrap_or_else(|_| panic!("knowledge base already initialized"));
 }
 
-static KB: OnceLock<KnowledgeBase> = OnceLock::new();
+static DEFAULT_CTX: OnceLock<ParseContext> = OnceLock::new();
 
-fn kb() -> &'static KnowledgeBase {
-    KB.get_or_init(|| build_default_kb(None))
+pub(crate) fn default_ctx() -> &'static ParseContext {
+    DEFAULT_CTX.get_or_init(|| ParseContext::from_packages(implicit_default_packages()))
+}
+
+pub(crate) fn kb() -> &'static KnowledgeBase {
+    &default_ctx().kb
 }
 
 #[cfg(test)]
@@ -246,21 +482,26 @@ fn ordered_package_names<'a>(requested: &[&'a str]) -> Vec<&'a str> {
     out
 }
 
-fn build_default_kb(packages: Option<&[&str]>) -> KnowledgeBase {
+pub(crate) fn build_kb_from_packages(requested: &[&str]) -> KnowledgeBase {
     let mut builder = KnowledgeBase::builder();
-    let requested = match packages {
-        Some(list) => list,
-        None => implicit_default_packages(),
-    };
     let to_load = ordered_package_names(requested);
 
     for &name in &to_load {
         let pkg = texform_specs::packages::get(name)
             .unwrap_or_else(|| panic!("unknown package: {}", name));
-        builder.import_package((pkg.load)());
+        builder.import_package_with_name(name, (pkg.load)());
     }
 
     builder.build()
+}
+
+#[cfg(test)]
+fn build_default_kb(packages: Option<&[&str]>) -> KnowledgeBase {
+    let requested = match packages {
+        Some(list) => list,
+        None => implicit_default_packages(),
+    };
+    build_kb_from_packages(requested)
 }
 
 /// Lookup command metadata by name.
@@ -381,6 +622,7 @@ mod tests {
                 allowed_mode: AllowedMode::Text,
                 args: vec![],
                 tags: vec![],
+                spec_string: "".to_string(),
             }],
             environments: vec![],
             delimiter_controls: vec![],

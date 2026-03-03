@@ -14,6 +14,8 @@
 use chumsky::prelude::*;
 use serde::Serialize;
 
+use crate::context::ParseContext;
+use crate::knowledge::{self, AllowedMode, CommandKind, KnowledgeBase};
 use crate::lexer::Token;
 use crate::parser;
 use crate::parser_utils::{Spanned, TokenStream, build_token_stream};
@@ -62,8 +64,12 @@ pub struct ParseOutput {
 /// Uses chumsky's output+errors semantics (equivalent to `.into_output_errors()`)
 /// so that a partial syntax tree can coexist with diagnostics.
 pub fn parse_latex(src: &str, strict: bool) -> ParseOutput {
+    parse_latex_with_kb(knowledge::kb(), src, strict)
+}
+
+pub(crate) fn parse_latex_with_kb(kb: &KnowledgeBase, src: &str, strict: bool) -> ParseOutput {
     let token_stream = build_token_stream(src);
-    let (output, errors) = parse_raw(token_stream, strict);
+    let (output, errors) = parse_raw(kb, token_stream, strict);
 
     let result = output.map(|(node, span)| ParseResult {
         node,
@@ -81,12 +87,33 @@ pub fn parse_latex(src: &str, strict: bool) -> ParseOutput {
     }
 }
 
+/// One-shot parse probe:
+/// build/clone context, inject command metadata, parse input, return output.
+pub fn probe_parse(
+    name: &str,
+    kind: CommandKind,
+    mode: AllowedMode,
+    spec: &str,
+    input: &str,
+    strict: bool,
+    packages: Option<&[&str]>,
+) -> ParseOutput {
+    let mut ctx = match packages {
+        Some(pkgs) => ParseContext::from_packages(pkgs),
+        None => ParseContext::clone_runtime_default(),
+    };
+
+    ctx.insert_command(name, kind, mode, spec, &[]);
+    ctx.parse(input, strict)
+}
+
 /// Run the parser with output+errors semantics.
 fn parse_raw(
+    kb: &KnowledgeBase,
     token_stream: TokenStream<'_>,
     strict: bool,
 ) -> (Option<Spanned<SyntaxNode>>, Vec<Rich<'static, Token>>) {
-    let (output, errors) = parser::math_block_parser(strict)
+    let (output, errors) = parser::math_block_parser(kb, strict)
         .map_with(|node, e| (node, e.span()))
         .then_ignore(end())
         .parse(token_stream)
