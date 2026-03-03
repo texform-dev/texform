@@ -19,7 +19,7 @@ use crate::knowledge::{self, AllowedMode, CommandKind, KnowledgeBase};
 use crate::lexer::Token;
 use crate::parser;
 use crate::parser_utils::{Spanned, TokenStream, build_token_stream};
-use texform_interface::syntax_node::SyntaxNode;
+use texform_interface::syntax_node::{ContentMode, SyntaxNode};
 
 /// Byte-offset span.
 #[derive(Debug, Clone, Serialize)]
@@ -59,6 +59,19 @@ pub struct ParseOutput {
     pub diagnostics: Vec<ParseDiagnostic>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum SpecTarget {
+    Command {
+        kind: CommandKind,
+        mode: AllowedMode,
+    },
+    Environment {
+        has_star_variant: bool,
+        mode: AllowedMode,
+        body_mode: ContentMode,
+    },
+}
+
 /// Parse a LaTeX formula and return a unified output.
 ///
 /// Uses chumsky's output+errors semantics (equivalent to `.into_output_errors()`)
@@ -87,12 +100,11 @@ pub(crate) fn parse_latex_with_kb(kb: &KnowledgeBase, src: &str, strict: bool) -
     }
 }
 
-/// One-shot parse probe:
-/// build/clone context, inject command metadata, parse input, return output.
-pub fn probe_parse(
+/// One-shot parse with a temporary command/environment spec:
+/// build/clone context, inject metadata, parse input, return output.
+pub fn parse_once_with_spec(
     name: &str,
-    kind: CommandKind,
-    mode: AllowedMode,
+    target: SpecTarget,
     spec: &str,
     input: &str,
     strict: bool,
@@ -103,7 +115,18 @@ pub fn probe_parse(
         None => ParseContext::clone_runtime_default(),
     };
 
-    ctx.insert_command(name, kind, mode, spec, &[]);
+    match target {
+        SpecTarget::Command { kind, mode } => {
+            ctx.insert_command(name, kind, mode, spec, &[]);
+        }
+        SpecTarget::Environment {
+            has_star_variant,
+            mode,
+            body_mode,
+        } => {
+            ctx.insert_env(name, has_star_variant, mode, spec, body_mode, &[]);
+        }
+    }
     ctx.parse(input, strict)
 }
 
@@ -220,5 +243,40 @@ mod tests {
         assert!(d.get("message").is_some());
         assert!(d.get("span").is_some());
         assert!(d.get("expected").is_some());
+    }
+
+    #[test]
+    fn parse_once_with_spec_supports_command_target() {
+        let output = parse_once_with_spec(
+            "probe",
+            SpecTarget::Command {
+                kind: CommandKind::Prefix,
+                mode: AllowedMode::Math,
+            },
+            "m",
+            r"\probe{a}",
+            true,
+            None,
+        );
+        assert!(output.result.is_some(), "command target should parse");
+        assert!(output.diagnostics.is_empty(), "no diagnostics expected");
+    }
+
+    #[test]
+    fn parse_once_with_spec_supports_environment_target() {
+        let output = parse_once_with_spec(
+            "probeenv",
+            SpecTarget::Environment {
+                has_star_variant: false,
+                mode: AllowedMode::Math,
+                body_mode: ContentMode::Math,
+            },
+            "",
+            r"\begin{probeenv}a\end{probeenv}",
+            true,
+            None,
+        );
+        assert!(output.result.is_some(), "environment target should parse");
+        assert!(output.diagnostics.is_empty(), "no diagnostics expected");
     }
 }

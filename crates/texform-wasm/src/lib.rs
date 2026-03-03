@@ -178,25 +178,48 @@ pub fn parse(src: &str, strict: Option<bool>) -> Result<ParseResult, JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn probe_parse(
+pub fn parse_once_with_spec(
     name: &str,
-    kind: &str,
+    target: &str,
     mode: &str,
     spec: &str,
     input: &str,
     strict: Option<bool>,
     packages: Option<Vec<String>>,
+    kind: Option<String>,
+    has_star_variant: Option<bool>,
+    body_mode: Option<String>,
 ) -> Result<ParseResult, JsValue> {
     let strict = strict.unwrap_or(false);
-    let kind = parse_command_kind(kind);
     let mode = parse_allowed_mode(mode);
+    let target = match target {
+        "command" => {
+            let kind = match kind.as_deref() {
+                Some(value) => parse_command_kind(value),
+                None => panic!("command target requires kind"),
+            };
+            api::SpecTarget::Command { kind, mode }
+        }
+        "environment" => {
+            let body_mode = match body_mode.as_deref() {
+                Some(value) => parse_content_mode(value),
+                None => panic!("environment target requires body_mode"),
+            };
+            api::SpecTarget::Environment {
+                has_star_variant: has_star_variant.unwrap_or(false),
+                mode,
+                body_mode,
+            }
+        }
+        _ => panic!("unsupported spec target: {}", target),
+    };
 
     let output = match packages {
         Some(pkgs) if !pkgs.is_empty() => {
             let refs: Vec<&str> = pkgs.iter().map(String::as_str).collect();
-            api::probe_parse(name, kind, mode, spec, input, strict, Some(refs.as_slice()))
+            api::parse_once_with_spec(name, target, spec, input, strict, Some(refs.as_slice()))
         }
-        _ => api::probe_parse(name, kind, mode, spec, input, strict, None),
+        _ => api::parse_once_with_spec(name, target, spec, input, strict, None),
     };
 
     parse_output_to_result(output)

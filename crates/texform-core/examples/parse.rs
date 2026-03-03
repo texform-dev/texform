@@ -40,7 +40,7 @@ fn main() {
         return;
     }
 
-    println!("=== TeXForm Simple Parser CLI ===");
+    println!("=== TeXForm Parse Example ===");
     println!("Input: {}", input);
     println!("Strict mode: {}", strict);
     println!();

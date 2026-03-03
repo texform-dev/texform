@@ -3,7 +3,7 @@ import initWasmModule, {
   lookup_command_info as wasmLookupCommandInfo,
   lookup_env_info as wasmLookupEnvInfo,
   parse as wasmParse,
-  parse_once_with_temp_command as wasmParseOnceWithTempCommand,
+  parse_once_with_spec as wasmParseOnceWithSpec,
   type Argument,
   type ArgumentValue,
   type GroupKind,
@@ -37,6 +37,18 @@ export async function ensureWasmReady(): Promise<void> {
 export type CommandKind = 'prefix' | 'infix' | 'declarative'
 export type AllowedMode = 'math' | 'text' | 'both'
 export type BodyMode = 'math' | 'text'
+export type ParseOnceSpecTarget =
+  | {
+      target: 'command'
+      kind: CommandKind
+      mode: AllowedMode
+    }
+  | {
+      target: 'environment'
+      mode: AllowedMode
+      bodyMode: BodyMode
+      hasStarVariant?: boolean
+    }
 
 export interface ArgSpecInfo {
   required: boolean
@@ -114,17 +126,42 @@ export function parseLatex(src: string, strict?: boolean | null): ParseResult {
   return wasmParse(src, strict)
 }
 
-export function parseOnceWithTempCommand(
+export function parseOnceWithSpec(
   name: string,
-  kind: CommandKind,
-  mode: AllowedMode,
+  target: ParseOnceSpecTarget,
   spec: string,
   input: string,
   strict?: boolean | null,
   packages?: string[],
 ): ParseResult {
   assertReady()
-  return wasmParseOnceWithTempCommand(name, kind, mode, spec, input, strict, packages)
+  if (target.target === 'command') {
+    return wasmParseOnceWithSpec(
+      name,
+      'command',
+      target.mode,
+      spec,
+      input,
+      strict,
+      packages,
+      target.kind,
+      undefined,
+      undefined,
+    )
+  }
+
+  return wasmParseOnceWithSpec(
+    name,
+    'environment',
+    target.mode,
+    spec,
+    input,
+    strict,
+    packages,
+    undefined,
+    target.hasStarVariant ?? false,
+    target.bodyMode,
+  )
 }
 
 export function lookupCommandInfo(name: string): CommandInfo | null {
