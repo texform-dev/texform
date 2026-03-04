@@ -361,11 +361,18 @@ fn parse_delimited_value<'src, 'parse>(
             Ok(ArgumentValue::Column(normalized))
         }
         ValueKind::Delimiter => {
-            let cursor = input.cursor();
-            Err(input.err_peek_or_point(
-                &cursor,
-                "invalid spec: delimiter kind is not supported by delimited/paired forms",
-            ))
+            let src = tokens_to_string(&tokens);
+            let value = insignificant_whitespace()
+                .ignore_then(delimiter(kb))
+                .then_ignore(insignificant_whitespace())
+                .then_ignore(end())
+                .parse(build_token_stream(src.as_str()))
+                .into_result()
+                .map_err(|_| {
+                    let cursor = input.cursor();
+                    input.err_peek_or_point(&cursor, "invalid delimiter argument")
+                })?;
+            Ok(ArgumentValue::Delimiter(value))
         }
         ValueKind::Star => {
             let cursor = input.cursor();
@@ -568,33 +575,17 @@ fn argument_parser<'a>(
             Ok(Some(Argument::star(present)))
         }
         ArgForm::Group => {
-            let mode = match spec.kind {
-                ValueKind::Content { mode } => mode,
-                _ => {
-                    let cursor = input.cursor();
-                    return Err(
-                        input.err_peek_or_point(&cursor, "group form only supports content kind")
-                    );
-                }
-            };
-
             if !matches!(input.peek(), Some(Token::LBrace)) {
                 return Ok(None);
             }
 
-            let content = match mode {
-                ContentMode::Math => math_content.clone(),
-                ContentMode::Text => text_content.clone(),
-            };
-            let parser = braced_group_parser(mode, content)
-                .map(move |node| {
-                    Some(Argument::from_value(
-                        ArgumentKind::Group,
-                        ArgumentValue::Content(normalize_argument_value(mode, node)),
-                    ))
-                })
-                .boxed();
-            input.parse(parser)
+            let tokens = collect_delimited_tokens(
+                input,
+                &DelimiterToken::Char('{'),
+                &DelimiterToken::Char('}'),
+            )?;
+            let value = parse_delimited_value(input, kb, spec.kind, tokens, strict)?;
+            Ok(Some(Argument::from_value(ArgumentKind::Group, value)))
         }
         ArgForm::Delimited { open, close } => {
             let has_open =

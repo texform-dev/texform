@@ -35,7 +35,7 @@ pub enum ArgumentKind {
     Group,
     /// Single delimited argument (`r` / `d`) with matched delimiters.
     Delimited { open: Delimiter, close: Delimiter },
-    /// Paired-candidate argument (`P` / `p`) with matched delimiters.
+    /// Paired-candidate argument (`r` / `d` with `<l,r>` pair list) with matched delimiters.
     Paired { open: Delimiter, close: Delimiter },
 }
 

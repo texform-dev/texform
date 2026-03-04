@@ -46,7 +46,7 @@ commands:
   - name: qty
     kind: prefix
     allowed_mode: math
-    spec: "p<(,)><[,]><{,}><|,|>"
+    spec: "d<(,)><[,]><{,}><|,|>"
 
   - name: pqty
     kind: prefix
@@ -61,17 +61,17 @@ commands:
   - name: eval
     kind: prefix
     allowed_mode: math
-    spec: "s p<(,|><[,|><{,}>"
+    spec: "s d<(,|><[,|><{,}>"
 
   - name: mqty
     kind: prefix
     allowed_mode: math
-    spec: "s p<(,)><[,]><{,}><|,|>"
+    spec: "s d<(,)><[,]><{,}><|,|>"
 
   - name: dd
     kind: prefix
     allowed_mode: math
-    spec: "o p<(,)><{,}>"
+    spec: "o d<(,)><{,}>"
 
   - name: dv
     kind: prefix

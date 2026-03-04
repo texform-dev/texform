@@ -90,13 +90,21 @@ pub enum ArgForm {
     /// Optional star form (`s`).
     Star,
     /// Optional group form (`g`).
+    ///
+    /// The name follows xparse's `g` token ("group").
+    /// Semantically this behaves like an optional-group slot: it is optional
+    /// and only read when the next token is `{...}`.
+    ///
+    /// MathJax currently uses this as optional braced content in all known
+    /// cases, but we intentionally keep value-kind binding open (except `Star`)
+    /// to reserve room for future non-content uses.
     Group,
     /// Single delimited form (`r`/`d`).
     Delimited {
         open: DelimiterToken,
         close: DelimiterToken,
     },
-    /// Multi-pair candidate form (`P`/`p`).
+    /// Multi-pair candidate form (`r`/`d` with `<l,r>` pair list syntax).
     Paired {
         pairs: Cow<'static, [(DelimiterToken, DelimiterToken)]>,
     },
@@ -543,33 +551,61 @@ impl<'a> ArgSpecParser<'a> {
             .next_char()
             .ok_or_else(|| self.err("expected argument token"))?;
 
-        let (required, form) = match kind_token {
-            'm' => (true, ArgForm::Standard),
-            'o' => (false, ArgForm::Standard),
-            's' => (false, ArgForm::Star),
-            'g' => (false, ArgForm::Group),
+        let (required, form, has_ignored_default) = match kind_token {
+            'm' => (true, ArgForm::Standard, false),
+            'o' => (false, ArgForm::Standard, false),
+            'O' => (false, ArgForm::Standard, true),
+            's' => (false, ArgForm::Star, false),
+            'g' => (false, ArgForm::Group, false),
+            'G' => (false, ArgForm::Group, true),
             'r' => {
-                let open = self.parse_delimiter_token()?;
-                let close = self.parse_delimiter_token()?;
-                (true, ArgForm::Delimited { open, close })
+                if self.peek_char() == Some('<') {
+                    let pairs = self.parse_pair_list()?;
+                    (true, ArgForm::Paired { pairs }, false)
+                } else {
+                    let open = self.parse_delimiter_token()?;
+                    let close = self.parse_delimiter_token()?;
+                    (true, ArgForm::Delimited { open, close }, false)
+                }
+            }
+            'R' => {
+                if self.peek_char() == Some('<') {
+                    let pairs = self.parse_pair_list()?;
+                    (true, ArgForm::Paired { pairs }, true)
+                } else {
+                    let open = self.parse_delimiter_token()?;
+                    let close = self.parse_delimiter_token()?;
+                    (true, ArgForm::Delimited { open, close }, true)
+                }
             }
             'd' => {
-                let open = self.parse_delimiter_token()?;
-                let close = self.parse_delimiter_token()?;
-                (false, ArgForm::Delimited { open, close })
+                if self.peek_char() == Some('<') {
+                    let pairs = self.parse_pair_list()?;
+                    (false, ArgForm::Paired { pairs }, false)
+                } else {
+                    let open = self.parse_delimiter_token()?;
+                    let close = self.parse_delimiter_token()?;
+                    (false, ArgForm::Delimited { open, close }, false)
+                }
             }
-            'P' => {
-                let pairs = self.parse_pair_list()?;
-                (true, ArgForm::Paired { pairs })
-            }
-            'p' => {
-                let pairs = self.parse_pair_list()?;
-                (false, ArgForm::Paired { pairs })
+            'D' => {
+                if self.peek_char() == Some('<') {
+                    let pairs = self.parse_pair_list()?;
+                    (false, ArgForm::Paired { pairs }, true)
+                } else {
+                    let open = self.parse_delimiter_token()?;
+                    let close = self.parse_delimiter_token()?;
+                    (false, ArgForm::Delimited { open, close }, true)
+                }
             }
             other => {
                 return Err(self.err(format!("unsupported argument token `{other}`")));
             }
         };
+
+        if has_ignored_default {
+            self.parse_ignored_default_block(kind_token)?;
+        }
 
         let kind = if matches!(&form, ArgForm::Star) {
             if self.peek_char() == Some(':') {
@@ -587,6 +623,33 @@ impl<'a> ArgSpecParser<'a> {
             form,
         };
         self.validate_spec(spec)
+    }
+
+    fn parse_ignored_default_block(&mut self, token: char) -> Result<(), ArgSpecParseError> {
+        if !self.consume_if('{') {
+            return Err(self.err(format!("`{token}` requires a default block like `{{...}}`")));
+        }
+
+        let mut brace_depth = 1usize;
+        while let Some(ch) = self.next_char() {
+            match ch {
+                '\\' => {
+                    if self.peek_char().is_some() {
+                        self.cursor += 1;
+                    }
+                }
+                '{' => brace_depth += 1,
+                '}' => {
+                    brace_depth -= 1;
+                    if brace_depth == 0 {
+                        return Ok(());
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Err(self.err(format!("unterminated default block for `{token}`")))
     }
 
     fn parse_value_kind_annotation(&mut self) -> Result<ValueKind, ArgSpecParseError> {
@@ -704,9 +767,6 @@ impl<'a> ArgSpecParser<'a> {
                 }
                 if spec.kind.is_star() {
                     return Err(self.err("group form cannot use star value kind"));
-                }
-                if !spec.kind.is_content() {
-                    return Err(self.err("group form only supports content kind"));
                 }
             }
             ArgForm::Delimited { .. } | ArgForm::Paired { .. } => {

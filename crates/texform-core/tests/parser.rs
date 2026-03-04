@@ -2586,6 +2586,100 @@ fn test_no_leading_space_after_single_token_m_for_group_slot() {
 }
 
 #[test]
+fn test_group_form_supports_dimension_kind() {
+    let mut ctx = ParseContext::test_default();
+    ctx.insert_command("gdim", CommandKind::Prefix, AllowedMode::Math, "g:L", &[])
+        .expect("gdim argspec should be valid");
+
+    let missing = ctx.parse(r"\gdim", true);
+    assert!(
+        missing.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        missing.diagnostics
+    );
+    let missing_node = missing
+        .result
+        .as_ref()
+        .unwrap_or_else(|| panic!("expected parse result"))
+        .node
+        .clone();
+    match missing_node {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "gdim");
+                assert_eq!(args.len(), 1);
+                assert!(args[0].is_none(), "group slot should be None when absent");
+            }
+            other => panic!("Expected gdim command, got {:?}", other),
+        },
+        other => panic!("Expected root group, got {:?}", other),
+    }
+
+    let present = ctx.parse(r"\gdim{1.5em}", true);
+    assert!(
+        present.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        present.diagnostics
+    );
+    let present_node = present
+        .result
+        .as_ref()
+        .unwrap_or_else(|| panic!("expected parse result"))
+        .node
+        .clone();
+    match present_node {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "gdim");
+                assert_eq!(args.len(), 1);
+                assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Group);
+                assert_eq!(
+                    expect_arg(&args[0]).value,
+                    ArgumentValue::Dimension("1.5em".to_string())
+                );
+            }
+            other => panic!("Expected gdim command, got {:?}", other),
+        },
+        other => panic!("Expected root group, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_group_form_supports_delimiter_kind() {
+    let mut ctx = ParseContext::test_default();
+    ctx.insert_command("gdelim", CommandKind::Prefix, AllowedMode::Math, "g:D", &[])
+        .expect("gdelim argspec should be valid");
+
+    let output = ctx.parse(r"\gdelim{|}", true);
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        output.diagnostics
+    );
+    let node = output
+        .result
+        .as_ref()
+        .unwrap_or_else(|| panic!("expected parse result"))
+        .node
+        .clone();
+    match node {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "gdelim");
+                assert_eq!(args.len(), 1);
+                assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Group);
+                assert_eq!(
+                    expect_arg(&args[0]).value,
+                    ArgumentValue::Delimiter(Delimiter::Char('|'))
+                );
+            }
+            other => panic!("Expected gdelim command, got {:?}", other),
+        },
+        other => panic!("Expected root group, got {:?}", other),
+    }
+}
+
+#[test]
 fn test_mqty_supports_star_plus_optional_paired_slot() {
     let (starred, _) = parse(r"\mqty*|x|", false).unwrap();
     let (name, args) = extract_first_command(starred);
@@ -2674,7 +2768,7 @@ fn test_paired_form_required_vs_optional_semantics() {
         "mustpair",
         CommandKind::Prefix,
         AllowedMode::Math,
-        "P<(,)>",
+        "r<(,)>",
         &[],
     )
     .expect("required paired argspec should be valid");
@@ -2682,7 +2776,7 @@ fn test_paired_form_required_vs_optional_semantics() {
         "maybepair",
         CommandKind::Prefix,
         AllowedMode::Math,
-        "p<(,)>",
+        "d<(,)>",
         &[],
     )
     .expect("optional paired argspec should be valid");
