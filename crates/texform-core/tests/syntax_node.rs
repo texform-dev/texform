@@ -201,8 +201,36 @@ fn test_display_simple() {
     );
     let display = format!("{}", group);
     assert!(display.contains("Group"));
-    assert!(display.contains("Char('x')"));
-    assert!(display.contains("Char('y')"));
+    assert!(display.contains("Chars(\"xy\")"));
+    assert!(!display.contains("Char('x')"));
+    assert!(!display.contains("Char('y')"));
+}
+
+#[test]
+fn test_display_char_merging_boundaries() {
+    let group = SyntaxNode::implicit_group(
+        ContentMode::Math,
+        vec![
+            SyntaxNode::Char('a'),
+            SyntaxNode::Char('b'),
+            SyntaxNode::ActiveSpace,
+            SyntaxNode::Char('c'),
+        ],
+    );
+    let display = format!("{}", group);
+
+    assert!(display.contains("Chars(\"ab\")"));
+    assert!(display.contains("ActiveSpace"));
+    assert!(display.contains("Char('c')"));
+}
+
+#[test]
+fn test_default_display_marks_root_group() {
+    let group = SyntaxNode::implicit_group(ContentMode::Math, vec![SyntaxNode::Char('x')]);
+    let display = format!("{}", group);
+
+    assert!(display.contains("Group(Math, root)"));
+    assert!(!display.contains("Group(Math, Implicit)"));
 }
 
 #[test]

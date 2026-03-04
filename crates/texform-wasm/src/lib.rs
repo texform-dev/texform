@@ -1,4 +1,4 @@
-use texform_core::api::{self, ParseOutput, ParseResult};
+use texform_core::api::{self, ParseOutput};
 use texform_core::context::ParseContext as CoreParseContext;
 use texform_core::knowledge::{self, AllowedMode, CommandKind, CommandMeta, EnvMeta};
 use texform_specs::specs::{ArgForm, ArgSpec, ContentMode, DelimiterToken, ValueKind};
@@ -156,7 +156,7 @@ impl ParseContext {
         self.inner.remove_env(name)
     }
 
-    pub fn parse(&self, src: &str, strict: Option<bool>) -> Result<ParseResult, JsValue> {
+    pub fn parse(&self, src: &str, strict: Option<bool>) -> Result<JsValue, JsValue> {
         let strict = strict.unwrap_or(false);
         parse_output_to_result(self.inner.parse(src, strict))
     }
@@ -182,7 +182,7 @@ impl ParseContext {
 /// Throws an error object with `diagnostics` and `partial_result` when
 /// diagnostics are present.
 #[wasm_bindgen]
-pub fn parse(src: &str, strict: Option<bool>) -> Result<ParseResult, JsValue> {
+pub fn parse(src: &str, strict: Option<bool>) -> Result<JsValue, JsValue> {
     let strict = strict.unwrap_or(false);
     parse_output_to_result(api::parse_latex(src, strict))
 }
@@ -199,7 +199,7 @@ pub fn parse_once_with_spec(
     kind: Option<String>,
     has_star_variant: Option<bool>,
     body_mode: Option<String>,
-) -> Result<ParseResult, JsValue> {
+) -> Result<JsValue, JsValue> {
     let strict = strict.unwrap_or(false);
     let mode = parse_allowed_mode(mode)?;
     let target = match target {
@@ -286,24 +286,33 @@ pub fn validate_spec(spec: &str) -> JsValue {
     value.into()
 }
 
-fn parse_output_to_result(output: ParseOutput) -> Result<ParseResult, JsValue> {
+fn parse_output_to_result(output: ParseOutput) -> Result<JsValue, JsValue> {
     if output.diagnostics.is_empty() {
         match output.result {
-            Some(result) => Ok(result),
+            Some(result) => {
+                let display = result.node.to_string();
+                let js = serde_wasm_bindgen::to_value(&result)
+                    .map_err(|e| JsValue::from_str(&e.to_string()))?;
+                js_sys::Reflect::set(&js, &"display".into(), &display.into()).unwrap();
+                Ok(js)
+            }
             None => Err(JsValue::from_str(
                 "parse produced no output and no diagnostics",
             )),
         }
     } else {
-        // Build structured error: { diagnostics, partial_result }
+        // Build structured error: { diagnostics, partial_result, partial_display }
         let diagnostics = serde_wasm_bindgen::to_value(&output.diagnostics)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-        let partial_result = match &output.result {
+        let (partial_result, partial_display) = match &output.result {
             Some(r) => {
-                serde_wasm_bindgen::to_value(r).map_err(|e| JsValue::from_str(&e.to_string()))?
+                let js = serde_wasm_bindgen::to_value(r)
+                    .map_err(|e| JsValue::from_str(&e.to_string()))?;
+                let display: JsValue = r.node.to_string().into();
+                (js, display)
             }
-            None => JsValue::NULL,
+            None => (JsValue::NULL, JsValue::NULL),
         };
 
         let err = js_sys::Object::new();
@@ -314,6 +323,7 @@ fn parse_output_to_result(output: ParseOutput) -> Result<ParseResult, JsValue> {
             .unwrap_or_else(|| "parse failed".to_string());
         js_sys::Reflect::set(&err, &"diagnostics".into(), &diagnostics).unwrap();
         js_sys::Reflect::set(&err, &"partial_result".into(), &partial_result).unwrap();
+        js_sys::Reflect::set(&err, &"partial_display".into(), &partial_display).unwrap();
         js_sys::Reflect::set(&err, &"message".into(), &message.into()).unwrap();
 
         Err(err.into())

@@ -315,7 +315,7 @@ impl std::fmt::Display for ContentMode {
 
 impl std::fmt::Display for SyntaxNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.fmt_with_indent(f, 0)
+        self.fmt_tree_root_with_indent(f, 0)
     }
 }
 
@@ -330,9 +330,7 @@ impl SyntaxNode {
                 children,
             } => {
                 writeln!(f, "{}Group({:?}, {:?}) [", prefix, mode, kind)?;
-                for child in children {
-                    child.fmt_with_indent(f, indent + 1)?;
-                }
+                Self::fmt_group_children_with_indent(f, children, indent + 1)?;
                 writeln!(f, "{}]", prefix)
             }
             SyntaxNode::Command { name, args } => {
@@ -415,6 +413,62 @@ impl SyntaxNode {
             SyntaxNode::Text(s) => writeln!(f, "{}Text(\"{}\")", prefix, s),
             SyntaxNode::Char(c) => writeln!(f, "{}Char('{}')", prefix, c),
             SyntaxNode::ActiveSpace => writeln!(f, "{}ActiveSpace", prefix),
+        }
+    }
+
+    fn fmt_group_children_with_indent(
+        f: &mut std::fmt::Formatter<'_>,
+        children: &[SyntaxNode],
+        indent: usize,
+    ) -> std::fmt::Result {
+        let prefix = "  ".repeat(indent);
+        let mut i = 0;
+
+        while i < children.len() {
+            if let SyntaxNode::Char(_) = children[i] {
+                let mut merged = String::new();
+                while i < children.len() {
+                    match &children[i] {
+                        SyntaxNode::Char(c) => {
+                            merged.push(*c);
+                            i += 1;
+                        }
+                        _ => break,
+                    }
+                }
+
+                if merged.chars().count() == 1 {
+                    writeln!(f, "{}Char('{}')", prefix, merged.chars().next().unwrap())?;
+                } else {
+                    writeln!(f, "{}Chars({:?})", prefix, merged)?;
+                }
+                continue;
+            }
+
+            children[i].fmt_with_indent(f, indent)?;
+            i += 1;
+        }
+
+        Ok(())
+    }
+
+    fn fmt_tree_root_with_indent(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        indent: usize,
+    ) -> std::fmt::Result {
+        let prefix = "  ".repeat(indent);
+        match self {
+            SyntaxNode::Group {
+                mode,
+                kind: GroupKind::Implicit,
+                children,
+            } => {
+                writeln!(f, "{}Group({:?}, root) [", prefix, mode)?;
+                Self::fmt_group_children_with_indent(f, children, indent + 1)?;
+                writeln!(f, "{}]", prefix)
+            }
+            _ => self.fmt_with_indent(f, indent),
         }
     }
 }
