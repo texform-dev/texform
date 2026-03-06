@@ -47,7 +47,6 @@ export type ParseOnceSpecTarget =
       target: 'environment'
       mode: AllowedMode
       bodyMode: BodyMode
-      hasStarVariant?: boolean
     }
 
 export interface ArgSpecInfo {
@@ -69,7 +68,6 @@ export interface CommandInfo {
 
 export interface EnvInfo {
   name: string
-  has_star_variant: boolean
   allowed_mode: AllowedMode
   body_mode: BodyMode
   spec_string: string
@@ -100,12 +98,11 @@ export class ParseContext {
 
   insertEnv(
     name: string,
-    hasStarVariant: boolean,
     mode: AllowedMode,
     spec: string,
     bodyMode: BodyMode,
   ): void {
-    this.inner.insert_env(name, hasStarVariant, mode, spec, bodyMode)
+    this.inner.insert_env(name, mode, spec, bodyMode)
   }
 
   removeEnv(name: string): boolean {
@@ -146,7 +143,6 @@ export function parseOnceWithSpec(
       packages,
       target.kind,
       undefined,
-      undefined,
     )
   }
 
@@ -159,7 +155,6 @@ export function parseOnceWithSpec(
     strict,
     packages,
     undefined,
-    target.hasStarVariant ?? false,
     target.bodyMode,
   )
 }

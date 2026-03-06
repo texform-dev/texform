@@ -165,7 +165,6 @@ pub enum SyntaxNode {
     /// Examples: \begin{matrix}...\end{matrix}, \begin{align*}...\end{align*}
     Environment {
         name: String,
-        is_star_variant: bool,
         args: Vec<ArgumentSlot>,
         body: Box<SyntaxNode>, // Environment body (always a Group node)
     },
@@ -371,14 +370,8 @@ impl SyntaxNode {
                 scope.fmt_with_indent(f, indent + 2)?;
                 writeln!(f, "{}]", prefix)
             }
-            SyntaxNode::Environment {
-                name,
-                is_star_variant,
-                args,
-                body,
-            } => {
-                let star = if *is_star_variant { "*" } else { "" };
-                writeln!(f, "{}Environment({}{}) [", prefix, name, star)?;
+            SyntaxNode::Environment { name, args, body } => {
+                writeln!(f, "{}Environment({}) [", prefix, name)?;
                 if !args.is_empty() {
                     writeln!(f, "{}  args:", prefix)?;
                     for arg in args {

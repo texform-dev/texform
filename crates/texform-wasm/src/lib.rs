@@ -25,7 +25,7 @@ export type SyntaxNode =
     | { Command: { name: string; args: ArgumentSlot[] } }
     | { Infix: { name: string; args: ArgumentSlot[]; left: SyntaxNode; right: SyntaxNode } }
     | { Declarative: { name: string; args: ArgumentSlot[]; scope: SyntaxNode } }
-    | { Environment: { name: string; is_star_variant: boolean; args: ArgumentSlot[]; body: SyntaxNode } }
+    | { Environment: { name: string; args: ArgumentSlot[]; body: SyntaxNode } }
     | { Scripted: { base: SyntaxNode; subscript?: SyntaxNode; superscript?: SyntaxNode } }
     | { UnknownCommand: { name: string } }
     | { Text: string }
@@ -88,7 +88,6 @@ export type CommandInfo = {
 
 export type EnvInfo = {
     name: string;
-    has_star_variant: boolean;
     allowed_mode: "math" | "text" | "both";
     body_mode: "math" | "text";
     spec_string: string;
@@ -140,7 +139,6 @@ impl ParseContext {
     pub fn insert_env(
         &mut self,
         name: &str,
-        has_star_variant: bool,
         mode: &str,
         spec: &str,
         body_mode: &str,
@@ -148,7 +146,7 @@ impl ParseContext {
         let allowed_mode = parse_allowed_mode(mode)?;
         let body_mode = parse_content_mode(body_mode)?;
         self.inner
-            .insert_env(name, has_star_variant, allowed_mode, spec, body_mode, &[])
+            .insert_env(name, allowed_mode, spec, body_mode, &[])
             .map_err(|error| JsValue::from_str(&format!("spec validation failed: {}", error)))
     }
 
@@ -197,7 +195,6 @@ pub fn parse_once_with_spec(
     strict: Option<bool>,
     packages: Option<Vec<String>>,
     kind: Option<String>,
-    has_star_variant: Option<bool>,
     body_mode: Option<String>,
 ) -> Result<JsValue, JsValue> {
     let strict = strict.unwrap_or(false);
@@ -215,11 +212,7 @@ pub fn parse_once_with_spec(
                 Some(value) => parse_content_mode(value)?,
                 None => return Err(JsValue::from_str("environment target requires body_mode")),
             };
-            api::SpecTarget::Environment {
-                has_star_variant: has_star_variant.unwrap_or(false),
-                mode,
-                body_mode,
-            }
+            api::SpecTarget::Environment { mode, body_mode }
         }
         _ => {
             return Err(JsValue::from_str(&format!(
@@ -416,12 +409,6 @@ fn command_meta_to_js(meta: &CommandMeta) -> JsValue {
 fn env_meta_to_js(meta: &EnvMeta) -> JsValue {
     let value = js_sys::Object::new();
     js_sys::Reflect::set(&value, &"name".into(), &meta.name.into()).unwrap();
-    js_sys::Reflect::set(
-        &value,
-        &"has_star_variant".into(),
-        &JsValue::from_bool(meta.has_star_variant),
-    )
-    .unwrap();
     js_sys::Reflect::set(
         &value,
         &"allowed_mode".into(),

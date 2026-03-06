@@ -1034,14 +1034,8 @@ fn test_environment_basic() {
         SyntaxNode::Group { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
-                SyntaxNode::Environment {
-                    name,
-                    is_star_variant,
-                    args,
-                    body,
-                } => {
+                SyntaxNode::Environment { name, args, body } => {
                     assert_eq!(name, "matrix");
-                    assert!(!is_star_variant);
                     assert!(args.is_empty());
                     match &**body {
                         SyntaxNode::Group { children, .. } => {
@@ -1802,14 +1796,8 @@ fn test_starred_environment() {
         SyntaxNode::Group { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
-                SyntaxNode::Environment {
-                    name,
-                    is_star_variant,
-                    body,
-                    ..
-                } => {
-                    assert_eq!(name, "align");
-                    assert!(*is_star_variant);
+                SyntaxNode::Environment { name, body, .. } => {
+                    assert_eq!(name, "align*");
                     match &**body {
                         SyntaxNode::Group { children, .. } => {
                             assert_eq!(children.len(), 3);
@@ -1822,6 +1810,12 @@ fn test_starred_environment() {
         }
         _ => panic!("Expected root Group"),
     }
+}
+
+#[test]
+fn test_starred_environment_name_rejects_internal_space() {
+    let result = parse(r"\begin{align *}a+b\end{align*}", true);
+    assert!(result.is_err(), "internal space before * must be rejected");
 }
 
 // ========================================================================
@@ -2915,15 +2909,10 @@ fn test_newline_command_preserves_no_leading_space_behavior() {
 #[test]
 fn test_environment_star_in_name_is_independent_from_s_arg_slot() {
     let mut ctx = ParseContext::test_default();
-    ctx.insert_env(
-        "probenv",
-        true,
-        AllowedMode::Math,
-        "s",
-        ContentMode::Math,
-        &[],
-    )
-    .expect("probenv argspec should be valid");
+    ctx.insert_env("probenv", AllowedMode::Math, "s", ContentMode::Math, &[])
+        .expect("probenv argspec should be valid");
+    ctx.insert_env("probenv*", AllowedMode::Math, "s", ContentMode::Math, &[])
+        .expect("probenv argspec should be valid");
 
     let starred_name = ctx.parse(r"\begin{probenv*}x\end{probenv*}", true);
     assert!(
@@ -2943,15 +2932,8 @@ fn test_environment_star_in_name_is_independent_from_s_arg_slot() {
     );
     match starred_name_node {
         SyntaxNode::Group { children, .. } => match &children[0] {
-            SyntaxNode::Environment {
-                is_star_variant,
-                args,
-                ..
-            } => {
-                assert!(
-                    *is_star_variant,
-                    "name star should set environment starred variant"
-                );
+            SyntaxNode::Environment { name, args, .. } => {
+                assert_eq!(name, "probenv*");
                 assert_eq!(args.len(), 1);
                 assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(false));
             }
@@ -2974,14 +2956,8 @@ fn test_environment_star_in_name_is_independent_from_s_arg_slot() {
         .clone();
     match node {
         SyntaxNode::Group { children, .. } => match &children[0] {
-            SyntaxNode::Environment {
-                name,
-                is_star_variant,
-                args,
-                body,
-            } => {
+            SyntaxNode::Environment { name, args, body } => {
                 assert_eq!(name, "probenv");
-                assert!(!is_star_variant);
                 assert_eq!(args.len(), 1);
                 assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Star);
                 assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(true));

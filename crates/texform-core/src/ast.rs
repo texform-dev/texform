@@ -145,7 +145,6 @@ pub enum Node {
 
     Environment {
         name: String,
-        is_star_variant: bool,
         args: Vec<Argument>,
         body: NodeId, // Must be a Group node
     },

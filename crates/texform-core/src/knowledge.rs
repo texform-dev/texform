@@ -140,7 +140,6 @@ impl KnowledgeBase {
     pub fn insert_env(
         &mut self,
         name: impl Into<String>,
-        has_star_variant: bool,
         allowed_mode: AllowedMode,
         spec_string: impl Into<String>,
         body_mode: ContentMode,
@@ -148,7 +147,6 @@ impl KnowledgeBase {
     ) -> Result<(), ArgSpecParseError> {
         self.insert_env_with_package(
             name,
-            has_star_variant,
             allowed_mode,
             spec_string,
             body_mode,
@@ -160,7 +158,6 @@ impl KnowledgeBase {
     pub fn insert_env_with_package(
         &mut self,
         name: impl Into<String>,
-        has_star_variant: bool,
         allowed_mode: AllowedMode,
         spec_string: impl Into<String>,
         body_mode: ContentMode,
@@ -173,7 +170,6 @@ impl KnowledgeBase {
         let args = texform_specs::specs::parse_arg_specs(spec_string.as_str(), context.as_str())?;
         let meta = make_env_meta(
             name,
-            has_star_variant,
             allowed_mode,
             args,
             body_mode,
@@ -283,7 +279,6 @@ impl KnowledgeBaseBuilder {
     pub fn insert_or_override_env(
         &mut self,
         name: impl Into<String>,
-        has_star_variant: bool,
         allowed_mode: AllowedMode,
         args: Vec<ArgSpec>,
         body_mode: ContentMode,
@@ -291,7 +286,6 @@ impl KnowledgeBaseBuilder {
     ) {
         self.insert_or_override_env_with_meta(
             name,
-            has_star_variant,
             allowed_mode,
             args,
             body_mode,
@@ -304,7 +298,6 @@ impl KnowledgeBaseBuilder {
     pub fn insert_or_override_env_with_meta(
         &mut self,
         name: impl Into<String>,
-        has_star_variant: bool,
         allowed_mode: AllowedMode,
         args: Vec<ArgSpec>,
         body_mode: ContentMode,
@@ -314,7 +307,6 @@ impl KnowledgeBaseBuilder {
     ) {
         let meta = make_env_meta(
             name.into(),
-            has_star_variant,
             allowed_mode,
             args,
             body_mode,
@@ -359,7 +351,6 @@ impl KnowledgeBaseBuilder {
         for env in specs.environments {
             self.insert_or_override_env_with_meta(
                 env.name,
-                env.has_star_variant,
                 env.allowed_mode,
                 env.args,
                 env.body_mode,
@@ -406,7 +397,6 @@ fn make_command_meta(
 
 fn make_env_meta(
     name: String,
-    has_star_variant: bool,
     allowed_mode: AllowedMode,
     args: Vec<ArgSpec>,
     body_mode: ContentMode,
@@ -416,7 +406,6 @@ fn make_env_meta(
 ) -> EnvMeta {
     EnvMeta {
         name: leak_string(name),
-        has_star_variant,
         allowed_mode,
         args: leak_arg_specs(args),
         body_mode,
@@ -719,7 +708,6 @@ mod tests {
         let mut builder = KnowledgeBase::builder();
         builder.insert_or_override_env(
             "textenv",
-            false,
             AllowedMode::Text,
             vec![],
             ContentMode::Text,

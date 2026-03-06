@@ -66,7 +66,6 @@ pub enum SpecTarget {
         mode: AllowedMode,
     },
     Environment {
-        has_star_variant: bool,
         mode: AllowedMode,
         body_mode: ContentMode,
     },
@@ -126,12 +125,8 @@ pub fn parse_once_with_spec(
                 return invalid_input_output(format!("spec validation failed: {}", error));
             }
         }
-        SpecTarget::Environment {
-            has_star_variant,
-            mode,
-            body_mode,
-        } => {
-            if let Err(error) = ctx.insert_env(name, has_star_variant, mode, spec, body_mode, &[]) {
+        SpecTarget::Environment { mode, body_mode } => {
+            if let Err(error) = ctx.insert_env(name, mode, spec, body_mode, &[]) {
                 return invalid_input_output(format!("spec validation failed: {}", error));
             }
         }
@@ -288,7 +283,6 @@ mod tests {
         let output = parse_once_with_spec(
             "probeenv",
             SpecTarget::Environment {
-                has_star_variant: false,
                 mode: AllowedMode::Math,
                 body_mode: ContentMode::Math,
             },

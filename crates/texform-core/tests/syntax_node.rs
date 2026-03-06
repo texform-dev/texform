@@ -253,20 +253,13 @@ fn test_unknown_command() {
 fn test_environment_structure() {
     let env = SyntaxNode::Environment {
         name: "matrix".to_string(),
-        is_star_variant: false,
         args: vec![],
         body: Box::new(SyntaxNode::empty_group(ContentMode::Math)),
     };
 
     match env {
-        SyntaxNode::Environment {
-            name,
-            is_star_variant,
-            args,
-            body,
-        } => {
+        SyntaxNode::Environment { name, args, body } => {
             assert_eq!(name, "matrix");
-            assert!(!is_star_variant);
             assert!(args.is_empty());
             assert!(body.is_group());
         }

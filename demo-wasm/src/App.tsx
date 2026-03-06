@@ -621,7 +621,7 @@ function buildSyntaxTree(
     return {
       id,
       type: 'Unknown',
-      commandName: `\\${command.name}${command.starred ? '*' : ''}`,
+      commandName: `\\${command.name}`,
       children: [],
     }
   }
@@ -645,7 +645,7 @@ function buildSyntaxTree(
     return {
       id,
       type: 'Command',
-      commandName: `\\${command.name}${command.starred ? '*' : ''}`,
+      commandName: `\\${command.name}`,
       subtitle: `${command.args.length} args`,
       specString: spec?.spec_string,
       specPackage: spec?.package,
@@ -665,7 +665,7 @@ function buildSyntaxTree(
     return {
       id,
       type: 'Infix',
-      commandName: `\\${infix.name}${infix.starred ? '*' : ''}`,
+      commandName: `\\${infix.name}`,
       subtitle: `${infix.args.length} args`,
       specString: spec?.spec_string,
       specPackage: spec?.package,
@@ -687,7 +687,7 @@ function buildSyntaxTree(
     return {
       id,
       type: 'Declarative',
-      commandName: `\\${declarative.name}${declarative.starred ? '*' : ''}`,
+      commandName: `\\${declarative.name}`,
       subtitle: `${declarative.args.length} args`,
       specString: spec?.spec_string,
       specPackage: spec?.package,
@@ -711,7 +711,7 @@ function buildSyntaxTree(
     return {
       id,
       type: 'Environment',
-      commandName: `${env.name}${env.starred ? '*' : ''}`,
+      commandName: env.name,
       subtitle: `${env.args.length} args`,
       specString: spec?.spec_string,
       specPackage: spec?.package,

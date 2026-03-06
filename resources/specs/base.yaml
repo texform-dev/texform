@@ -25,7 +25,6 @@ commands:
 
 environments:
   - name: matrix
-    has_star_variant: false
     allowed_mode: math
     spec: ""
     body_mode: math

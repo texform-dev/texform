@@ -140,8 +140,8 @@ fn parse_command_args(positional: &[String], program: &str) -> Option<ParsedArgs
 }
 
 fn parse_environment_args(positional: &[String], program: &str) -> Option<ParsedArgs> {
-    if positional.len() != 7 {
-        eprintln!("Error: environment target expects 6 positional arguments");
+    if positional.len() != 6 {
+        eprintln!("Error: environment target expects 5 positional arguments");
         print_usage(program);
         return None;
     }
@@ -161,23 +161,11 @@ fn parse_environment_args(positional: &[String], program: &str) -> Option<Parsed
             return None;
         }
     };
-    let has_star_variant = match parse_bool(positional[4].as_str()) {
-        Some(value) => value,
-        None => {
-            eprintln!("Error: invalid has_star_variant value {}", positional[4]);
-            return None;
-        }
-    };
-
     Some((
         name,
-        SpecTarget::Environment {
-            has_star_variant,
-            mode,
-            body_mode,
-        },
+        SpecTarget::Environment { mode, body_mode },
+        positional[4].clone(),
         positional[5].clone(),
-        positional[6].clone(),
         "environment",
     ))
 }
@@ -223,7 +211,7 @@ fn print_usage(program: &str) {
         program
     );
     eprintln!(
-        "  {} environment <name> <mode> <body_mode> <has_star_variant> <spec> <input> [--strict true|false] [--verbose]",
+        "  {} environment <name> <mode> <body_mode> <spec> <input> [--strict true|false] [--verbose]",
         program
     );
     eprintln!();
@@ -237,7 +225,7 @@ fn print_usage(program: &str) {
         program
     );
     eprintln!(
-        "  {} environment probeenv math math false '' '\\begin{{probeenv}}a\\end{{probeenv}}'",
+        "  {} environment probeenv math math '' '\\begin{{probeenv}}a\\end{{probeenv}}'",
         program
     );
 }

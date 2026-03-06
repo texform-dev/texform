@@ -71,21 +71,14 @@ impl ParseContext {
     pub fn insert_env(
         &mut self,
         name: &str,
-        has_star_variant: bool,
         allowed_mode: AllowedMode,
         spec_string: &str,
         body_mode: ContentMode,
         tags: &[&str],
     ) -> Result<(), ArgSpecParseError> {
         let tags: Vec<String> = tags.iter().map(|tag| (*tag).to_string()).collect();
-        self.kb.insert_env(
-            name,
-            has_star_variant,
-            allowed_mode,
-            spec_string,
-            body_mode,
-            tags.as_slice(),
-        )
+        self.kb
+            .insert_env(name, allowed_mode, spec_string, body_mode, tags.as_slice())
     }
 
     pub fn remove_env(&mut self, name: &str) -> bool {

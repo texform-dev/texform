@@ -269,9 +269,6 @@ pub struct EnvMeta {
     /// Environment name (without \begin/\end)
     pub name: &'static str,
 
-    /// Whether environment supports starred variant
-    pub has_star_variant: bool,
-
     /// Allowed invocation mode.
     pub allowed_mode: AllowedMode,
 
@@ -304,7 +301,6 @@ pub struct CommandSpec {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnvironmentSpec {
     pub name: String,
-    pub has_star_variant: bool,
     pub allowed_mode: AllowedMode,
     pub args: Vec<ArgSpec>,
     pub body_mode: ContentMode,
@@ -472,8 +468,6 @@ impl From<AllowedModeYaml> for AllowedMode {
 #[derive(Debug, Deserialize)]
 struct EnvironmentSpecYaml {
     name: String,
-    #[serde(default)]
-    has_star_variant: bool,
     allowed_mode: AllowedModeYaml,
     #[serde(default)]
     spec: String,
@@ -490,7 +484,6 @@ impl From<EnvironmentSpecYaml> for EnvironmentSpec {
 
         EnvironmentSpec {
             name: value.name,
-            has_star_variant: value.has_star_variant,
             allowed_mode: value.allowed_mode.into(),
             args,
             body_mode: value.body_mode.into(),

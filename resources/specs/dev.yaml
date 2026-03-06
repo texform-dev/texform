@@ -100,7 +100,10 @@ commands:
 
 environments:
   - name: align
-    has_star_variant: true
+    allowed_mode: math
+    spec: ""
+    body_mode: math
+  - name: align*
     allowed_mode: math
     spec: ""
     body_mode: math

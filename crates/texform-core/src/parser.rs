@@ -724,22 +724,20 @@ fn unknown_command_parser<'a>(
     .labelled("unknown command")
 }
 
-/// Parse `{name}` or `{name*}` inside environment delimiters.
-fn env_name_parser<'a>() -> impl Parser<'a, TokenStream<'a>, (String, bool), ParserError<'a>> + Clone
-{
-    let base_name = select! {
+/// Parse `{name}` inside environment delimiters.
+///
+/// Environment names are parsed as a single token sequence and may include `*`
+/// as part of the name (e.g. `align*`).
+fn env_name_parser<'a>() -> impl Parser<'a, TokenStream<'a>, String, ParserError<'a>> + Clone {
+    select! {
         Token::Char(c) => c,
+        Token::Star => '*',
     }
     .repeated()
     .at_least(1)
-    .collect::<String>();
-
-    let is_star_variant = just(Token::Star).or_not().map(|s| s.is_some());
-
-    base_name
-        .then(is_star_variant)
-        .delimited_by(just(Token::LBrace), just(Token::RBrace))
-        .labelled("environment name")
+    .collect::<String>()
+    .delimited_by(just(Token::LBrace), just(Token::RBrace))
+    .labelled("environment name")
 }
 
 /// Parse `\begin{name}` plus its arguments, returning metadata.
@@ -749,21 +747,21 @@ fn parse_env_header<'a>(
     text_content: ContentParser<'a>,
     current_mode: ContentMode,
     strict: bool,
-) -> impl Parser<'a, TokenStream<'a>, (String, bool, Vec<ArgumentSlot>, &'a EnvMeta), ParserError<'a>>
-+ Clone {
+) -> impl Parser<'a, TokenStream<'a>, (String, Vec<ArgumentSlot>, &'a EnvMeta), ParserError<'a>> + Clone
+{
     custom(move |input| {
         input.parse(control_seq("begin"))?;
 
         let name_start = input.cursor();
-        let (base_name, is_star_variant) = input.parse(env_name_parser())?;
+        let name = input.parse(env_name_parser())?;
         let name_span = input.span_from_cursor(&name_start);
 
-        let meta = match kb.lookup_env(base_name.as_str()) {
+        let meta = match kb.lookup_env(name.as_str()) {
             Some(m) => m,
             None => {
                 return Err(Rich::custom(
                     name_span,
-                    format!("Unknown environment: {}", base_name),
+                    format!("Unknown environment: {}", name),
                 ));
             }
         };
@@ -773,15 +771,8 @@ fn parse_env_header<'a>(
                 name_span,
                 format!(
                     "Environment {} is not allowed in {} mode",
-                    base_name, current_mode
+                    name, current_mode
                 ),
-            ));
-        }
-
-        if is_star_variant && !meta.has_star_variant {
-            return Err(Rich::custom(
-                name_span,
-                format!("Environment {} has no starred variant", base_name),
             ));
         }
 
@@ -794,7 +785,7 @@ fn parse_env_header<'a>(
             "environment argument",
         ))?;
 
-        Ok((base_name, is_star_variant, args, meta))
+        Ok((name, args, meta))
     })
 }
 
@@ -807,7 +798,7 @@ fn environment_parser<'a>(
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     custom(move |input| {
-        let (name, is_star_variant, args, meta) = input.parse(parse_env_header(
+        let (name, args, meta) = input.parse(parse_env_header(
             kb,
             math_content.clone(),
             text_content.clone(),
@@ -821,11 +812,7 @@ fn environment_parser<'a>(
         };
         let body = input.parse(env_body_parser(meta.body_mode, body_content))?;
 
-        let expected_end = if is_star_variant {
-            format!("{name}*")
-        } else {
-            name.clone()
-        };
+        let expected_end = name.clone();
 
         let end_start = input.cursor();
         input.parse(control_seq("end")).map_err(|_| {
@@ -838,7 +825,7 @@ fn environment_parser<'a>(
             )
         })?;
 
-        let (end_name, end_starred) = input.parse(env_name_parser()).map_err(|_| {
+        let end_name = input.parse(env_name_parser()).map_err(|_| {
             Rich::custom(
                 input.span_from_cursor(&end_start),
                 format!(
@@ -849,24 +836,18 @@ fn environment_parser<'a>(
         })?;
         let end_span = input.span_from_cursor(&end_start);
 
-        if end_name != name || end_starred != is_star_variant {
-            let found = if end_starred {
-                format!("{end_name}*")
-            } else {
-                end_name.clone()
-            };
+        if end_name != name {
             return Err(Rich::custom(
                 end_span,
                 format!(
                     "Environment name mismatch: expected \\end{{{}}}, found \\end{{{}}}",
-                    expected_end, found
+                    expected_end, end_name
                 ),
             ));
         }
 
         Ok(SyntaxNode::Environment {
             name,
-            is_star_variant,
             args,
             body: Box::new(body),
         })

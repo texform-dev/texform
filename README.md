@@ -55,7 +55,7 @@ cargo run --example parse_once_with_spec -p texform-core -- \
 
 # environment target
 cargo run --example parse_once_with_spec -p texform-core -- \
-  environment probeenv math math false '' '\begin{probeenv}a\end{probeenv}'
+  environment probeenv math math '' '\begin{probeenv}a\end{probeenv}'
 ```
 
 ## Language Bindings

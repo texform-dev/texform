@@ -172,7 +172,6 @@ fn test_environment_body_parent_links() {
 
     let env = ast.new_node(Node::Environment {
         name: "aligned".to_string(),
-        is_star_variant: false,
         args: vec![],
         body,
     });
@@ -191,7 +190,6 @@ fn test_environment_body_must_be_group() {
     let not_group = ast.new_node(Node::Char('x'));
     let env = ast.new_node(Node::Environment {
         name: "aligned".to_string(),
-        is_star_variant: false,
         args: vec![],
         body: not_group,
     });
