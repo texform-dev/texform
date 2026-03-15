@@ -20,9 +20,12 @@ impl ParseContext {
         ParseContext { kb }
     }
 
+    /// Build an empty context with no package specs loaded.
+    pub fn empty() -> Self {
+        Self::from_kb(KnowledgeBase::builder().build())
+    }
+
     /// Build a context from package names.
-    ///
-    /// The loader always prepends `base` when available.
     pub fn from_packages(packages: &[&str]) -> Self {
         ParseContext {
             kb: knowledge::build_kb_from_packages(packages),
@@ -36,9 +39,9 @@ impl ParseContext {
         })
     }
 
-    /// Build runtime default context (`base` package).
+    /// Build runtime default context (all embedded packages except `test` and `dev`).
     pub fn runtime_default() -> Self {
-        Self::from_packages(texform_specs::packages::RUNTIME_DEFAULT_PACKAGES)
+        Self::from_packages(texform_specs::packages::runtime_default_packages())
     }
 
     /// Clone cached runtime default context.
@@ -46,9 +49,9 @@ impl ParseContext {
         runtime_default_ctx().clone()
     }
 
-    /// Build test default context (`base + dev` packages).
+    /// Build test default context (all embedded packages, including `test` and `dev`).
     pub fn test_default() -> Self {
-        Self::from_packages(texform_specs::packages::TEST_DEFAULT_PACKAGES)
+        Self::from_packages(texform_specs::packages::test_default_packages())
     }
 
     pub fn insert_command(

@@ -391,7 +391,7 @@ delimiter_controls: [langle]
     assert_eq!(specs.commands[0].allowed_mode, AllowedMode::Math);
     assert_eq!(specs.commands[0].args.len(), 2);
     assert_eq!(specs.commands[0].tags, vec!["discouraged"]);
-    assert_eq!(specs.commands[0].args[0].required, true);
+    assert!(specs.commands[0].args[0].required);
     assert_eq!(
         specs.commands[0].args[0].kind,
         ValueKind::Content {

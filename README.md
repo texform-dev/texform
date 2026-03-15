@@ -44,19 +44,33 @@ cargo run --example validate_spec -p texform-core -- 'm o'
 cargo run --example validate_spec -p texform-core -- 's m'
 ```
 
-### parse_once_with_spec Example
+On success, the CLI prints `valid: true`, `arg_count`, and the structured `parsed` detail.
 
-One-shot parse with a temporary command/environment spec:
+### parse_with_argspec Example
+
+Test one or more ArgSpecs by temporarily injecting commands/environments and parsing one input:
 
 ```bash
 # command target
-cargo run --example parse_once_with_spec -p texform-core -- \
+cargo run --example parse_with_argspec -p texform-core -- \
   command probe prefix math 'm' '\probe{a}' --strict true
 
 # environment target
-cargo run --example parse_once_with_spec -p texform-core -- \
+cargo run --example parse_with_argspec -p texform-core -- \
   environment probeenv math math '' '\begin{probeenv}a\end{probeenv}'
+
+# load explicit package knowledge when needed
+cargo run --example parse_with_argspec -p texform-core -- \
+  command probe prefix math 'm' '\probe{\hspace{1em}}' --packages dev
 ```
+
+By default, `parse_with_argspecs` loads the embedded `test` package so you can use `\text{...}` to
+probe text-mode behavior. Pass `--packages` with a comma-separated list of embedded package names
+(for example `dev`, or an empty list in direct API calls) when you want a different package set.
+
+Keep the input focused on the temporary target itself. Prefer plain letters, digits, simple operators,
+and grouping. The one allowed helper command is `\text{...}` when you intentionally need text mode.
+Avoid other commands/environments and avoid syntax that depends on unrelated records.
 
 ## Language Bindings
 

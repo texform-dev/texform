@@ -1,25 +1,23 @@
 use std::sync::Once;
 
-use texform_core::knowledge::{self, AllowedMode, ArgSpec, CommandKind, ValueKind};
+use texform_core::knowledge;
 use texform_core::parser::parse;
 use texform_interface::syntax_node::{ArgumentValue, SyntaxNode};
 
 fn init_inline_column_command() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
-        let mut builder = knowledge::KnowledgeBase::builder();
-        for &pkg_name in texform_specs::packages::TEST_DEFAULT_PACKAGES {
-            let pkg = texform_specs::packages::get(pkg_name)
-                .unwrap_or_else(|| panic!("unknown package: {}", pkg_name));
-            builder.import_package((pkg.load)());
-        }
-        builder.insert_or_override_command(
-            "colspec",
-            CommandKind::Prefix,
-            AllowedMode::Math,
-            vec![ArgSpec::new(true, ValueKind::Column)],
-            vec![],
-        );
+        let mut builder = knowledge::test_kb_builder();
+        builder.import_package(knowledge::load_package_specs_from_str(
+            r"
+commands:
+  - name: colspec
+    kind: prefix
+    allowed_mode: math
+    spec: 'm:C'
+",
+            "inline-test",
+        ));
         knowledge::init_with_builder(builder);
     });
 }

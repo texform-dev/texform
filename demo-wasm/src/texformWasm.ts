@@ -3,7 +3,7 @@ import initWasmModule, {
   lookup_command_info as wasmLookupCommandInfo,
   lookup_env_info as wasmLookupEnvInfo,
   parse as wasmParse,
-  parse_once_with_spec as wasmParseOnceWithSpec,
+  parse_with_argspecs as wasmParseWithArgspecs,
   type Argument,
   type ArgumentValue,
   type GroupKind,
@@ -37,17 +37,34 @@ export async function ensureWasmReady(): Promise<void> {
 export type CommandKind = 'prefix' | 'infix' | 'declarative'
 export type AllowedMode = 'math' | 'text' | 'both'
 export type BodyMode = 'math' | 'text'
-export type ParseOnceSpecTarget =
+export type TemporaryArgSpec =
   | {
       target: 'command'
+      name: string
+      spec: string
       kind: CommandKind
-      mode: AllowedMode
+      allowed_mode: AllowedMode
     }
   | {
       target: 'environment'
-      mode: AllowedMode
-      bodyMode: BodyMode
+      name: string
+      spec: string
+      allowed_mode: AllowedMode
+      body_mode: BodyMode
     }
+
+export interface ParseWithArgspecSingleResult {
+  input: string
+  success: boolean
+  result: ParseResult | null
+  display: string | null
+  diagnostics: ParseDiagnostic[]
+  partial_result: ParseResult | null
+  partial_display: string | null
+  error: string | null
+}
+
+export type ParseWithArgspecBatchResult = ParseWithArgspecSingleResult[]
 
 export interface ArgSpecInfo {
   required: boolean
@@ -123,40 +140,29 @@ export function parseLatex(src: string, strict?: boolean | null): ParseResult {
   return wasmParse(src, strict)
 }
 
-export function parseOnceWithSpec(
-  name: string,
-  target: ParseOnceSpecTarget,
-  spec: string,
-  input: string,
+/**
+ * Test one or more ArgSpecs by temporarily injecting commands/environments and parsing one or more inputs.
+ *
+ * By default, this loads the embedded `test` package so text-mode probes can use `\text{...}`.
+ * Pass `packages` to override that with an explicit package list such as `['dev']` or `[]`.
+ *
+ * Prefer inputs that only exercise the temporary targets plus plain literal content.
+ * The one allowed helper command is `\text{...}` when you intentionally need text mode.
+ * Avoid other commands/environments and avoid values that depend on unrelated records.
+ */
+export function parse_with_argspecs(
+  argspecs: TemporaryArgSpec[],
+  inputs: string[],
+  packages?: string[] | null,
   strict?: boolean | null,
-  packages?: string[],
-): ParseResult {
+): ParseWithArgspecBatchResult {
   assertReady()
-  if (target.target === 'command') {
-    return wasmParseOnceWithSpec(
-      name,
-      'command',
-      target.mode,
-      spec,
-      input,
-      strict,
-      packages,
-      target.kind,
-      undefined,
-    )
-  }
-
-  return wasmParseOnceWithSpec(
-    name,
-    'environment',
-    target.mode,
-    spec,
-    input,
+  return wasmParseWithArgspecs(
+    argspecs,
+    inputs,
+    packages ?? undefined,
     strict,
-    packages,
-    undefined,
-    target.bodyMode,
-  )
+  ) as ParseWithArgspecBatchResult
 }
 
 export function lookupCommandInfo(name: string): CommandInfo | null {

@@ -748,7 +748,7 @@ pub fn dimension<'a>() -> impl Parser<'a, TokenStream<'a>, String, ParserError<'
     let alpha = select! { Token::Char(c) if c.is_ascii_alphabetic() => c };
     let unit = alpha.repeated().at_least(1).collect::<Vec<char>>();
 
-    let int_digits = digit.clone().repeated().collect::<Vec<char>>();
+    let int_digits = digit.repeated().collect::<Vec<char>>();
     let frac = sep.then(digit.repeated().collect::<Vec<char>>());
 
     sign.then(int_digits)
@@ -757,7 +757,7 @@ pub fn dimension<'a>() -> impl Parser<'a, TokenStream<'a>, String, ParserError<'
         .then(unit)
         .try_map(|(((sign, int_digits), frac), unit_chars), span| {
             let has_int = !int_digits.is_empty();
-            let has_frac = frac.as_ref().map_or(false, |(_, ds)| !ds.is_empty());
+            let has_frac = frac.as_ref().is_some_and(|(_, ds)| !ds.is_empty());
             if !has_int && !has_frac {
                 return Err(Rich::custom(span, "invalid dimension"));
             }

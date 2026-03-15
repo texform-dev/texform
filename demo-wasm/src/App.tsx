@@ -97,7 +97,7 @@ function App() {
           return
         }
         try {
-          const ctx = new WasmParseContext(['base'])
+          const ctx = new WasmParseContext(['test'])
           if (!alive) {
             return
           }

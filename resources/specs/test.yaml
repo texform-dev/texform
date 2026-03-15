@@ -1,0 +1,7 @@
+commands:
+  - name: text
+    kind: prefix
+    allowed_mode: math
+    spec: "m:T"
+
+delimiter_controls: []

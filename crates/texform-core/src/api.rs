@@ -59,16 +59,32 @@ pub struct ParseOutput {
     pub diagnostics: Vec<ParseDiagnostic>,
 }
 
+/// One parse attempt produced by [`parse_with_argspecs`].
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
+pub struct ParseWithArgspecItem {
+    pub input: String,
+    pub output: ParseOutput,
+}
+pub type ParseWithArgspecOutput = Vec<ParseWithArgspecItem>;
+
 #[derive(Debug, Clone, Copy)]
 pub enum SpecTarget {
     Command {
         kind: CommandKind,
-        mode: AllowedMode,
+        allowed_mode: AllowedMode,
     },
     Environment {
-        mode: AllowedMode,
+        allowed_mode: AllowedMode,
         body_mode: ContentMode,
     },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TemporaryArgSpec<'a> {
+    pub name: &'a str,
+    pub target: SpecTarget,
+    pub spec: &'a str,
 }
 
 /// Parse a LaTeX formula and return a unified output.
@@ -99,39 +115,88 @@ pub(crate) fn parse_latex_with_kb(kb: &KnowledgeBase, src: &str, strict: bool) -
     }
 }
 
-/// One-shot parse with a temporary command/environment spec:
-/// build/clone context, inject metadata, parse input, return output.
-pub fn parse_once_with_spec(
-    name: &str,
-    target: SpecTarget,
-    spec: &str,
-    input: &str,
-    strict: bool,
+/// Test one or more ArgSpecs by injecting temporary commands/environments,
+/// then parsing one or more inputs.
+///
+/// By default, this loads the embedded `test` package so parse probes can use `\text{...}`
+/// when validating text-mode behavior. Pass `packages` to use an explicit package list instead
+/// (for example `["dev"]` or `[]` for an empty knowledge base).
+///
+/// Each entry in `argspecs` is inserted into the context before parsing begins.
+/// Duplicate `(target, name)` pairs are rejected with a diagnostic.
+///
+/// Prefer inputs that only exercise the temporary targets plus plain literal content
+/// (letters, digits, simple operators, and grouping). The one allowed helper command is
+/// `\text{...}` when you intentionally need to enter text mode. Avoid other commands/environments
+/// and avoid argument/value syntax that depends on unrelated records.
+pub fn parse_with_argspecs(
+    argspecs: &[TemporaryArgSpec<'_>],
+    inputs: &[&str],
     packages: Option<&[&str]>,
-) -> ParseOutput {
+    strict: bool,
+) -> ParseWithArgspecOutput {
     let mut ctx = match packages {
-        Some(pkgs) => match ParseContext::try_from_packages(pkgs) {
-            Ok(ctx) => ctx,
+        Some(package_names) => match knowledge::try_build_kb_from_exact_packages(package_names) {
+            Ok(kb) => ParseContext::from_kb(kb),
             Err(error) => {
-                return invalid_input_output(format!("package loading failed: {}", error));
+                return invalid_inputs_output(inputs, format!("package loading failed: {}", error));
             }
         },
-        None => ParseContext::clone_runtime_default(),
+        None => match knowledge::try_build_kb_from_exact_packages(
+            texform_specs::packages::PARSE_WITH_ARGSPEC_DEFAULT_PACKAGES,
+        ) {
+            Ok(kb) => ParseContext::from_kb(kb),
+            Err(error) => {
+                return invalid_inputs_output(inputs, format!("package loading failed: {}", error));
+            }
+        },
     };
 
-    match target {
-        SpecTarget::Command { kind, mode } => {
-            if let Err(error) = ctx.insert_command(name, kind, mode, spec, &[]) {
-                return invalid_input_output(format!("spec validation failed: {}", error));
-            }
-        }
-        SpecTarget::Environment { mode, body_mode } => {
-            if let Err(error) = ctx.insert_env(name, mode, spec, body_mode, &[]) {
-                return invalid_input_output(format!("spec validation failed: {}", error));
+    // Check for duplicate (target, name) pairs.
+    {
+        use std::collections::HashSet;
+        let mut seen = HashSet::new();
+        for spec in argspecs {
+            let target_tag = match spec.target {
+                SpecTarget::Command { .. } => "command",
+                SpecTarget::Environment { .. } => "environment",
+            };
+            if !seen.insert((target_tag, spec.name)) {
+                return invalid_inputs_output(
+                    inputs,
+                    format!("duplicate {} name: {}", target_tag, spec.name),
+                );
             }
         }
     }
-    ctx.parse(input, strict)
+
+    // Insert all argspecs.
+    for argspec in argspecs {
+        let insert_result = match argspec.target {
+            SpecTarget::Command { kind, allowed_mode } => {
+                ctx.insert_command(argspec.name, kind, allowed_mode, argspec.spec, &[])
+            }
+            SpecTarget::Environment {
+                allowed_mode,
+                body_mode,
+            } => ctx.insert_env(argspec.name, allowed_mode, argspec.spec, body_mode, &[]),
+        };
+
+        if let Err(error) = insert_result {
+            return invalid_inputs_output(
+                inputs,
+                format!("spec validation failed for {}: {}", argspec.name, error),
+            );
+        }
+    }
+
+    inputs
+        .iter()
+        .map(|input| ParseWithArgspecItem {
+            input: (*input).to_string(),
+            output: ctx.parse(input, strict),
+        })
+        .collect()
 }
 
 fn invalid_input_output(message: String) -> ParseOutput {
@@ -144,6 +209,16 @@ fn invalid_input_output(message: String) -> ParseOutput {
             found: None,
         }],
     }
+}
+
+fn invalid_inputs_output(inputs: &[&str], message: String) -> ParseWithArgspecOutput {
+    inputs
+        .iter()
+        .map(|input| ParseWithArgspecItem {
+            input: (*input).to_string(),
+            output: invalid_input_output(message.clone()),
+        })
+        .collect()
 }
 
 /// Run the parser with output+errors semantics.
@@ -262,96 +337,246 @@ mod tests {
     }
 
     #[test]
-    fn parse_once_with_spec_supports_command_target() {
-        let output = parse_once_with_spec(
-            "probe",
-            SpecTarget::Command {
-                kind: CommandKind::Prefix,
-                mode: AllowedMode::Math,
-            },
-            "m",
-            r"\probe{a}",
-            true,
+    fn parse_with_argspecs_command_target() {
+        let output = parse_with_argspecs(
+            &[TemporaryArgSpec {
+                name: "probe",
+                target: SpecTarget::Command {
+                    kind: CommandKind::Prefix,
+                    allowed_mode: AllowedMode::Math,
+                },
+                spec: "m",
+            }],
+            &[r"\probe{a}"],
             None,
+            true,
         );
-        assert!(output.result.is_some(), "command target should parse");
-        assert!(output.diagnostics.is_empty(), "no diagnostics expected");
+        assert_eq!(output.len(), 1);
+        assert!(
+            output[0].output.result.is_some(),
+            "command target should parse"
+        );
+        assert!(
+            output[0].output.diagnostics.is_empty(),
+            "no diagnostics expected"
+        );
     }
 
     #[test]
-    fn parse_once_with_spec_supports_environment_target() {
-        let output = parse_once_with_spec(
-            "probeenv",
-            SpecTarget::Environment {
-                mode: AllowedMode::Math,
-                body_mode: ContentMode::Math,
-            },
-            "",
-            r"\begin{probeenv}a\end{probeenv}",
-            true,
+    fn parse_with_argspecs_environment_target() {
+        let output = parse_with_argspecs(
+            &[TemporaryArgSpec {
+                name: "probeenv",
+                target: SpecTarget::Environment {
+                    allowed_mode: AllowedMode::Math,
+                    body_mode: ContentMode::Math,
+                },
+                spec: "",
+            }],
+            &[r"\begin{probeenv}a\end{probeenv}"],
             None,
+            true,
         );
-        assert!(output.result.is_some(), "environment target should parse");
-        assert!(output.diagnostics.is_empty(), "no diagnostics expected");
+        assert_eq!(output.len(), 1);
+        assert!(
+            output[0].output.result.is_some(),
+            "environment target should parse"
+        );
+        assert!(
+            output[0].output.diagnostics.is_empty(),
+            "no diagnostics expected"
+        );
     }
 
     #[test]
-    fn parse_once_with_spec_reports_invalid_spec() {
-        let output = parse_once_with_spec(
-            "probe",
-            SpecTarget::Command {
-                kind: CommandKind::Prefix,
-                mode: AllowedMode::Math,
-            },
-            "s:T",
-            r"\probe",
-            true,
+    fn parse_with_argspecs_reports_invalid_spec() {
+        let output = parse_with_argspecs(
+            &[TemporaryArgSpec {
+                name: "probe",
+                target: SpecTarget::Command {
+                    kind: CommandKind::Prefix,
+                    allowed_mode: AllowedMode::Math,
+                },
+                spec: "s:T",
+            }],
+            &[r"\probe", r"\probe*"],
             None,
+            true,
         );
+        assert_eq!(output.len(), 2);
         assert!(
-            output.result.is_none(),
-            "invalid spec should not produce result"
-        );
-        assert_eq!(output.diagnostics.len(), 1);
-        assert!(
-            output.diagnostics[0]
+            output[0].output.diagnostics[0]
                 .message
                 .contains("spec validation failed"),
             "unexpected diagnostic: {}",
-            output.diagnostics[0].message
+            output[0].output.diagnostics[0].message
         );
     }
 
     #[test]
-    fn parse_once_with_spec_reports_unknown_package() {
-        let output = parse_once_with_spec(
-            "probe",
-            SpecTarget::Command {
-                kind: CommandKind::Prefix,
-                mode: AllowedMode::Math,
-            },
-            "m",
-            r"\probe{a}",
+    fn parse_with_argspecs_uses_test_package_by_default() {
+        let output = parse_with_argspecs(
+            &[TemporaryArgSpec {
+                name: "probe",
+                target: SpecTarget::Command {
+                    kind: CommandKind::Prefix,
+                    allowed_mode: AllowedMode::Math,
+                },
+                spec: "m",
+            }],
+            &[r"\probe{\text{a}}"],
+            None,
             true,
-            Some(&["definitely-not-a-real-package"]),
         );
+        assert_eq!(output.len(), 1);
+        assert!(
+            output[0].output.result.is_some(),
+            "default test package should enable \\text"
+        );
+        assert!(
+            output[0].output.diagnostics.is_empty(),
+            "no diagnostics expected when the default test package is loaded"
+        );
+    }
 
-        assert!(
-            output.result.is_none(),
-            "unknown package should not produce parse result"
+    #[test]
+    fn parse_with_argspecs_can_use_empty_package_list() {
+        let output = parse_with_argspecs(
+            &[TemporaryArgSpec {
+                name: "probe",
+                target: SpecTarget::Command {
+                    kind: CommandKind::Prefix,
+                    allowed_mode: AllowedMode::Math,
+                },
+                spec: "m",
+            }],
+            &[r"\probe{\text{a}}"],
+            Some(&[]),
+            true,
         );
-        assert_eq!(output.diagnostics.len(), 1);
+        assert_eq!(output.len(), 1);
         assert!(
-            output.diagnostics[0]
+            !output[0].output.diagnostics.is_empty(),
+            "\\text should fail when the caller explicitly requests an empty knowledge base"
+        );
+    }
+
+    #[test]
+    fn parse_with_argspecs_can_load_explicit_packages() {
+        let output = parse_with_argspecs(
+            &[TemporaryArgSpec {
+                name: "probe",
+                target: SpecTarget::Command {
+                    kind: CommandKind::Prefix,
+                    allowed_mode: AllowedMode::Math,
+                },
+                spec: "m",
+            }],
+            &[r"\probe{\hspace{1em}}"],
+            Some(&["dev"]),
+            true,
+        );
+        assert_eq!(output.len(), 1);
+        assert!(
+            output[0].output.result.is_some(),
+            "explicit dev package should enable \\hspace"
+        );
+        assert!(
+            output[0].output.diagnostics.is_empty(),
+            "no diagnostics expected when dev is loaded"
+        );
+    }
+
+    #[test]
+    fn parse_with_argspecs_reports_unknown_package() {
+        let output = parse_with_argspecs(
+            &[TemporaryArgSpec {
+                name: "probe",
+                target: SpecTarget::Command {
+                    kind: CommandKind::Prefix,
+                    allowed_mode: AllowedMode::Math,
+                },
+                spec: "m",
+            }],
+            &[r"\probe{a}"],
+            Some(&["missing-package"]),
+            true,
+        );
+        assert_eq!(output.len(), 1);
+        assert!(
+            output[0].output.diagnostics[0]
                 .message
                 .contains("package loading failed"),
             "unexpected diagnostic: {}",
-            output.diagnostics[0].message
+            output[0].output.diagnostics[0].message
         );
+    }
+
+    #[test]
+    fn parse_with_argspecs_multiple_specs() {
+        let output = parse_with_argspecs(
+            &[
+                TemporaryArgSpec {
+                    name: "foo",
+                    target: SpecTarget::Command {
+                        kind: CommandKind::Prefix,
+                        allowed_mode: AllowedMode::Math,
+                    },
+                    spec: "m",
+                },
+                TemporaryArgSpec {
+                    name: "bar",
+                    target: SpecTarget::Environment {
+                        allowed_mode: AllowedMode::Math,
+                        body_mode: ContentMode::Math,
+                    },
+                    spec: "",
+                },
+            ],
+            &[r"\foo{\begin{bar}x\end{bar}}"],
+            None,
+            true,
+        );
+        assert_eq!(output.len(), 1);
+        assert!(output[0].output.result.is_some(), "multi-spec should parse");
         assert!(
-            output.diagnostics[0].message.contains("unknown package"),
+            output[0].output.diagnostics.is_empty(),
+            "no diagnostics expected"
+        );
+    }
+
+    #[test]
+    fn parse_with_argspecs_duplicate_name_rejected() {
+        let output = parse_with_argspecs(
+            &[
+                TemporaryArgSpec {
+                    name: "foo",
+                    target: SpecTarget::Command {
+                        kind: CommandKind::Prefix,
+                        allowed_mode: AllowedMode::Math,
+                    },
+                    spec: "m",
+                },
+                TemporaryArgSpec {
+                    name: "foo",
+                    target: SpecTarget::Command {
+                        kind: CommandKind::Prefix,
+                        allowed_mode: AllowedMode::Math,
+                    },
+                    spec: "o m",
+                },
+            ],
+            &[r"\foo{x}"],
+            None,
+            true,
+        );
+        assert_eq!(output.len(), 1);
+        assert!(
+            output[0].output.diagnostics[0]
+                .message
+                .contains("duplicate command name: foo"),
             "unexpected diagnostic: {}",
-            output.diagnostics[0].message
+            output[0].output.diagnostics[0].message
         );
     }
 }

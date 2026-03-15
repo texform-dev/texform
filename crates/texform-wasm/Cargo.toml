@@ -8,6 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 js-sys.workspace = true
+serde.workspace = true
 wasm-bindgen.workspace = true
 serde-wasm-bindgen.workspace = true
 texform-core = { workspace = true, features = ["tsify"] }

@@ -1,6 +1,6 @@
 use std::env;
 
-use texform_core::api::{self, SpecTarget};
+use texform_core::api::{self, SpecTarget, TemporaryArgSpec};
 use texform_core::knowledge::{AllowedMode, CommandKind};
 use texform_interface::syntax_node::ContentMode;
 
@@ -9,6 +9,7 @@ fn main() {
 
     let mut strict = false;
     let mut verbose = false;
+    let mut packages: Option<Vec<String>> = None;
     let mut positional: Vec<String> = Vec::new();
 
     let mut i = 1;
@@ -21,6 +22,15 @@ fn main() {
                     return;
                 }
                 strict = parse_bool(args[i + 1].as_str()).unwrap_or(false);
+                i += 2;
+            }
+            "--packages" => {
+                if i + 1 >= args.len() {
+                    eprintln!("Error: --packages requires a comma-separated list");
+                    print_usage(&args[0]);
+                    return;
+                }
+                packages = Some(parse_packages(args[i + 1].as_str()));
                 i += 2;
             }
             "--verbose" => {
@@ -53,26 +63,48 @@ fn main() {
         return;
     };
 
-    let output = api::parse_once_with_spec(
-        name.as_str(),
-        target,
-        spec.as_str(),
-        input.as_str(),
+    let package_refs = packages
+        .as_ref()
+        .map(|values| values.iter().map(String::as_str).collect::<Vec<_>>());
+    let output = api::parse_with_argspecs(
+        &[TemporaryArgSpec {
+            name: name.as_str(),
+            target,
+            spec: spec.as_str(),
+        }],
+        &[input.as_str()],
+        package_refs.as_deref(),
         strict,
-        None,
     );
 
-    println!("=== TeXForm parse_once_with_spec Example ===");
+    println!("=== TeXForm parse_with_argspec Example ===");
     println!("Target: {}", target_label);
     println!("Name: {}", name);
     println!("Spec: {}", spec);
     println!("Input: {}", input);
     println!("Strict mode: {}", strict);
     println!("Verbose: {}", verbose);
+    println!(
+        "Packages: {}",
+        packages
+            .as_ref()
+            .map(|values| values.join(","))
+            .unwrap_or_else(|| "test (default)".to_string())
+    );
+    println!();
+    println!("Note: keep the input focused on the temporary target itself.");
+    println!(
+        "The one allowed helper command is \\text{{...}} when you intentionally need text mode."
+    );
+    println!(
+        "Avoid other commands/environments and avoid values that depend on unrelated records."
+    );
+    println!("Without --packages, parse_with_argspec loads the embedded test package.");
     println!();
 
-    if output.diagnostics.is_empty() {
-        match output.result {
+    let item = &output[0];
+    if item.output.diagnostics.is_empty() {
+        match &item.output.result {
             Some(result) => {
                 println!("Parse successful!");
                 println!("Root span: {}..{}", result.span.start, result.span.end);
@@ -91,7 +123,7 @@ fn main() {
         }
     } else {
         eprintln!("Parse diagnostics:");
-        for (idx, diag) in output.diagnostics.iter().enumerate() {
+        for (idx, diag) in item.output.diagnostics.iter().enumerate() {
             eprintln!("{}. {}", idx + 1, diag.message);
             eprintln!("   span: {}..{}", diag.span.start, diag.span.end);
             if !diag.expected.is_empty() {
@@ -122,7 +154,7 @@ fn parse_command_args(positional: &[String], program: &str) -> Option<ParsedArgs
             return None;
         }
     };
-    let mode = match parse_allowed_mode(positional[3].as_str()) {
+    let allowed_mode = match parse_allowed_mode(positional[3].as_str()) {
         Some(value) => value,
         None => {
             eprintln!("Error: invalid allowed mode {}", positional[3]);
@@ -132,7 +164,7 @@ fn parse_command_args(positional: &[String], program: &str) -> Option<ParsedArgs
 
     Some((
         name,
-        SpecTarget::Command { kind, mode },
+        SpecTarget::Command { kind, allowed_mode },
         positional[4].clone(),
         positional[5].clone(),
         "command",
@@ -147,7 +179,7 @@ fn parse_environment_args(positional: &[String], program: &str) -> Option<Parsed
     }
 
     let name = positional[1].clone();
-    let mode = match parse_allowed_mode(positional[2].as_str()) {
+    let allowed_mode = match parse_allowed_mode(positional[2].as_str()) {
         Some(value) => value,
         None => {
             eprintln!("Error: invalid allowed mode {}", positional[2]);
@@ -163,7 +195,10 @@ fn parse_environment_args(positional: &[String], program: &str) -> Option<Parsed
     };
     Some((
         name,
-        SpecTarget::Environment { mode, body_mode },
+        SpecTarget::Environment {
+            allowed_mode,
+            body_mode,
+        },
         positional[4].clone(),
         positional[5].clone(),
         "environment",
@@ -204,14 +239,23 @@ fn parse_bool(value: &str) -> Option<bool> {
     }
 }
 
+fn parse_packages(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
 fn print_usage(program: &str) {
     eprintln!("Usage:");
     eprintln!(
-        "  {} command <name> <kind> <mode> <spec> <input> [--strict true|false] [--verbose]",
+        "  {} command <name> <kind> <mode> <spec> <input> [--strict true|false] [--packages test,dev] [--verbose]",
         program
     );
     eprintln!(
-        "  {} environment <name> <mode> <body_mode> <spec> <input> [--strict true|false] [--verbose]",
+        "  {} environment <name> <mode> <body_mode> <spec> <input> [--strict true|false] [--packages test,dev] [--verbose]",
         program
     );
     eprintln!();
@@ -227,5 +271,17 @@ fn print_usage(program: &str) {
     eprintln!(
         "  {} environment probeenv math math '' '\\begin{{probeenv}}a\\end{{probeenv}}'",
         program
+    );
+    eprintln!(
+        "  {} command probe prefix math 'm' '\\probe{{\\hspace{{1em}}}}' --packages dev",
+        program
+    );
+    eprintln!();
+    eprintln!("Notes:");
+    eprintln!("  - Keep the input focused on the temporary command/environment being tested.");
+    eprintln!("  - Prefer plain letters, digits, simple operators, and grouping.");
+    eprintln!("  - Without --packages, parse_with_argspec loads the embedded test package.");
+    eprintln!(
+        "  - Avoid other commands/environments and avoid syntax that depends on unrelated records."
     );
 }

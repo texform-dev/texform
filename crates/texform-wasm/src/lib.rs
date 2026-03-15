@@ -1,3 +1,4 @@
+use serde::Deserialize;
 use texform_core::api::{self, ParseOutput};
 use texform_core::context::ParseContext as CoreParseContext;
 use texform_core::knowledge::{self, AllowedMode, CommandKind, CommandMeta, EnvMeta};
@@ -95,7 +96,40 @@ export type EnvInfo = {
     tags: string[];
     args: ArgSpecInfo[];
 };
+
+export type TemporaryArgSpec =
+    | {
+          target: "command";
+          name: string;
+          kind: "prefix" | "infix" | "declarative";
+          allowed_mode: "math" | "text" | "both";
+          spec: string;
+      }
+    | {
+          target: "environment";
+          name: string;
+          allowed_mode: "math" | "text" | "both";
+          body_mode: "math" | "text";
+          spec: string;
+      };
 "#;
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "target", rename_all = "lowercase")]
+enum TemporaryArgSpecInput {
+    Command {
+        name: String,
+        kind: String,
+        allowed_mode: String,
+        spec: String,
+    },
+    Environment {
+        name: String,
+        allowed_mode: String,
+        body_mode: String,
+        spec: String,
+    },
+}
 
 #[wasm_bindgen]
 pub struct ParseContext {
@@ -185,52 +219,96 @@ pub fn parse(src: &str, strict: Option<bool>) -> Result<JsValue, JsValue> {
     parse_output_to_result(api::parse_latex(src, strict))
 }
 
+/// Test one or more ArgSpecs by temporarily injecting commands/environments and parsing one or more inputs.
+///
+/// By default, this loads the embedded `test` package so text-mode probes can use `\text{...}`.
+/// Pass `packages` to provide an explicit package list such as `["dev"]` or `[]`.
+///
+/// Prefer inputs that only use the temporary targets plus plain literal content.
+/// The one allowed helper command is `\text{...}` when you intentionally need text mode.
+/// Avoid other commands/environments and avoid syntax that depends on unrelated records.
 #[wasm_bindgen]
-pub fn parse_once_with_spec(
-    name: &str,
-    target: &str,
-    mode: &str,
-    spec: &str,
-    input: &str,
-    strict: Option<bool>,
+pub fn parse_with_argspecs(
+    argspecs: JsValue,
+    inputs: Vec<String>,
     packages: Option<Vec<String>>,
-    kind: Option<String>,
-    body_mode: Option<String>,
+    strict: Option<bool>,
 ) -> Result<JsValue, JsValue> {
     let strict = strict.unwrap_or(false);
-    let mode = parse_allowed_mode(mode)?;
-    let target = match target {
-        "command" => {
-            let kind = match kind.as_deref() {
-                Some(value) => parse_command_kind(value)?,
-                None => return Err(JsValue::from_str("command target requires kind")),
-            };
-            api::SpecTarget::Command { kind, mode }
-        }
-        "environment" => {
-            let body_mode = match body_mode.as_deref() {
-                Some(value) => parse_content_mode(value)?,
-                None => return Err(JsValue::from_str("environment target requires body_mode")),
-            };
-            api::SpecTarget::Environment { mode, body_mode }
-        }
-        _ => {
-            return Err(JsValue::from_str(&format!(
-                "unsupported spec target: {}",
-                target
-            )));
-        }
-    };
+    let specs: Vec<TemporaryArgSpecInput> = serde_wasm_bindgen::from_value(argspecs)
+        .map_err(|error| JsValue::from_str(&format!("invalid argspecs: {}", error)))?;
 
-    let output = match packages {
-        Some(pkgs) if !pkgs.is_empty() => {
-            let refs: Vec<&str> = pkgs.iter().map(String::as_str).collect();
-            api::parse_once_with_spec(name, target, spec, input, strict, Some(refs.as_slice()))
-        }
-        _ => api::parse_once_with_spec(name, target, spec, input, strict, None),
-    };
+    let input_refs: Vec<&str> = inputs.iter().map(String::as_str).collect();
+    let package_refs = packages
+        .as_ref()
+        .map(|values| values.iter().map(String::as_str).collect::<Vec<_>>());
 
-    parse_output_to_result(output)
+    let mut api_specs = Vec::with_capacity(specs.len());
+    for spec in &specs {
+        api_specs.push(convert_temporary_argspec_input(spec)?);
+    }
+
+    let api_spec_refs: Vec<api::TemporaryArgSpec<'_>> = api_specs
+        .iter()
+        .map(|s| api::TemporaryArgSpec {
+            name: &s.name,
+            target: s.target,
+            spec: &s.spec,
+        })
+        .collect();
+
+    let output = api::parse_with_argspecs(
+        &api_spec_refs,
+        input_refs.as_slice(),
+        package_refs.as_deref(),
+        strict,
+    );
+    parse_with_argspec_output_to_result(output)
+}
+
+/// Intermediate owned representation for a TemporaryArgSpec.
+struct OwnedTemporaryArgSpec {
+    name: String,
+    target: api::SpecTarget,
+    spec: String,
+}
+
+fn convert_temporary_argspec_input(
+    input: &TemporaryArgSpecInput,
+) -> Result<OwnedTemporaryArgSpec, JsValue> {
+    match input {
+        TemporaryArgSpecInput::Command {
+            name,
+            kind,
+            allowed_mode,
+            spec,
+        } => {
+            let kind = parse_command_kind(kind)?;
+            let allowed_mode = parse_allowed_mode(allowed_mode)?;
+            Ok(OwnedTemporaryArgSpec {
+                name: name.clone(),
+                target: api::SpecTarget::Command { kind, allowed_mode },
+                spec: spec.clone(),
+            })
+        }
+        TemporaryArgSpecInput::Environment {
+            name,
+            allowed_mode,
+            body_mode,
+            spec,
+        } => {
+            let allowed_mode = parse_allowed_mode(allowed_mode)?;
+            let body_mode = parse_content_mode(body_mode)?;
+            Ok(OwnedTemporaryArgSpec {
+                name: name.clone(),
+                target: api::SpecTarget::Environment {
+                    allowed_mode,
+                    body_mode,
+                },
+                spec: spec.clone(),
+            })
+        }
+    }
 }
 
 #[wasm_bindgen]
@@ -277,6 +355,86 @@ pub fn validate_spec(spec: &str) -> JsValue {
     }
 
     value.into()
+}
+
+fn parse_with_argspec_output_to_result(
+    output: api::ParseWithArgspecOutput,
+) -> Result<JsValue, JsValue> {
+    let results = js_sys::Array::new();
+    for item in &output {
+        results.push(&parse_output_to_batch_entry(&item.input, &item.output)?);
+    }
+    Ok(results.into())
+}
+
+fn parse_output_to_batch_entry(input: &str, output: &ParseOutput) -> Result<JsValue, JsValue> {
+    let value = js_sys::Object::new();
+    js_sys::Reflect::set(&value, &"input".into(), &input.into()).unwrap();
+
+    if output.diagnostics.is_empty() {
+        match &output.result {
+            Some(result) => {
+                let display = result.node.to_string();
+                let js = serde_wasm_bindgen::to_value(&result)
+                    .map_err(|e| JsValue::from_str(&e.to_string()))?;
+                js_sys::Reflect::set(&js, &"display".into(), &display.clone().into()).unwrap();
+                let diagnostics = js_sys::Array::new();
+
+                js_sys::Reflect::set(&value, &"success".into(), &JsValue::TRUE).unwrap();
+                js_sys::Reflect::set(&value, &"result".into(), &js).unwrap();
+                js_sys::Reflect::set(&value, &"display".into(), &display.into()).unwrap();
+                js_sys::Reflect::set(&value, &"diagnostics".into(), &diagnostics.into()).unwrap();
+                js_sys::Reflect::set(&value, &"partial_result".into(), &JsValue::NULL).unwrap();
+                js_sys::Reflect::set(&value, &"partial_display".into(), &JsValue::NULL).unwrap();
+                js_sys::Reflect::set(&value, &"error".into(), &JsValue::NULL).unwrap();
+                Ok(value.into())
+            }
+            None => {
+                let diagnostics = js_sys::Array::new();
+                js_sys::Reflect::set(&value, &"success".into(), &JsValue::FALSE).unwrap();
+                js_sys::Reflect::set(&value, &"result".into(), &JsValue::NULL).unwrap();
+                js_sys::Reflect::set(&value, &"display".into(), &JsValue::NULL).unwrap();
+                js_sys::Reflect::set(&value, &"diagnostics".into(), &diagnostics.into()).unwrap();
+                js_sys::Reflect::set(&value, &"partial_result".into(), &JsValue::NULL).unwrap();
+                js_sys::Reflect::set(&value, &"partial_display".into(), &JsValue::NULL).unwrap();
+                js_sys::Reflect::set(
+                    &value,
+                    &"error".into(),
+                    &JsValue::from_str("parse produced no output and no diagnostics"),
+                )
+                .unwrap();
+                Ok(value.into())
+            }
+        }
+    } else {
+        let diagnostics = serde_wasm_bindgen::to_value(&output.diagnostics)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        let (partial_result, partial_display) = match &output.result {
+            Some(result) => {
+                let js = serde_wasm_bindgen::to_value(result)
+                    .map_err(|e| JsValue::from_str(&e.to_string()))?;
+                (js, result.node.to_string().into())
+            }
+            None => (JsValue::NULL, JsValue::NULL),
+        };
+
+        let message = output
+            .diagnostics
+            .first()
+            .map(|diag| diag.message.clone())
+            .unwrap_or_else(|| "parse failed".to_string());
+
+        js_sys::Reflect::set(&value, &"success".into(), &JsValue::FALSE).unwrap();
+        js_sys::Reflect::set(&value, &"result".into(), &JsValue::NULL).unwrap();
+        js_sys::Reflect::set(&value, &"display".into(), &JsValue::NULL).unwrap();
+        js_sys::Reflect::set(&value, &"diagnostics".into(), &diagnostics).unwrap();
+        js_sys::Reflect::set(&value, &"partial_result".into(), &partial_result).unwrap();
+        js_sys::Reflect::set(&value, &"partial_display".into(), &partial_display).unwrap();
+        js_sys::Reflect::set(&value, &"error".into(), &message.into()).unwrap();
+
+        Ok(value.into())
+    }
 }
 
 fn parse_output_to_result(output: ParseOutput) -> Result<JsValue, JsValue> {

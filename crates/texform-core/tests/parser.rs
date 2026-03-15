@@ -19,7 +19,43 @@ fn parse(
 
 fn init_test_kb() {
     static INIT: Once = Once::new();
-    INIT.call_once(knowledge::init_test_defaults);
+    INIT.call_once(|| {
+        let mut builder = knowledge::test_kb_builder();
+        // inject commands via inline YAML - not depending on package resource files
+        builder.import_package(knowledge::load_package_specs_from_str(
+            r"
+commands:
+  - name: frac
+    kind: prefix
+    allowed_mode: math
+    spec: 'mm'
+  - name: sqrt
+    kind: prefix
+    allowed_mode: math
+    spec: 'om'
+  - name: alpha
+    kind: prefix
+    allowed_mode: math
+    spec: ''
+  - name: beta
+    kind: prefix
+    allowed_mode: math
+    spec: ''
+  - name: gamma
+    kind: prefix
+    allowed_mode: math
+    spec: ''
+
+environments:
+  - name: matrix
+    allowed_mode: math
+    spec: ''
+    body_mode: math
+",
+            "inline-test",
+        ));
+        knowledge::init_with_builder(builder);
+    });
 }
 
 fn expect_arg(slot: &Option<Argument>) -> &Argument {
@@ -1539,15 +1575,12 @@ fn test_prime_on_prime_nested() {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Scripted { superscript, .. } => {
-                    match superscript.as_ref().unwrap().as_ref() {
-                        node => {
-                            assert!(
-                                count_primes(node) >= 2,
-                                "expected at least two primes, got {}",
-                                count_primes(node)
-                            );
-                        }
-                    }
+                    let node = superscript.as_ref().unwrap().as_ref();
+                    assert!(
+                        count_primes(node) >= 2,
+                        "expected at least two primes, got {}",
+                        count_primes(node)
+                    );
                 }
                 _ => panic!("Expected Scripted node"),
             }
@@ -1583,14 +1616,11 @@ fn test_prime_on_sup_nested() {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Scripted { superscript, .. } => {
-                    match superscript.as_ref().unwrap().as_ref() {
-                        node => {
-                            assert!(
-                                count_primes(node) >= 1,
-                                "expected at least one prime in superscript"
-                            );
-                        }
-                    }
+                    let node = superscript.as_ref().unwrap().as_ref();
+                    assert!(
+                        count_primes(node) >= 1,
+                        "expected at least one prime in superscript"
+                    );
                 }
                 _ => panic!("Expected Scripted node"),
             }
@@ -3087,6 +3117,8 @@ fn test_delimited_content_argument_reparse_keeps_known_command() {
     let mut ctx = ParseContext::test_default();
     ctx.insert_command("probe", CommandKind::Prefix, AllowedMode::Math, "r()", &[])
         .expect("probe argspec should be valid");
+    ctx.insert_command("frac", CommandKind::Prefix, AllowedMode::Math, "mm", &[])
+        .expect("frac argspec should be valid");
 
     let output = ctx.parse(r"\probe(\frac{1}{2})", true);
     assert!(

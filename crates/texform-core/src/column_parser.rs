@@ -305,10 +305,8 @@ fn add_at(state: &mut ColumnState, macro_text: String) {
             if j > 0 {
                 append_cstart(state, j - 1, r"\hspace{.25em}");
             }
-        } else if get_option(&state.cspace, j).is_none() {
-            if j > 0 {
-                append_cend(state, j - 1, r"\hspace{.5em}");
-            }
+        } else if get_option(&state.cspace, j).is_none() && j > 0 {
+            append_cend(state, j - 1, r"\hspace{.5em}");
         }
     }
 
