@@ -500,6 +500,70 @@ mod tests {
     }
 
     #[test]
+    fn parse_with_argspecs_supports_nullable_delimiter_arguments() {
+        let output = parse_with_argspecs(
+            &[TemporaryArgSpec {
+                name: "genfracprobe",
+                target: SpecTarget::Command {
+                    kind: CommandKind::Prefix,
+                    allowed_mode: AllowedMode::Math,
+                },
+                spec: "m:D? m:D? m m m m",
+            }],
+            &[
+                r"\genfracprobe{}{}{0}{1}{a}{b}",
+                r"\genfracprobe{(}{)}{0}{1}{a}{b}",
+            ],
+            None,
+            true,
+        );
+        assert_eq!(output.len(), 2);
+
+        let expected = [
+            [Delimiter::None, Delimiter::None],
+            [Delimiter::Char('('), Delimiter::Char(')')],
+        ];
+
+        for (item, expected_pair) in output.iter().zip(expected) {
+            assert!(
+                item.output.diagnostics.is_empty(),
+                "unexpected diagnostics for {}: {:?}",
+                item.input,
+                item.output.diagnostics
+            );
+            let result = item
+                .output
+                .result
+                .as_ref()
+                .unwrap_or_else(|| panic!("expected parse result for {}", item.input));
+
+            match &result.node {
+                SyntaxNode::Group { children, .. } => match &children[0] {
+                    SyntaxNode::Command { args, .. } => {
+                        for (slot, expected_delimiter) in args.iter().take(2).zip(expected_pair) {
+                            match &slot
+                                .as_ref()
+                                .unwrap_or_else(|| panic!("expected argument for {}", item.input))
+                                .value
+                            {
+                                ArgumentValue::Delimiter(value) => {
+                                    assert_eq!(*value, expected_delimiter);
+                                }
+                                other => panic!(
+                                    "expected delimiter argument for {}, got {:?}",
+                                    item.input, other
+                                ),
+                            }
+                        }
+                    }
+                    other => panic!("expected command node for {}, got {:?}", item.input, other),
+                },
+                other => panic!("expected root group for {}, got {:?}", item.input, other),
+            }
+        }
+    }
+
+    #[test]
     fn parse_with_argspecs_can_use_empty_package_list() {
         let output = parse_with_argspecs(
             &[TemporaryArgSpec {

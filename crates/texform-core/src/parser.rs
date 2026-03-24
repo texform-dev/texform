@@ -39,8 +39,10 @@ use crate::parser_utils::{
     keyval_value,
     math_char,
     maybe_braced,
+    maybe_braced_or_empty,
     normalize_argument_value,
     optional_bracketed,
+    optional_bracketed_or_empty,
     parse_scripted_components,
     text_chunk,
     tokens_to_string,
@@ -309,6 +311,7 @@ fn parse_delimited_value<'src, 'parse>(
     kind: ValueKind,
     tokens: Vec<Token>,
     strict: bool,
+    nullable: bool,
 ) -> Result<ArgumentValue, Rich<'src, Token>> {
     match kind {
         ValueKind::Content { mode } => {
@@ -366,6 +369,9 @@ fn parse_delimited_value<'src, 'parse>(
         }
         ValueKind::Delimiter => {
             let src = tokens_to_string(&tokens);
+            if nullable && src.trim().is_empty() {
+                return Ok(ArgumentValue::Delimiter(Delimiter::None));
+            }
             let value = insignificant_whitespace()
                 .ignore_then(delimiter(kb))
                 .then_ignore(insignificant_whitespace())
@@ -452,28 +458,34 @@ fn argument_parser<'a>(
             }
             ValueKind::Delimiter => {
                 if spec.required {
-                    let parser = maybe_braced(delimiter(kb))
-                        .map(move |value| {
-                            Some(Argument::from_value(
-                                ArgumentKind::Mandatory,
-                                ArgumentValue::Delimiter(value),
-                            ))
-                        })
-                        .boxed();
+                    let parser = if spec.nullable {
+                        maybe_braced_or_empty(delimiter(kb), Delimiter::None).boxed()
+                    } else {
+                        maybe_braced(delimiter(kb)).boxed()
+                    }
+                    .map(move |value| {
+                        Some(Argument::from_value(
+                            ArgumentKind::Mandatory,
+                            ArgumentValue::Delimiter(value),
+                        ))
+                    });
                     input.parse(parser)
                 } else if !matches!(input.peek(), Some(Token::LBracket)) {
                     Ok(None)
                 } else {
-                    let parser = optional_bracketed(delimiter(kb))
-                        .map(move |opt| {
-                            opt.map(|value| {
-                                Argument::from_value(
-                                    ArgumentKind::Optional,
-                                    ArgumentValue::Delimiter(value),
-                                )
-                            })
+                    let parser = if spec.nullable {
+                        optional_bracketed_or_empty(delimiter(kb), Delimiter::None).boxed()
+                    } else {
+                        optional_bracketed(delimiter(kb)).boxed()
+                    }
+                    .map(move |opt| {
+                        opt.map(|value| {
+                            Argument::from_value(
+                                ArgumentKind::Optional,
+                                ArgumentValue::Delimiter(value),
+                            )
                         })
-                        .boxed();
+                    });
                     input.parse(parser)
                 }
             }
@@ -643,7 +655,7 @@ fn argument_parser<'a>(
                 &DelimiterToken::Char('{'),
                 &DelimiterToken::Char('}'),
             )?;
-            let value = parse_delimited_value(input, kb, spec.kind, tokens, strict)?;
+            let value = parse_delimited_value(input, kb, spec.kind, tokens, strict, spec.nullable)?;
             Ok(Some(Argument::from_value(ArgumentKind::Group, value)))
         }
         ArgForm::Delimited { open, close } => {
@@ -660,7 +672,7 @@ fn argument_parser<'a>(
             }
 
             let tokens = collect_delimited_tokens(input, open, close)?;
-            let value = parse_delimited_value(input, kb, spec.kind, tokens, strict)?;
+            let value = parse_delimited_value(input, kb, spec.kind, tokens, strict, spec.nullable)?;
             Ok(Some(Argument::from_value(
                 ArgumentKind::Delimited {
                     open: syntax_delimiter(open),
@@ -687,7 +699,7 @@ fn argument_parser<'a>(
             };
 
             let tokens = collect_delimited_tokens(input, open, close)?;
-            let value = parse_delimited_value(input, kb, spec.kind, tokens, strict)?;
+            let value = parse_delimited_value(input, kb, spec.kind, tokens, strict, spec.nullable)?;
             Ok(Some(Argument::from_value(
                 ArgumentKind::Paired {
                     open: syntax_delimiter(open),

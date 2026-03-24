@@ -2883,6 +2883,108 @@ fn test_group_form_supports_delimiter_kind() {
 }
 
 #[test]
+fn test_nullable_delimiter_argument_accepts_empty_required_group() {
+    let mut ctx = ParseContext::test_default();
+    ctx.insert_command(
+        "ndelim",
+        CommandKind::Prefix,
+        AllowedMode::Math,
+        "m:D?",
+        &[],
+    )
+    .expect("nullable delimiter argspec should be valid");
+    ctx.insert_command(
+        "strictdelim",
+        CommandKind::Prefix,
+        AllowedMode::Math,
+        "m:D",
+        &[],
+    )
+    .expect("strict delimiter argspec should be valid");
+
+    let empty = ctx.parse(r"\ndelim{}", true);
+    assert!(
+        empty.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        empty.diagnostics
+    );
+    let (_, empty_args) = extract_first_command(
+        empty
+            .result
+            .as_ref()
+            .unwrap_or_else(|| panic!("expected parse result"))
+            .node
+            .clone(),
+    );
+    assert_eq!(
+        expect_arg(&empty_args[0]).value,
+        ArgumentValue::Delimiter(Delimiter::None)
+    );
+
+    let explicit = ctx.parse(r"\ndelim\langle", true);
+    assert!(
+        explicit.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        explicit.diagnostics
+    );
+    let (_, explicit_args) = extract_first_command(
+        explicit
+            .result
+            .as_ref()
+            .unwrap_or_else(|| panic!("expected parse result"))
+            .node
+            .clone(),
+    );
+    assert_eq!(
+        expect_arg(&explicit_args[0]).value,
+        ArgumentValue::Delimiter(Delimiter::Control("langle"))
+    );
+
+    let strict_empty = ctx.parse(r"\strictdelim{}", true);
+    assert!(
+        strict_empty.result.is_none(),
+        "non-nullable delimiter should reject empty braces"
+    );
+    assert!(
+        !strict_empty.diagnostics.is_empty(),
+        "non-nullable delimiter should report diagnostics"
+    );
+}
+
+#[test]
+fn test_nullable_delimiter_group_accepts_empty_group() {
+    let mut ctx = ParseContext::test_default();
+    ctx.insert_command(
+        "gdelimnull",
+        CommandKind::Prefix,
+        AllowedMode::Math,
+        "m{}:D?",
+        &[],
+    )
+    .expect("nullable delimiter group argspec should be valid");
+
+    let output = ctx.parse(r"\gdelimnull{}", true);
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        output.diagnostics
+    );
+    let (_, args) = extract_first_command(
+        output
+            .result
+            .as_ref()
+            .unwrap_or_else(|| panic!("expected parse result"))
+            .node
+            .clone(),
+    );
+    assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Group);
+    assert_eq!(
+        expect_arg(&args[0]).value,
+        ArgumentValue::Delimiter(Delimiter::None)
+    );
+}
+
+#[test]
 fn test_required_group_and_delimited_forms_have_distinct_ast_kinds() {
     let mut ctx = ParseContext::test_default();
     ctx.insert_command("reqgrp", CommandKind::Prefix, AllowedMode::Math, "m{}", &[])

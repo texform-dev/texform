@@ -134,9 +134,9 @@ fn test_parse_arg_specs_pairs_and_delimited() {
 
 #[test]
 fn test_parse_arg_specs_type_annotations() {
-    let specs = parse_arg_specs("m:T o:K m:L m:I m:C m:D !s !o:L", "types")
+    let specs = parse_arg_specs("m:T o:K m:L m:I m:C m:D m:D? !s !o:L", "types")
         .expect("typed argspec should be valid");
-    assert_eq!(specs.len(), 8);
+    assert_eq!(specs.len(), 9);
 
     assert_eq!(
         specs[0].kind,
@@ -149,14 +149,37 @@ fn test_parse_arg_specs_type_annotations() {
     assert_eq!(specs[3].kind, ValueKind::Integer);
     assert_eq!(specs[4].kind, ValueKind::Column);
     assert_eq!(specs[5].kind, ValueKind::Delimiter);
-
-    assert!(specs[6].no_leading_space);
-    assert_eq!(specs[6].form, ArgForm::Star);
-    assert_eq!(specs[6].kind, ValueKind::Star);
+    assert_eq!(specs[6].kind, ValueKind::Delimiter);
+    assert!(specs[6].nullable);
 
     assert!(specs[7].no_leading_space);
-    assert_eq!(specs[7].kind, ValueKind::Dimension);
-    assert_eq!(specs[7].form, ArgForm::Standard);
+    assert_eq!(specs[7].form, ArgForm::Star);
+    assert_eq!(specs[7].kind, ValueKind::Star);
+
+    assert!(specs[8].no_leading_space);
+    assert_eq!(specs[8].kind, ValueKind::Dimension);
+    assert_eq!(specs[8].form, ArgForm::Standard);
+}
+
+#[test]
+fn test_parse_arg_specs_nullable_delimiter_annotation() {
+    let specs = parse_arg_specs("m:D? o:D? g:D? m{}:D?", "nullable-delimiter")
+        .expect("nullable delimiter argspec should be valid");
+    assert_eq!(specs.len(), 4);
+
+    for spec in specs {
+        assert_eq!(spec.kind, ValueKind::Delimiter);
+        assert!(spec.nullable);
+    }
+}
+
+#[test]
+fn test_parse_arg_specs_rejects_nullable_non_delimiter_annotation() {
+    let err = parse_arg_specs("m:L?", "invalid").expect_err("m:L? should be invalid");
+    assert!(
+        err.to_string()
+            .contains("`?` is currently only supported for delimiter annotations")
+    );
 }
 
 #[test]

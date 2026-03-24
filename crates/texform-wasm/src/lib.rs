@@ -74,6 +74,7 @@ export type ArgumentValue =
 export type ArgSpecInfo = {
     required: boolean;
     no_leading_space: boolean;
+    nullable: boolean;
     kind: unknown;
     form: unknown;
 };
@@ -610,6 +611,12 @@ fn arg_spec_to_js(spec: &ArgSpec) -> JsValue {
         &value,
         &"no_leading_space".into(),
         &JsValue::from_bool(spec.no_leading_space),
+    )
+    .unwrap();
+    js_sys::Reflect::set(
+        &value,
+        &"nullable".into(),
+        &JsValue::from_bool(spec.nullable),
     )
     .unwrap();
     js_sys::Reflect::set(&value, &"kind".into(), &value_kind_to_js(&spec.kind)).unwrap();

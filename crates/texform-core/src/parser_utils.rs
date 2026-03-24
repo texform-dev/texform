@@ -141,6 +141,27 @@ where
     choice((braced, inner))
 }
 
+/// Wrap a parser to accept `{...}`, allowing the braced form to be empty.
+pub fn maybe_braced_or_empty<'a, T, P>(
+    inner: P,
+    empty_value: T,
+) -> impl Parser<'a, TokenStream<'a>, T, ParserError<'a>> + Clone
+where
+    P: Parser<'a, TokenStream<'a>, T, ParserError<'a>> + Clone + 'a,
+    T: Clone + 'a,
+{
+    let ws = insignificant_whitespace();
+    let braced_empty_value = empty_value.clone();
+    let braced = just(Token::LBrace)
+        .ignore_then(ws.clone())
+        .ignore_then(inner.clone().or_not())
+        .then_ignore(ws)
+        .then_ignore(just(Token::RBrace))
+        .map(move |value| value.unwrap_or_else(|| braced_empty_value.clone()));
+
+    choice((braced, inner))
+}
+
 /// Wrap a parser to accept an optional `[...]` argument.
 pub fn optional_bracketed<'a, T, P>(
     inner: P,
@@ -155,6 +176,25 @@ where
         .ignore_then(inner)
         .then_ignore(ws)
         .then_ignore(just(Token::RBracket))
+        .or_not()
+}
+
+/// Wrap a parser to accept an optional `[...]` argument whose content may be empty.
+pub fn optional_bracketed_or_empty<'a, T, P>(
+    inner: P,
+    empty_value: T,
+) -> impl Parser<'a, TokenStream<'a>, Option<T>, ParserError<'a>> + Clone
+where
+    P: Parser<'a, TokenStream<'a>, T, ParserError<'a>> + Clone + 'a,
+    T: Clone + 'a,
+{
+    let ws = insignificant_whitespace();
+    just(Token::LBracket)
+        .ignore_then(ws.clone())
+        .ignore_then(inner.or_not())
+        .then_ignore(ws)
+        .then_ignore(just(Token::RBracket))
+        .map(move |value| value.unwrap_or_else(|| empty_value.clone()))
         .or_not()
 }
 

@@ -1056,9 +1056,10 @@ function formatSpecDetail(args: ArgSpecInfo[]): string {
   return args
     .map((arg, index) => {
       const req = arg.required ? 'required' : 'optional'
+      const nullable = arg.nullable ? ' nullable' : ''
       const kind = describeArgSpecKind(arg.kind)
       const form = describeArgSpecForm(arg.form)
-      return `[${index}] ${req} ${form} ${kind}`
+      return `[${index}] ${req}${nullable} ${form} ${kind}`
     })
     .join('\n')
 }

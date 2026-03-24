@@ -69,6 +69,7 @@ export type ParseWithArgspecBatchResult = ParseWithArgspecSingleResult[]
 export interface ArgSpecInfo {
   required: boolean
   no_leading_space: boolean
+  nullable: boolean
   kind: unknown
   form: unknown
 }

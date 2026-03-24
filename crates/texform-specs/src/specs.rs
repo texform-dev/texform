@@ -183,6 +183,9 @@ pub struct ArgSpec {
     /// xparse-like `!` prefix semantics.
     pub no_leading_space: bool,
 
+    /// Whether the annotated value kind may be empty, e.g. `m:D?`.
+    pub nullable: bool,
+
     /// Argument value kind (parsing strategy)
     pub kind: ValueKind,
 
@@ -195,6 +198,7 @@ impl ArgSpec {
         ArgSpec {
             required,
             no_leading_space: false,
+            nullable: false,
             kind,
             form: ArgForm::Standard,
         }
@@ -209,6 +213,7 @@ impl ArgSpec {
         ArgSpec {
             required,
             no_leading_space,
+            nullable: false,
             kind,
             form,
         }
@@ -219,6 +224,7 @@ impl ArgSpec {
         ArgSpec {
             required: true,
             no_leading_space: false,
+            nullable: false,
             kind: ValueKind::Content { mode },
             form: ArgForm::Standard,
         }
@@ -229,6 +235,7 @@ impl ArgSpec {
         ArgSpec {
             required: false,
             no_leading_space: false,
+            nullable: false,
             kind: ValueKind::Content { mode },
             form: ArgForm::Standard,
         }
@@ -608,11 +615,11 @@ impl<'a> ArgSpecParser<'a> {
             self.parse_ignored_default_block(kind_token)?;
         }
 
-        let kind = if matches!(&form, ArgForm::Star) {
+        let (kind, nullable) = if matches!(&form, ArgForm::Star) {
             if self.peek_char() == Some(':') {
                 return Err(self.err("`s` does not accept value type annotation"));
             }
-            ValueKind::Star
+            (ValueKind::Star, false)
         } else {
             self.parse_value_kind_annotation()?
         };
@@ -620,6 +627,7 @@ impl<'a> ArgSpecParser<'a> {
         let spec = ArgSpec {
             required,
             no_leading_space,
+            nullable,
             kind,
             form,
         };
@@ -665,28 +673,35 @@ impl<'a> ArgSpecParser<'a> {
         Err(self.err(format!("unterminated default block for `{token}`")))
     }
 
-    fn parse_value_kind_annotation(&mut self) -> Result<ValueKind, ArgSpecParseError> {
+    fn parse_value_kind_annotation(&mut self) -> Result<(ValueKind, bool), ArgSpecParseError> {
         if !self.consume_if(':') {
-            return Ok(ValueKind::Content {
-                mode: ContentMode::Math,
-            });
+            return Ok((
+                ValueKind::Content {
+                    mode: ContentMode::Math,
+                },
+                false,
+            ));
         }
 
         let annotation = self
             .next_char()
             .ok_or_else(|| self.err("missing value kind annotation after `:`"))?;
-        match annotation {
-            'T' => Ok(ValueKind::Content {
+        let kind = match annotation {
+            'T' => ValueKind::Content {
                 mode: ContentMode::Text,
-            }),
-            'D' => Ok(ValueKind::Delimiter),
-            'N' => Ok(ValueKind::CSName),
-            'L' => Ok(ValueKind::Dimension),
-            'I' => Ok(ValueKind::Integer),
-            'K' => Ok(ValueKind::KeyVal),
-            'C' => Ok(ValueKind::Column),
-            other => Err(self.err(format!("unsupported value kind annotation `:{other}`"))),
-        }
+            },
+            'D' => ValueKind::Delimiter,
+            'N' => ValueKind::CSName,
+            'L' => ValueKind::Dimension,
+            'I' => ValueKind::Integer,
+            'K' => ValueKind::KeyVal,
+            'C' => ValueKind::Column,
+            other => {
+                return Err(self.err(format!("unsupported value kind annotation `:{other}`")));
+            }
+        };
+        let nullable = self.consume_if('?');
+        Ok((kind, nullable))
     }
 
     fn parse_delimiter_token(&mut self) -> Result<DelimiterToken, ArgSpecParseError> {
@@ -759,6 +774,9 @@ impl<'a> ArgSpecParser<'a> {
     fn validate_spec(&self, spec: ArgSpec) -> Result<ArgSpec, ArgSpecParseError> {
         if spec.no_leading_space && spec.required {
             return Err(self.err("`!` prefix is only valid for optional argument forms"));
+        }
+        if spec.nullable && !spec.kind.is_delimiter() {
+            return Err(self.err("`?` is currently only supported for delimiter annotations"));
         }
 
         match &spec.form {
