@@ -64,6 +64,7 @@ export type ArgumentKind =
 export type ArgumentValue =
     | { Content: SyntaxNode }
     | { Delimiter: Delimiter }
+    | { CSName: string }
     | { Dimension: string }
     | { Integer: string }
     | { KeyVal: string }
@@ -629,6 +630,9 @@ fn value_kind_to_js(kind: &ValueKind) -> JsValue {
         }
         ValueKind::Delimiter => {
             js_sys::Reflect::set(&value, &"type".into(), &"delimiter".into()).unwrap();
+        }
+        ValueKind::CSName => {
+            js_sys::Reflect::set(&value, &"type".into(), &"csname".into()).unwrap();
         }
         ValueKind::Dimension => {
             js_sys::Reflect::set(&value, &"type".into(), &"dimension".into()).unwrap();

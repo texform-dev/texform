@@ -20,6 +20,11 @@ commands:
     allowed_mode: both
     spec: "o:K m:T"
 
+  - name: label
+    kind: prefix
+    allowed_mode: both
+    spec: "m:N"
+
   # Infix commands
   - name: over
     kind: infix
@@ -125,3 +130,4 @@ delimiter_controls:
   - rgroup
   - lmoustache
   - rmoustache
+  - "|"

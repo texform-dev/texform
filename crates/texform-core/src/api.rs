@@ -275,6 +275,7 @@ fn convert_diagnostic(err: Rich<'static, Token>) -> ParseDiagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use texform_interface::syntax_node::{ArgumentValue, Delimiter, SyntaxNode};
 
     #[test]
     fn full_success() {
@@ -437,6 +438,65 @@ mod tests {
             output[0].output.diagnostics.is_empty(),
             "no diagnostics expected when the default test package is loaded"
         );
+    }
+
+    #[test]
+    fn parse_with_argspecs_default_package_supports_control_delimiter_args() {
+        let output = parse_with_argspecs(
+            &[TemporaryArgSpec {
+                name: "probe",
+                target: SpecTarget::Command {
+                    kind: CommandKind::Prefix,
+                    allowed_mode: AllowedMode::Math,
+                },
+                spec: "m:D",
+            }],
+            &[r"\probe\langle", r"\probe\rangle", r"\probe\|"],
+            None,
+            true,
+        );
+        assert_eq!(output.len(), 3);
+
+        let expected = [
+            Delimiter::Control("langle"),
+            Delimiter::Control("rangle"),
+            Delimiter::Control("|"),
+        ];
+
+        for (item, expected_delimiter) in output.iter().zip(expected) {
+            assert!(
+                item.output.diagnostics.is_empty(),
+                "unexpected diagnostics for {}: {:?}",
+                item.input,
+                item.output.diagnostics
+            );
+
+            let result = item
+                .output
+                .result
+                .as_ref()
+                .unwrap_or_else(|| panic!("expected parse result for {}", item.input));
+
+            match &result.node {
+                SyntaxNode::Group { children, .. } => match &children[0] {
+                    SyntaxNode::Command { args, .. } => match &args[0]
+                        .as_ref()
+                        .unwrap_or_else(|| panic!("expected argument for {}", item.input))
+                        .value
+                    {
+                        ArgumentValue::Delimiter(value) => {
+                            assert_eq!(*value, expected_delimiter);
+                        }
+                        other => panic!(
+                            "expected delimiter argument for {}, got {:?}",
+                            item.input, other
+                        ),
+                    },
+                    other => panic!("expected command node for {}, got {:?}", item.input, other),
+                },
+                other => panic!("expected root group for {}, got {:?}", item.input, other),
+            }
+        }
     }
 
     #[test]

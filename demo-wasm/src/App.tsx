@@ -917,6 +917,13 @@ function describeArgumentValue(value: ArgumentValue): {
       content: null,
     }
   }
+  if ('CSName' in value) {
+    return {
+      kind: 'CSName',
+      value: value.CSName,
+      content: null,
+    }
+  }
   if ('Dimension' in value) {
     return {
       kind: 'Dimension',

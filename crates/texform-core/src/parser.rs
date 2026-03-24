@@ -315,6 +315,10 @@ fn parse_delimited_value<'src, 'parse>(
             let node = parse_tokens_as_content(input, kb, mode, tokens, strict)?;
             Ok(ArgumentValue::Content(node))
         }
+        ValueKind::CSName => {
+            let value = parse_tokens_as_cs_name(input, &tokens)?;
+            Ok(ArgumentValue::CSName(value))
+        }
         ValueKind::Dimension => {
             let src = tokens_to_string(&tokens);
             let value = insignificant_whitespace()
@@ -382,6 +386,21 @@ fn parse_delimited_value<'src, 'parse>(
             ))
         }
     }
+}
+
+fn parse_tokens_as_cs_name<'src, 'parse>(
+    input: &mut ParserInput<'src, 'parse>,
+    tokens: &[Token],
+) -> Result<String, Rich<'src, Token>> {
+    if tokens
+        .iter()
+        .any(|token| matches!(token, Token::ControlSeq(_)))
+    {
+        let cursor = input.cursor();
+        return Err(input.err_peek_or_point(&cursor, "escape sequence should not appear in CSName"));
+    }
+
+    Ok(tokens_to_string(tokens))
 }
 
 /// Parse one argument slot according to `ArgSpec`.
@@ -562,6 +581,40 @@ fn argument_parser<'a>(
                     input.parse(parser)
                 }
             }
+            ValueKind::CSName => {
+                if spec.required {
+                    let value = if matches!(input.peek(), Some(Token::LBrace)) {
+                        let tokens = collect_delimited_tokens(
+                            input,
+                            &DelimiterToken::Char('{'),
+                            &DelimiterToken::Char('}'),
+                        )?;
+                        parse_tokens_as_cs_name(input, &tokens)?
+                    } else {
+                        let cursor = input.cursor();
+                        let token = input.next().ok_or_else(|| {
+                            input.err_peek_or_point(&cursor, "missing required CSName argument")
+                        })?;
+                        parse_tokens_as_cs_name(input, std::slice::from_ref(&token))?
+                    };
+
+                    Ok(Some(Argument::from_value(
+                        ArgumentKind::Mandatory,
+                        ArgumentValue::CSName(value),
+                    )))
+                } else if !matches!(input.peek(), Some(Token::LBracket)) {
+                    Ok(None)
+                } else {
+                    let Some(tokens) = collect_optional_bracketed_tokens(input, false)? else {
+                        return Ok(None);
+                    };
+                    let value = parse_tokens_as_cs_name(input, &tokens)?;
+                    Ok(Some(Argument::from_value(
+                        ArgumentKind::Optional,
+                        ArgumentValue::CSName(value),
+                    )))
+                }
+            }
             ValueKind::Star => {
                 let cursor = input.cursor();
                 Err(input.err_peek_or_point(&cursor, "invalid spec: star kind requires star form"))
@@ -576,6 +629,12 @@ fn argument_parser<'a>(
         }
         ArgForm::Group => {
             if !matches!(input.peek(), Some(Token::LBrace)) {
+                if spec.required {
+                    let cursor = input.cursor();
+                    return Err(
+                        input.err_peek_or_point(&cursor, "missing required braced group argument")
+                    );
+                }
                 return Ok(None);
             }
 

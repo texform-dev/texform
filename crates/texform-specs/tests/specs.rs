@@ -26,6 +26,37 @@ fn test_parse_arg_specs_xparse_style() {
 }
 
 #[test]
+fn test_parse_arg_specs_supports_required_group_form() {
+    let specs = parse_arg_specs("m m{} m{}:T m{}:L", "required-group")
+        .expect("required group argspec should be valid");
+    assert_eq!(specs.len(), 4);
+
+    assert_eq!(specs[0], ArgSpec::mandatory(ContentMode::Math));
+
+    assert!(specs[1].required);
+    assert_eq!(specs[1].form, ArgForm::Group);
+    assert_eq!(
+        specs[1].kind,
+        ValueKind::Content {
+            mode: ContentMode::Math
+        }
+    );
+
+    assert!(specs[2].required);
+    assert_eq!(specs[2].form, ArgForm::Group);
+    assert_eq!(
+        specs[2].kind,
+        ValueKind::Content {
+            mode: ContentMode::Text
+        }
+    );
+
+    assert!(specs[3].required);
+    assert_eq!(specs[3].form, ArgForm::Group);
+    assert_eq!(specs[3].kind, ValueKind::Dimension);
+}
+
+#[test]
 fn test_parse_arg_specs_pairs_and_delimited() {
     let specs = parse_arg_specs(
         "r<(,)><[,]><{,}><|,|> d<(,|><[,|><{,}> r() d[] r{}",
@@ -126,6 +157,29 @@ fn test_parse_arg_specs_type_annotations() {
     assert!(specs[7].no_leading_space);
     assert_eq!(specs[7].kind, ValueKind::Dimension);
     assert_eq!(specs[7].form, ArgForm::Standard);
+}
+
+#[test]
+fn test_parse_arg_specs_supports_csname_annotation() {
+    let specs = parse_arg_specs("m:N o:N g:N m{}:N", "csname-types")
+        .expect("CSName argspec should be valid");
+    assert_eq!(specs.len(), 4);
+
+    assert_eq!(specs[0].kind, ValueKind::CSName);
+    assert_eq!(specs[0].form, ArgForm::Standard);
+    assert!(specs[0].required);
+
+    assert_eq!(specs[1].kind, ValueKind::CSName);
+    assert_eq!(specs[1].form, ArgForm::Standard);
+    assert!(!specs[1].required);
+
+    assert_eq!(specs[2].kind, ValueKind::CSName);
+    assert_eq!(specs[2].form, ArgForm::Group);
+    assert!(!specs[2].required);
+
+    assert_eq!(specs[3].kind, ValueKind::CSName);
+    assert_eq!(specs[3].form, ArgForm::Group);
+    assert!(specs[3].required);
 }
 
 #[test]
@@ -239,6 +293,12 @@ fn test_parse_arg_specs_rejects_required_with_no_space_prefix() {
         err.to_string()
             .contains("`!` prefix is only valid for optional argument forms")
     );
+
+    let err = parse_arg_specs("!m{}", "invalid").expect_err("!m{} should be invalid");
+    assert!(
+        err.to_string()
+            .contains("`!` prefix is only valid for optional argument forms")
+    );
 }
 
 #[test]
@@ -261,6 +321,18 @@ fn test_parse_arg_specs_accepts_group_with_non_content_kind() {
     assert_eq!(specs[2].kind, ValueKind::KeyVal);
     assert_eq!(specs[3].kind, ValueKind::Column);
     assert_eq!(specs[4].kind, ValueKind::Delimiter);
+}
+
+#[test]
+fn test_parse_arg_specs_rejects_malformed_required_group_form() {
+    let err = parse_arg_specs("m{foo}", "invalid").expect_err("m{foo} should be invalid");
+    assert!(
+        err.to_string()
+            .contains("`m` only supports required braced group syntax `m{}`")
+    );
+
+    let err = parse_arg_specs("m {}", "invalid").expect_err("m {} should be invalid");
+    assert!(err.to_string().contains("unsupported argument token `{`"));
 }
 
 #[test]

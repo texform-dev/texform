@@ -483,6 +483,54 @@ fn test_keyval_argument() {
 }
 
 #[test]
+fn test_csname_argument() {
+    let (result, _) = parse(r"\label{sec:intro}", false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "label");
+                assert_eq!(args.len(), 1);
+                assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Mandatory);
+                assert_eq!(
+                    expect_arg(&args[0]).value,
+                    ArgumentValue::CSName("sec:intro".to_string())
+                );
+            }
+            _ => panic!("Expected Command node"),
+        },
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_csname_argument_rejects_escape_sequence() {
+    let ctx = ParseContext::test_default();
+
+    let command = ctx.parse(r"\label{\alpha}", true);
+    assert!(
+        command.result.is_none(),
+        "control sequence inside CSName should fail"
+    );
+    assert!(
+        !command.diagnostics.is_empty(),
+        "expected CSName diagnostics, got {:?}",
+        command.diagnostics
+    );
+
+    let escaped_symbol = ctx.parse(r"\label{sec\_a}", true);
+    assert!(
+        escaped_symbol.result.is_none(),
+        "escaped symbol inside CSName should fail"
+    );
+    assert!(
+        !escaped_symbol.diagnostics.is_empty(),
+        "expected CSName diagnostics, got {:?}",
+        escaped_symbol.diagnostics
+    );
+}
+
+#[test]
 fn test_delimiter_argument_braced_matches_inline() {
     let (inline, _) = parse(r"\delim\langle", false).unwrap();
     let (braced, _) = parse(r"\delim{\langle}", false).unwrap();
@@ -2610,6 +2658,63 @@ fn test_no_leading_space_after_single_token_m_for_group_slot() {
 }
 
 #[test]
+fn test_required_group_form_enforces_braces() {
+    let mut ctx = ParseContext::test_default();
+    ctx.insert_command("reqgrp", CommandKind::Prefix, AllowedMode::Math, "m{}", &[])
+        .expect("reqgrp argspec should be valid");
+
+    let present = ctx.parse(r"\reqgrp{x}", true);
+    assert!(
+        present.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        present.diagnostics
+    );
+    let present_node = present
+        .result
+        .as_ref()
+        .unwrap_or_else(|| panic!("expected parse result"))
+        .node
+        .clone();
+    match present_node {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "reqgrp");
+                assert_eq!(args.len(), 1);
+                assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Group);
+                assert_eq!(
+                    expect_arg(&args[0]).value,
+                    ArgumentValue::Content(SyntaxNode::Char('x'))
+                );
+            }
+            other => panic!("Expected reqgrp command, got {:?}", other),
+        },
+        other => panic!("Expected root group, got {:?}", other),
+    }
+
+    let missing = ctx.parse(r"\reqgrp x", true);
+    assert!(
+        missing.result.is_none(),
+        "missing required group should fail"
+    );
+    assert!(
+        !missing.diagnostics.is_empty(),
+        "missing required group should report diagnostics, got {:?}",
+        missing.diagnostics
+    );
+
+    let wrong_form = ctx.parse(r"\reqgrp|x|", true);
+    assert!(
+        wrong_form.result.is_none(),
+        "non-braced required group should fail"
+    );
+    assert!(
+        !wrong_form.diagnostics.is_empty(),
+        "non-braced required group should report diagnostics, got {:?}",
+        wrong_form.diagnostics
+    );
+}
+
+#[test]
 fn test_group_form_supports_dimension_kind() {
     let mut ctx = ParseContext::test_default();
     ctx.insert_command("gdim", CommandKind::Prefix, AllowedMode::Math, "g:L", &[])
@@ -2669,6 +2774,80 @@ fn test_group_form_supports_dimension_kind() {
 }
 
 #[test]
+fn test_required_group_form_composes_with_star_and_standard_slots() {
+    let mut ctx = ParseContext::test_default();
+    ctx.insert_command(
+        "probe",
+        CommandKind::Prefix,
+        AllowedMode::Math,
+        "s m{} m",
+        &[],
+    )
+    .expect("probe argspec should be valid");
+
+    let basic = ctx.parse(r"\probe{A}B", true);
+    assert!(
+        basic.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        basic.diagnostics
+    );
+    let (name, args) = extract_first_command(
+        basic
+            .result
+            .as_ref()
+            .unwrap_or_else(|| panic!("expected parse result"))
+            .node
+            .clone(),
+    );
+    assert_eq!(name, "probe");
+    assert_eq!(args.len(), 3);
+    assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Star);
+    assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(false));
+    assert_eq!(expect_arg(&args[1]).kind, ArgumentKind::Group);
+    assert_eq!(
+        expect_arg(&args[1]).value,
+        ArgumentValue::Content(SyntaxNode::Char('A'))
+    );
+    assert_eq!(expect_arg(&args[2]).kind, ArgumentKind::Mandatory);
+    assert_eq!(
+        expect_arg(&args[2]).value,
+        ArgumentValue::Content(SyntaxNode::Char('B'))
+    );
+
+    let starred = ctx.parse(r"\probe*{A}B", true);
+    assert!(
+        starred.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        starred.diagnostics
+    );
+    let (_, starred_args) = extract_first_command(
+        starred
+            .result
+            .as_ref()
+            .unwrap_or_else(|| panic!("expected parse result"))
+            .node
+            .clone(),
+    );
+    assert_eq!(
+        expect_arg(&starred_args[0]).value,
+        ArgumentValue::Boolean(true)
+    );
+    assert_eq!(expect_arg(&starred_args[1]).kind, ArgumentKind::Group);
+    assert_eq!(expect_arg(&starred_args[2]).kind, ArgumentKind::Mandatory);
+
+    let missing = ctx.parse(r"\probe B", true);
+    assert!(
+        missing.result.is_none(),
+        "missing required group slot should fail"
+    );
+    assert!(
+        !missing.diagnostics.is_empty(),
+        "missing required group slot should report diagnostics, got {:?}",
+        missing.diagnostics
+    );
+}
+
+#[test]
 fn test_group_form_supports_delimiter_kind() {
     let mut ctx = ParseContext::test_default();
     ctx.insert_command("gdelim", CommandKind::Prefix, AllowedMode::Math, "g:D", &[])
@@ -2700,6 +2879,59 @@ fn test_group_form_supports_delimiter_kind() {
             other => panic!("Expected gdelim command, got {:?}", other),
         },
         other => panic!("Expected root group, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_required_group_and_delimited_forms_have_distinct_ast_kinds() {
+    let mut ctx = ParseContext::test_default();
+    ctx.insert_command("reqgrp", CommandKind::Prefix, AllowedMode::Math, "m{}", &[])
+        .expect("reqgrp argspec should be valid");
+    ctx.insert_command(
+        "reqdelim",
+        CommandKind::Prefix,
+        AllowedMode::Math,
+        "r{}",
+        &[],
+    )
+    .expect("reqdelim argspec should be valid");
+
+    let group = ctx.parse(r"\reqgrp{x}", true);
+    assert!(
+        group.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        group.diagnostics
+    );
+    let (_, group_args) = extract_first_command(
+        group
+            .result
+            .as_ref()
+            .unwrap_or_else(|| panic!("expected parse result"))
+            .node
+            .clone(),
+    );
+    assert_eq!(expect_arg(&group_args[0]).kind, ArgumentKind::Group);
+
+    let delimited = ctx.parse(r"\reqdelim{x}", true);
+    assert!(
+        delimited.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        delimited.diagnostics
+    );
+    let (_, delimited_args) = extract_first_command(
+        delimited
+            .result
+            .as_ref()
+            .unwrap_or_else(|| panic!("expected parse result"))
+            .node
+            .clone(),
+    );
+    match expect_arg(&delimited_args[0]).kind {
+        ArgumentKind::Delimited { open, close } => {
+            assert_eq!(open, Delimiter::Char('{'));
+            assert_eq!(close, Delimiter::Char('}'));
+        }
+        other => panic!("Expected delimited argument kind, got {:?}", other),
     }
 }
 

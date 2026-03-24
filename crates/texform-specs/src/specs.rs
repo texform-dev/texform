@@ -89,11 +89,13 @@ pub enum ArgForm {
     Standard,
     /// Optional star form (`s`).
     Star,
-    /// Optional group form (`g`).
+    /// Braced group form (`g` or `m{}`).
     ///
     /// The name follows xparse's `g` token ("group").
-    /// Semantically this behaves like an optional-group slot: it is optional
-    /// and only read when the next token is `{...}`.
+    /// Semantically this always reads a `{...}` group, but requiredness is
+    /// controlled by the surrounding [`ArgSpec`]:
+    /// - `g` => optional group slot
+    /// - `m{}` => required group slot
     ///
     /// MathJax currently uses this as optional braced content in all known
     /// cases, but we intentionally keep value-kind binding open (except `Star`)
@@ -117,6 +119,8 @@ pub enum ValueKind {
     Content { mode: ContentMode },
     /// Single delimiter token (including '.' for empty)
     Delimiter,
+    /// Control-sequence name string without any escape/control sequences
+    CSName,
     /// Dimension / length value (e.g., 1em, -2pt)
     Dimension,
     /// Integer value (e.g., 2, -10)
@@ -136,6 +140,10 @@ impl ValueKind {
 
     pub const fn is_delimiter(&self) -> bool {
         matches!(self, ValueKind::Delimiter)
+    }
+
+    pub const fn is_cs_name(&self) -> bool {
+        matches!(self, ValueKind::CSName)
     }
 
     pub const fn is_dimension(&self) -> bool {
@@ -545,7 +553,7 @@ impl<'a> ArgSpecParser<'a> {
             .ok_or_else(|| self.err("expected argument token"))?;
 
         let (required, form, has_ignored_default) = match kind_token {
-            'm' => (true, ArgForm::Standard, false),
+            'm' => (true, self.parse_mandatory_form()?, false),
             'o' => (false, ArgForm::Standard, false),
             'O' => (false, ArgForm::Standard, true),
             's' => (false, ArgForm::Star, false),
@@ -618,6 +626,18 @@ impl<'a> ArgSpecParser<'a> {
         self.validate_spec(spec)
     }
 
+    fn parse_mandatory_form(&mut self) -> Result<ArgForm, ArgSpecParseError> {
+        if !self.consume_if('{') {
+            return Ok(ArgForm::Standard);
+        }
+
+        if !self.consume_if('}') {
+            return Err(self.err("`m` only supports required braced group syntax `m{}`"));
+        }
+
+        Ok(ArgForm::Group)
+    }
+
     fn parse_ignored_default_block(&mut self, token: char) -> Result<(), ArgSpecParseError> {
         if !self.consume_if('{') {
             return Err(self.err(format!("`{token}` requires a default block like `{{...}}`")));
@@ -660,6 +680,7 @@ impl<'a> ArgSpecParser<'a> {
                 mode: ContentMode::Text,
             }),
             'D' => Ok(ValueKind::Delimiter),
+            'N' => Ok(ValueKind::CSName),
             'L' => Ok(ValueKind::Dimension),
             'I' => Ok(ValueKind::Integer),
             'K' => Ok(ValueKind::KeyVal),
@@ -755,9 +776,6 @@ impl<'a> ArgSpecParser<'a> {
                 }
             }
             ArgForm::Group => {
-                if spec.required {
-                    return Err(self.err("group form must be optional"));
-                }
                 if spec.kind.is_star() {
                     return Err(self.err("group form cannot use star value kind"));
                 }

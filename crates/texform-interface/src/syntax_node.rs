@@ -31,7 +31,9 @@ pub enum ArgumentKind {
     Optional,
     /// Star argument (`s`).
     Star,
-    /// Optional group argument (`g`).
+    /// Braced group argument (`g` or `m{}`).
+    ///
+    /// Requiredness is enforced by the spec/parser rather than this enum.
     Group,
     /// Single delimited argument (`r` / `d`) with matched delimiters.
     Delimited { open: Delimiter, close: Delimiter },
@@ -59,6 +61,8 @@ pub enum ArgumentValue {
     Content(SyntaxNode),
     /// Delimiter argument value.
     Delimiter(Delimiter),
+    /// Control-sequence name string with no escape/control sequences.
+    CSName(String),
     /// Dimension argument value (raw string).
     Dimension(String),
     /// Integer argument value (raw string).
@@ -480,6 +484,7 @@ impl ArgumentValue {
         match self {
             ArgumentValue::Content(node) => node.fmt_with_indent(f, indent),
             ArgumentValue::Delimiter(delim) => writeln!(f, "{}Delimiter({:?})", prefix, delim),
+            ArgumentValue::CSName(value) => writeln!(f, "{}CSName(\"{}\")", prefix, value),
             ArgumentValue::Dimension(value) => writeln!(f, "{}Dimension(\"{}\")", prefix, value),
             ArgumentValue::Integer(value) => writeln!(f, "{}Integer(\"{}\")", prefix, value),
             ArgumentValue::KeyVal(value) => writeln!(f, "{}KeyVal(\"{}\")", prefix, value),
