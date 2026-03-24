@@ -1,5 +1,8 @@
-import type { AllowedMode, CommandKind, ParseDiagnostic } from '../texformWasm'
-import type { CustomCommandEntry } from '../appTypes'
+import type { AllowedMode, BodyMode, CommandKind, ParseDiagnostic } from '../texformWasm'
+import type {
+  CustomKnowledgeRecordEntry,
+  CustomKnowledgeRecordTarget,
+} from '../appTypes'
 
 interface LatexInputPaneProps {
   paneClass: string
@@ -10,27 +13,30 @@ interface LatexInputPaneProps {
   strictMode: boolean
   fatalMessage: string | null
   diagnostics: ParseDiagnostic[]
-  customCommands: CustomCommandEntry[]
-  showCommandForm: boolean
-  customCommandName: string
+  customKnowledgeRecords: CustomKnowledgeRecordEntry[]
+  activeCustomRecordForm: CustomKnowledgeRecordTarget | null
+  customRecordName: string
   customCommandKind: CommandKind
-  customCommandMode: AllowedMode
-  customCommandSpec: string
-  customCommandError: string | null
+  customRecordMode: AllowedMode
+  customEnvironmentBodyMode: BodyMode
+  customRecordSpec: string
+  customRecordError: string | null
   rootSpanText: string
   treeDepth: number
   nodesCount: number
   onResetSample: () => void
   onStrictModeChange: (checked: boolean) => void
   onSourceChange: (source: string) => void
-  onToggleCommandForm: () => void
-  onCustomCommandNameChange: (name: string) => void
-  onCustomCommandSpecChange: (spec: string) => void
+  onToggleCustomRecordForm: (target: CustomKnowledgeRecordTarget) => void
+  onCustomRecordNameChange: (name: string) => void
+  onCustomRecordSpecChange: (spec: string) => void
   onCustomCommandKindChange: (kind: CommandKind) => void
-  onCustomCommandModeChange: (mode: AllowedMode) => void
+  onCustomRecordModeChange: (mode: AllowedMode) => void
+  onCustomEnvironmentBodyModeChange: (mode: BodyMode) => void
   onAddCustomCommand: () => void
-  onRemoveCustomCommand: (name: string) => void
-  onResetAllCustomCommands: () => void
+  onAddCustomEnvironment: () => void
+  onRemoveCustomRecord: (record: CustomKnowledgeRecordEntry) => void
+  onResetAllCustomKnowledgeRecords: () => void
 }
 
 function LatexInputPane({
@@ -42,28 +48,34 @@ function LatexInputPane({
   strictMode,
   fatalMessage,
   diagnostics,
-  customCommands,
-  showCommandForm,
-  customCommandName,
+  customKnowledgeRecords,
+  activeCustomRecordForm,
+  customRecordName,
   customCommandKind,
-  customCommandMode,
-  customCommandSpec,
-  customCommandError,
+  customRecordMode,
+  customEnvironmentBodyMode,
+  customRecordSpec,
+  customRecordError,
   rootSpanText,
   treeDepth,
   nodesCount,
   onResetSample,
   onStrictModeChange,
   onSourceChange,
-  onToggleCommandForm,
-  onCustomCommandNameChange,
-  onCustomCommandSpecChange,
+  onToggleCustomRecordForm,
+  onCustomRecordNameChange,
+  onCustomRecordSpecChange,
   onCustomCommandKindChange,
-  onCustomCommandModeChange,
+  onCustomRecordModeChange,
+  onCustomEnvironmentBodyModeChange,
   onAddCustomCommand,
-  onRemoveCustomCommand,
-  onResetAllCustomCommands,
+  onAddCustomEnvironment,
+  onRemoveCustomRecord,
+  onResetAllCustomKnowledgeRecords,
 }: LatexInputPaneProps) {
+  const isCommandForm = activeCustomRecordForm === 'command'
+  const isEnvironmentForm = activeCustomRecordForm === 'environment'
+
   return (
     <section className={`${paneClass} min-h-80 lg:min-h-0`}>
       <div className={sectionHeadClass}>
@@ -130,14 +142,14 @@ function LatexInputPane({
 
       <div className="border-t border-slate-200 pt-2">
         <div className="flex items-center justify-between">
-          <div className="text-xs font-semibold text-slate-700">Custom Commands</div>
+          <div className="text-xs font-semibold text-slate-700">Custom Knowledge Records</div>
           <div className="flex items-center gap-1.5">
-            {customCommands.length > 0 ? (
+            {customKnowledgeRecords.length > 0 ? (
               <button
                 type="button"
                 className="rounded-sm px-1.5 py-1 text-xs leading-none text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
-                onClick={onResetAllCustomCommands}
-                title="Remove all custom commands"
+                onClick={onResetAllCustomKnowledgeRecords}
+                title="Remove all custom knowledge records"
               >
                 Reset
               </button>
@@ -145,18 +157,29 @@ function LatexInputPane({
             <button
               type="button"
               className="rounded-sm px-1.5 py-1 text-xs leading-none text-blue-500 transition-colors hover:bg-blue-50 hover:text-blue-600"
-              onClick={onToggleCommandForm}
+              onClick={() => onToggleCustomRecordForm('command')}
             >
-              {showCommandForm ? '− Cancel' : '+ Add'}
+              {isCommandForm ? '− Cancel Command' : '+ Add Command'}
+            </button>
+            <button
+              type="button"
+              className="rounded-sm px-1.5 py-1 text-xs leading-none text-teal-600 transition-colors hover:bg-teal-50 hover:text-teal-700"
+              onClick={() => onToggleCustomRecordForm('environment')}
+            >
+              {isEnvironmentForm ? '− Cancel Environment' : '+ Add Environment'}
             </button>
           </div>
         </div>
 
-        {showCommandForm ? (
+        {activeCustomRecordForm !== null ? (
           <form
             className="mt-1.5 rounded border border-blue-100 bg-blue-50/30 p-2"
             onSubmit={(event) => {
               event.preventDefault()
+              if (isEnvironmentForm) {
+                onAddCustomEnvironment()
+                return
+              }
               onAddCustomCommand()
             }}
           >
@@ -164,39 +187,27 @@ function LatexInputPane({
               <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
                 Name
                 <input
-                  value={customCommandName}
-                  onChange={(event) => onCustomCommandNameChange(event.target.value)}
+                  value={customRecordName}
+                  onChange={(event) => onCustomRecordNameChange(event.target.value)}
                   className="mt-1 block w-full rounded-sm border border-slate-300 bg-white px-2 py-1 text-xs focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
-                  placeholder="e.g. dv"
+                  placeholder={isEnvironmentForm ? 'e.g. proofbox' : 'e.g. dv'}
                   autoFocus
                 />
               </label>
               <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
                 Spec
                 <input
-                  value={customCommandSpec}
-                  onChange={(event) => onCustomCommandSpecChange(event.target.value)}
+                  value={customRecordSpec}
+                  onChange={(event) => onCustomRecordSpecChange(event.target.value)}
                   className="mt-1 block w-full rounded-sm border border-slate-300 bg-white px-2 py-1 text-xs [font-family:var(--font-code)] focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
                   placeholder="e.g. s o m"
                 />
               </label>
               <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                Kind
+                Allowed Mode
                 <select
-                  value={customCommandKind}
-                  onChange={(event) => onCustomCommandKindChange(event.target.value as CommandKind)}
-                  className="mt-1 block w-full rounded-sm border border-slate-300 bg-white px-2 py-1 text-xs"
-                >
-                  <option value="prefix">prefix</option>
-                  <option value="infix">infix</option>
-                  <option value="declarative">declarative</option>
-                </select>
-              </label>
-              <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                Mode
-                <select
-                  value={customCommandMode}
-                  onChange={(event) => onCustomCommandModeChange(event.target.value as AllowedMode)}
+                  value={customRecordMode}
+                  onChange={(event) => onCustomRecordModeChange(event.target.value as AllowedMode)}
                   className="mt-1 block w-full rounded-sm border border-slate-300 bg-white px-2 py-1 text-xs"
                 >
                   <option value="math">math</option>
@@ -204,6 +215,35 @@ function LatexInputPane({
                   <option value="both">both</option>
                 </select>
               </label>
+              {isCommandForm ? (
+                <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Kind
+                  <select
+                    value={customCommandKind}
+                    onChange={(event) => onCustomCommandKindChange(event.target.value as CommandKind)}
+                    className="mt-1 block w-full rounded-sm border border-slate-300 bg-white px-2 py-1 text-xs"
+                  >
+                    <option value="prefix">prefix</option>
+                    <option value="infix">infix</option>
+                    <option value="declarative">declarative</option>
+                  </select>
+                </label>
+              ) : null}
+              {isEnvironmentForm ? (
+                <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Body Mode
+                  <select
+                    value={customEnvironmentBodyMode}
+                    onChange={(event) =>
+                      onCustomEnvironmentBodyModeChange(event.target.value as BodyMode)
+                    }
+                    className="mt-1 block w-full rounded-sm border border-slate-300 bg-white px-2 py-1 text-xs"
+                  >
+                    <option value="math">math</option>
+                    <option value="text">text</option>
+                  </select>
+                </label>
+              ) : null}
             </div>
 
             <div className="mt-2 flex items-center gap-2">
@@ -211,45 +251,54 @@ function LatexInputPane({
                 type="submit"
                 className="rounded-sm border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium leading-tight text-blue-600 transition-colors hover:bg-blue-100"
               >
-                Add Command
+                {isEnvironmentForm ? 'Add Environment' : 'Add Command'}
               </button>
-              {customCommandError ? <span className="text-xs text-red-600">{customCommandError}</span> : null}
+              {customRecordError ? <span className="text-xs text-red-600">{customRecordError}</span> : null}
             </div>
           </form>
         ) : null}
 
-        {customCommands.length > 0 ? (
+        {customKnowledgeRecords.length > 0 ? (
           <div className="mt-1.5 max-h-32 space-y-1 overflow-y-auto">
-            {customCommands.map((command) => (
+            {customKnowledgeRecords.map((record) => (
               <div
-                key={command.name}
+                key={`${record.target}:${record.name}`}
                 className="flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50/70 px-2 py-1"
               >
                 <span className="min-w-0 shrink-0 text-xs font-semibold [font-family:var(--font-code)]">
-                  \{command.name}
+                  {record.target === 'command' ? `\\${record.name}` : `\\begin{${record.name}}`}
                 </span>
-                <span className="rounded-sm bg-blue-100 px-1 py-px text-xs leading-none text-blue-700">
-                  {command.kind}
+                <span className="rounded-sm bg-slate-200 px-1 py-px text-xs leading-none text-slate-700">
+                  {record.target}
                 </span>
+                {record.target === 'command' ? (
+                  <span className="rounded-sm bg-blue-100 px-1 py-px text-xs leading-none text-blue-700">
+                    {record.kind}
+                  </span>
+                ) : (
+                  <span className="rounded-sm bg-teal-100 px-1 py-px text-xs leading-none text-teal-700">
+                    body {record.bodyMode}
+                  </span>
+                )}
                 <span className="rounded-sm bg-emerald-100 px-1 py-px text-xs leading-none text-emerald-700">
-                  {command.mode}
+                  {record.mode}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-xs text-slate-400 [font-family:var(--font-code)]">
-                  {command.spec || '(no spec)'}
+                  {record.spec || '(no spec)'}
                 </span>
                 <button
                   type="button"
                   className="ml-auto shrink-0 rounded-sm px-1 py-px text-xs leading-tight text-slate-300 transition-colors hover:bg-red-50 hover:text-red-500"
-                  onClick={() => onRemoveCustomCommand(command.name)}
-                  title="Remove command"
+                  onClick={() => onRemoveCustomRecord(record)}
+                  title="Remove record"
                 >
                   ✕
                 </button>
               </div>
             ))}
           </div>
-        ) : !showCommandForm ? (
-          <p className="mt-1 text-xs italic text-slate-400">No custom commands.</p>
+        ) : activeCustomRecordForm === null ? (
+          <p className="mt-1 text-xs italic text-slate-400">No custom knowledge records.</p>
         ) : null}
       </div>
 

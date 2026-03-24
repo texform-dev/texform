@@ -3,6 +3,7 @@ import {
   ParseContext as WasmParseContext,
   type AllowedMode,
   type ArgSpecInfo,
+  type BodyMode,
   type CommandInfo,
   type CommandKind,
   type EnvInfo,
@@ -14,12 +15,18 @@ import {
   type ParseResult,
   type SyntaxNode,
 } from './texformWasm'
-import type { CustomCommandEntry, TreeNode } from './appTypes'
+import type {
+  CustomKnowledgeRecordEntry,
+  CustomKnowledgeRecordTarget,
+  TreeNode,
+} from './appTypes'
 import AppHeader from './components/AppHeader'
 import LatexInputPane from './components/LatexInputPane'
 import SyntaxTreePane from './components/SyntaxTreePane'
 
 const SAMPLE_LATEX = String.raw`\left(\frac{a+b}{\sqrt[3]{x^2_i}}\right) + \text{foo$a+b$bar}`
+const CUSTOM_KNOWLEDGE_RECORDS_STORAGE_KEY = 'texform-custom-knowledge-records'
+const LEGACY_CUSTOM_COMMANDS_STORAGE_KEY = 'texform-custom-commands'
 
 interface ParseViewState {
   result: ParseResult | null
@@ -58,6 +65,133 @@ function badgeTone(type: string): BadgeTone {
   return BADGE_TONES[type] ?? DEFAULT_BADGE_TONE
 }
 
+function isAllowedMode(value: unknown): value is AllowedMode {
+  return value === 'math' || value === 'text' || value === 'both'
+}
+
+function isCommandKind(value: unknown): value is CommandKind {
+  return value === 'prefix' || value === 'infix' || value === 'declarative'
+}
+
+function isBodyMode(value: unknown): value is BodyMode {
+  return value === 'math' || value === 'text'
+}
+
+function recordIdentity(
+  record: Pick<CustomKnowledgeRecordEntry, 'target' | 'name'>,
+): string {
+  return `${record.target}:${record.name}`
+}
+
+function normalizeStoredCustomKnowledgeRecords(value: unknown): CustomKnowledgeRecordEntry[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  const deduped = new Map<string, CustomKnowledgeRecordEntry>()
+
+  for (const item of value) {
+    if (typeof item !== 'object' || item === null) {
+      continue
+    }
+
+    const candidate = item as Record<string, unknown>
+    const name =
+      typeof candidate.name === 'string'
+        ? candidate.name.trim().replace(/^\\/, '')
+        : ''
+    if (!name) {
+      continue
+    }
+
+    const spec = typeof candidate.spec === 'string' ? candidate.spec : ''
+    const mode = candidate.mode
+    if (!isAllowedMode(mode)) {
+      continue
+    }
+
+    if (candidate.target === 'environment') {
+      const bodyMode = candidate.bodyMode
+      if (!isBodyMode(bodyMode)) {
+        continue
+      }
+
+      const record: CustomKnowledgeRecordEntry = {
+        target: 'environment',
+        name,
+        mode,
+        bodyMode,
+        spec,
+      }
+      deduped.set(recordIdentity(record), record)
+      continue
+    }
+
+    const kind = candidate.kind
+    if (!isCommandKind(kind)) {
+      continue
+    }
+
+    const record: CustomKnowledgeRecordEntry = {
+      target: 'command',
+      name,
+      kind,
+      mode,
+      spec,
+    }
+    deduped.set(recordIdentity(record), record)
+  }
+
+  return [...deduped.values()]
+}
+
+function loadStoredCustomKnowledgeRecords(): CustomKnowledgeRecordEntry[] {
+  try {
+    const raw =
+      localStorage.getItem(CUSTOM_KNOWLEDGE_RECORDS_STORAGE_KEY) ??
+      localStorage.getItem(LEGACY_CUSTOM_COMMANDS_STORAGE_KEY)
+    if (!raw) {
+      return []
+    }
+
+    return normalizeStoredCustomKnowledgeRecords(JSON.parse(raw))
+  } catch {
+    return []
+  }
+}
+
+function persistCustomKnowledgeRecords(records: CustomKnowledgeRecordEntry[]): void {
+  try {
+    localStorage.setItem(CUSTOM_KNOWLEDGE_RECORDS_STORAGE_KEY, JSON.stringify(records))
+    localStorage.removeItem(LEGACY_CUSTOM_COMMANDS_STORAGE_KEY)
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+function insertCustomKnowledgeRecord(
+  context: WasmParseContext,
+  record: CustomKnowledgeRecordEntry,
+): void {
+  if (record.target === 'command') {
+    context.insertCommand(record.name, record.kind, record.mode, record.spec)
+    return
+  }
+
+  context.insertEnv(record.name, record.mode, record.spec, record.bodyMode)
+}
+
+function removeCustomKnowledgeRecord(
+  context: WasmParseContext,
+  record: CustomKnowledgeRecordEntry,
+): boolean {
+  if (record.target === 'command') {
+    return context.removeCommand(record.name)
+  }
+
+  return context.removeEnv(record.name)
+}
+
 function App() {
   const [source, setSource] = useState(SAMPLE_LATEX)
   const [strictMode, setStrictMode] = useState(false)
@@ -66,28 +200,18 @@ function App() {
   const [parseContext, setParseContext] = useState<WasmParseContext | null>(null)
   const [contextVersion, setContextVersion] = useState(0)
   const [collapsedNodes, setCollapsedNodes] = useState<Set<string>>(new Set())
-  const [customCommandName, setCustomCommandName] = useState('')
+  const [customRecordName, setCustomRecordName] = useState('')
   const [customCommandKind, setCustomCommandKind] = useState<CommandKind>('prefix')
-  const [customCommandMode, setCustomCommandMode] = useState<AllowedMode>('math')
-  const [customCommandSpec, setCustomCommandSpec] = useState('m')
-  const [customCommandError, setCustomCommandError] = useState<string | null>(null)
-  const [customCommands, setCustomCommands] = useState<CustomCommandEntry[]>(() => {
-    try {
-      const raw = localStorage.getItem('texform-custom-commands')
-      return raw ? (JSON.parse(raw) as CustomCommandEntry[]) : []
-    } catch {
-      return []
-    }
-  })
-  const [showCommandForm, setShowCommandForm] = useState(false)
-
-  const persistCommands = (commands: CustomCommandEntry[]) => {
-    try {
-      localStorage.setItem('texform-custom-commands', JSON.stringify(commands))
-    } catch {
-      // Ignore storage quota errors
-    }
-  }
+  const [customRecordMode, setCustomRecordMode] = useState<AllowedMode>('math')
+  const [customEnvironmentBodyMode, setCustomEnvironmentBodyMode] =
+    useState<BodyMode>('math')
+  const [customRecordSpec, setCustomRecordSpec] = useState('m')
+  const [customRecordError, setCustomRecordError] = useState<string | null>(null)
+  const [customKnowledgeRecords, setCustomKnowledgeRecords] = useState<
+    CustomKnowledgeRecordEntry[]
+  >(() => loadStoredCustomKnowledgeRecords())
+  const [activeCustomRecordForm, setActiveCustomRecordForm] =
+    useState<CustomKnowledgeRecordTarget | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -102,13 +226,14 @@ function App() {
             return
           }
 
-          // Restore persisted custom commands into the new context
+          // Restore persisted custom knowledge records into the new context
           try {
-            const raw = localStorage.getItem('texform-custom-commands')
-            if (raw) {
-              const saved = JSON.parse(raw) as CustomCommandEntry[]
-              for (const cmd of saved) {
-                ctx.insertCommand(cmd.name, cmd.kind, cmd.mode, cmd.spec)
+            const saved = loadStoredCustomKnowledgeRecords()
+            for (const record of saved) {
+              try {
+                insertCustomKnowledgeRecord(ctx, record)
+              } catch {
+                // Ignore malformed stored records.
               }
             }
           } catch {
@@ -267,66 +392,122 @@ function App() {
     setCollapsedNodes(next)
   }
 
+  const toggleCustomRecordForm = (target: CustomKnowledgeRecordTarget) => {
+    setCustomRecordError(null)
+    setActiveCustomRecordForm((current) => (current === target ? null : target))
+  }
+
   const addCustomCommand = () => {
     if (!parseContext) {
-      setCustomCommandError('Parse context is not ready.')
+      setCustomRecordError('Parse context is not ready.')
       return
     }
 
-    const name = customCommandName.trim().replace(/^\\/, '')
+    const name = customRecordName.trim().replace(/^\\/, '')
     if (!name) {
-      setCustomCommandError('Command name is required.')
+      setCustomRecordError('Command name is required.')
       return
     }
 
+    const nextRecord: CustomKnowledgeRecordEntry = {
+      target: 'command',
+      name,
+      kind: customCommandKind,
+      mode: customRecordMode,
+      spec: customRecordSpec,
+    }
+
     try {
-      parseContext.insertCommand(name, customCommandKind, customCommandMode, customCommandSpec)
+      insertCustomKnowledgeRecord(parseContext, nextRecord)
       const updated = [
-        ...customCommands.filter((entry) => entry.name !== name),
-        { name, kind: customCommandKind, mode: customCommandMode, spec: customCommandSpec },
+        ...customKnowledgeRecords.filter(
+          (entry) => recordIdentity(entry) !== recordIdentity(nextRecord),
+        ),
+        nextRecord,
       ]
-      setCustomCommands(updated)
-      persistCommands(updated)
-      setCustomCommandError(null)
+      setCustomKnowledgeRecords(updated)
+      persistCustomKnowledgeRecords(updated)
+      setCustomRecordError(null)
       setContextVersion((v) => v + 1)
-      setCustomCommandName('')
-      setShowCommandForm(false)
+      setCustomRecordName('')
+      setActiveCustomRecordForm(null)
     } catch (error) {
-      setCustomCommandError(extractFatalMessage(error))
+      setCustomRecordError(extractFatalMessage(error))
     }
   }
 
-  const removeCustomCommand = (name: string) => {
+  const addCustomEnvironment = () => {
+    if (!parseContext) {
+      setCustomRecordError('Parse context is not ready.')
+      return
+    }
+
+    const name = customRecordName.trim().replace(/^\\/, '')
+    if (!name) {
+      setCustomRecordError('Environment name is required.')
+      return
+    }
+
+    const nextRecord: CustomKnowledgeRecordEntry = {
+      target: 'environment',
+      name,
+      mode: customRecordMode,
+      bodyMode: customEnvironmentBodyMode,
+      spec: customRecordSpec,
+    }
+
+    try {
+      insertCustomKnowledgeRecord(parseContext, nextRecord)
+      const updated = [
+        ...customKnowledgeRecords.filter(
+          (entry) => recordIdentity(entry) !== recordIdentity(nextRecord),
+        ),
+        nextRecord,
+      ]
+      setCustomKnowledgeRecords(updated)
+      persistCustomKnowledgeRecords(updated)
+      setCustomRecordError(null)
+      setContextVersion((v) => v + 1)
+      setCustomRecordName('')
+      setActiveCustomRecordForm(null)
+    } catch (error) {
+      setCustomRecordError(extractFatalMessage(error))
+    }
+  }
+
+  const removeCustomRecord = (record: CustomKnowledgeRecordEntry) => {
     if (!parseContext) {
       return
     }
 
     try {
-      parseContext.removeCommand(name)
-      const updated = customCommands.filter((entry) => entry.name !== name)
-      setCustomCommands(updated)
-      persistCommands(updated)
-      setCustomCommandError(null)
+      removeCustomKnowledgeRecord(parseContext, record)
+      const updated = customKnowledgeRecords.filter(
+        (entry) => recordIdentity(entry) !== recordIdentity(record),
+      )
+      setCustomKnowledgeRecords(updated)
+      persistCustomKnowledgeRecords(updated)
+      setCustomRecordError(null)
       setContextVersion((v) => v + 1)
     } catch (error) {
-      setCustomCommandError(extractFatalMessage(error))
+      setCustomRecordError(extractFatalMessage(error))
     }
   }
 
-  const resetAllCustomCommands = () => {
+  const resetAllCustomKnowledgeRecords = () => {
     if (!parseContext) {
       return
     }
-    for (const cmd of customCommands) {
+    for (const record of customKnowledgeRecords) {
       try {
-        parseContext.removeCommand(cmd.name)
+        removeCustomKnowledgeRecord(parseContext, record)
       } catch {
         // best-effort removal
       }
     }
-    setCustomCommands([])
-    persistCommands([])
-    setCustomCommandError(null)
+    setCustomKnowledgeRecords([])
+    persistCustomKnowledgeRecords([])
+    setCustomRecordError(null)
     setContextVersion((v) => v + 1)
   }
 
@@ -335,7 +516,6 @@ function App() {
     const isLeaf = !hasChildren
     const collapsed = effectiveCollapsedNodes.has(node.id)
     const tone = badgeTone(node.type)
-
 
     return (
       <div key={node.id} className="min-w-max">
@@ -431,13 +611,14 @@ function App() {
           strictMode={strictMode}
           fatalMessage={parseState.fatalMessage}
           diagnostics={parseState.diagnostics}
-          customCommands={customCommands}
-          showCommandForm={showCommandForm}
-          customCommandName={customCommandName}
+          customKnowledgeRecords={customKnowledgeRecords}
+          activeCustomRecordForm={activeCustomRecordForm}
+          customRecordName={customRecordName}
           customCommandKind={customCommandKind}
-          customCommandMode={customCommandMode}
-          customCommandSpec={customCommandSpec}
-          customCommandError={customCommandError}
+          customRecordMode={customRecordMode}
+          customEnvironmentBodyMode={customEnvironmentBodyMode}
+          customRecordSpec={customRecordSpec}
+          customRecordError={customRecordError}
           rootSpanText={
             parseState.result
               ? `${parseState.result.span.start}..${parseState.result.span.end}`
@@ -448,14 +629,16 @@ function App() {
           onResetSample={() => setSource(SAMPLE_LATEX)}
           onStrictModeChange={setStrictMode}
           onSourceChange={setSource}
-          onToggleCommandForm={() => setShowCommandForm((v) => !v)}
-          onCustomCommandNameChange={setCustomCommandName}
-          onCustomCommandSpecChange={setCustomCommandSpec}
+          onToggleCustomRecordForm={toggleCustomRecordForm}
+          onCustomRecordNameChange={setCustomRecordName}
+          onCustomRecordSpecChange={setCustomRecordSpec}
           onCustomCommandKindChange={setCustomCommandKind}
-          onCustomCommandModeChange={setCustomCommandMode}
+          onCustomRecordModeChange={setCustomRecordMode}
+          onCustomEnvironmentBodyModeChange={setCustomEnvironmentBodyMode}
           onAddCustomCommand={addCustomCommand}
-          onRemoveCustomCommand={removeCustomCommand}
-          onResetAllCustomCommands={resetAllCustomCommands}
+          onAddCustomEnvironment={addCustomEnvironment}
+          onRemoveCustomRecord={removeCustomRecord}
+          onResetAllCustomKnowledgeRecords={resetAllCustomKnowledgeRecords}
         />
 
         <SyntaxTreePane

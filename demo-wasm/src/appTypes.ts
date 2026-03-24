@@ -1,4 +1,4 @@
-import type { AllowedMode, CommandKind } from './texformWasm'
+import type { AllowedMode, BodyMode, CommandKind } from './texformWasm'
 
 export interface TreeNode {
   id: string
@@ -15,9 +15,20 @@ export interface TreeNode {
   children: TreeNode[]
 }
 
-export interface CustomCommandEntry {
-  name: string
-  kind: CommandKind
-  mode: AllowedMode
-  spec: string
-}
+export type CustomKnowledgeRecordTarget = 'command' | 'environment'
+
+export type CustomKnowledgeRecordEntry =
+  | {
+      target: 'command'
+      name: string
+      kind: CommandKind
+      mode: AllowedMode
+      spec: string
+    }
+  | {
+      target: 'environment'
+      name: string
+      mode: AllowedMode
+      bodyMode: BodyMode
+      spec: string
+    }
