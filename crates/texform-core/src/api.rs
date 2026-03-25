@@ -17,8 +17,7 @@ use serde::Serialize;
 use crate::context::ParseContext;
 use crate::knowledge::{self, AllowedMode, CommandKind, KnowledgeBase};
 use crate::lexer::Token;
-use crate::parser;
-use crate::parser_utils::{Spanned, TokenStream, build_token_stream};
+use crate::parser::{self, Spanned, TokenStream, build_token_stream};
 use texform_interface::syntax_node::{ContentMode, SyntaxNode};
 
 /// Byte-offset span.
