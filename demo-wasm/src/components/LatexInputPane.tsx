@@ -35,6 +35,7 @@ interface LatexInputPaneProps {
   onCustomEnvironmentBodyModeChange: (mode: BodyMode) => void
   onAddCustomCommand: () => void
   onAddCustomEnvironment: () => void
+  onAddCustomDelimiter: () => void
   onRemoveCustomRecord: (record: CustomKnowledgeRecordEntry) => void
   onResetAllCustomKnowledgeRecords: () => void
 }
@@ -70,11 +71,13 @@ function LatexInputPane({
   onCustomEnvironmentBodyModeChange,
   onAddCustomCommand,
   onAddCustomEnvironment,
+  onAddCustomDelimiter,
   onRemoveCustomRecord,
   onResetAllCustomKnowledgeRecords,
 }: LatexInputPaneProps) {
   const isCommandForm = activeCustomRecordForm === 'command'
   const isEnvironmentForm = activeCustomRecordForm === 'environment'
+  const isDelimiterForm = activeCustomRecordForm === 'delimiter'
 
   return (
     <section className={`${paneClass} min-h-80 lg:min-h-0`}>
@@ -159,14 +162,21 @@ function LatexInputPane({
               className="rounded-sm px-1.5 py-1 text-xs leading-none text-blue-500 transition-colors hover:bg-blue-50 hover:text-blue-600"
               onClick={() => onToggleCustomRecordForm('command')}
             >
-              {isCommandForm ? '− Cancel Command' : '+ Add Command'}
+              {isCommandForm ? '− Cancel Command' : '+ Command'}
             </button>
             <button
               type="button"
               className="rounded-sm px-1.5 py-1 text-xs leading-none text-teal-600 transition-colors hover:bg-teal-50 hover:text-teal-700"
               onClick={() => onToggleCustomRecordForm('environment')}
             >
-              {isEnvironmentForm ? '− Cancel Environment' : '+ Add Environment'}
+              {isEnvironmentForm ? '− Cancel Environment' : '+ Environment'}
+            </button>
+            <button
+              type="button"
+              className="rounded-sm px-1.5 py-1 text-xs leading-none text-amber-600 transition-colors hover:bg-amber-50 hover:text-amber-700"
+              onClick={() => onToggleCustomRecordForm('delimiter')}
+            >
+              {isDelimiterForm ? '− Cancel Delimiter' : '+ Delimiter'}
             </button>
           </div>
         </div>
@@ -180,6 +190,10 @@ function LatexInputPane({
                 onAddCustomEnvironment()
                 return
               }
+              if (isDelimiterForm) {
+                onAddCustomDelimiter()
+                return
+              }
               onAddCustomCommand()
             }}
           >
@@ -190,31 +204,41 @@ function LatexInputPane({
                   value={customRecordName}
                   onChange={(event) => onCustomRecordNameChange(event.target.value)}
                   className="mt-1 block w-full rounded-sm border border-slate-300 bg-white px-2 py-1 text-xs focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
-                  placeholder={isEnvironmentForm ? 'e.g. proofbox' : 'e.g. dv'}
+                  placeholder={
+                    isEnvironmentForm
+                      ? 'e.g. proofbox'
+                      : isDelimiterForm
+                        ? 'e.g. langle'
+                        : 'e.g. dv'
+                  }
                   autoFocus
                 />
               </label>
-              <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                Spec
-                <input
-                  value={customRecordSpec}
-                  onChange={(event) => onCustomRecordSpecChange(event.target.value)}
-                  className="mt-1 block w-full rounded-sm border border-slate-300 bg-white px-2 py-1 text-xs [font-family:var(--font-code)] focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
-                  placeholder="e.g. s o m"
-                />
-              </label>
-              <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                Allowed Mode
-                <select
-                  value={customRecordMode}
-                  onChange={(event) => onCustomRecordModeChange(event.target.value as AllowedMode)}
-                  className="mt-1 block w-full rounded-sm border border-slate-300 bg-white px-2 py-1 text-xs"
-                >
-                  <option value="math">math</option>
-                  <option value="text">text</option>
-                  <option value="both">both</option>
-                </select>
-              </label>
+              {!isDelimiterForm ? (
+                <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Spec
+                  <input
+                    value={customRecordSpec}
+                    onChange={(event) => onCustomRecordSpecChange(event.target.value)}
+                    className="mt-1 block w-full rounded-sm border border-slate-300 bg-white px-2 py-1 text-xs [font-family:var(--font-code)] focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                    placeholder="e.g. s o m"
+                  />
+                </label>
+              ) : null}
+              {!isDelimiterForm ? (
+                <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Allowed Mode
+                  <select
+                    value={customRecordMode}
+                    onChange={(event) => onCustomRecordModeChange(event.target.value as AllowedMode)}
+                    className="mt-1 block w-full rounded-sm border border-slate-300 bg-white px-2 py-1 text-xs"
+                  >
+                    <option value="math">math</option>
+                    <option value="text">text</option>
+                    <option value="both">both</option>
+                  </select>
+                </label>
+              ) : null}
               {isCommandForm ? (
                 <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
                   Kind
@@ -251,7 +275,11 @@ function LatexInputPane({
                 type="submit"
                 className="rounded-sm border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium leading-tight text-blue-600 transition-colors hover:bg-blue-100"
               >
-                {isEnvironmentForm ? 'Add Environment' : 'Add Command'}
+                {isEnvironmentForm
+                  ? 'Environment'
+                  : isDelimiterForm
+                    ? 'Delimiter'
+                    : 'Command'}
               </button>
               {customRecordError ? <span className="text-xs text-red-600">{customRecordError}</span> : null}
             </div>
@@ -266,7 +294,9 @@ function LatexInputPane({
                 className="flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50/70 px-2 py-1"
               >
                 <span className="min-w-0 shrink-0 text-xs font-semibold [font-family:var(--font-code)]">
-                  {record.target === 'command' ? `\\${record.name}` : `\\begin{${record.name}}`}
+                  {record.target === 'environment'
+                    ? `\\begin{${record.name}}`
+                    : `\\${record.name}`}
                 </span>
                 <span className="rounded-sm bg-slate-200 px-1 py-px text-xs leading-none text-slate-700">
                   {record.target}
@@ -275,17 +305,29 @@ function LatexInputPane({
                   <span className="rounded-sm bg-blue-100 px-1 py-px text-xs leading-none text-blue-700">
                     {record.kind}
                   </span>
-                ) : (
+                ) : record.target === 'environment' ? (
                   <span className="rounded-sm bg-teal-100 px-1 py-px text-xs leading-none text-teal-700">
                     body {record.bodyMode}
                   </span>
+                ) : (
+                  <span className="rounded-sm bg-amber-100 px-1 py-px text-xs leading-none text-amber-700">
+                    control
+                  </span>
                 )}
-                <span className="rounded-sm bg-emerald-100 px-1 py-px text-xs leading-none text-emerald-700">
-                  {record.mode}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-xs text-slate-400 [font-family:var(--font-code)]">
-                  {record.spec || '(no spec)'}
-                </span>
+                {'mode' in record ? (
+                  <span className="rounded-sm bg-emerald-100 px-1 py-px text-xs leading-none text-emerald-700">
+                    {record.mode}
+                  </span>
+                ) : null}
+                {'spec' in record ? (
+                  <span className="min-w-0 flex-1 truncate text-xs text-slate-400 [font-family:var(--font-code)]">
+                    {record.spec || '(no spec)'}
+                  </span>
+                ) : (
+                  <span className="min-w-0 flex-1 truncate text-xs text-slate-400 [font-family:var(--font-code)]">
+                    delimiter control
+                  </span>
+                )}
                 <button
                   type="button"
                   className="ml-auto shrink-0 rounded-sm px-1 py-px text-xs leading-tight text-slate-300 transition-colors hover:bg-red-50 hover:text-red-500"

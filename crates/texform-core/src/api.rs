@@ -14,11 +14,11 @@
 use chumsky::prelude::*;
 use serde::Serialize;
 
-use crate::context::ParseContext;
-use crate::knowledge::{self, AllowedMode, CommandKind, KnowledgeBase};
+use crate::context::{ContextItem, ParseContext};
+use crate::knowledge::{self, KnowledgeBase};
 use crate::lexer::Token;
 use crate::parser::{self, Spanned, TokenStream, build_token_stream};
-use texform_interface::syntax_node::{ContentMode, SyntaxNode};
+use texform_interface::syntax_node::SyntaxNode;
 
 /// Byte-offset span.
 #[derive(Debug, Clone, Serialize)]
@@ -58,33 +58,14 @@ pub struct ParseOutput {
     pub diagnostics: Vec<ParseDiagnostic>,
 }
 
-/// One parse attempt produced by [`parse_with_argspecs`].
+/// One parse attempt produced by [`parse_with_context_items`].
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
-pub struct ParseWithArgspecItem {
+pub struct ParseWithContextItem {
     pub input: String,
     pub output: ParseOutput,
 }
-pub type ParseWithArgspecOutput = Vec<ParseWithArgspecItem>;
-
-#[derive(Debug, Clone, Copy)]
-pub enum SpecTarget {
-    Command {
-        kind: CommandKind,
-        allowed_mode: AllowedMode,
-    },
-    Environment {
-        allowed_mode: AllowedMode,
-        body_mode: ContentMode,
-    },
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct TemporaryArgSpec<'a> {
-    pub name: &'a str,
-    pub target: SpecTarget,
-    pub spec: &'a str,
-}
+pub type ParseWithContextOutput = Vec<ParseWithContextItem>;
 
 /// Parse a LaTeX formula and return a unified output.
 ///
@@ -114,88 +95,71 @@ pub(crate) fn parse_latex_with_kb(kb: &KnowledgeBase, src: &str, strict: bool) -
     }
 }
 
-/// Test one or more ArgSpecs by injecting temporary commands/environments,
+/// Test one or more context items by injecting them into a fresh parse context,
 /// then parsing one or more inputs.
-///
-/// By default, this loads the embedded `test` package so parse probes can use `\text{...}`
-/// when validating text-mode behavior. Pass `packages` to use an explicit package list instead
-/// (for example `["dev"]` or `[]` for an empty knowledge base).
-///
-/// Each entry in `argspecs` is inserted into the context before parsing begins.
-/// Duplicate `(target, name)` pairs are rejected with a diagnostic.
-///
-/// Prefer inputs that only exercise the temporary targets plus plain literal content
-/// (letters, digits, simple operators, and grouping). The one allowed helper command is
-/// `\text{...}` when you intentionally need to enter text mode. Avoid other commands/environments
-/// and avoid argument/value syntax that depends on unrelated records.
-pub fn parse_with_argspecs(
-    argspecs: &[TemporaryArgSpec<'_>],
+pub fn parse_with_context_items(
+    items: &[ContextItem],
     inputs: &[&str],
     packages: Option<&[&str]>,
     strict: bool,
-) -> ParseWithArgspecOutput {
-    let mut ctx = match packages {
-        Some(package_names) => match knowledge::try_build_kb_from_exact_packages(package_names) {
-            Ok(kb) => ParseContext::from_kb(kb),
-            Err(error) => {
-                return invalid_inputs_output(inputs, format!("package loading failed: {}", error));
-            }
-        },
-        None => match knowledge::try_build_kb_from_exact_packages(
-            texform_specs::packages::PARSE_WITH_ARGSPEC_DEFAULT_PACKAGES,
-        ) {
-            Ok(kb) => ParseContext::from_kb(kb),
-            Err(error) => {
-                return invalid_inputs_output(inputs, format!("package loading failed: {}", error));
-            }
-        },
+) -> ParseWithContextOutput {
+    let mut ctx = match build_probe_context(packages) {
+        Ok(ctx) => ctx,
+        Err(error) => {
+            return invalid_inputs_output(inputs, format!("package loading failed: {}", error));
+        }
     };
 
-    // Check for duplicate (target, name) pairs.
-    {
-        use std::collections::HashSet;
-        let mut seen = HashSet::new();
-        for spec in argspecs {
-            let target_tag = match spec.target {
-                SpecTarget::Command { .. } => "command",
-                SpecTarget::Environment { .. } => "environment",
-            };
-            if !seen.insert((target_tag, spec.name)) {
-                return invalid_inputs_output(
-                    inputs,
-                    format!("duplicate {} name: {}", target_tag, spec.name),
-                );
-            }
-        }
+    if let Some(message) = validate_context_items(items) {
+        return invalid_inputs_output(inputs, message);
     }
 
-    // Insert all argspecs.
-    for argspec in argspecs {
-        let insert_result = match argspec.target {
-            SpecTarget::Command { kind, allowed_mode } => {
-                ctx.insert_command(argspec.name, kind, allowed_mode, argspec.spec, &[])
-            }
-            SpecTarget::Environment {
-                allowed_mode,
-                body_mode,
-            } => ctx.insert_env(argspec.name, allowed_mode, argspec.spec, body_mode, &[]),
-        };
+    for item in items {
+        let insert_result = ctx.insert_item(item.clone());
 
         if let Err(error) = insert_result {
             return invalid_inputs_output(
                 inputs,
-                format!("spec validation failed for {}: {}", argspec.name, error),
+                format!("spec validation failed for {}: {}", item.name(), error),
             );
         }
     }
 
     inputs
         .iter()
-        .map(|input| ParseWithArgspecItem {
+        .map(|input| ParseWithContextItem {
             input: (*input).to_string(),
             output: ctx.parse(input, strict),
         })
         .collect()
+}
+
+fn build_probe_context(
+    packages: Option<&[&str]>,
+) -> Result<ParseContext, knowledge::PackageLoadError> {
+    match packages {
+        Some(package_names) => {
+            knowledge::try_build_kb_from_exact_packages(package_names).map(ParseContext::from_kb)
+        }
+        None => knowledge::try_build_kb_from_exact_packages(
+            texform_specs::packages::PARSE_WITH_ARGSPEC_DEFAULT_PACKAGES,
+        )
+        .map(ParseContext::from_kb),
+    }
+}
+
+fn validate_context_items(items: &[ContextItem]) -> Option<String> {
+    use std::collections::HashSet;
+
+    let mut seen = HashSet::new();
+    for item in items {
+        let target_tag = item.target_tag();
+        let name = item.name();
+        if !seen.insert((target_tag, name)) {
+            return Some(format!("duplicate {} name: {}", target_tag, name));
+        }
+    }
+    None
 }
 
 fn invalid_input_output(message: String) -> ParseOutput {
@@ -210,10 +174,10 @@ fn invalid_input_output(message: String) -> ParseOutput {
     }
 }
 
-fn invalid_inputs_output(inputs: &[&str], message: String) -> ParseWithArgspecOutput {
+fn invalid_inputs_output(inputs: &[&str], message: String) -> ParseWithContextOutput {
     inputs
         .iter()
-        .map(|input| ParseWithArgspecItem {
+        .map(|input| ParseWithContextItem {
             input: (*input).to_string(),
             output: invalid_input_output(message.clone()),
         })
@@ -274,7 +238,31 @@ fn convert_diagnostic(err: Rich<'static, Token>) -> ParseDiagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use texform_interface::syntax_node::{ArgumentValue, Delimiter, SyntaxNode};
+    use crate::context::{CommandItem, ContextItem, DelimiterControlItem, EnvironmentItem};
+    use crate::knowledge::{AllowedMode, CommandKind};
+    use texform_interface::syntax_node::{ArgumentValue, ContentMode, Delimiter, SyntaxNode};
+
+    fn command_item(
+        name: &str,
+        kind: CommandKind,
+        allowed_mode: AllowedMode,
+        spec: &str,
+    ) -> ContextItem {
+        CommandItem::new(name, kind, allowed_mode, spec).into()
+    }
+
+    fn environment_item(
+        name: &str,
+        allowed_mode: AllowedMode,
+        body_mode: ContentMode,
+        spec: &str,
+    ) -> ContextItem {
+        EnvironmentItem::new(name, allowed_mode, body_mode, spec).into()
+    }
+
+    fn delimiter_control_item(name: &str) -> ContextItem {
+        DelimiterControlItem::new(name).into()
+    }
 
     #[test]
     fn full_success() {
@@ -286,7 +274,6 @@ mod tests {
         assert_eq!(res.span.start, 0);
         assert_eq!(res.span.end, 11);
 
-        // Verify serializable
         let json = serde_json::to_value(&res).unwrap();
         assert!(json.get("node").is_some());
         assert!(json.get("span").is_some());
@@ -294,7 +281,6 @@ mod tests {
 
     #[test]
     fn pure_failure_strict() {
-        // Unknown command in strict mode -> error, no output
         let output = parse_latex(r"\unknowncmd", true);
         assert!(output.result.is_none(), "strict unknown should fail");
         assert!(!output.diagnostics.is_empty(), "should have diagnostics");
@@ -302,12 +288,9 @@ mod tests {
 
     #[test]
     fn partial_success_or_failure() {
-        // Unclosed brace: parser may recover partially or fail entirely
         let output = parse_latex(r"\frac{a}{", false);
-        // Either way, diagnostics should be present
         assert!(!output.diagnostics.is_empty(), "should have diagnostics");
 
-        // Verify diagnostic fields are populated
         let d = &output.diagnostics[0];
         assert!(!d.message.is_empty());
     }
@@ -337,16 +320,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_with_argspecs_command_target() {
-        let output = parse_with_argspecs(
-            &[TemporaryArgSpec {
-                name: "probe",
-                target: SpecTarget::Command {
-                    kind: CommandKind::Prefix,
-                    allowed_mode: AllowedMode::Math,
-                },
-                spec: "m",
-            }],
+    fn parse_with_context_items_command_target() {
+        let output = parse_with_context_items(
+            &[command_item(
+                "probe",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "m",
+            )],
             &[r"\probe{a}"],
             None,
             true,
@@ -363,16 +344,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_with_argspecs_environment_target() {
-        let output = parse_with_argspecs(
-            &[TemporaryArgSpec {
-                name: "probeenv",
-                target: SpecTarget::Environment {
-                    allowed_mode: AllowedMode::Math,
-                    body_mode: ContentMode::Math,
-                },
-                spec: "",
-            }],
+    fn parse_with_context_items_environment_target() {
+        let output = parse_with_context_items(
+            &[environment_item(
+                "probeenv",
+                AllowedMode::Math,
+                ContentMode::Math,
+                "",
+            )],
             &[r"\begin{probeenv}a\end{probeenv}"],
             None,
             true,
@@ -389,16 +368,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_with_argspecs_reports_invalid_spec() {
-        let output = parse_with_argspecs(
-            &[TemporaryArgSpec {
-                name: "probe",
-                target: SpecTarget::Command {
-                    kind: CommandKind::Prefix,
-                    allowed_mode: AllowedMode::Math,
-                },
-                spec: "s:T",
-            }],
+    fn parse_with_context_items_reports_invalid_spec() {
+        let output = parse_with_context_items(
+            &[command_item(
+                "probe",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "s:T",
+            )],
             &[r"\probe", r"\probe*"],
             None,
             true,
@@ -414,16 +391,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_with_argspecs_uses_test_package_by_default() {
-        let output = parse_with_argspecs(
-            &[TemporaryArgSpec {
-                name: "probe",
-                target: SpecTarget::Command {
-                    kind: CommandKind::Prefix,
-                    allowed_mode: AllowedMode::Math,
-                },
-                spec: "m",
-            }],
+    fn parse_with_context_items_uses_test_package_by_default() {
+        let output = parse_with_context_items(
+            &[command_item(
+                "probe",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "m",
+            )],
             &[r"\probe{\text{a}}"],
             None,
             true,
@@ -440,16 +415,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_with_argspecs_default_package_supports_control_delimiter_args() {
-        let output = parse_with_argspecs(
-            &[TemporaryArgSpec {
-                name: "probe",
-                target: SpecTarget::Command {
-                    kind: CommandKind::Prefix,
-                    allowed_mode: AllowedMode::Math,
-                },
-                spec: "m:D",
-            }],
+    fn parse_with_context_items_default_package_supports_control_delimiter_args() {
+        let output = parse_with_context_items(
+            &[command_item(
+                "probe",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "m:D",
+            )],
             &[r"\probe\langle", r"\probe\rangle", r"\probe\|"],
             None,
             true,
@@ -499,16 +472,53 @@ mod tests {
     }
 
     #[test]
-    fn parse_with_argspecs_supports_nullable_delimiter_arguments() {
-        let output = parse_with_argspecs(
-            &[TemporaryArgSpec {
-                name: "genfracprobe",
-                target: SpecTarget::Command {
-                    kind: CommandKind::Prefix,
-                    allowed_mode: AllowedMode::Math,
+    fn parse_with_context_items_supports_runtime_delimiter_controls() {
+        let output = parse_with_context_items(
+            &[
+                delimiter_control_item("langle"),
+                delimiter_control_item("rangle"),
+            ],
+            &[r"\left\langle x\right\rangle"],
+            Some(&[]),
+            true,
+        );
+        assert_eq!(output.len(), 1);
+        assert!(
+            output[0].output.diagnostics.is_empty(),
+            "unexpected diagnostics: {:?}",
+            output[0].output.diagnostics
+        );
+
+        let result = output[0]
+            .output
+            .result
+            .as_ref()
+            .expect("runtime delimiter controls should parse");
+
+        match &result.node {
+            SyntaxNode::Group { children, .. } => match &children[0] {
+                SyntaxNode::Group { kind, .. } => match kind {
+                    texform_interface::syntax_node::GroupKind::Delimited { left, right } => {
+                        assert_eq!(*left, Delimiter::Control("langle"));
+                        assert_eq!(*right, Delimiter::Control("rangle"));
+                    }
+                    other => panic!("expected delimited group, got {:?}", other),
                 },
-                spec: "m:D? m:D? m m m m",
-            }],
+                other => panic!("expected child group, got {:?}", other),
+            },
+            other => panic!("expected root group, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_with_context_items_supports_nullable_delimiter_arguments() {
+        let output = parse_with_context_items(
+            &[command_item(
+                "genfracprobe",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "m:D? m:D? m m m m",
+            )],
             &[
                 r"\genfracprobe{}{}{0}{1}{a}{b}",
                 r"\genfracprobe{(}{)}{0}{1}{a}{b}",
@@ -563,16 +573,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_with_argspecs_can_use_empty_package_list() {
-        let output = parse_with_argspecs(
-            &[TemporaryArgSpec {
-                name: "probe",
-                target: SpecTarget::Command {
-                    kind: CommandKind::Prefix,
-                    allowed_mode: AllowedMode::Math,
-                },
-                spec: "m",
-            }],
+    fn parse_with_context_items_can_use_empty_package_list() {
+        let output = parse_with_context_items(
+            &[command_item(
+                "probe",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "m",
+            )],
             &[r"\probe{\text{a}}"],
             Some(&[]),
             true,
@@ -585,16 +593,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_with_argspecs_can_load_explicit_packages() {
-        let output = parse_with_argspecs(
-            &[TemporaryArgSpec {
-                name: "probe",
-                target: SpecTarget::Command {
-                    kind: CommandKind::Prefix,
-                    allowed_mode: AllowedMode::Math,
-                },
-                spec: "m",
-            }],
+    fn parse_with_context_items_can_load_explicit_packages() {
+        let output = parse_with_context_items(
+            &[command_item(
+                "probe",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "m",
+            )],
             &[r"\probe{\hspace{1em}}"],
             Some(&["dev"]),
             true,
@@ -611,16 +617,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_with_argspecs_reports_unknown_package() {
-        let output = parse_with_argspecs(
-            &[TemporaryArgSpec {
-                name: "probe",
-                target: SpecTarget::Command {
-                    kind: CommandKind::Prefix,
-                    allowed_mode: AllowedMode::Math,
-                },
-                spec: "m",
-            }],
+    fn parse_with_context_items_reports_unknown_package() {
+        let output = parse_with_context_items(
+            &[command_item(
+                "probe",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "m",
+            )],
             &[r"\probe{a}"],
             Some(&["missing-package"]),
             true,
@@ -636,25 +640,11 @@ mod tests {
     }
 
     #[test]
-    fn parse_with_argspecs_multiple_specs() {
-        let output = parse_with_argspecs(
+    fn parse_with_context_items_multiple_specs() {
+        let output = parse_with_context_items(
             &[
-                TemporaryArgSpec {
-                    name: "foo",
-                    target: SpecTarget::Command {
-                        kind: CommandKind::Prefix,
-                        allowed_mode: AllowedMode::Math,
-                    },
-                    spec: "m",
-                },
-                TemporaryArgSpec {
-                    name: "bar",
-                    target: SpecTarget::Environment {
-                        allowed_mode: AllowedMode::Math,
-                        body_mode: ContentMode::Math,
-                    },
-                    spec: "",
-                },
+                command_item("foo", CommandKind::Prefix, AllowedMode::Math, "m"),
+                environment_item("bar", AllowedMode::Math, ContentMode::Math, ""),
             ],
             &[r"\foo{\begin{bar}x\end{bar}}"],
             None,
@@ -669,25 +659,11 @@ mod tests {
     }
 
     #[test]
-    fn parse_with_argspecs_duplicate_name_rejected() {
-        let output = parse_with_argspecs(
+    fn parse_with_context_items_duplicate_name_rejected() {
+        let output = parse_with_context_items(
             &[
-                TemporaryArgSpec {
-                    name: "foo",
-                    target: SpecTarget::Command {
-                        kind: CommandKind::Prefix,
-                        allowed_mode: AllowedMode::Math,
-                    },
-                    spec: "m",
-                },
-                TemporaryArgSpec {
-                    name: "foo",
-                    target: SpecTarget::Command {
-                        kind: CommandKind::Prefix,
-                        allowed_mode: AllowedMode::Math,
-                    },
-                    spec: "o m",
-                },
+                command_item("foo", CommandKind::Prefix, AllowedMode::Math, "m"),
+                command_item("foo", CommandKind::Prefix, AllowedMode::Math, "o m"),
             ],
             &[r"\foo{x}"],
             None,
@@ -698,6 +674,27 @@ mod tests {
             output[0].output.diagnostics[0]
                 .message
                 .contains("duplicate command name: foo"),
+            "unexpected diagnostic: {}",
+            output[0].output.diagnostics[0].message
+        );
+    }
+
+    #[test]
+    fn parse_with_context_items_duplicate_delimiter_rejected() {
+        let output = parse_with_context_items(
+            &[
+                delimiter_control_item("langle"),
+                delimiter_control_item("langle"),
+            ],
+            &[r"\left\langle x\right\rangle"],
+            Some(&[]),
+            true,
+        );
+        assert_eq!(output.len(), 1);
+        assert!(
+            output[0].output.diagnostics[0]
+                .message
+                .contains("duplicate delimiter control name: langle"),
             "unexpected diagnostic: {}",
             output[0].output.diagnostics[0].message
         );

@@ -1,6 +1,9 @@
 use serde::Deserialize;
 use texform_core::api::{self, ParseOutput};
-use texform_core::context::ParseContext as CoreParseContext;
+use texform_core::context::{
+    CommandItem, ContextItem, DelimiterControlItem, EnvironmentItem,
+    ParseContext as CoreParseContext,
+};
 use texform_core::knowledge::{self, AllowedMode, CommandKind, CommandMeta, EnvMeta};
 use texform_specs::specs::{ArgForm, ArgSpec, ContentMode, DelimiterToken, ValueKind};
 use wasm_bindgen::prelude::*;
@@ -99,13 +102,14 @@ export type EnvInfo = {
     args: ArgSpecInfo[];
 };
 
-export type TemporaryArgSpec =
+export type ContextItem =
     | {
           target: "command";
           name: string;
           kind: "prefix" | "infix" | "declarative";
           allowed_mode: "math" | "text" | "both";
           spec: string;
+          tags?: string[];
       }
     | {
           target: "environment";
@@ -113,23 +117,33 @@ export type TemporaryArgSpec =
           allowed_mode: "math" | "text" | "both";
           body_mode: "math" | "text";
           spec: string;
+          tags?: string[];
+      }
+    | {
+          target: "delimiter";
+          name: string;
       };
 "#;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "target", rename_all = "lowercase")]
-enum TemporaryArgSpecInput {
+enum ContextItemInput {
     Command {
         name: String,
         kind: String,
         allowed_mode: String,
         spec: String,
+        tags: Option<Vec<String>>,
     },
     Environment {
         name: String,
         allowed_mode: String,
         body_mode: String,
         spec: String,
+        tags: Option<Vec<String>>,
+    },
+    Delimiter {
+        name: String,
     },
 }
 
@@ -154,40 +168,34 @@ impl ParseContext {
         Ok(ParseContext { inner })
     }
 
-    pub fn insert_command(
-        &mut self,
-        name: &str,
-        kind: &str,
-        mode: &str,
-        spec: &str,
-    ) -> Result<(), JsValue> {
-        let kind = parse_command_kind(kind)?;
-        let allowed_mode = parse_allowed_mode(mode)?;
+    pub fn insert_item(&mut self, item: JsValue) -> Result<(), JsValue> {
+        let item: ContextItemInput = serde_wasm_bindgen::from_value(item)
+            .map_err(|error| JsValue::from_str(&format!("invalid context item: {}", error)))?;
         self.inner
-            .insert_command(name, kind, allowed_mode, spec, &[])
+            .insert_item(parse_context_item_input(item)?)
             .map_err(|error| JsValue::from_str(&format!("spec validation failed: {}", error)))
     }
 
-    pub fn remove_command(&mut self, name: &str) -> bool {
-        self.inner.remove_command(name)
-    }
-
-    pub fn insert_env(
-        &mut self,
-        name: &str,
-        mode: &str,
-        spec: &str,
-        body_mode: &str,
-    ) -> Result<(), JsValue> {
-        let allowed_mode = parse_allowed_mode(mode)?;
-        let body_mode = parse_content_mode(body_mode)?;
+    pub fn insert_items(&mut self, items: JsValue) -> Result<(), JsValue> {
+        let items: Vec<ContextItemInput> = serde_wasm_bindgen::from_value(items)
+            .map_err(|error| JsValue::from_str(&format!("invalid context items: {}", error)))?;
+        let core_items = items
+            .into_iter()
+            .map(parse_context_item_input)
+            .collect::<Result<Vec<_>, _>>()?;
         self.inner
-            .insert_env(name, allowed_mode, spec, body_mode, &[])
+            .insert_items(core_items)
             .map_err(|error| JsValue::from_str(&format!("spec validation failed: {}", error)))
     }
 
-    pub fn remove_env(&mut self, name: &str) -> bool {
-        self.inner.remove_env(name)
+    pub fn remove_item(&mut self, item: JsValue) -> Result<bool, JsValue> {
+        let item: ContextItemInput = serde_wasm_bindgen::from_value(item)
+            .map_err(|error| JsValue::from_str(&format!("invalid context item: {}", error)))?;
+        Ok(self.inner.remove_item(parse_context_item_input(item)?))
+    }
+
+    pub fn is_delimiter_control(&self, name: &str) -> bool {
+        self.inner.is_delimiter_control(name)
     }
 
     pub fn parse(&self, src: &str, strict: Option<bool>) -> Result<JsValue, JsValue> {
@@ -221,95 +229,68 @@ pub fn parse(src: &str, strict: Option<bool>) -> Result<JsValue, JsValue> {
     parse_output_to_result(api::parse_latex(src, strict))
 }
 
-/// Test one or more ArgSpecs by temporarily injecting commands/environments and parsing one or more inputs.
+/// Test one or more context items by injecting them and parsing one or more inputs.
 ///
-/// By default, this loads the embedded `test` package so text-mode probes can use `\text{...}`.
-/// Pass `packages` to provide an explicit package list such as `["dev"]` or `[]`.
-///
-/// Prefer inputs that only use the temporary targets plus plain literal content.
-/// The one allowed helper command is `\text{...}` when you intentionally need text mode.
-/// Avoid other commands/environments and avoid syntax that depends on unrelated records.
+/// Supported targets are command, environment, and delimiter control.
 #[wasm_bindgen]
-pub fn parse_with_argspecs(
-    argspecs: JsValue,
+pub fn parse_with_context_items(
+    items: JsValue,
     inputs: Vec<String>,
     packages: Option<Vec<String>>,
     strict: Option<bool>,
 ) -> Result<JsValue, JsValue> {
     let strict = strict.unwrap_or(false);
-    let specs: Vec<TemporaryArgSpecInput> = serde_wasm_bindgen::from_value(argspecs)
-        .map_err(|error| JsValue::from_str(&format!("invalid argspecs: {}", error)))?;
+    let items: Vec<ContextItemInput> = serde_wasm_bindgen::from_value(items)
+        .map_err(|error| JsValue::from_str(&format!("invalid context items: {}", error)))?;
 
     let input_refs: Vec<&str> = inputs.iter().map(String::as_str).collect();
     let package_refs = packages
         .as_ref()
         .map(|values| values.iter().map(String::as_str).collect::<Vec<_>>());
 
-    let mut api_specs = Vec::with_capacity(specs.len());
-    for spec in &specs {
-        api_specs.push(convert_temporary_argspec_input(spec)?);
-    }
+    let core_items: Vec<ContextItem> = items
+        .into_iter()
+        .map(parse_context_item_input)
+        .collect::<Result<_, _>>()?;
 
-    let api_spec_refs: Vec<api::TemporaryArgSpec<'_>> = api_specs
-        .iter()
-        .map(|s| api::TemporaryArgSpec {
-            name: &s.name,
-            target: s.target,
-            spec: &s.spec,
-        })
-        .collect();
-
-    let output = api::parse_with_argspecs(
-        &api_spec_refs,
+    let output = api::parse_with_context_items(
+        &core_items,
         input_refs.as_slice(),
         package_refs.as_deref(),
         strict,
     );
-    parse_with_argspec_output_to_result(output)
+    parse_with_context_output_to_result(output)
 }
 
-/// Intermediate owned representation for a TemporaryArgSpec.
-struct OwnedTemporaryArgSpec {
-    name: String,
-    target: api::SpecTarget,
-    spec: String,
-}
-
-fn convert_temporary_argspec_input(
-    input: &TemporaryArgSpecInput,
-) -> Result<OwnedTemporaryArgSpec, JsValue> {
+fn parse_context_item_input(input: ContextItemInput) -> Result<ContextItem, JsValue> {
     match input {
-        TemporaryArgSpecInput::Command {
+        ContextItemInput::Command {
             name,
             kind,
             allowed_mode,
             spec,
+            tags,
         } => {
-            let kind = parse_command_kind(kind)?;
-            let allowed_mode = parse_allowed_mode(allowed_mode)?;
-            Ok(OwnedTemporaryArgSpec {
-                name: name.clone(),
-                target: api::SpecTarget::Command { kind, allowed_mode },
-                spec: spec.clone(),
-            })
+            let kind = parse_command_kind(kind.as_str())?;
+            let allowed_mode = parse_allowed_mode(allowed_mode.as_str())?;
+            Ok(CommandItem::new(name, kind, allowed_mode, spec)
+                .with_tags(tags.unwrap_or_default())
+                .into())
         }
-        TemporaryArgSpecInput::Environment {
+        ContextItemInput::Environment {
             name,
             allowed_mode,
             body_mode,
             spec,
+            tags,
         } => {
-            let allowed_mode = parse_allowed_mode(allowed_mode)?;
-            let body_mode = parse_content_mode(body_mode)?;
-            Ok(OwnedTemporaryArgSpec {
-                name: name.clone(),
-                target: api::SpecTarget::Environment {
-                    allowed_mode,
-                    body_mode,
-                },
-                spec: spec.clone(),
-            })
+            let allowed_mode = parse_allowed_mode(allowed_mode.as_str())?;
+            let body_mode = parse_content_mode(body_mode.as_str())?;
+            Ok(EnvironmentItem::new(name, allowed_mode, body_mode, spec)
+                .with_tags(tags.unwrap_or_default())
+                .into())
         }
+        ContextItemInput::Delimiter { name } => Ok(DelimiterControlItem::new(name).into()),
     }
 }
 
@@ -359,8 +340,8 @@ pub fn validate_spec(spec: &str) -> JsValue {
     value.into()
 }
 
-fn parse_with_argspec_output_to_result(
-    output: api::ParseWithArgspecOutput,
+fn parse_with_context_output_to_result(
+    output: api::ParseWithContextOutput,
 ) -> Result<JsValue, JsValue> {
     let results = js_sys::Array::new();
     for item in &output {

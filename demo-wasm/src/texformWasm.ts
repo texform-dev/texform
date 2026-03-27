@@ -3,7 +3,7 @@ import initWasmModule, {
   lookup_command_info as wasmLookupCommandInfo,
   lookup_env_info as wasmLookupEnvInfo,
   parse as wasmParse,
-  parse_with_argspecs as wasmParseWithArgspecs,
+  parse_with_context_items as wasmParseWithContextItems,
   type Argument,
   type ArgumentValue,
   type GroupKind,
@@ -37,13 +37,14 @@ export async function ensureWasmReady(): Promise<void> {
 export type CommandKind = 'prefix' | 'infix' | 'declarative'
 export type AllowedMode = 'math' | 'text' | 'both'
 export type BodyMode = 'math' | 'text'
-export type TemporaryArgSpec =
+export type ContextItem =
   | {
       target: 'command'
       name: string
       spec: string
       kind: CommandKind
       allowed_mode: AllowedMode
+      tags?: string[]
     }
   | {
       target: 'environment'
@@ -51,9 +52,14 @@ export type TemporaryArgSpec =
       spec: string
       allowed_mode: AllowedMode
       body_mode: BodyMode
+      tags?: string[]
+    }
+  | {
+      target: 'delimiter'
+      name: string
     }
 
-export interface ParseWithArgspecSingleResult {
+export interface ParseWithContextSingleResult {
   input: string
   success: boolean
   result: ParseResult | null
@@ -64,7 +70,7 @@ export interface ParseWithArgspecSingleResult {
   error: string | null
 }
 
-export type ParseWithArgspecBatchResult = ParseWithArgspecSingleResult[]
+export type ParseWithContextBatchResult = ParseWithContextSingleResult[]
 
 export interface ArgSpecInfo {
   required: boolean
@@ -106,25 +112,16 @@ export class ParseContext {
     return this.inner.parse(src, strict)
   }
 
-  insertCommand(name: string, kind: CommandKind, mode: AllowedMode, spec: string): void {
-    this.inner.insert_command(name, kind, mode, spec)
+  insertItem(item: ContextItem): void {
+    this.inner.insert_item(item)
   }
 
-  removeCommand(name: string): boolean {
-    return this.inner.remove_command(name)
+  insertItems(items: ContextItem[]): void {
+    this.inner.insert_items(items)
   }
 
-  insertEnv(
-    name: string,
-    mode: AllowedMode,
-    spec: string,
-    bodyMode: BodyMode,
-  ): void {
-    this.inner.insert_env(name, mode, spec, bodyMode)
-  }
-
-  removeEnv(name: string): boolean {
-    return this.inner.remove_env(name)
+  removeItem(item: ContextItem): boolean {
+    return this.inner.remove_item(item) as boolean
   }
 
   lookupCommand(name: string): CommandInfo | null {
@@ -141,29 +138,19 @@ export function parseLatex(src: string, strict?: boolean | null): ParseResult {
   return wasmParse(src, strict)
 }
 
-/**
- * Test one or more ArgSpecs by temporarily injecting commands/environments and parsing one or more inputs.
- *
- * By default, this loads the embedded `test` package so text-mode probes can use `\text{...}`.
- * Pass `packages` to override that with an explicit package list such as `['dev']` or `[]`.
- *
- * Prefer inputs that only exercise the temporary targets plus plain literal content.
- * The one allowed helper command is `\text{...}` when you intentionally need text mode.
- * Avoid other commands/environments and avoid values that depend on unrelated records.
- */
-export function parse_with_argspecs(
-  argspecs: TemporaryArgSpec[],
+export function parseWithContextItems(
+  items: ContextItem[],
   inputs: string[],
   packages?: string[] | null,
   strict?: boolean | null,
-): ParseWithArgspecBatchResult {
+): ParseWithContextBatchResult {
   assertReady()
-  return wasmParseWithArgspecs(
-    argspecs,
+  return wasmParseWithContextItems(
+    items,
     inputs,
     packages ?? undefined,
     strict,
-  ) as ParseWithArgspecBatchResult
+  ) as ParseWithContextBatchResult
 }
 
 export function lookupCommandInfo(name: string): CommandInfo | null {

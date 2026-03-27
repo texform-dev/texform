@@ -6,16 +6,25 @@ A LaTeX formula parser and formatter.
 
 ### Parse Example
 
-Use the built-in CLI example to parse LaTeX formulas and inspect the syntax tree:
+Use the built-in CLI example to parse LaTeX formulas, inspect the syntax tree, and optionally inject
+custom command/environment/delimiter items into a temporary parse context:
 
 ```bash
-cargo run --example parse -p texform-core -- '<input>' [--strict true|false]
+cargo run --example parse -p texform-core -- '<input>' [--strict true|false] [--verbose]
+cargo run --example parse -p texform-core -- '<input>' --command <name> <kind> <mode> <spec>
+cargo run --example parse -p texform-core -- '<input>' --environment <name> <mode> <body_mode> <spec>
+cargo run --example parse -p texform-core -- '<input>' --delimiter <name>
 ```
 
 **Arguments:**
 
 - `<input>` — LaTeX formula to parse (required)
 - `--strict true|false` — Enable strict mode (default: `false`). In strict mode, unknown commands are rejected as errors.
+- `--verbose` — Print the syntax tree as pretty JSON.
+- `--packages <csv>` — Load an explicit comma-separated package list. Without this flag, the example uses the runtime default packages.
+- `--command <name> <kind> <mode> <spec>` — Inject a temporary command item. Repeat to inject multiple commands.
+- `--environment <name> <mode> <body_mode> <spec>` — Inject a temporary environment item. Repeat as needed.
+- `--delimiter <name>` — Inject a temporary delimiter control. Repeat as needed.
 
 **Examples:**
 
@@ -25,9 +34,20 @@ cargo run --example parse -p texform-core -- '\frac{a}{b}'
 
 # Parse with strict mode
 cargo run --example parse -p texform-core -- '\frac{a}{b}' --strict true
+
+# Inject a temporary command
+cargo run --example parse -p texform-core -- '\probe{a}' --command probe prefix math 'm'
+
+# Inject a temporary environment
+cargo run --example parse -p texform-core -- \
+  '\begin{probeenv}a\end{probeenv}' \
+  --environment probeenv math math ''
 ```
 
-On success, the CLI prints the syntax tree with the root node's byte span. On error, it renders diagnostics with line/column numbers and underline indicators (powered by [ariadne](https://crates.io/crates/ariadne)).
+On success, the CLI prints the syntax tree with the root node's byte span. On error, it renders
+diagnostics with line/column numbers and underline indicators (powered by
+[ariadne](https://crates.io/crates/ariadne)). If parsing produces diagnostics but still yields a
+partial result, the CLI also prints that partial tree.
 
 ### validate_spec Example
 
@@ -45,32 +65,6 @@ cargo run --example validate_spec -p texform-core -- 's m'
 ```
 
 On success, the CLI prints `valid: true`, `arg_count`, and the structured `parsed` detail.
-
-### parse_with_argspec Example
-
-Test one or more ArgSpecs by temporarily injecting commands/environments and parsing one input:
-
-```bash
-# command target
-cargo run --example parse_with_argspec -p texform-core -- \
-  command probe prefix math 'm' '\probe{a}' --strict true
-
-# environment target
-cargo run --example parse_with_argspec -p texform-core -- \
-  environment probeenv math math '' '\begin{probeenv}a\end{probeenv}'
-
-# load explicit package knowledge when needed
-cargo run --example parse_with_argspec -p texform-core -- \
-  command probe prefix math 'm' '\probe{\hspace{1em}}' --packages dev
-```
-
-By default, `parse_with_argspecs` loads the embedded `test` package so you can use `\text{...}` to
-probe text-mode behavior. Pass `--packages` with a comma-separated list of embedded package names
-(for example `dev`, or an empty list in direct API calls) when you want a different package set.
-
-Keep the input focused on the temporary target itself. Prefer plain letters, digits, simple operators,
-and grouping. The one allowed helper command is `\text{...}` when you intentionally need text mode.
-Avoid other commands/environments and avoid syntax that depends on unrelated records.
 
 ## Language Bindings
 

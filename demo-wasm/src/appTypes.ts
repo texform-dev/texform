@@ -15,7 +15,7 @@ export interface TreeNode {
   children: TreeNode[]
 }
 
-export type CustomKnowledgeRecordTarget = 'command' | 'environment'
+export type CustomKnowledgeRecordTarget = 'command' | 'environment' | 'delimiter'
 
 export type CustomKnowledgeRecordEntry =
   | {
@@ -31,4 +31,8 @@ export type CustomKnowledgeRecordEntry =
       mode: AllowedMode
       bodyMode: BodyMode
       spec: string
+    }
+  | {
+      target: 'delimiter'
+      name: string
     }

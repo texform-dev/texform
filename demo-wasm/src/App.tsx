@@ -6,6 +6,7 @@ import {
   type BodyMode,
   type CommandInfo,
   type CommandKind,
+  type ContextItem,
   type EnvInfo,
   ensureWasmReady,
   type Argument,
@@ -104,6 +105,15 @@ function normalizeStoredCustomKnowledgeRecords(value: unknown): CustomKnowledgeR
       continue
     }
 
+    if (candidate.target === 'delimiter') {
+      const record: CustomKnowledgeRecordEntry = {
+        target: 'delimiter',
+        name,
+      }
+      deduped.set(recordIdentity(record), record)
+      continue
+    }
+
     const spec = typeof candidate.spec === 'string' ? candidate.spec : ''
     const mode = candidate.mode
     if (!isAllowedMode(mode)) {
@@ -173,23 +183,43 @@ function insertCustomKnowledgeRecord(
   context: WasmParseContext,
   record: CustomKnowledgeRecordEntry,
 ): void {
-  if (record.target === 'command') {
-    context.insertCommand(record.name, record.kind, record.mode, record.spec)
-    return
-  }
-
-  context.insertEnv(record.name, record.mode, record.spec, record.bodyMode)
+  context.insertItem(customKnowledgeRecordToContextItem(record))
 }
 
 function removeCustomKnowledgeRecord(
   context: WasmParseContext,
   record: CustomKnowledgeRecordEntry,
 ): boolean {
+  return context.removeItem(customKnowledgeRecordToContextItem(record))
+}
+
+function customKnowledgeRecordToContextItem(
+  record: CustomKnowledgeRecordEntry,
+): ContextItem {
   if (record.target === 'command') {
-    return context.removeCommand(record.name)
+    return {
+      target: 'command',
+      name: record.name,
+      kind: record.kind,
+      allowed_mode: record.mode,
+      spec: record.spec,
+    }
   }
 
-  return context.removeEnv(record.name)
+  if (record.target === 'delimiter') {
+    return {
+      target: 'delimiter',
+      name: record.name,
+    }
+  }
+
+  return {
+    target: 'environment',
+    name: record.name,
+    allowed_mode: record.mode,
+    body_mode: record.bodyMode,
+    spec: record.spec,
+  }
 }
 
 function App() {
@@ -229,12 +259,9 @@ function App() {
           // Restore persisted custom knowledge records into the new context
           try {
             const saved = loadStoredCustomKnowledgeRecords()
-            for (const record of saved) {
-              try {
-                insertCustomKnowledgeRecord(ctx, record)
-              } catch {
-                // Ignore malformed stored records.
-              }
+            const items = saved.map(customKnowledgeRecordToContextItem)
+            if (items.length > 0) {
+              ctx.insertItems(items)
             }
           } catch {
             // Ignore malformed localStorage data
@@ -475,6 +502,42 @@ function App() {
     }
   }
 
+  const addCustomDelimiter = () => {
+    if (!parseContext) {
+      setCustomRecordError('Parse context is not ready.')
+      return
+    }
+
+    const name = customRecordName.trim().replace(/^\\/, '')
+    if (!name) {
+      setCustomRecordError('Delimiter name is required.')
+      return
+    }
+
+    const nextRecord: CustomKnowledgeRecordEntry = {
+      target: 'delimiter',
+      name,
+    }
+
+    try {
+      insertCustomKnowledgeRecord(parseContext, nextRecord)
+      const updated = [
+        ...customKnowledgeRecords.filter(
+          (entry) => recordIdentity(entry) !== recordIdentity(nextRecord),
+        ),
+        nextRecord,
+      ]
+      setCustomKnowledgeRecords(updated)
+      persistCustomKnowledgeRecords(updated)
+      setCustomRecordError(null)
+      setContextVersion((v) => v + 1)
+      setCustomRecordName('')
+      setActiveCustomRecordForm(null)
+    } catch (error) {
+      setCustomRecordError(extractFatalMessage(error))
+    }
+  }
+
   const removeCustomRecord = (record: CustomKnowledgeRecordEntry) => {
     if (!parseContext) {
       return
@@ -637,6 +700,7 @@ function App() {
           onCustomEnvironmentBodyModeChange={setCustomEnvironmentBodyMode}
           onAddCustomCommand={addCustomCommand}
           onAddCustomEnvironment={addCustomEnvironment}
+          onAddCustomDelimiter={addCustomDelimiter}
           onRemoveCustomRecord={removeCustomRecord}
           onResetAllCustomKnowledgeRecords={resetAllCustomKnowledgeRecords}
         />

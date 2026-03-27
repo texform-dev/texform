@@ -9,11 +9,14 @@ use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 use texform_interface::syntax_node::ContentMode;
 
-use crate::context::ParseContext;
+use crate::context::{
+    CommandItem, ContextItem, DelimiterControlItem, EnvironmentItem, ParseContext,
+};
 
 pub use texform_specs::specs::{
-    AllowedMode, ArgForm, ArgSpec, ArgSpecParseError, CommandKind, CommandMeta, DelimiterToken,
-    EnvMeta, ValueKind, load_package_specs_from_str,
+    AllowedMode, ArgForm, ArgSpec, ArgSpecParseError, CharacterSpec, CommandKind, CommandMeta,
+    CommandSpec, DelimiterToken, EnvMeta, EnvironmentSpec, PackageSpecs, ValueKind,
+    load_package_specs_from_str,
 };
 
 const RUNTIME_PACKAGE_NAME: &str = "runtime";
@@ -89,100 +92,51 @@ impl KnowledgeBase {
         self.delimiter_controls.get(name).copied()
     }
 
-    pub fn insert_command(
-        &mut self,
-        name: impl Into<String>,
-        kind: CommandKind,
-        allowed_mode: AllowedMode,
-        spec_string: impl Into<String>,
-        tags: &[String],
-    ) -> Result<(), ArgSpecParseError> {
-        self.insert_command_with_package(
-            name,
-            kind,
-            allowed_mode,
-            spec_string,
-            tags,
-            RUNTIME_PACKAGE_NAME,
-        )
+    pub fn insert_item(&mut self, item: impl Into<ContextItem>) -> Result<(), ArgSpecParseError> {
+        match item.into() {
+            ContextItem::Command(item) => self.insert_command(item),
+            ContextItem::Environment(item) => self.insert_environment(item),
+            ContextItem::DelimiterControl(item) => {
+                self.insert_delimiter_control(item);
+                Ok(())
+            }
+        }
     }
 
-    pub fn insert_command_with_package(
-        &mut self,
-        name: impl Into<String>,
-        kind: CommandKind,
-        allowed_mode: AllowedMode,
-        spec_string: impl Into<String>,
-        tags: &[String],
-        package: impl Into<String>,
-    ) -> Result<(), ArgSpecParseError> {
-        let name = name.into();
-        let spec_string = spec_string.into();
-        let context = format!("command {}", name);
-        let args = texform_specs::specs::parse_arg_specs(spec_string.as_str(), context.as_str())?;
-        let meta = make_command_meta(
-            name,
-            kind,
-            allowed_mode,
-            args,
-            tags.to_vec(),
-            spec_string,
-            package.into(),
-        );
+    pub fn insert_command(&mut self, item: CommandItem) -> Result<(), ArgSpecParseError> {
+        let meta = command_item_into_meta(item, RUNTIME_PACKAGE_NAME.to_string())?;
         self.upsert_command_meta(meta);
         Ok(())
     }
 
-    pub fn remove_command(&mut self, name: &str) -> bool {
-        self.command_idx_by_name.remove(name).is_some()
+    pub fn remove_item(&mut self, item: impl Into<ContextItem>) -> bool {
+        match item.into() {
+            ContextItem::Command(item) => self
+                .command_idx_by_name
+                .remove(item.name.as_str())
+                .is_some(),
+            ContextItem::Environment(item) => {
+                self.env_idx_by_name.remove(item.name.as_str()).is_some()
+            }
+            ContextItem::DelimiterControl(item) => {
+                self.delimiter_controls.remove(item.name.as_str())
+            }
+        }
     }
 
-    pub fn insert_env(
-        &mut self,
-        name: impl Into<String>,
-        allowed_mode: AllowedMode,
-        spec_string: impl Into<String>,
-        body_mode: ContentMode,
-        tags: &[String],
-    ) -> Result<(), ArgSpecParseError> {
-        self.insert_env_with_package(
-            name,
-            allowed_mode,
-            spec_string,
-            body_mode,
-            tags,
-            RUNTIME_PACKAGE_NAME,
-        )
-    }
-
-    pub fn insert_env_with_package(
-        &mut self,
-        name: impl Into<String>,
-        allowed_mode: AllowedMode,
-        spec_string: impl Into<String>,
-        body_mode: ContentMode,
-        tags: &[String],
-        package: impl Into<String>,
-    ) -> Result<(), ArgSpecParseError> {
-        let name = name.into();
-        let spec_string = spec_string.into();
-        let context = format!("environment {}", name);
-        let args = texform_specs::specs::parse_arg_specs(spec_string.as_str(), context.as_str())?;
-        let meta = make_env_meta(
-            name,
-            allowed_mode,
-            args,
-            body_mode,
-            tags.to_vec(),
-            spec_string,
-            package.into(),
-        );
+    pub fn insert_environment(&mut self, item: EnvironmentItem) -> Result<(), ArgSpecParseError> {
+        let meta = environment_item_into_meta(item, RUNTIME_PACKAGE_NAME.to_string())?;
         self.upsert_env_meta(meta);
         Ok(())
     }
 
-    pub fn remove_env(&mut self, name: &str) -> bool {
-        self.env_idx_by_name.remove(name).is_some()
+    pub fn insert_delimiter_control(&mut self, item: DelimiterControlItem) {
+        let name = item.name;
+        if self.delimiter_controls.contains(name.as_str()) {
+            return;
+        }
+        let name: &'static str = Box::leak(name.into_boxed_str());
+        self.delimiter_controls.insert(name);
     }
 
     fn upsert_command_meta(&mut self, meta: CommandMeta) {
@@ -210,159 +164,73 @@ pub struct KnowledgeBaseBuilder {
 }
 
 impl KnowledgeBaseBuilder {
-    pub fn insert_character(&mut self, name: impl Into<String>, allowed_mode: AllowedMode) {
-        self.insert_character_with_package(name, allowed_mode, UNKNOWN_PACKAGE_NAME);
+    pub fn insert_character(&mut self, character: CharacterSpec) {
+        self.insert_character_with_package(character, UNKNOWN_PACKAGE_NAME);
     }
 
-    pub fn insert_character_with_package(
-        &mut self,
-        name: impl Into<String>,
-        allowed_mode: AllowedMode,
-        package: &str,
-    ) {
-        let name = name.into();
-        self.insert_or_override_command_with_meta(
-            name,
-            CommandKind::Prefix,
-            allowed_mode,
-            vec![],
-            vec![],
-            "",
+    fn insert_character_with_package(&mut self, character: CharacterSpec, package: &str) {
+        self.insert_or_override_command_with_package(
+            CommandSpec {
+                name: character.name,
+                kind: CommandKind::Prefix,
+                allowed_mode: character.allowed_mode,
+                args: vec![],
+                tags: vec![],
+                spec_string: String::new(),
+            },
             package,
         );
     }
 
-    pub fn insert_or_override_command(
-        &mut self,
-        name: impl Into<String>,
-        kind: CommandKind,
-        allowed_mode: AllowedMode,
-        args: Vec<ArgSpec>,
-        tags: Vec<String>,
-    ) {
-        self.insert_or_override_command_with_meta(
-            name,
-            kind,
-            allowed_mode,
-            args,
-            tags,
-            "",
-            UNKNOWN_PACKAGE_NAME,
-        );
+    pub fn insert_or_override_command(&mut self, spec: CommandSpec) {
+        self.insert_or_override_command_with_package(spec, UNKNOWN_PACKAGE_NAME);
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn insert_or_override_command_with_meta(
-        &mut self,
-        name: impl Into<String>,
-        kind: CommandKind,
-        allowed_mode: AllowedMode,
-        args: Vec<ArgSpec>,
-        tags: Vec<String>,
-        spec_string: impl Into<String>,
-        package: &str,
-    ) {
-        let meta = make_command_meta(
-            name.into(),
-            kind,
-            allowed_mode,
-            args,
-            tags,
-            spec_string.into(),
-            package.to_string(),
-        );
+    fn insert_or_override_command_with_package(&mut self, spec: CommandSpec, package: &str) {
+        let meta = command_spec_into_meta(spec, package.to_string());
         let idx = self.commands.len();
         let name = meta.name;
         self.commands.push(meta);
         self.command_idx_by_name.insert(name, idx);
     }
 
-    pub fn insert_or_override_env(
-        &mut self,
-        name: impl Into<String>,
-        allowed_mode: AllowedMode,
-        args: Vec<ArgSpec>,
-        body_mode: ContentMode,
-        tags: Vec<String>,
-    ) {
-        self.insert_or_override_env_with_meta(
-            name,
-            allowed_mode,
-            args,
-            body_mode,
-            tags,
-            "",
-            UNKNOWN_PACKAGE_NAME,
-        );
+    pub fn insert_or_override_environment(&mut self, spec: EnvironmentSpec) {
+        self.insert_or_override_environment_with_package(spec, UNKNOWN_PACKAGE_NAME);
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn insert_or_override_env_with_meta(
+    fn insert_or_override_environment_with_package(
         &mut self,
-        name: impl Into<String>,
-        allowed_mode: AllowedMode,
-        args: Vec<ArgSpec>,
-        body_mode: ContentMode,
-        tags: Vec<String>,
-        spec_string: impl Into<String>,
+        spec: EnvironmentSpec,
         package: &str,
     ) {
-        let meta = make_env_meta(
-            name.into(),
-            allowed_mode,
-            args,
-            body_mode,
-            tags,
-            spec_string.into(),
-            package.to_string(),
-        );
+        let meta = environment_spec_into_meta(spec, package.to_string());
         let idx = self.envs.len();
         let name = meta.name;
         self.envs.push(meta);
         self.env_idx_by_name.insert(name, idx);
     }
 
-    pub fn insert_delimiter_control(&mut self, name: impl Into<String>) {
-        let name: &'static str = Box::leak(name.into().into_boxed_str());
+    pub fn insert_delimiter_control(&mut self, item: DelimiterControlItem) {
+        let name: &'static str = Box::leak(item.name.into_boxed_str());
         self.delimiter_controls.insert(name);
     }
 
-    pub fn import_package(&mut self, specs: texform_specs::specs::PackageSpecs) {
+    pub fn import_package(&mut self, specs: PackageSpecs) {
         self.import_package_with_name(UNKNOWN_PACKAGE_NAME, specs);
     }
 
-    pub fn import_package_with_name(
-        &mut self,
-        package: &str,
-        specs: texform_specs::specs::PackageSpecs,
-    ) {
+    pub fn import_package_with_name(&mut self, package: &str, specs: PackageSpecs) {
         for character in specs.characters {
-            self.insert_character_with_package(character.name, character.allowed_mode, package);
+            self.insert_character_with_package(character, package);
         }
         for cmd in specs.commands {
-            self.insert_or_override_command_with_meta(
-                cmd.name,
-                cmd.kind,
-                cmd.allowed_mode,
-                cmd.args,
-                cmd.tags,
-                cmd.spec_string,
-                package,
-            );
+            self.insert_or_override_command_with_package(cmd, package);
         }
         for env in specs.environments {
-            self.insert_or_override_env_with_meta(
-                env.name,
-                env.allowed_mode,
-                env.args,
-                env.body_mode,
-                env.tags,
-                env.spec_string,
-                package,
-            );
+            self.insert_or_override_environment_with_package(env, package);
         }
         for name in specs.delimiter_controls {
-            self.insert_delimiter_control(name);
+            self.insert_delimiter_control(DelimiterControlItem::new(name));
         }
     }
 
@@ -397,6 +265,23 @@ fn make_command_meta(
     }
 }
 
+fn command_item_into_meta(
+    item: CommandItem,
+    package: String,
+) -> Result<CommandMeta, ArgSpecParseError> {
+    let context = format!("command {}", item.name);
+    let args = texform_specs::specs::parse_arg_specs(item.spec.as_str(), context.as_str())?;
+    Ok(make_command_meta(
+        item.name,
+        item.kind,
+        item.allowed_mode,
+        args,
+        item.tags,
+        item.spec,
+        package,
+    ))
+}
+
 fn make_env_meta(
     name: String,
     allowed_mode: AllowedMode,
@@ -415,6 +300,47 @@ fn make_env_meta(
         spec_string: leak_string(spec_string),
         package: leak_string(package),
     }
+}
+
+fn environment_item_into_meta(
+    item: EnvironmentItem,
+    package: String,
+) -> Result<EnvMeta, ArgSpecParseError> {
+    let context = format!("environment {}", item.name);
+    let args = texform_specs::specs::parse_arg_specs(item.spec.as_str(), context.as_str())?;
+    Ok(make_env_meta(
+        item.name,
+        item.allowed_mode,
+        args,
+        item.body_mode,
+        item.tags,
+        item.spec,
+        package,
+    ))
+}
+
+fn command_spec_into_meta(spec: CommandSpec, package: String) -> CommandMeta {
+    make_command_meta(
+        spec.name,
+        spec.kind,
+        spec.allowed_mode,
+        spec.args,
+        spec.tags,
+        spec.spec_string,
+        package,
+    )
+}
+
+fn environment_spec_into_meta(spec: EnvironmentSpec, package: String) -> EnvMeta {
+    make_env_meta(
+        spec.name,
+        spec.allowed_mode,
+        spec.args,
+        spec.body_mode,
+        spec.tags,
+        spec.spec_string,
+        package,
+    )
 }
 
 fn leak_string(value: impl Into<String>) -> &'static str {
@@ -677,13 +603,14 @@ mod tests {
     #[test]
     fn test_builder_import_overrides_by_order() {
         let mut builder = KnowledgeBase::builder();
-        builder.insert_or_override_command(
-            "foo",
-            CommandKind::Prefix,
-            AllowedMode::Math,
-            vec![ArgSpec::mandatory(ContentMode::Math)],
-            vec![],
-        );
+        builder.insert_or_override_command(CommandSpec {
+            name: "foo".to_string(),
+            kind: CommandKind::Prefix,
+            allowed_mode: AllowedMode::Math,
+            args: vec![ArgSpec::mandatory(ContentMode::Math)],
+            tags: vec![],
+            spec_string: String::new(),
+        });
 
         builder.import_package(texform_specs::specs::PackageSpecs {
             characters: vec![],
@@ -728,13 +655,14 @@ mod tests {
     #[test]
     fn test_insert_env_accepts_text_body_mode() {
         let mut builder = KnowledgeBase::builder();
-        builder.insert_or_override_env(
-            "textenv",
-            AllowedMode::Text,
-            vec![],
-            ContentMode::Text,
-            vec![],
-        );
+        builder.insert_or_override_environment(EnvironmentSpec {
+            name: "textenv".to_string(),
+            allowed_mode: AllowedMode::Text,
+            args: vec![],
+            body_mode: ContentMode::Text,
+            tags: vec![],
+            spec_string: String::new(),
+        });
 
         let kb = builder.build();
         let env = kb.lookup_env("textenv").unwrap();
