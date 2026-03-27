@@ -149,6 +149,11 @@ impl ParseContext {
         Self::from_kb(KnowledgeBase::builder().build())
     }
 
+    /// Build a context containing only core knowledge.
+    pub fn core_only() -> Self {
+        Self::from_kb(knowledge::build_core_only_kb())
+    }
+
     /// Build a context from package names.
     pub fn from_packages(packages: &[&str]) -> Self {
         ParseContext {
@@ -163,7 +168,7 @@ impl ParseContext {
         })
     }
 
-    /// Build runtime default context (all embedded packages except `test` and `dev`).
+    /// Build runtime default context.
     pub fn runtime_default() -> Self {
         Self::from_packages(texform_specs::packages::runtime_default_packages())
     }
@@ -173,9 +178,9 @@ impl ParseContext {
         runtime_default_ctx().clone()
     }
 
-    /// Build test default context (all embedded packages, including `test` and `dev`).
+    /// Build test default context.
     pub fn test_default() -> Self {
-        Self::from_packages(texform_specs::packages::test_default_packages())
+        Self::core_only()
     }
 
     pub fn insert_item(&mut self, item: impl Into<ContextItem>) -> Result<(), ArgSpecParseError> {
@@ -238,6 +243,15 @@ fn runtime_default_ctx() -> &'static ParseContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn core_only_context_includes_core_command() {
+        let ctx = ParseContext::core_only();
+        let linebreak = ctx
+            .lookup_command("\\")
+            .expect("expected core linebreak command");
+        assert_eq!(linebreak.package, "core");
+    }
 
     #[test]
     fn context_can_insert_and_remove_delimiter_controls() {

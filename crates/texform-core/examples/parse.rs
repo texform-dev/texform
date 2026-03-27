@@ -283,7 +283,7 @@ fn print_usage(program: &str) {
         program
     );
     eprintln!(
-        "  {} '\\\\left\\\\langle x\\\\right\\\\rangle' --delimiter langle --delimiter rangle --packages test",
+        "  {} '\\\\left\\\\langle x\\\\right\\\\rangle' --delimiter langle --delimiter rangle",
         program
     );
     eprintln!();

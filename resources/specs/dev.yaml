@@ -98,11 +98,6 @@ commands:
     allowed_mode: math
     spec: ""
 
-  - name: "\\"
-    kind: prefix
-    allowed_mode: both
-    spec: "!s !o:L"
-
 environments:
   - name: align
     allowed_mode: math

@@ -1,6 +1,6 @@
 use std::sync::Once;
 
-use texform_core::context::{CommandItem, EnvironmentItem, ParseContext};
+use texform_core::context::{CommandItem, DelimiterControlItem, EnvironmentItem, ParseContext};
 use texform_core::knowledge;
 use texform_core::knowledge::{AllowedMode, CommandKind};
 use texform_core::lexer::Token;
@@ -21,18 +21,27 @@ fn init_test_kb() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
         let mut builder = knowledge::test_kb_builder();
-        // inject commands via inline YAML - not depending on package resource files
-        builder.import_package(knowledge::load_package_specs_from_str(
-            r"
+        builder.import_package(shared_test_specs());
+        knowledge::init_with_builder(builder);
+    });
+}
+
+fn shared_test_specs() -> knowledge::PackageSpecs {
+    knowledge::load_package_specs_from_str(
+        r#"
 commands:
   - name: frac
     kind: prefix
     allowed_mode: math
-    spec: 'mm'
+    spec: 'm m'
   - name: sqrt
     kind: prefix
     allowed_mode: math
-    spec: 'om'
+    spec: 'o m'
+  - name: text
+    kind: prefix
+    allowed_mode: math
+    spec: 'm:T'
   - name: alpha
     kind: prefix
     allowed_mode: math
@@ -45,17 +54,114 @@ commands:
     kind: prefix
     allowed_mode: math
     spec: ''
+  - name: delim
+    kind: prefix
+    allowed_mode: math
+    spec: 'm:D'
+  - name: hspace
+    kind: prefix
+    allowed_mode: both
+    spec: 'm:L'
+  - name: romannumeral
+    kind: prefix
+    allowed_mode: both
+    spec: 'm:I'
+  - name: includegraphics
+    kind: prefix
+    allowed_mode: both
+    spec: 'o:K m:T'
+  - name: label
+    kind: prefix
+    allowed_mode: both
+    spec: 'm:N'
+  - name: over
+    kind: infix
+    allowed_mode: math
+    spec: ''
+  - name: choose
+    kind: infix
+    allowed_mode: math
+    spec: ''
+  - name: bfseries
+    kind: declarative
+    allowed_mode: both
+    spec: ''
+  - name: qty
+    kind: prefix
+    allowed_mode: math
+    spec: 'd<(,)><[,]><{,}><|,|>'
+  - name: pqty
+    kind: prefix
+    allowed_mode: math
+    spec: 's r{}'
+  - name: abs
+    kind: prefix
+    allowed_mode: math
+    spec: 's r{}'
+  - name: eval
+    kind: prefix
+    allowed_mode: math
+    spec: 's d<(,|><[,|><{,}>'
+  - name: mqty
+    kind: prefix
+    allowed_mode: math
+    spec: 's d<(,)><[,]><{,}><|,|>'
+  - name: dd
+    kind: prefix
+    allowed_mode: math
+    spec: 'o d<(,)><{,}>'
+  - name: dv
+    kind: prefix
+    allowed_mode: math
+    spec: 's o m g'
+  - name: pdv
+    kind: prefix
+    allowed_mode: math
+    spec: 's o m g g'
+  - name: braket
+    kind: prefix
+    allowed_mode: math
+    spec: 's m g'
+  - name: exp
+    kind: prefix
+    allowed_mode: math
+    spec: ''
 
 environments:
   - name: matrix
     allowed_mode: math
     spec: ''
     body_mode: math
-",
-            "inline-test",
-        ));
-        knowledge::init_with_builder(builder);
-    });
+  - name: align
+    allowed_mode: math
+    spec: ''
+    body_mode: math
+  - name: align*
+    allowed_mode: math
+    spec: ''
+    body_mode: math
+
+delimiter_controls:
+  - langle
+  - rangle
+  - "{"
+  - "}"
+  - lfloor
+  - rfloor
+  - lceil
+  - rceil
+  - lvert
+  - rvert
+  - lVert
+  - rVert
+  - lgroup
+  - rgroup
+  - lmoustache
+  - rmoustache
+  - "|"
+"#,
+        "inline-test",
+    )
 }
 
 fn command_item(
@@ -74,6 +180,10 @@ fn environment_item(
     spec: &str,
 ) -> EnvironmentItem {
     EnvironmentItem::new(name, allowed_mode, body_mode, spec)
+}
+
+fn label_command_item() -> CommandItem {
+    command_item("label", CommandKind::Prefix, AllowedMode::Both, "m:N")
 }
 
 fn expect_arg(slot: &Option<Argument>) -> &Argument {
@@ -523,7 +633,9 @@ fn test_csname_argument() {
 
 #[test]
 fn test_csname_argument_rejects_escape_sequence() {
-    let ctx = ParseContext::test_default();
+    let mut ctx = ParseContext::test_default();
+    ctx.insert_command(label_command_item())
+        .expect("label argspec should be valid");
 
     let command = ctx.parse(r"\label{\alpha}", true);
     assert!(
@@ -2935,6 +3047,7 @@ fn test_nullable_delimiter_argument_accepts_empty_required_group() {
         "m:D",
     ))
     .expect("strict delimiter argspec should be valid");
+    ctx.insert_delimiter_control(DelimiterControlItem::new("langle"));
 
     let empty = ctx.parse(r"\ndelim{}", true);
     assert!(

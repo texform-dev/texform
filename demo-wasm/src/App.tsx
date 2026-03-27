@@ -25,7 +25,7 @@ import AppHeader from './components/AppHeader'
 import LatexInputPane from './components/LatexInputPane'
 import SyntaxTreePane from './components/SyntaxTreePane'
 
-const SAMPLE_LATEX = String.raw`\left(\frac{a+b}{\sqrt[3]{x^2_i}}\right) + \text{foo$a+b$bar}`
+const SAMPLE_LATEX = ''
 const CUSTOM_KNOWLEDGE_RECORDS_STORAGE_KEY = 'texform-custom-knowledge-records'
 const LEGACY_CUSTOM_COMMANDS_STORAGE_KEY = 'texform-custom-commands'
 
@@ -251,7 +251,7 @@ function App() {
           return
         }
         try {
-          const ctx = new WasmParseContext(['test'])
+          const ctx = new WasmParseContext()
           if (!alive) {
             return
           }

@@ -141,10 +141,7 @@ fn build_probe_context(
         Some(package_names) => {
             knowledge::try_build_kb_from_exact_packages(package_names).map(ParseContext::from_kb)
         }
-        None => knowledge::try_build_kb_from_exact_packages(
-            texform_specs::packages::PARSE_WITH_ARGSPEC_DEFAULT_PACKAGES,
-        )
-        .map(ParseContext::from_kb),
+        None => Ok(ParseContext::core_only()),
     }
 }
 
@@ -264,15 +261,34 @@ mod tests {
         DelimiterControlItem::new(name).into()
     }
 
+    fn text_command_item() -> ContextItem {
+        command_item("text", CommandKind::Prefix, AllowedMode::Math, "m:T")
+    }
+
+    fn frac_command_item() -> ContextItem {
+        command_item("frac", CommandKind::Prefix, AllowedMode::Math, "m m")
+    }
+
+    fn matrix_environment_item() -> ContextItem {
+        environment_item("matrix", AllowedMode::Math, ContentMode::Math, "")
+    }
+
+    fn parse_with_items(items: &[ContextItem], src: &str, strict: bool) -> ParseOutput {
+        let mut ctx = ParseContext::core_only();
+        ctx.insert_items(items.iter().cloned())
+            .expect("context items should be valid");
+        ctx.parse(src, strict)
+    }
+
     #[test]
     fn full_success() {
-        let output = parse_latex(r"\frac{a}{b}", false);
+        let output = parse_latex(r"\\*[1cm]", false);
         assert!(output.result.is_some(), "should produce a result");
         assert!(output.diagnostics.is_empty(), "no diagnostics expected");
 
         let res = output.result.unwrap();
         assert_eq!(res.span.start, 0);
-        assert_eq!(res.span.end, 11);
+        assert_eq!(res.span.end, 8);
 
         let json = serde_json::to_value(&res).unwrap();
         assert!(json.get("node").is_some());
@@ -288,7 +304,7 @@ mod tests {
 
     #[test]
     fn partial_success_or_failure() {
-        let output = parse_latex(r"\frac{a}{", false);
+        let output = parse_with_items(&[frac_command_item()], r"\frac{a}{", false);
         assert!(!output.diagnostics.is_empty(), "should have diagnostics");
 
         let d = &output.diagnostics[0];
@@ -297,13 +313,21 @@ mod tests {
 
     #[test]
     fn mode_error_for_math_only_command_in_text() {
-        let output = parse_latex(r"\text{\frac{a}{b}}", true);
+        let output = parse_with_items(
+            &[text_command_item(), frac_command_item()],
+            r"\text{\frac{a}{b}}",
+            true,
+        );
         assert!(!output.diagnostics.is_empty(), "should have diagnostics");
     }
 
     #[test]
     fn mode_error_for_math_only_environment_in_text() {
-        let output = parse_latex(r"\text\begin{matrix}a\end{matrix}", true);
+        let output = parse_with_items(
+            &[text_command_item(), matrix_environment_item()],
+            r"\text\begin{matrix}a\end{matrix}",
+            true,
+        );
         assert!(!output.diagnostics.is_empty(), "should have diagnostics");
     }
 
@@ -391,7 +415,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_with_context_items_uses_test_package_by_default() {
+    fn parse_with_context_items_defaults_to_core_only_context() {
         let output = parse_with_context_items(
             &[command_item(
                 "probe",
@@ -405,24 +429,42 @@ mod tests {
         );
         assert_eq!(output.len(), 1);
         assert!(
-            output[0].output.result.is_some(),
-            "default test package should enable \\text"
-        );
-        assert!(
-            output[0].output.diagnostics.is_empty(),
-            "no diagnostics expected when the default test package is loaded"
+            !output[0].output.diagnostics.is_empty(),
+            "core-only default should not enable \\text"
         );
     }
 
     #[test]
-    fn parse_with_context_items_default_package_supports_control_delimiter_args() {
+    fn parse_with_context_items_supports_explicit_text_command() {
         let output = parse_with_context_items(
-            &[command_item(
-                "probe",
-                CommandKind::Prefix,
-                AllowedMode::Math,
-                "m:D",
-            )],
+            &[
+                command_item("probe", CommandKind::Prefix, AllowedMode::Math, "m"),
+                text_command_item(),
+            ],
+            &[r"\probe{\text{a}}"],
+            None,
+            true,
+        );
+        assert_eq!(output.len(), 1);
+        assert!(
+            output[0].output.result.is_some(),
+            "explicit text command should enable \\text"
+        );
+        assert!(
+            output[0].output.diagnostics.is_empty(),
+            "no diagnostics expected when text is injected"
+        );
+    }
+
+    #[test]
+    fn parse_with_context_items_supports_explicit_control_delimiter_args() {
+        let output = parse_with_context_items(
+            &[
+                command_item("probe", CommandKind::Prefix, AllowedMode::Math, "m:D"),
+                delimiter_control_item("langle"),
+                delimiter_control_item("rangle"),
+                delimiter_control_item("|"),
+            ],
             &[r"\probe\langle", r"\probe\rangle", r"\probe\|"],
             None,
             true,
@@ -588,7 +630,7 @@ mod tests {
         assert_eq!(output.len(), 1);
         assert!(
             !output[0].output.diagnostics.is_empty(),
-            "\\text should fail when the caller explicitly requests an empty knowledge base"
+            "\\text should fail when the caller explicitly requests a core-only knowledge base"
         );
     }
 

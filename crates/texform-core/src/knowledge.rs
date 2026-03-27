@@ -361,10 +361,8 @@ fn leak_tags(tags: Vec<String>) -> &'static [&'static str] {
 
 /// Initialize the global parse context.
 ///
-/// - If `packages` is `None`, loads default packages.
-///   - Runtime default: all embedded packages except `test` and `dev`
-///   - Unit test default (`cfg(test)`): all embedded packages
-/// - If `packages` is `Some`, loads exactly the given packages in order.
+/// - If `packages` is `None`, loads runtime defaults on top of core knowledge.
+/// - If `packages` is `Some`, loads exactly the given packages in order on top of core.
 ///
 /// This function may only be called once. Subsequent calls will panic.
 pub fn init(packages: Option<&[&str]>) {
@@ -375,40 +373,36 @@ pub fn init(packages: Option<&[&str]>) {
 ///
 /// Returns [`InitError::AlreadyInitialized`] when called more than once.
 pub fn try_init(packages: Option<&[&str]>) -> Result<(), InitError> {
-    let requested = match packages {
-        Some(list) => list,
-        None => implicit_default_packages(),
+    let ctx = match packages {
+        Some(list) => ParseContext::try_from_packages(list).map_err(InitError::PackageLoad)?,
+        None => ParseContext::runtime_default(),
     };
-    let ctx = ParseContext::try_from_packages(requested).map_err(InitError::PackageLoad)?;
     DEFAULT_CTX
         .set(ctx)
         .map_err(|_| InitError::AlreadyInitialized)
 }
 
-/// Initialize the global parse context with runtime defaults
-/// (all embedded packages except `test` and `dev`).
+/// Initialize the global parse context with runtime defaults.
 pub fn init_runtime_defaults() {
-    init(Some(texform_specs::packages::runtime_default_packages()));
+    init(None);
 }
 
-/// Initialize the global parse context with test defaults (all embedded packages).
+/// Initialize the global parse context with core-only defaults.
+pub fn init_core_defaults() {
+    init_with_builder(builder_with_core());
+}
+
+/// Initialize the global parse context with core-only defaults for tests.
 pub fn init_test_defaults() {
-    init(Some(texform_specs::packages::test_default_packages()));
+    init_core_defaults();
 }
 
-/// Build a [`KnowledgeBaseBuilder`] pre-loaded with the test default packages
-/// (`test` and `dev`).
+/// Build a [`KnowledgeBaseBuilder`] pre-loaded with core knowledge.
 ///
 /// Integration tests can call this to get a starting builder and inject
 /// additional commands inline, without depending on extra YAML resource files.
 pub fn test_kb_builder() -> KnowledgeBaseBuilder {
-    let mut builder = KnowledgeBase::builder();
-    for &name in &["test", "dev"] {
-        if let Some(pkg) = texform_specs::packages::get(name) {
-            builder.import_package_with_name(name, (pkg.load)());
-        }
-    }
-    builder
+    builder_with_core()
 }
 
 /// Initialize the global parse context from a pre-built builder.
@@ -433,21 +427,11 @@ pub fn try_init_with_builder(builder: KnowledgeBaseBuilder) -> Result<(), InitEr
 static DEFAULT_CTX: OnceLock<ParseContext> = OnceLock::new();
 
 pub(crate) fn default_ctx() -> &'static ParseContext {
-    DEFAULT_CTX.get_or_init(|| ParseContext::from_packages(implicit_default_packages()))
+    DEFAULT_CTX.get_or_init(ParseContext::runtime_default)
 }
 
 pub(crate) fn kb() -> &'static KnowledgeBase {
     &default_ctx().kb
-}
-
-#[cfg(test)]
-fn implicit_default_packages() -> &'static [&'static str] {
-    texform_specs::packages::test_default_packages()
-}
-
-#[cfg(not(test))]
-fn implicit_default_packages() -> &'static [&'static str] {
-    texform_specs::packages::runtime_default_packages()
 }
 
 fn ordered_package_names<'a>(requested: &[&'a str]) -> Vec<&'a str> {
@@ -474,6 +458,19 @@ fn import_package_names(
     Ok(())
 }
 
+pub(crate) fn builder_with_core() -> KnowledgeBaseBuilder {
+    let mut builder = KnowledgeBase::builder();
+    builder.import_package_with_name(
+        texform_specs::core_knowledge::CORE_PACKAGE_NAME,
+        texform_specs::core_knowledge::specs(),
+    );
+    builder
+}
+
+pub(crate) fn build_core_only_kb() -> KnowledgeBase {
+    builder_with_core().build()
+}
+
 pub(crate) fn build_kb_from_packages(requested: &[&str]) -> KnowledgeBase {
     try_build_kb_from_packages(requested).unwrap_or_else(|error| panic!("{error}"))
 }
@@ -481,7 +478,7 @@ pub(crate) fn build_kb_from_packages(requested: &[&str]) -> KnowledgeBase {
 pub(crate) fn try_build_kb_from_packages(
     requested: &[&str],
 ) -> Result<KnowledgeBase, PackageLoadError> {
-    let mut builder = KnowledgeBase::builder();
+    let mut builder = builder_with_core();
     let to_load = ordered_package_names(requested);
     import_package_names(&mut builder, to_load.as_slice())?;
 
@@ -491,7 +488,7 @@ pub(crate) fn try_build_kb_from_packages(
 pub(crate) fn try_build_kb_from_exact_packages(
     requested: &[&str],
 ) -> Result<KnowledgeBase, PackageLoadError> {
-    let mut builder = KnowledgeBase::builder();
+    let mut builder = builder_with_core();
     import_package_names(&mut builder, requested)?;
 
     Ok(builder.build())
@@ -501,7 +498,7 @@ pub(crate) fn try_build_kb_from_exact_packages(
 fn build_default_kb(packages: Option<&[&str]>) -> KnowledgeBase {
     let requested = match packages {
         Some(list) => list,
-        None => implicit_default_packages(),
+        None => texform_specs::packages::runtime_default_packages(),
     };
     build_kb_from_packages(requested)
 }
@@ -540,36 +537,30 @@ mod tests {
 
     #[test]
     fn test_lookup_command() {
-        let text = lookup_command("text").unwrap();
-        assert_eq!(text.name, "text");
-        assert_eq!(text.kind, CommandKind::Prefix);
-        assert_eq!(text.args.len(), 1);
+        let linebreak = lookup_command("\\").unwrap();
+        assert_eq!(linebreak.name, "\\");
+        assert_eq!(linebreak.kind, CommandKind::Prefix);
+        assert_eq!(linebreak.allowed_mode, AllowedMode::Both);
         assert_eq!(
-            text.args[0].kind,
-            ValueKind::Content {
-                mode: ContentMode::Text
-            }
+            linebreak.package,
+            texform_specs::core_knowledge::CORE_PACKAGE_NAME
         );
-
-        let over = lookup_command("over").unwrap();
-        assert_eq!(over.kind, CommandKind::Infix);
-        assert!(over.args.is_empty());
-
-        let color = lookup_command("color").unwrap();
-        assert_eq!(color.kind, CommandKind::Declarative);
-        assert_eq!(color.args.len(), 1);
+        assert_eq!(linebreak.args.len(), 2);
+        assert_eq!(linebreak.args[0].kind, ValueKind::Star);
+        assert_eq!(linebreak.args[1].kind, ValueKind::Dimension);
 
         assert!(lookup_command("unknown").is_none());
     }
 
     #[test]
     fn test_lookup_env() {
-        let align = lookup_env("align").unwrap();
+        let kb = build_default_kb(Some(&["dev"]));
+        let align = kb.lookup_env("align").unwrap();
         assert_eq!(align.name, "align");
         assert_eq!(align.allowed_mode, AllowedMode::Math);
         assert_eq!(align.body_mode, ContentMode::Math);
 
-        assert!(lookup_env("unknown").is_none());
+        assert!(kb.lookup_env("unknown").is_none());
     }
 
     #[test]
@@ -595,9 +586,12 @@ mod tests {
 
     #[test]
     fn test_delimiter_controls() {
-        assert!(is_delimiter_control("langle"));
-        assert!(is_delimiter_control("rvert"));
+        assert!(!is_delimiter_control("langle"));
         assert!(!is_delimiter_control("notadelim"));
+
+        let kb = build_default_kb(Some(&["dev"]));
+        assert!(kb.is_delimiter_control("langle"));
+        assert!(kb.is_delimiter_control("rvert"));
     }
 
     #[test]
@@ -673,16 +667,54 @@ mod tests {
     #[test]
     fn test_runtime_defaults_exclude_test_and_dev_entries() {
         let kb = build_default_kb(Some(texform_specs::packages::runtime_default_packages()));
-        assert!(kb.lookup_command("text").is_none());
+        assert!(kb.lookup_command("\\").is_some());
         assert!(kb.lookup_command("over").is_none());
         assert!(kb.lookup_delimiter_control("langle").is_none());
     }
 
     #[test]
-    fn test_test_defaults_include_dev_entries() {
-        let kb = build_default_kb(Some(texform_specs::packages::test_default_packages()));
-        assert!(kb.lookup_command("text").is_some());
+    fn test_explicit_dev_package_includes_dev_entries() {
+        let kb = build_default_kb(Some(&["dev"]));
         assert!(kb.lookup_command("over").is_some());
         assert!(kb.lookup_delimiter_control("langle").is_some());
+    }
+
+    #[test]
+    fn test_exact_empty_packages_still_include_core_entries() {
+        let kb = try_build_kb_from_exact_packages(&[]).expect("core-only build should succeed");
+        let linebreak = kb
+            .lookup_command("\\")
+            .expect("expected core linebreak command");
+        assert_eq!(
+            linebreak.package,
+            texform_specs::core_knowledge::CORE_PACKAGE_NAME
+        );
+        assert!(kb.lookup_delimiter_control("langle").is_none());
+    }
+
+    #[test]
+    fn test_explicit_package_can_override_core_command() {
+        let mut builder = builder_with_core();
+        builder.import_package_with_name(
+            "override",
+            PackageSpecs {
+                characters: vec![],
+                commands: vec![CommandSpec {
+                    name: "\\".to_string(),
+                    kind: CommandKind::Prefix,
+                    allowed_mode: AllowedMode::Math,
+                    args: vec![],
+                    tags: vec![],
+                    spec_string: "".to_string(),
+                }],
+                environments: vec![],
+                delimiter_controls: vec![],
+            },
+        );
+
+        let kb = builder.build();
+        let linebreak = kb.lookup_command("\\").expect("expected linebreak command");
+        assert_eq!(linebreak.package, "override");
+        assert_eq!(linebreak.allowed_mode, AllowedMode::Math);
     }
 }
