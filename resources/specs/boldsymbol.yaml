@@ -1,0 +1,10 @@
+commands:
+  - name: boldsymbol
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+environments: []
+delimiter_controls: []
+characters: []

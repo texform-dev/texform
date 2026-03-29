@@ -1,0 +1,2472 @@
+commands:
+  - name: above
+    kind: infix
+    spec: m:L
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: abovewithdelims
+    kind: infix
+    spec: m:D m:D m:L
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: acute
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: allowbreak
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - invisible
+      - spacing
+  - name: arccos
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: arcsin
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: arctan
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: arg
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: array
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - mathjax-extension
+      - discouraged
+  - name: atop
+    kind: infix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: atopwithdelims
+    kind: infix
+    spec: m:D m:D
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: badbreak
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - invisible
+  - name: bar
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: Bbb
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: bf
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+      - discouraged
+  - name: big
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: Big
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: bigg
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: Bigg
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: biggl
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: Biggl
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: biggm
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: Biggm
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: biggr
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: Biggr
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: bigl
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: Bigl
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: bigm
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: Bigm
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: bigr
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: Bigr
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: bmod
+    kind: prefix
+    spec: ''
+    allowed_mode: both
+    tags: []
+  - name: boxed
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags: []
+  - name: brace
+    kind: infix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: brack
+    kind: infix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: break
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: breakAlign
+    kind: prefix
+    spec: m:N m:N
+    allowed_mode: math
+    tags:
+      - invisible
+      - mathjax-extension
+  - name: breve
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: buildrel
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: cal
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+      - discouraged
+  - name: cases
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - mathjax-extension
+      - discouraged
+  - name: check
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: choose
+    kind: infix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: cos
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: cosh
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: cot
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: coth
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: cr
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: csc
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: ddddot
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: dddot
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: ddot
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: deg
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: det
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: dim
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: displaylines
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: displaystyle
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: dot
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: dots
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: enspace
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: eqalign
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - mathjax-extension
+      - discouraged
+  - name: eqalignno
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: exp
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: fbox
+    kind: prefix
+    spec: m:T
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: frac
+    kind: prefix
+    spec: m m
+    allowed_mode: math
+    tags: []
+  - name: frak
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: framebox
+    kind: prefix
+    spec: o:L o:N m:T
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: gcd
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: goodbreak
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - invisible
+  - name: grave
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: hat
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: hbox
+    kind: prefix
+    spec: m:T
+    allowed_mode: math
+    tags:
+      - decoration
+      - discouraged
+  - name: hdashline
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: hfil
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - invisible
+  - name: hfill
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - invisible
+  - name: hfilll
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - invisible
+      - mathjax-extension
+      - discouraged
+  - name: hline
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: hom
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: hphantom
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - invisible
+      - spacing
+  - name: hsize
+    kind: prefix
+    spec: m:L
+    allowed_mode: math
+    tags:
+      - invisible
+  - name: hskip
+    kind: prefix
+    spec: m:L
+    allowed_mode: math
+    tags:
+      - spacing
+      - discouraged
+  - name: hspace
+    kind: prefix
+    spec: m:L
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: huge
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: Huge
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: iff
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: inf
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: it
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+      - discouraged
+  - name: ker
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: kern
+    kind: prefix
+    spec: m:L
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: label
+    kind: prefix
+    spec: m:N
+    allowed_mode: math
+    tags:
+      - invisible
+  - name: large
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: Large
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: LARGE
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: LaTeX
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: left
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags: []
+  - name: leftroot
+    kind: prefix
+    spec: m:I
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: leqalignno
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: lg
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: lim
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: liminf
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: limits
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: limsup
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: llap
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: ln
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: log
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: lower
+    kind: prefix
+    spec: m:L
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: makebox
+    kind: prefix
+    spec: o:L O{c}:N m:T
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathbb
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathbf
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathbfcal
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathbffrak
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathbfit
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathbfscr
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathbfsf
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathbfsfit
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathbfsfup
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathbfup
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathbin
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags: []
+  - name: mathcal
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathchoice
+    kind: prefix
+    spec: m m m m
+    allowed_mode: math
+    tags: []
+  - name: mathclose
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags: []
+  - name: mathfrak
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathinner
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags: []
+  - name: mathit
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathnormal
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathop
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags: []
+  - name: mathopen
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags: []
+  - name: mathord
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags: []
+  - name: mathpunct
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags: []
+  - name: mathrel
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags: []
+  - name: mathrm
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathscr
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathsf
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathsfit
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathsfup
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathstrut
+    kind: prefix
+    spec: ''
+    allowed_mode: both
+    tags:
+      - invisible
+  - name: mathtt
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathup
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: matrix
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: max
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: mbox
+    kind: prefix
+    spec: m:T
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: middle
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags: []
+  - name: min
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: mit
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mkern
+    kind: prefix
+    spec: m:L
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: mmlToken
+    kind: prefix
+    spec: m:N o:K m:T
+    allowed_mode: math
+    tags:
+      - mathjax-extension
+  - name: mod
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags: []
+  - name: moveleft
+    kind: prefix
+    spec: m:L
+    allowed_mode: math
+    tags:
+      - spacing
+      - discouraged
+  - name: moveright
+    kind: prefix
+    spec: m:L
+    allowed_mode: math
+    tags:
+      - spacing
+      - discouraged
+  - name: mskip
+    kind: prefix
+    spec: m:L
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: mspace
+    kind: prefix
+    spec: m:L
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: negthinspace
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: newcolumntype
+    kind: prefix
+    spec: m O{0}:I m
+    allowed_mode: math
+    tags:
+      - invisible
+      - newdefine
+  - name: newline
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: nobreak
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - invisible
+  - name: nolimits
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: nonscript
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - invisible
+  - name: nonumber
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - invisible
+  - name: normalsize
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: not
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: oldstyle
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+      - discouraged
+  - name: over
+    kind: infix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: overbrace
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: overleftarrow
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: overleftrightarrow
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: overline
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: overparen
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: overrightarrow
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: overset
+    kind: prefix
+    spec: m m
+    allowed_mode: math
+    tags: []
+  - name: overunderset
+    kind: prefix
+    spec: m m m
+    allowed_mode: math
+    tags: []
+  - name: overwithdelims
+    kind: infix
+    spec: m:D m:D
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: parbox
+    kind: prefix
+    spec: O{c}:N m:L m:T
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: phantom
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - invisible
+      - spacing
+  - name: pmatrix
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: pmb
+    kind: prefix
+    spec: m
+    allowed_mode: both
+    tags: []
+  - name: pmod
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags: []
+  - name: pod
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags: []
+  - name: Pr
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: qquad
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: quad
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: raise
+    kind: prefix
+    spec: m:L
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: ref
+    kind: prefix
+    spec: m:N
+    allowed_mode: math
+    tags: []
+  - name: right
+    kind: prefix
+    spec: m:D
+    allowed_mode: math
+    tags: []
+  - name: rlap
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: rm
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+      - discouraged
+  - name: root
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: rule
+    kind: prefix
+    spec: o:L m:L m:L
+    allowed_mode: math
+    tags: []
+  - name: Rule
+    kind: prefix
+    spec: m:L m:L m:L
+    allowed_mode: math
+    tags:
+      - spacing
+      - mathjax-extension
+  - name: scriptscriptstyle
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: scriptsize
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: scriptstyle
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: sec
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: sf
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+      - discouraged
+  - name: sin
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: sinh
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: skew
+    kind: prefix
+    spec: m:I m m
+    allowed_mode: both
+    tags: []
+  - name: small
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: smash
+    kind: prefix
+    spec: O{}:N m
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: space
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: Space
+    kind: prefix
+    spec: m:L m:L m:L
+    allowed_mode: math
+    tags:
+      - spacing
+      - mathjax-extension
+  - name: sqrt
+    kind: prefix
+    spec: o m
+    allowed_mode: math
+    tags: []
+  - name: stackbin
+    kind: prefix
+    spec: m m
+    allowed_mode: math
+    tags: []
+  - name: stackrel
+    kind: prefix
+    spec: m m
+    allowed_mode: math
+    tags: []
+  - name: strut
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - invisible
+      - spacing
+  - name: sup
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: symbb
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symbf
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symbfcal
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symbffrak
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symbfit
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symbfscr
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symbfsf
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symbfsfit
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symbfsfup
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symbfup
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symcal
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symfrak
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symit
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symnormal
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symrm
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symscr
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symsf
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symsfit
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symsfup
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symtt
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: symup
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: tan
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: tanh
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: TeX
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags: []
+  - name: text
+    kind: prefix
+    spec: m:T
+    allowed_mode: math
+    tags: []
+  - name: textbf
+    kind: prefix
+    spec: m:T
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: textit
+    kind: prefix
+    spec: m:T
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: textnormal
+    kind: prefix
+    spec: m:T
+    allowed_mode: math
+    tags: []
+  - name: textrm
+    kind: prefix
+    spec: m:T
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: textsf
+    kind: prefix
+    spec: m:T
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: textstyle
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: texttt
+    kind: prefix
+    spec: m:T
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: textup
+    kind: prefix
+    spec: m:T
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: thinspace
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: tilde
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: tiny
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: Tiny
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+      - mathjax-extension
+      - discouraged
+  - name: tt
+    kind: declarative
+    spec: ''
+    allowed_mode: math
+    tags:
+      - presentation
+      - discouraged
+  - name: underbrace
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: underleftarrow
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: underleftrightarrow
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: underline
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: underparen
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: underrightarrow
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: underset
+    kind: prefix
+    spec: m m
+    allowed_mode: math
+    tags: []
+  - name: uproot
+    kind: prefix
+    spec: m:I
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: vbox
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: vcenter
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: vec
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: vphantom
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - invisible
+      - spacing
+  - name: vtop
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: widehat
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: widetilde
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - decoration
+environments:
+  - name: array
+    spec: o m:C
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - math-alignment
+      - nestable
+  - name: darray
+    spec: o m:C
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - math-alignment
+      - nestable
+      - mathjax-extension
+  - name: displaymath
+    spec: ''
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - discouraged
+  - name: eqnarray
+    spec: ''
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - math-alignment
+      - discouraged
+  - name: equation
+    spec: ''
+    body_mode: math
+    allowed_mode: math
+    tags: []
+  - name: indentalign
+    spec: o:L o:L o:L m:C
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - mathjax-extension
+  - name: math
+    spec: ''
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - discouraged
+delimiter_controls: [Arrowvert, Downarrow, Uparrow, Updownarrow, Vert, arrowvert, backslash, bracevert, downarrow, gt, langle, lbrace, lbrack, lceil, lfloor, lgroup, lmoustache, lt, rangle, rbrace, rbrack, rceil, rfloor, rgroup, rmoustache, uparrow, updownarrow, vert, '{', '|', '}']
+characters:
+  - name: AA
+    allowed_mode: math
+    unicode_value: Å
+    attributes:
+      mathvariant: italic
+  - name: aleph
+    allowed_mode: math
+    unicode_value: ℵ
+    attributes:
+      mathvariant: normal
+  - name: alpha
+    allowed_mode: math
+    unicode_value: α
+    attributes:
+      mathvariant: italic
+  - name: amalg
+    allowed_mode: math
+    unicode_value: ⨿
+    attributes: {}
+  - name: And
+    allowed_mode: math
+    unicode_value: '&'
+    attributes:
+      mathvariant: normal
+  - name: angle
+    allowed_mode: math
+    unicode_value: ∠
+    attributes:
+      mathvariant: normal
+  - name: approx
+    allowed_mode: math
+    unicode_value: ≈
+    attributes: {}
+  - name: ast
+    allowed_mode: math
+    unicode_value: ∗
+    attributes: {}
+  - name: asymp
+    allowed_mode: math
+    unicode_value: ≍
+    attributes: {}
+  - name: backslash
+    allowed_mode: math
+    unicode_value: \
+    attributes:
+      mathvariant: normal
+  - name: beta
+    allowed_mode: math
+    unicode_value: β
+    attributes:
+      mathvariant: italic
+  - name: bigcap
+    allowed_mode: math
+    unicode_value: ⋂
+    attributes: {}
+  - name: bigcirc
+    allowed_mode: math
+    unicode_value: ◯
+    attributes: {}
+  - name: bigcup
+    allowed_mode: math
+    unicode_value: ⋃
+    attributes: {}
+  - name: bigodot
+    allowed_mode: math
+    unicode_value: ⨀
+    attributes: {}
+  - name: bigoplus
+    allowed_mode: math
+    unicode_value: ⨁
+    attributes: {}
+  - name: bigotimes
+    allowed_mode: math
+    unicode_value: ⨂
+    attributes: {}
+  - name: bigsqcup
+    allowed_mode: math
+    unicode_value: ⨆
+    attributes: {}
+  - name: bigtriangledown
+    allowed_mode: math
+    unicode_value: ▽
+    attributes: {}
+  - name: bigtriangleup
+    allowed_mode: math
+    unicode_value: △
+    attributes: {}
+  - name: biguplus
+    allowed_mode: math
+    unicode_value: ⨄
+    attributes: {}
+  - name: bigvee
+    allowed_mode: math
+    unicode_value: ⋁
+    attributes: {}
+  - name: bigwedge
+    allowed_mode: math
+    unicode_value: ⋀
+    attributes: {}
+  - name: bot
+    allowed_mode: math
+    unicode_value: ⊥
+    attributes:
+      mathvariant: normal
+  - name: bowtie
+    allowed_mode: math
+    unicode_value: ⋈
+    attributes: {}
+  - name: bullet
+    allowed_mode: math
+    unicode_value: ∙
+    attributes: {}
+  - name: cap
+    allowed_mode: math
+    unicode_value: ∩
+    attributes: {}
+  - name: cdot
+    allowed_mode: math
+    unicode_value: ⋅
+    attributes: {}
+  - name: cdotp
+    allowed_mode: math
+    unicode_value: ⋅
+    attributes: {}
+  - name: cdots
+    allowed_mode: math
+    unicode_value: ⋯
+    attributes: {}
+  - name: chi
+    allowed_mode: math
+    unicode_value: χ
+    attributes:
+      mathvariant: italic
+  - name: circ
+    allowed_mode: math
+    unicode_value: ∘
+    attributes: {}
+  - name: clubsuit
+    allowed_mode: math
+    unicode_value: ♣
+    attributes:
+      mathvariant: normal
+  - name: colon
+    allowed_mode: math
+    unicode_value: ':'
+    attributes: {}
+  - name: cong
+    allowed_mode: math
+    unicode_value: ≅
+    attributes: {}
+  - name: coprod
+    allowed_mode: math
+    unicode_value: ∐
+    attributes: {}
+  - name: cup
+    allowed_mode: math
+    unicode_value: ∪
+    attributes: {}
+  - name: dagger
+    allowed_mode: math
+    unicode_value: †
+    attributes: {}
+  - name: dashv
+    allowed_mode: math
+    unicode_value: ⊣
+    attributes: {}
+  - name: ddagger
+    allowed_mode: math
+    unicode_value: ‡
+    attributes: {}
+  - name: ddots
+    allowed_mode: math
+    unicode_value: ⋱
+    attributes: {}
+  - name: delta
+    allowed_mode: math
+    unicode_value: δ
+    attributes:
+      mathvariant: italic
+  - name: Delta
+    allowed_mode: math
+    unicode_value: Δ
+    attributes:
+      mathvariant: normal
+  - name: diamond
+    allowed_mode: math
+    unicode_value: ⋄
+    attributes: {}
+  - name: diamondsuit
+    allowed_mode: math
+    unicode_value: ♢
+    attributes:
+      mathvariant: normal
+  - name: div
+    allowed_mode: math
+    unicode_value: ÷
+    attributes: {}
+  - name: doteq
+    allowed_mode: math
+    unicode_value: ≐
+    attributes: {}
+  - name: dotsb
+    allowed_mode: math
+    unicode_value: ⋯
+    attributes: {}
+  - name: dotsc
+    allowed_mode: math
+    unicode_value: …
+    attributes: {}
+  - name: dotsi
+    allowed_mode: math
+    unicode_value: ⋯
+    attributes: {}
+  - name: dotsm
+    allowed_mode: math
+    unicode_value: ⋯
+    attributes: {}
+  - name: dotso
+    allowed_mode: math
+    unicode_value: …
+    attributes: {}
+  - name: ell
+    allowed_mode: math
+    unicode_value: ℓ
+    attributes:
+      mathvariant: italic
+  - name: emptyset
+    allowed_mode: math
+    unicode_value: ∅
+    attributes:
+      mathvariant: normal
+  - name: epsilon
+    allowed_mode: math
+    unicode_value: ϵ
+    attributes:
+      mathvariant: italic
+  - name: equiv
+    allowed_mode: math
+    unicode_value: ≡
+    attributes: {}
+  - name: eta
+    allowed_mode: math
+    unicode_value: η
+    attributes:
+      mathvariant: italic
+  - name: exists
+    allowed_mode: math
+    unicode_value: ∃
+    attributes:
+      mathvariant: normal
+  - name: flat
+    allowed_mode: math
+    unicode_value: ♭
+    attributes:
+      mathvariant: normal
+  - name: forall
+    allowed_mode: math
+    unicode_value: ∀
+    attributes:
+      mathvariant: normal
+  - name: frown
+    allowed_mode: math
+    unicode_value: ⌢
+    attributes: {}
+  - name: gamma
+    allowed_mode: math
+    unicode_value: γ
+    attributes:
+      mathvariant: italic
+  - name: Gamma
+    allowed_mode: math
+    unicode_value: Γ
+    attributes:
+      mathvariant: normal
+  - name: ge
+    allowed_mode: math
+    unicode_value: ≥
+    attributes: {}
+  - name: geq
+    allowed_mode: math
+    unicode_value: ≥
+    attributes: {}
+  - name: gets
+    allowed_mode: math
+    unicode_value: ←
+    attributes: {}
+  - name: gg
+    allowed_mode: math
+    unicode_value: ≫
+    attributes: {}
+  - name: gt
+    allowed_mode: math
+    unicode_value: '>'
+    attributes: {}
+  - name: hbar
+    allowed_mode: math
+    unicode_value: ℏ
+    attributes:
+      mathvariant: italic
+  - name: heartsuit
+    allowed_mode: math
+    unicode_value: ♡
+    attributes:
+      mathvariant: normal
+  - name: hookleftarrow
+    allowed_mode: math
+    unicode_value: ↩
+    attributes: {}
+  - name: hookrightarrow
+    allowed_mode: math
+    unicode_value: ↪
+    attributes: {}
+  - name: iddots
+    allowed_mode: math
+    unicode_value: ⋰
+    attributes: {}
+  - name: iiint
+    allowed_mode: math
+    unicode_value: ∭
+    attributes: {}
+  - name: iint
+    allowed_mode: math
+    unicode_value: ∬
+    attributes: {}
+  - name: Im
+    allowed_mode: math
+    unicode_value: ℑ
+    attributes:
+      mathvariant: normal
+  - name: imath
+    allowed_mode: math
+    unicode_value: ı
+    attributes:
+      mathvariant: italic
+  - name: in
+    allowed_mode: math
+    unicode_value: ∈
+    attributes: {}
+  - name: infty
+    allowed_mode: math
+    unicode_value: ∞
+    attributes:
+      mathvariant: normal
+  - name: int
+    allowed_mode: math
+    unicode_value: ∫
+    attributes: {}
+  - name: intop
+    allowed_mode: math
+    unicode_value: ∫
+    attributes: {}
+  - name: iota
+    allowed_mode: math
+    unicode_value: ι
+    attributes:
+      mathvariant: italic
+  - name: jmath
+    allowed_mode: math
+    unicode_value: ȷ
+    attributes:
+      mathvariant: italic
+  - name: kappa
+    allowed_mode: math
+    unicode_value: κ
+    attributes:
+      mathvariant: italic
+  - name: lambda
+    allowed_mode: math
+    unicode_value: λ
+    attributes:
+      mathvariant: italic
+  - name: Lambda
+    allowed_mode: math
+    unicode_value: Λ
+    attributes:
+      mathvariant: normal
+  - name: land
+    allowed_mode: math
+    unicode_value: ∧
+    attributes: {}
+  - name: ldotp
+    allowed_mode: math
+    unicode_value: .
+    attributes: {}
+  - name: ldots
+    allowed_mode: math
+    unicode_value: …
+    attributes: {}
+  - name: le
+    allowed_mode: math
+    unicode_value: ≤
+    attributes: {}
+  - name: leftarrow
+    allowed_mode: math
+    unicode_value: ←
+    attributes: {}
+  - name: Leftarrow
+    allowed_mode: math
+    unicode_value: ⇐
+    attributes: {}
+  - name: leftharpoondown
+    allowed_mode: math
+    unicode_value: ↽
+    attributes: {}
+  - name: leftharpoonup
+    allowed_mode: math
+    unicode_value: ↼
+    attributes: {}
+  - name: leftrightarrow
+    allowed_mode: math
+    unicode_value: ↔
+    attributes: {}
+  - name: Leftrightarrow
+    allowed_mode: math
+    unicode_value: ⇔
+    attributes: {}
+  - name: leq
+    allowed_mode: math
+    unicode_value: ≤
+    attributes: {}
+  - name: ll
+    allowed_mode: math
+    unicode_value: ≪
+    attributes: {}
+  - name: lnot
+    allowed_mode: math
+    unicode_value: ¬
+    attributes:
+      mathvariant: normal
+  - name: longleftarrow
+    allowed_mode: math
+    unicode_value: ⟵
+    attributes: {}
+  - name: Longleftarrow
+    allowed_mode: math
+    unicode_value: ⟸
+    attributes: {}
+  - name: longleftrightarrow
+    allowed_mode: math
+    unicode_value: ⟷
+    attributes: {}
+  - name: Longleftrightarrow
+    allowed_mode: math
+    unicode_value: ⟺
+    attributes: {}
+  - name: longmapsto
+    allowed_mode: math
+    unicode_value: ⟼
+    attributes: {}
+  - name: longrightarrow
+    allowed_mode: math
+    unicode_value: ⟶
+    attributes: {}
+  - name: Longrightarrow
+    allowed_mode: math
+    unicode_value: ⟹
+    attributes: {}
+  - name: lor
+    allowed_mode: math
+    unicode_value: ∨
+    attributes: {}
+  - name: lt
+    allowed_mode: math
+    unicode_value: <
+    attributes: {}
+  - name: mapsto
+    allowed_mode: math
+    unicode_value: ↦
+    attributes: {}
+  - name: mid
+    allowed_mode: math
+    unicode_value: ∣
+    attributes: {}
+  - name: models
+    allowed_mode: math
+    unicode_value: ⊧
+    attributes: {}
+  - name: mp
+    allowed_mode: math
+    unicode_value: ∓
+    attributes: {}
+  - name: mu
+    allowed_mode: math
+    unicode_value: μ
+    attributes:
+      mathvariant: italic
+  - name: nabla
+    allowed_mode: math
+    unicode_value: ∇
+    attributes:
+      mathvariant: normal
+  - name: natural
+    allowed_mode: math
+    unicode_value: ♮
+    attributes:
+      mathvariant: normal
+  - name: ne
+    allowed_mode: math
+    unicode_value: ≠
+    attributes: {}
+  - name: nearrow
+    allowed_mode: math
+    unicode_value: ↗
+    attributes: {}
+  - name: neg
+    allowed_mode: math
+    unicode_value: ¬
+    attributes:
+      mathvariant: normal
+  - name: neq
+    allowed_mode: math
+    unicode_value: ≠
+    attributes: {}
+  - name: ni
+    allowed_mode: math
+    unicode_value: ∋
+    attributes: {}
+  - name: notChar
+    allowed_mode: math
+    unicode_value: ⧸
+    attributes: {}
+  - name: notin
+    allowed_mode: math
+    unicode_value: ∉
+    attributes: {}
+  - name: nu
+    allowed_mode: math
+    unicode_value: ν
+    attributes:
+      mathvariant: italic
+  - name: nwarrow
+    allowed_mode: math
+    unicode_value: ↖
+    attributes: {}
+  - name: odot
+    allowed_mode: math
+    unicode_value: ⊙
+    attributes: {}
+  - name: oiiint
+    allowed_mode: math
+    unicode_value: ∰
+    attributes: {}
+  - name: oiint
+    allowed_mode: math
+    unicode_value: ∯
+    attributes: {}
+  - name: oint
+    allowed_mode: math
+    unicode_value: ∮
+    attributes: {}
+  - name: ointop
+    allowed_mode: math
+    unicode_value: ∮
+    attributes: {}
+  - name: omega
+    allowed_mode: math
+    unicode_value: ω
+    attributes:
+      mathvariant: italic
+  - name: Omega
+    allowed_mode: math
+    unicode_value: Ω
+    attributes:
+      mathvariant: normal
+  - name: omicron
+    allowed_mode: math
+    unicode_value: ο
+    attributes:
+      mathvariant: italic
+  - name: ominus
+    allowed_mode: math
+    unicode_value: ⊖
+    attributes: {}
+  - name: oplus
+    allowed_mode: math
+    unicode_value: ⊕
+    attributes: {}
+  - name: oslash
+    allowed_mode: math
+    unicode_value: ⊘
+    attributes: {}
+  - name: otimes
+    allowed_mode: math
+    unicode_value: ⊗
+    attributes: {}
+  - name: owns
+    allowed_mode: math
+    unicode_value: ∋
+    attributes: {}
+  - name: parallel
+    allowed_mode: math
+    unicode_value: ∥
+    attributes: {}
+  - name: partial
+    allowed_mode: math
+    unicode_value: ∂
+    attributes:
+      mathvariant: italic
+  - name: perp
+    allowed_mode: math
+    unicode_value: ⟂
+    attributes: {}
+  - name: phi
+    allowed_mode: math
+    unicode_value: ϕ
+    attributes:
+      mathvariant: italic
+  - name: Phi
+    allowed_mode: math
+    unicode_value: Φ
+    attributes:
+      mathvariant: normal
+  - name: pi
+    allowed_mode: math
+    unicode_value: π
+    attributes:
+      mathvariant: italic
+  - name: Pi
+    allowed_mode: math
+    unicode_value: Π
+    attributes:
+      mathvariant: normal
+  - name: pm
+    allowed_mode: math
+    unicode_value: ±
+    attributes: {}
+  - name: prec
+    allowed_mode: math
+    unicode_value: ≺
+    attributes: {}
+  - name: preceq
+    allowed_mode: math
+    unicode_value: ⪯
+    attributes: {}
+  - name: prime
+    allowed_mode: math
+    unicode_value: ′
+    attributes:
+      mathvariant: italic
+  - name: prod
+    allowed_mode: math
+    unicode_value: ∏
+    attributes: {}
+  - name: propto
+    allowed_mode: math
+    unicode_value: ∝
+    attributes: {}
+  - name: psi
+    allowed_mode: math
+    unicode_value: ψ
+    attributes:
+      mathvariant: italic
+  - name: Psi
+    allowed_mode: math
+    unicode_value: Ψ
+    attributes:
+      mathvariant: normal
+  - name: Re
+    allowed_mode: math
+    unicode_value: ℜ
+    attributes:
+      mathvariant: normal
+  - name: rho
+    allowed_mode: math
+    unicode_value: ρ
+    attributes:
+      mathvariant: italic
+  - name: rightarrow
+    allowed_mode: math
+    unicode_value: →
+    attributes: {}
+  - name: Rightarrow
+    allowed_mode: math
+    unicode_value: ⇒
+    attributes: {}
+  - name: rightharpoondown
+    allowed_mode: math
+    unicode_value: ⇁
+    attributes: {}
+  - name: rightharpoonup
+    allowed_mode: math
+    unicode_value: ⇀
+    attributes: {}
+  - name: rightleftharpoons
+    allowed_mode: math
+    unicode_value: ⇌
+    attributes: {}
+  - name: S
+    allowed_mode: math
+    unicode_value: §
+    attributes:
+      mathvariant: normal
+  - name: searrow
+    allowed_mode: math
+    unicode_value: ↘
+    attributes: {}
+  - name: setminus
+    allowed_mode: math
+    unicode_value: ∖
+    attributes: {}
+  - name: sharp
+    allowed_mode: math
+    unicode_value: ♯
+    attributes:
+      mathvariant: normal
+  - name: sigma
+    allowed_mode: math
+    unicode_value: σ
+    attributes:
+      mathvariant: italic
+  - name: Sigma
+    allowed_mode: math
+    unicode_value: Σ
+    attributes:
+      mathvariant: normal
+  - name: sim
+    allowed_mode: math
+    unicode_value: ∼
+    attributes: {}
+  - name: simeq
+    allowed_mode: math
+    unicode_value: ≃
+    attributes: {}
+  - name: smallint
+    allowed_mode: math
+    unicode_value: ∫
+    attributes: {}
+  - name: smile
+    allowed_mode: math
+    unicode_value: ⌣
+    attributes: {}
+  - name: spadesuit
+    allowed_mode: math
+    unicode_value: ♠
+    attributes:
+      mathvariant: normal
+  - name: sqcap
+    allowed_mode: math
+    unicode_value: ⊓
+    attributes: {}
+  - name: sqcup
+    allowed_mode: math
+    unicode_value: ⊔
+    attributes: {}
+  - name: sqsubseteq
+    allowed_mode: math
+    unicode_value: ⊑
+    attributes: {}
+  - name: sqsupseteq
+    allowed_mode: math
+    unicode_value: ⊒
+    attributes: {}
+  - name: star
+    allowed_mode: math
+    unicode_value: ⋆
+    attributes: {}
+  - name: subset
+    allowed_mode: math
+    unicode_value: ⊂
+    attributes: {}
+  - name: subseteq
+    allowed_mode: math
+    unicode_value: ⊆
+    attributes: {}
+  - name: succ
+    allowed_mode: math
+    unicode_value: ≻
+    attributes: {}
+  - name: succeq
+    allowed_mode: math
+    unicode_value: ⪰
+    attributes: {}
+  - name: sum
+    allowed_mode: math
+    unicode_value: ∑
+    attributes: {}
+  - name: supset
+    allowed_mode: math
+    unicode_value: ⊃
+    attributes: {}
+  - name: supseteq
+    allowed_mode: math
+    unicode_value: ⊇
+    attributes: {}
+  - name: surd
+    allowed_mode: math
+    unicode_value: √
+    attributes: {}
+  - name: swarrow
+    allowed_mode: math
+    unicode_value: ↙
+    attributes: {}
+  - name: tau
+    allowed_mode: math
+    unicode_value: τ
+    attributes:
+      mathvariant: italic
+  - name: theta
+    allowed_mode: math
+    unicode_value: θ
+    attributes:
+      mathvariant: italic
+  - name: Theta
+    allowed_mode: math
+    unicode_value: Θ
+    attributes:
+      mathvariant: normal
+  - name: times
+    allowed_mode: math
+    unicode_value: ×
+    attributes: {}
+  - name: to
+    allowed_mode: math
+    unicode_value: →
+    attributes: {}
+  - name: top
+    allowed_mode: math
+    unicode_value: ⊤
+    attributes:
+      mathvariant: normal
+  - name: triangle
+    allowed_mode: math
+    unicode_value: △
+    attributes:
+      mathvariant: normal
+  - name: triangleleft
+    allowed_mode: math
+    unicode_value: ◃
+    attributes: {}
+  - name: triangleright
+    allowed_mode: math
+    unicode_value: ▹
+    attributes: {}
+  - name: uplus
+    allowed_mode: math
+    unicode_value: ⊎
+    attributes: {}
+  - name: upsilon
+    allowed_mode: math
+    unicode_value: υ
+    attributes:
+      mathvariant: italic
+  - name: Upsilon
+    allowed_mode: math
+    unicode_value: Υ
+    attributes:
+      mathvariant: normal
+  - name: varepsilon
+    allowed_mode: math
+    unicode_value: ε
+    attributes:
+      mathvariant: italic
+  - name: varphi
+    allowed_mode: math
+    unicode_value: φ
+    attributes:
+      mathvariant: italic
+  - name: varpi
+    allowed_mode: math
+    unicode_value: ϖ
+    attributes:
+      mathvariant: italic
+  - name: varrho
+    allowed_mode: math
+    unicode_value: ϱ
+    attributes:
+      mathvariant: italic
+  - name: varsigma
+    allowed_mode: math
+    unicode_value: ς
+    attributes:
+      mathvariant: italic
+  - name: vartheta
+    allowed_mode: math
+    unicode_value: ϑ
+    attributes:
+      mathvariant: italic
+  - name: vdash
+    allowed_mode: math
+    unicode_value: ⊢
+    attributes: {}
+  - name: vdots
+    allowed_mode: math
+    unicode_value: ⋮
+    attributes: {}
+  - name: vee
+    allowed_mode: math
+    unicode_value: ∨
+    attributes: {}
+  - name: wedge
+    allowed_mode: math
+    unicode_value: ∧
+    attributes: {}
+  - name: wp
+    allowed_mode: math
+    unicode_value: ℘
+    attributes:
+      mathvariant: normal
+  - name: wr
+    allowed_mode: math
+    unicode_value: ≀
+    attributes: {}
+  - name: xi
+    allowed_mode: math
+    unicode_value: ξ
+    attributes:
+      mathvariant: italic
+  - name: Xi
+    allowed_mode: math
+    unicode_value: Ξ
+    attributes:
+      mathvariant: normal
+  - name: zeta
+    allowed_mode: math
+    unicode_value: ζ
+    attributes:
+      mathvariant: italic

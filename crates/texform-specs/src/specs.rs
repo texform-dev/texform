@@ -323,10 +323,26 @@ pub struct EnvironmentSpec {
     pub spec_string: String,
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct CharacterAttributes {
+    pub mathvariant: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CharacterSpec {
     pub name: String,
     pub allowed_mode: AllowedMode,
+    pub unicode_value: String,
+    pub attributes: CharacterAttributes,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CharacterMeta {
+    pub name: String,
+    pub allowed_mode: AllowedMode,
+    pub unicode_value: String,
+    pub attributes: CharacterAttributes,
+    pub package: String,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -403,6 +419,8 @@ impl PackageSpecsYaml {
 struct CharacterSpecYaml {
     name: String,
     allowed_mode: AllowedModeYaml,
+    unicode_value: String,
+    attributes: CharacterAttributesYaml,
 }
 
 impl From<CharacterSpecYaml> for CharacterSpec {
@@ -410,6 +428,22 @@ impl From<CharacterSpecYaml> for CharacterSpec {
         CharacterSpec {
             name: value.name,
             allowed_mode: value.allowed_mode.into(),
+            unicode_value: value.unicode_value,
+            attributes: value.attributes.into(),
+        }
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct CharacterAttributesYaml {
+    #[serde(default)]
+    mathvariant: Option<String>,
+}
+
+impl From<CharacterAttributesYaml> for CharacterAttributes {
+    fn from(value: CharacterAttributesYaml) -> Self {
+        CharacterAttributes {
+            mathvariant: value.mathvariant,
         }
     }
 }

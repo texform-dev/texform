@@ -644,17 +644,17 @@ mod tests {
                 "m",
             )],
             &[r"\probe{\hspace{1em}}"],
-            Some(&["dev"]),
+            Some(&["base"]),
             true,
         );
         assert_eq!(output.len(), 1);
         assert!(
             output[0].output.result.is_some(),
-            "explicit dev package should enable \\hspace"
+            "explicit base package should enable \\hspace"
         );
         assert!(
             output[0].output.diagnostics.is_empty(),
-            "no diagnostics expected when dev is loaded"
+            "no diagnostics expected when base is loaded"
         );
     }
 

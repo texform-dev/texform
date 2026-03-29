@@ -453,8 +453,13 @@ fn test_load_package_specs_from_str() {
 characters:
   - name: alpha
     allowed_mode: math
+    unicode_value: α
+    attributes:
+      mathvariant: italic
   - name: beta
     allowed_mode: text
+    unicode_value: β
+    attributes: {}
 commands:
   - name: frac
     kind: prefix
@@ -478,8 +483,15 @@ delimiter_controls: [langle]
     assert_eq!(specs.characters.len(), 2);
     assert_eq!(specs.characters[0].name, "alpha");
     assert_eq!(specs.characters[0].allowed_mode, AllowedMode::Math);
+    assert_eq!(specs.characters[0].unicode_value, "α");
+    assert_eq!(
+        specs.characters[0].attributes.mathvariant.as_deref(),
+        Some("italic")
+    );
     assert_eq!(specs.characters[1].name, "beta");
     assert_eq!(specs.characters[1].allowed_mode, AllowedMode::Text);
+    assert_eq!(specs.characters[1].unicode_value, "β");
+    assert_eq!(specs.characters[1].attributes.mathvariant, None);
 
     assert_eq!(specs.commands.len(), 2);
     assert_eq!(specs.commands[0].name, "frac");
@@ -549,6 +561,8 @@ fn test_character_allowed_mode_is_required() {
     let yaml = r#"
 characters:
   - name: alpha
+    unicode_value: α
+    attributes: {}
 "#;
 
     let _ = load_package_specs_from_str(yaml, "character-allowed-mode-required");

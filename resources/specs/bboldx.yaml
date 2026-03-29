@@ -1,0 +1,916 @@
+commands:
+  - name: imathbb
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - mathjax-extension
+  - name: imathbfbb
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - mathjax-extension
+  - name: itextbb
+    kind: prefix
+    spec: ''
+    allowed_mode: text
+    tags:
+      - mathjax-extension
+  - name: itextbfbb
+    kind: prefix
+    spec: ''
+    allowed_mode: text
+    tags:
+      - mathjax-extension
+  - name: jmathbb
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - mathjax-extension
+  - name: jmathbfbb
+    kind: prefix
+    spec: ''
+    allowed_mode: math
+    tags:
+      - mathjax-extension
+  - name: jtextbb
+    kind: prefix
+    spec: ''
+    allowed_mode: text
+    tags:
+      - mathjax-extension
+  - name: jtextbfbb
+    kind: prefix
+    spec: ''
+    allowed_mode: text
+    tags:
+      - mathjax-extension
+  - name: mathbb
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: mathbfbb
+    kind: prefix
+    spec: m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: textbb
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: textbfbb
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - presentation
+environments: []
+delimiter_controls: []
+characters:
+  - name: bbalpha
+    allowed_mode: math
+    unicode_value: α
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbbeta
+    allowed_mode: math
+    unicode_value: β
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbchi
+    allowed_mode: math
+    unicode_value: χ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbdelta
+    allowed_mode: math
+    unicode_value: δ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbDelta
+    allowed_mode: math
+    unicode_value: ∆
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbdotlessi
+    allowed_mode: math
+    unicode_value: ı
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbdotlessj
+    allowed_mode: math
+    unicode_value: ȷ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbepsilon
+    allowed_mode: math
+    unicode_value: ε
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbeta
+    allowed_mode: math
+    unicode_value: η
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbgamma
+    allowed_mode: math
+    unicode_value: γ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbGamma
+    allowed_mode: math
+    unicode_value: Γ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbiota
+    allowed_mode: math
+    unicode_value: ι
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbkappa
+    allowed_mode: math
+    unicode_value: κ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bblambda
+    allowed_mode: math
+    unicode_value: λ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbLambda
+    allowed_mode: math
+    unicode_value: Λ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbLangle
+    allowed_mode: math
+    unicode_value: 〈
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbLbrack
+    allowed_mode: math
+    unicode_value: '['
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbLparen
+    allowed_mode: math
+    unicode_value: (
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbmu
+    allowed_mode: math
+    unicode_value: µ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbnu
+    allowed_mode: math
+    unicode_value: ν
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbomega
+    allowed_mode: math
+    unicode_value: ω
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbOmega
+    allowed_mode: math
+    unicode_value: Ω
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbphi
+    allowed_mode: math
+    unicode_value: φ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbPhi
+    allowed_mode: math
+    unicode_value: Φ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbpi
+    allowed_mode: math
+    unicode_value: π
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbPi
+    allowed_mode: math
+    unicode_value: Π
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbpsi
+    allowed_mode: math
+    unicode_value: ψ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbPsi
+    allowed_mode: math
+    unicode_value: Ψ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbRangle
+    allowed_mode: math
+    unicode_value: 〉
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbRbrack
+    allowed_mode: math
+    unicode_value: ']'
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbrho
+    allowed_mode: math
+    unicode_value: ρ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbRparen
+    allowed_mode: math
+    unicode_value: )
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbsigma
+    allowed_mode: math
+    unicode_value: σ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbSigma
+    allowed_mode: math
+    unicode_value: Σ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbtau
+    allowed_mode: math
+    unicode_value: τ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbtheta
+    allowed_mode: math
+    unicode_value: θ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbTheta
+    allowed_mode: math
+    unicode_value: Θ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbupsilon
+    allowed_mode: math
+    unicode_value: υ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbUpsilon
+    allowed_mode: math
+    unicode_value: Υ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbxi
+    allowed_mode: math
+    unicode_value: ξ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbXi
+    allowed_mode: math
+    unicode_value: Ξ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bbzeta
+    allowed_mode: math
+    unicode_value: ζ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: bfbbalpha
+    allowed_mode: math
+    unicode_value: α
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbbeta
+    allowed_mode: math
+    unicode_value: β
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbchi
+    allowed_mode: math
+    unicode_value: χ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbdelta
+    allowed_mode: math
+    unicode_value: δ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbDelta
+    allowed_mode: math
+    unicode_value: ∆
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbdotlessi
+    allowed_mode: math
+    unicode_value: ı
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbdotlessj
+    allowed_mode: math
+    unicode_value: ȷ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbepsilon
+    allowed_mode: math
+    unicode_value: ε
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbeta
+    allowed_mode: math
+    unicode_value: η
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbgamma
+    allowed_mode: math
+    unicode_value: γ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbGamma
+    allowed_mode: math
+    unicode_value: Γ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbiota
+    allowed_mode: math
+    unicode_value: ι
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbkappa
+    allowed_mode: math
+    unicode_value: κ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbblambda
+    allowed_mode: math
+    unicode_value: οBB
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbLambda
+    allowed_mode: math
+    unicode_value: Λ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbLangle
+    allowed_mode: math
+    unicode_value: 〈
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbLbrack
+    allowed_mode: math
+    unicode_value: '['
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbLparen
+    allowed_mode: math
+    unicode_value: (
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbmu
+    allowed_mode: math
+    unicode_value: µ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbnu
+    allowed_mode: math
+    unicode_value: ν
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbomega
+    allowed_mode: math
+    unicode_value: ω
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbOmega
+    allowed_mode: math
+    unicode_value: Ω
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbphi
+    allowed_mode: math
+    unicode_value: φ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbPhi
+    allowed_mode: math
+    unicode_value: Φ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbpi
+    allowed_mode: math
+    unicode_value: π
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbPi
+    allowed_mode: math
+    unicode_value: Π
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbpsi
+    allowed_mode: math
+    unicode_value: ψ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbPsi
+    allowed_mode: math
+    unicode_value: Ψ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbRangle
+    allowed_mode: math
+    unicode_value: 〉
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbRbrack
+    allowed_mode: math
+    unicode_value: ']'
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbrho
+    allowed_mode: math
+    unicode_value: ρ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbRparen
+    allowed_mode: math
+    unicode_value: )
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbsigma
+    allowed_mode: math
+    unicode_value: σ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbSigma
+    allowed_mode: math
+    unicode_value: Σ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbtau
+    allowed_mode: math
+    unicode_value: τ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbtheta
+    allowed_mode: math
+    unicode_value: θ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbTheta
+    allowed_mode: math
+    unicode_value: Θ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbupsilon
+    allowed_mode: math
+    unicode_value: υ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbUpsilon
+    allowed_mode: math
+    unicode_value: Υ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbxi
+    allowed_mode: math
+    unicode_value: ξ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbXi
+    allowed_mode: math
+    unicode_value: Ξ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: bfbbzeta
+    allowed_mode: math
+    unicode_value: ζ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbbalpha
+    allowed_mode: text
+    unicode_value: α
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbbeta
+    allowed_mode: text
+    unicode_value: β
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbchi
+    allowed_mode: text
+    unicode_value: χ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbdelta
+    allowed_mode: text
+    unicode_value: δ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbDelta
+    allowed_mode: text
+    unicode_value: ∆
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbdotlessi
+    allowed_mode: text
+    unicode_value: ı
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbdotlessj
+    allowed_mode: text
+    unicode_value: ȷ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbepsilon
+    allowed_mode: text
+    unicode_value: ε
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbeta
+    allowed_mode: text
+    unicode_value: η
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbgamma
+    allowed_mode: text
+    unicode_value: γ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbGamma
+    allowed_mode: text
+    unicode_value: Γ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbiota
+    allowed_mode: text
+    unicode_value: ι
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbkappa
+    allowed_mode: text
+    unicode_value: κ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbblambda
+    allowed_mode: text
+    unicode_value: λ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbLambda
+    allowed_mode: text
+    unicode_value: Λ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbLangle
+    allowed_mode: text
+    unicode_value: 〈
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbLbrack
+    allowed_mode: text
+    unicode_value: '['
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbLparen
+    allowed_mode: text
+    unicode_value: (
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbmu
+    allowed_mode: text
+    unicode_value: µ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbnu
+    allowed_mode: text
+    unicode_value: ν
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbomega
+    allowed_mode: text
+    unicode_value: ω
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbOmega
+    allowed_mode: text
+    unicode_value: Ω
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbphi
+    allowed_mode: text
+    unicode_value: φ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbPhi
+    allowed_mode: text
+    unicode_value: Φ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbpi
+    allowed_mode: text
+    unicode_value: π
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbPi
+    allowed_mode: text
+    unicode_value: Π
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbpsi
+    allowed_mode: text
+    unicode_value: ψ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbPsi
+    allowed_mode: text
+    unicode_value: Ψ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbRangle
+    allowed_mode: text
+    unicode_value: 〉
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbRbrack
+    allowed_mode: text
+    unicode_value: ']'
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbrho
+    allowed_mode: text
+    unicode_value: ρ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbRparen
+    allowed_mode: text
+    unicode_value: )
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbsigma
+    allowed_mode: text
+    unicode_value: σ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbSigma
+    allowed_mode: text
+    unicode_value: Σ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbtau
+    allowed_mode: text
+    unicode_value: τ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbtheta
+    allowed_mode: text
+    unicode_value: θ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbTheta
+    allowed_mode: text
+    unicode_value: Θ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbupsilon
+    allowed_mode: text
+    unicode_value: υ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbUpsilon
+    allowed_mode: text
+    unicode_value: Υ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbxi
+    allowed_mode: text
+    unicode_value: ξ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbXi
+    allowed_mode: text
+    unicode_value: Ξ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbbzeta
+    allowed_mode: text
+    unicode_value: ζ
+    attributes:
+      mathvariant: '-bboldx'
+  - name: txtbfbbalpha
+    allowed_mode: text
+    unicode_value: α
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbbeta
+    allowed_mode: text
+    unicode_value: β
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbchi
+    allowed_mode: text
+    unicode_value: χ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbdelta
+    allowed_mode: text
+    unicode_value: δ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbDelta
+    allowed_mode: text
+    unicode_value: ∆
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbdotlessi
+    allowed_mode: text
+    unicode_value: ı
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbdotlessj
+    allowed_mode: text
+    unicode_value: ȷ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbepsilon
+    allowed_mode: text
+    unicode_value: ε
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbeta
+    allowed_mode: text
+    unicode_value: η
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbgamma
+    allowed_mode: text
+    unicode_value: γ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbGamma
+    allowed_mode: text
+    unicode_value: Γ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbiota
+    allowed_mode: text
+    unicode_value: ι
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbkappa
+    allowed_mode: text
+    unicode_value: κ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbblambda
+    allowed_mode: text
+    unicode_value: λ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbLambda
+    allowed_mode: text
+    unicode_value: Λ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbLangle
+    allowed_mode: text
+    unicode_value: 〈
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbLbrack
+    allowed_mode: text
+    unicode_value: '['
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbLparen
+    allowed_mode: text
+    unicode_value: (
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbmu
+    allowed_mode: text
+    unicode_value: µ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbnu
+    allowed_mode: text
+    unicode_value: ν
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbomega
+    allowed_mode: text
+    unicode_value: ω
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbOmega
+    allowed_mode: text
+    unicode_value: Ω
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbphi
+    allowed_mode: text
+    unicode_value: φ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbPhi
+    allowed_mode: text
+    unicode_value: Φ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbpi
+    allowed_mode: text
+    unicode_value: π
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbPi
+    allowed_mode: text
+    unicode_value: Π
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbpsi
+    allowed_mode: text
+    unicode_value: ψ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbPsi
+    allowed_mode: text
+    unicode_value: Ψ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbRangle
+    allowed_mode: text
+    unicode_value: 〉
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbRbrack
+    allowed_mode: text
+    unicode_value: ']'
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbrho
+    allowed_mode: text
+    unicode_value: ρ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbRparen
+    allowed_mode: text
+    unicode_value: )
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbsigma
+    allowed_mode: text
+    unicode_value: σ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbSigma
+    allowed_mode: text
+    unicode_value: Σ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbtau
+    allowed_mode: text
+    unicode_value: τ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbtheta
+    allowed_mode: text
+    unicode_value: θ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbTheta
+    allowed_mode: text
+    unicode_value: Θ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbupsilon
+    allowed_mode: text
+    unicode_value: υ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbUpsilon
+    allowed_mode: text
+    unicode_value: Υ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbxi
+    allowed_mode: text
+    unicode_value: ξ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbXi
+    allowed_mode: text
+    unicode_value: Ξ
+    attributes:
+      mathvariant: '-bboldx-bold'
+  - name: txtbfbbzeta
+    allowed_mode: text
+    unicode_value: ζ
+    attributes:
+      mathvariant: '-bboldx-bold'

@@ -14,9 +14,9 @@ use crate::context::{
 };
 
 pub use texform_specs::specs::{
-    AllowedMode, ArgForm, ArgSpec, ArgSpecParseError, CharacterSpec, CommandKind, CommandMeta,
-    CommandSpec, DelimiterToken, EnvMeta, EnvironmentSpec, PackageSpecs, ValueKind,
-    load_package_specs_from_str,
+    AllowedMode, ArgForm, ArgSpec, ArgSpecParseError, CharacterAttributes, CharacterMeta,
+    CharacterSpec, CommandKind, CommandMeta, CommandSpec, DelimiterToken, EnvMeta, EnvironmentSpec,
+    PackageSpecs, ValueKind, load_package_specs_from_str,
 };
 
 const RUNTIME_PACKAGE_NAME: &str = "runtime";
@@ -60,6 +60,8 @@ impl std::error::Error for InitError {}
 pub struct KnowledgeBase {
     commands: Vec<CommandMeta>,
     command_idx_by_name: HashMap<&'static str, usize>,
+    characters: Vec<CharacterMeta>,
+    character_idx_by_name: HashMap<String, usize>,
     envs: Vec<EnvMeta>,
     env_idx_by_name: HashMap<&'static str, usize>,
     delimiter_controls: HashSet<&'static str>,
@@ -75,6 +77,13 @@ impl KnowledgeBase {
             .get(name)
             .copied()
             .map(|idx| &self.commands[idx])
+    }
+
+    pub fn lookup_character(&self, name: &str) -> Option<&CharacterMeta> {
+        self.character_idx_by_name
+            .get(name)
+            .copied()
+            .map(|idx| &self.characters[idx])
     }
 
     pub fn lookup_env(&self, name: &str) -> Option<&EnvMeta> {
@@ -158,6 +167,8 @@ impl KnowledgeBase {
 pub struct KnowledgeBaseBuilder {
     commands: Vec<CommandMeta>,
     command_idx_by_name: HashMap<&'static str, usize>,
+    characters: Vec<CharacterMeta>,
+    character_idx_by_name: HashMap<String, usize>,
     envs: Vec<EnvMeta>,
     env_idx_by_name: HashMap<&'static str, usize>,
     delimiter_controls: HashSet<&'static str>,
@@ -169,11 +180,26 @@ impl KnowledgeBaseBuilder {
     }
 
     fn insert_character_with_package(&mut self, character: CharacterSpec, package: &str) {
+        let CharacterSpec {
+            name,
+            allowed_mode,
+            unicode_value,
+            attributes,
+        } = character;
+
+        self.upsert_character_meta(CharacterMeta {
+            name: name.clone(),
+            allowed_mode,
+            unicode_value,
+            attributes,
+            package: package.to_string(),
+        });
+
         self.insert_or_override_command_with_package(
             CommandSpec {
-                name: character.name,
+                name,
                 kind: CommandKind::Prefix,
-                allowed_mode: character.allowed_mode,
+                allowed_mode,
                 args: vec![],
                 tags: vec![],
                 spec_string: String::new(),
@@ -192,6 +218,13 @@ impl KnowledgeBaseBuilder {
         let name = meta.name;
         self.commands.push(meta);
         self.command_idx_by_name.insert(name, idx);
+    }
+
+    fn upsert_character_meta(&mut self, meta: CharacterMeta) {
+        let idx = self.characters.len();
+        let name = meta.name.clone();
+        self.characters.push(meta);
+        self.character_idx_by_name.insert(name, idx);
     }
 
     pub fn insert_or_override_environment(&mut self, spec: EnvironmentSpec) {
@@ -238,6 +271,8 @@ impl KnowledgeBaseBuilder {
         KnowledgeBase {
             commands: self.commands,
             command_idx_by_name: self.command_idx_by_name,
+            characters: self.characters,
+            character_idx_by_name: self.character_idx_by_name,
             envs: self.envs,
             env_idx_by_name: self.env_idx_by_name,
             delimiter_controls: self.delimiter_controls,
@@ -510,6 +545,11 @@ pub fn lookup_command(name: &str) -> Option<&'static CommandMeta> {
     kb().lookup_command(name)
 }
 
+/// Lookup character metadata by name.
+pub fn lookup_character(name: &str) -> Option<&'static CharacterMeta> {
+    kb().lookup_character(name)
+}
+
 /// Lookup environment metadata by name.
 ///
 /// Returns None if environment is not in the knowledge base.
@@ -554,7 +594,7 @@ mod tests {
 
     #[test]
     fn test_lookup_env() {
-        let kb = build_default_kb(Some(&["dev"]));
+        let kb = build_default_kb(Some(&["ams"]));
         let align = kb.lookup_env("align").unwrap();
         assert_eq!(align.name, "align");
         assert_eq!(align.allowed_mode, AllowedMode::Math);
@@ -589,7 +629,17 @@ mod tests {
         assert!(!is_delimiter_control("langle"));
         assert!(!is_delimiter_control("notadelim"));
 
-        let kb = build_default_kb(Some(&["dev"]));
+        let mut builder = builder_with_core();
+        builder.import_package_with_name(
+            "inline-delims",
+            PackageSpecs {
+                characters: vec![],
+                commands: vec![],
+                environments: vec![],
+                delimiter_controls: vec!["langle".to_string(), "rvert".to_string()],
+            },
+        );
+        let kb = builder.build();
         assert!(kb.is_delimiter_control("langle"));
         assert!(kb.is_delimiter_control("rvert"));
     }
@@ -633,6 +683,10 @@ mod tests {
             characters: vec![texform_specs::specs::CharacterSpec {
                 name: "alpha".to_string(),
                 allowed_mode: AllowedMode::Text,
+                unicode_value: "α".to_string(),
+                attributes: CharacterAttributes {
+                    mathvariant: Some("italic".to_string()),
+                },
             }],
             commands: vec![],
             environments: vec![],
@@ -644,6 +698,15 @@ mod tests {
         assert_eq!(alpha.kind, CommandKind::Prefix);
         assert_eq!(alpha.allowed_mode, AllowedMode::Text);
         assert!(alpha.args.is_empty());
+
+        let alpha_character = kb.lookup_character("alpha").unwrap();
+        assert_eq!(alpha_character.allowed_mode, AllowedMode::Text);
+        assert_eq!(alpha_character.unicode_value, "α");
+        assert_eq!(
+            alpha_character.attributes.mathvariant.as_deref(),
+            Some("italic")
+        );
+        assert_eq!(alpha_character.package, UNKNOWN_PACKAGE_NAME);
     }
 
     #[test]
@@ -665,7 +728,7 @@ mod tests {
     }
 
     #[test]
-    fn test_runtime_defaults_exclude_test_and_dev_entries() {
+    fn test_runtime_defaults_exclude_optional_package_entries() {
         let kb = build_default_kb(Some(texform_specs::packages::runtime_default_packages()));
         assert!(kb.lookup_command("\\").is_some());
         assert!(kb.lookup_command("over").is_none());
@@ -673,10 +736,28 @@ mod tests {
     }
 
     #[test]
-    fn test_explicit_dev_package_includes_dev_entries() {
-        let kb = build_default_kb(Some(&["dev"]));
-        assert!(kb.lookup_command("over").is_some());
-        assert!(kb.lookup_delimiter_control("langle").is_some());
+    fn test_explicit_base_package_includes_base_entries() {
+        let kb = build_default_kb(Some(&["base"]));
+        let above = kb.lookup_command("above").expect("expected base command");
+        assert_eq!(above.package, "base");
+        assert_eq!(above.kind, CommandKind::Infix);
+    }
+
+    #[test]
+    fn test_later_explicit_package_overrides_same_command_name() {
+        let base_then_physics = build_default_kb(Some(&["base", "physics"]));
+        let arccos = base_then_physics
+            .lookup_command("arccos")
+            .expect("expected arccos after loading base and physics");
+        assert_eq!(arccos.package, "physics");
+        assert_eq!(arccos.args.len(), 1);
+
+        let physics_then_base = build_default_kb(Some(&["physics", "base"]));
+        let arccos = physics_then_base
+            .lookup_command("arccos")
+            .expect("expected arccos after loading physics and base");
+        assert_eq!(arccos.package, "base");
+        assert!(arccos.args.is_empty());
     }
 
     #[test]

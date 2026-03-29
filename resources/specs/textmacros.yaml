@@ -1,0 +1,368 @@
+commands:
+  - name: AA
+    kind: prefix
+    spec: ''
+    allowed_mode: text
+    tags: []
+  - name: Bbb
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: bf
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+      - discouraged
+  - name: cal
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: dagger
+    kind: prefix
+    spec: ''
+    allowed_mode: text
+    tags: []
+  - name: ddagger
+    kind: prefix
+    spec: ''
+    allowed_mode: text
+    tags: []
+  - name: emph
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: enspace
+    kind: prefix
+    spec: ''
+    allowed_mode: text
+    tags:
+      - spacing
+  - name: eqref
+    kind: prefix
+    spec: m:N
+    allowed_mode: text
+    tags: []
+  - name: frak
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: hphantom
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - invisible
+      - spacing
+  - name: hskip
+    kind: prefix
+    spec: m:L
+    allowed_mode: text
+    tags:
+      - spacing
+      - discouraged
+  - name: hspace
+    kind: prefix
+    spec: m:L
+    allowed_mode: text
+    tags:
+      - spacing
+  - name: huge
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: Huge
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: it
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+      - discouraged
+  - name: kern
+    kind: prefix
+    spec: m:L
+    allowed_mode: text
+    tags:
+      - spacing
+  - name: large
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: Large
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: LARGE
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: ldots
+    kind: prefix
+    spec: ''
+    allowed_mode: text
+    tags: []
+  - name: llap
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags: []
+  - name: mit
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+      - discouraged
+  - name: mkern
+    kind: prefix
+    spec: m:L
+    allowed_mode: text
+    tags:
+      - spacing
+  - name: mmlToken
+    kind: prefix
+    spec: m:N o:K m:T
+    allowed_mode: text
+    tags:
+      - mathjax-extension
+  - name: mskip
+    kind: prefix
+    spec: m:L
+    allowed_mode: text
+    tags:
+      - spacing
+  - name: mspace
+    kind: prefix
+    spec: m:L
+    allowed_mode: text
+    tags:
+      - spacing
+  - name: negthinspace
+    kind: prefix
+    spec: ''
+    allowed_mode: text
+    tags:
+      - spacing
+  - name: normalsize
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: oldstyle
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+      - discouraged
+  - name: phantom
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - invisible
+      - spacing
+  - name: qquad
+    kind: prefix
+    spec: ''
+    allowed_mode: text
+    tags:
+      - spacing
+  - name: quad
+    kind: prefix
+    spec: ''
+    allowed_mode: text
+    tags:
+      - spacing
+  - name: ref
+    kind: prefix
+    spec: m:N
+    allowed_mode: text
+    tags: []
+  - name: rlap
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags: []
+  - name: rm
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+      - discouraged
+  - name: rule
+    kind: prefix
+    spec: o:L m:L m:L
+    allowed_mode: text
+    tags: []
+  - name: Rule
+    kind: prefix
+    spec: m:L m:L m:L
+    allowed_mode: text
+    tags:
+      - spacing
+      - mathjax-extension
+  - name: S
+    kind: prefix
+    spec: ''
+    allowed_mode: text
+    tags: []
+  - name: scriptsize
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: sf
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+      - discouraged
+  - name: small
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: smash
+    kind: prefix
+    spec: O{}:N m:T
+    allowed_mode: text
+    tags:
+      - spacing
+  - name: Space
+    kind: prefix
+    spec: m:L m:L m:L
+    allowed_mode: text
+    tags:
+      - spacing
+      - mathjax-extension
+  - name: textbf
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: textit
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: textnormal
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: textrm
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: textsf
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: texttt
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: textup
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: thinspace
+    kind: prefix
+    spec: ''
+    allowed_mode: text
+    tags:
+      - spacing
+  - name: tiny
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+  - name: Tiny
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+      - mathjax-extension
+  - name: tt
+    kind: declarative
+    spec: ''
+    allowed_mode: text
+    tags:
+      - presentation
+      - discouraged
+  - name: u
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - decoration
+  - name: underline
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - presentation
+      - decoration
+  - name: v
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - decoration
+  - name: vdots
+    kind: prefix
+    spec: ''
+    allowed_mode: text
+    tags: []
+  - name: vphantom
+    kind: prefix
+    spec: m:T
+    allowed_mode: text
+    tags:
+      - invisible
+      - spacing
+environments: []
+delimiter_controls: []
+characters: []
