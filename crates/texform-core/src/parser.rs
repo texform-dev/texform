@@ -13,7 +13,8 @@ use chumsky::{
 };
 use logos::Logos;
 
-use crate::knowledge::{self, CommandKind, CommandMeta, EnvMeta, KnowledgeBase};
+use crate::context::ParseContext;
+use crate::knowledge::{CommandKind, CommandMeta, EnvMeta, KnowledgeBase};
 use crate::lexer::Token;
 use texform_interface::syntax_node::{ArgumentSlot, ContentMode, Delimiter, GroupKind, SyntaxNode};
 
@@ -470,7 +471,7 @@ where
 /// Returns a `Spanned<SyntaxNode>` where the span covers the full input range.
 pub fn parse(src: &str, strict: bool) -> Result<Spanned<SyntaxNode>, Vec<Rich<'_, Token>>> {
     let token_stream = build_token_stream(src);
-    math_block_parser(knowledge::kb(), strict)
+    math_block_parser(ParseContext::all_packages_shared().kb(), strict)
         .map_with(|node, e| (node, e.span()))
         .then_ignore(end())
         .parse(token_stream)

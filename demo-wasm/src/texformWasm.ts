@@ -1,7 +1,5 @@
 import initWasmModule, {
   ParseContext as WasmParseContext,
-  lookup_command_info as wasmLookupCommandInfo,
-  lookup_env_info as wasmLookupEnvInfo,
   parse as wasmParse,
   parse_with_context_items as wasmParseWithContextItems,
   type Argument,
@@ -85,7 +83,7 @@ export interface CommandInfo {
   kind: CommandKind
   allowed_mode: AllowedMode
   spec_string: string
-  package: string
+  from_packages: string[]
   tags: string[]
   args: ArgSpecInfo[]
 }
@@ -95,9 +93,21 @@ export interface EnvInfo {
   allowed_mode: AllowedMode
   body_mode: BodyMode
   spec_string: string
-  package: string
+  from_packages: string[]
   tags: string[]
   args: ArgSpecInfo[]
+}
+
+export interface CharacterAttributesInfo {
+  mathvariant?: string
+}
+
+export interface CharacterInfo {
+  name: string
+  allowed_mode: AllowedMode
+  unicode_value: string
+  attributes: CharacterAttributesInfo
+  package: string
 }
 
 export class ParseContext {
@@ -124,8 +134,16 @@ export class ParseContext {
     return this.inner.remove_item(item) as boolean
   }
 
-  lookupCommand(name: string): CommandInfo | null {
-    return this.inner.lookup_command(name) as CommandInfo | null
+  lookupActiveCommand(name: string): CommandInfo | null {
+    return this.inner.lookup_active_command(name) as CommandInfo | null
+  }
+
+  lookupExplicitCommand(name: string): CommandInfo | null {
+    return this.inner.lookup_explicit_command(name) as CommandInfo | null
+  }
+
+  lookupCharacter(name: string): CharacterInfo | null {
+    return this.inner.lookup_character(name) as CharacterInfo | null
   }
 
   lookupEnv(name: string): EnvInfo | null {
@@ -151,16 +169,6 @@ export function parseWithContextItems(
     packages ?? undefined,
     strict,
   ) as ParseWithContextBatchResult
-}
-
-export function lookupCommandInfo(name: string): CommandInfo | null {
-  assertReady()
-  return wasmLookupCommandInfo(name) as CommandInfo | null
-}
-
-export function lookupEnvInfo(name: string): EnvInfo | null {
-  assertReady()
-  return wasmLookupEnvInfo(name) as EnvInfo | null
 }
 
 export type {

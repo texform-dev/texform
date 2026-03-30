@@ -1,11 +1,9 @@
 use ariadne::{Config, IndexType, Label, Report, ReportKind, Source};
 use std::env;
-use texform_core::api::{ParseDiagnostic, ParseOutput};
 use texform_core::context::{
-    CommandItem, ContextItem, DelimiterControlItem, EnvironmentItem, ParseContext,
+    AllowedMode, CommandItem, CommandKind, ContentMode, ContextItem, DelimiterControlItem,
+    EnvironmentItem, ParseContext, ParseDiagnostic, ParseOutput,
 };
-use texform_core::knowledge::{AllowedMode, CommandKind};
-use texform_interface::syntax_node::ContentMode;
 
 struct CliOptions {
     input: String,
@@ -129,7 +127,7 @@ fn build_context(packages: Option<&Vec<String>>) -> Result<ParseContext, String>
             ParseContext::try_from_packages(refs.as_slice())
                 .map_err(|error| format!("package loading failed: {error}"))
         }
-        None => Ok(ParseContext::clone_runtime_default()),
+        None => Ok(ParseContext::clone_all_packages()),
     }
 }
 
@@ -150,7 +148,7 @@ fn print_summary(options: &CliOptions) {
                     values.join(",")
                 }
             })
-            .unwrap_or_else(|| "runtime default".to_string())
+            .unwrap_or_else(|| "all packages".to_string())
     );
     println!("Custom items: {}", options.items.len());
     println!();
@@ -289,6 +287,6 @@ fn print_usage(program: &str) {
     eprintln!();
     eprintln!("Notes:");
     eprintln!("  - Without custom items, this behaves like the normal parse CLI.");
-    eprintln!("  - Without --packages, this example uses the runtime default packages.");
+    eprintln!("  - Without --packages, this example loads all registered packages.");
     eprintln!("  - Repeat --command / --environment / --delimiter to inject multiple items.");
 }

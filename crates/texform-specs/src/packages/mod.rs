@@ -54,8 +54,8 @@ pub const ALL_PACKAGES: &[Package] = &[
     },
 ];
 
-pub fn runtime_default_packages() -> &'static [&'static str] {
-    &[]
+pub fn all_package_names() -> Vec<&'static str> {
+    ALL_PACKAGES.iter().map(|pkg| pkg.name).collect()
 }
 
 pub fn get(name: &str) -> Option<&'static Package> {
@@ -69,6 +69,7 @@ mod tests {
     #[test]
     fn all_resource_specs_are_registered() {
         let names: Vec<&str> = ALL_PACKAGES.iter().map(|pkg| pkg.name).collect();
+        assert_eq!(all_package_names(), names);
         assert_eq!(
             names,
             vec![

@@ -4,6 +4,7 @@ import {
   type AllowedMode,
   type ArgSpecInfo,
   type BodyMode,
+  type CharacterInfo,
   type CommandInfo,
   type CommandKind,
   type ContextItem,
@@ -329,7 +330,9 @@ function App() {
     return buildSyntaxTree(
       parseState.result.node,
       'root',
-      (name) => parseContext.lookupCommand(name),
+      (name) => parseContext.lookupActiveCommand(name),
+      (name) => parseContext.lookupExplicitCommand(name),
+      (name) => parseContext.lookupCharacter(name),
       (name) => parseContext.lookupEnv(name),
     )
   }, [parseState.result, parseContext, contextVersion])
@@ -629,8 +632,14 @@ function App() {
           {node.specString !== undefined ? (
             <SpecPopover
               specString={node.specString}
-              specPackage={node.specPackage}
+              specFromPackages={node.specFromPackages}
               specDetail={node.specDetail}
+              explicitSpecString={node.explicitSpecString}
+              explicitSpecFromPackages={node.explicitSpecFromPackages}
+              explicitSpecDetail={node.explicitSpecDetail}
+              characterUnicodeValue={node.characterUnicodeValue}
+              characterPackage={node.characterPackage}
+              characterMathvariant={node.characterMathvariant}
             />
           ) : null}
 
@@ -725,16 +734,49 @@ function App() {
 
 // -- Spec popover component --
 
+function formatPackageList(packages?: string[]): string {
+  return packages && packages.length > 0 ? packages.join(', ') : 'unknown'
+}
+
+function sameStringList(left?: string[], right?: string[]): boolean {
+  if (left === right) {
+    return true
+  }
+  if (!left || !right || left.length !== right.length) {
+    return false
+  }
+  return left.every((value, index) => value === right[index])
+}
+
 function SpecPopover({
   specString,
-  specPackage,
+  specFromPackages,
   specDetail,
+  explicitSpecString,
+  explicitSpecFromPackages,
+  explicitSpecDetail,
+  characterUnicodeValue,
+  characterPackage,
+  characterMathvariant,
 }: {
   specString: string
-  specPackage?: string
+  specFromPackages?: string[]
   specDetail?: string
+  explicitSpecString?: string
+  explicitSpecFromPackages?: string[]
+  explicitSpecDetail?: string
+  characterUnicodeValue?: string
+  characterPackage?: string
+  characterMathvariant?: string
 }) {
   const [show, setShow] = useState(false)
+  const activePackageLabel = formatPackageList(specFromPackages)
+  const explicitPackageLabel = formatPackageList(explicitSpecFromPackages)
+  const showExplicitSection =
+    explicitSpecString !== undefined &&
+    (explicitSpecString !== specString ||
+      explicitSpecDetail !== specDetail ||
+      !sameStringList(explicitSpecFromPackages, specFromPackages))
 
   return (
     <span
@@ -747,29 +789,86 @@ function SpecPopover({
       </span>
       {show ? (
         <div className="absolute left-0 top-full z-50 mt-1 w-max max-w-sm rounded-md border border-slate-200 bg-white p-2.5 shadow-lg">
-          <div className="space-y-1.5 text-xs">
-            {/* Spec string row */}
-            <div className="flex items-baseline gap-2">
-              <span className="w-14 shrink-0 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">
-                spec
-              </span>
-              <code className="rounded bg-violet-50 px-1.5 py-px font-semibold text-violet-700 [font-family:var(--font-code)]">
-                {specString || '(empty)'}
-              </code>
+          <div className="space-y-2 text-xs">
+            <div className="space-y-1.5">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                active
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="w-14 shrink-0 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  spec
+                </span>
+                <code className="rounded bg-violet-50 px-1.5 py-px font-semibold text-violet-700 [font-family:var(--font-code)]">
+                  {specString || '(empty)'}
+                </code>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="w-14 shrink-0 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  packages
+                </span>
+                <span className="rounded bg-sky-50 px-1.5 py-px text-sky-700">
+                  {activePackageLabel}
+                </span>
+              </div>
+              {specDetail ? <SpecArgsList detail={specDetail} /> : null}
             </div>
-            {/* Package row */}
-            <div className="flex items-baseline gap-2">
-              <span className="w-14 shrink-0 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">
-                package
-              </span>
-              <span className="rounded bg-sky-50 px-1.5 py-px text-sky-700">
-                {specPackage ?? 'unknown'}
-              </span>
-            </div>
-            {/* Args section */}
-            {specDetail ? (
-              <div className="border-t border-slate-100 pt-1.5">
-                <SpecArgsList detail={specDetail} />
+
+            {showExplicitSection ? (
+              <div className="space-y-1.5 border-t border-slate-100 pt-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  explicit
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="w-14 shrink-0 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    spec
+                  </span>
+                  <code className="rounded bg-amber-50 px-1.5 py-px font-semibold text-amber-700 [font-family:var(--font-code)]">
+                    {explicitSpecString || '(empty)'}
+                  </code>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="w-14 shrink-0 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    packages
+                  </span>
+                  <span className="rounded bg-amber-50 px-1.5 py-px text-amber-700">
+                    {explicitPackageLabel}
+                  </span>
+                </div>
+                {explicitSpecDetail ? <SpecArgsList detail={explicitSpecDetail} /> : null}
+              </div>
+            ) : null}
+
+            {characterUnicodeValue ? (
+              <div className="space-y-1.5 border-t border-slate-100 pt-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  character
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="w-14 shrink-0 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    unicode
+                  </span>
+                  <code className="rounded bg-emerald-50 px-1.5 py-px font-semibold text-emerald-700 [font-family:var(--font-code)]">
+                    {characterUnicodeValue}
+                  </code>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="w-14 shrink-0 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    package
+                  </span>
+                  <span className="rounded bg-emerald-50 px-1.5 py-px text-emerald-700">
+                    {characterPackage ?? 'unknown'}
+                  </span>
+                </div>
+                {characterMathvariant ? (
+                  <div className="flex items-baseline gap-2">
+                    <span className="w-14 shrink-0 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      variant
+                    </span>
+                    <code className="rounded bg-emerald-50 px-1.5 py-px font-semibold text-emerald-700 [font-family:var(--font-code)]">
+                      {characterMathvariant}
+                    </code>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -824,7 +923,9 @@ function SpecArgsList({ detail }: { detail: string }) {
 function buildSyntaxTree(
   node: SyntaxNode,
   id: string,
-  lookupCommand: (name: string) => CommandInfo | null,
+  lookupActiveCommand: (name: string) => CommandInfo | null,
+  lookupExplicitCommand: (name: string) => CommandInfo | null,
+  lookupCharacter: (name: string) => CharacterInfo | null,
   lookupEnv: (name: string) => EnvInfo | null,
 ): TreeNode {
   if (node === 'ActiveSpace') {
@@ -876,7 +977,14 @@ function buildSyntaxTree(
   if ('Group' in node) {
     const group = node.Group
     const rawChildren = group.children.map((child: SyntaxNode, index: number) =>
-      buildSyntaxTree(child, `${id}.child.${index}`, lookupCommand, lookupEnv),
+      buildSyntaxTree(
+        child,
+        `${id}.child.${index}`,
+        lookupActiveCommand,
+        lookupExplicitCommand,
+        lookupCharacter,
+        lookupEnv,
+      ),
     )
     return {
       id,
@@ -888,61 +996,136 @@ function buildSyntaxTree(
 
   if ('Command' in node) {
     const command = node.Command
-    const spec = lookupCommand(command.name)
+    const activeSpec = lookupActiveCommand(command.name)
+    const explicitSpec = lookupExplicitCommand(command.name)
+    const character = lookupCharacter(command.name)
     return {
       id,
       type: 'Command',
       commandName: `\\${command.name}`,
       subtitle: `${command.args.length} args`,
-      specString: spec?.spec_string,
-      specPackage: spec?.package,
-      specDetail: spec ? formatSpecDetail(spec.args) : undefined,
+      specString: activeSpec?.spec_string,
+      specFromPackages: activeSpec?.from_packages,
+      specDetail: activeSpec ? formatSpecDetail(activeSpec.args) : undefined,
+      explicitSpecString: explicitSpec?.spec_string,
+      explicitSpecFromPackages: explicitSpec?.from_packages,
+      explicitSpecDetail: explicitSpec ? formatSpecDetail(explicitSpec.args) : undefined,
+      characterUnicodeValue: character?.unicode_value,
+      characterPackage: character?.package,
+      characterMathvariant: character?.attributes.mathvariant,
       children: command.args.map((arg: Argument | null, index: number) =>
-        buildArgumentNode(arg, `${id}.arg.${index}`, index, lookupCommand, lookupEnv),
+        buildArgumentNode(
+          arg,
+          `${id}.arg.${index}`,
+          index,
+          lookupActiveCommand,
+          lookupExplicitCommand,
+          lookupCharacter,
+          lookupEnv,
+        ),
       ),
     }
   }
 
   if ('Infix' in node) {
     const infix = node.Infix
-    const spec = lookupCommand(infix.name)
+    const activeSpec = lookupActiveCommand(infix.name)
+    const explicitSpec = lookupExplicitCommand(infix.name)
+    const character = lookupCharacter(infix.name)
     const args = infix.args.map((arg: Argument | null, index: number) =>
-      buildArgumentNode(arg, `${id}.arg.${index}`, index, lookupCommand, lookupEnv),
+      buildArgumentNode(
+        arg,
+        `${id}.arg.${index}`,
+        index,
+        lookupActiveCommand,
+        lookupExplicitCommand,
+        lookupCharacter,
+        lookupEnv,
+      ),
     )
     return {
       id,
       type: 'Infix',
       commandName: `\\${infix.name}`,
       subtitle: `${infix.args.length} args`,
-      specString: spec?.spec_string,
-      specPackage: spec?.package,
-      specDetail: spec ? formatSpecDetail(spec.args) : undefined,
+      specString: activeSpec?.spec_string,
+      specFromPackages: activeSpec?.from_packages,
+      specDetail: activeSpec ? formatSpecDetail(activeSpec.args) : undefined,
+      explicitSpecString: explicitSpec?.spec_string,
+      explicitSpecFromPackages: explicitSpec?.from_packages,
+      explicitSpecDetail: explicitSpec ? formatSpecDetail(explicitSpec.args) : undefined,
+      characterUnicodeValue: character?.unicode_value,
+      characterPackage: character?.package,
+      characterMathvariant: character?.attributes.mathvariant,
       children: [
-        withRole(buildSyntaxTree(infix.left, `${id}.left`, lookupCommand, lookupEnv), 'left'),
+        withRole(
+          buildSyntaxTree(
+            infix.left,
+            `${id}.left`,
+            lookupActiveCommand,
+            lookupExplicitCommand,
+            lookupCharacter,
+            lookupEnv,
+          ),
+          'left',
+        ),
         ...args,
-        withRole(buildSyntaxTree(infix.right, `${id}.right`, lookupCommand, lookupEnv), 'right'),
+        withRole(
+          buildSyntaxTree(
+            infix.right,
+            `${id}.right`,
+            lookupActiveCommand,
+            lookupExplicitCommand,
+            lookupCharacter,
+            lookupEnv,
+          ),
+          'right',
+        ),
       ],
     }
   }
 
   if ('Declarative' in node) {
     const declarative = node.Declarative
-    const spec = lookupCommand(declarative.name)
+    const activeSpec = lookupActiveCommand(declarative.name)
+    const explicitSpec = lookupExplicitCommand(declarative.name)
+    const character = lookupCharacter(declarative.name)
     const args = declarative.args.map((arg: Argument | null, index: number) =>
-      buildArgumentNode(arg, `${id}.arg.${index}`, index, lookupCommand, lookupEnv),
+      buildArgumentNode(
+        arg,
+        `${id}.arg.${index}`,
+        index,
+        lookupActiveCommand,
+        lookupExplicitCommand,
+        lookupCharacter,
+        lookupEnv,
+      ),
     )
     return {
       id,
       type: 'Declarative',
       commandName: `\\${declarative.name}`,
       subtitle: `${declarative.args.length} args`,
-      specString: spec?.spec_string,
-      specPackage: spec?.package,
-      specDetail: spec ? formatSpecDetail(spec.args) : undefined,
+      specString: activeSpec?.spec_string,
+      specFromPackages: activeSpec?.from_packages,
+      specDetail: activeSpec ? formatSpecDetail(activeSpec.args) : undefined,
+      explicitSpecString: explicitSpec?.spec_string,
+      explicitSpecFromPackages: explicitSpec?.from_packages,
+      explicitSpecDetail: explicitSpec ? formatSpecDetail(explicitSpec.args) : undefined,
+      characterUnicodeValue: character?.unicode_value,
+      characterPackage: character?.package,
+      characterMathvariant: character?.attributes.mathvariant,
       children: [
         ...args,
         withRole(
-          buildSyntaxTree(declarative.scope, `${id}.scope`, lookupCommand, lookupEnv),
+          buildSyntaxTree(
+            declarative.scope,
+            `${id}.scope`,
+            lookupActiveCommand,
+            lookupExplicitCommand,
+            lookupCharacter,
+            lookupEnv,
+          ),
           'scope',
         ),
       ],
@@ -953,7 +1136,15 @@ function buildSyntaxTree(
     const env = node.Environment
     const spec = lookupEnv(env.name)
     const args = env.args.map((arg: Argument | null, index: number) =>
-      buildArgumentNode(arg, `${id}.arg.${index}`, index, lookupCommand, lookupEnv),
+      buildArgumentNode(
+        arg,
+        `${id}.arg.${index}`,
+        index,
+        lookupActiveCommand,
+        lookupExplicitCommand,
+        lookupCharacter,
+        lookupEnv,
+      ),
     )
     return {
       id,
@@ -961,11 +1152,21 @@ function buildSyntaxTree(
       commandName: env.name,
       subtitle: `${env.args.length} args`,
       specString: spec?.spec_string,
-      specPackage: spec?.package,
+      specFromPackages: spec?.from_packages,
       specDetail: spec ? formatSpecDetail(spec.args) : undefined,
       children: [
         ...args,
-        withRole(buildSyntaxTree(env.body, `${id}.body`, lookupCommand, lookupEnv), 'body'),
+        withRole(
+          buildSyntaxTree(
+            env.body,
+            `${id}.body`,
+            lookupActiveCommand,
+            lookupExplicitCommand,
+            lookupCharacter,
+            lookupEnv,
+          ),
+          'body',
+        ),
       ],
     }
   }
@@ -973,17 +1174,44 @@ function buildSyntaxTree(
   if ('Scripted' in node) {
     const scripted = node.Scripted
     const children: TreeNode[] = [
-      withRole(buildSyntaxTree(scripted.base, `${id}.base`, lookupCommand, lookupEnv), 'base'),
+      withRole(
+        buildSyntaxTree(
+          scripted.base,
+          `${id}.base`,
+          lookupActiveCommand,
+          lookupExplicitCommand,
+          lookupCharacter,
+          lookupEnv,
+        ),
+        'base',
+      ),
     ]
     if (scripted.subscript) {
       children.push(
-        withRole(buildSyntaxTree(scripted.subscript, `${id}.sub`, lookupCommand, lookupEnv), 'sub'),
+        withRole(
+          buildSyntaxTree(
+            scripted.subscript,
+            `${id}.sub`,
+            lookupActiveCommand,
+            lookupExplicitCommand,
+            lookupCharacter,
+            lookupEnv,
+          ),
+          'sub',
+        ),
       )
     }
     if (scripted.superscript) {
       children.push(
         withRole(
-          buildSyntaxTree(scripted.superscript, `${id}.sup`, lookupCommand, lookupEnv),
+          buildSyntaxTree(
+            scripted.superscript,
+            `${id}.sup`,
+            lookupActiveCommand,
+            lookupExplicitCommand,
+            lookupCharacter,
+            lookupEnv,
+          ),
           'sup',
         ),
       )
@@ -1006,7 +1234,9 @@ function buildArgumentNode(
   argument: Argument | null,
   id: string,
   index: number,
-  lookupCommand: (name: string) => CommandInfo | null,
+  lookupActiveCommand: (name: string) => CommandInfo | null,
+  lookupExplicitCommand: (name: string) => CommandInfo | null,
+  lookupCharacter: (name: string) => CharacterInfo | null,
   lookupEnv: (name: string) => EnvInfo | null,
 ): TreeNode {
   if (argument === null) {
@@ -1023,7 +1253,14 @@ function buildArgumentNode(
 
   // Flatten: if the arg is Content with a single child, inline it
   if (value.content !== null) {
-    const contentChild = buildSyntaxTree(value.content, `${id}.content`, lookupCommand, lookupEnv)
+    const contentChild = buildSyntaxTree(
+      value.content,
+      `${id}.content`,
+      lookupActiveCommand,
+      lookupExplicitCommand,
+      lookupCharacter,
+      lookupEnv,
+    )
     // If the content child is a Group with children, we can still flatten
     // by promoting the content node and annotating it with arg info
     return {

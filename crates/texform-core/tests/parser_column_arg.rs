@@ -1,33 +1,33 @@
-use std::sync::Once;
-
-use texform_core::knowledge;
-use texform_core::parser::parse;
+use texform_core::context::{AllowedMode, CommandItem, CommandKind, ParseContext};
 use texform_interface::syntax_node::{ArgumentValue, SyntaxNode};
 
-fn init_inline_column_command() {
-    static INIT: Once = Once::new();
-    INIT.call_once(|| {
-        let mut builder = knowledge::test_kb_builder();
-        builder.import_package(knowledge::load_package_specs_from_str(
-            r"
-commands:
-  - name: colspec
-    kind: prefix
-    allowed_mode: math
-    spec: 'm:C'
-",
-            "inline-test",
-        ));
-        knowledge::init_with_builder(builder);
-    });
+fn parse_inline_column_command(src: &str) -> texform_core::context::ParseOutput {
+    let mut ctx = ParseContext::core_only();
+    ctx.insert_item(CommandItem::new(
+        "colspec",
+        CommandKind::Prefix,
+        AllowedMode::Math,
+        "m:C",
+    ))
+    .expect("colspec argspec should be valid");
+    ctx.parse(src, false)
 }
 
 #[test]
 fn parse_column_arg_success() {
-    init_inline_column_command();
-    let (result, _) = parse(r"\colspec{c|c|c}", false).unwrap();
+    let output = parse_inline_column_command(r"\colspec{c|c|c}");
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        output.diagnostics
+    );
 
-    match result {
+    let result = output
+        .result
+        .as_ref()
+        .expect("column argument parse should succeed");
+
+    match &result.node {
         SyntaxNode::Group { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "colspec");
@@ -51,7 +51,6 @@ fn parse_column_arg_success() {
 
 #[test]
 fn parse_column_arg_invalid_template_errors() {
-    init_inline_column_command();
-    let result = parse(r"\colspec{a}", false);
-    assert!(result.is_err());
+    let output = parse_inline_column_command(r"\colspec{a}");
+    assert!(!output.diagnostics.is_empty());
 }

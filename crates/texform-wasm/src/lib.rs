@@ -1,11 +1,11 @@
 use serde::Deserialize;
-use texform_core::api::{self, ParseOutput};
+use texform_core::api;
+use texform_core::context::ContentMode;
 use texform_core::context::{
-    CommandItem, ContextItem, DelimiterControlItem, EnvironmentItem,
-    ParseContext as CoreParseContext,
+    AllowedMode, CharacterMeta, CommandItem, CommandKind, CommandMeta, ContextItem,
+    DelimiterControlItem, EnvMeta, EnvironmentItem, ParseOutput,
 };
-use texform_core::knowledge::{self, AllowedMode, CommandKind, CommandMeta, EnvMeta};
-use texform_specs::specs::{ArgForm, ArgSpec, ContentMode, DelimiterToken, ValueKind};
+use texform_specs::specs::{ArgForm, ArgSpec, DelimiterToken, ValueKind};
 use wasm_bindgen::prelude::*;
 
 // MANUAL TypeScript type declarations for SyntaxNode and related types.
@@ -87,7 +87,7 @@ export type CommandInfo = {
     kind: "prefix" | "infix" | "declarative";
     allowed_mode: "math" | "text" | "both";
     spec_string: string;
-    package: string;
+    from_packages: string[];
     tags: string[];
     args: ArgSpecInfo[];
 };
@@ -97,9 +97,21 @@ export type EnvInfo = {
     allowed_mode: "math" | "text" | "both";
     body_mode: "math" | "text";
     spec_string: string;
-    package: string;
+    from_packages: string[];
     tags: string[];
     args: ArgSpecInfo[];
+};
+
+export type CharacterAttributesInfo = {
+    mathvariant?: string;
+};
+
+export type CharacterInfo = {
+    name: string;
+    allowed_mode: "math" | "text" | "both";
+    unicode_value: string;
+    attributes: CharacterAttributesInfo;
+    package: string;
 };
 
 export type ContextItem =
@@ -149,7 +161,7 @@ enum ContextItemInput {
 
 #[wasm_bindgen]
 pub struct ParseContext {
-    inner: CoreParseContext,
+    inner: texform_core::context::ParseContext,
 }
 
 #[wasm_bindgen]
@@ -159,11 +171,11 @@ impl ParseContext {
         let inner = match packages {
             Some(pkgs) if !pkgs.is_empty() => {
                 let refs: Vec<&str> = pkgs.iter().map(String::as_str).collect();
-                CoreParseContext::try_from_packages(refs.as_slice()).map_err(|error| {
-                    JsValue::from_str(&format!("package loading failed: {}", error))
-                })?
+                texform_core::context::ParseContext::try_from_packages(refs.as_slice()).map_err(
+                    |error| JsValue::from_str(&format!("package loading failed: {}", error)),
+                )?
             }
-            _ => CoreParseContext::clone_runtime_default(),
+            _ => texform_core::context::ParseContext::clone_all_packages(),
         };
         Ok(ParseContext { inner })
     }
@@ -203,9 +215,23 @@ impl ParseContext {
         parse_output_to_result(self.inner.parse(src, strict))
     }
 
-    pub fn lookup_command(&self, name: &str) -> JsValue {
+    pub fn lookup_active_command(&self, name: &str) -> JsValue {
         match self.inner.lookup_command(name) {
             Some(meta) => command_meta_to_js(meta),
+            None => JsValue::NULL,
+        }
+    }
+
+    pub fn lookup_explicit_command(&self, name: &str) -> JsValue {
+        match self.inner.lookup_explicit_command(name) {
+            Some(meta) => command_meta_to_js(meta),
+            None => JsValue::NULL,
+        }
+    }
+
+    pub fn lookup_character(&self, name: &str) -> JsValue {
+        match self.inner.lookup_character(name) {
+            Some(meta) => character_meta_to_js(meta),
             None => JsValue::NULL,
         }
     }
@@ -291,22 +317,6 @@ fn parse_context_item_input(input: ContextItemInput) -> Result<ContextItem, JsVa
                 .into())
         }
         ContextItemInput::Delimiter { name } => Ok(DelimiterControlItem::new(name).into()),
-    }
-}
-
-#[wasm_bindgen]
-pub fn lookup_command_info(name: &str) -> JsValue {
-    match knowledge::lookup_command(name) {
-        Some(meta) => command_meta_to_js(meta),
-        None => JsValue::NULL,
-    }
-}
-
-#[wasm_bindgen]
-pub fn lookup_env_info(name: &str) -> JsValue {
-    match knowledge::lookup_env(name) {
-        Some(meta) => env_meta_to_js(meta),
-        None => JsValue::NULL,
     }
 }
 
@@ -530,7 +540,12 @@ fn command_meta_to_js(meta: &CommandMeta) -> JsValue {
     )
     .unwrap();
     js_sys::Reflect::set(&value, &"spec_string".into(), &meta.spec_string.into()).unwrap();
-    js_sys::Reflect::set(&value, &"package".into(), &meta.package.into()).unwrap();
+    js_sys::Reflect::set(
+        &value,
+        &"from_packages".into(),
+        &string_slice_to_js_array(meta.from_packages).into(),
+    )
+    .unwrap();
 
     let tags = js_sys::Array::new();
     for &tag in meta.tags {
@@ -563,7 +578,12 @@ fn env_meta_to_js(meta: &EnvMeta) -> JsValue {
     )
     .unwrap();
     js_sys::Reflect::set(&value, &"spec_string".into(), &meta.spec_string.into()).unwrap();
-    js_sys::Reflect::set(&value, &"package".into(), &meta.package.into()).unwrap();
+    js_sys::Reflect::set(
+        &value,
+        &"from_packages".into(),
+        &string_slice_to_js_array(meta.from_packages).into(),
+    )
+    .unwrap();
 
     let tags = js_sys::Array::new();
     for &tag in meta.tags {
@@ -578,6 +598,52 @@ fn env_meta_to_js(meta: &EnvMeta) -> JsValue {
     js_sys::Reflect::set(&value, &"args".into(), &args.into()).unwrap();
 
     value.into()
+}
+
+fn character_meta_to_js(meta: &CharacterMeta) -> JsValue {
+    let value = js_sys::Object::new();
+    js_sys::Reflect::set(&value, &"name".into(), &meta.name.as_str().into()).unwrap();
+    js_sys::Reflect::set(
+        &value,
+        &"allowed_mode".into(),
+        &meta.allowed_mode.as_str().into(),
+    )
+    .unwrap();
+    js_sys::Reflect::set(
+        &value,
+        &"unicode_value".into(),
+        &meta.unicode_value.as_str().into(),
+    )
+    .unwrap();
+    js_sys::Reflect::set(
+        &value,
+        &"attributes".into(),
+        &character_attributes_to_js(meta).into(),
+    )
+    .unwrap();
+    js_sys::Reflect::set(&value, &"package".into(), &meta.package.as_str().into()).unwrap();
+    value.into()
+}
+
+fn character_attributes_to_js(meta: &CharacterMeta) -> js_sys::Object {
+    let value = js_sys::Object::new();
+    match meta.attributes.mathvariant.as_deref() {
+        Some(mathvariant) => {
+            js_sys::Reflect::set(&value, &"mathvariant".into(), &mathvariant.into()).unwrap();
+        }
+        None => {
+            js_sys::Reflect::set(&value, &"mathvariant".into(), &JsValue::UNDEFINED).unwrap();
+        }
+    }
+    value
+}
+
+fn string_slice_to_js_array(values: &[&str]) -> js_sys::Array {
+    let array = js_sys::Array::new();
+    for &value in values {
+        array.push(&value.into());
+    }
+    array
 }
 
 fn arg_spec_to_js(spec: &ArgSpec) -> JsValue {

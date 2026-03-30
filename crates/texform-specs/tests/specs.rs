@@ -607,4 +607,25 @@ fn test_allowed_mode_helpers() {
     assert_eq!(AllowedMode::Math.to_string(), "math");
     assert_eq!(AllowedMode::Text.to_string(), "text");
     assert_eq!(AllowedMode::Both.to_string(), "both");
+
+    assert_eq!(
+        AllowedMode::Math.union(AllowedMode::Math),
+        AllowedMode::Math
+    );
+    assert_eq!(
+        AllowedMode::Text.union(AllowedMode::Text),
+        AllowedMode::Text
+    );
+    assert_eq!(
+        AllowedMode::Math.union(AllowedMode::Text),
+        AllowedMode::Both
+    );
+    assert_eq!(
+        AllowedMode::Text.union(AllowedMode::Math),
+        AllowedMode::Both
+    );
+    assert_eq!(
+        AllowedMode::Both.union(AllowedMode::Math),
+        AllowedMode::Both
+    );
 }

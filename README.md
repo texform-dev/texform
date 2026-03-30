@@ -21,7 +21,7 @@ cargo run --example parse -p texform-core -- '<input>' --delimiter <name>
 - `<input>` — LaTeX formula to parse (required)
 - `--strict true|false` — Enable strict mode (default: `false`). In strict mode, unknown commands are rejected as errors.
 - `--verbose` — Print the syntax tree as pretty JSON.
-- `--packages <csv>` — Load an explicit comma-separated package list. Without this flag, the example uses the runtime default packages.
+- `--packages <csv>` — Load an explicit comma-separated package list. Without this flag, the example loads all registered packages.
 - `--command <name> <kind> <mode> <spec>` — Inject a temporary command item. Repeat to inject multiple commands.
 - `--environment <name> <mode> <body_mode> <spec>` — Inject a temporary environment item. Repeat as needed.
 - `--delimiter <name>` — Inject a temporary delimiter control. Repeat as needed.
@@ -68,7 +68,12 @@ On success, the CLI prints `valid: true`, `arg_count`, and the structured `parse
 
 ## Language Bindings
 
-TeXForm provides Python and WASM bindings via a high-level API (`texform-core/src/api.rs`).
+TeXForm exposes two Rust-side entry layers:
+
+- `texform-core::context` — the stateful public API for building a parse context, injecting temporary knowledge, querying metadata, and parsing repeatedly
+- `texform-core::api` — convenience helpers for one-shot parsing and batch probing on top of the default/runtime context
+
+`texform-core::knowledge` is an internal implementation module and is not the intended public integration surface.
 
 ### Python
 

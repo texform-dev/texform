@@ -58,6 +58,17 @@ impl AllowedMode {
         }
     }
 
+    pub const fn union(self, other: Self) -> Self {
+        match (self, other) {
+            (AllowedMode::Both, _) | (_, AllowedMode::Both) => AllowedMode::Both,
+            (AllowedMode::Math, AllowedMode::Math) => AllowedMode::Math,
+            (AllowedMode::Text, AllowedMode::Text) => AllowedMode::Text,
+            (AllowedMode::Math, AllowedMode::Text) | (AllowedMode::Text, AllowedMode::Math) => {
+                AllowedMode::Both
+            }
+        }
+    }
+
     pub const fn allows(self, mode: ContentMode) -> bool {
         match self {
             AllowedMode::Both => true,
@@ -274,8 +285,8 @@ pub struct CommandMeta {
     /// Original xparse-style spec string from package definition.
     pub spec_string: &'static str,
 
-    /// Package name that provided this command metadata.
-    pub package: &'static str,
+    /// Package names that contributed this command metadata.
+    pub from_packages: &'static [&'static str],
 }
 
 /// Environment metadata in knowledge base
@@ -299,8 +310,8 @@ pub struct EnvMeta {
     /// Original xparse-style spec string from package definition.
     pub spec_string: &'static str,
 
-    /// Package name that provided this environment metadata.
-    pub package: &'static str,
+    /// Package names that contributed this environment metadata.
+    pub from_packages: &'static [&'static str],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

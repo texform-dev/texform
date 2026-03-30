@@ -8,8 +8,14 @@ export interface TreeNode {
   value?: string
   commandName?: string
   specString?: string
-  specPackage?: string
+  specFromPackages?: string[]
   specDetail?: string
+  explicitSpecString?: string
+  explicitSpecFromPackages?: string[]
+  explicitSpecDetail?: string
+  characterUnicodeValue?: string
+  characterPackage?: string
+  characterMathvariant?: string
   argKind?: string
   argIndex?: number
   children: TreeNode[]
