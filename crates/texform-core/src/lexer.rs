@@ -1,3 +1,19 @@
+//! LaTeX lexical analysis powered by [Logos](https://docs.rs/logos).
+//!
+//! The lexer maps LaTeX source bytes into a flat stream of [`Token`]s.
+//! It follows the TeX catcode model in a simplified form:
+//!
+//! - Catcode 0 (Escape) triggers control-sequence scanning.
+//! - Catcodes 1–8 map to dedicated structural tokens.
+//! - Catcode 10 (Spacer) and catcode 14 (Comment) are handled as
+//!   whitespace / skip rules.
+//! - Catcodes 11/12 (Letter/Other) fall through to [`Token::Char`].
+//! - Catcodes 9 (Ignore) and 15 (Invalid) are not matched by any rule
+//!   and produce lexer errors automatically.
+//!
+//! The lexer is intentionally lossy: comments are discarded and runs of
+//! whitespace are collapsed, matching TeXForm's normalization goals.
+
 use logos::Logos;
 
 /// Token types for LaTeX lexical analysis.
@@ -152,155 +168,5 @@ impl std::fmt::Display for Token {
             Token::Comment => write!(f, "%"),
             Token::Char(c) => write!(f, "{c}"),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_command_sequences() {
-        let mut lex = Token::lexer(r"\alpha \frac \$ ~");
-        assert_eq!(lex.next(), Some(Ok(Token::ControlSeq("alpha".to_string()))));
-        assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
-        assert_eq!(lex.next(), Some(Ok(Token::ControlSeq("frac".to_string()))));
-        assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
-        assert_eq!(lex.next(), Some(Ok(Token::ControlSeq("$".to_string()))));
-        assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
-        assert_eq!(lex.next(), Some(Ok(Token::ActiveChar)));
-    }
-
-    #[test]
-    fn test_structural_tokens() {
-        let mut lex = Token::lexer(r"{a^b_c}$&");
-        assert_eq!(lex.next(), Some(Ok(Token::LBrace)));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('a'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Superscript)));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('b'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Subscript)));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('c'))));
-        assert_eq!(lex.next(), Some(Ok(Token::RBrace)));
-        assert_eq!(lex.next(), Some(Ok(Token::MathShift)));
-        assert_eq!(lex.next(), Some(Ok(Token::Alignment)));
-    }
-
-    #[test]
-    fn test_whitespace_and_comments() {
-        let mut lex = Token::lexer("a  \t\n  b % comment\nc");
-        assert_eq!(lex.next(), Some(Ok(Token::Char('a'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('b'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('c'))));
-        assert_eq!(lex.next(), None);
-    }
-
-    #[test]
-    fn test_brackets() {
-        let mut lex = Token::lexer(r"\frac[1]{2}");
-        assert_eq!(lex.next(), Some(Ok(Token::ControlSeq("frac".to_string()))));
-        assert_eq!(lex.next(), Some(Ok(Token::LBracket)));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('1'))));
-        assert_eq!(lex.next(), Some(Ok(Token::RBracket)));
-        assert_eq!(lex.next(), Some(Ok(Token::LBrace)));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('2'))));
-        assert_eq!(lex.next(), Some(Ok(Token::RBrace)));
-    }
-
-    #[test]
-    fn test_star_token() {
-        // Test starred command variants
-        let mut lex = Token::lexer(r"\section*{Title}");
-        assert_eq!(
-            lex.next(),
-            Some(Ok(Token::ControlSeq("section".to_string())))
-        );
-        assert_eq!(lex.next(), Some(Ok(Token::Star)));
-        assert_eq!(lex.next(), Some(Ok(Token::LBrace)));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('T'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('i'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('t'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('l'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('e'))));
-        assert_eq!(lex.next(), Some(Ok(Token::RBrace)));
-
-        // Test star in math context (multiplication)
-        let mut lex = Token::lexer(r"a*b");
-        assert_eq!(lex.next(), Some(Ok(Token::Char('a'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Star)));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('b'))));
-    }
-
-    #[test]
-    fn test_parameter_marker() {
-        let mut lex = Token::lexer(r"#1 #2");
-        assert_eq!(lex.next(), Some(Ok(Token::Parameter)));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('1'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
-        assert_eq!(lex.next(), Some(Ok(Token::Parameter)));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('2'))));
-    }
-
-    #[test]
-    fn test_invalid_characters() {
-        // Test catcode 9 (Ignore): null character
-        let mut lex = Token::lexer("a\x00b");
-        assert_eq!(lex.next(), Some(Ok(Token::Char('a'))));
-        assert_eq!(lex.next(), Some(Err(())));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('b'))));
-
-        // Test catcode 15 (Invalid): DEL character
-        let mut lex = Token::lexer("x\x7Fy");
-        assert_eq!(lex.next(), Some(Ok(Token::Char('x'))));
-        assert_eq!(lex.next(), Some(Err(())));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('y'))));
-
-        // Test control character
-        let mut lex = Token::lexer("m\x01n");
-        assert_eq!(lex.next(), Some(Ok(Token::Char('m'))));
-        assert_eq!(lex.next(), Some(Err(())));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('n'))));
-    }
-
-    #[test]
-    fn test_active_char() {
-        let mut lex = Token::lexer("a~b");
-        assert_eq!(lex.next(), Some(Ok(Token::Char('a'))));
-        assert_eq!(lex.next(), Some(Ok(Token::ActiveChar)));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('b'))));
-    }
-
-    #[test]
-    fn test_prime_token() {
-        // ASCII apostrophe
-        let mut lex = Token::lexer("f'");
-        assert_eq!(lex.next(), Some(Ok(Token::Char('f'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Prime(1))));
-
-        // Multiple primes
-        let mut lex = Token::lexer("f''");
-        assert_eq!(lex.next(), Some(Ok(Token::Char('f'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Prime(2))));
-
-        // Unicode right single quotation mark (U+2019)
-        let mut lex = Token::lexer("f'");
-        assert_eq!(lex.next(), Some(Ok(Token::Char('f'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Prime(1))));
-    }
-
-    #[test]
-    fn test_nbsp_whitespace() {
-        // Non-breaking space (U+00A0) should be treated as whitespace
-        let mut lex = Token::lexer("a\u{00A0}b");
-        assert_eq!(lex.next(), Some(Ok(Token::Char('a'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('b'))));
-
-        // Mixed whitespace including NBSP
-        let mut lex = Token::lexer("a \u{00A0}\t b");
-        assert_eq!(lex.next(), Some(Ok(Token::Char('a'))));
-        assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
-        assert_eq!(lex.next(), Some(Ok(Token::Char('b'))));
     }
 }

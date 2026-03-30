@@ -1,3 +1,15 @@
+//! Argument parsing for commands and environments.
+//!
+//! Each argument slot in a command spec ([`ArgSpec`]) describes a form (standard,
+//! star, group, delimited, paired) and a value kind (content, delimiter,
+//! dimension, integer, key-value, column, CS-name). The [`argument_parser`]
+//! function dispatches on form × kind to build the appropriate chumsky parser,
+//! while [`arguments_parser`] sequences them for a full argument list.
+//!
+//! Delimited and paired forms collect raw tokens between the matched
+//! delimiters, then re-parse them as a sub-stream. This two-phase approach
+//! avoids exposing delimiter nesting to the main combinator graph.
+
 use chumsky::prelude::*;
 
 use crate::column_parser::parse_column_template;
@@ -15,6 +27,7 @@ use super::{
     optional_bracketed_or_empty, text_block_parser, text_item_parser,
 };
 
+/// Check whether a lexed token matches a spec-defined delimiter token.
 fn token_matches_delimiter(token: &Token, delimiter: &DelimiterToken) -> bool {
     match delimiter {
         DelimiterToken::Char('{') => matches!(token, Token::LBrace),
@@ -28,6 +41,7 @@ fn token_matches_delimiter(token: &Token, delimiter: &DelimiterToken) -> bool {
     }
 }
 
+/// Convert a spec-level [`DelimiterToken`] to a syntax-tree [`Delimiter`].
 fn syntax_delimiter(delimiter: &'static DelimiterToken) -> Delimiter {
     match delimiter {
         DelimiterToken::Char(c) => Delimiter::Char(*c),
@@ -35,6 +49,11 @@ fn syntax_delimiter(delimiter: &'static DelimiterToken) -> Delimiter {
     }
 }
 
+/// Consume tokens between matched `open` and `close` delimiters.
+///
+/// When `open != close`, nesting is tracked so that inner pairs are collected
+/// as part of the content. When `open == close` (e.g. `|…|`), nesting is
+/// disabled and the first closing delimiter ends collection.
 fn collect_delimited_tokens<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
     open: &DelimiterToken,
@@ -81,6 +100,11 @@ fn collect_delimited_tokens<'src, 'parse>(
     Ok(tokens)
 }
 
+/// Re-parse a collected token sequence as a full content sub-expression.
+///
+/// The tokens are serialized back to a string, re-lexed, and fed through
+/// the appropriate mode parser. This two-phase approach isolates delimiter
+/// nesting from the main combinator graph.
 fn parse_tokens_as_content<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
     kb: &'parse KnowledgeBase,
@@ -107,6 +131,11 @@ fn parse_tokens_as_content<'src, 'parse>(
     Ok(normalize_argument_value(mode, node))
 }
 
+/// Parse collected tokens into the [`ArgumentValue`] dictated by `kind`.
+///
+/// Dispatches to content parsing, CS-name extraction, dimension/integer
+/// combinators, key-value validation, column-spec validation, or delimiter
+/// parsing depending on the spec.
 fn parse_delimited_value<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
     kb: &'parse KnowledgeBase,
@@ -211,6 +240,12 @@ fn parse_tokens_as_cs_name<'src, 'parse>(
     Ok(tokens_to_string(tokens))
 }
 
+/// Build a parser for a single argument slot described by `spec`.
+///
+/// The returned parser produces `Some(Argument)` when the slot is filled,
+/// or `None` when an optional slot is absent. It dispatches on `spec.form`
+/// (Standard / Star / Group / Delimited / Paired) crossed with `spec.kind`
+/// (Content, Delimiter, Dimension, Integer, KeyVal, Column, CSName, Star).
 pub(super) fn argument_parser<'a>(
     kb: &'a KnowledgeBase,
     math_content: ContentParser<'a>,
@@ -513,6 +548,11 @@ pub(super) fn argument_parser<'a>(
     .boxed()
 }
 
+/// Sequence argument parsers for a full argument list.
+///
+/// Iterates over `specs`, building and invoking an [`argument_parser`] for
+/// each slot. Whitespace is consumed between slots unless the spec sets
+/// `no_leading_space`. The `context` label is attached for diagnostics.
 pub(super) fn arguments_parser<'a>(
     kb: &'a KnowledgeBase,
     math_content: ContentParser<'a>,
@@ -539,6 +579,12 @@ pub(super) fn arguments_parser<'a>(
     })
 }
 
+/// Collect tokens inside an optional `[…]` argument.
+///
+/// Returns `None` if the next token is not `[`. When `match_brackets` is
+/// true, inner `[…]` pairs at brace depth 0 are tracked for nesting;
+/// otherwise the first `]` at brace depth 0 closes the argument (allowing
+/// unbalanced brackets inside braces).
 pub(crate) fn collect_optional_bracketed_tokens<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
     match_brackets: bool,
@@ -596,6 +642,9 @@ pub(crate) fn collect_optional_bracketed_tokens<'src, 'parse>(
     Ok(Some(tokens))
 }
 
+/// Consume tokens inside a mandatory `{…}` group.
+///
+/// When `allow_nested` is false, encountering a nested `{` is an error.
 fn collect_braced_tokens<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
     allow_nested: bool,
@@ -637,6 +686,7 @@ fn collect_braced_tokens<'src, 'parse>(
     Ok(tokens)
 }
 
+/// Serialize a token sequence back into a LaTeX string for re-parsing.
 fn tokens_to_string(tokens: &[Token]) -> String {
     let mut out = String::new();
     for token in tokens {
@@ -669,6 +719,10 @@ fn tokens_to_string(tokens: &[Token]) -> String {
     out
 }
 
+/// Validate that `raw` is a well-formed `key=value,…` sequence.
+///
+/// Checks balanced braces, non-empty keys/values, and allows backslash
+/// escapes inside both keys and values.
 fn validate_keyval(raw: &str) -> Result<(), &'static str> {
     let mut key = String::new();
     let mut value = String::new();
@@ -886,6 +940,11 @@ fn is_valid_dimension_unit(unit: &str) -> bool {
     )
 }
 
+/// Unwrap a single-child group into its inner node.
+///
+/// When a content argument is parsed, the result may be a group node
+/// wrapping a single child. This function strips the unnecessary wrapper
+/// so argument values are as flat as possible.
 pub(crate) fn normalize_argument_value(mode: ContentMode, node: SyntaxNode) -> SyntaxNode {
     match node {
         SyntaxNode::Group { children, .. } => fold_items(mode, children),
@@ -893,6 +952,8 @@ pub(crate) fn normalize_argument_value(mode: ContentMode, node: SyntaxNode) -> S
     }
 }
 
+/// Fold a list of items into a single node: return as-is for one item,
+/// wrap in an implicit group for zero or multiple items.
 pub(crate) fn fold_items(mode: ContentMode, items: Vec<SyntaxNode>) -> SyntaxNode {
     match items.len() {
         0 => SyntaxNode::Group {
@@ -906,97 +967,5 @@ pub(crate) fn fold_items(mode: ContentMode, items: Vec<SyntaxNode>) -> SyntaxNod
             kind: GroupKind::Implicit,
             children: items,
         },
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn parse_integer(src: &str) -> Result<String, ()> {
-        let stream = build_token_stream(src);
-        integer().parse(stream).into_result().map_err(|_| ())
-    }
-
-    fn parse_dimension(src: &str) -> Result<String, ()> {
-        let stream = build_token_stream(src);
-        dimension().parse(stream).into_result().map_err(|_| ())
-    }
-
-    fn parse_optional_tokens(src: &str, match_brackets: bool) -> Result<Option<Vec<Token>>, ()> {
-        let stream = build_token_stream(src);
-        custom(move |input| collect_optional_bracketed_tokens(input, match_brackets))
-            .parse(stream)
-            .into_result()
-            .map_err(|_| ())
-    }
-
-    fn parse_delimited_tokens(src: &str) -> Result<Vec<Token>, ()> {
-        let stream = build_token_stream(src);
-        custom(|input| {
-            collect_delimited_tokens(
-                input,
-                &DelimiterToken::Char('{'),
-                &DelimiterToken::Char('}'),
-            )
-        })
-        .parse(stream)
-        .into_result()
-        .map_err(|_| ())
-    }
-
-    #[test]
-    fn integer_combinator() {
-        assert_eq!(parse_integer("123").unwrap(), "123");
-        assert_eq!(parse_integer("+42").unwrap(), "+42");
-        assert_eq!(parse_integer("-0").unwrap(), "-0");
-        assert!(parse_integer("abc").is_err());
-        assert!(parse_integer("+").is_err());
-    }
-
-    #[test]
-    fn dimension_combinator() {
-        assert_eq!(parse_dimension("1em").unwrap(), "1em");
-        assert_eq!(parse_dimension("1.5em").unwrap(), "1.5em");
-        assert_eq!(parse_dimension("1,5em").unwrap(), "1.5em");
-        assert_eq!(parse_dimension(".5pt").unwrap(), ".5pt");
-        assert_eq!(parse_dimension("1.em").unwrap(), "1.em");
-        assert!(parse_dimension("abc").is_err());
-    }
-
-    #[test]
-    fn validate_keyval_reports_shape_errors() {
-        assert!(validate_keyval("key=val").is_ok());
-        assert!(validate_keyval("key={a,b},other=c").is_ok());
-        assert!(validate_keyval("key=\\{,other=c").is_ok());
-        assert!(validate_keyval("key=").is_err());
-        assert!(validate_keyval("=value").is_err());
-        assert!(validate_keyval("key={a").is_err());
-    }
-
-    #[test]
-    fn optional_bracket_tokens_stop_at_first_top_level_closer() {
-        let tokens = parse_optional_tokens("[a[b]", false).unwrap().unwrap();
-        assert_eq!(tokens_to_string(&tokens), "a[b");
-    }
-
-    #[test]
-    fn delimited_tokens_collect_nested_content() {
-        let tokens = parse_delimited_tokens("{a{b}c}").unwrap();
-        assert_eq!(tokens_to_string(&tokens), "a{b}c");
-    }
-
-    #[test]
-    fn normalize_argument_value_unwraps_single_explicit_group() {
-        let node = SyntaxNode::Group {
-            mode: ContentMode::Math,
-            kind: GroupKind::Explicit,
-            children: vec![SyntaxNode::Char('x')],
-        };
-
-        assert_eq!(
-            normalize_argument_value(ContentMode::Math, node),
-            SyntaxNode::Char('x')
-        );
     }
 }

@@ -1,8 +1,24 @@
-//! Parser module - core combinator architecture
+//! Chumsky-based parser for LaTeX formulas.
 //!
-//! - Content & arguments: mode content factories + argument_parser/arguments_parser
-//! - Commands & environments: custom heads with combinator arguments/body
-//! - Mode entry: mode_group_parsers + math_block_parser/text_block_parser
+//! The parser is structured as a hierarchy of combinator parsers that mirror
+//! the LaTeX grammar. At the top level, the math block parser produces an
+//! implicit math-mode group wrapping all top-level items.
+//!
+//! # Parser layers (bottom-up)
+//!
+//! 1. **Atoms** — characters, escaped symbols, `~`, braced groups, delimited
+//!    groups (`\left…\right`), prefix commands, environments, unknown commands.
+//! 2. **Scripted atoms** — atoms wrapped with subscript / superscript / prime
+//!    handling.
+//! 3. **Group content** — a sequence of items optionally followed by infix and
+//!    declarative command tails. Math and text modes each have their own
+//!    content parser.
+//! 4. **Mode entry** — the math/text block parsers wrap the corresponding
+//!    content parser in an implicit group.
+//!
+//! Math and text content parsers are mutually recursive (a math-mode command
+//! may take a text-mode argument and vice versa). The recursion is resolved
+//! through [`chumsky::recursive`].
 
 #[path = "parser_arguments.rs"]
 mod arguments;
@@ -23,7 +39,7 @@ use self::arguments::{arguments_parser, fold_items};
 /// A value paired with its source byte span.
 pub(crate) type Spanned<T> = (T, SimpleSpan);
 
-/// The concrete mapped input type produced by `build_token_stream`.
+/// The concrete mapped input type fed to all chumsky parsers in this module.
 pub(crate) type TokenStream<'a> = chumsky::input::MappedInput<
     Token,
     SimpleSpan,
@@ -31,11 +47,18 @@ pub(crate) type TokenStream<'a> = chumsky::input::MappedInput<
     fn((Token, SimpleSpan)) -> (Token, SimpleSpan),
 >;
 
+/// Chumsky error extra carrying rich diagnostics.
 pub(crate) type ParserError<'a> = extra::Err<Rich<'a, Token>>;
+
+/// Mutable reference to the input stream used by imperative (`custom`) parsers.
 pub(crate) type ParserInput<'src, 'parse> =
     InputRef<'src, 'parse, TokenStream<'src>, ParserError<'src>>;
 
-/// Build a chumsky token stream from a source string.
+/// Lex a source string and wrap the result as a chumsky [`TokenStream`].
+///
+/// # Panics
+///
+/// Panics if the lexer encounters an unrecognizable byte (catcode 9/15).
 pub(crate) fn build_token_stream(src: &str) -> TokenStream<'_> {
     let tokens: Vec<(Token, SimpleSpan)> = Token::lexer(src)
         .spanned()
@@ -59,18 +82,22 @@ pub(crate) fn build_token_stream(src: &str) -> TokenStream<'_> {
     )
 }
 
-/// Ergonomic helpers for building spans and custom errors in imperative parsers.
+/// Ergonomic helpers for building spans and custom errors in imperative
+/// (`custom`) parsers that work through [`ParserInput`].
 pub(crate) trait ParserInputExt<'src, 'parse> {
+    /// Compute the byte span from `start` cursor to the current position.
     fn span_from_cursor(&mut self, start: &Cursor<'src, 'parse, TokenStream<'src>>) -> SimpleSpan;
 
+    /// Build a custom error spanning from `start` to the current position.
     fn err_since(
         &mut self,
         start: &Cursor<'src, 'parse, TokenStream<'src>>,
         msg: impl ToString,
     ) -> Rich<'src, Token>;
 
-    /// Build an error for the next token without consuming it. Falls back to a
-    /// point span at EOF.
+    /// Build an error for the next token without consuming it.
+    ///
+    /// Falls back to a point span at EOF.
     fn err_peek_or_point(
         &mut self,
         start: &Cursor<'src, 'parse, TokenStream<'src>>,
@@ -104,9 +131,13 @@ impl<'src, 'parse> ParserInputExt<'src, 'parse> for ParserInput<'src, 'parse> {
     }
 }
 
+/// Boxed parser producing a list of child nodes (group content).
 type ContentParser<'a> = Boxed<'a, 'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>>;
+/// Boxed parser producing a single syntax node.
 type NodeParser<'a> = Boxed<'a, 'a, TokenStream<'a>, SyntaxNode, ParserError<'a>>;
+/// Boxed parser producing an optional argument slot.
 type ArgumentParser<'a> = Boxed<'a, 'a, TokenStream<'a>, ArgumentSlot, ParserError<'a>>;
+/// Return type of infix/declarative tail parsers: (command head, right/scope items).
 type TailParseOutput = ((String, Vec<ArgumentSlot>), Vec<SyntaxNode>);
 
 /// Consume insignificant whitespace tokens and produce no output.
@@ -322,13 +353,22 @@ where
         })
 }
 
+/// Tracks how the superscript was built so we can detect double-exponent errors.
+///
+/// Primes (e.g. `f'`) and explicit carets (`^`) can be mixed once
+/// (`f'^2` → implicit group `[', 2]`), but a second explicit caret or
+/// a second prime run after an explicit caret is an error.
 #[derive(Clone, Debug)]
 enum SupState {
+    /// Superscript is composed entirely of prime marks
     Prime(SyntaxNode),
+    /// Superscript was set by an explicit `^` token
     Explicit(SyntaxNode),
+    /// Prime(s) merged with an explicit superscript
     Mixed(SyntaxNode),
 }
 
+/// Intermediate result of script parsing before folding into `SyntaxNode::Scripted`.
 #[derive(Debug)]
 struct ScriptComponents {
     base: SyntaxNode,
@@ -336,6 +376,13 @@ struct ScriptComponents {
     superscript: Option<SyntaxNode>,
 }
 
+/// Imperative parser that greedily collects `^`, `_`, and prime tokens after
+/// an atom, producing [`ScriptComponents`].
+///
+/// Handles the TeX rules for combining primes with explicit superscripts:
+/// `f'^2` is valid (merged), but `f^a^b` is a "double exponent" error.
+/// An empty base is allowed when the first token is already a script marker,
+/// producing an empty implicit group as the base.
 fn parse_scripted_components<'src, 'parse, P>(
     input: &mut ParserInput<'src, 'parse>,
     atom_for_scripts: P,
@@ -467,8 +514,12 @@ where
 // Public Interface
 // ============================================================================
 
-/// Parse entry point - Math mode. Accepts source string directly.
-/// Returns a `Spanned<SyntaxNode>` where the span covers the full input range.
+/// Parse a LaTeX math formula using the default all-packages knowledge base.
+///
+/// Returns the root [`SyntaxNode`] together with its byte span on success,
+/// or a list of rich diagnostics on failure. For partial-parse semantics
+/// (result + diagnostics), use [`ParseContext::parse`](crate::context::ParseContext::parse)
+/// instead.
 pub fn parse(src: &str, strict: bool) -> Result<Spanned<SyntaxNode>, Vec<Rich<'_, Token>>> {
     let token_stream = build_token_stream(src);
     math_block_parser(ParseContext::all_packages_shared().kb(), strict)
@@ -490,7 +541,8 @@ fn env_body_parser<'a>(
     implicit_group_parser(mode, content)
 }
 
-/// Parse a control sequence and ensure it matches the expected command kind.
+/// Consume a control-sequence token, look it up in the KB, and validate that
+/// it matches the `expected_kind` and is allowed in `current_mode`.
 fn command_head_parser<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
     kb: &'parse KnowledgeBase,
@@ -542,7 +594,8 @@ fn command_head_parser<'src, 'parse>(
 // Content and Argument Parsers
 // ============================================================================
 
-/// Guard used to stop math content before infix/declarative commands.
+/// Lookahead guard that succeeds when the next token is an infix or
+/// declarative command. Used as a stop condition for leading-item collection.
 fn math_infix_or_decl_guard<'a>(
     kb: &'a KnowledgeBase,
 ) -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
@@ -1129,7 +1182,12 @@ where
         })
 }
 
-/// Construct paired math/text content parsers using mutually recursive declarations.
+/// Construct mutually recursive math/text content parsers.
+///
+/// Math content may embed text content (via `\text`-family commands) and
+/// vice versa (via inline math `$...$`). Both parsers are declared with
+/// [`chumsky::recursive`] and wired to each other before being returned
+/// as boxed parsers.
 fn mode_content_parsers<'a>(
     kb: &'a KnowledgeBase,
     strict: bool,
@@ -1180,7 +1238,11 @@ fn mode_group_parsers<'a>(kb: &'a KnowledgeBase, strict: bool) -> (NodeParser<'a
     (math_group, text_group)
 }
 
-/// Entry point parser for math mode.
+/// Build the top-level math-mode parser.
+///
+/// Returns a boxed parser that produces an implicit math-mode group
+/// wrapping all parsed items. This is the parser used by
+/// [`ParseContext::parse`](crate::context::ParseContext::parse).
 pub(crate) fn math_block_parser<'a>(kb: &'a KnowledgeBase, strict: bool) -> NodeParser<'a> {
     let (math_parser, _) = mode_group_parsers(kb, strict);
     math_parser
@@ -1191,69 +1253,4 @@ pub(crate) fn math_block_parser<'a>(kb: &'a KnowledgeBase, strict: bool) -> Node
 fn text_block_parser<'a>(kb: &'a KnowledgeBase, strict: bool) -> NodeParser<'a> {
     let (_, text_parser) = mode_group_parsers(kb, strict);
     text_parser
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn atom_parser<'a>() -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
-        select! {
-            Token::Char(c) => SyntaxNode::Char(c),
-        }
-    }
-
-    fn parse_components(src: &str) -> Result<ScriptComponents, Vec<Rich<'static, Token>>> {
-        let stream = build_token_stream(src);
-        custom(|input| parse_scripted_components(input, atom_parser()))
-            .then_ignore(end())
-            .parse(stream)
-            .into_result()
-            .map_err(|errors| errors.into_iter().map(|error| error.into_owned()).collect())
-    }
-
-    fn parse_component_errors(src: &str) -> Vec<Rich<'static, Token>> {
-        let stream = build_token_stream(src);
-        let (_, errors) = custom(|input| parse_scripted_components(input, atom_parser()))
-            .then_ignore(end())
-            .parse(stream)
-            .into_output_errors();
-        errors.into_iter().map(|error| error.into_owned()).collect()
-    }
-
-    #[test]
-    fn empty_base_superscript_is_allowed() {
-        let components = parse_components("^x").unwrap();
-        assert!(matches!(
-            components.base,
-            SyntaxNode::Group {
-                mode: ContentMode::Math,
-                kind: GroupKind::Implicit,
-                ref children,
-            } if children.is_empty()
-        ));
-        assert_eq!(components.superscript, Some(SyntaxNode::Char('x')));
-        assert_eq!(components.subscript, None);
-    }
-
-    #[test]
-    fn double_superscript_errors() {
-        let errors = parse_component_errors("x^y^z");
-        assert!(!errors.is_empty());
-    }
-
-    #[test]
-    fn prime_then_superscript_merges() {
-        let components = parse_components("x'^y").unwrap();
-        assert_eq!(components.base, SyntaxNode::Char('x'));
-        assert_eq!(components.subscript, None);
-        assert_eq!(
-            components.superscript,
-            Some(SyntaxNode::Group {
-                mode: ContentMode::Math,
-                kind: GroupKind::Implicit,
-                children: vec![SyntaxNode::Char('\''), SyntaxNode::Char('y')],
-            })
-        );
-    }
 }

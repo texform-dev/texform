@@ -1,7 +1,27 @@
-//! Knowledge base for LaTeX command metadata.
+//! Knowledge base: the backing store behind [`ParseContext`](crate::context::ParseContext).
 //!
-//! The knowledge base is built from statically embedded package specs
-//! provided by `texform-specs`.
+//! A [`KnowledgeBase`] holds indexed command, environment, character, and
+//! delimiter-control metadata loaded from `texform-specs` package definitions.
+//! It is the single source of truth the parser consults when recognizing
+//! control sequences and environments.
+//!
+//! # Architecture
+//!
+//! The KB separates *raw storage* from the *parser-facing active view*:
+//!
+//! - **Explicit commands** are definitions with concrete argument specs
+//!   (`\frac`, `\text`, etc.).
+//! - **Character entries** are zero-arg symbols (`\alpha`, `\div`, etc.)
+//!   that the KB projects into synthetic command views so the parser can
+//!   recognize them uniformly.
+//! - **Active index** maps each name to whichever source (explicit or
+//!   character) is currently authoritative. Explicit commands always win.
+//!
+//! # Package import order
+//!
+//! Managed packages (base, ams, physics, …) are always imported in a
+//! fixed canonical order regardless of the caller-supplied order. This
+//! keeps merge results and `from_packages` arrays stable.
 //!
 //! For rapid prototyping, configuration errors fail fast (panic).
 
@@ -30,8 +50,10 @@ const MANAGED_PACKAGE_IMPORT_ORDER: [&str; 6] = [
 ];
 const PHYSICS_COMMAND_MERGE_DENYLIST: [&str; 3] = ["Pr", "det", "exp"];
 
+/// Error returned when a requested package name is not found in the registry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PackageLoadError {
+    /// The named package does not exist in the `texform-specs` registry.
     UnknownPackage { name: String },
 }
 
@@ -96,6 +118,10 @@ impl KnowledgeBase {
         }
     }
 
+    /// Return the active command for `name`, respecting suppression.
+    ///
+    /// The active entry may be an explicit command or a character-derived
+    /// zero-arg view. Suppressed names always return `None`.
     pub(crate) fn lookup_command(&self, name: &str) -> Option<&CommandMeta> {
         if self.suppressed_command_names.contains(name) {
             return None;
@@ -107,6 +133,7 @@ impl KnowledgeBase {
         }
     }
 
+    /// Look up only the explicit (non-character-derived) command for `name`.
     pub(crate) fn lookup_explicit_command(&self, name: &str) -> Option<&CommandMeta> {
         self.command_idx_by_name
             .get(name)
@@ -114,6 +141,7 @@ impl KnowledgeBase {
             .map(|idx| &self.commands[idx])
     }
 
+    /// Look up raw character metadata by control-sequence name.
     pub(crate) fn lookup_character(&self, name: &str) -> Option<&CharacterMeta> {
         self.character_idx_by_name
             .get(name)
@@ -121,6 +149,7 @@ impl KnowledgeBase {
             .map(|idx| &self.characters[idx])
     }
 
+    /// Look up environment metadata by name.
     pub(crate) fn lookup_env(&self, name: &str) -> Option<&EnvMeta> {
         self.env_idx_by_name
             .get(name)
@@ -128,14 +157,17 @@ impl KnowledgeBase {
             .map(|idx| &self.envs[idx])
     }
 
+    /// Check whether `name` is registered as a delimiter control sequence.
     pub(crate) fn is_delimiter_control(&self, name: &str) -> bool {
         self.delimiter_controls.contains(name)
     }
 
+    /// Look up a delimiter control, returning the interned `&'static str` name.
     pub(crate) fn lookup_delimiter_control(&self, name: &str) -> Option<&'static str> {
         self.delimiter_controls.get(name).copied()
     }
 
+    /// Insert a context item, dispatching to the appropriate typed inserter.
     pub(crate) fn insert_item(
         &mut self,
         item: impl Into<ContextItem>,
@@ -161,6 +193,7 @@ impl KnowledgeBase {
         Ok(())
     }
 
+    /// Remove a previously inserted item. Returns `true` if found.
     pub(crate) fn remove_item(&mut self, item: impl Into<ContextItem>) -> bool {
         match item.into() {
             ContextItem::Command(item) => self.remove_command(item.name.as_str()),
@@ -453,6 +486,11 @@ fn environment_spec_into_meta(spec: EnvironmentSpec, from_packages: Vec<String>)
     )
 }
 
+/// Leak a `String` into a `&'static str` for arena-style storage.
+///
+/// Metadata structs (`CommandMeta`, `EnvMeta`, …) use `&'static` references
+/// so they can be cheaply shared. The leaked memory lives for the process
+/// lifetime, which is acceptable for a knowledge base that is built once.
 fn leak_string(value: impl Into<String>) -> &'static str {
     Box::leak(value.into().into_boxed_str())
 }
@@ -615,6 +653,7 @@ fn import_package_names(
     Ok(())
 }
 
+/// Create an empty knowledge base with no packages loaded.
 pub(crate) fn build_empty_kb() -> KnowledgeBase {
     KnowledgeBase::new()
 }
@@ -628,10 +667,12 @@ fn new_with_core() -> KnowledgeBase {
     kb
 }
 
+/// Create a knowledge base with only the core package.
 pub(crate) fn build_core_only_kb() -> KnowledgeBase {
     new_with_core()
 }
 
+/// Build a knowledge base from package names. Panics on unknown packages.
 pub(crate) fn build_kb_from_packages(requested: &[&str]) -> KnowledgeBase {
     try_build_kb_from_packages(requested).unwrap_or_else(|error| panic!("{error}"))
 }
@@ -648,6 +689,9 @@ pub(crate) fn try_build_kb_from_packages(
     Ok(kb)
 }
 
+/// Same as [`try_build_kb_from_packages`] but preserves the caller's exact
+/// import order instead of canonicalizing it. Useful for tests that need to
+/// verify order-dependent behavior.
 #[allow(dead_code)]
 pub(crate) fn try_build_kb_from_exact_packages(
     requested: &[&str],

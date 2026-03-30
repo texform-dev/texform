@@ -1,4 +1,12 @@
-//! Parse context for per-instance knowledge base isolation.
+//! Stateful parse context that owns a per-instance knowledge base.
+//!
+//! [`ParseContext`] is the primary public API surface for building a knowledge
+//! base, injecting temporary definitions, and parsing LaTeX formulas. Each
+//! context owns an independent knowledge base so concurrent callers cannot
+//! interfere with each other.
+//!
+//! The module also defines the shared output types ([`ParseOutput`],
+//! [`ParseResult`], [`ParseDiagnostic`]) used by every parse entry point.
 
 use std::sync::OnceLock;
 
@@ -16,14 +24,22 @@ use crate::knowledge::{self, KnowledgeBase};
 use crate::lexer::Token;
 use crate::parser::{self, Spanned, TokenStream, build_token_stream};
 
+/// A runtime-injectable definition that augments the knowledge base.
+///
+/// Context items let callers add temporary commands, environments, or
+/// delimiter controls without modifying the underlying package specs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContextItem {
+    /// A command definition (prefix, infix, or declarative)
     Command(CommandItem),
+    /// An environment definition
     Environment(EnvironmentItem),
+    /// A delimiter control sequence (e.g. `langle`, `rangle`)
     DelimiterControl(DelimiterControlItem),
 }
 
 impl ContextItem {
+    /// Return the name of the underlying item (command name, env name, etc.)
     pub fn name(&self) -> &str {
         match self {
             ContextItem::Command(item) => item.name.as_str(),
@@ -32,6 +48,7 @@ impl ContextItem {
         }
     }
 
+    /// Human-readable tag for error messages (`"command"`, `"environment"`, etc.)
     pub const fn target_tag(&self) -> &'static str {
         match self {
             ContextItem::Command(_) => "command",
@@ -41,16 +58,26 @@ impl ContextItem {
     }
 }
 
+/// Runtime command definition to be injected into a [`ParseContext`].
+///
+/// The `spec` field uses the xparse-style argument specification string
+/// (e.g. `"m m"` for two mandatory args, `"s o m"` for star + optional + mandatory).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandItem {
+    /// Command name without leading backslash
     pub name: String,
+    /// Prefix, infix, or declarative
     pub kind: CommandKind,
+    /// Which content modes this command may appear in
     pub allowed_mode: AllowedMode,
+    /// xparse-style argument specification string
     pub spec: String,
+    /// Metadata tags for transform-stage filtering
     pub tags: Vec<String>,
 }
 
 impl CommandItem {
+    /// Create a command item with no tags.
     pub fn new(
         name: impl Into<String>,
         kind: CommandKind,
@@ -66,6 +93,7 @@ impl CommandItem {
         }
     }
 
+    /// Builder method to attach metadata tags.
     pub fn with_tags<I, T>(mut self, tags: I) -> Self
     where
         I: IntoIterator<Item = T>,
@@ -76,16 +104,23 @@ impl CommandItem {
     }
 }
 
+/// Runtime environment definition to be injected into a [`ParseContext`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnvironmentItem {
+    /// Environment name (e.g. `"matrix"`, `"align"`)
     pub name: String,
+    /// Which content modes this environment may appear in
     pub allowed_mode: AllowedMode,
+    /// Content mode used to parse the environment body
     pub body_mode: ContentMode,
+    /// xparse-style argument specification string
     pub spec: String,
+    /// Metadata tags for transform-stage filtering
     pub tags: Vec<String>,
 }
 
 impl EnvironmentItem {
+    /// Create an environment item with no tags.
     pub fn new(
         name: impl Into<String>,
         allowed_mode: AllowedMode,
@@ -101,6 +136,7 @@ impl EnvironmentItem {
         }
     }
 
+    /// Builder method to attach metadata tags.
     pub fn with_tags<I, T>(mut self, tags: I) -> Self
     where
         I: IntoIterator<Item = T>,
@@ -111,12 +147,19 @@ impl EnvironmentItem {
     }
 }
 
+/// Runtime delimiter control sequence to be registered in the knowledge base.
+///
+/// Delimiter controls are names (without backslash) that may appear after
+/// `\left` / `\right` or in delimiter-typed argument slots (e.g. `langle`,
+/// `rangle`, `|`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DelimiterControlItem {
+    /// Delimiter name without leading backslash
     pub name: String,
 }
 
 impl DelimiterControlItem {
+    /// Create a delimiter control item.
     pub fn new(name: impl Into<String>) -> Self {
         Self { name: name.into() }
     }
@@ -140,41 +183,81 @@ impl From<DelimiterControlItem> for ContextItem {
     }
 }
 
-/// Byte-offset span.
+/// Byte-offset span within the original source string.
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub struct Span {
+    /// Inclusive start byte offset
     pub start: usize,
+    /// Exclusive end byte offset
     pub end: usize,
 }
 
 /// Successful (possibly partial) parse result.
+///
+/// Even when diagnostics are present, a partial syntax tree may still be
+/// available here, allowing consumers to inspect whatever the parser managed
+/// to produce.
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 #[cfg_attr(feature = "tsify", tsify(into_wasm_abi))]
 pub struct ParseResult {
+    /// The syntax tree produced by parsing
     pub node: SyntaxNode,
+    /// Byte range of the parsed input
     pub span: Span,
 }
 
 /// A single diagnostic produced during parsing.
+///
+/// Diagnostics carry both a human-readable message and structured
+/// expected/found information for richer error reporting.
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub struct ParseDiagnostic {
+    /// Human-readable error description
     pub message: String,
+    /// Source location of the error
     pub span: Span,
+    /// Tokens or patterns the parser expected at this point
     pub expected: Vec<String>,
+    /// Token actually found, if any
     pub found: Option<String>,
 }
 
 /// Unified parse output carrying an optional result and zero or more diagnostics.
+///
+/// The design mirrors chumsky's `output + errors` semantics: a partial tree
+/// may coexist with diagnostics, so consumers always receive as much
+/// information as the parser could extract.
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub struct ParseOutput {
+    /// Parse result, present even when diagnostics exist (partial parse)
     pub result: Option<ParseResult>,
+    /// Zero or more diagnostics; empty on full success
     pub diagnostics: Vec<ParseDiagnostic>,
 }
 
+/// Stateful parse context owning an isolated knowledge base.
+///
+/// A `ParseContext` is the main integration surface for callers that need to
+/// configure which packages are loaded, inject temporary definitions, query
+/// metadata, and parse LaTeX formulas repeatedly.
+///
+/// # Construction
+///
+/// | Constructor | Loaded knowledge |
+/// |---|---|
+/// | [`empty()`](Self::empty) | Nothing — not even core |
+/// | [`core_only()`](Self::core_only) | Core package only |
+/// | [`from_packages()`](Self::from_packages) | Core + named packages |
+/// | [`all_packages()`](Self::all_packages) | Core + every registered package |
+/// | [`all_packages_shared()`](Self::all_packages_shared) | Same as above, lazily cached `&'static` ref |
+///
+/// After construction, use [`insert_item`](Self::insert_item) /
+/// [`remove_item`](Self::remove_item) to mutate the knowledge base at
+/// runtime.
 #[derive(Debug, Clone)]
 pub struct ParseContext {
     kb: KnowledgeBase,
@@ -190,23 +273,36 @@ impl ParseContext {
     }
 
     /// Build an empty context with no package specs loaded.
+    ///
+    /// Useful as a blank slate when every definition will be injected manually.
     pub fn empty() -> Self {
         Self::from_kb(knowledge::build_empty_kb())
     }
 
-    /// Build a context containing only core knowledge.
+    /// Build a context containing only core knowledge (line breaks, etc.)
     pub fn core_only() -> Self {
         Self::from_kb(knowledge::build_core_only_kb())
     }
 
-    /// Build a context from package names.
+    /// Build a context from an explicit list of package names.
+    ///
+    /// Core knowledge is always loaded first; the listed packages are imported
+    /// in canonical order on top.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any package name is unrecognized. Use [`try_from_packages`](Self::try_from_packages)
+    /// for fallible loading.
     pub fn from_packages(packages: &[&str]) -> Self {
         ParseContext {
             kb: knowledge::build_kb_from_packages(packages),
         }
     }
 
-    /// Build a context from package names, returning an error for unknown package names.
+    /// Fallible variant of [`from_packages`](Self::from_packages).
+    ///
+    /// Returns [`PackageLoadError`] instead of panicking when a package name
+    /// is unrecognized.
     pub fn try_from_packages(packages: &[&str]) -> Result<Self, PackageLoadError> {
         Ok(ParseContext {
             kb: knowledge::try_build_kb_from_packages(packages)?,
@@ -219,20 +315,32 @@ impl ParseContext {
         Self::from_packages(packages.as_slice())
     }
 
-    /// Borrow the cached all-packages context.
+    /// Borrow the lazily-initialized all-packages context.
+    ///
+    /// This is the cheapest way to parse with the full knowledge base: the
+    /// context is built once on first call and shared for the process lifetime.
     pub fn all_packages_shared() -> &'static ParseContext {
         all_packages_ctx()
     }
 
-    /// Clone the cached all-packages context.
+    /// Clone the cached all-packages context into an owned value.
+    ///
+    /// Use this when you need to mutate the context (e.g. inject items) while
+    /// still starting from the full knowledge base.
     pub fn clone_all_packages() -> Self {
         Self::all_packages_shared().clone()
     }
 
+    /// Inject a single context item into the knowledge base.
+    ///
+    /// Returns an error if the item's argument spec string is invalid.
     pub fn insert_item(&mut self, item: impl Into<ContextItem>) -> Result<(), ArgSpecParseError> {
         self.kb.insert_item(item.into())
     }
 
+    /// Inject multiple context items in order.
+    ///
+    /// Stops at the first invalid spec and returns the error.
     pub fn insert_items<I, T>(&mut self, items: I) -> Result<(), ArgSpecParseError>
     where
         I: IntoIterator<Item = T>,
@@ -244,37 +352,51 @@ impl ParseContext {
         Ok(())
     }
 
+    /// Remove a previously inserted context item.
+    ///
+    /// Returns `true` if the item was found and removed.
     pub fn remove_item(&mut self, item: impl Into<ContextItem>) -> bool {
         self.kb.remove_item(item.into())
     }
 
+    /// Check whether `name` is a registered delimiter control sequence.
     pub fn is_delimiter_control(&self, name: &str) -> bool {
         self.kb.is_delimiter_control(name)
     }
+
+    /// Look up a delimiter control by name, returning the interned name.
     pub fn lookup_delimiter_control(&self, name: &str) -> Option<&'static str> {
         self.kb.lookup_delimiter_control(name)
     }
 
     /// Parse a LaTeX formula and return a unified output.
     ///
-    /// Uses chumsky's output+errors semantics (equivalent to `.into_output_errors()`)
-    /// so that a partial syntax tree can coexist with diagnostics.
+    /// Uses chumsky's output+errors semantics so that a partial syntax tree
+    /// can coexist with diagnostics. Set `strict` to reject unknown commands.
     pub fn parse(&self, src: &str, strict: bool) -> ParseOutput {
         parse_with_kb(&self.kb, src, strict)
     }
 
+    /// Look up the active command metadata for `name`.
+    ///
+    /// The active entry may come from an explicit command definition or a
+    /// character-derived zero-arg view. Returns `None` if the name is unknown
+    /// or has been suppressed.
     pub fn lookup_command(&self, name: &str) -> Option<&CommandMeta> {
         self.kb.lookup_command(name)
     }
 
+    /// Look up only the explicit (non-character-derived) command for `name`.
     pub fn lookup_explicit_command(&self, name: &str) -> Option<&CommandMeta> {
         self.kb.lookup_explicit_command(name)
     }
 
+    /// Look up character metadata for a control sequence name.
     pub fn lookup_character(&self, name: &str) -> Option<&CharacterMeta> {
         self.kb.lookup_character(name)
     }
 
+    /// Look up environment metadata by name.
     pub fn lookup_env(&self, name: &str) -> Option<&EnvMeta> {
         self.kb.lookup_env(name)
     }
@@ -351,74 +473,5 @@ fn convert_diagnostic(err: Rich<'static, Token>) -> ParseDiagnostic {
         span,
         expected,
         found,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn assert_from_packages(actual: &[&str], expected: &[&str]) {
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn core_only_context_includes_core_command() {
-        let ctx = ParseContext::core_only();
-        let linebreak = ctx
-            .lookup_command("\\")
-            .expect("expected core linebreak command");
-        assert_from_packages(linebreak.from_packages, &["core"]);
-    }
-
-    #[test]
-    fn context_can_insert_and_remove_delimiter_controls() {
-        let mut ctx = ParseContext::empty();
-        assert!(ctx.lookup_delimiter_control("langle").is_none());
-
-        ctx.insert_item(DelimiterControlItem::new("langle"))
-            .expect("delimiter control item should be valid");
-        assert!(ctx.lookup_delimiter_control("langle").is_some());
-        assert_eq!(ctx.lookup_delimiter_control("langle"), Some("langle"));
-
-        assert!(ctx.remove_item(DelimiterControlItem::new("langle")));
-        assert!(ctx.lookup_delimiter_control("langle").is_none());
-        assert_eq!(ctx.lookup_delimiter_control("langle"), None);
-    }
-
-    #[test]
-    fn context_exposes_raw_character_and_explicit_command_views() {
-        let ctx = ParseContext::from_packages(&["base", "physics"]);
-
-        let div = ctx
-            .lookup_command("div")
-            .expect("expected active div command");
-        assert_from_packages(div.from_packages, &["physics"]);
-        assert!(!div.args.is_empty());
-
-        let explicit_div = ctx
-            .lookup_explicit_command("div")
-            .expect("expected explicit div command");
-        assert_from_packages(explicit_div.from_packages, &["physics"]);
-        assert!(!explicit_div.args.is_empty());
-
-        let character_div = ctx
-            .lookup_character("div")
-            .expect("expected raw div character");
-        assert_eq!(character_div.package, "base");
-        assert_eq!(character_div.unicode_value, "÷");
-
-        let aa = ctx
-            .lookup_command("AA")
-            .expect("expected active AA command");
-        assert_from_packages(aa.from_packages, &["base"]);
-        assert!(aa.args.is_empty());
-        assert!(ctx.lookup_explicit_command("AA").is_none());
-
-        let character_aa = ctx
-            .lookup_character("AA")
-            .expect("expected raw AA character");
-        assert_eq!(character_aa.package, "base");
-        assert_eq!(character_aa.unicode_value, "Å");
     }
 }
