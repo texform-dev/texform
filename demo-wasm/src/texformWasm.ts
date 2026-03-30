@@ -78,6 +78,8 @@ export interface ArgSpecInfo {
   form: unknown
 }
 
+export type ArgumentSlot = Argument | null | undefined
+
 export interface CommandInfo {
   name: string
   kind: CommandKind

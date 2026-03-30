@@ -3,6 +3,7 @@ import {
   ParseContext as WasmParseContext,
   type AllowedMode,
   type ArgSpecInfo,
+  type ArgumentSlot,
   type BodyMode,
   type CharacterInfo,
   type CommandInfo,
@@ -362,6 +363,26 @@ function App() {
     return computeTreeDepth(treeRoot)
   }, [treeRoot])
 
+  const stats = useMemo(() => {
+    const lineCount = source === '' ? 0 : source.split(/\r\n|\r|\n/).length
+    const commandCount = flatNodes.filter((node) => {
+      return (
+        node.type === 'Command' ||
+        node.type === 'Infix' ||
+        node.type === 'Declarative' ||
+        node.type === 'Environment'
+      )
+    }).length
+
+    return [
+      { label: 'Chars', value: String(source.length) },
+      { label: 'Lines', value: String(lineCount) },
+      { label: 'Nodes', value: String(flatNodes.length) },
+      { label: 'Depth', value: String(treeDepth) },
+      { label: 'Commands', value: String(commandCount) },
+    ]
+  }, [source, flatNodes, treeDepth])
+
   const parseErrorMessage = useMemo(() => {
     const hasFatal = parseState.fatalMessage !== null
     const hasDiagnosticsOnlyFailure =
@@ -390,7 +411,8 @@ function App() {
         ? 'border-yellow-200 bg-yellow-100 text-yellow-800'
         : 'border-green-200 bg-green-100 text-green-800'
 
-  const paneClass = 'flex min-h-0 flex-col gap-2.5 rounded-sm border border-slate-300 bg-white p-3'
+  const paneClass =
+    'flex min-h-0 h-full flex-col gap-2.5 overflow-hidden rounded-sm border border-slate-300 bg-white p-3'
   const sectionHeadClass = 'flex items-center justify-between gap-2'
   const sectionTitleClass = 'm-0 text-sm font-semibold'
   const buttonClass =
@@ -670,10 +692,10 @@ function App() {
   }
 
   return (
-    <div className="flex min-h-full flex-col p-3.5">
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden p-3.5">
       <AppHeader />
 
-      <main className="grid min-h-0 flex-1 grid-cols-1 gap-3.5 lg:grid-cols-[minmax(300px,1fr)_minmax(0,2fr)]">
+      <main className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(20rem,0.95fr)_minmax(0,1.05fr)] gap-3.5 overflow-hidden lg:grid-cols-[minmax(320px,0.95fr)_minmax(0,1.35fr)] lg:grid-rows-1">
         <LatexInputPane
           paneClass={paneClass}
           sectionHeadClass={sectionHeadClass}
@@ -691,13 +713,7 @@ function App() {
           customEnvironmentBodyMode={customEnvironmentBodyMode}
           customRecordSpec={customRecordSpec}
           customRecordError={customRecordError}
-          rootSpanText={
-            parseState.result
-              ? `${parseState.result.span.start}..${parseState.result.span.end}`
-              : '--'
-          }
-          treeDepth={treeDepth}
-          nodesCount={flatNodes.length}
+          stats={stats}
           onResetSample={() => setSource(SAMPLE_LATEX)}
           onStrictModeChange={setStrictMode}
           onSourceChange={setSource}
@@ -1013,7 +1029,7 @@ function buildSyntaxTree(
       characterUnicodeValue: character?.unicode_value,
       characterPackage: character?.package,
       characterMathvariant: character?.attributes.mathvariant,
-      children: command.args.map((arg: Argument | null, index: number) =>
+      children: command.args.map((arg: ArgumentSlot, index: number) =>
         buildArgumentNode(
           arg,
           `${id}.arg.${index}`,
@@ -1032,7 +1048,7 @@ function buildSyntaxTree(
     const activeSpec = lookupActiveCommand(infix.name)
     const explicitSpec = lookupExplicitCommand(infix.name)
     const character = lookupCharacter(infix.name)
-    const args = infix.args.map((arg: Argument | null, index: number) =>
+    const args = infix.args.map((arg: ArgumentSlot, index: number) =>
       buildArgumentNode(
         arg,
         `${id}.arg.${index}`,
@@ -1090,7 +1106,7 @@ function buildSyntaxTree(
     const activeSpec = lookupActiveCommand(declarative.name)
     const explicitSpec = lookupExplicitCommand(declarative.name)
     const character = lookupCharacter(declarative.name)
-    const args = declarative.args.map((arg: Argument | null, index: number) =>
+    const args = declarative.args.map((arg: ArgumentSlot, index: number) =>
       buildArgumentNode(
         arg,
         `${id}.arg.${index}`,
@@ -1135,7 +1151,7 @@ function buildSyntaxTree(
   if ('Environment' in node) {
     const env = node.Environment
     const spec = lookupEnv(env.name)
-    const args = env.args.map((arg: Argument | null, index: number) =>
+    const args = env.args.map((arg: ArgumentSlot, index: number) =>
       buildArgumentNode(
         arg,
         `${id}.arg.${index}`,
@@ -1231,7 +1247,7 @@ function buildSyntaxTree(
 }
 
 function buildArgumentNode(
-  argument: Argument | null,
+  argument: ArgumentSlot,
   id: string,
   index: number,
   lookupActiveCommand: (name: string) => CommandInfo | null,
@@ -1239,7 +1255,7 @@ function buildArgumentNode(
   lookupCharacter: (name: string) => CharacterInfo | null,
   lookupEnv: (name: string) => EnvInfo | null,
 ): TreeNode {
-  if (argument === null) {
+  if (argument == null || typeof argument !== 'object' || !('value' in argument)) {
     return {
       id,
       type: 'Arg',
@@ -1434,6 +1450,13 @@ function describeArgumentValue(value: ArgumentValue): {
     return {
       kind: 'Column',
       value: value.Column,
+      content: null,
+    }
+  }
+  if ('Boolean' in value) {
+    return {
+      kind: 'Boolean',
+      value: String(value.Boolean),
       content: null,
     }
   }

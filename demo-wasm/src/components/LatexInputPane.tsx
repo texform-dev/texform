@@ -21,9 +21,10 @@ interface LatexInputPaneProps {
   customEnvironmentBodyMode: BodyMode
   customRecordSpec: string
   customRecordError: string | null
-  rootSpanText: string
-  treeDepth: number
-  nodesCount: number
+  stats: ReadonlyArray<{
+    label: string
+    value: string
+  }>
   onResetSample: () => void
   onStrictModeChange: (checked: boolean) => void
   onSourceChange: (source: string) => void
@@ -57,9 +58,7 @@ function LatexInputPane({
   customEnvironmentBodyMode,
   customRecordSpec,
   customRecordError,
-  rootSpanText,
-  treeDepth,
-  nodesCount,
+  stats,
   onResetSample,
   onStrictModeChange,
   onSourceChange,
@@ -80,7 +79,7 @@ function LatexInputPane({
   const isDelimiterForm = activeCustomRecordForm === 'delimiter'
 
   return (
-    <section className={`${paneClass} min-h-80 lg:min-h-0`}>
+    <section className={`${paneClass} min-h-0`}>
       <div className={sectionHeadClass}>
         <h2 className={sectionTitleClass}>LaTeX Input</h2>
       </div>
@@ -110,7 +109,7 @@ function LatexInputPane({
 
       {fatalMessage !== null || diagnostics.length > 0 ? (
         <div
-          className={`mt-1 rounded-sm border p-2 ${
+          className={`rounded-sm border p-2 ${
             fatalMessage !== null
               ? 'border-red-200 bg-red-50 text-red-800'
               : 'border-yellow-200 bg-yellow-50 text-yellow-800'
@@ -143,10 +142,10 @@ function LatexInputPane({
         </div>
       ) : null}
 
-      <div className="border-t border-slate-200 pt-2">
-        <div className="flex items-center justify-between">
+      <div className="min-h-0 flex flex-1 flex-col border-t border-slate-200 pt-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="text-xs font-semibold text-slate-700">Custom Knowledge Records</div>
-          <div className="flex items-center gap-1.5">
+          <div className="ml-auto flex items-center gap-1.5">
             {customKnowledgeRecords.length > 0 ? (
               <button
                 type="button"
@@ -286,74 +285,81 @@ function LatexInputPane({
           </form>
         ) : null}
 
-        {customKnowledgeRecords.length > 0 ? (
-          <div className="mt-1.5 max-h-32 space-y-1 overflow-y-auto">
-            {customKnowledgeRecords.map((record) => (
-              <div
-                key={`${record.target}:${record.name}`}
-                className="flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50/70 px-2 py-1"
-              >
-                <span className="min-w-0 shrink-0 text-xs font-semibold [font-family:var(--font-code)]">
-                  {record.target === 'environment'
-                    ? `\\begin{${record.name}}`
-                    : `\\${record.name}`}
-                </span>
-                <span className="rounded-sm bg-slate-200 px-1 py-px text-xs leading-none text-slate-700">
-                  {record.target}
-                </span>
-                {record.target === 'command' ? (
-                  <span className="rounded-sm bg-blue-100 px-1 py-px text-xs leading-none text-blue-700">
-                    {record.kind}
-                  </span>
-                ) : record.target === 'environment' ? (
-                  <span className="rounded-sm bg-teal-100 px-1 py-px text-xs leading-none text-teal-700">
-                    body {record.bodyMode}
-                  </span>
-                ) : (
-                  <span className="rounded-sm bg-amber-100 px-1 py-px text-xs leading-none text-amber-700">
-                    control
-                  </span>
-                )}
-                {'mode' in record ? (
-                  <span className="rounded-sm bg-emerald-100 px-1 py-px text-xs leading-none text-emerald-700">
-                    {record.mode}
-                  </span>
-                ) : null}
-                {'spec' in record ? (
-                  <span className="min-w-0 flex-1 truncate text-xs text-slate-400 [font-family:var(--font-code)]">
-                    {record.spec || '(no spec)'}
-                  </span>
-                ) : (
-                  <span className="min-w-0 flex-1 truncate text-xs text-slate-400 [font-family:var(--font-code)]">
-                    delimiter control
-                  </span>
-                )}
-                <button
-                  type="button"
-                  className="ml-auto shrink-0 rounded-sm px-1 py-px text-xs leading-tight text-slate-300 transition-colors hover:bg-red-50 hover:text-red-500"
-                  onClick={() => onRemoveCustomRecord(record)}
-                  title="Remove record"
+        <div className="min-h-0 flex-1 pt-1.5">
+          {customKnowledgeRecords.length > 0 ? (
+            <div className="h-full space-y-1 overflow-y-auto pr-1">
+              {customKnowledgeRecords.map((record) => (
+                <div
+                  key={`${record.target}:${record.name}`}
+                  className="flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50/70 px-2 py-1"
                 >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : activeCustomRecordForm === null ? (
-          <p className="mt-1 text-xs italic text-slate-400">No custom knowledge records.</p>
-        ) : null}
-      </div>
+                  <span className="min-w-0 shrink-0 text-xs font-semibold [font-family:var(--font-code)]">
+                    {record.target === 'environment'
+                      ? `\\begin{${record.name}}`
+                      : `\\${record.name}`}
+                  </span>
+                  <span className="rounded-sm bg-slate-200 px-1 py-px text-xs leading-none text-slate-700">
+                    {record.target}
+                  </span>
+                  {record.target === 'command' ? (
+                    <span className="rounded-sm bg-blue-100 px-1 py-px text-xs leading-none text-blue-700">
+                      {record.kind}
+                    </span>
+                  ) : record.target === 'environment' ? (
+                    <span className="rounded-sm bg-teal-100 px-1 py-px text-xs leading-none text-teal-700">
+                      body {record.bodyMode}
+                    </span>
+                  ) : (
+                    <span className="rounded-sm bg-amber-100 px-1 py-px text-xs leading-none text-amber-700">
+                      control
+                    </span>
+                  )}
+                  {'mode' in record ? (
+                    <span className="rounded-sm bg-emerald-100 px-1 py-px text-xs leading-none text-emerald-700">
+                      {record.mode}
+                    </span>
+                  ) : null}
+                  {'spec' in record ? (
+                    <span className="min-w-0 flex-1 truncate text-xs text-slate-400 [font-family:var(--font-code)]">
+                      {record.spec || '(no spec)'}
+                    </span>
+                  ) : (
+                    <span className="min-w-0 flex-1 truncate text-xs text-slate-400 [font-family:var(--font-code)]">
+                      delimiter control
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="ml-auto shrink-0 rounded-sm px-1 py-px text-xs leading-tight text-slate-300 transition-colors hover:bg-red-50 hover:text-red-500"
+                    onClick={() => onRemoveCustomRecord(record)}
+                    title="Remove record"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : activeCustomRecordForm === null ? (
+            <div className="flex h-full items-center justify-center rounded-sm border border-dashed border-slate-200 bg-slate-50/40 px-3 text-center text-xs italic text-slate-400">
+              No custom knowledge records.
+            </div>
+          ) : (
+            <div className="flex h-full items-center justify-center rounded-sm border border-dashed border-blue-100 bg-blue-50/20 px-3 text-center text-xs text-slate-400">
+              Add a custom record to populate this panel.
+            </div>
+          )}
+        </div>
 
-      <div className="mt-auto border-t border-slate-200 pt-2">
-        <div className="text-xs font-semibold text-slate-700">Statistics (Placeholder)</div>
-        <ul className="mt-1.5 list-disc pl-4 text-xs leading-normal text-slate-700">
-          <li>Chars: {source.length}</li>
-          <li>Nodes: {nodesCount}</li>
-          <li>Tree Depth: {treeDepth}</li>
-          <li>Diagnostics: {diagnostics.length}</li>
-          <li>Root Span: {rootSpanText}</li>
-          <li className="text-slate-500">TODO: token stats / complexity score</li>
-        </ul>
+        <div className="shrink-0 border-t border-slate-200 pt-2">
+          <div className="text-xs font-semibold text-slate-700">Statistics</div>
+          <ul className="mt-1.5 list-disc pl-4 text-xs leading-normal text-slate-700">
+            {stats.map((stat) => (
+              <li key={stat.label}>
+                {stat.label}: <span className="[font-family:var(--font-code)]">{stat.value}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </section>
   )

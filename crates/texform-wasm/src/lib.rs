@@ -54,7 +54,7 @@ export type Argument = {
     value: ArgumentValue;
 };
 
-export type ArgumentSlot = Argument | null;
+export type ArgumentSlot = Argument | null | undefined;
 
 export type ArgumentKind =
     | "Mandatory"

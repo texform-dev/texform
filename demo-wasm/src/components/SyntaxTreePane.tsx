@@ -29,7 +29,7 @@ function SyntaxTreePane({
   renderTreeNode,
 }: SyntaxTreePaneProps) {
   return (
-    <section className={`${paneClass} min-h-80 lg:min-h-0`}>
+    <section className={`${paneClass} min-h-0`}>
       <div className={sectionHeadClass}>
         <div className="flex items-center gap-2">
           <h2 className={sectionTitleClass}>Syntax Tree</h2>
@@ -49,7 +49,7 @@ function SyntaxTreePane({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto border-t border-slate-200 pt-2 text-sm leading-snug [font-family:var(--font-code)]">
+      <div className="min-h-0 flex-1 overflow-auto border-t border-slate-200 pt-2 pr-1 text-sm leading-snug [font-family:var(--font-code)]">
         {treeRoot ? (
           renderTreeNode(treeRoot)
         ) : parseErrorMessage !== null ? (
