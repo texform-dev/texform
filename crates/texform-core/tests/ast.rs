@@ -1,185 +1,358 @@
-use texform_core::ast::{Argument, ArgumentKind, Ast, ContentMode, GroupKind, Node, Slot};
+use texform_core::ast::{
+    Argument, ArgumentKind, ArgumentSlot, ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId,
+    NodeKind, ParentLink, Slot,
+};
+
+fn explicit_group(ast: &mut Ast, mode: ContentMode) -> NodeId {
+    let id = ast.new_node(Node::Group {
+        children: Vec::new(),
+        kind: GroupKind::Explicit,
+        mode,
+    });
+    ast.assert_invariants();
+    id
+}
+
+fn content_arg(kind: ArgumentKind, child: NodeId) -> ArgumentSlot {
+    Some(Argument {
+        kind,
+        value: ArgumentValue::Content(child),
+    })
+}
 
 #[test]
-fn test_ast_creation() {
+fn test_new_ast_starts_with_implicit_math_root() {
     let ast = Ast::new();
     let root = ast.root();
 
-    // Root should be a Group with Math mode
+    assert_eq!(ast.kind(root), NodeKind::Group);
+    assert!(ast.parent(root).is_none());
+
     match ast.node(root) {
         Node::Group {
+            children,
             kind,
             mode,
-            children,
         } => {
+            assert!(children.is_empty());
             assert_eq!(*kind, GroupKind::Implicit);
             assert_eq!(*mode, ContentMode::Math);
-            assert!(children.is_empty());
         }
-        _ => panic!("Root should be a Group"),
+        other => panic!("Expected root group, got {:?}", other),
     }
 
-    // Root should have no parent
-    assert!(ast.parent(root).is_none());
+    ast.assert_invariants();
 }
 
 #[test]
-fn test_simple_tree_construction() {
-    let mut ast = Ast::new();
-    let root = ast.root();
-
-    // Create some leaf nodes
-    let char_a = ast.new_node(Node::Char('a'));
-    let char_plus = ast.new_node(Node::Char('+'));
-    let char_b = ast.new_node(Node::Char('b'));
-
-    // Append to root
-    ast.append_child(root, char_a);
-    ast.append_child(root, char_plus);
-    ast.append_child(root, char_b);
-
-    // Verify children
-    let children = ast.children(root);
-    assert_eq!(children.len(), 3);
-    assert_eq!(children[0], char_a);
-    assert_eq!(children[1], char_plus);
-    assert_eq!(children[2], char_b);
-
-    // Verify parent links
-    assert_eq!(ast.parent_id(char_a), Some(root));
-    assert_eq!(ast.slot(char_a), Some(Slot::GroupChild(0)));
-
-    assert_eq!(ast.parent_id(char_plus), Some(root));
-    assert_eq!(ast.slot(char_plus), Some(Slot::GroupChild(1)));
-
-    assert_eq!(ast.parent_id(char_b), Some(root));
-    assert_eq!(ast.slot(char_b), Some(Slot::GroupChild(2)));
-}
-
-#[test]
-fn test_sibling_navigation() {
+fn test_group_child_editing_updates_navigation_and_detached_roots() {
     let mut ast = Ast::new();
     let root = ast.root();
 
     let a = ast.new_node(Node::Char('a'));
+    ast.assert_invariants();
     let b = ast.new_node(Node::Char('b'));
+    ast.assert_invariants();
     let c = ast.new_node(Node::Char('c'));
+    ast.assert_invariants();
 
     ast.append_child(root, a);
-    ast.append_child(root, b);
+    ast.assert_invariants();
     ast.append_child(root, c);
+    ast.assert_invariants();
+    ast.insert_child(root, 1, b);
+    ast.assert_invariants();
 
-    // Test next_sibling
+    assert_eq!(ast.children(root), [a, b, c].as_slice());
+    assert_eq!(
+        ast.parent(a),
+        Some(ParentLink {
+            parent: root,
+            slot: Slot::GroupChild(0),
+        })
+    );
+    assert_eq!(
+        ast.parent(b),
+        Some(ParentLink {
+            parent: root,
+            slot: Slot::GroupChild(1),
+        })
+    );
+    assert_eq!(
+        ast.parent(c),
+        Some(ParentLink {
+            parent: root,
+            slot: Slot::GroupChild(2),
+        })
+    );
     assert_eq!(ast.next_sibling(a), Some(b));
     assert_eq!(ast.next_sibling(b), Some(c));
-    assert_eq!(ast.next_sibling(c), None);
-
-    // Test prev_sibling
-    assert_eq!(ast.prev_sibling(a), None);
-    assert_eq!(ast.prev_sibling(b), Some(a));
     assert_eq!(ast.prev_sibling(c), Some(b));
+    assert_eq!(ast.prev_sibling(a), None);
+
+    let detached = ast.detach(b);
+    ast.assert_invariants();
+
+    assert_eq!(detached, b);
+    assert_eq!(ast.children(root), [a, c].as_slice());
+    assert_eq!(ast.parent(b), None);
+    assert_eq!(ast.next_sibling(a), Some(c));
+    assert_eq!(ast.prev_sibling(c), Some(a));
+
+    let removed = ast.remove_detached(detached);
+    ast.assert_invariants();
+
+    assert_eq!(removed, Node::Char('b'));
+    assert!(!ast.contains(b));
 }
 
 #[test]
-fn test_scripted_node() {
+fn test_command_arg_slots_keep_non_content_values_out_of_tree_edges() {
     let mut ast = Ast::new();
+    let root = ast.root();
 
+    let group = explicit_group(&mut ast, ContentMode::Math);
     let x = ast.new_node(Node::Char('x'));
-    let two = ast.new_node(Node::Char('2'));
+    ast.assert_invariants();
+    ast.append_child(group, x);
+    ast.assert_invariants();
 
-    let scripted = ast.new_node(Node::Scripted {
-        base: x,
-        subscript: None,
-        superscript: Some(two),
+    let command = ast.new_node(Node::Command {
+        name: "probe".to_string(),
+        args: vec![
+            Some(Argument {
+                kind: ArgumentKind::Star,
+                value: ArgumentValue::Boolean(true),
+            }),
+            None,
+            content_arg(ArgumentKind::Mandatory, group),
+            Some(Argument {
+                kind: ArgumentKind::Optional,
+                value: ArgumentValue::Dimension("1em".to_string()),
+            }),
+        ],
     });
+    ast.assert_invariants();
 
-    ast.append_child(ast.root(), scripted);
+    ast.append_child(root, command);
+    ast.assert_invariants();
 
-    // Verify scripted node structure
-    assert_eq!(ast.script_base(scripted), x);
-    assert_eq!(ast.script_sub(scripted), None);
-    assert_eq!(ast.script_sup(scripted), Some(two));
+    let slots = ast.arg_slots(command);
+    assert_eq!(slots.len(), 4);
 
-    // Verify parent links
-    assert_eq!(ast.parent_id(x), Some(scripted));
-    assert_eq!(ast.slot(x), Some(Slot::ScriptBase));
+    let star = slots[0]
+        .as_ref()
+        .unwrap_or_else(|| panic!("Expected star slot to be present"));
+    assert_eq!(star.kind, ArgumentKind::Star);
+    assert_eq!(star.value, ArgumentValue::Boolean(true));
 
-    assert_eq!(ast.parent_id(two), Some(scripted));
-    assert_eq!(ast.slot(two), Some(Slot::ScriptSup));
+    assert!(slots[1].is_none());
+
+    let dimension = slots[3]
+        .as_ref()
+        .unwrap_or_else(|| panic!("Expected dimension slot to be present"));
+    assert_eq!(dimension.value, ArgumentValue::Dimension("1em".to_string()));
+
+    assert_eq!(ast.edges(command), vec![(group, Slot::Argument(2))]);
+    assert_eq!(
+        ast.parent(group),
+        Some(ParentLink {
+            parent: command,
+            slot: Slot::Argument(2),
+        })
+    );
+    assert_eq!(
+        ast.find(root, |node| matches!(node, Node::Char('x'))),
+        Some(x)
+    );
+    assert_eq!(
+        ast.find_all(root, |node| matches!(node, Node::Char(_))),
+        vec![x]
+    );
 }
 
 #[test]
-fn test_command_with_arguments() {
+fn test_replace_node_reuses_children_and_detaches_removed_subtrees() {
     let mut ast = Ast::new();
+    let root = ast.root();
 
-    // Create \frac{a}{b}
-    let a_group = ast.new_node(Node::Group {
-        children: vec![],
-        kind: GroupKind::Explicit,
-        mode: ContentMode::Math,
-    });
-    let char_a = ast.new_node(Node::Char('a'));
-    ast.append_child(a_group, char_a);
+    let lhs = explicit_group(&mut ast, ContentMode::Math);
+    let a = ast.new_node(Node::Char('a'));
+    ast.assert_invariants();
+    ast.append_child(lhs, a);
+    ast.assert_invariants();
 
-    let b_group = ast.new_node(Node::Group {
-        children: vec![],
-        kind: GroupKind::Explicit,
-        mode: ContentMode::Math,
+    let rhs = explicit_group(&mut ast, ContentMode::Math);
+    let b = ast.new_node(Node::Char('b'));
+    ast.assert_invariants();
+    ast.append_child(rhs, b);
+    ast.assert_invariants();
+
+    let command = ast.new_node(Node::Command {
+        name: "pair".to_string(),
+        args: vec![
+            content_arg(ArgumentKind::Mandatory, lhs),
+            content_arg(ArgumentKind::Mandatory, rhs),
+        ],
     });
-    let char_b = ast.new_node(Node::Char('b'));
-    ast.append_child(b_group, char_b);
+    ast.assert_invariants();
+    ast.append_child(root, command);
+    ast.assert_invariants();
+
+    let sub_id = ast.new_node(Node::Char('i'));
+    ast.assert_invariants();
+
+    let old_node = ast.replace_node(
+        command,
+        Node::Scripted {
+            base: lhs,
+            subscript: Some(sub_id),
+            superscript: None,
+        },
+    );
+    ast.assert_invariants();
+
+    match old_node {
+        Node::Command { name, args } => {
+            assert_eq!(name, "pair");
+            assert_eq!(args.len(), 2);
+        }
+        other => panic!("Expected old command node, got {:?}", other),
+    }
+
+    match ast.node(command) {
+        Node::Scripted {
+            base,
+            subscript,
+            superscript,
+        } => {
+            assert_eq!(*base, lhs);
+            assert_eq!(*subscript, Some(sub_id));
+            assert_eq!(*superscript, None);
+        }
+        other => panic!("Expected scripted node, got {:?}", other),
+    }
+
+    assert_eq!(
+        ast.parent(lhs),
+        Some(ParentLink {
+            parent: command,
+            slot: Slot::ScriptBase,
+        })
+    );
+    assert_eq!(
+        ast.parent(sub_id),
+        Some(ParentLink {
+            parent: command,
+            slot: Slot::ScriptSub,
+        })
+    );
+    assert_eq!(ast.parent(rhs), None);
+
+    let removed_rhs = ast.remove_detached(rhs);
+    ast.assert_invariants();
+
+    match removed_rhs {
+        Node::Group { kind, mode, .. } => {
+            assert_eq!(kind, GroupKind::Explicit);
+            assert_eq!(mode, ContentMode::Math);
+        }
+        other => panic!("Expected detached group, got {:?}", other),
+    }
+
+    assert!(!ast.contains(rhs));
+    assert!(!ast.contains(b));
+}
+
+#[test]
+fn test_remove_node_deletes_attached_subtree() {
+    let mut ast = Ast::new();
+    let root = ast.root();
+
+    let numerator = explicit_group(&mut ast, ContentMode::Math);
+    let a = ast.new_node(Node::Char('a'));
+    ast.assert_invariants();
+    ast.append_child(numerator, a);
+    ast.assert_invariants();
+
+    let denominator = explicit_group(&mut ast, ContentMode::Math);
+    let b = ast.new_node(Node::Char('b'));
+    ast.assert_invariants();
+    ast.append_child(denominator, b);
+    ast.assert_invariants();
 
     let frac = ast.new_node(Node::Command {
         name: "frac".to_string(),
-        is_unknown: false,
         args: vec![
-            Argument {
-                kind: ArgumentKind::Mandatory,
-                content: a_group,
-            },
-            Argument {
-                kind: ArgumentKind::Mandatory,
-                content: b_group,
-            },
+            content_arg(ArgumentKind::Mandatory, numerator),
+            content_arg(ArgumentKind::Mandatory, denominator),
         ],
     });
+    ast.assert_invariants();
+    ast.append_child(root, frac);
+    ast.assert_invariants();
 
-    ast.append_child(ast.root(), frac);
+    ast.remove_node(frac);
+    ast.assert_invariants();
 
-    // Verify arguments
-    let args = ast.args(frac);
-    assert_eq!(args.len(), 2);
-    assert_eq!(args[0].content, a_group);
-    assert_eq!(args[1].content, b_group);
-
-    // Verify parent links
-    assert_eq!(ast.parent_id(a_group), Some(frac));
-    assert_eq!(ast.slot(a_group), Some(Slot::Argument(0)));
-
-    assert_eq!(ast.parent_id(b_group), Some(frac));
-    assert_eq!(ast.slot(b_group), Some(Slot::Argument(1)));
+    assert!(ast.children(root).is_empty());
+    assert!(!ast.contains(frac));
+    assert!(!ast.contains(numerator));
+    assert!(!ast.contains(denominator));
+    assert!(!ast.contains(a));
+    assert!(!ast.contains(b));
 }
 
 #[test]
-fn test_environment_body_parent_links() {
+#[should_panic(expected = "Cannot attach child that already has a parent")]
+fn test_append_child_rejects_attached_child() {
     let mut ast = Ast::new();
+    let root = ast.root();
 
-    let body = ast.new_node(Node::Group {
-        children: vec![],
-        kind: GroupKind::Explicit,
-        mode: ContentMode::Math,
+    let group = explicit_group(&mut ast, ContentMode::Math);
+    let child = ast.new_node(Node::Char('x'));
+    ast.assert_invariants();
+
+    ast.append_child(root, group);
+    ast.assert_invariants();
+    ast.append_child(group, child);
+    ast.assert_invariants();
+
+    ast.append_child(root, child);
+}
+
+#[test]
+#[should_panic(expected = "Can only detach GroupChild nodes")]
+fn test_detach_rejects_non_group_child_nodes() {
+    let mut ast = Ast::new();
+    let root = ast.root();
+
+    let arg = explicit_group(&mut ast, ContentMode::Math);
+    let command = ast.new_node(Node::Command {
+        name: "cmd".to_string(),
+        args: vec![content_arg(ArgumentKind::Mandatory, arg)],
     });
+    ast.assert_invariants();
 
-    let env = ast.new_node(Node::Environment {
-        name: "aligned".to_string(),
-        args: vec![],
-        body,
-    });
+    ast.append_child(root, command);
+    ast.assert_invariants();
 
-    ast.append_child(ast.root(), env);
+    ast.detach(arg);
+}
 
-    assert_eq!(ast.parent_id(body), Some(env));
-    assert_eq!(ast.slot(body), Some(Slot::EnvBody));
+#[test]
+#[should_panic(expected = "Can only remove detached roots")]
+fn test_remove_detached_rejects_attached_nodes() {
+    let mut ast = Ast::new();
+    let root = ast.root();
+
+    let child = ast.new_node(Node::Char('x'));
+    ast.assert_invariants();
+
+    ast.append_child(root, child);
+    ast.assert_invariants();
+
+    ast.remove_detached(child);
 }
 
 #[test]
@@ -187,295 +360,12 @@ fn test_environment_body_parent_links() {
 fn test_environment_body_must_be_group() {
     let mut ast = Ast::new();
 
-    let not_group = ast.new_node(Node::Char('x'));
-    let env = ast.new_node(Node::Environment {
+    let body = ast.new_node(Node::Char('x'));
+    ast.assert_invariants();
+
+    let _ = ast.new_node(Node::Environment {
         name: "aligned".to_string(),
         args: vec![],
-        body: not_group,
+        body,
     });
-
-    ast.append_child(ast.root(), env);
-}
-
-#[test]
-fn test_find_operations() {
-    let mut ast = Ast::new();
-    let root = ast.root();
-
-    let a = ast.new_node(Node::Char('a'));
-    let b = ast.new_node(Node::Char('b'));
-    let text = ast.new_node(Node::Text("hello".to_string()));
-
-    ast.append_child(root, a);
-    ast.append_child(root, b);
-    ast.append_child(root, text);
-
-    // Find first char
-    let first_char = ast.find(root, |node| matches!(node, Node::Char(_)));
-    assert_eq!(first_char, Some(a));
-
-    // Find all chars
-    let all_chars = ast.find_all(root, |node| matches!(node, Node::Char(_)));
-    assert_eq!(all_chars.len(), 2);
-    assert!(all_chars.contains(&a));
-    assert!(all_chars.contains(&b));
-
-    // Find text node
-    let text_node = ast.find(root, |node| matches!(node, Node::Text(_)));
-    assert_eq!(text_node, Some(text));
-}
-
-#[test]
-fn test_insert_and_remove_child() {
-    let mut ast = Ast::new();
-    let root = ast.root();
-
-    let a = ast.new_node(Node::Char('a'));
-    let b = ast.new_node(Node::Char('b'));
-    let c = ast.new_node(Node::Char('c'));
-
-    ast.append_child(root, a);
-    ast.append_child(root, c);
-
-    // Insert b between a and c
-    ast.insert_child(root, 1, b);
-
-    // Verify children order
-    let children = ast.children(root);
-    assert_eq!(children.len(), 3);
-    assert_eq!(children[0], a);
-    assert_eq!(children[1], b);
-    assert_eq!(children[2], c);
-
-    // Verify slots are updated
-    assert_eq!(ast.slot(a), Some(Slot::GroupChild(0)));
-    assert_eq!(ast.slot(b), Some(Slot::GroupChild(1)));
-    assert_eq!(ast.slot(c), Some(Slot::GroupChild(2)));
-
-    // Detach b
-    let detached = ast.detach_child(root, 1);
-    assert_eq!(detached, b);
-
-    // Verify children after detachment
-    let children = ast.children(root);
-    assert_eq!(children.len(), 2);
-    assert_eq!(children[0], a);
-    assert_eq!(children[1], c);
-
-    // Verify slots are updated after detachment
-    assert_eq!(ast.slot(a), Some(Slot::GroupChild(0)));
-    assert_eq!(ast.slot(c), Some(Slot::GroupChild(1)));
-    assert_eq!(ast.parent(b), None);
-
-    // Delete the detached node to reclaim memory
-    ast.delete_subtree(b);
-}
-
-#[test]
-fn test_delete_subtree() {
-    let mut ast = Ast::new();
-
-    // Create a tree: frac{a+b}{c}
-    let a = ast.new_node(Node::Char('a'));
-    let plus = ast.new_node(Node::Char('+'));
-    let b = ast.new_node(Node::Char('b'));
-
-    let numerator = ast.new_node(Node::Group {
-        children: vec![],
-        kind: GroupKind::Explicit,
-        mode: ContentMode::Math,
-    });
-    ast.append_child(numerator, a);
-    ast.append_child(numerator, plus);
-    ast.append_child(numerator, b);
-
-    let c = ast.new_node(Node::Char('c'));
-    let denominator = ast.new_node(Node::Group {
-        children: vec![],
-        kind: GroupKind::Explicit,
-        mode: ContentMode::Math,
-    });
-    ast.append_child(denominator, c);
-
-    let frac = ast.new_node(Node::Command {
-        name: "frac".to_string(),
-        is_unknown: false,
-        args: vec![
-            Argument {
-                kind: ArgumentKind::Mandatory,
-                content: numerator,
-            },
-            Argument {
-                kind: ArgumentKind::Mandatory,
-                content: denominator,
-            },
-        ],
-    });
-
-    ast.append_child(ast.root(), frac);
-
-    // Verify all nodes are in the tree
-    assert!(ast.contains(frac));
-    assert!(ast.contains(numerator));
-    assert!(ast.contains(denominator));
-    assert!(ast.contains(a));
-    assert!(ast.contains(plus));
-    assert!(ast.contains(b));
-    assert!(ast.contains(c));
-
-    // Delete the frac node and its entire subtree
-    ast.remove_node(frac);
-
-    // Verify all nodes in the subtree are deleted
-    assert!(!ast.contains(frac));
-    assert!(!ast.contains(numerator));
-    assert!(!ast.contains(denominator));
-    assert!(!ast.contains(a));
-    assert!(!ast.contains(plus));
-    assert!(!ast.contains(b));
-    assert!(!ast.contains(c));
-}
-
-#[test]
-#[should_panic(expected = "Cannot append child that already has a parent")]
-fn test_append_child_with_existing_parent_panics() {
-    let mut ast = Ast::new();
-
-    let group1 = ast.new_node(Node::Group {
-        children: vec![],
-        kind: GroupKind::Explicit,
-        mode: ContentMode::Math,
-    });
-    let group2 = ast.new_node(Node::Group {
-        children: vec![],
-        kind: GroupKind::Explicit,
-        mode: ContentMode::Math,
-    });
-
-    let child = ast.new_node(Node::Char('x'));
-
-    // First append is fine
-    ast.append_child(group1, child);
-    // Second append should panic because child already has a parent
-    ast.append_child(group2, child);
-}
-
-#[test]
-#[should_panic(expected = "Cannot insert child that already has a parent")]
-fn test_insert_child_with_existing_parent_panics() {
-    let mut ast = Ast::new();
-
-    let group1 = ast.new_node(Node::Group {
-        children: vec![],
-        kind: GroupKind::Explicit,
-        mode: ContentMode::Math,
-    });
-    let group2 = ast.new_node(Node::Group {
-        children: vec![],
-        kind: GroupKind::Explicit,
-        mode: ContentMode::Math,
-    });
-
-    let child = ast.new_node(Node::Char('x'));
-
-    // First append is fine
-    ast.append_child(group1, child);
-    // Insert should panic because child already has a parent
-    ast.insert_child(group2, 0, child);
-}
-
-#[test]
-fn test_detach_and_reattach() {
-    let mut ast = Ast::new();
-
-    let group1 = ast.new_node(Node::Group {
-        children: vec![],
-        kind: GroupKind::Explicit,
-        mode: ContentMode::Math,
-    });
-    let group2 = ast.new_node(Node::Group {
-        children: vec![],
-        kind: GroupKind::Explicit,
-        mode: ContentMode::Math,
-    });
-
-    let child = ast.new_node(Node::Char('x'));
-
-    // Attach to group1
-    ast.append_child(group1, child);
-    assert_eq!(ast.parent_id(child), Some(group1));
-
-    // Detach from group1
-    let detached = ast.detach_child(group1, 0);
-    assert_eq!(detached, child);
-    assert_eq!(ast.parent_id(child), None);
-
-    // Now can attach to group2
-    ast.append_child(group2, child);
-    assert_eq!(ast.parent_id(child), Some(group2));
-}
-
-#[test]
-#[should_panic(expected = "already has a parent")]
-fn test_replace_node_with_attached_children_panics() {
-    let mut ast = Ast::new();
-
-    let group = ast.new_node(Node::Group {
-        children: vec![],
-        kind: GroupKind::Explicit,
-        mode: ContentMode::Math,
-    });
-
-    let child = ast.new_node(Node::Char('x'));
-    ast.append_child(group, child);
-
-    let old_node = ast.new_node(Node::Char('a'));
-    ast.append_child(ast.root(), old_node);
-
-    // Try to replace old_node with a Command that uses the attached child
-    let new_node = Node::Command {
-        name: "test".to_string(),
-        is_unknown: false,
-        args: vec![Argument {
-            kind: ArgumentKind::Mandatory,
-            content: child,
-        }],
-    };
-
-    ast.replace_node(old_node, new_node);
-}
-
-#[test]
-fn test_replace_node_with_detached_children() {
-    let mut ast = Ast::new();
-
-    let child = ast.new_node(Node::Char('x'));
-    let old_node = ast.new_node(Node::Char('a'));
-    ast.append_child(ast.root(), old_node);
-
-    let new_node = Node::Command {
-        name: "test".to_string(),
-        is_unknown: false,
-        args: vec![Argument {
-            kind: ArgumentKind::Mandatory,
-            content: child,
-        }],
-    };
-
-    let replaced = ast.replace_node(old_node, new_node);
-    assert_eq!(replaced, Node::Char('a'));
-
-    // Verify the new structure
-    match ast.node(old_node) {
-        Node::Command { name, args, .. } => {
-            assert_eq!(name, "test");
-            assert_eq!(args.len(), 1);
-            assert_eq!(args[0].content, child);
-        }
-        _ => panic!("Should be a Command"),
-    }
-
-    // Verify child has correct parent
-    assert_eq!(ast.parent_id(child), Some(old_node));
-    assert_eq!(ast.slot(child), Some(Slot::Argument(0)));
 }

@@ -4,7 +4,7 @@
 //! Unlike the final AST (ast.rs), SyntaxNode uses standard Rust types (Vec, Box)
 //! and is optimized for top-down traversal rather than bidirectional navigation.
 //!
-//! After parsing, the syntax tree is converted to the slotmap-based AST via lowering.
+//! After parsing, the syntax tree is converted to the slotmap-based AST.
 
 use serde::Serialize;
 
