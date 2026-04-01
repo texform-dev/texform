@@ -2,7 +2,7 @@ use ariadne::{Config, IndexType, Label, Report, ReportKind, Source};
 use std::env;
 use texform_core::context::{
     AllowedMode, CommandItem, CommandKind, ContentMode, ContextItem, DelimiterControlItem,
-    EnvironmentItem, ParseContext, ParseDiagnostic, ParseOutput,
+    EnvironmentItem, KnowledgeBase, ParseContext, ParseDiagnostic, ParseOutput,
 };
 
 struct CliOptions {
@@ -114,20 +114,23 @@ fn required_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a 
 }
 
 fn parse_with_options(options: &CliOptions) -> Result<ParseOutput, String> {
-    let mut ctx = build_context(options.packages.as_ref())?;
-    ctx.insert_items(options.items.clone())
-        .map_err(|error| format!("failed to insert context item: {error}"))?;
+    let mut kb = build_kb(options.packages.as_ref())?;
+    for item in &options.items {
+        kb.insert_item(item.clone())
+            .map_err(|error| format!("failed to insert context item: {error}"))?;
+    }
+    let ctx = ParseContext::new(kb);
     Ok(ctx.parse(options.input.as_str(), options.strict))
 }
 
-fn build_context(packages: Option<&Vec<String>>) -> Result<ParseContext, String> {
+fn build_kb(packages: Option<&Vec<String>>) -> Result<KnowledgeBase, String> {
     match packages {
         Some(packages) => {
             let refs: Vec<&str> = packages.iter().map(String::as_str).collect();
-            ParseContext::try_from_packages(refs.as_slice())
+            KnowledgeBase::try_build_from_packages(refs.as_slice())
                 .map_err(|error| format!("package loading failed: {error}"))
         }
-        None => Ok(ParseContext::clone_all_packages()),
+        None => Ok(KnowledgeBase::all_packages()),
     }
 }
 

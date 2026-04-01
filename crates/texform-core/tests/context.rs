@@ -1,4 +1,4 @@
-use texform_core::context::{DelimiterControlItem, ParseContext};
+use texform_core::context::{DelimiterControlItem, KnowledgeBase, ParseContext};
 
 fn assert_from_packages(actual: &[&str], expected: &[&str]) {
     assert_eq!(actual, expected);
@@ -15,17 +15,20 @@ fn core_only_context_includes_core_command() {
 
 #[test]
 fn context_can_insert_and_remove_delimiter_controls() {
-    let mut ctx = ParseContext::empty();
-    assert!(ctx.lookup_delimiter_control("langle").is_none());
+    let mut kb = KnowledgeBase::empty();
+    assert!(kb.lookup_delimiter_control("langle").is_none());
 
-    ctx.insert_item(DelimiterControlItem::new("langle"))
+    kb.insert_item(DelimiterControlItem::new("langle"))
         .expect("delimiter control item should be valid");
-    assert!(ctx.lookup_delimiter_control("langle").is_some());
-    assert_eq!(ctx.lookup_delimiter_control("langle"), Some("langle"));
+    assert!(kb.lookup_delimiter_control("langle").is_some());
+    assert_eq!(kb.lookup_delimiter_control("langle"), Some("langle"));
 
-    assert!(ctx.remove_item(DelimiterControlItem::new("langle")));
+    assert!(kb.remove_item(DelimiterControlItem::new("langle")));
+    assert!(kb.lookup_delimiter_control("langle").is_none());
+    assert_eq!(kb.lookup_delimiter_control("langle"), None);
+
+    let ctx = ParseContext::new(kb);
     assert!(ctx.lookup_delimiter_control("langle").is_none());
-    assert_eq!(ctx.lookup_delimiter_control("langle"), None);
 }
 
 #[test]

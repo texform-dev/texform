@@ -25,16 +25,21 @@
 //!
 //! For rapid prototyping, configuration errors fail fast (panic).
 
+use crate::ast::Node;
 use std::collections::{HashMap, HashSet};
 use texform_interface::syntax_node::ContentMode;
+use texform_specs::builtin::BuiltinPackage;
 
 use crate::context::{CommandItem, ContextItem, DelimiterControlItem, EnvironmentItem};
 
+pub use texform_specs::specs::{
+    AllowedMode, ArgForm, ArgSpec, ArgSpecParseError, BuiltinCharacterRecord, BuiltinCommandRecord,
+    BuiltinEnvironmentRecord, CharacterMeta, CommandKind, CommandMeta, DelimiterToken, EnvMeta,
+    ValueKind,
+};
 #[cfg(test)]
-use texform_specs::specs::CharacterAttributes;
-pub(crate) use texform_specs::specs::{
-    AllowedMode, ArgForm, ArgSpec, ArgSpecParseError, CharacterMeta, CharacterSpec, CommandKind,
-    CommandMeta, CommandSpec, DelimiterToken, EnvMeta, EnvironmentSpec, PackageSpecs, ValueKind,
+use texform_specs::specs::{
+    CharacterAttributes, CharacterSpec, CommandSpec, EnvironmentSpec, PackageSpecs,
 };
 
 const RUNTIME_PACKAGE_NAME: &str = "runtime";
@@ -81,7 +86,7 @@ impl std::error::Error for PackageLoadError {}
 /// - `suppressed_command_names`: names removed via `remove_item(Command)`.
 ///   Prevents a deleted name from "reviving" through a character fallback.
 #[derive(Debug, Clone)]
-pub(crate) struct KnowledgeBase {
+pub struct KnowledgeBase {
     commands: Vec<CommandMeta>,
     command_idx_by_name: HashMap<&'static str, usize>,
     characters: Vec<CharacterMeta>,
@@ -122,7 +127,31 @@ impl KnowledgeBase {
     ///
     /// The active entry may be an explicit command or a character-derived
     /// zero-arg view. Suppressed names always return `None`.
-    pub(crate) fn lookup_command(&self, name: &str) -> Option<&CommandMeta> {
+    pub fn empty() -> Self {
+        Self::new()
+    }
+
+    pub fn core_only() -> Self {
+        new_with_core()
+    }
+
+    pub fn build_from_packages(packages: &[&str]) -> Self {
+        Self::try_build_from_packages(packages).unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    pub fn try_build_from_packages(packages: &[&str]) -> Result<Self, PackageLoadError> {
+        let mut kb = new_with_core();
+        let to_load = canonical_package_import_order(packages);
+        import_package_names(&mut kb, to_load.as_slice())?;
+        Ok(kb)
+    }
+
+    pub fn all_packages() -> Self {
+        let package_names = texform_specs::builtin::all_package_names();
+        Self::build_from_packages(package_names.as_slice())
+    }
+
+    pub fn lookup_command(&self, name: &str) -> Option<&CommandMeta> {
         if self.suppressed_command_names.contains(name) {
             return None;
         }
@@ -133,8 +162,23 @@ impl KnowledgeBase {
         }
     }
 
+    /// Look up the active command only when the active source is explicit.
+    ///
+    /// Returns `None` when the name is unknown, suppressed, or currently
+    /// resolved through a character-derived command view.
+    pub(crate) fn lookup_active_explicit_command(&self, name: &str) -> Option<&CommandMeta> {
+        if self.suppressed_command_names.contains(name) {
+            return None;
+        }
+
+        match self.active_command_idx_by_name.get(name).copied()? {
+            ActiveCommandSource::Explicit(idx) => Some(&self.commands[idx]),
+            ActiveCommandSource::Character(_) => None,
+        }
+    }
+
     /// Look up only the explicit (non-character-derived) command for `name`.
-    pub(crate) fn lookup_explicit_command(&self, name: &str) -> Option<&CommandMeta> {
+    pub fn lookup_explicit_command(&self, name: &str) -> Option<&CommandMeta> {
         self.command_idx_by_name
             .get(name)
             .copied()
@@ -142,7 +186,7 @@ impl KnowledgeBase {
     }
 
     /// Look up raw character metadata by control-sequence name.
-    pub(crate) fn lookup_character(&self, name: &str) -> Option<&CharacterMeta> {
+    pub fn lookup_character(&self, name: &str) -> Option<&CharacterMeta> {
         self.character_idx_by_name
             .get(name)
             .copied()
@@ -150,7 +194,7 @@ impl KnowledgeBase {
     }
 
     /// Look up environment metadata by name.
-    pub(crate) fn lookup_env(&self, name: &str) -> Option<&EnvMeta> {
+    pub fn lookup_env(&self, name: &str) -> Option<&EnvMeta> {
         self.env_idx_by_name
             .get(name)
             .copied()
@@ -158,20 +202,17 @@ impl KnowledgeBase {
     }
 
     /// Check whether `name` is registered as a delimiter control sequence.
-    pub(crate) fn is_delimiter_control(&self, name: &str) -> bool {
+    pub fn is_delimiter_control(&self, name: &str) -> bool {
         self.delimiter_controls.contains(name)
     }
 
     /// Look up a delimiter control, returning the interned `&'static str` name.
-    pub(crate) fn lookup_delimiter_control(&self, name: &str) -> Option<&'static str> {
+    pub fn lookup_delimiter_control(&self, name: &str) -> Option<&'static str> {
         self.delimiter_controls.get(name).copied()
     }
 
     /// Insert a context item, dispatching to the appropriate typed inserter.
-    pub(crate) fn insert_item(
-        &mut self,
-        item: impl Into<ContextItem>,
-    ) -> Result<(), ArgSpecParseError> {
+    pub fn insert_item(&mut self, item: impl Into<ContextItem>) -> Result<(), ArgSpecParseError> {
         match item.into() {
             ContextItem::Command(item) => self.insert_command(item),
             ContextItem::Environment(item) => self.insert_environment(item),
@@ -194,7 +235,7 @@ impl KnowledgeBase {
     }
 
     /// Remove a previously inserted item. Returns `true` if found.
-    pub(crate) fn remove_item(&mut self, item: impl Into<ContextItem>) -> bool {
+    pub fn remove_item(&mut self, item: impl Into<ContextItem>) -> bool {
         match item.into() {
             ContextItem::Command(item) => self.remove_command(item.name.as_str()),
             ContextItem::Environment(item) => {
@@ -206,16 +247,13 @@ impl KnowledgeBase {
         }
     }
 
-    pub(crate) fn insert_environment(
-        &mut self,
-        item: EnvironmentItem,
-    ) -> Result<(), ArgSpecParseError> {
+    pub fn insert_environment(&mut self, item: EnvironmentItem) -> Result<(), ArgSpecParseError> {
         let meta = environment_item_into_meta(item, vec![RUNTIME_PACKAGE_NAME.to_string()])?;
         self.upsert_env_meta(meta);
         Ok(())
     }
 
-    pub(crate) fn insert_delimiter_control(&mut self, item: DelimiterControlItem) {
+    pub fn insert_delimiter_control(&mut self, item: DelimiterControlItem) {
         let name = item.name;
         if self.delimiter_controls.contains(name.as_str()) {
             return;
@@ -275,6 +313,7 @@ impl KnowledgeBase {
     /// Writes raw character metadata and creates a zero-arg Prefix command view
     /// so the parser can recognize the character as a command head. Does NOT
     /// write into the explicit command raw store.
+    #[cfg(test)]
     fn insert_character_with_package(&mut self, character: CharacterSpec, package: &str) {
         let CharacterSpec {
             name,
@@ -303,8 +342,33 @@ impl KnowledgeBase {
         self.set_active_command_source(name, ActiveCommandSource::Character(view_idx));
     }
 
+    fn insert_builtin_character_with_package(
+        &mut self,
+        character: &'static BuiltinCharacterRecord,
+        package: &str,
+    ) {
+        self.upsert_character_meta(CharacterMeta {
+            name: character.name.to_string(),
+            allowed_mode: character.allowed_mode,
+            unicode_value: character.unicode_value.to_string(),
+            attributes: character.attributes.into(),
+            package: package.to_string(),
+        });
+
+        let view_idx = self.upsert_character_command_view(CommandMeta {
+            name: character.name,
+            kind: CommandKind::Prefix,
+            allowed_mode: character.allowed_mode,
+            args: &[],
+            tags: &[],
+            spec_string: "",
+            from_packages: leak_string_array(vec![package.to_string()]),
+        });
+        self.set_active_command_source(character.name, ActiveCommandSource::Character(view_idx));
+    }
+
     #[cfg(test)]
-    fn insert_or_override_command(&mut self, spec: CommandSpec) {
+    pub(crate) fn insert_or_override_command(&mut self, spec: CommandSpec) {
         self.insert_or_override_command_with_package(spec, UNKNOWN_PACKAGE_NAME);
     }
 
@@ -319,8 +383,31 @@ impl KnowledgeBase {
     /// Package import path: merges the incoming command with an existing one
     /// if they share the same name/kind/spec and both come from managed packages;
     /// otherwise falls back to override (last-writer-wins).
+    #[cfg(test)]
     fn import_or_merge_command_with_package(&mut self, spec: CommandSpec, package: &str) {
         let incoming = command_spec_into_meta(spec, vec![package.to_string()]);
+        if let Some(existing_idx) = self.command_idx_by_name.get(incoming.name).copied() {
+            let existing = &self.commands[existing_idx];
+            if should_merge_command(existing, &incoming) {
+                let merged = merge_command_meta(existing, &incoming);
+                let idx = self.upsert_command_meta(merged);
+                let name = self.commands[idx].name;
+                self.set_active_command_source(name, ActiveCommandSource::Explicit(idx));
+                return;
+            }
+        }
+
+        let idx = self.upsert_command_meta(incoming);
+        let name = self.commands[idx].name;
+        self.set_active_command_source(name, ActiveCommandSource::Explicit(idx));
+    }
+
+    fn import_or_merge_builtin_command_with_package(
+        &mut self,
+        record: &'static BuiltinCommandRecord,
+        package: &str,
+    ) {
+        let incoming = builtin_command_into_meta(record, vec![package.to_string()]);
         if let Some(existing_idx) = self.command_idx_by_name.get(incoming.name).copied() {
             let existing = &self.commands[existing_idx];
             if should_merge_command(existing, &incoming) {
@@ -354,6 +441,7 @@ impl KnowledgeBase {
 
     /// Same merge-or-override logic as commands, but for environments.
     /// Merge requires matching name, spec_string, and body_mode.
+    #[cfg(test)]
     fn import_or_merge_environment_with_package(&mut self, spec: EnvironmentSpec, package: &str) {
         let incoming = environment_spec_into_meta(spec, vec![package.to_string()]);
         if let Some(existing_idx) = self.env_idx_by_name.get(incoming.name).copied() {
@@ -367,11 +455,29 @@ impl KnowledgeBase {
         self.upsert_env_meta(incoming);
     }
 
+    fn import_or_merge_builtin_environment_with_package(
+        &mut self,
+        record: &'static BuiltinEnvironmentRecord,
+        package: &str,
+    ) {
+        let incoming = builtin_environment_into_meta(record, vec![package.to_string()]);
+        if let Some(existing_idx) = self.env_idx_by_name.get(incoming.name).copied() {
+            let existing = &self.envs[existing_idx];
+            if should_merge_environment(existing, &incoming) {
+                self.upsert_env_meta(merge_environment_meta(existing, &incoming));
+                return;
+            }
+        }
+
+        self.upsert_env_meta(incoming);
+    }
+
     #[cfg(test)]
-    fn import_package(&mut self, specs: PackageSpecs) {
+    pub(crate) fn import_package(&mut self, specs: PackageSpecs) {
         self.import_package_with_name(UNKNOWN_PACKAGE_NAME, specs);
     }
 
+    #[cfg(test)]
     fn import_package_with_name(&mut self, package: &str, specs: PackageSpecs) {
         for character in specs.characters {
             self.insert_character_with_package(character, package);
@@ -384,6 +490,21 @@ impl KnowledgeBase {
         }
         for name in specs.delimiter_controls {
             self.insert_delimiter_control(DelimiterControlItem::new(name));
+        }
+    }
+
+    fn import_builtin_package(&mut self, package: &'static BuiltinPackage) {
+        for character in package.characters {
+            self.insert_builtin_character_with_package(character, package.name);
+        }
+        for command in package.commands {
+            self.import_or_merge_builtin_command_with_package(command, package.name);
+        }
+        for environment in package.environments {
+            self.import_or_merge_builtin_environment_with_package(environment, package.name);
+        }
+        for &name in package.delimiter_controls {
+            self.delimiter_controls.insert(name);
         }
     }
 }
@@ -462,6 +583,7 @@ fn environment_item_into_meta(
     ))
 }
 
+#[cfg(test)]
 fn command_spec_into_meta(spec: CommandSpec, from_packages: Vec<String>) -> CommandMeta {
     make_command_meta(
         spec.name,
@@ -474,6 +596,22 @@ fn command_spec_into_meta(spec: CommandSpec, from_packages: Vec<String>) -> Comm
     )
 }
 
+fn builtin_command_into_meta(
+    record: &'static BuiltinCommandRecord,
+    from_packages: Vec<String>,
+) -> CommandMeta {
+    CommandMeta {
+        name: record.name,
+        kind: record.kind,
+        allowed_mode: record.allowed_mode,
+        args: record.args,
+        tags: record.tags,
+        spec_string: record.spec_string,
+        from_packages: leak_string_array(from_packages),
+    }
+}
+
+#[cfg(test)]
 fn environment_spec_into_meta(spec: EnvironmentSpec, from_packages: Vec<String>) -> EnvMeta {
     make_env_meta(
         spec.name,
@@ -484,6 +622,21 @@ fn environment_spec_into_meta(spec: EnvironmentSpec, from_packages: Vec<String>)
         spec.spec_string,
         from_packages,
     )
+}
+
+fn builtin_environment_into_meta(
+    record: &'static BuiltinEnvironmentRecord,
+    from_packages: Vec<String>,
+) -> EnvMeta {
+    EnvMeta {
+        name: record.name,
+        allowed_mode: record.allowed_mode,
+        args: record.args,
+        body_mode: record.body_mode,
+        tags: record.tags,
+        spec_string: record.spec_string,
+        from_packages: leak_string_array(from_packages),
+    }
 }
 
 /// Leak a `String` into a `&'static str` for arena-style storage.
@@ -639,54 +792,41 @@ fn merge_environment_meta(existing: &EnvMeta, incoming: &EnvMeta) -> EnvMeta {
     )
 }
 
+pub(crate) fn lookup_command_node_name(node: &Node) -> Option<&str> {
+    match node {
+        Node::Command { name, .. } | Node::Infix { name, .. } | Node::Declarative { name, .. } => {
+            Some(name.as_str())
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn lookup_environment_node_name(node: &Node) -> Option<&str> {
+    match node {
+        Node::Environment { name, .. } => Some(name.as_str()),
+        _ => None,
+    }
+}
+
 fn import_package_names(
     kb: &mut KnowledgeBase,
     requested: &[&str],
 ) -> Result<(), PackageLoadError> {
     for &name in requested {
-        let pkg =
-            texform_specs::packages::get(name).ok_or_else(|| PackageLoadError::UnknownPackage {
+        let pkg = texform_specs::builtin::lookup_package(name).ok_or_else(|| {
+            PackageLoadError::UnknownPackage {
                 name: name.to_string(),
-            })?;
-        kb.import_package_with_name(name, (pkg.load)());
+            }
+        })?;
+        kb.import_builtin_package(pkg);
     }
     Ok(())
 }
 
-/// Create an empty knowledge base with no packages loaded.
-pub(crate) fn build_empty_kb() -> KnowledgeBase {
-    KnowledgeBase::new()
-}
-
 fn new_with_core() -> KnowledgeBase {
     let mut kb = KnowledgeBase::new();
-    kb.import_package_with_name(
-        texform_specs::core_knowledge::CORE_PACKAGE_NAME,
-        texform_specs::core_knowledge::specs(),
-    );
+    kb.import_builtin_package(&texform_specs::core_knowledge::CORE_PACKAGE);
     kb
-}
-
-/// Create a knowledge base with only the core package.
-pub(crate) fn build_core_only_kb() -> KnowledgeBase {
-    new_with_core()
-}
-
-/// Build a knowledge base from package names. Panics on unknown packages.
-pub(crate) fn build_kb_from_packages(requested: &[&str]) -> KnowledgeBase {
-    try_build_kb_from_packages(requested).unwrap_or_else(|error| panic!("{error}"))
-}
-
-/// Public package-loading entry point. Canonicalizes the requested package
-/// list into the fixed managed order before importing, so merge results
-/// are stable regardless of the caller-supplied order.
-pub(crate) fn try_build_kb_from_packages(
-    requested: &[&str],
-) -> Result<KnowledgeBase, PackageLoadError> {
-    let mut kb = new_with_core();
-    let to_load = canonical_package_import_order(requested);
-    import_package_names(&mut kb, to_load.as_slice())?;
-    Ok(kb)
 }
 
 /// Same as [`try_build_kb_from_packages`] but preserves the caller's exact
@@ -704,10 +844,10 @@ pub(crate) fn try_build_kb_from_exact_packages(
 #[cfg(test)]
 fn build_default_kb(packages: Option<&[&str]>) -> KnowledgeBase {
     match packages {
-        Some(list) => build_kb_from_packages(list),
+        Some(list) => KnowledgeBase::build_from_packages(list),
         None => {
-            let package_names = texform_specs::packages::all_package_names();
-            build_kb_from_packages(package_names.as_slice())
+            let package_names = texform_specs::builtin::all_package_names();
+            KnowledgeBase::build_from_packages(package_names.as_slice())
         }
     }
 }

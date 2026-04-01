@@ -1,14 +1,12 @@
-//! Stateful parse context that owns a per-instance knowledge base.
+//! Parse context that owns a per-instance immutable knowledge base.
 //!
-//! [`ParseContext`] is the primary public API surface for building a knowledge
-//! base, injecting temporary definitions, and parsing LaTeX formulas. Each
-//! context owns an independent knowledge base so concurrent callers cannot
-//! interfere with each other.
+//! [`ParseContext`] is the primary public API surface for freezing a knowledge
+//! base, parsing LaTeX formulas, and running transform profiles.
 //!
 //! The module also defines the shared output types ([`ParseOutput`],
 //! [`ParseResult`], [`ParseDiagnostic`]) used by every parse entry point.
 
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use chumsky::prelude::*;
 use serde::Serialize;
@@ -19,10 +17,20 @@ pub use texform_specs::specs::{
     AllowedMode, ArgSpecParseError, CharacterMeta, CommandKind, CommandMeta, EnvMeta,
 };
 
+use crate::ast::Ast;
+pub use crate::knowledge::KnowledgeBase;
 pub use crate::knowledge::PackageLoadError;
-use crate::knowledge::{self, KnowledgeBase};
 use crate::lexer::Token;
 use crate::parser::{self, Spanned, TokenStream, build_token_stream};
+use crate::transform::compile::{CompiledProfile, ProfileCompileError, RuleStatus};
+use crate::transform::config::TransformProfile;
+use crate::transform::engine::{TransformEngineError, TransformReport, transform_ast};
+
+type CachedProfileCompile = (
+    TransformProfile,
+    Result<CompiledProfile, ProfileCompileError>,
+);
+type ProfileCache = Arc<Mutex<Vec<CachedProfileCompile>>>;
 
 /// A runtime-injectable definition that augments the knowledge base.
 ///
@@ -239,11 +247,56 @@ pub struct ParseOutput {
     pub diagnostics: Vec<ParseDiagnostic>,
 }
 
-/// Stateful parse context owning an isolated knowledge base.
+#[derive(Debug, Clone)]
+pub struct ParseAstOutput {
+    pub ast: Ast,
+}
+
+#[derive(Debug, Clone)]
+pub struct TransformOutput {
+    pub ast: Ast,
+    pub transform_report: TransformReport,
+}
+
+#[derive(Debug, Clone)]
+pub enum ParseAstError {
+    NoParseResult { diagnostics: Vec<ParseDiagnostic> },
+    DiagnosticsPresent { diagnostics: Vec<ParseDiagnostic> },
+}
+
+impl std::fmt::Display for ParseAstError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParseAstError::NoParseResult { .. } => f.write_str("parse produced no syntax tree"),
+            ParseAstError::DiagnosticsPresent { .. } => f.write_str("parse produced diagnostics"),
+        }
+    }
+}
+
+impl std::error::Error for ParseAstError {}
+
+#[derive(Debug, Clone)]
+pub enum ParseAndTransformError {
+    Parse(ParseAstError),
+    Transform(TransformEngineError),
+}
+
+impl std::fmt::Display for ParseAndTransformError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParseAndTransformError::Parse(error) => error.fmt(f),
+            ParseAndTransformError::Transform(error) => error.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for ParseAndTransformError {}
+
+/// Immutable parse context owning an isolated knowledge base.
 ///
 /// A `ParseContext` is the main integration surface for callers that need to
-/// configure which packages are loaded, inject temporary definitions, query
-/// metadata, and parse LaTeX formulas repeatedly.
+/// freeze a fully-built knowledge base, query metadata, and parse LaTeX
+/// formulas repeatedly.
 ///
 /// # Construction
 ///
@@ -255,17 +308,33 @@ pub struct ParseOutput {
 /// | [`all_packages()`](Self::all_packages) | Core + every registered package |
 /// | [`all_packages_shared()`](Self::all_packages_shared) | Same as above, lazily cached `&'static` ref |
 ///
-/// After construction, use [`insert_item`](Self::insert_item) /
-/// [`remove_item`](Self::remove_item) to mutate the knowledge base at
-/// runtime.
-#[derive(Debug, Clone)]
 pub struct ParseContext {
     kb: KnowledgeBase,
+    // The compiled-profile cache is an internal optimization and remains
+    // instance-local. Cloning a ParseContext starts with a fresh empty cache.
+    profile_cache: ProfileCache,
+}
+
+impl Clone for ParseContext {
+    fn clone(&self) -> Self {
+        Self::new(self.kb.clone())
+    }
+}
+
+impl std::fmt::Debug for ParseContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ParseContext")
+            .field("kb", &self.kb)
+            .finish_non_exhaustive()
+    }
 }
 
 impl ParseContext {
-    pub(crate) fn from_kb(kb: KnowledgeBase) -> Self {
-        ParseContext { kb }
+    pub fn new(kb: KnowledgeBase) -> Self {
+        ParseContext {
+            kb,
+            profile_cache: Arc::new(Mutex::new(Vec::new())),
+        }
     }
 
     pub(crate) fn kb(&self) -> &KnowledgeBase {
@@ -276,12 +345,12 @@ impl ParseContext {
     ///
     /// Useful as a blank slate when every definition will be injected manually.
     pub fn empty() -> Self {
-        Self::from_kb(knowledge::build_empty_kb())
+        Self::new(KnowledgeBase::empty())
     }
 
     /// Build a context containing only core knowledge (line breaks, etc.)
     pub fn core_only() -> Self {
-        Self::from_kb(knowledge::build_core_only_kb())
+        Self::new(KnowledgeBase::core_only())
     }
 
     /// Build a context from an explicit list of package names.
@@ -294,9 +363,7 @@ impl ParseContext {
     /// Panics if any package name is unrecognized. Use [`try_from_packages`](Self::try_from_packages)
     /// for fallible loading.
     pub fn from_packages(packages: &[&str]) -> Self {
-        ParseContext {
-            kb: knowledge::build_kb_from_packages(packages),
-        }
+        Self::new(KnowledgeBase::build_from_packages(packages))
     }
 
     /// Fallible variant of [`from_packages`](Self::from_packages).
@@ -304,15 +371,12 @@ impl ParseContext {
     /// Returns [`PackageLoadError`] instead of panicking when a package name
     /// is unrecognized.
     pub fn try_from_packages(packages: &[&str]) -> Result<Self, PackageLoadError> {
-        Ok(ParseContext {
-            kb: knowledge::try_build_kb_from_packages(packages)?,
-        })
+        Ok(Self::new(KnowledgeBase::try_build_from_packages(packages)?))
     }
 
     /// Build a context containing all registered packages.
     pub fn all_packages() -> Self {
-        let packages = texform_specs::packages::all_package_names();
-        Self::from_packages(packages.as_slice())
+        Self::new(KnowledgeBase::all_packages())
     }
 
     /// Borrow the lazily-initialized all-packages context.
@@ -321,42 +385,6 @@ impl ParseContext {
     /// context is built once on first call and shared for the process lifetime.
     pub fn all_packages_shared() -> &'static ParseContext {
         all_packages_ctx()
-    }
-
-    /// Clone the cached all-packages context into an owned value.
-    ///
-    /// Use this when you need to mutate the context (e.g. inject items) while
-    /// still starting from the full knowledge base.
-    pub fn clone_all_packages() -> Self {
-        Self::all_packages_shared().clone()
-    }
-
-    /// Inject a single context item into the knowledge base.
-    ///
-    /// Returns an error if the item's argument spec string is invalid.
-    pub fn insert_item(&mut self, item: impl Into<ContextItem>) -> Result<(), ArgSpecParseError> {
-        self.kb.insert_item(item.into())
-    }
-
-    /// Inject multiple context items in order.
-    ///
-    /// Stops at the first invalid spec and returns the error.
-    pub fn insert_items<I, T>(&mut self, items: I) -> Result<(), ArgSpecParseError>
-    where
-        I: IntoIterator<Item = T>,
-        T: Into<ContextItem>,
-    {
-        for item in items {
-            self.insert_item(item)?;
-        }
-        Ok(())
-    }
-
-    /// Remove a previously inserted context item.
-    ///
-    /// Returns `true` if the item was found and removed.
-    pub fn remove_item(&mut self, item: impl Into<ContextItem>) -> bool {
-        self.kb.remove_item(item.into())
     }
 
     /// Check whether `name` is a registered delimiter control sequence.
@@ -375,6 +403,54 @@ impl ParseContext {
     /// can coexist with diagnostics. Set `strict` to reject unknown commands.
     pub fn parse(&self, src: &str, strict: bool) -> ParseOutput {
         parse_with_kb(&self.kb, src, strict)
+    }
+
+    pub fn parse_to_ast(&self, src: &str, strict: bool) -> Result<ParseAstOutput, ParseAstError> {
+        let output = self.parse(src, strict);
+        match (output.result, output.diagnostics) {
+            (Some(result), diagnostics) if diagnostics.is_empty() => Ok(ParseAstOutput {
+                ast: Ast::from_syntax_node(&result.node),
+            }),
+            (Some(_), diagnostics) => Err(ParseAstError::DiagnosticsPresent { diagnostics }),
+            (None, diagnostics) => Err(ParseAstError::NoParseResult { diagnostics }),
+        }
+    }
+
+    pub fn transform(
+        &self,
+        ast: &mut Ast,
+        profile: &TransformProfile,
+    ) -> Result<TransformReport, TransformEngineError> {
+        let compiled = self
+            .get_or_compile_profile(profile)
+            .map_err(TransformEngineError::Profile)?;
+        transform_ast(ast, &self.kb, &compiled)
+    }
+
+    pub fn parse_and_transform(
+        &self,
+        src: &str,
+        strict: bool,
+        profile: &TransformProfile,
+    ) -> Result<TransformOutput, ParseAndTransformError> {
+        let mut ast = self
+            .parse_to_ast(src, strict)
+            .map_err(ParseAndTransformError::Parse)?
+            .ast;
+        let transform_report = self
+            .transform(&mut ast, profile)
+            .map_err(ParseAndTransformError::Transform)?;
+        Ok(TransformOutput {
+            ast,
+            transform_report,
+        })
+    }
+
+    pub fn transform_rule_statuses(
+        &self,
+        profile: &TransformProfile,
+    ) -> Result<Vec<RuleStatus>, ProfileCompileError> {
+        Ok(self.get_or_compile_profile(profile)?.statuses.clone())
     }
 
     /// Look up the active command metadata for `name`.
@@ -399,6 +475,20 @@ impl ParseContext {
     /// Look up environment metadata by name.
     pub fn lookup_env(&self, name: &str) -> Option<&EnvMeta> {
         self.kb.lookup_env(name)
+    }
+
+    fn get_or_compile_profile(
+        &self,
+        profile: &TransformProfile,
+    ) -> Result<CompiledProfile, ProfileCompileError> {
+        let mut cache = self.profile_cache.lock().unwrap();
+        if let Some((_, compiled)) = cache.iter().find(|(cached, _)| cached == profile) {
+            return compiled.clone();
+        }
+
+        let compiled = crate::transform::compile::compile_profile(&self.kb, profile);
+        cache.push((profile.clone(), compiled.clone()));
+        compiled
     }
 }
 
@@ -473,5 +563,30 @@ fn convert_diagnostic(err: Rich<'static, Token>) -> ParseDiagnostic {
         span,
         expected,
         found,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_context_clone_starts_with_fresh_profile_cache() {
+        let ctx = ParseContext::from_packages(&["base"]);
+        ctx.transform_rule_statuses(&TransformProfile::default())
+            .expect("profile should compile for base context");
+        assert_eq!(ctx.profile_cache.lock().unwrap().len(), 1);
+
+        let cloned = ctx.clone();
+        assert_eq!(ctx.profile_cache.lock().unwrap().len(), 1);
+        assert_eq!(cloned.profile_cache.lock().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn parse_context_debug_omits_internal_cache() {
+        let debug = format!("{:?}", ParseContext::core_only());
+        assert!(debug.contains("ParseContext"));
+        assert!(debug.contains("kb"));
+        assert!(!debug.contains("profile_cache"));
     }
 }

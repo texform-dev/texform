@@ -7,7 +7,7 @@ fn assert_from_packages(actual: &[&str], expected: &[&str]) {
 
 #[test]
 fn test_lookup_command() {
-    let kb = build_core_only_kb();
+    let kb = KnowledgeBase::core_only();
     let linebreak = kb.lookup_command("\\").unwrap();
     assert_eq!(linebreak.name, "\\");
     assert_eq!(linebreak.kind, CommandKind::Prefix);
@@ -58,7 +58,7 @@ fn test_arg_spec_helpers() {
 
 #[test]
 fn test_delimiter_controls() {
-    let kb = build_core_only_kb();
+    let kb = KnowledgeBase::core_only();
     assert!(kb.lookup_delimiter_control("langle").is_none());
     assert!(kb.lookup_delimiter_control("notadelim").is_none());
 

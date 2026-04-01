@@ -115,25 +115,13 @@ export interface CharacterInfo {
 export class ParseContext {
   private readonly inner: WasmParseContext
 
-  constructor(packages?: string[]) {
+  constructor(packages?: string[], items?: ContextItem[]) {
     assertReady()
-    this.inner = new WasmParseContext(packages ?? undefined)
+    this.inner = new WasmParseContext(packages ?? undefined, items ?? undefined)
   }
 
   parse(src: string, strict?: boolean | null): ParseResult {
     return this.inner.parse(src, strict)
-  }
-
-  insertItem(item: ContextItem): void {
-    this.inner.insert_item(item)
-  }
-
-  insertItems(items: ContextItem[]): void {
-    this.inner.insert_items(items)
-  }
-
-  removeItem(item: ContextItem): boolean {
-    return this.inner.remove_item(item) as boolean
   }
 
   lookupActiveCommand(name: string): CommandInfo | null {

@@ -181,20 +181,6 @@ function persistCustomKnowledgeRecords(records: CustomKnowledgeRecordEntry[]): v
   }
 }
 
-function insertCustomKnowledgeRecord(
-  context: WasmParseContext,
-  record: CustomKnowledgeRecordEntry,
-): void {
-  context.insertItem(customKnowledgeRecordToContextItem(record))
-}
-
-function removeCustomKnowledgeRecord(
-  context: WasmParseContext,
-  record: CustomKnowledgeRecordEntry,
-): boolean {
-  return context.removeItem(customKnowledgeRecordToContextItem(record))
-}
-
 function customKnowledgeRecordToContextItem(
   record: CustomKnowledgeRecordEntry,
 ): ContextItem {
@@ -224,13 +210,19 @@ function customKnowledgeRecordToContextItem(
   }
 }
 
+function buildParseContext(
+  records: CustomKnowledgeRecordEntry[],
+): WasmParseContext {
+  const items = records.map(customKnowledgeRecordToContextItem)
+  return new WasmParseContext(undefined, items)
+}
+
 function App() {
   const [source, setSource] = useState(SAMPLE_LATEX)
   const [strictMode, setStrictMode] = useState(false)
   const [wasmReady, setWasmReady] = useState(false)
   const [wasmInitError, setWasmInitError] = useState<string | null>(null)
   const [parseContext, setParseContext] = useState<WasmParseContext | null>(null)
-  const [contextVersion, setContextVersion] = useState(0)
   const [collapsedNodes, setCollapsedNodes] = useState<Set<string>>(new Set())
   const [customRecordName, setCustomRecordName] = useState('')
   const [customCommandKind, setCustomCommandKind] = useState<CommandKind>('prefix')
@@ -253,22 +245,23 @@ function App() {
           return
         }
         try {
-          const ctx = new WasmParseContext()
+          const saved = loadStoredCustomKnowledgeRecords()
+          let restored = saved
+          let ctx: WasmParseContext
+
+          try {
+            ctx = buildParseContext(saved)
+          } catch {
+            restored = []
+            persistCustomKnowledgeRecords([])
+            ctx = new WasmParseContext()
+          }
+
           if (!alive) {
             return
           }
 
-          // Restore persisted custom knowledge records into the new context
-          try {
-            const saved = loadStoredCustomKnowledgeRecords()
-            const items = saved.map(customKnowledgeRecordToContextItem)
-            if (items.length > 0) {
-              ctx.insertItems(items)
-            }
-          } catch {
-            // Ignore malformed localStorage data
-          }
-
+          setCustomKnowledgeRecords(restored)
           setParseContext(ctx)
           setWasmReady(true)
           setWasmInitError(null)
@@ -322,7 +315,7 @@ function App() {
         fatalMessage,
       }
     }
-  }, [source, strictMode, wasmReady, wasmInitError, parseContext, contextVersion])
+  }, [source, strictMode, wasmReady, wasmInitError, parseContext])
 
   const treeRoot = useMemo(() => {
     if (!parseState.result || !parseContext) {
@@ -336,7 +329,7 @@ function App() {
       (name) => parseContext.lookupCharacter(name),
       (name) => parseContext.lookupEnv(name),
     )
-  }, [parseState.result, parseContext, contextVersion])
+  }, [parseState.result, parseContext])
 
   const flatNodes = useMemo(() => {
     if (!treeRoot) {
@@ -450,7 +443,7 @@ function App() {
   }
 
   const addCustomCommand = () => {
-    if (!parseContext) {
+    if (!wasmReady) {
       setCustomRecordError('Parse context is not ready.')
       return
     }
@@ -470,17 +463,17 @@ function App() {
     }
 
     try {
-      insertCustomKnowledgeRecord(parseContext, nextRecord)
       const updated = [
         ...customKnowledgeRecords.filter(
           (entry) => recordIdentity(entry) !== recordIdentity(nextRecord),
         ),
         nextRecord,
       ]
+      const ctx = buildParseContext(updated)
+      setParseContext(ctx)
       setCustomKnowledgeRecords(updated)
       persistCustomKnowledgeRecords(updated)
       setCustomRecordError(null)
-      setContextVersion((v) => v + 1)
       setCustomRecordName('')
       setActiveCustomRecordForm(null)
     } catch (error) {
@@ -489,7 +482,7 @@ function App() {
   }
 
   const addCustomEnvironment = () => {
-    if (!parseContext) {
+    if (!wasmReady) {
       setCustomRecordError('Parse context is not ready.')
       return
     }
@@ -509,17 +502,17 @@ function App() {
     }
 
     try {
-      insertCustomKnowledgeRecord(parseContext, nextRecord)
       const updated = [
         ...customKnowledgeRecords.filter(
           (entry) => recordIdentity(entry) !== recordIdentity(nextRecord),
         ),
         nextRecord,
       ]
+      const ctx = buildParseContext(updated)
+      setParseContext(ctx)
       setCustomKnowledgeRecords(updated)
       persistCustomKnowledgeRecords(updated)
       setCustomRecordError(null)
-      setContextVersion((v) => v + 1)
       setCustomRecordName('')
       setActiveCustomRecordForm(null)
     } catch (error) {
@@ -528,7 +521,7 @@ function App() {
   }
 
   const addCustomDelimiter = () => {
-    if (!parseContext) {
+    if (!wasmReady) {
       setCustomRecordError('Parse context is not ready.')
       return
     }
@@ -545,17 +538,17 @@ function App() {
     }
 
     try {
-      insertCustomKnowledgeRecord(parseContext, nextRecord)
       const updated = [
         ...customKnowledgeRecords.filter(
           (entry) => recordIdentity(entry) !== recordIdentity(nextRecord),
         ),
         nextRecord,
       ]
+      const ctx = buildParseContext(updated)
+      setParseContext(ctx)
       setCustomKnowledgeRecords(updated)
       persistCustomKnowledgeRecords(updated)
       setCustomRecordError(null)
-      setContextVersion((v) => v + 1)
       setCustomRecordName('')
       setActiveCustomRecordForm(null)
     } catch (error) {
@@ -564,39 +557,34 @@ function App() {
   }
 
   const removeCustomRecord = (record: CustomKnowledgeRecordEntry) => {
-    if (!parseContext) {
+    if (!wasmReady) {
       return
     }
 
     try {
-      removeCustomKnowledgeRecord(parseContext, record)
       const updated = customKnowledgeRecords.filter(
         (entry) => recordIdentity(entry) !== recordIdentity(record),
       )
+      const ctx = buildParseContext(updated)
+      setParseContext(ctx)
       setCustomKnowledgeRecords(updated)
       persistCustomKnowledgeRecords(updated)
       setCustomRecordError(null)
-      setContextVersion((v) => v + 1)
     } catch (error) {
       setCustomRecordError(extractFatalMessage(error))
     }
   }
 
   const resetAllCustomKnowledgeRecords = () => {
-    if (!parseContext) {
+    if (!wasmReady) {
       return
     }
-    for (const record of customKnowledgeRecords) {
-      try {
-        removeCustomKnowledgeRecord(parseContext, record)
-      } catch {
-        // best-effort removal
-      }
-    }
+
+    const ctx = buildParseContext([])
+    setParseContext(ctx)
     setCustomKnowledgeRecords([])
     persistCustomKnowledgeRecords([])
     setCustomRecordError(null)
-    setContextVersion((v) => v + 1)
   }
 
   const renderTreeNode = (node: TreeNode) => {

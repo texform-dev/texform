@@ -8,3 +8,8 @@ serde.workspace = true
 serde_yaml.workspace = true
 
 texform-interface.workspace = true
+
+[build-dependencies]
+serde.workspace = true
+serde_yaml.workspace = true
+texform-interface.workspace = true

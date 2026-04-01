@@ -13,7 +13,9 @@
 
 use serde::Serialize;
 
-use crate::context::{ContextItem, ParseContext, ParseDiagnostic, ParseOutput, Span};
+use crate::context::{
+    ContextItem, KnowledgeBase, ParseContext, ParseDiagnostic, ParseOutput, Span,
+};
 
 /// One parse attempt produced by [`parse_with_context_items`].
 ///
@@ -63,8 +65,8 @@ pub fn parse_with_context_items(
     packages: Option<&[&str]>,
     strict: bool,
 ) -> ParseWithContextOutput {
-    let mut ctx = match build_probe_context(packages) {
-        Ok(ctx) => ctx,
+    let mut kb = match build_probe_kb(packages) {
+        Ok(kb) => kb,
         Err(error) => {
             return invalid_inputs_output(inputs, format!("package loading failed: {}", error));
         }
@@ -75,7 +77,7 @@ pub fn parse_with_context_items(
     }
 
     for item in items {
-        let insert_result = ctx.insert_item(item.clone());
+        let insert_result = kb.insert_item(item.clone());
 
         if let Err(error) = insert_result {
             return invalid_inputs_output(
@@ -84,6 +86,8 @@ pub fn parse_with_context_items(
             );
         }
     }
+
+    let ctx = ParseContext::new(kb);
 
     inputs
         .iter()
@@ -94,12 +98,12 @@ pub fn parse_with_context_items(
         .collect()
 }
 
-fn build_probe_context(
+fn build_probe_kb(
     packages: Option<&[&str]>,
-) -> Result<ParseContext, crate::context::PackageLoadError> {
+) -> Result<KnowledgeBase, crate::context::PackageLoadError> {
     match packages {
-        Some(package_names) => ParseContext::try_from_packages(package_names),
-        None => Ok(ParseContext::core_only()),
+        Some(package_names) => KnowledgeBase::try_build_from_packages(package_names),
+        None => Ok(KnowledgeBase::core_only()),
     }
 }
 

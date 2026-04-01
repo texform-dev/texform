@@ -1,36 +1,34 @@
-use crate::specs::{
-    AllowedMode, ArgForm, ArgSpec, CommandKind, CommandSpec, PackageSpecs, ValueKind,
-};
+use crate::builtin::BuiltinPackage;
+use crate::specs::{AllowedMode, ArgForm, ArgSpec, BuiltinCommandRecord, CommandKind, ValueKind};
 
 pub const CORE_PACKAGE_NAME: &str = "core";
 
-pub fn specs() -> PackageSpecs {
-    PackageSpecs {
-        characters: vec![],
-        commands: vec![linebreak_command()],
-        environments: vec![],
-        delimiter_controls: vec![],
-    }
-}
+pub static LINEBREAK_ARGS: &[ArgSpec] = &[
+    ArgSpec::with_form(false, true, ValueKind::Star, ArgForm::Star),
+    ArgSpec::with_form(false, true, ValueKind::Dimension, ArgForm::Standard),
+];
 
-fn linebreak_command() -> CommandSpec {
-    CommandSpec {
-        name: "\\".to_string(),
-        kind: CommandKind::Prefix,
-        allowed_mode: AllowedMode::Both,
-        args: vec![no_leading_space_star(), no_leading_space_dimension()],
-        tags: vec![],
-        spec_string: "!s !o:L".to_string(),
-    }
-}
+pub static LINEBREAK: BuiltinCommandRecord = BuiltinCommandRecord {
+    name: "\\",
+    kind: CommandKind::Prefix,
+    allowed_mode: AllowedMode::Both,
+    args: LINEBREAK_ARGS,
+    tags: &[],
+    spec_string: "!s !o:L",
+};
 
-fn no_leading_space_star() -> ArgSpec {
-    ArgSpec::with_form(false, true, ValueKind::Star, ArgForm::Star)
-}
+pub static COMMANDS: &[&BuiltinCommandRecord] = &[&LINEBREAK];
+pub static ENVIRONMENTS: &[&crate::specs::BuiltinEnvironmentRecord] = &[];
+pub static CHARACTERS: &[&crate::specs::BuiltinCharacterRecord] = &[];
+pub static DELIMITER_CONTROLS: &[&str] = &[];
 
-fn no_leading_space_dimension() -> ArgSpec {
-    ArgSpec::with_form(false, true, ValueKind::Dimension, ArgForm::Standard)
-}
+pub static CORE_PACKAGE: BuiltinPackage = BuiltinPackage {
+    name: CORE_PACKAGE_NAME,
+    commands: COMMANDS,
+    environments: ENVIRONMENTS,
+    characters: CHARACTERS,
+    delimiter_controls: DELIMITER_CONTROLS,
+};
 
 #[cfg(test)]
 mod tests {
@@ -38,10 +36,9 @@ mod tests {
 
     #[test]
     fn core_specs_include_linebreak_command() {
-        let specs = specs();
-        assert_eq!(specs.commands.len(), 1);
+        assert_eq!(CORE_PACKAGE.commands.len(), 1);
 
-        let linebreak = &specs.commands[0];
+        let linebreak = CORE_PACKAGE.commands[0];
         assert_eq!(linebreak.name, "\\");
         assert_eq!(linebreak.kind, CommandKind::Prefix);
         assert_eq!(linebreak.allowed_mode, AllowedMode::Both);

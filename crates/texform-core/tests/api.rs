@@ -1,7 +1,7 @@
 use texform_core::api::{parse_latex, parse_with_context_items};
 use texform_core::context::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
-    ParseContext, ParseOutput,
+    KnowledgeBase, ParseContext, ParseOutput,
 };
 use texform_interface::syntax_node::{ArgumentValue, ContentMode, Delimiter, SyntaxNode};
 
@@ -40,9 +40,12 @@ fn matrix_environment_item() -> ContextItem {
 }
 
 fn parse_with_items(items: &[ContextItem], src: &str, strict: bool) -> ParseOutput {
-    let mut ctx = ParseContext::core_only();
-    ctx.insert_items(items.iter().cloned())
-        .expect("context items should be valid");
+    let mut kb = KnowledgeBase::core_only();
+    for item in items {
+        kb.insert_item(item.clone())
+            .expect("context items should be valid");
+    }
+    let ctx = ParseContext::new(kb);
     ctx.parse(src, strict)
 }
 

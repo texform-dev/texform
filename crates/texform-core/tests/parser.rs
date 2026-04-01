@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use texform_core::context::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
-    ParseContext,
+    KnowledgeBase, ParseContext,
 };
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
@@ -29,15 +29,34 @@ fn parse(src: &str, strict: bool) -> Result<(SyntaxNode, chumsky::span::SimpleSp
 }
 
 fn test_context() -> ParseContext {
-    static BASE_CONTEXT: OnceLock<ParseContext> = OnceLock::new();
-    BASE_CONTEXT
+    ParseContext::new(test_kb())
+}
+
+fn test_kb() -> KnowledgeBase {
+    static BASE_KB: OnceLock<KnowledgeBase> = OnceLock::new();
+    BASE_KB
         .get_or_init(|| {
-            let mut ctx = ParseContext::core_only();
-            ctx.insert_items(shared_test_items().iter().cloned())
-                .expect("shared test items should be valid");
-            ctx
+            let mut kb = KnowledgeBase::core_only();
+            for item in shared_test_items() {
+                kb.insert_item(item.clone())
+                    .expect("shared test items should be valid");
+            }
+            kb
         })
         .clone()
+}
+
+fn test_context_with_items<I, T>(items: I) -> ParseContext
+where
+    I: IntoIterator<Item = T>,
+    T: Into<ContextItem>,
+{
+    let mut kb = test_kb();
+    for item in items {
+        kb.insert_item(item)
+            .expect("test items should have valid xparse specs");
+    }
+    ParseContext::new(kb)
 }
 
 fn shared_test_items() -> &'static [ContextItem] {
@@ -680,9 +699,7 @@ fn test_csname_argument() {
 
 #[test]
 fn test_csname_argument_rejects_escape_sequence() {
-    let mut ctx = test_context();
-    ctx.insert_item(label_command_item())
-        .expect("label argspec should be valid");
+    let ctx = test_context_with_items([label_command_item()]);
 
     let command = ctx.parse(r"\label{\alpha}", true);
     assert!(
@@ -2657,14 +2674,12 @@ fn test_no_leading_space_prefix_for_linebreak_command() {
 
 #[test]
 fn test_no_leading_space_after_single_token_m_for_optional_brackets() {
-    let mut ctx = test_context();
-    ctx.insert_item(command_item(
+    let ctx = test_context_with_items([command_item(
         "probe",
         CommandKind::Prefix,
         AllowedMode::Math,
         "m !o",
-    ))
-    .expect("probe argspec should be valid");
+    )]);
 
     let spaced = ctx.parse(r"\probe a [b]", true);
     assert!(
@@ -2739,14 +2754,12 @@ fn test_no_leading_space_after_single_token_m_for_optional_brackets() {
 
 #[test]
 fn test_no_leading_space_after_single_token_m_for_group_slot() {
-    let mut ctx = test_context();
-    ctx.insert_item(command_item(
+    let ctx = test_context_with_items([command_item(
         "probe",
         CommandKind::Prefix,
         AllowedMode::Math,
         "s o m !g",
-    ))
-    .expect("probe argspec should be valid");
+    )]);
 
     let spaced = ctx.parse(r"\probe*[n]f {x}", true);
     assert!(
@@ -2840,14 +2853,12 @@ fn test_no_leading_space_after_single_token_m_for_group_slot() {
 
 #[test]
 fn test_required_group_form_enforces_braces() {
-    let mut ctx = test_context();
-    ctx.insert_item(command_item(
+    let ctx = test_context_with_items([command_item(
         "reqgrp",
         CommandKind::Prefix,
         AllowedMode::Math,
         "m{}",
-    ))
-    .expect("reqgrp argspec should be valid");
+    )]);
 
     let present = ctx.parse(r"\reqgrp{x}", true);
     assert!(
@@ -2902,14 +2913,12 @@ fn test_required_group_form_enforces_braces() {
 
 #[test]
 fn test_group_form_supports_dimension_kind() {
-    let mut ctx = test_context();
-    ctx.insert_item(command_item(
+    let ctx = test_context_with_items([command_item(
         "gdim",
         CommandKind::Prefix,
         AllowedMode::Math,
         "g:L",
-    ))
-    .expect("gdim argspec should be valid");
+    )]);
 
     let missing = ctx.parse(r"\gdim", true);
     assert!(
@@ -2966,14 +2975,12 @@ fn test_group_form_supports_dimension_kind() {
 
 #[test]
 fn test_required_group_form_composes_with_star_and_standard_slots() {
-    let mut ctx = test_context();
-    ctx.insert_item(command_item(
+    let ctx = test_context_with_items([command_item(
         "probe",
         CommandKind::Prefix,
         AllowedMode::Math,
         "s m{} m",
-    ))
-    .expect("probe argspec should be valid");
+    )]);
 
     let basic = ctx.parse(r"\probe{A}B", true);
     assert!(
@@ -3039,14 +3046,12 @@ fn test_required_group_form_composes_with_star_and_standard_slots() {
 
 #[test]
 fn test_group_form_supports_delimiter_kind() {
-    let mut ctx = test_context();
-    ctx.insert_item(command_item(
+    let ctx = test_context_with_items([command_item(
         "gdelim",
         CommandKind::Prefix,
         AllowedMode::Math,
         "g:D",
-    ))
-    .expect("gdelim argspec should be valid");
+    )]);
 
     let output = ctx.parse(r"\gdelim{|}", true);
     assert!(
@@ -3079,23 +3084,21 @@ fn test_group_form_supports_delimiter_kind() {
 
 #[test]
 fn test_nullable_delimiter_argument_accepts_empty_required_group() {
-    let mut ctx = test_context();
-    ctx.insert_item(command_item(
-        "ndelim",
-        CommandKind::Prefix,
-        AllowedMode::Math,
-        "m:D?",
-    ))
-    .expect("nullable delimiter argspec should be valid");
-    ctx.insert_item(command_item(
-        "strictdelim",
-        CommandKind::Prefix,
-        AllowedMode::Math,
-        "m:D",
-    ))
-    .expect("strict delimiter argspec should be valid");
-    ctx.insert_item(DelimiterControlItem::new("langle"))
-        .expect("delimiter control item should be valid");
+    let ctx = test_context_with_items(vec![
+        ContextItem::from(command_item(
+            "ndelim",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "m:D?",
+        )),
+        ContextItem::from(command_item(
+            "strictdelim",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "m:D",
+        )),
+        ContextItem::from(DelimiterControlItem::new("langle")),
+    ]);
 
     let empty = ctx.parse(r"\ndelim{}", true);
     assert!(
@@ -3148,14 +3151,12 @@ fn test_nullable_delimiter_argument_accepts_empty_required_group() {
 
 #[test]
 fn test_nullable_delimiter_group_accepts_empty_group() {
-    let mut ctx = test_context();
-    ctx.insert_item(command_item(
+    let ctx = test_context_with_items([command_item(
         "gdelimnull",
         CommandKind::Prefix,
         AllowedMode::Math,
         "m{}:D?",
-    ))
-    .expect("nullable delimiter group argspec should be valid");
+    )]);
 
     let output = ctx.parse(r"\gdelimnull{}", true);
     assert!(
@@ -3180,21 +3181,10 @@ fn test_nullable_delimiter_group_accepts_empty_group() {
 
 #[test]
 fn test_required_group_and_delimited_forms_have_distinct_ast_kinds() {
-    let mut ctx = test_context();
-    ctx.insert_item(command_item(
-        "reqgrp",
-        CommandKind::Prefix,
-        AllowedMode::Math,
-        "m{}",
-    ))
-    .expect("reqgrp argspec should be valid");
-    ctx.insert_item(command_item(
-        "reqdelim",
-        CommandKind::Prefix,
-        AllowedMode::Math,
-        "r{}",
-    ))
-    .expect("reqdelim argspec should be valid");
+    let ctx = test_context_with_items([
+        command_item("reqgrp", CommandKind::Prefix, AllowedMode::Math, "m{}"),
+        command_item("reqdelim", CommandKind::Prefix, AllowedMode::Math, "r{}"),
+    ]);
 
     let group = ctx.parse(r"\reqgrp{x}", true);
     assert!(
@@ -3319,21 +3309,15 @@ fn test_dd_supports_optional_then_paired_slots() {
 
 #[test]
 fn test_paired_form_required_vs_optional_semantics() {
-    let mut ctx = test_context();
-    ctx.insert_item(command_item(
-        "mustpair",
-        CommandKind::Prefix,
-        AllowedMode::Math,
-        "r<(,)>",
-    ))
-    .expect("required paired argspec should be valid");
-    ctx.insert_item(command_item(
-        "maybepair",
-        CommandKind::Prefix,
-        AllowedMode::Math,
-        "d<(,)>",
-    ))
-    .expect("optional paired argspec should be valid");
+    let ctx = test_context_with_items([
+        command_item("mustpair", CommandKind::Prefix, AllowedMode::Math, "r<(,)>"),
+        command_item(
+            "maybepair",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "d<(,)>",
+        ),
+    ]);
 
     let required_ok = ctx.parse(r"\mustpair(x)", true);
     assert!(
@@ -3390,14 +3374,12 @@ fn test_paired_form_required_vs_optional_semantics() {
 
 #[test]
 fn test_newline_command_preserves_no_leading_space_behavior() {
-    let mut ctx = test_context();
-    ctx.insert_item(command_item(
+    let ctx = test_context_with_items([command_item(
         "newline",
         CommandKind::Prefix,
         AllowedMode::Both,
         "!s !o:L",
-    ))
-    .expect("newline argspec should be valid");
+    )]);
 
     let immediate = ctx.parse(r"\newline*[1cm]", true);
     assert!(
@@ -3467,21 +3449,10 @@ fn test_newline_command_preserves_no_leading_space_behavior() {
 
 #[test]
 fn test_environment_star_in_name_is_independent_from_s_arg_slot() {
-    let mut ctx = test_context();
-    ctx.insert_item(environment_item(
-        "probenv",
-        AllowedMode::Math,
-        ContentMode::Math,
-        "s",
-    ))
-    .expect("probenv argspec should be valid");
-    ctx.insert_item(environment_item(
-        "probenv*",
-        AllowedMode::Math,
-        ContentMode::Math,
-        "s",
-    ))
-    .expect("probenv argspec should be valid");
+    let ctx = test_context_with_items([
+        environment_item("probenv", AllowedMode::Math, ContentMode::Math, "s"),
+        environment_item("probenv*", AllowedMode::Math, ContentMode::Math, "s"),
+    ]);
 
     let starred_name = ctx.parse(r"\begin{probenv*}x\end{probenv*}", true);
     assert!(
@@ -3653,21 +3624,10 @@ fn test_optional_argument_reparse_keeps_known_command() {
 
 #[test]
 fn test_delimited_content_argument_reparse_keeps_known_command() {
-    let mut ctx = test_context();
-    ctx.insert_item(command_item(
-        "probe",
-        CommandKind::Prefix,
-        AllowedMode::Math,
-        "r()",
-    ))
-    .expect("probe argspec should be valid");
-    ctx.insert_item(command_item(
-        "frac",
-        CommandKind::Prefix,
-        AllowedMode::Math,
-        "mm",
-    ))
-    .expect("frac argspec should be valid");
+    let ctx = test_context_with_items([
+        command_item("probe", CommandKind::Prefix, AllowedMode::Math, "r()"),
+        command_item("frac", CommandKind::Prefix, AllowedMode::Math, "mm"),
+    ]);
 
     let output = ctx.parse(r"\probe(\frac{1}{2})", true);
     assert!(
@@ -3702,14 +3662,12 @@ fn test_delimited_content_argument_reparse_keeps_known_command() {
 
 #[test]
 fn test_parse_context_isolation_for_custom_commands() {
-    let mut ctx1 = test_context();
-    ctx1.insert_item(command_item(
+    let ctx1 = test_context_with_items([command_item(
         "foo",
         CommandKind::Prefix,
         AllowedMode::Math,
         "m",
-    ))
-    .expect("foo argspec should be valid");
+    )]);
 
     let out1_foo = ctx1.parse(r"\foo{a}", true);
     assert!(out1_foo.diagnostics.is_empty());
@@ -3719,14 +3677,12 @@ fn test_parse_context_isolation_for_custom_commands() {
     assert!(!out1_bar.diagnostics.is_empty());
     assert!(out1_bar.result.is_none());
 
-    let mut ctx2 = test_context();
-    ctx2.insert_item(command_item(
+    let ctx2 = test_context_with_items([command_item(
         "bar",
         CommandKind::Prefix,
         AllowedMode::Math,
         "m",
-    ))
-    .expect("bar argspec should be valid");
+    )]);
 
     let out2_bar = ctx2.parse(r"\bar{a}", true);
     assert!(out2_bar.diagnostics.is_empty());

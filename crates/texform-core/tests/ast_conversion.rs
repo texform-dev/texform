@@ -4,14 +4,17 @@ use texform_core::ast::{
 };
 use texform_core::context::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
-    ParseContext,
+    KnowledgeBase, ParseContext,
 };
 use texform_interface::syntax_node::SyntaxNode;
 
 fn parse_with_items(src: &str, strict: bool, items: Vec<ContextItem>) -> SyntaxNode {
-    let mut ctx = ParseContext::core_only();
-    ctx.insert_items(items)
-        .expect("test items should have valid xparse specs");
+    let mut kb = KnowledgeBase::core_only();
+    for item in items {
+        kb.insert_item(item)
+            .expect("test items should have valid xparse specs");
+    }
+    let ctx = ParseContext::new(kb);
 
     let output = ctx.parse(src, strict);
     assert!(

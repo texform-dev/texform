@@ -1,15 +1,16 @@
-use texform_core::context::{AllowedMode, CommandItem, CommandKind, ParseContext};
+use texform_core::context::{AllowedMode, CommandItem, CommandKind, KnowledgeBase, ParseContext};
 use texform_interface::syntax_node::{ArgumentValue, SyntaxNode};
 
 fn parse_inline_column_command(src: &str) -> texform_core::context::ParseOutput {
-    let mut ctx = ParseContext::core_only();
-    ctx.insert_item(CommandItem::new(
+    let mut kb = KnowledgeBase::core_only();
+    kb.insert_item(CommandItem::new(
         "colspec",
         CommandKind::Prefix,
         AllowedMode::Math,
         "m:C",
     ))
     .expect("colspec argspec should be valid");
+    let ctx = ParseContext::new(kb);
     ctx.parse(src, false)
 }
 

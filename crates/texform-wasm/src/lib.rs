@@ -3,7 +3,7 @@ use texform_core::api;
 use texform_core::context::ContentMode;
 use texform_core::context::{
     AllowedMode, CharacterMeta, CommandItem, CommandKind, CommandMeta, ContextItem,
-    DelimiterControlItem, EnvMeta, EnvironmentItem, ParseOutput,
+    DelimiterControlItem, EnvMeta, EnvironmentItem, KnowledgeBase, ParseOutput,
 };
 use texform_specs::specs::{ArgForm, ArgSpec, DelimiterToken, ValueKind};
 use wasm_bindgen::prelude::*;
@@ -167,43 +167,32 @@ pub struct ParseContext {
 #[wasm_bindgen]
 impl ParseContext {
     #[wasm_bindgen(constructor)]
-    pub fn new(packages: Option<Vec<String>>) -> Result<ParseContext, JsValue> {
-        let inner = match packages {
+    pub fn new(
+        packages: Option<Vec<String>>,
+        items: Option<JsValue>,
+    ) -> Result<ParseContext, JsValue> {
+        let mut kb = match packages {
             Some(pkgs) if !pkgs.is_empty() => {
                 let refs: Vec<&str> = pkgs.iter().map(String::as_str).collect();
-                texform_core::context::ParseContext::try_from_packages(refs.as_slice()).map_err(
-                    |error| JsValue::from_str(&format!("package loading failed: {}", error)),
-                )?
+                KnowledgeBase::try_build_from_packages(refs.as_slice()).map_err(|error| {
+                    JsValue::from_str(&format!("package loading failed: {}", error))
+                })?
             }
-            _ => texform_core::context::ParseContext::clone_all_packages(),
+            _ => KnowledgeBase::all_packages(),
         };
-        Ok(ParseContext { inner })
-    }
-
-    pub fn insert_item(&mut self, item: JsValue) -> Result<(), JsValue> {
-        let item: ContextItemInput = serde_wasm_bindgen::from_value(item)
-            .map_err(|error| JsValue::from_str(&format!("invalid context item: {}", error)))?;
-        self.inner
-            .insert_item(parse_context_item_input(item)?)
-            .map_err(|error| JsValue::from_str(&format!("spec validation failed: {}", error)))
-    }
-
-    pub fn insert_items(&mut self, items: JsValue) -> Result<(), JsValue> {
-        let items: Vec<ContextItemInput> = serde_wasm_bindgen::from_value(items)
-            .map_err(|error| JsValue::from_str(&format!("invalid context items: {}", error)))?;
-        let core_items = items
-            .into_iter()
-            .map(parse_context_item_input)
-            .collect::<Result<Vec<_>, _>>()?;
-        self.inner
-            .insert_items(core_items)
-            .map_err(|error| JsValue::from_str(&format!("spec validation failed: {}", error)))
-    }
-
-    pub fn remove_item(&mut self, item: JsValue) -> Result<bool, JsValue> {
-        let item: ContextItemInput = serde_wasm_bindgen::from_value(item)
-            .map_err(|error| JsValue::from_str(&format!("invalid context item: {}", error)))?;
-        Ok(self.inner.remove_item(parse_context_item_input(item)?))
+        if let Some(items) = items {
+            let items: Vec<ContextItemInput> = serde_wasm_bindgen::from_value(items)
+                .map_err(|error| JsValue::from_str(&format!("invalid context items: {}", error)))?;
+            for item in items {
+                kb.insert_item(parse_context_item_input(item)?)
+                    .map_err(|error| {
+                        JsValue::from_str(&format!("spec validation failed: {}", error))
+                    })?;
+            }
+        }
+        Ok(ParseContext {
+            inner: texform_core::context::ParseContext::new(kb),
+        })
     }
 
     pub fn is_delimiter_control(&self, name: &str) -> bool {

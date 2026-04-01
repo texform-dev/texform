@@ -261,6 +261,7 @@ impl Node {
 ///
 /// Public mutation APIs intentionally avoid exposing `&mut Node` so parent links
 /// and detached subtree tracking cannot be bypassed accidentally.
+#[derive(Debug, Clone)]
 pub struct Ast {
     nodes: HopSlotMap<NodeId, Node>,
     parent: SecondaryMap<NodeId, ParentLink>,
