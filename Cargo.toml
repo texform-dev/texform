@@ -1,5 +1,7 @@
 [workspace]
 members = [
+  "crates/texform-argspec",
+  "crates/texform-argspec-macros",
   "crates/texform-core",
   "crates/texform-interface",
   "crates/texform-python",
@@ -20,6 +22,10 @@ serde_yaml = "0.9.34"
 slotmap = "1.0.7"
 ariadne = "0.5"
 serde_json = "1.0"
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = "2.0"
+trybuild = "1.0"
 
 pyo3 = "0.27"
 pythonize = "0.27"
@@ -28,6 +34,8 @@ tsify-next = { version = "0.5", default-features = false, features = ["js"] }
 wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6"
 
+texform-argspec = { path = "crates/texform-argspec" }
+texform-argspec-macros = { path = "crates/texform-argspec-macros" }
 texform-core = { path = "crates/texform-core" }
 texform-interface = { path = "crates/texform-interface" }
 texform-specs = { path = "crates/texform-specs" }

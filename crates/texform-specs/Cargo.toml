@@ -7,9 +7,14 @@ edition.workspace = true
 serde.workspace = true
 serde_yaml.workspace = true
 
+texform-argspec.workspace = true
+texform-argspec-macros.workspace = true
 texform-interface.workspace = true
 
 [build-dependencies]
 serde.workspace = true
 serde_yaml.workspace = true
-texform-interface.workspace = true
+texform-argspec.workspace = true
+
+[dev-dependencies]
+trybuild.workspace = true

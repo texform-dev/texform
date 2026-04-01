@@ -1,9 +1,7 @@
 use std::borrow::Cow;
 
-use texform_specs::specs::{
-    AllowedMode, ArgForm, ArgSpec, ContentMode, DelimiterToken, ValueKind,
-    load_package_specs_from_str, parse_arg_specs,
-};
+use texform_argspec::{ArgForm, ArgSpec, ContentMode, DelimiterToken, ValueKind, parse_arg_specs};
+use texform_specs::specs::{AllowedMode, load_package_specs_from_str};
 
 #[test]
 fn test_parse_arg_specs_xparse_style() {

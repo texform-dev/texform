@@ -27,15 +27,16 @@
 
 use crate::ast::Node;
 use std::collections::{HashMap, HashSet};
+use texform_argspec::parse_arg_specs;
 use texform_interface::syntax_node::ContentMode;
 use texform_specs::builtin::BuiltinPackage;
 
 use crate::context::{CommandItem, ContextItem, DelimiterControlItem, EnvironmentItem};
 
+pub use texform_argspec::{ArgForm, ArgSpec, ArgSpecParseError, DelimiterToken, ValueKind};
 pub use texform_specs::specs::{
-    AllowedMode, ArgForm, ArgSpec, ArgSpecParseError, BuiltinCharacterRecord, BuiltinCommandRecord,
-    BuiltinEnvironmentRecord, CharacterMeta, CommandKind, CommandMeta, DelimiterToken, EnvMeta,
-    ValueKind,
+    AllowedMode, BuiltinCharacterRecord, BuiltinCommandRecord, BuiltinEnvironmentRecord,
+    CharacterMeta, CommandKind, CommandMeta, EnvMeta,
 };
 #[cfg(test)]
 use texform_specs::specs::{
@@ -534,7 +535,7 @@ fn command_item_into_meta(
     from_packages: Vec<String>,
 ) -> Result<CommandMeta, ArgSpecParseError> {
     let context = format!("command {}", item.name);
-    let args = texform_specs::specs::parse_arg_specs(item.spec.as_str(), context.as_str())?;
+    let args = parse_arg_specs(item.spec.as_str(), context.as_str())?;
     Ok(make_command_meta(
         item.name,
         item.kind,
@@ -571,7 +572,7 @@ fn environment_item_into_meta(
     from_packages: Vec<String>,
 ) -> Result<EnvMeta, ArgSpecParseError> {
     let context = format!("environment {}", item.name);
-    let args = texform_specs::specs::parse_arg_specs(item.spec.as_str(), context.as_str())?;
+    let args = parse_arg_specs(item.spec.as_str(), context.as_str())?;
     Ok(make_env_meta(
         item.name,
         item.allowed_mode,

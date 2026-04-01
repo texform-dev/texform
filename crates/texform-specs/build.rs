@@ -5,12 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
-
-#[allow(dead_code)]
-#[path = "src/argspec.rs"]
-mod argspec;
-
-use argspec::{ArgForm, ArgSpec, DelimiterToken, ValueKind, parse_arg_specs};
+use texform_argspec::parse_arg_specs;
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -18,7 +13,6 @@ fn main() {
     let out_path = manifest_dir.join("src/builtin/generated.rs");
 
     println!("cargo:rerun-if-changed={}", specs_dir.display());
-    println!("cargo:rerun-if-changed=src/argspec.rs");
 
     let mut entries = fs::read_dir(&specs_dir)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", specs_dir.display()))
@@ -50,7 +44,6 @@ struct CommandRecordSource {
     name: String,
     kind: CommandKindYaml,
     allowed_mode: AllowedModeYaml,
-    args: Vec<ArgSpec>,
     tags: Vec<String>,
     spec_string: String,
 }
@@ -59,7 +52,6 @@ struct CommandRecordSource {
 struct EnvironmentRecordSource {
     name: String,
     allowed_mode: AllowedModeYaml,
-    args: Vec<ArgSpec>,
     body_mode: ContentModeYaml,
     tags: Vec<String>,
     spec_string: String,
@@ -191,13 +183,13 @@ fn load_package(path: &Path) -> BuiltinPackageSource {
         .into_iter()
         .map(|command| {
             let context = format!("command {}", command.name);
-            let args = parse_arg_specs(command.spec.as_str(), context.as_str())
-                .unwrap_or_else(|err| panic!("{err}"));
+            parse_arg_specs(command.spec.as_str(), context.as_str()).unwrap_or_else(|err| {
+                panic!("{err}");
+            });
             CommandRecordSource {
                 name: command.name,
                 kind: command.kind,
                 allowed_mode: command.allowed_mode,
-                args,
                 tags: command.tags,
                 spec_string: command.spec,
             }
@@ -208,12 +200,12 @@ fn load_package(path: &Path) -> BuiltinPackageSource {
         .into_iter()
         .map(|environment| {
             let context = format!("environment {}", environment.name);
-            let args = parse_arg_specs(environment.spec.as_str(), context.as_str())
-                .unwrap_or_else(|err| panic!("{err}"));
+            parse_arg_specs(environment.spec.as_str(), context.as_str()).unwrap_or_else(|err| {
+                panic!("{err}");
+            });
             EnvironmentRecordSource {
                 name: environment.name,
                 allowed_mode: environment.allowed_mode,
-                args,
                 body_mode: environment.body_mode,
                 tags: environment.tags,
                 spec_string: environment.spec,
@@ -303,6 +295,7 @@ fn emit_package_module(out: &mut String, package: &BuiltinPackageSource) {
     let package_ident = package_module_ident(package.name.as_str());
     writeln!(out, "pub mod {package_ident} {{").unwrap();
     out.push_str("    use super::generated_prelude::*;\n");
+    out.push_str("    use crate::argspec;\n");
     emit_command_module(out, package.commands.as_slice());
     emit_environment_module(out, package.environments.as_slice());
     emit_character_module(out, package.characters.as_slice());
@@ -446,7 +439,7 @@ fn render_command_record(record: &CommandRecordSource) -> String {
         record.name,
         record.kind.code(),
         record.allowed_mode.code(),
-        render_arg_specs(record.args.as_slice()),
+        render_argspec_macro(record.spec_string.as_str()),
         render_string_slice(record.tags.as_slice()),
         record.spec_string,
     )
@@ -457,7 +450,7 @@ fn render_environment_record(record: &EnvironmentRecordSource) -> String {
         "BuiltinEnvironmentRecord {{ name: {:?}, allowed_mode: {}, args: {}, body_mode: {}, tags: {}, spec_string: {:?} }}",
         record.name,
         record.allowed_mode.code(),
-        render_arg_specs(record.args.as_slice()),
+        render_argspec_macro(record.spec_string.as_str()),
         record.body_mode.code(),
         render_string_slice(record.tags.as_slice()),
         record.spec_string,
@@ -476,95 +469,13 @@ fn render_character_record(record: &CharacterRecordSource) -> String {
 
 fn render_character_attributes(attributes: &CharacterAttributesYaml) -> String {
     match attributes.mathvariant.as_deref() {
-        Some(value) => format!("BuiltinCharacterAttributes {{ mathvariant: Some({value:?}) }}"),
-        None => "BuiltinCharacterAttributes { mathvariant: None }".to_string(),
+        Some(value) => format!("char_attrs!({value:?})"),
+        None => "char_attrs!()".to_string(),
     }
 }
 
-fn render_arg_specs(args: &[ArgSpec]) -> String {
-    if args.is_empty() {
-        return "&[]".to_string();
-    }
-
-    format!(
-        "&[{}]",
-        args.iter()
-            .map(render_arg_spec)
-            .collect::<Vec<_>>()
-            .join(", ")
-    )
-}
-
-fn render_arg_spec(arg: &ArgSpec) -> String {
-    format!(
-        "ArgSpec {{ required: {}, no_leading_space: {}, nullable: {}, kind: {}, form: {} }}",
-        arg.required,
-        arg.no_leading_space,
-        arg.nullable,
-        render_value_kind(arg.kind),
-        render_arg_form(&arg.form),
-    )
-}
-
-fn render_value_kind(kind: ValueKind) -> String {
-    match kind {
-        ValueKind::Content { mode } => {
-            format!(
-                "ValueKind::Content {{ mode: {} }}",
-                render_content_mode(mode)
-            )
-        }
-        ValueKind::Delimiter => "ValueKind::Delimiter".to_string(),
-        ValueKind::CSName => "ValueKind::CSName".to_string(),
-        ValueKind::Dimension => "ValueKind::Dimension".to_string(),
-        ValueKind::Integer => "ValueKind::Integer".to_string(),
-        ValueKind::KeyVal => "ValueKind::KeyVal".to_string(),
-        ValueKind::Column => "ValueKind::Column".to_string(),
-        ValueKind::Star => "ValueKind::Star".to_string(),
-    }
-}
-
-fn render_arg_form(form: &ArgForm) -> String {
-    match form {
-        ArgForm::Standard => "ArgForm::Standard".to_string(),
-        ArgForm::Star => "ArgForm::Star".to_string(),
-        ArgForm::Group => "ArgForm::Group".to_string(),
-        ArgForm::Delimited { open, close } => format!(
-            "ArgForm::Delimited {{ open: {}, close: {} }}",
-            render_delimiter_token(open),
-            render_delimiter_token(close),
-        ),
-        ArgForm::Paired { pairs } => {
-            let rendered_pairs = pairs
-                .iter()
-                .map(|(open, close)| {
-                    format!(
-                        "({}, {})",
-                        render_delimiter_token(open),
-                        render_delimiter_token(close),
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("ArgForm::Paired {{ pairs: std::borrow::Cow::Borrowed(&[{rendered_pairs}]) }}")
-        }
-    }
-}
-
-fn render_delimiter_token(token: &DelimiterToken) -> String {
-    match token {
-        DelimiterToken::Char(ch) => format!("DelimiterToken::Char({ch:?})"),
-        DelimiterToken::ControlSeq(name) => {
-            format!("DelimiterToken::ControlSeq(std::borrow::Cow::Borrowed({name:?}))")
-        }
-    }
-}
-
-fn render_content_mode(mode: argspec::ContentMode) -> &'static str {
-    match mode {
-        argspec::ContentMode::Math => "ContentMode::Math",
-        argspec::ContentMode::Text => "ContentMode::Text",
-    }
+fn render_argspec_macro(spec: &str) -> String {
+    format!("argspec!({spec:?})")
 }
 
 fn render_string_slice(values: &[impl AsRef<str>]) -> String {

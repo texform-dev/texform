@@ -1,4 +1,5 @@
 use std::env;
+use texform_argspec::parse_arg_specs;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -11,7 +12,7 @@ fn main() {
     println!("=== TeXForm validate_spec Example ===");
     println!("Spec: {}", spec);
 
-    match texform_specs::specs::parse_arg_specs(spec, "validate_spec") {
+    match parse_arg_specs(spec, "validate_spec") {
         Ok(parsed) => {
             println!("valid: true");
             println!("arg_count: {}", parsed.len());

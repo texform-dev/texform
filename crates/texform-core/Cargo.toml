@@ -14,6 +14,7 @@ tsify-next = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
 
 texform-interface.workspace = true
+texform-argspec.workspace = true
 texform-specs.workspace = true
 
 [dev-dependencies]

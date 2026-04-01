@@ -7,10 +7,10 @@
 
 use serde::Deserialize;
 
-pub use crate::argspec::{
+pub use texform_argspec::ContentMode;
+pub use texform_argspec::{
     ArgForm, ArgSpec, ArgSpecParseError, DelimiterToken, ValueKind, parse_arg_specs,
 };
-pub use texform_interface::syntax_node::ContentMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandKind {

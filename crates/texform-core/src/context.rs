@@ -10,12 +10,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use chumsky::prelude::*;
 use serde::Serialize;
+pub use texform_argspec::ArgSpecParseError;
 use texform_interface::syntax_node::SyntaxNode;
 
 pub use texform_interface::syntax_node::ContentMode;
-pub use texform_specs::specs::{
-    AllowedMode, ArgSpecParseError, CharacterMeta, CommandKind, CommandMeta, EnvMeta,
-};
+pub use texform_specs::specs::{AllowedMode, CharacterMeta, CommandKind, CommandMeta, EnvMeta};
 
 use crate::ast::Ast;
 pub use crate::knowledge::KnowledgeBase;

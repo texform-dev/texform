@@ -1,11 +1,11 @@
 use serde::Deserialize;
+use texform_argspec::{ArgForm, ArgSpec, DelimiterToken, ValueKind, parse_arg_specs};
 use texform_core::api;
 use texform_core::context::ContentMode;
 use texform_core::context::{
     AllowedMode, CharacterMeta, CommandItem, CommandKind, CommandMeta, ContextItem,
     DelimiterControlItem, EnvMeta, EnvironmentItem, KnowledgeBase, ParseOutput,
 };
-use texform_specs::specs::{ArgForm, ArgSpec, DelimiterToken, ValueKind};
 use wasm_bindgen::prelude::*;
 
 // MANUAL TypeScript type declarations for SyntaxNode and related types.
@@ -313,7 +313,7 @@ fn parse_context_item_input(input: ContextItemInput) -> Result<ContextItem, JsVa
 pub fn validate_spec(spec: &str) -> JsValue {
     let value = js_sys::Object::new();
 
-    match texform_specs::specs::parse_arg_specs(spec, "validate_spec") {
+    match parse_arg_specs(spec, "validate_spec") {
         Ok(args) => {
             let parsed = js_sys::Array::new();
             for arg in &args {

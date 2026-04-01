@@ -9,11 +9,21 @@ pub struct BuiltinPackage {
     pub delimiter_controls: &'static [&'static str],
 }
 
+macro_rules! char_attrs {
+    () => {
+        BuiltinCharacterAttributes { mathvariant: None }
+    };
+    ($mathvariant:literal) => {
+        BuiltinCharacterAttributes {
+            mathvariant: Some($mathvariant),
+        }
+    };
+}
+
 mod generated_prelude {
     pub use crate::specs::{
-        AllowedMode, ArgForm, ArgSpec, BuiltinCharacterAttributes, BuiltinCharacterRecord,
-        BuiltinCommandRecord, BuiltinEnvironmentRecord, CommandKind, ContentMode, DelimiterToken,
-        ValueKind,
+        AllowedMode, BuiltinCharacterAttributes, BuiltinCharacterRecord, BuiltinCommandRecord,
+        BuiltinEnvironmentRecord, CommandKind, ContentMode,
     };
 }
 

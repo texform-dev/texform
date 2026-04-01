@@ -1,0 +1,7 @@
+[package]
+name = "texform-argspec"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+texform-interface.workspace = true
