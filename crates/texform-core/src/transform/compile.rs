@@ -21,7 +21,7 @@ use texform_specs::specs::{BuiltinCommandRecord, BuiltinEnvironmentRecord};
 use crate::knowledge::KnowledgeBase;
 use crate::transform::config::{BuiltinRuleSetId, RuleSetting, TransformProfile};
 use crate::transform::registry::rules_for_ruleset;
-use crate::transform::rule::{RuleKey, RulePhase, RuleTarget, RuleTrigger, TransformRule};
+use crate::transform::rule::{RuleKey, RulePhase, RuleTarget, TransformRule};
 
 /// Whether a rule can be used with the current knowledge base.
 ///
@@ -251,34 +251,27 @@ pub fn compile_profile(
     })
 }
 
-/// Checks that every target and trigger referenced by the rule exists in the
-/// knowledge base with compatible metadata.
+/// Checks that every consumed or produced target referenced by the rule exists
+/// in the knowledge base with compatible metadata.
+///
+/// Triggers are intentionally excluded: they use OR semantics at runtime and
+/// do not participate in topo-sort or contract derivation, so a missing trigger
+/// command is a no-op, not an availability error.
 fn validate_rule_availability(
     kb: &KnowledgeBase,
     rule: &&'static dyn TransformRule,
 ) -> RuleAvailability {
-    for target in rule
+    let targets = rule
         .meta()
         .consumes
         .eliminates
         .iter()
         .chain(rule.meta().consumes.requires.iter())
         .chain(rule.meta().produces.targets.iter())
-    {
-        let availability = validate_target(kb, *target);
-        if !matches!(availability, RuleAvailability::Available) {
-            return availability;
-        }
-    }
+        .copied()
+        .collect::<Vec<_>>();
 
-    for trigger in rule.meta().triggers {
-        let availability = validate_trigger(kb, *trigger);
-        if !matches!(availability, RuleAvailability::Available) {
-            return availability;
-        }
-    }
-
-    RuleAvailability::Available
+    validate_targets_with_variants(kb, targets.as_slice())
 }
 
 fn validate_target(kb: &KnowledgeBase, target: RuleTarget) -> RuleAvailability {
@@ -288,30 +281,69 @@ fn validate_target(kb: &KnowledgeBase, target: RuleTarget) -> RuleAvailability {
     }
 }
 
-fn validate_trigger(kb: &KnowledgeBase, trigger: RuleTrigger) -> RuleAvailability {
-    match trigger {
-        RuleTrigger::Command(record) => {
-            if kb.lookup_command(record.name).is_some() {
-                RuleAvailability::Available
-            } else {
-                RuleAvailability::TargetAbsent {
-                    kind: "command",
-                    name: record.name,
-                }
-            }
+/// A rule targeting a command like `\frac` must work regardless of which package
+/// (`base` or `ams`) provides it in the active KB. To achieve this, rule authors
+/// list all package variants in their metadata, and this function groups them by
+/// `(kind, name)`: the group passes when *any* variant matches the active record.
+fn validate_targets_with_variants(kb: &KnowledgeBase, targets: &[RuleTarget]) -> RuleAvailability {
+    let mut groups = Vec::<Vec<RuleTarget>>::new();
+    for &target in targets {
+        if let Some(group) = groups
+            .iter_mut()
+            .find(|group| same_target_form(group[0], target))
+        {
+            group.push(target);
+        } else {
+            groups.push(vec![target]);
         }
-        RuleTrigger::Environment(record) => {
-            if kb.lookup_env(record.name).is_some() {
-                RuleAvailability::Available
-            } else {
-                RuleAvailability::TargetAbsent {
-                    kind: "environment",
-                    name: record.name,
-                }
-            }
-        }
-        _ => RuleAvailability::Available,
     }
+
+    for group in groups {
+        let Some((&reference, variants)) = group.split_first() else {
+            continue;
+        };
+
+        for &variant in variants {
+            let structurally_compatible = match (reference, variant) {
+                (RuleTarget::Command(left), RuleTarget::Command(right)) => {
+                    left.name == right.name
+                        && left.kind == right.kind
+                        && left.spec_string == right.spec_string
+                }
+                (RuleTarget::Environment(left), RuleTarget::Environment(right)) => {
+                    left.name == right.name
+                        && left.spec_string == right.spec_string
+                        && left.body_mode == right.body_mode
+                }
+                _ => false,
+            };
+            // A variant group only makes sense when every listed package record
+            // describes the same target shape. If authors mix incompatible
+            // records under one name, that is a rule-definition bug, not a KB
+            // availability problem.
+            debug_assert!(
+                structurally_compatible,
+                "package-variant targets are structurally incompatible: reference={reference:?}, variant={variant:?}",
+            );
+        }
+
+        let mut last_failure = RuleAvailability::Available;
+        let mut matched_variant = false;
+        for variant in group {
+            let availability = validate_target(kb, variant);
+            if matches!(availability, RuleAvailability::Available) {
+                matched_variant = true;
+                break;
+            }
+            last_failure = availability;
+        }
+
+        if !matched_variant {
+            return last_failure;
+        }
+    }
+
+    RuleAvailability::Available
 }
 
 fn validate_command_target(
@@ -332,20 +364,26 @@ fn validate_command_target(
             expected: "explicit-command",
         };
     };
-    if explicit.kind != record.kind {
-        return RuleAvailability::IncompatibleActive {
-            kind: "command",
-            name: record.name,
-            reason: "kind mismatch",
-        };
+    if !record.structurally_compatible_with(explicit) {
+        if explicit.kind != record.kind {
+            return RuleAvailability::IncompatibleActive {
+                kind: "command",
+                name: record.name,
+                reason: "kind mismatch",
+            };
+        }
+        if explicit.spec_string != record.spec_string {
+            return RuleAvailability::IncompatibleActive {
+                kind: "command",
+                name: record.name,
+                reason: "spec_string mismatch",
+            };
+        }
+        // name always matches (by-name lookup), so incompatibility
+        // can only come from kind or spec_string — both checked above.
+        unreachable!("structurally_compatible_with fields exhausted");
     }
-    if explicit.spec_string != record.spec_string {
-        return RuleAvailability::IncompatibleActive {
-            kind: "command",
-            name: record.name,
-            reason: "spec_string mismatch",
-        };
-    }
+
     RuleAvailability::Available
 }
 
@@ -359,20 +397,26 @@ fn validate_environment_target(
             name: record.name,
         };
     };
-    if active.spec_string != record.spec_string {
-        return RuleAvailability::IncompatibleActive {
-            kind: "environment",
-            name: record.name,
-            reason: "spec_string mismatch",
-        };
+    if !record.structurally_compatible_with(active) {
+        if active.spec_string != record.spec_string {
+            return RuleAvailability::IncompatibleActive {
+                kind: "environment",
+                name: record.name,
+                reason: "spec_string mismatch",
+            };
+        }
+        if active.body_mode != record.body_mode {
+            return RuleAvailability::IncompatibleActive {
+                kind: "environment",
+                name: record.name,
+                reason: "body_mode mismatch",
+            };
+        }
+        // name always matches (by-name lookup), so incompatibility
+        // can only come from spec_string or body_mode — both checked above.
+        unreachable!("structurally_compatible_with fields exhausted");
     }
-    if active.body_mode != record.body_mode {
-        return RuleAvailability::IncompatibleActive {
-            kind: "environment",
-            name: record.name,
-            reason: "body_mode mismatch",
-        };
-    }
+
     RuleAvailability::Available
 }
 
@@ -558,7 +602,8 @@ mod tests {
     use crate::transform::context::TransformContext;
     use crate::transform::engine::TransformError;
     use crate::transform::rule::{
-        RuleConsumes, RuleEffect, RuleGroup, RuleMeta, RuleProduces, RuleSafety, TransformRule,
+        RuleConsumes, RuleEffect, RuleGroup, RuleMeta, RuleProduces, RuleSafety, RuleTrigger,
+        TransformRule,
     };
     use texform_specs::specs::{
         AllowedMode, BuiltinCommandRecord, CharacterAttributes, CharacterSpec, CommandKind,
@@ -619,6 +664,54 @@ mod tests {
         spec_string: "",
     };
 
+    static SHARED_VARIANT_BASE: BuiltinCommandRecord = BuiltinCommandRecord {
+        name: "shared-target",
+        kind: CommandKind::Prefix,
+        allowed_mode: AllowedMode::Math,
+        args: &[],
+        tags: &[],
+        spec_string: "m",
+    };
+
+    static SHARED_VARIANT_AMS: BuiltinCommandRecord = BuiltinCommandRecord {
+        name: "shared-target",
+        kind: CommandKind::Prefix,
+        allowed_mode: AllowedMode::Both,
+        args: &[],
+        tags: &[],
+        spec_string: "m",
+    };
+
+    static SHARED_VARIANT_BROKEN: BuiltinCommandRecord = BuiltinCommandRecord {
+        name: "shared-target",
+        kind: CommandKind::Prefix,
+        allowed_mode: AllowedMode::Math,
+        args: &[],
+        tags: &[],
+        spec_string: "m m",
+    };
+
+    static MISSING_TRIGGER_COMMAND: BuiltinCommandRecord = BuiltinCommandRecord {
+        name: "missing-trigger",
+        kind: CommandKind::Prefix,
+        allowed_mode: AllowedMode::Math,
+        args: &[],
+        tags: &[],
+        spec_string: "",
+    };
+
+    static SHARED_VARIANT_TARGETS: [RuleTarget; 2] = [
+        RuleTarget::Command(&SHARED_VARIANT_BASE),
+        RuleTarget::Command(&SHARED_VARIANT_AMS),
+    ];
+
+    static BROKEN_VARIANT_TARGETS: [RuleTarget; 2] = [
+        RuleTarget::Command(&SHARED_VARIANT_BASE),
+        RuleTarget::Command(&SHARED_VARIANT_BROKEN),
+    ];
+
+    static SINGLE_VARIANT_TARGETS: [RuleTarget; 1] = [RuleTarget::Command(&SHARED_VARIANT_BASE)];
+
     static RULE_A_META: RuleMeta = RuleMeta {
         key: RuleKey {
             group: RuleGroup::Canonical,
@@ -677,6 +770,89 @@ mod tests {
     static RULE_B: MockRule = MockRule { meta: &RULE_B_META };
     static RULE_C: MockRule = MockRule { meta: &RULE_C_META };
 
+    static MULTI_VARIANT_RULE_META: RuleMeta = RuleMeta {
+        key: RuleKey {
+            group: RuleGroup::Canonical,
+            name: "multi-variant",
+        },
+        summary: "mock multi-variant rule",
+        phase: RulePhase::Normalize,
+        safety: RuleSafety::Lossless,
+        triggers: &[],
+        consumes: RuleConsumes {
+            eliminates: &[],
+            requires: &[],
+        },
+        produces: RuleProduces {
+            targets: &SHARED_VARIANT_TARGETS,
+        },
+    };
+
+    static SINGLE_VARIANT_RULE_META: RuleMeta = RuleMeta {
+        key: RuleKey {
+            group: RuleGroup::Canonical,
+            name: "single-variant",
+        },
+        summary: "mock single-variant rule",
+        phase: RulePhase::Normalize,
+        safety: RuleSafety::Lossless,
+        triggers: &[],
+        consumes: RuleConsumes {
+            eliminates: &[],
+            requires: &[],
+        },
+        produces: RuleProduces {
+            targets: &SINGLE_VARIANT_TARGETS,
+        },
+    };
+
+    static TRIGGER_IGNORED_RULE_META: RuleMeta = RuleMeta {
+        key: RuleKey {
+            group: RuleGroup::Canonical,
+            name: "trigger-ignored",
+        },
+        summary: "mock rule with a missing trigger",
+        phase: RulePhase::Normalize,
+        safety: RuleSafety::Lossless,
+        triggers: &[RuleTrigger::Command(&MISSING_TRIGGER_COMMAND)],
+        consumes: RuleConsumes {
+            eliminates: &[],
+            requires: &[],
+        },
+        produces: RuleProduces {
+            targets: &SINGLE_VARIANT_TARGETS,
+        },
+    };
+
+    static DUPLICATE_ELIMINATE_RULE_META: RuleMeta = RuleMeta {
+        key: RuleKey {
+            group: RuleGroup::Canonical,
+            name: "duplicate-eliminate",
+        },
+        summary: "mock rule with duplicate eliminate variants",
+        phase: RulePhase::Normalize,
+        safety: RuleSafety::Lossless,
+        triggers: &[],
+        consumes: RuleConsumes {
+            eliminates: &SHARED_VARIANT_TARGETS,
+            requires: &[],
+        },
+        produces: RuleProduces { targets: &[] },
+    };
+
+    static MULTI_VARIANT_RULE: MockRule = MockRule {
+        meta: &MULTI_VARIANT_RULE_META,
+    };
+    static SINGLE_VARIANT_RULE: MockRule = MockRule {
+        meta: &SINGLE_VARIANT_RULE_META,
+    };
+    static TRIGGER_IGNORED_RULE: MockRule = MockRule {
+        meta: &TRIGGER_IGNORED_RULE_META,
+    };
+    static DUPLICATE_ELIMINATE_RULE: MockRule = MockRule {
+        meta: &DUPLICATE_ELIMINATE_RULE_META,
+    };
+
     #[test]
     fn validate_command_target_rejects_character_backed_active_command() {
         let mut kb = KnowledgeBase::empty();
@@ -729,5 +905,90 @@ mod tests {
                 ],
             }
         );
+    }
+
+    #[test]
+    fn validate_rule_availability_accepts_structurally_compatible_package_variants() {
+        let mut kb = KnowledgeBase::empty();
+        kb.insert_or_override_command(CommandSpec {
+            name: "shared-target".to_string(),
+            kind: CommandKind::Prefix,
+            allowed_mode: AllowedMode::Math,
+            args: vec![],
+            tags: vec![],
+            spec_string: "m".to_string(),
+        });
+
+        let rule: &'static dyn TransformRule = &MULTI_VARIANT_RULE;
+        assert_eq!(
+            validate_rule_availability(&kb, &rule),
+            RuleAvailability::Available
+        );
+    }
+
+    #[test]
+    fn validate_rule_availability_rejects_absent_package_variant_groups() {
+        let rule: &'static dyn TransformRule = &MULTI_VARIANT_RULE;
+        assert_eq!(
+            validate_rule_availability(&KnowledgeBase::empty(), &rule),
+            RuleAvailability::TargetAbsent {
+                kind: "command",
+                name: "shared-target",
+            }
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "structurally")]
+    fn validate_rule_availability_panics_for_structurally_inconsistent_package_variants() {
+        let _ = validate_targets_with_variants(&KnowledgeBase::empty(), &BROKEN_VARIANT_TARGETS);
+    }
+
+    #[test]
+    fn validate_rule_availability_ignores_missing_triggers() {
+        let mut kb = KnowledgeBase::empty();
+        kb.insert_or_override_command(CommandSpec {
+            name: "shared-target".to_string(),
+            kind: CommandKind::Prefix,
+            allowed_mode: AllowedMode::Math,
+            args: vec![],
+            tags: vec![],
+            spec_string: "m".to_string(),
+        });
+
+        let rule: &'static dyn TransformRule = &TRIGGER_IGNORED_RULE;
+        assert_eq!(
+            validate_rule_availability(&kb, &rule),
+            RuleAvailability::Available
+        );
+    }
+
+    #[test]
+    fn validate_rule_availability_preserves_single_variant_behavior() {
+        let mut kb = KnowledgeBase::empty();
+        kb.insert_or_override_command(CommandSpec {
+            name: "shared-target".to_string(),
+            kind: CommandKind::Prefix,
+            allowed_mode: AllowedMode::Math,
+            args: vec![],
+            tags: vec![],
+            spec_string: "m".to_string(),
+        });
+
+        let rule: &'static dyn TransformRule = &SINGLE_VARIANT_RULE;
+        assert_eq!(
+            validate_rule_availability(&kb, &rule),
+            RuleAvailability::Available
+        );
+    }
+
+    #[test]
+    fn derive_contract_deduplicates_same_name_package_variants() {
+        let enabled_rules: [&'static dyn TransformRule; 1] = [&DUPLICATE_ELIMINATE_RULE];
+        let contract = derive_contract(enabled_rules.as_slice());
+
+        assert_eq!(contract.eliminated_forms.len(), 1);
+        assert_eq!(contract.eliminated_forms[0].kind_label(), "command");
+        assert_eq!(contract.eliminated_forms[0].name(), "shared-target");
     }
 }

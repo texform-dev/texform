@@ -49,6 +49,55 @@ RuleTarget::Environment(&ams::env::ALIGN)
 The package name must stay visible at use sites so the origin of the builtin
 record is obvious during authoring and review.
 
+## Package Variants
+
+Some builtins exist in multiple packages with the same semantic shape. When
+that happens, list every compatible package variant in `triggers`,
+`consumes`, and `produces`:
+
+```rust
+use texform_specs::builtin::{ams, base};
+
+triggers: &[
+    RuleTrigger::Command(&base::cmd::FRAC),
+    RuleTrigger::Command(&ams::cmd::FRAC),
+],
+produces: RuleProduces {
+    targets: &[
+        RuleTarget::Command(&base::cmd::FRAC),
+        RuleTarget::Command(&ams::cmd::FRAC),
+    ],
+},
+```
+
+Authoring rules with package variants follows three constraints:
+
+1. Only group variants that share the same structural shape.
+   For commands this means identical `kind` and `spec_string`.
+   For environments this means identical `spec_string` and `body_mode`.
+2. If two packages define the same name with different specs, split them into
+   separate rules instead of mixing incompatible variants in one metadata block.
+3. `apply()` may keep using any one package-qualified record with
+   `match_*` helpers or constructors such as `prefix_command`.
+   Runtime matching is name-based, so the package of the chosen record does not
+   affect behavior.
+
+The compile step enforces one invariant in debug builds:
+
+1. All same-name package variants inside one target group must stay
+   structurally consistent. Violations are programming errors and trip a
+   `debug_assert!`.
+2. Structurally consistent variants are availability-equivalent for the same
+   active record, so grouping them does not change single-variant semantics.
+
+Trigger availability is intentionally not validated at compile time:
+
+1. Triggers are only OR-matched by the engine at runtime.
+2. Triggers do not participate in topo sort or normal-form contract derivation.
+3. A missing trigger therefore degrades to a no-op instead of a compile error.
+   If a rule never fires but still promises to eliminate a form, final contract
+   validation catches the mismatch.
+
 ## Shared Helper Imports
 
 For shared transform helpers, import the specific functions you use:

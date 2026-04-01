@@ -5,7 +5,7 @@
 //! to the prefix form `\frac{a}{b}`, which is the canonical representation
 //! used by the rest of the pipeline.
 
-use texform_specs::builtin::base;
+use texform_specs::builtin::{ams, base};
 
 use crate::ast::NodeId;
 use crate::transform::context::TransformContext;
@@ -40,7 +40,10 @@ impl TransformRule for OverToFracRule {
                 requires: &[],
             },
             produces: RuleProduces {
-                targets: &[RuleTarget::Command(&base::cmd::FRAC)],
+                targets: &[
+                    RuleTarget::Command(&base::cmd::FRAC),
+                    RuleTarget::Command(&ams::cmd::FRAC),
+                ],
             },
         };
         &META
