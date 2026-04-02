@@ -9,7 +9,8 @@ use serde::Deserialize;
 
 pub use texform_argspec::ContentMode;
 pub use texform_argspec::{
-    ArgForm, ArgSpec, ArgSpecParseError, DelimiterToken, ValueKind, parse_arg_specs,
+    ArgForm, ArgSpec, ArgSpecParseError, DelimiterToken, OwnedArgSpec, ParsedArgSpec, ValueKind,
+    parse_arg_specs,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,16 +77,15 @@ pub struct BuiltinCommandRecord {
     pub name: &'static str,
     pub kind: CommandKind,
     pub allowed_mode: AllowedMode,
-    pub args: &'static [ArgSpec],
+    pub argspec: ParsedArgSpec,
     pub tags: &'static [&'static str],
-    pub spec_string: &'static str,
 }
 
 impl BuiltinCommandRecord {
     pub fn structurally_compatible_with(&self, active: &ActiveCommandRecord) -> bool {
         self.name == active.name
             && self.kind == active.kind
-            && self.spec_string == active.spec_string
+            && self.argspec.source == active.argspec.source
     }
 }
 
@@ -93,16 +93,15 @@ impl BuiltinCommandRecord {
 pub struct BuiltinEnvironmentRecord {
     pub name: &'static str,
     pub allowed_mode: AllowedMode,
-    pub args: &'static [ArgSpec],
+    pub argspec: ParsedArgSpec,
     pub body_mode: ContentMode,
     pub tags: &'static [&'static str],
-    pub spec_string: &'static str,
 }
 
 impl BuiltinEnvironmentRecord {
     pub fn structurally_compatible_with(&self, active: &ActiveEnvironmentRecord) -> bool {
         self.name == active.name
-            && self.spec_string == active.spec_string
+            && self.argspec.source == active.argspec.source
             && self.body_mode == active.body_mode
     }
 }
@@ -125,9 +124,8 @@ pub struct ActiveCommandRecord {
     pub name: &'static str,
     pub kind: CommandKind,
     pub allowed_mode: AllowedMode,
-    pub args: &'static [ArgSpec],
+    pub argspec: ParsedArgSpec,
     pub tags: &'static [&'static str],
-    pub spec_string: &'static str,
     pub from_packages: &'static [&'static str],
 }
 
@@ -135,10 +133,9 @@ pub struct ActiveCommandRecord {
 pub struct ActiveEnvironmentRecord {
     pub name: &'static str,
     pub allowed_mode: AllowedMode,
-    pub args: &'static [ArgSpec],
+    pub argspec: ParsedArgSpec,
     pub body_mode: ContentMode,
     pub tags: &'static [&'static str],
-    pub spec_string: &'static str,
     pub from_packages: &'static [&'static str],
 }
 
@@ -173,19 +170,17 @@ pub struct CommandSpec {
     pub name: String,
     pub kind: CommandKind,
     pub allowed_mode: AllowedMode,
-    pub args: Vec<ArgSpec>,
+    pub argspec: OwnedArgSpec,
     pub tags: Vec<String>,
-    pub spec_string: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnvironmentSpec {
     pub name: String,
     pub allowed_mode: AllowedMode,
-    pub args: Vec<ArgSpec>,
+    pub argspec: OwnedArgSpec,
     pub body_mode: ContentMode,
     pub tags: Vec<String>,
-    pub spec_string: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -289,9 +284,11 @@ impl From<CommandSpecYaml> for CommandSpec {
             name: value.name,
             kind: value.kind.into(),
             allowed_mode: value.allowed_mode.into(),
-            args,
+            argspec: OwnedArgSpec {
+                args,
+                source: value.spec,
+            },
             tags: value.tags,
-            spec_string: value.spec,
         }
     }
 }
@@ -354,10 +351,12 @@ impl From<EnvironmentSpecYaml> for EnvironmentSpec {
         EnvironmentSpec {
             name: value.name,
             allowed_mode: value.allowed_mode.into(),
-            args,
+            argspec: OwnedArgSpec {
+                args,
+                source: value.spec,
+            },
             body_mode: value.body_mode.into(),
             tags: value.tags,
-            spec_string: value.spec,
         }
     }
 }

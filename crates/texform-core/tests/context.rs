@@ -39,13 +39,13 @@ fn context_exposes_raw_character_and_explicit_command_views() {
         .lookup_command("div")
         .expect("expected active div command");
     assert_from_packages(div.from_packages, &["physics"]);
-    assert!(!div.args.is_empty());
+    assert!(!div.argspec.is_empty());
 
     let explicit_div = ctx
         .lookup_explicit_command("div")
         .expect("expected explicit div command");
     assert_from_packages(explicit_div.from_packages, &["physics"]);
-    assert!(!explicit_div.args.is_empty());
+    assert!(!explicit_div.argspec.is_empty());
 
     let character_div = ctx
         .lookup_character("div")
@@ -57,7 +57,7 @@ fn context_exposes_raw_character_and_explicit_command_views() {
         .lookup_command("AA")
         .expect("expected active AA command");
     assert_from_packages(aa.from_packages, &["base"]);
-    assert!(aa.args.is_empty());
+    assert!(aa.argspec.is_empty());
     assert!(ctx.lookup_explicit_command("AA").is_none());
 
     let character_aa = ctx

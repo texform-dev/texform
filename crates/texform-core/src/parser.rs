@@ -693,7 +693,7 @@ fn prefix_command_parser<'a>(
             kb,
             math_content.clone(),
             text_content.clone(),
-            meta.args,
+            meta.argspec.args,
             strict,
             "command argument",
         ))?;
@@ -783,7 +783,7 @@ fn parse_env_header<'a>(
             kb,
             math_content.clone(),
             text_content.clone(),
-            meta.args,
+            meta.argspec.args,
             strict,
             "environment argument",
         ))?;
@@ -996,7 +996,7 @@ where
             kb,
             math_content.clone(),
             text_content.clone(),
-            meta.args,
+            meta.argspec.args,
             strict,
             "infix command argument",
         ))?;
@@ -1038,7 +1038,7 @@ where
             kb,
             math_content.clone(),
             text_content.clone(),
-            meta.args,
+            meta.argspec.args,
             strict,
             "declarative command argument",
         ))?;

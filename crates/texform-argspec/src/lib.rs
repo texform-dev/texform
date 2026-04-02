@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::ops::Deref;
 
 pub use texform_interface::syntax_node::ContentMode;
 
@@ -136,6 +137,37 @@ impl ArgSpec {
 
     pub const fn is_optional(&self) -> bool {
         !self.required
+    }
+}
+
+/// A parsed argspec: the structured argument list together with the source
+/// string it was parsed from. Produced by the `argspec!` compile-time macro.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParsedArgSpec {
+    pub args: &'static [ArgSpec],
+    pub source: &'static str,
+}
+
+impl Deref for ParsedArgSpec {
+    type Target = [ArgSpec];
+    fn deref(&self) -> &[ArgSpec] {
+        self.args
+    }
+}
+
+/// Owned counterpart of [`ParsedArgSpec`] for runtime-loaded specs (e.g. YAML).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnedArgSpec {
+    pub args: Vec<ArgSpec>,
+    pub source: String,
+}
+
+impl From<ParsedArgSpec> for OwnedArgSpec {
+    fn from(value: ParsedArgSpec) -> Self {
+        Self {
+            args: value.args.to_vec(),
+            source: value.source.to_string(),
+        }
     }
 }
 

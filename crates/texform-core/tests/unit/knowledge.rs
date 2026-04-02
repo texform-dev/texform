@@ -1,5 +1,6 @@
 use super::*;
 use texform_interface::syntax_node::ContentMode;
+use texform_specs::argspec;
 
 fn assert_from_packages(actual: &[&str], expected: &[&str]) {
     assert_eq!(actual, expected);
@@ -16,9 +17,9 @@ fn test_lookup_command() {
         linebreak.from_packages,
         &[texform_specs::core_knowledge::CORE_PACKAGE_NAME],
     );
-    assert_eq!(linebreak.args.len(), 2);
-    assert_eq!(linebreak.args[0].kind, ValueKind::Star);
-    assert_eq!(linebreak.args[1].kind, ValueKind::Dimension);
+    assert_eq!(linebreak.argspec.len(), 2);
+    assert_eq!(linebreak.argspec[0].kind, ValueKind::Star);
+    assert_eq!(linebreak.argspec[1].kind, ValueKind::Dimension);
 
     assert!(kb.lookup_command("unknown").is_none());
 }
@@ -83,9 +84,8 @@ fn test_builder_import_overrides_by_order() {
         name: "foo".to_string(),
         kind: CommandKind::Prefix,
         allowed_mode: AllowedMode::Math,
-        args: vec![ArgSpec::mandatory(ContentMode::Math)],
+        argspec: argspec!("m").into(),
         tags: vec![],
-        spec_string: String::new(),
     });
 
     kb.import_package(texform_specs::specs::PackageSpecs {
@@ -94,9 +94,8 @@ fn test_builder_import_overrides_by_order() {
             name: "foo".to_string(),
             kind: CommandKind::Prefix,
             allowed_mode: AllowedMode::Text,
-            args: vec![],
+            argspec: argspec!("").into(),
             tags: vec![],
-            spec_string: "".to_string(),
         }],
         environments: vec![],
         delimiter_controls: vec![],
@@ -104,7 +103,7 @@ fn test_builder_import_overrides_by_order() {
 
     let foo = kb.lookup_command("foo").unwrap();
     assert_eq!(foo.allowed_mode, AllowedMode::Text);
-    assert!(foo.args.is_empty());
+    assert!(foo.argspec.is_empty());
     assert_from_packages(foo.from_packages, &[UNKNOWN_PACKAGE_NAME]);
 }
 
@@ -128,7 +127,7 @@ fn test_character_import_preserves_allowed_mode() {
     let alpha = kb.lookup_command("alpha").unwrap();
     assert_eq!(alpha.kind, CommandKind::Prefix);
     assert_eq!(alpha.allowed_mode, AllowedMode::Text);
-    assert!(alpha.args.is_empty());
+    assert!(alpha.argspec.is_empty());
     assert!(kb.lookup_explicit_command("alpha").is_none());
     assert_from_packages(alpha.from_packages, &[UNKNOWN_PACKAGE_NAME]);
 
@@ -149,9 +148,8 @@ fn test_later_character_can_override_active_explicit_command_without_removing_ra
         name: "foo".to_string(),
         kind: CommandKind::Prefix,
         allowed_mode: AllowedMode::Math,
-        args: vec![ArgSpec::mandatory(ContentMode::Math)],
+        argspec: argspec!("m").into(),
         tags: vec![],
-        spec_string: "m".to_string(),
     });
     kb.import_package(PackageSpecs {
         characters: vec![CharacterSpec {
@@ -170,14 +168,14 @@ fn test_later_character_can_override_active_explicit_command_without_removing_ra
         .expect("expected active foo command");
     assert_eq!(active.kind, CommandKind::Prefix);
     assert_eq!(active.allowed_mode, AllowedMode::Text);
-    assert!(active.args.is_empty());
+    assert!(active.argspec.is_empty());
     assert_from_packages(active.from_packages, &[UNKNOWN_PACKAGE_NAME]);
 
     let explicit = kb
         .lookup_explicit_command("foo")
         .expect("expected raw explicit foo command");
     assert_eq!(explicit.allowed_mode, AllowedMode::Math);
-    assert_eq!(explicit.args.len(), 1);
+    assert_eq!(explicit.argspec.len(), 1);
     assert_from_packages(explicit.from_packages, &[UNKNOWN_PACKAGE_NAME]);
 
     let character = kb
@@ -205,23 +203,22 @@ fn test_later_explicit_command_overrides_active_character() {
         name: "foo".to_string(),
         kind: CommandKind::Prefix,
         allowed_mode: AllowedMode::Math,
-        args: vec![ArgSpec::mandatory(ContentMode::Math)],
+        argspec: argspec!("m").into(),
         tags: vec![],
-        spec_string: "m".to_string(),
     });
 
     let active = kb
         .lookup_command("foo")
         .expect("expected active foo command");
     assert_eq!(active.allowed_mode, AllowedMode::Math);
-    assert_eq!(active.args.len(), 1);
+    assert_eq!(active.argspec.len(), 1);
     assert_from_packages(active.from_packages, &[UNKNOWN_PACKAGE_NAME]);
 
     let explicit = kb
         .lookup_explicit_command("foo")
         .expect("expected raw explicit foo command");
     assert_eq!(explicit.allowed_mode, AllowedMode::Math);
-    assert_eq!(explicit.args.len(), 1);
+    assert_eq!(explicit.argspec.len(), 1);
     assert_from_packages(explicit.from_packages, &[UNKNOWN_PACKAGE_NAME]);
 
     let character = kb
@@ -281,9 +278,8 @@ fn test_remove_command_does_not_fallback_to_shadowed_character() {
         name: "alpha".to_string(),
         kind: CommandKind::Prefix,
         allowed_mode: AllowedMode::Text,
-        args: vec![ArgSpec::mandatory(ContentMode::Text)],
+        argspec: argspec!("m:T").into(),
         tags: vec![],
-        spec_string: "m".to_string(),
     });
 
     // kb already mutable
@@ -291,7 +287,7 @@ fn test_remove_command_does_not_fallback_to_shadowed_character() {
         .lookup_command("alpha")
         .expect("expected active alpha command");
     assert_eq!(alpha.allowed_mode, AllowedMode::Text);
-    assert_eq!(alpha.args.len(), 1);
+    assert_eq!(alpha.argspec.len(), 1);
 
     assert!(kb.remove_item(CommandItem::new(
         "alpha",
@@ -346,7 +342,7 @@ fn test_insert_command_clears_suppression_and_reactivates_name() {
         .expect("expected active alpha command");
     assert_from_packages(alpha.from_packages, &[RUNTIME_PACKAGE_NAME]);
     assert_eq!(alpha.allowed_mode, AllowedMode::Text);
-    assert_eq!(alpha.args.len(), 1);
+    assert_eq!(alpha.argspec.len(), 1);
 
     let explicit = kb
         .lookup_explicit_command("alpha")
@@ -366,10 +362,9 @@ fn test_insert_env_accepts_text_body_mode() {
     kb.insert_or_override_environment(EnvironmentSpec {
         name: "textenv".to_string(),
         allowed_mode: AllowedMode::Text,
-        args: vec![],
+        argspec: argspec!("").into(),
         body_mode: ContentMode::Text,
         tags: vec![],
-        spec_string: String::new(),
     });
 
     let env = kb.lookup_env("textenv").unwrap();
@@ -402,7 +397,7 @@ fn test_exact_order_path_preserves_override_order_for_non_mergeable_conflicts() 
         .lookup_command("arccos")
         .expect("expected arccos after loading base and physics");
     assert_from_packages(arccos.from_packages, &["physics"]);
-    assert_eq!(arccos.args.len(), 1);
+    assert_eq!(arccos.argspec.len(), 1);
 
     let physics_then_base =
         try_build_kb_from_exact_packages(&["physics", "base"]).expect("expected exact build");
@@ -410,7 +405,7 @@ fn test_exact_order_path_preserves_override_order_for_non_mergeable_conflicts() 
         .lookup_command("arccos")
         .expect("expected arccos after loading physics and base");
     assert_from_packages(arccos.from_packages, &["base"]);
-    assert!(arccos.args.is_empty());
+    assert!(arccos.argspec.is_empty());
 }
 
 #[test]
@@ -437,9 +432,8 @@ fn test_explicit_package_can_override_core_command() {
                 name: "\\".to_string(),
                 kind: CommandKind::Prefix,
                 allowed_mode: AllowedMode::Math,
-                args: vec![],
+                argspec: argspec!("").into(),
                 tags: vec![],
-                spec_string: "".to_string(),
             }],
             environments: vec![],
             delimiter_controls: vec![],
@@ -461,7 +455,7 @@ fn test_public_package_loading_merges_allowed_modes_in_canonical_order() {
             .lookup_command("textbf")
             .expect("expected merged textbf command");
         assert_eq!(textbf.allowed_mode, AllowedMode::Both);
-        assert_eq!(textbf.spec_string, "m:T");
+        assert_eq!(textbf.argspec.source, "m:T");
         assert_from_packages(textbf.from_packages, &["base", "textmacros"]);
     }
 }
@@ -516,24 +510,24 @@ fn test_spec_mismatch_commands_do_not_merge_under_public_loading() {
     let arccos = kb
         .lookup_command("arccos")
         .expect("expected arccos command");
-    assert_eq!(arccos.spec_string, "o");
-    assert_eq!(arccos.args.len(), 1);
+    assert_eq!(arccos.argspec.source, "o");
+    assert_eq!(arccos.argspec.len(), 1);
     assert_from_packages(arccos.from_packages, &["physics"]);
 
     let bbb = kb.lookup_command("Bbb").expect("expected Bbb command");
-    assert_eq!(bbb.spec_string, "m:T");
+    assert_eq!(bbb.argspec.source, "m:T");
     assert_eq!(bbb.allowed_mode, AllowedMode::Text);
     assert_from_packages(bbb.from_packages, &["textmacros"]);
 
     let smash = kb.lookup_command("smash").expect("expected smash command");
-    assert_eq!(smash.spec_string, "O{}:N m:T");
+    assert_eq!(smash.argspec.source, "O{}:N m:T");
     assert_eq!(smash.allowed_mode, AllowedMode::Text);
     assert_from_packages(smash.from_packages, &["textmacros"]);
 
     let underline = kb
         .lookup_command("underline")
         .expect("expected underline command");
-    assert_eq!(underline.spec_string, "m:T");
+    assert_eq!(underline.argspec.source, "m:T");
     assert_eq!(underline.allowed_mode, AllowedMode::Text);
     assert_from_packages(underline.from_packages, &["textmacros"]);
 }

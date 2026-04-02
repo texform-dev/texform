@@ -8,8 +8,9 @@ use texform_argspec::{ArgForm, ArgSpec, DelimiterToken, ValueKind, parse_arg_spe
 #[proc_macro]
 pub fn argspec(input: TokenStream) -> TokenStream {
     let literal = parse_macro_input!(input as LitStr);
-    match parse_arg_specs(literal.value().as_str(), "argspec literal") {
-        Ok(specs) => render_specs(specs.as_slice()).into(),
+    let source = literal.value();
+    match parse_arg_specs(source.as_str(), "argspec literal") {
+        Ok(specs) => render_parsed_arg_spec(specs.as_slice(), source.as_str()).into(),
         Err(error) => syn::Error::new(
             literal.span(),
             format!(
@@ -22,10 +23,13 @@ pub fn argspec(input: TokenStream) -> TokenStream {
     }
 }
 
-fn render_specs(specs: &[ArgSpec]) -> TokenStream2 {
+fn render_parsed_arg_spec(specs: &[ArgSpec], source: &str) -> TokenStream2 {
     let rendered_specs = specs.iter().map(render_arg_spec);
     quote! {
-        &[#(#rendered_specs),*] as &[::texform_specs::specs::ArgSpec]
+        ::texform_specs::specs::ParsedArgSpec {
+            args: &[#(#rendered_specs),*],
+            source: #source,
+        }
     }
 }
 

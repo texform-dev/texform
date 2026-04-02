@@ -528,7 +528,7 @@ fn command_meta_to_js(meta: &CommandMeta) -> JsValue {
         &meta.allowed_mode.as_str().into(),
     )
     .unwrap();
-    js_sys::Reflect::set(&value, &"spec_string".into(), &meta.spec_string.into()).unwrap();
+    js_sys::Reflect::set(&value, &"spec_string".into(), &meta.argspec.source.into()).unwrap();
     js_sys::Reflect::set(
         &value,
         &"from_packages".into(),
@@ -543,7 +543,7 @@ fn command_meta_to_js(meta: &CommandMeta) -> JsValue {
     js_sys::Reflect::set(&value, &"tags".into(), &tags.into()).unwrap();
 
     let args = js_sys::Array::new();
-    for spec in meta.args {
+    for spec in meta.argspec.args {
         args.push(&arg_spec_to_js(spec));
     }
     js_sys::Reflect::set(&value, &"args".into(), &args.into()).unwrap();
@@ -566,7 +566,7 @@ fn env_meta_to_js(meta: &EnvMeta) -> JsValue {
         &content_mode_to_string(meta.body_mode).into(),
     )
     .unwrap();
-    js_sys::Reflect::set(&value, &"spec_string".into(), &meta.spec_string.into()).unwrap();
+    js_sys::Reflect::set(&value, &"spec_string".into(), &meta.argspec.source.into()).unwrap();
     js_sys::Reflect::set(
         &value,
         &"from_packages".into(),
@@ -581,7 +581,7 @@ fn env_meta_to_js(meta: &EnvMeta) -> JsValue {
     js_sys::Reflect::set(&value, &"tags".into(), &tags.into()).unwrap();
 
     let args = js_sys::Array::new();
-    for spec in meta.args {
+    for spec in meta.argspec.args {
         args.push(&arg_spec_to_js(spec));
     }
     js_sys::Reflect::set(&value, &"args".into(), &args.into()).unwrap();

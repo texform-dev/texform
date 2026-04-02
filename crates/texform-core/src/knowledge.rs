@@ -33,7 +33,9 @@ use texform_specs::builtin::BuiltinPackage;
 
 use crate::context::{CommandItem, ContextItem, DelimiterControlItem, EnvironmentItem};
 
-pub use texform_argspec::{ArgForm, ArgSpec, ArgSpecParseError, DelimiterToken, ValueKind};
+pub use texform_argspec::{
+    ArgForm, ArgSpec, ArgSpecParseError, DelimiterToken, ParsedArgSpec, ValueKind,
+};
 pub use texform_specs::specs::{
     AllowedMode, BuiltinCharacterRecord, BuiltinCommandRecord, BuiltinEnvironmentRecord,
     CharacterMeta, CommandKind, CommandMeta, EnvMeta,
@@ -360,9 +362,8 @@ impl KnowledgeBase {
             name: character.name,
             kind: CommandKind::Prefix,
             allowed_mode: character.allowed_mode,
-            args: &[],
+            argspec: texform_specs::argspec!(""),
             tags: &[],
-            spec_string: "",
             from_packages: leak_string_array(vec![package.to_string()]),
         });
         self.set_active_command_source(character.name, ActiveCommandSource::Character(view_idx));
@@ -441,7 +442,7 @@ impl KnowledgeBase {
     }
 
     /// Same merge-or-override logic as commands, but for environments.
-    /// Merge requires matching name, spec_string, and body_mode.
+    /// Merge requires matching name, argspec source, and body_mode.
     #[cfg(test)]
     fn import_or_merge_environment_with_package(&mut self, spec: EnvironmentSpec, package: &str) {
         let incoming = environment_spec_into_meta(spec, vec![package.to_string()]);
@@ -516,16 +517,18 @@ fn make_command_meta(
     allowed_mode: AllowedMode,
     args: Vec<ArgSpec>,
     tags: Vec<String>,
-    spec_string: String,
+    source: String,
     from_packages: Vec<String>,
 ) -> CommandMeta {
     CommandMeta {
         name: leak_string(name),
         kind,
         allowed_mode,
-        args: leak_arg_specs(args),
+        argspec: ParsedArgSpec {
+            args: leak_arg_specs(args),
+            source: leak_string(source),
+        },
         tags: leak_tags(tags),
-        spec_string: leak_string(spec_string),
         from_packages: leak_string_array(from_packages),
     }
 }
@@ -553,16 +556,18 @@ fn make_env_meta(
     args: Vec<ArgSpec>,
     body_mode: ContentMode,
     tags: Vec<String>,
-    spec_string: String,
+    source: String,
     from_packages: Vec<String>,
 ) -> EnvMeta {
     EnvMeta {
         name: leak_string(name),
         allowed_mode,
-        args: leak_arg_specs(args),
+        argspec: ParsedArgSpec {
+            args: leak_arg_specs(args),
+            source: leak_string(source),
+        },
         body_mode,
         tags: leak_tags(tags),
-        spec_string: leak_string(spec_string),
         from_packages: leak_string_array(from_packages),
     }
 }
@@ -590,9 +595,9 @@ fn command_spec_into_meta(spec: CommandSpec, from_packages: Vec<String>) -> Comm
         spec.name,
         spec.kind,
         spec.allowed_mode,
-        spec.args,
+        spec.argspec.args,
         spec.tags,
-        spec.spec_string,
+        spec.argspec.source,
         from_packages,
     )
 }
@@ -605,9 +610,8 @@ fn builtin_command_into_meta(
         name: record.name,
         kind: record.kind,
         allowed_mode: record.allowed_mode,
-        args: record.args,
+        argspec: record.argspec,
         tags: record.tags,
-        spec_string: record.spec_string,
         from_packages: leak_string_array(from_packages),
     }
 }
@@ -617,10 +621,10 @@ fn environment_spec_into_meta(spec: EnvironmentSpec, from_packages: Vec<String>)
     make_env_meta(
         spec.name,
         spec.allowed_mode,
-        spec.args,
+        spec.argspec.args,
         spec.body_mode,
         spec.tags,
-        spec.spec_string,
+        spec.argspec.source,
         from_packages,
     )
 }
@@ -632,10 +636,9 @@ fn builtin_environment_into_meta(
     EnvMeta {
         name: record.name,
         allowed_mode: record.allowed_mode,
-        args: record.args,
+        argspec: record.argspec,
         body_mode: record.body_mode,
         tags: record.tags,
-        spec_string: record.spec_string,
         from_packages: leak_string_array(from_packages),
     }
 }
@@ -739,13 +742,13 @@ fn merge_from_packages(existing: &[&str], incoming: &[&str]) -> Vec<String> {
         .collect()
 }
 
-/// Two commands are mergeable iff they share name, kind, and spec_string,
+/// Two commands are mergeable iff they share name, kind, and argspec source,
 /// both come from managed packages, and neither side is a physics-denylisted
 /// command (Pr, det, exp — these intentionally override base definitions).
 fn should_merge_command(existing: &CommandMeta, incoming: &CommandMeta) -> bool {
     existing.name == incoming.name
         && existing.kind == incoming.kind
-        && existing.spec_string == incoming.spec_string
+        && existing.argspec.source == incoming.argspec.source
         && from_packages_are_managed(existing.from_packages)
         && from_packages_are_managed(incoming.from_packages)
         && !(is_physics_denylisted_command(existing.name)
@@ -755,7 +758,7 @@ fn should_merge_command(existing: &CommandMeta, incoming: &CommandMeta) -> bool 
 
 fn should_merge_environment(existing: &EnvMeta, incoming: &EnvMeta) -> bool {
     existing.name == incoming.name
-        && existing.spec_string == incoming.spec_string
+        && existing.argspec.source == incoming.argspec.source
         && existing.body_mode == incoming.body_mode
         && from_packages_are_managed(existing.from_packages)
         && from_packages_are_managed(incoming.from_packages)
@@ -765,30 +768,30 @@ fn should_merge_environment(existing: &EnvMeta, incoming: &EnvMeta) -> bool {
 /// from_packages collects both sources in canonical order.
 fn merge_command_meta(existing: &CommandMeta, incoming: &CommandMeta) -> CommandMeta {
     debug_assert!(should_merge_command(existing, incoming));
-    debug_assert_eq!(existing.args, incoming.args);
+    debug_assert_eq!(existing.argspec.args, incoming.argspec.args);
 
     make_command_meta(
         existing.name.to_string(),
         existing.kind,
         existing.allowed_mode.union(incoming.allowed_mode),
-        existing.args.to_vec(),
+        existing.argspec.args.to_vec(),
         merge_tags(existing.tags, incoming.tags),
-        existing.spec_string.to_string(),
+        existing.argspec.source.to_string(),
         merge_from_packages(existing.from_packages, incoming.from_packages),
     )
 }
 
 fn merge_environment_meta(existing: &EnvMeta, incoming: &EnvMeta) -> EnvMeta {
     debug_assert!(should_merge_environment(existing, incoming));
-    debug_assert_eq!(existing.args, incoming.args);
+    debug_assert_eq!(existing.argspec.args, incoming.argspec.args);
 
     make_env_meta(
         existing.name.to_string(),
         existing.allowed_mode.union(incoming.allowed_mode),
-        existing.args.to_vec(),
+        existing.argspec.args.to_vec(),
         existing.body_mode,
         merge_tags(existing.tags, incoming.tags),
-        existing.spec_string.to_string(),
+        existing.argspec.source.to_string(),
         merge_from_packages(existing.from_packages, incoming.from_packages),
     )
 }

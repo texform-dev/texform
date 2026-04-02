@@ -494,23 +494,23 @@ delimiter_controls: [langle]
     assert_eq!(specs.commands.len(), 2);
     assert_eq!(specs.commands[0].name, "frac");
     assert_eq!(specs.commands[0].allowed_mode, AllowedMode::Math);
-    assert_eq!(specs.commands[0].args.len(), 2);
+    assert_eq!(specs.commands[0].argspec.args.len(), 2);
     assert_eq!(specs.commands[0].tags, vec!["discouraged"]);
-    assert!(specs.commands[0].args[0].required);
+    assert!(specs.commands[0].argspec.args[0].required);
     assert_eq!(
-        specs.commands[0].args[0].kind,
+        specs.commands[0].argspec.args[0].kind,
         ValueKind::Content {
             mode: ContentMode::Math
         }
     );
-    assert_eq!(specs.commands[0].args[1].kind, ValueKind::Delimiter);
+    assert_eq!(specs.commands[0].argspec.args[1].kind, ValueKind::Delimiter);
 
     assert_eq!(specs.commands[1].name, "text");
     assert_eq!(specs.commands[1].allowed_mode, AllowedMode::Both);
-    assert_eq!(specs.commands[1].args.len(), 1);
+    assert_eq!(specs.commands[1].argspec.args.len(), 1);
     assert!(specs.commands[1].tags.is_empty());
     assert_eq!(
-        specs.commands[1].args[0].kind,
+        specs.commands[1].argspec.args[0].kind,
         ValueKind::Content {
             mode: ContentMode::Text
         }
@@ -519,7 +519,7 @@ delimiter_controls: [langle]
     assert_eq!(specs.environments.len(), 1);
     assert_eq!(specs.environments[0].name, "matrix");
     assert_eq!(specs.environments[0].allowed_mode, AllowedMode::Math);
-    assert_eq!(specs.environments[0].args.len(), 1);
+    assert_eq!(specs.environments[0].argspec.args.len(), 1);
     assert_eq!(specs.environments[0].tags, vec!["matrix"]);
     assert_eq!(specs.delimiter_controls, vec!["langle"]);
 }
@@ -535,8 +535,8 @@ commands:
 
     let specs = load_package_specs_from_str(yaml, "column-kind");
     assert_eq!(specs.commands.len(), 1);
-    assert_eq!(specs.commands[0].args.len(), 1);
-    assert_eq!(specs.commands[0].args[0].kind, ValueKind::Column);
+    assert_eq!(specs.commands[0].argspec.args.len(), 1);
+    assert_eq!(specs.commands[0].argspec.args[0].kind, ValueKind::Column);
 }
 
 #[test]
@@ -550,7 +550,7 @@ commands:
     let specs = load_package_specs_from_str(yaml, "default-allowed-mode");
     assert_eq!(specs.commands.len(), 1);
     assert_eq!(specs.commands[0].allowed_mode, AllowedMode::Both);
-    assert!(specs.commands[0].args.is_empty());
+    assert!(specs.commands[0].argspec.args.is_empty());
 }
 
 #[test]

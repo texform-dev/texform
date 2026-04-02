@@ -6,7 +6,8 @@ fn test_argspec_macro_matches_runtime_parse_for_empty_spec() {
     let expected = parse_arg_specs("", "empty").expect("empty spec should be valid");
     let actual = argspec!("");
 
-    assert_eq!(actual, expected.as_slice());
+    assert_eq!(actual.args, expected.as_slice());
+    assert_eq!(actual.source, "");
 }
 
 #[test]
@@ -14,7 +15,8 @@ fn test_argspec_macro_matches_runtime_parse_for_standard_spec() {
     let expected = parse_arg_specs("o:N m m", "standard").expect("o:N m m should be valid");
     let actual = argspec!("o:N m m");
 
-    assert_eq!(actual, expected.as_slice());
+    assert_eq!(actual.args, expected.as_slice());
+    assert_eq!(actual.source, "o:N m m");
 }
 
 #[test]
@@ -23,7 +25,8 @@ fn test_argspec_macro_matches_runtime_parse_for_complex_spec() {
         .expect("complex spec should be valid");
     let actual = argspec!(r"!s g:T d<(,)><\langle,\rangle>:K m{}:D?");
 
-    assert_eq!(actual, expected.as_slice());
+    assert_eq!(actual.args, expected.as_slice());
+    assert_eq!(actual.source, r"!s g:T d<(,)><\langle,\rangle>:K m{}:D?");
 }
 
 #[test]

@@ -73,8 +73,8 @@ produces: RuleProduces {
 Authoring rules with package variants follows three constraints:
 
 1. Only group variants that share the same structural shape.
-   For commands this means identical `kind` and `spec_string`.
-   For environments this means identical `spec_string` and `body_mode`.
+   For commands this means identical `kind` and `argspec.source`.
+   For environments this means identical `argspec.source` and `body_mode`.
 2. If two packages define the same name with different specs, split them into
    separate rules instead of mixing incompatible variants in one metadata block.
 3. `apply()` may keep using any one package-qualified record with

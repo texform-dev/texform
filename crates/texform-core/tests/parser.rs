@@ -205,7 +205,7 @@ delimiter_controls:
                     command.name,
                     command.kind,
                     command.allowed_mode,
-                    command.spec_string,
+                    command.argspec.source,
                 )
                 .with_tags(command.tags)
                 .into(),
@@ -217,7 +217,7 @@ delimiter_controls:
                     environment.name,
                     environment.allowed_mode,
                     environment.body_mode,
-                    environment.spec_string,
+                    environment.argspec.source,
                 )
                 .with_tags(environment.tags)
                 .into(),

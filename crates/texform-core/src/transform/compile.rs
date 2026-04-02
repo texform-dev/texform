@@ -308,11 +308,11 @@ fn validate_targets_with_variants(kb: &KnowledgeBase, targets: &[RuleTarget]) ->
                 (RuleTarget::Command(left), RuleTarget::Command(right)) => {
                     left.name == right.name
                         && left.kind == right.kind
-                        && left.spec_string == right.spec_string
+                        && left.argspec.source == right.argspec.source
                 }
                 (RuleTarget::Environment(left), RuleTarget::Environment(right)) => {
                     left.name == right.name
-                        && left.spec_string == right.spec_string
+                        && left.argspec.source == right.argspec.source
                         && left.body_mode == right.body_mode
                 }
                 _ => false,
@@ -372,15 +372,15 @@ fn validate_command_target(
                 reason: "kind mismatch",
             };
         }
-        if explicit.spec_string != record.spec_string {
+        if explicit.argspec.source != record.argspec.source {
             return RuleAvailability::IncompatibleActive {
                 kind: "command",
                 name: record.name,
-                reason: "spec_string mismatch",
+                reason: "argspec source mismatch",
             };
         }
         // name always matches (by-name lookup), so incompatibility
-        // can only come from kind or spec_string — both checked above.
+        // can only come from kind or argspec source — both checked above.
         unreachable!("structurally_compatible_with fields exhausted");
     }
 
@@ -398,11 +398,11 @@ fn validate_environment_target(
         };
     };
     if !record.structurally_compatible_with(active) {
-        if active.spec_string != record.spec_string {
+        if active.argspec.source != record.argspec.source {
             return RuleAvailability::IncompatibleActive {
                 kind: "environment",
                 name: record.name,
-                reason: "spec_string mismatch",
+                reason: "argspec source mismatch",
             };
         }
         if active.body_mode != record.body_mode {
@@ -413,7 +413,7 @@ fn validate_environment_target(
             };
         }
         // name always matches (by-name lookup), so incompatibility
-        // can only come from spec_string or body_mode — both checked above.
+        // can only come from argspec source or body_mode — both checked above.
         unreachable!("structurally_compatible_with fields exhausted");
     }
 
@@ -605,6 +605,7 @@ mod tests {
         RuleConsumes, RuleEffect, RuleGroup, RuleMeta, RuleProduces, RuleSafety, RuleTrigger,
         TransformRule,
     };
+    use texform_specs::argspec;
     use texform_specs::specs::{
         AllowedMode, BuiltinCommandRecord, CharacterAttributes, CharacterSpec, CommandKind,
         CommandSpec, PackageSpecs,
@@ -632,72 +633,64 @@ mod tests {
         name: "rule-a-target",
         kind: CommandKind::Prefix,
         allowed_mode: AllowedMode::Math,
-        args: &[],
+        argspec: argspec!(""),
         tags: &[],
-        spec_string: "",
     };
 
     static COMMAND_B: BuiltinCommandRecord = BuiltinCommandRecord {
         name: "rule-b-target",
         kind: CommandKind::Prefix,
         allowed_mode: AllowedMode::Math,
-        args: &[],
+        argspec: argspec!(""),
         tags: &[],
-        spec_string: "",
     };
 
     static COMMAND_C: BuiltinCommandRecord = BuiltinCommandRecord {
         name: "rule-c-target",
         kind: CommandKind::Prefix,
         allowed_mode: AllowedMode::Math,
-        args: &[],
+        argspec: argspec!(""),
         tags: &[],
-        spec_string: "",
     };
 
     static ACTIVE_EXPLICIT_COMMAND: BuiltinCommandRecord = BuiltinCommandRecord {
         name: "foo",
         kind: CommandKind::Prefix,
         allowed_mode: AllowedMode::Math,
-        args: &[],
+        argspec: argspec!(""),
         tags: &[],
-        spec_string: "",
     };
 
     static SHARED_VARIANT_BASE: BuiltinCommandRecord = BuiltinCommandRecord {
         name: "shared-target",
         kind: CommandKind::Prefix,
         allowed_mode: AllowedMode::Math,
-        args: &[],
+        argspec: argspec!("m"),
         tags: &[],
-        spec_string: "m",
     };
 
     static SHARED_VARIANT_AMS: BuiltinCommandRecord = BuiltinCommandRecord {
         name: "shared-target",
         kind: CommandKind::Prefix,
         allowed_mode: AllowedMode::Both,
-        args: &[],
+        argspec: argspec!("m"),
         tags: &[],
-        spec_string: "m",
     };
 
     static SHARED_VARIANT_BROKEN: BuiltinCommandRecord = BuiltinCommandRecord {
         name: "shared-target",
         kind: CommandKind::Prefix,
         allowed_mode: AllowedMode::Math,
-        args: &[],
+        argspec: argspec!("m m"),
         tags: &[],
-        spec_string: "m m",
     };
 
     static MISSING_TRIGGER_COMMAND: BuiltinCommandRecord = BuiltinCommandRecord {
         name: "missing-trigger",
         kind: CommandKind::Prefix,
         allowed_mode: AllowedMode::Math,
-        args: &[],
+        argspec: argspec!(""),
         tags: &[],
-        spec_string: "",
     };
 
     static SHARED_VARIANT_TARGETS: [RuleTarget; 2] = [
@@ -860,9 +853,8 @@ mod tests {
             name: "foo".to_string(),
             kind: CommandKind::Prefix,
             allowed_mode: AllowedMode::Math,
-            args: vec![],
+            argspec: argspec!("").into(),
             tags: vec![],
-            spec_string: "".to_string(),
         });
         kb.import_package(PackageSpecs {
             characters: vec![CharacterSpec {
@@ -914,9 +906,8 @@ mod tests {
             name: "shared-target".to_string(),
             kind: CommandKind::Prefix,
             allowed_mode: AllowedMode::Math,
-            args: vec![],
+            argspec: argspec!("m").into(),
             tags: vec![],
-            spec_string: "m".to_string(),
         });
 
         let rule: &'static dyn TransformRule = &MULTI_VARIANT_RULE;
@@ -951,9 +942,8 @@ mod tests {
             name: "shared-target".to_string(),
             kind: CommandKind::Prefix,
             allowed_mode: AllowedMode::Math,
-            args: vec![],
+            argspec: argspec!("m").into(),
             tags: vec![],
-            spec_string: "m".to_string(),
         });
 
         let rule: &'static dyn TransformRule = &TRIGGER_IGNORED_RULE;
@@ -970,9 +960,8 @@ mod tests {
             name: "shared-target".to_string(),
             kind: CommandKind::Prefix,
             allowed_mode: AllowedMode::Math,
-            args: vec![],
+            argspec: argspec!("m").into(),
             tags: vec![],
-            spec_string: "m".to_string(),
         });
 
         let rule: &'static dyn TransformRule = &SINGLE_VARIANT_RULE;

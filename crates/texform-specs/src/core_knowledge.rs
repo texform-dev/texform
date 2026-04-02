@@ -1,20 +1,15 @@
+use crate::argspec;
 use crate::builtin::BuiltinPackage;
-use crate::specs::{AllowedMode, ArgForm, ArgSpec, BuiltinCommandRecord, CommandKind, ValueKind};
+use crate::specs::{AllowedMode, BuiltinCommandRecord, CommandKind};
 
 pub const CORE_PACKAGE_NAME: &str = "core";
-
-pub static LINEBREAK_ARGS: &[ArgSpec] = &[
-    ArgSpec::with_form(false, true, ValueKind::Star, ArgForm::Star),
-    ArgSpec::with_form(false, true, ValueKind::Dimension, ArgForm::Standard),
-];
 
 pub static LINEBREAK: BuiltinCommandRecord = BuiltinCommandRecord {
     name: "\\",
     kind: CommandKind::Prefix,
     allowed_mode: AllowedMode::Both,
-    args: LINEBREAK_ARGS,
+    argspec: argspec!("!s !o:L"),
     tags: &[],
-    spec_string: "!s !o:L",
 };
 
 pub static COMMANDS: &[&BuiltinCommandRecord] = &[&LINEBREAK];
@@ -42,7 +37,7 @@ mod tests {
         assert_eq!(linebreak.name, "\\");
         assert_eq!(linebreak.kind, CommandKind::Prefix);
         assert_eq!(linebreak.allowed_mode, AllowedMode::Both);
-        assert_eq!(linebreak.spec_string, "!s !o:L");
-        assert_eq!(linebreak.args.len(), 2);
+        assert_eq!(linebreak.argspec.source, "!s !o:L");
+        assert_eq!(linebreak.argspec.len(), 2);
     }
 }

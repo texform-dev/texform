@@ -435,25 +435,23 @@ fn emit_named_records(
 
 fn render_command_record(record: &CommandRecordSource) -> String {
     format!(
-        "BuiltinCommandRecord {{ name: {:?}, kind: {}, allowed_mode: {}, args: {}, tags: {}, spec_string: {:?} }}",
+        "BuiltinCommandRecord {{ name: {:?}, kind: {}, allowed_mode: {}, argspec: {}, tags: {} }}",
         record.name,
         record.kind.code(),
         record.allowed_mode.code(),
         render_argspec_macro(record.spec_string.as_str()),
         render_string_slice(record.tags.as_slice()),
-        record.spec_string,
     )
 }
 
 fn render_environment_record(record: &EnvironmentRecordSource) -> String {
     format!(
-        "BuiltinEnvironmentRecord {{ name: {:?}, allowed_mode: {}, args: {}, body_mode: {}, tags: {}, spec_string: {:?} }}",
+        "BuiltinEnvironmentRecord {{ name: {:?}, allowed_mode: {}, argspec: {}, body_mode: {}, tags: {} }}",
         record.name,
         record.allowed_mode.code(),
         render_argspec_macro(record.spec_string.as_str()),
         record.body_mode.code(),
         render_string_slice(record.tags.as_slice()),
-        record.spec_string,
     )
 }
 
