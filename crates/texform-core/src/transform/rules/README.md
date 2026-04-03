@@ -12,9 +12,10 @@ Keep the following pieces together in that file:
 2. Small rule-local helpers
 3. Inline tests under `#[cfg(test)] mod tests`
 
-`mod.rs` should only list available rule modules. Do not move rule behavior or
-rule-specific tests into `mod.rs` or external integration test files unless
-there is a strong reason.
+`mod.rs` is the single registration site for builtin rules. It may contain the
+module declarations plus the aggregated builtin rule list, but it should not
+grow rule behavior or rule-specific tests. Keep actual rewrites and their tests
+inside each rule file unless there is a strong reason not to.
 
 Prefer defining metadata as a function-local static inside `meta()`:
 
@@ -27,6 +28,15 @@ fn meta(&self) -> &'static RuleMeta {
 
 This keeps the metadata physically close to the trait implementation without
 adding another file-level symbol for every rule.
+
+For repeated rule shells, prefer the crate-private authoring macros:
+
+```rust
+use crate::transform::{alias_rule, cmd_targets, cmd_triggers, define_rule};
+```
+
+These macros are intentionally local to `texform-core`; they are ergonomics
+helpers for builtin rules, not a public rule-definition API.
 
 ## Builtin Record Imports
 
@@ -97,6 +107,102 @@ Trigger availability is intentionally not validated at compile time:
 3. A missing trigger therefore degrades to a no-op instead of a compile error.
    If a rule never fires but still promises to eliminate a form, final contract
    validation catches the mismatch.
+
+## define_rule!
+
+Use `define_rule!` when the rule metadata is regular but the AST rewrite logic
+still needs ordinary Rust code:
+
+```rust
+define_rule! {
+    pub static OVER_TO_FRAC: OverToFracRule {
+        key: Structural / "over-to-frac",
+        summary: "Rewrite infix \\over into prefix \\frac",
+        phase: Normalize,
+        safety: Semantic,
+        triggers: cmd_triggers![&base::cmd::OVER],
+        consumes: RuleConsumes {
+            eliminates: cmd_targets![&base::cmd::OVER],
+            requires: &[],
+        },
+        produces: RuleProduces {
+            targets: cmd_targets![&base::cmd::FRAC, &ams::cmd::FRAC],
+        },
+        apply(rule, cx, node_id) {
+            // normal Rust body
+        }
+    }
+}
+```
+
+Prefer this macro for rules that:
+
+1. Rebuild nodes or subtrees
+2. Need shape validation with `TransformContext`
+3. Need bespoke matching logic beyond simple rename canonicalization
+
+The inline form always binds an explicit rule variable, such as `rule`, so the
+body can call `rule.meta().key` without relying on a magic `self` binding.
+
+When IDE navigation matters more than keeping the body inline, use the
+`apply_fn: path` variant and move the rewrite code into a normal function.
+
+## alias_rule!
+
+Use `alias_rule!` only for prefix-command canonicalization where aliases and
+the canonical command share the same `allowed_mode` and `argspec.source`, and
+the rule only renames the command:
+
+```rust
+alias_rule! {
+    pub static TRACE_TO_TR: TraceToTrRule {
+        key: Canonical / "trace-to-tr",
+        summary: "Canonicalize \\Tr, \\trace, and \\Trace into \\tr",
+        phase: Normalize,
+        safety: Lossless,
+        canonical: &physics::cmd::TR,
+        aliases: [
+            &physics::cmd::TR_2,
+            &physics::cmd::TRACE,
+            &physics::cmd::TRACE_2,
+        ],
+    }
+}
+```
+
+`alias_rule!` enforces only structural invariants:
+
+1. Canonical and alias commands must all be `Prefix`
+2. `allowed_mode` must match
+3. `argspec.source` must match
+4. The alias list must be non-empty and must not contain the canonical command
+
+`alias_rule!` does not validate tag equality. If aliases and the canonical
+command carry different tags, downstream `CommandTag`-based behavior will follow
+the canonical command after rename. That semantic choice belongs to the rule
+author, not to the macro.
+
+Do not use `alias_rule!` for:
+
+1. Package-variant handling of same-name commands
+2. Character-backed commands such as base `\Re`
+3. Infix, declarative, or environment canonicalization
+4. Rules that need any AST surgery beyond renaming a prefix command
+
+## Sugar Macros
+
+Use the small metadata helpers when they reduce noise:
+
+```rust
+cmd_targets![&base::cmd::FRAC, &ams::cmd::FRAC]
+env_targets![&ams::env::ALIGN]
+cmd_triggers![&base::cmd::OVER]
+env_triggers![&ams::env::ALIGN]
+```
+
+These macros only wrap builtin paths into `RuleTarget::*` or `RuleTrigger::*`
+arrays. They do not infer package variants, canonical forms, or any other rule
+semantics.
 
 ## Shared Helper Imports
 

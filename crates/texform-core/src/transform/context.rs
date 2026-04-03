@@ -71,8 +71,19 @@ pub struct EnvironmentView<'a> {
 /// validation helpers, and statistics tracking. Rules receive a mutable
 /// reference to this context and use it both to inspect the current tree
 /// and to record replacement nodes.
+///
+/// `ast` is intentionally public because many transforms need unrestricted
+/// structural mutation, not just a narrow helper surface. The tradeoff is that
+/// rules can also violate AST invariants if they misuse low-level operations,
+/// so debug builds re-run [`Ast::assert_invariants()`](crate::ast::Ast::assert_invariants)
+/// after every successful rewrite. Knowledge-base access, profile status, and
+/// report mutation stay mediated through methods because those interactions are
+/// semantic rather than structural.
 pub struct TransformContext<'a> {
     /// Mutable access to the AST being transformed.
+    ///
+    /// This field stays public so rules can perform bespoke tree surgery when
+    /// helper functions are not expressive enough.
     pub ast: &'a mut Ast,
     kb: &'a KnowledgeBase,
     profile: &'a CompiledProfile,
@@ -138,6 +149,11 @@ impl<'a> TransformContext<'a> {
     /// Records that a rule was successfully applied, incrementing its count in the report.
     pub fn mark_rule_applied(&mut self, key: RuleKey) {
         self.report.mark_rule_applied(key);
+    }
+
+    /// Records that a rule was attempted after trigger matching but made no change.
+    pub fn mark_rule_skipped(&mut self, key: RuleKey) {
+        self.report.mark_rule_skipped(key);
     }
 
     /// Records the total number of fixed-point iterations the engine performed.

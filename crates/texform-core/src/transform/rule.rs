@@ -201,7 +201,7 @@ pub enum RuleEffect {
 /// Implementors provide static metadata via [`meta()`](TransformRule::meta) and
 /// the actual tree-rewriting logic via [`apply()`](TransformRule::apply). Rules
 /// are typically defined as unit structs with a `const` [`RuleMeta`] and
-/// registered in [`ALL_RULES`](super::registry::ALL_RULES).
+/// registered in the builtin rule list under `transform/rules/mod.rs`.
 pub trait TransformRule: Send + Sync {
     /// Returns the static metadata descriptor for this rule.
     fn meta(&self) -> &'static RuleMeta;

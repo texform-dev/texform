@@ -15,31 +15,48 @@ use crate::transform::compile::{CompiledProfile, NormalFormContract, ProfileComp
 use crate::transform::context::TransformContext;
 use crate::transform::rule::{RuleEffect, RuleKey, RuleMeta, RuleTarget, RuleTrigger};
 
-/// Tracks how many times a specific rule was applied during a transformation pass.
+/// Tracks how often a specific rule changed the AST or skipped after a trigger match.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppliedRuleStat {
-    /// The identity of the rule that was applied.
+    /// The identity of the rule.
     pub key: RuleKey,
     /// The total number of times this rule fired.
     pub count: usize,
+    /// The total number of times this rule's trigger matched but `apply()` returned `Skipped`.
+    pub skipped_count: usize,
 }
 
 /// Accumulates statistics across an entire transformation pass.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TransformReport {
-    /// Per-rule application counts.
+    /// Per-rule execution counts for rules that were attempted at least once.
     pub applied: Vec<AppliedRuleStat>,
     /// The number of fixed-point iterations the normalize phase completed.
     pub iterations: usize,
 }
 
 impl TransformReport {
-    pub fn mark_rule_applied(&mut self, key: RuleKey) {
-        if let Some(existing) = self.applied.iter_mut().find(|entry| entry.key == key) {
-            existing.count += 1;
-            return;
+    fn stat_mut(&mut self, key: RuleKey) -> &mut AppliedRuleStat {
+        if let Some(index) = self.applied.iter().position(|entry| entry.key == key) {
+            return &mut self.applied[index];
         }
-        self.applied.push(AppliedRuleStat { key, count: 1 });
+
+        self.applied.push(AppliedRuleStat {
+            key,
+            count: 0,
+            skipped_count: 0,
+        });
+        self.applied
+            .last_mut()
+            .expect("newly inserted rule stat must exist")
+    }
+
+    pub fn mark_rule_applied(&mut self, key: RuleKey) {
+        self.stat_mut(key).count += 1;
+    }
+
+    pub fn mark_rule_skipped(&mut self, key: RuleKey) {
+        self.stat_mut(key).skipped_count += 1;
     }
 
     pub fn record_iteration(&mut self, iterations: usize) {
@@ -159,7 +176,7 @@ pub fn transform_ast(
                             changed = true;
                             break;
                         }
-                        RuleEffect::Skipped => {}
+                        RuleEffect::Skipped => cx.mark_rule_skipped(rule.meta().key),
                     }
                 }
             }
@@ -203,7 +220,7 @@ pub fn transform_ast(
                         cx.ast.assert_invariants();
                         break;
                     }
-                    RuleEffect::Skipped => {}
+                    RuleEffect::Skipped => cx.mark_rule_skipped(rule.meta().key),
                 }
             }
         }
@@ -292,5 +309,109 @@ fn target_present(ast: &Ast, node_id: crate::ast::NodeId, target: RuleTarget) ->
         RuleTarget::Environment(record) => {
             lookup_environment_node_name(ast.node(node_id)).is_some_and(|name| name == record.name)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::{Ast, Node, NodeId};
+    use crate::knowledge::KnowledgeBase;
+    use crate::transform::compile::{CompiledPhase, CompiledProfile};
+    use crate::transform::context::TransformContext;
+    use crate::transform::rule::{
+        RuleConsumes, RuleEffect, RuleGroup, RuleMeta, RulePhase, RuleProduces, RuleSafety,
+        RuleTrigger, TransformRule,
+    };
+    use texform_specs::argspec;
+    use texform_specs::specs::{AllowedMode, BuiltinCommandRecord, CommandKind, CommandSpec};
+
+    struct SkipRule;
+
+    impl TransformRule for SkipRule {
+        fn meta(&self) -> &'static RuleMeta {
+            &SKIP_RULE_META
+        }
+
+        fn apply(
+            &self,
+            _cx: &mut TransformContext<'_>,
+            _node_id: NodeId,
+        ) -> Result<RuleEffect, TransformError> {
+            Ok(RuleEffect::Skipped)
+        }
+    }
+
+    static SKIP_COMMAND: BuiltinCommandRecord = BuiltinCommandRecord {
+        name: "skip-me",
+        kind: CommandKind::Prefix,
+        allowed_mode: AllowedMode::Math,
+        argspec: argspec!(""),
+        tags: &[],
+    };
+
+    static SKIP_RULE_META: RuleMeta = RuleMeta {
+        key: RuleKey {
+            group: RuleGroup::Canonical,
+            name: "skip-me",
+        },
+        summary: "mock skip rule",
+        phase: RulePhase::Normalize,
+        safety: RuleSafety::Lossless,
+        triggers: &[RuleTrigger::Command(&SKIP_COMMAND)],
+        consumes: RuleConsumes {
+            eliminates: &[],
+            requires: &[],
+        },
+        produces: RuleProduces { targets: &[] },
+    };
+
+    static SKIP_RULE: SkipRule = SkipRule;
+
+    fn compiled_profile_with(rule: &'static dyn TransformRule) -> CompiledProfile {
+        CompiledProfile {
+            normalize_phase: CompiledPhase {
+                phase: RulePhase::Normalize,
+                ordered_rules: vec![rule],
+            },
+            cleanup_phase: None,
+            statuses: Vec::new(),
+            contract: NormalFormContract {
+                eliminated_forms: Vec::new(),
+            },
+            max_iterations: 4,
+        }
+    }
+
+    #[test]
+    fn report_tracks_skipped_rule_attempts_after_trigger_match() {
+        let mut kb = KnowledgeBase::empty();
+        kb.insert_or_override_command(CommandSpec {
+            name: "skip-me".to_string(),
+            kind: CommandKind::Prefix,
+            allowed_mode: AllowedMode::Math,
+            argspec: argspec!("").into(),
+            tags: vec![],
+        });
+
+        let mut ast = Ast::new();
+        let node_id = ast.new_node(Node::Command {
+            name: "skip-me".to_string(),
+            args: Vec::new(),
+        });
+        ast.append_child(ast.root(), node_id);
+
+        let report = transform_ast(&mut ast, &kb, &compiled_profile_with(&SKIP_RULE))
+            .expect("transform with skip-only rule should succeed");
+
+        assert_eq!(report.iterations, 1);
+        assert_eq!(
+            report.applied,
+            vec![AppliedRuleStat {
+                key: SKIP_RULE_META.key,
+                count: 0,
+                skipped_count: 1,
+            }]
+        );
     }
 }

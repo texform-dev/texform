@@ -18,9 +18,16 @@ pub mod config;
 pub mod context;
 pub mod engine;
 pub mod helpers;
+pub(crate) mod macro_support;
+mod macros;
 pub mod registry;
 pub mod rule;
 mod rules;
+
+#[allow(unused_imports)]
+pub(crate) use macros::{
+    alias_rule, cmd_targets, cmd_triggers, define_rule, env_targets, env_triggers,
+};
 
 pub use compile::{
     CompiledPhase, CompiledProfile, NormalFormContract, ProfileCompileError, RuleAvailability,

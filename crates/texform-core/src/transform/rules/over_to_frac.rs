@@ -7,70 +7,44 @@
 
 use texform_specs::builtin::{ams, base};
 
-use crate::ast::NodeId;
-use crate::transform::context::TransformContext;
-use crate::transform::engine::TransformError;
 use crate::transform::helpers::{mandatory_content, prefix_command};
-use crate::transform::rule::{
-    RuleConsumes, RuleEffect, RuleGroup, RuleKey, RuleMeta, RulePhase, RuleProduces, RuleSafety,
-    RuleTarget, RuleTrigger, TransformRule,
-};
+use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
+use crate::transform::{cmd_targets, cmd_triggers, define_rule};
 
-/// The singleton instance of the rule, registered in the global rule registry.
-pub static OVER_TO_FRAC: OverToFracRule = OverToFracRule;
+define_rule! {
+    /// Rewrites the infix `\over` primitive into the prefix `\frac{…}{…}` form.
+    pub static OVER_TO_FRAC: OverToFracRule {
+        key: Structural / "over-to-frac",
+        summary: "Rewrite infix \\over into prefix \\frac",
+        phase: Normalize,
+        safety: Semantic,
+        triggers: cmd_triggers![&base::cmd::OVER],
+        consumes: RuleConsumes {
+            eliminates: cmd_targets![&base::cmd::OVER],
+            requires: &[],
+        },
+        produces: RuleProduces {
+            targets: cmd_targets![&base::cmd::FRAC, &ams::cmd::FRAC],
+        },
+        apply(rule, cx, node_id) {
+            let Some(infix) = cx.match_infix(node_id, &base::cmd::OVER) else {
+                return Ok(RuleEffect::Skipped);
+            };
+            cx.expect_no_args(rule.meta().key, infix.args, "\\over")?;
 
-/// Rewrites the infix `\over` primitive into the prefix `\frac{…}{…}` form.
-pub struct OverToFracRule;
-
-impl TransformRule for OverToFracRule {
-    fn meta(&self) -> &'static RuleMeta {
-        // Metadata is defined as a function-local static so it stays colocated
-        // with the rule implementation rather than drifting to a separate site.
-        static META: RuleMeta = RuleMeta {
-            key: RuleKey {
-                group: RuleGroup::Structural,
-                name: "over-to-frac",
-            },
-            summary: "Rewrite infix \\over into prefix \\frac",
-            phase: RulePhase::Normalize,
-            safety: RuleSafety::Semantic,
-            triggers: &[RuleTrigger::Command(&base::cmd::OVER)],
-            consumes: RuleConsumes {
-                eliminates: &[RuleTarget::Command(&base::cmd::OVER)],
-                requires: &[],
-            },
-            produces: RuleProduces {
-                targets: &[
-                    RuleTarget::Command(&base::cmd::FRAC),
-                    RuleTarget::Command(&ams::cmd::FRAC),
-                ],
-            },
-        };
-        &META
-    }
-
-    fn apply(
-        &self,
-        cx: &mut TransformContext<'_>,
-        node_id: NodeId,
-    ) -> Result<RuleEffect, TransformError> {
-        let Some(infix) = cx.match_infix(node_id, &base::cmd::OVER) else {
-            return Ok(RuleEffect::Skipped);
-        };
-        cx.expect_no_args(self.meta().key, infix.args, "\\over")?;
-
-        // Reuse the existing operand subtrees as the two mandatory frac args.
-        cx.ast.replace_node(
-            node_id,
-            prefix_command(
-                &base::cmd::FRAC,
-                vec![
-                    mandatory_content(infix.left),
-                    mandatory_content(infix.right),
-                ],
-            ),
-        );
-        Ok(RuleEffect::Applied)
+            // Reuse the existing operand subtrees as the two mandatory frac args.
+            cx.ast.replace_node(
+                node_id,
+                prefix_command(
+                    &base::cmd::FRAC,
+                    vec![
+                        mandatory_content(infix.left),
+                        mandatory_content(infix.right),
+                    ],
+                ),
+            );
+            Ok(RuleEffect::Applied)
+        }
     }
 }
 
@@ -131,11 +105,10 @@ mod tests {
             .transform_rule_statuses(&TransformProfile::default())
             .expect("profile compilation should succeed");
 
-        assert_eq!(statuses.len(), 1);
-        assert_eq!(statuses[0].key.to_string(), "structural/over-to-frac");
-        assert!(matches!(
-            statuses[0].availability,
-            RuleAvailability::Available
-        ));
+        let status = statuses
+            .iter()
+            .find(|status| status.key.to_string() == "structural/over-to-frac")
+            .expect("over-to-frac status should exist");
+        assert!(matches!(status.availability, RuleAvailability::Available));
     }
 }
