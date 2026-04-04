@@ -19,21 +19,33 @@ use crate::ast::{NodeId, NodeKind};
 use crate::transform::context::TransformContext;
 use crate::transform::engine::TransformError;
 
-// TODO: RuleGroup variants are placeholders; the concrete grouping taxonomy
-// will be designed once more rules exist.
+// Domain-specific groups for the rule taxonomy. `Structural` and `Canonical`
+// are legacy groups kept for existing rules during migration.
+// NOTE: `Ord` is derived — variant declaration order determines comparison.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RuleGroup {
+    Physics,
+    PlainTex,
+    FontVariant,
+    SpacingLayout,
+    MatrixEnv,
+    Cleanup,
+    // Legacy groups — kept for existing rules during migration.
     Structural,
     Canonical,
-    Cleanup,
 }
 
 impl RuleGroup {
     pub const fn as_str(self) -> &'static str {
         match self {
+            RuleGroup::Physics => "physics",
+            RuleGroup::PlainTex => "plain_tex",
+            RuleGroup::FontVariant => "font_variant",
+            RuleGroup::SpacingLayout => "spacing_layout",
+            RuleGroup::MatrixEnv => "matrix_env",
+            RuleGroup::Cleanup => "cleanup",
             RuleGroup::Structural => "structural",
             RuleGroup::Canonical => "canonical",
-            RuleGroup::Cleanup => "cleanup",
         }
     }
 }

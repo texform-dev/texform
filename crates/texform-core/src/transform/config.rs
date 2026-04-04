@@ -55,7 +55,95 @@ impl Default for TransformProfile {
         Self {
             ruleset: BuiltinRuleSetId::Normalize,
             rules: BTreeMap::new(),
-            max_iterations: 100,
+            max_iterations: Self::DEFAULT_MAX_ITERATIONS,
         }
+    }
+}
+
+impl TransformProfile {
+    /// Default safety limit for the normalize fixed-point loop.
+    pub const DEFAULT_MAX_ITERATIONS: usize = 100;
+
+    /// Start building a profile for the given rule set.
+    pub fn builder(ruleset: BuiltinRuleSetId) -> TransformProfileBuilder {
+        TransformProfileBuilder {
+            ruleset,
+            rules: BTreeMap::new(),
+            max_iterations: TransformProfile::DEFAULT_MAX_ITERATIONS,
+        }
+    }
+}
+
+/// Fluent builder for [`TransformProfile`].
+pub struct TransformProfileBuilder {
+    ruleset: BuiltinRuleSetId,
+    rules: BTreeMap<RuleKey, RuleSetting>,
+    max_iterations: usize,
+}
+
+impl TransformProfileBuilder {
+    /// Enable only the specified rule, setting all other rules in the
+    /// ruleset to [`RuleSetting::Ignored`].
+    pub fn only(mut self, rule_key: RuleKey) -> Self {
+        use crate::transform::registry::rules_for_ruleset;
+
+        let rules = rules_for_ruleset(self.ruleset);
+        debug_assert!(
+            rules.iter().any(|r| r.meta().key == rule_key),
+            "rule_key {rule_key} not found in ruleset {:?}",
+            self.ruleset
+        );
+        for rule in rules {
+            let key = rule.meta().key;
+            if key != rule_key {
+                self.rules.insert(key, RuleSetting::Ignored);
+            }
+        }
+        self
+    }
+
+    /// Consume the builder and produce a [`TransformProfile`].
+    pub fn build(self) -> TransformProfile {
+        TransformProfile {
+            ruleset: self.ruleset,
+            rules: self.rules,
+            max_iterations: self.max_iterations,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::transform::registry::rules_for_ruleset;
+
+    #[test]
+    fn builder_only_enables_single_rule_and_ignores_rest() {
+        let rules = rules_for_ruleset(BuiltinRuleSetId::Normalize);
+        let target_key = rules[0].meta().key;
+        let profile = TransformProfile::builder(BuiltinRuleSetId::Normalize)
+            .only(target_key)
+            .build();
+
+        assert_eq!(profile.ruleset, BuiltinRuleSetId::Normalize);
+        assert!(!profile.rules.contains_key(&target_key));
+        for rule in rules.iter().skip(1) {
+            assert_eq!(
+                profile.rules.get(&rule.meta().key),
+                Some(&RuleSetting::Ignored),
+                "rule {:?} should be Ignored",
+                rule.meta().key
+            );
+        }
+    }
+
+    #[test]
+    fn builder_default_produces_empty_overrides() {
+        let profile = TransformProfile::builder(BuiltinRuleSetId::Normalize).build();
+        assert!(profile.rules.is_empty());
+        assert_eq!(
+            profile.max_iterations,
+            TransformProfile::DEFAULT_MAX_ITERATIONS
+        );
     }
 }

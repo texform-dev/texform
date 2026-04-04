@@ -2,6 +2,17 @@
 
 This directory stores concrete transform rules.
 
+## Adding a New Rule
+
+1. Create a new `.rs` file in this directory (e.g., `my_rule.rs`).
+2. Define and export exactly one `pub static MY_RULE: MyRuleType` where the
+   constant name is the UPPER_SNAKE_CASE form of the file stem.
+3. That's it — the build script auto-discovers the file and registers it.
+
+No manual edits to `mod.rs` are required. The `build.rs` at the crate root
+scans this directory at compile time, generates absolute `#[path]` module
+declarations, and aggregates every rule constant into `ALL_RULES`.
+
 ## File Layout
 
 Each rule must live in a single file.
@@ -12,10 +23,8 @@ Keep the following pieces together in that file:
 2. Small rule-local helpers
 3. Inline tests under `#[cfg(test)] mod tests`
 
-`mod.rs` is the single registration site for builtin rules. It may contain the
-module declarations plus the aggregated builtin rule list, but it should not
-grow rule behavior or rule-specific tests. Keep actual rewrites and their tests
-inside each rule file unless there is a strong reason not to.
+`mod.rs` is generated — it only contains `include!(…)` pointing at the
+build-script output. Do not edit it by hand.
 
 Prefer defining metadata as a function-local static inside `meta()`:
 

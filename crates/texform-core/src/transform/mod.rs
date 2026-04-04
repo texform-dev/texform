@@ -33,7 +33,7 @@ pub use compile::{
     CompiledPhase, CompiledProfile, NormalFormContract, ProfileCompileError, RuleAvailability,
     RuleStatus,
 };
-pub use config::{BuiltinRuleSetId, RuleSetting, TransformProfile};
+pub use config::{BuiltinRuleSetId, RuleSetting, TransformProfile, TransformProfileBuilder};
 pub use context::TransformContext;
 pub use engine::{
     AppliedRuleStat, TransformEngineError, TransformError, TransformReport, transform_ast,
