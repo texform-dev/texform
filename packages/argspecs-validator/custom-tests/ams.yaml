@@ -1,0 +1,16 @@
+# Custom tests for ams package commands that require specific context.
+
+commands:
+  shoveleft:
+    skip_ofat: true
+    cases:
+      - branch: "ctx:in-multline"
+        tex: "\\begin{multline} a \\\\ \\shoveleft{b} \\\\ c \\end{multline}"
+        expect: pass
+
+  shoveright:
+    skip_ofat: true
+    cases:
+      - branch: "ctx:in-multline"
+        tex: "\\begin{multline} a \\\\ \\shoveright{b} \\\\ c \\end{multline}"
+        expect: pass

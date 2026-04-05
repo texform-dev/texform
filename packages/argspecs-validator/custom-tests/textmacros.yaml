@@ -1,0 +1,6 @@
+# Custom tests for textmacros package commands that require specific context.
+
+commands:
+  mmlToken:
+    skip_ofat: true
+    cases: []

@@ -22,27 +22,23 @@ function computeSupport(cases: CaseResult[]): Record<RendererName, SupportLevel>
 }
 
 export function buildRecordResult(
-  record: TestRecord, cases: CaseResult[], skip?: string,
+  record: TestRecord, cases: CaseResult[],
 ): RecordTestResult {
   return {
     package: record.package, name: record.name,
     type: record.type, spec: record.spec,
-    ...(skip ? { skip } : {}),
-    support: skip ? { mathjax: "none", katex: "none", xetex: "none" } : computeSupport(cases),
-    cases: skip ? [] : cases,
+    support: computeSupport(cases),
+    cases,
   };
 }
 
 export function buildSummary(results: RecordTestResult[]): TestSummary {
-  const active = results.filter((r) => !r.skip);
-  const skipped = results.filter((r) => r.skip);
-
   const byRenderer: TestSummary["by_renderer"] = {};
   for (const r of RENDERERS) {
     byRenderer[r] = {
-      full: active.filter((x) => x.support[r] === "full").length,
-      partial: active.filter((x) => x.support[r] === "partial").length,
-      none: active.filter((x) => x.support[r] === "none").length,
+      full: results.filter((x) => x.support[r] === "full").length,
+      partial: results.filter((x) => x.support[r] === "partial").length,
+      none: results.filter((x) => x.support[r] === "none").length,
     };
   }
 
@@ -58,16 +54,13 @@ export function buildSummary(results: RecordTestResult[]): TestSummary {
     }
     const pkg = byPackage[result.package];
     pkg.records++;
-    if (!result.skip) {
-      for (const r of RENDERERS) { pkg[r][result.support[r]]++; }
-    }
+    for (const r of RENDERERS) { pkg[r][result.support[r]]++; }
   }
 
   return {
     generated_at: new Date().toISOString(),
     total_records: results.length,
-    skipped_records: skipped.length,
-    total_cases: active.reduce((sum, r) => sum + r.cases.length, 0),
+    total_cases: results.reduce((sum, r) => sum + r.cases.length, 0),
     by_renderer: byRenderer,
     by_package: byPackage,
   };
