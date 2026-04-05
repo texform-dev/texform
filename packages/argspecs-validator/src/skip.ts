@@ -17,6 +17,7 @@ const CONTEXT_DEPENDENT = new Set([
   "buildrel",                          // special infix: \buildrel X \over Y
   "root",                              // special infix: \root X \of Y
   "mmlToken",                          // MathJax-internal command
+  "hfil", "hfill", "hfilll",           // horizontal fill, only in tabular/alignment
 ]);
 
 export function loadSkipList(path: string): Map<string, string> {

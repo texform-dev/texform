@@ -150,11 +150,17 @@ fn parse_delimited_value<'src, 'parse>(
             Ok(ArgumentValue::Content(node))
         }
         ValueKind::CSName => {
+            if nullable && tokens.iter().all(|t| matches!(t, Token::Whitespaces)) {
+                return Ok(ArgumentValue::CSName(String::new()));
+            }
             let value = parse_tokens_as_cs_name(input, &tokens)?;
             Ok(ArgumentValue::CSName(value))
         }
         ValueKind::Dimension => {
             let src = tokens_to_string(&tokens);
+            if nullable && src.trim().is_empty() {
+                return Ok(ArgumentValue::Dimension(String::new()));
+            }
             let value = insignificant_whitespace()
                 .ignore_then(dimension())
                 .then_ignore(insignificant_whitespace())
@@ -169,6 +175,9 @@ fn parse_delimited_value<'src, 'parse>(
         }
         ValueKind::Integer => {
             let src = tokens_to_string(&tokens);
+            if nullable && src.trim().is_empty() {
+                return Ok(ArgumentValue::Integer(String::new()));
+            }
             let value = insignificant_whitespace()
                 .ignore_then(integer())
                 .then_ignore(insignificant_whitespace())
@@ -183,6 +192,9 @@ fn parse_delimited_value<'src, 'parse>(
         }
         ValueKind::KeyVal => {
             let raw = tokens_to_string(&tokens);
+            if nullable && raw.trim().is_empty() {
+                return Ok(ArgumentValue::KeyVal(String::new()));
+            }
             validate_keyval(raw.as_str()).map_err(|msg| {
                 let cursor = input.cursor();
                 input.err_peek_or_point(&cursor, msg)
@@ -327,61 +339,74 @@ pub(super) fn argument_parser<'a>(
             }
             ValueKind::Dimension => {
                 if spec.required {
-                    let parser = maybe_braced(dimension())
-                        .map(move |value| {
-                            Some(Argument::from_value(
-                                ArgumentKind::Mandatory,
-                                ArgumentValue::Dimension(value),
-                            ))
-                        })
-                        .boxed();
+                    let parser = if spec.nullable {
+                        maybe_braced_or_empty(dimension(), String::new()).boxed()
+                    } else {
+                        maybe_braced(dimension()).boxed()
+                    }
+                    .map(move |value| {
+                        Some(Argument::from_value(
+                            ArgumentKind::Mandatory,
+                            ArgumentValue::Dimension(value),
+                        ))
+                    });
                     input.parse(parser)
                 } else if !matches!(input.peek(), Some(Token::LBracket)) {
                     Ok(None)
                 } else {
-                    let parser = optional_bracketed(dimension())
-                        .map(move |opt| {
-                            opt.map(|value| {
-                                Argument::from_value(
-                                    ArgumentKind::Optional,
-                                    ArgumentValue::Dimension(value),
-                                )
-                            })
+                    let parser = if spec.nullable {
+                        optional_bracketed_or_empty(dimension(), String::new()).boxed()
+                    } else {
+                        optional_bracketed(dimension()).boxed()
+                    }
+                    .map(move |opt| {
+                        opt.map(|value| {
+                            Argument::from_value(
+                                ArgumentKind::Optional,
+                                ArgumentValue::Dimension(value),
+                            )
                         })
-                        .boxed();
+                    });
                     input.parse(parser)
                 }
             }
             ValueKind::Integer => {
                 if spec.required {
-                    let parser = maybe_braced(integer())
-                        .map(move |value| {
-                            Some(Argument::from_value(
-                                ArgumentKind::Mandatory,
-                                ArgumentValue::Integer(value),
-                            ))
-                        })
-                        .boxed();
+                    let parser = if spec.nullable {
+                        maybe_braced_or_empty(integer(), String::new()).boxed()
+                    } else {
+                        maybe_braced(integer()).boxed()
+                    }
+                    .map(move |value| {
+                        Some(Argument::from_value(
+                            ArgumentKind::Mandatory,
+                            ArgumentValue::Integer(value),
+                        ))
+                    });
                     input.parse(parser)
                 } else if !matches!(input.peek(), Some(Token::LBracket)) {
                     Ok(None)
                 } else {
-                    let parser = optional_bracketed(integer())
-                        .map(move |opt| {
-                            opt.map(|value| {
-                                Argument::from_value(
-                                    ArgumentKind::Optional,
-                                    ArgumentValue::Integer(value),
-                                )
-                            })
+                    let parser = if spec.nullable {
+                        optional_bracketed_or_empty(integer(), String::new()).boxed()
+                    } else {
+                        optional_bracketed(integer()).boxed()
+                    }
+                    .map(move |opt| {
+                        opt.map(|value| {
+                            Argument::from_value(
+                                ArgumentKind::Optional,
+                                ArgumentValue::Integer(value),
+                            )
                         })
-                        .boxed();
+                    });
                     input.parse(parser)
                 }
             }
             ValueKind::KeyVal => {
                 if spec.required {
-                    let parser = keyval_value(true)
+                    let nullable = spec.nullable;
+                    let parser = keyval_value(true, nullable)
                         .map(move |value| {
                             Some(Argument::from_value(
                                 ArgumentKind::Mandatory,
@@ -393,7 +418,8 @@ pub(super) fn argument_parser<'a>(
                 } else if !matches!(input.peek(), Some(Token::LBracket)) {
                     Ok(None)
                 } else {
-                    let parser = keyval_value(false)
+                    let nullable = spec.nullable;
+                    let parser = keyval_value(false, nullable)
                         .map(move |value| {
                             Some(Argument::from_value(
                                 ArgumentKind::Optional,
@@ -437,7 +463,11 @@ pub(super) fn argument_parser<'a>(
                             &DelimiterToken::Char('{'),
                             &DelimiterToken::Char('}'),
                         )?;
-                        parse_tokens_as_cs_name(input, &tokens)?
+                        if spec.nullable && tokens.is_empty() {
+                            String::new()
+                        } else {
+                            parse_tokens_as_cs_name(input, &tokens)?
+                        }
                     } else {
                         let cursor = input.cursor();
                         let token = input.next().ok_or_else(|| {
@@ -456,7 +486,13 @@ pub(super) fn argument_parser<'a>(
                     let Some(tokens) = collect_optional_bracketed_tokens(input, false)? else {
                         return Ok(None);
                     };
-                    let value = parse_tokens_as_cs_name(input, &tokens)?;
+                    let value = if spec.nullable
+                        && tokens.iter().all(|t| matches!(t, Token::Whitespaces))
+                    {
+                        String::new()
+                    } else {
+                        parse_tokens_as_cs_name(input, &tokens)?
+                    };
                     Ok(Some(Argument::from_value(
                         ArgumentKind::Optional,
                         ArgumentValue::CSName(value),
@@ -882,6 +918,7 @@ fn dimension<'a>() -> impl Parser<'a, TokenStream<'a>, String, ParserError<'a>> 
 
 fn keyval_value<'a>(
     required: bool,
+    nullable: bool,
 ) -> impl Parser<'a, TokenStream<'a>, String, ParserError<'a>> + Clone {
     custom(move |input| {
         let raw = if required {
@@ -896,6 +933,10 @@ fn keyval_value<'a>(
         } else {
             return Ok(String::new());
         };
+
+        if nullable && raw.trim().is_empty() {
+            return Ok(String::new());
+        }
 
         validate_keyval(&raw).map_err(|msg| {
             let cursor = input.cursor();

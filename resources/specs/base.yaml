@@ -612,7 +612,7 @@ commands:
     tags: []
   - name: lower
     kind: prefix
-    spec: m:L
+    spec: m:L m
     allowed_mode: math
     tags:
       - spacing
@@ -851,14 +851,14 @@ commands:
     tags: []
   - name: moveleft
     kind: prefix
-    spec: m:L
+    spec: m:L m
     allowed_mode: math
     tags:
       - spacing
       - discouraged
   - name: moveright
     kind: prefix
-    spec: m:L
+    spec: m:L m
     allowed_mode: math
     tags:
       - spacing
@@ -1047,7 +1047,7 @@ commands:
       - spacing
   - name: raise
     kind: prefix
-    spec: m:L
+    spec: m:L m
     allowed_mode: math
     tags:
       - spacing

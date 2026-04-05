@@ -172,11 +172,31 @@ fn test_parse_arg_specs_nullable_delimiter_annotation() {
 }
 
 #[test]
-fn test_parse_arg_specs_rejects_nullable_non_delimiter_annotation() {
-    let err = parse_arg_specs("m:L?", "invalid").expect_err("m:L? should be invalid");
+fn test_parse_arg_specs_accepts_nullable_dimension_annotation() {
+    let specs = parse_arg_specs("m:L?", "nullable-dim").expect("m:L? should be valid");
+    assert_eq!(specs.len(), 1);
+    assert_eq!(specs[0].kind, ValueKind::Dimension);
+    assert!(specs[0].nullable);
+    assert!(specs[0].required);
+}
+
+#[test]
+fn test_parse_arg_specs_accepts_nullable_for_all_non_star_non_column_kinds() {
+    // All value kinds except Star and Column support nullable
+    for spec_str in &["m:I?", "m:N?", "m:K?", "m:T?"] {
+        let specs = parse_arg_specs(spec_str, "nullable-generalized")
+            .unwrap_or_else(|_| panic!("{} should be valid", spec_str));
+        assert_eq!(specs.len(), 1);
+        assert!(specs[0].nullable);
+    }
+}
+
+#[test]
+fn test_parse_arg_specs_rejects_nullable_star_and_column() {
+    let err = parse_arg_specs("m:C?", "invalid").expect_err("m:C? should be invalid");
     assert!(
         err.to_string()
-            .contains("`?` is currently only supported for delimiter annotations")
+            .contains("`?` is not supported for star or column annotations")
     );
 }
 

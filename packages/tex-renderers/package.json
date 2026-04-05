@@ -6,7 +6,8 @@
   "main": "src/index.ts",
   "dependencies": {
     "mathjax": "4",
-    "katex": "*"
+    "katex": "*",
+    "@mathjax/mathjax-bboldx-font-extension": "4.1.1"
   },
   "devDependencies": {
     "@types/bun": "*",

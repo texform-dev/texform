@@ -4,16 +4,10 @@ import type { CompileOptions, CompileResult, TexCompiler } from "../types.js";
 
 let mjInstance: any = null;
 
-// Packages that require external font/resource dependencies not bundled with mathjax itself.
-// These cannot be loaded unconditionally — skip them at init time.
-const EXTERNAL_DEP_PKGS = new Set(["bboldx"]);
-
 async function ensureInit(): Promise<any> {
   if (mjInstance) return mjInstance;
 
-  const allPkgs = Object.values(PACKAGE_MAP)
-    .flatMap((m) => m.mathjax)
-    .filter((p) => !EXTERNAL_DEP_PKGS.has(p));
+  const allPkgs = Object.values(PACKAGE_MAP).flatMap((m) => m.mathjax);
   const extensions = allPkgs
     .filter((p) => p !== "base")
     .map((p) => `[tex]/${p}`);
