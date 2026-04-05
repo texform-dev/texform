@@ -8,7 +8,7 @@ import {
   type BatchItem,
 } from "@texform/tex-renderers";
 import { loadSpecs } from "./loader.js";
-import { loadSkipList, shouldSkip } from "./skip.js";
+import { loadCustomTests, customCaseToTestCase } from "./custom-tests.js";
 import { generateCases } from "./generate/case-generator.js";
 import { runRecord } from "./runner/test-runner.js";
 import { buildRecordResult, buildSummary } from "./runner/result-collector.js";
@@ -44,11 +44,11 @@ function xetexMode(record: TestRecord): "math" | "text" {
 
 async function main() {
   const specsDir = join(repoRoot, "resources/specs");
-  const skipListPath = resolve(import.meta.dir, "../skip-list.jsonl");
+  const customTestDir = resolve(import.meta.dir, "../custom-tests");
   const outDir = args["out-dir"]!;
 
   let records = loadSpecs(specsDir);
-  const manualSkips = loadSkipList(skipListPath);
+  const customMap = loadCustomTests(customTestDir);
 
   if (args.package) records = records.filter((r) => r.package === args.package);
   if (args.name) records = records.filter((r) => r.name === args.name);
@@ -60,11 +60,13 @@ async function main() {
   let totalCases = 0;
 
   const recordCases = records.map((record) => {
-    const skip = shouldSkip(record, manualSkips);
-    if (skip) return { record, cases: [] as any[], skip };
-    const cases = generateCases(record);
+    const key = `${record.package}/${record.type}/${record.name}`;
+    const custom = customMap.get(key);
+    const ofatCases = (!custom || !custom.skip_ofat) ? generateCases(record) : [];
+    const customCases = custom?.cases.map(customCaseToTestCase) ?? [];
+    const cases = [...ofatCases, ...customCases];
     totalCases += cases.length;
-    return { record, cases, skip: undefined as string | undefined };
+    return { record, cases };
   });
 
   console.log(`Generated ${totalCases} test cases`);
@@ -102,9 +104,9 @@ async function main() {
   }
 
   let completed = 0;
-  for (const { record, cases, skip } of recordCases) {
-    if (skip) {
-      allResults.push(buildRecordResult(record, [], skip));
+  for (const { record, cases } of recordCases) {
+    if (cases.length === 0) {
+      allResults.push(buildRecordResult(record, []));
       completed++;
       continue;
     }
@@ -133,7 +135,7 @@ async function main() {
 
     for (let ri = 0; ri < allResults.length; ri++) {
       const rr = allResults[ri];
-      if (rr.skip || rr.cases.length === 0) continue;
+      if (rr.cases.length === 0) continue;
 
       // Find the original record for mode calculation.
       const record = recordCases[ri].record;
@@ -177,7 +179,6 @@ async function main() {
     // Recompute support levels now that xetex is populated.
     for (let ri = 0; ri < allResults.length; ri++) {
       const rr = allResults[ri];
-      if (rr.skip) continue;
       const record = recordCases[ri].record;
       allResults[ri] = buildRecordResult(record, rr.cases);
     }
@@ -214,7 +215,7 @@ async function main() {
   writeFileSync(join(outDir, "summary.json"), JSON.stringify(summary, null, 2) + "\n");
 
   console.log(`\n=== Results ===`);
-  console.log(`Records: ${summary.total_records} (${summary.skipped_records} skipped)`);
+  console.log(`Records: ${summary.total_records}`);
   console.log(`Cases: ${summary.total_cases}`);
   for (const [r, counts] of Object.entries(summary.by_renderer))
     console.log(`  ${r}: full=${counts.full} partial=${counts.partial} none=${counts.none}`);

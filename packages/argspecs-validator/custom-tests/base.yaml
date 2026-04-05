@@ -1,0 +1,118 @@
+# Custom tests for base package commands that require specific context.
+
+commands:
+  left:
+    skip_ofat: true
+    cases:
+      - branch: "ctx:paired"
+        tex: "\\left( a \\right)"
+        expect: pass
+      - branch: "ctx:bracket"
+        tex: "\\left[ a \\right]"
+        expect: pass
+
+  right:
+    skip_ofat: true
+    cases:
+      - branch: "ctx:paired"
+        tex: "\\left( a \\right)"
+        expect: pass
+
+  middle:
+    skip_ofat: true
+    cases:
+      - branch: "ctx:with-left-right"
+        tex: "\\left( a \\middle| b \\right)"
+        expect: pass
+
+  limits:
+    skip_ofat: true
+    cases:
+      - branch: "ctx:after-sum"
+        tex: "\\sum\\limits_{i=0}^n"
+        expect: pass
+
+  nolimits:
+    skip_ofat: true
+    cases:
+      - branch: "ctx:after-sum"
+        tex: "\\sum\\nolimits_{i=0}^n"
+        expect: pass
+
+  cr:
+    skip_ofat: true
+    cases:
+      - branch: "ctx:in-matrix"
+        tex: "\\begin{matrix} a \\cr b \\end{matrix}"
+        expect: pass
+
+  hline:
+    skip_ofat: true
+    cases:
+      - branch: "ctx:in-array"
+        tex: "\\begin{array}{cc} \\hline a & b \\\\ c & d \\end{array}"
+        expect: pass
+
+  hdashline:
+    skip_ofat: true
+    cases:
+      - branch: "ctx:in-array"
+        tex: "\\begin{array}{cc} \\hdashline a & b \\\\ c & d \\end{array}"
+        expect: pass
+
+  leftroot:
+    skip_ofat: true
+    cases:
+      - branch: "ctx:in-root"
+        tex: "\\sqrt[\\leftroot{2} 3]{a}"
+        expect: pass
+
+  uproot:
+    skip_ofat: true
+    cases:
+      - branch: "ctx:in-root"
+        tex: "\\sqrt[\\uproot{2} 3]{a}"
+        expect: pass
+
+  buildrel:
+    skip_ofat: true
+    cases:
+      - branch: "ctx:basic"
+        tex: "a \\buildrel \\rm def \\over = b"
+        expect: pass
+
+  root:
+    skip_ofat: true
+    cases:
+      - branch: "ctx:basic"
+        tex: "a \\root 3 \\of x"
+        expect: pass
+
+  hfil:
+    skip_ofat: true
+    cases:
+      - branch: "ctx:in-array"
+        tex: "\\begin{array}{cc} a \\hfil & b \\end{array}"
+        expect: pass
+
+  hfill:
+    skip_ofat: true
+    cases:
+      - branch: "ctx:in-array"
+        tex: "\\begin{array}{cc} a \\hfill & b \\end{array}"
+        expect: pass
+
+  hfilll:
+    skip_ofat: true
+    cases:
+      - branch: "ctx:in-array"
+        tex: "\\begin{array}{cc} a \\hfilll & b \\end{array}"
+        expect: pass
+
+  mmlToken:
+    skip_ofat: true
+    cases: []
+
+  breakAlign:
+    skip_ofat: true
+    cases: []

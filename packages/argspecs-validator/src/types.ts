@@ -55,7 +55,6 @@ export interface RecordTestResult {
   name: string;
   type: "command" | "environment";
   spec: string;
-  skip?: string;
   support: {
     mathjax: "full" | "partial" | "none";
     katex: "full" | "partial" | "none";
@@ -90,7 +89,6 @@ export interface ErrorLogEntry {
 export interface TestSummary {
   generated_at: string;
   total_records: number;
-  skipped_records: number;
   total_cases: number;
   by_renderer: Record<string, { full: number; partial: number; none: number }>;
   by_package: Record<string, {
