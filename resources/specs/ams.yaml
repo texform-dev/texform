@@ -55,7 +55,7 @@ commands:
     tags: []
   - name: genfrac
     kind: prefix
-    spec: m m m m m m
+    spec: m:D? m:D? m:L? m:I m m
     allowed_mode: math
     tags: []
   - name: idotsint

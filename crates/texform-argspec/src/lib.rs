@@ -455,8 +455,8 @@ impl<'a> ArgSpecParser<'a> {
         if spec.no_leading_space && spec.required {
             return Err(self.err("`!` prefix is only valid for optional argument forms"));
         }
-        if spec.nullable && !spec.kind.is_delimiter() {
-            return Err(self.err("`?` is currently only supported for delimiter annotations"));
+        if spec.nullable && (spec.kind.is_star() || spec.kind.is_column()) {
+            return Err(self.err("`?` is not supported for star or column annotations"));
         }
 
         match &spec.form {

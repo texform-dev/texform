@@ -1,0 +1,19 @@
+{
+  "name": "@texform/argspecs-validator",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "bun run src/cli.ts"
+  },
+  "dependencies": {
+    "@texform/tex-renderers": "workspace:*",
+    "js-yaml": "*"
+  },
+  "devDependencies": {
+    "@types/bun": "*",
+    "@types/js-yaml": "*",
+    "typescript": "~5.9"
+  }
+}

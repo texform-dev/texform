@@ -1,5 +1,5 @@
-error: invalid argspec literal at char 4: `?` is currently only supported for delimiter annotations
+error: invalid argspec literal at char 4: `?` is not supported for star or column annotations
  --> tests/ui/argspec-invalid.rs:4:22
   |
-4 |     let _ = argspec!("m:L?");
+4 |     let _ = argspec!("m:C?");
   |                      ^^^^^^

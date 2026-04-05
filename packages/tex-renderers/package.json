@@ -1,0 +1,16 @@
+{
+  "name": "@texform/tex-renderers",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "mathjax": "4",
+    "katex": "*",
+    "@mathjax/mathjax-bboldx-font-extension": "4.1.1"
+  },
+  "devDependencies": {
+    "@types/bun": "*",
+    "typescript": "~5.9"
+  }
+}
