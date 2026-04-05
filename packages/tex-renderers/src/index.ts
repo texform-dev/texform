@@ -3,3 +3,4 @@ export { PACKAGE_MAP, type PackageMapping } from "./package-map.js";
 export { createMathJaxCompiler } from "./adapters/mathjax.js";
 export { createKaTeXCompiler } from "./adapters/katex.js";
 export { createXeTeXCompiler } from "./adapters/xetex.js";
+export { createXeTeXBatchCompiler, type XeTeXBatchCompiler, type BatchItem } from "./adapters/xetex-batch.js";
