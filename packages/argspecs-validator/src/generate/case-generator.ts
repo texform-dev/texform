@@ -27,10 +27,10 @@ export function generateCases(record: TestRecord): TestCase[] {
     }
   }
 
-  // Bare token
+  // Bare token — skip delimiter kind (D params don't accept {}-wrapped form)
   for (let i = 0; i < slots.length; i++) {
     const s = slots[i];
-    if (s.required && s.form.type === "standard" && s.kind.type !== "star") {
+    if (s.required && s.form.type === "standard" && s.kind.type !== "star" && s.kind.type !== "delimiter") {
       cases.push(makeBareCase(record, slots, i));
     }
   }
@@ -75,7 +75,7 @@ function makeCase(
     }
     if (!s.required && !activeOptionals.has(i)) continue;
     const value = positivePlaceholder(s, letterIdx++);
-    filledSlots.push(wrapSlot(value, s.form, s.required));
+    filledSlots.push(wrapSlot(value, s.form, s.required, s.kind));
     bareSlots.push(value);
   }
 
@@ -95,7 +95,7 @@ function makeBareCase(record: TestRecord, slots: ParsedSlot[], bareIndex: number
     if (s.kind.type === "star") continue;
     if (!s.required) continue;
     const value = positivePlaceholder(s, letterIdx++);
-    filledSlots.push(i === bareIndex ? value : wrapSlot(value, s.form, s.required));
+    filledSlots.push(i === bareIndex ? value : wrapSlot(value, s.form, s.required, s.kind));
   }
 
   const tex = record.type === "command"
@@ -118,9 +118,9 @@ function makeNegativeCase(
     // Skip optional slots EXCEPT the one being negated
     if (!s.required && i !== negIndex) continue;
     if (i === negIndex) {
-      filledSlots.push(wrapSlot(neg.content, s.form, s.required));
+      filledSlots.push(wrapSlot(neg.content, s.form, s.required, s.kind));
     } else {
-      filledSlots.push(wrapSlot(positivePlaceholder(s, letterIdx++), s.form, s.required));
+      filledSlots.push(wrapSlot(positivePlaceholder(s, letterIdx++), s.form, s.required, s.kind));
     }
   }
 
@@ -146,7 +146,7 @@ function makeNullableCase(record: TestRecord, slots: ParsedSlot[], nullIndex: nu
     const s = slots[i];
     if (s.kind.type === "star") continue;
     if (!s.required) continue;
-    filledSlots.push(i === nullIndex ? "{}" : wrapSlot(positivePlaceholder(s, letterIdx++), s.form, s.required));
+    filledSlots.push(i === nullIndex ? "{}" : wrapSlot(positivePlaceholder(s, letterIdx++), s.form, s.required, s.kind));
   }
 
   const tex = record.type === "command"
