@@ -2,7 +2,7 @@
 
 commands:
   shoveleft:
-    skip_ofat: true
+    skip_generated: true
     cases:
       - branch: "ctx:in-multline"
         tex: "\\begin{multline} a \\\\ \\shoveleft{b} \\\\ c \\end{multline}"
@@ -12,7 +12,7 @@ commands:
           xetex: fail
 
   shoveright:
-    skip_ofat: true
+    skip_generated: true
     cases:
       - branch: "ctx:in-multline"
         tex: "\\begin{multline} a \\\\ \\shoveright{b} \\\\ c \\end{multline}"
@@ -22,7 +22,7 @@ commands:
           xetex: fail
 
   sideset:
-    skip_ofat: true
+    skip_generated: true
     cases:
       - branch: "ctx:with-sum"
         tex: "\\sideset{_a}{^b}\\sum"
@@ -32,7 +32,7 @@ commands:
         expect: pass
 
   tag:
-    skip_ofat: true
+    skip_generated: true
     cases:
       - branch: "ctx:in-equation"
         tex: "\\begin{equation} a = b \\tag{1} \\end{equation}"
@@ -49,21 +49,21 @@ commands:
 
 environments:
   gather:
-    skip_ofat: true
+    skip_generated: true
     cases:
       - branch: "ctx:no-ampersand"
         tex: "\\begin{gather} a \\\\ b \\end{gather}"
         expect: pass
 
   "gather*":
-    skip_ofat: true
+    skip_generated: true
     cases:
       - branch: "ctx:no-ampersand"
         tex: "\\begin{gather*} a \\\\ b \\end{gather*}"
         expect: pass
 
   gathered:
-    skip_ofat: true
+    skip_generated: true
     cases:
       - branch: "ctx:basic"
         tex: "\\begin{gathered} a \\\\ b \\end{gathered}"
@@ -73,7 +73,7 @@ environments:
         expect: pass
 
   split:
-    skip_ofat: true
+    skip_generated: true
     cases:
       - branch: "ctx:in-equation"
         tex: "\\begin{equation} \\begin{split} a &= b \\\\ &= c \\end{split} \\end{equation}"
@@ -83,7 +83,7 @@ environments:
           xetex: fail
 
   subarray:
-    skip_ofat: true
+    skip_generated: true
     cases:
       - branch: "ctx:in-subscript"
         tex: "\\sum_{\\begin{subarray}{l} i \\in A \\\\ j \\in B \\end{subarray}}"

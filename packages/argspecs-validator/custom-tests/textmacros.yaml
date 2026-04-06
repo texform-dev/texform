@@ -2,5 +2,5 @@
 
 commands:
   mmlToken:
-    skip_ofat: true
+    skip_generated: true
     cases: []

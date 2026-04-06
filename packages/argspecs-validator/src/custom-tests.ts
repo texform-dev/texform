@@ -14,17 +14,17 @@ export interface CustomCaseYaml {
 }
 
 export interface CustomTestConfig {
-  skip_ofat: boolean;
+  skip_generated: boolean;
   cases: CustomCaseYaml[];
 }
 
 interface CustomTestFileYaml {
   commands?: Record<string, {
-    skip_ofat?: boolean;
+    skip_generated?: boolean;
     cases: CustomCaseYaml[];
   }>;
   environments?: Record<string, {
-    skip_ofat?: boolean;
+    skip_generated?: boolean;
     cases: CustomCaseYaml[];
   }>;
 }
@@ -45,14 +45,14 @@ export function loadCustomTests(dir: string): Map<string, CustomTestConfig> {
 
     for (const [name, config] of Object.entries(data.commands ?? {})) {
       map.set(`${pkg}/command/${name}`, {
-        skip_ofat: config.skip_ofat ?? false,
+        skip_generated: config.skip_generated ?? false,
         cases: config.cases,
       });
     }
 
     for (const [name, config] of Object.entries(data.environments ?? {})) {
       map.set(`${pkg}/environment/${name}`, {
-        skip_ofat: config.skip_ofat ?? false,
+        skip_generated: config.skip_generated ?? false,
         cases: config.cases,
       });
     }

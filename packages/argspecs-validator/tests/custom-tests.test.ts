@@ -18,14 +18,14 @@ describe("loadCustomTests", () => {
       "base.yaml": `
 commands:
   left:
-    skip_ofat: true
+    skip_generated: true
     cases:
       - branch: "ctx:basic"
         tex: "\\\\left( a \\\\right)"
         expect: pass
 environments:
   split:
-    skip_ofat: true
+    skip_generated: true
     cases:
       - branch: "ctx:in-eq"
         tex: "\\\\begin{equation}\\\\begin{split} a \\\\end{split}\\\\end{equation}"
@@ -34,7 +34,7 @@ environments:
     });
     const map = loadCustomTests(dir);
     expect(map.get("base/command/left")).toBeDefined();
-    expect(map.get("base/command/left")!.skip_ofat).toBe(true);
+    expect(map.get("base/command/left")!.skip_generated).toBe(true);
     expect(map.get("base/command/left")!.cases).toHaveLength(1);
     expect(map.get("base/environment/split")).toBeDefined();
   });
@@ -44,7 +44,7 @@ environments:
     expect(map.size).toBe(0);
   });
 
-  test("defaults skip_ofat to false", () => {
+  test("defaults skip_generated to false", () => {
     const dir = setupDir({
       "ams.yaml": `
 commands:
@@ -56,7 +56,7 @@ commands:
 `,
     });
     const map = loadCustomTests(dir);
-    expect(map.get("ams/command/tag")!.skip_ofat).toBe(false);
+    expect(map.get("ams/command/tag")!.skip_generated).toBe(false);
   });
 
   test("handles per-renderer expect", () => {
@@ -64,7 +64,7 @@ commands:
       "base.yaml": `
 commands:
   left:
-    skip_ofat: true
+    skip_generated: true
     cases:
       - branch: "ctx:mismatch"
         tex: "\\\\left( a \\\\right]"

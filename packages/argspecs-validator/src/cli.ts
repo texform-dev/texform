@@ -62,7 +62,7 @@ async function main() {
   const recordCases = records.map((record) => {
     const key = `${record.package}/${record.type}/${record.name}`;
     const custom = customMap.get(key);
-    const ofatCases = (!custom || !custom.skip_ofat) ? generateCases(record) : [];
+    const ofatCases = (!custom || !custom.skip_generated) ? generateCases(record) : [];
     const customCases = custom?.cases.map(customCaseToTestCase) ?? [];
     const cases = [...ofatCases, ...customCases];
     totalCases += cases.length;
