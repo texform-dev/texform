@@ -11,7 +11,7 @@ import { loadSpecs } from "./loader.js";
 import { loadCustomTests, customCaseToTestCase } from "./custom-tests.js";
 import { generateCases } from "./generate/case-generator.js";
 import { runRecord } from "./runner/test-runner.js";
-import { buildRecordResult, buildSummary } from "./runner/result-collector.js";
+import { buildRecordResult, buildSummary, classifyError } from "./runner/result-collector.js";
 import type { RecordTestResult, ErrorLogEntry, TestRecord } from "./types.js";
 
 const repoRoot = resolve(import.meta.dir, "../../../");
@@ -157,22 +157,39 @@ async function main() {
     const xetexResults = await batchCompiler.compileBatch(flatItems.map((f) => f.batchItem));
 
     // Merge XeTeX results back into allResults and collect errors.
+    // Track per-record baseline pass status for error classification.
+    const xetexBaselineByRecord = new Map<number, boolean>();
+
     for (let i = 0; i < flatItems.length; i++) {
       const { recordIdx, caseIdx } = flatItems[i];
       const caseResult = allResults[recordIdx].cases[caseIdx];
       const res = xetexResults[i];
       (caseResult as any).xetex = res.success;
 
+      if (caseResult.branch === "baseline") {
+        xetexBaselineByRecord.set(recordIdx, res.success);
+      }
+
       if (!res.success) {
         const record = recordCases[recordIdx].record;
+        const errorMsg = res.error ?? "unknown";
+        const baselinePasses = xetexBaselineByRecord.get(recordIdx) ?? false;
+
         allErrors.push({
           package: record.package,
           name: record.name,
           branch: caseResult.branch,
           renderer: "xetex",
           tex: caseResult.tex,
-          error: res.error ?? "unknown",
+          error: errorMsg,
         });
+
+        // Populate CaseResult.errors for XeTeX
+        if (!caseResult.errors) caseResult.errors = {};
+        caseResult.errors.xetex = {
+          message: errorMsg,
+          category: classifyError(errorMsg, caseResult.branch, baselinePasses),
+        };
       }
     }
 

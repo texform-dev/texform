@@ -1,8 +1,50 @@
-import type { TestRecord, CaseResult, RecordTestResult, TestSummary } from "../types.js";
+import type { TestRecord, CaseResult, RecordTestResult, TestSummary, ErrorCategory } from "../types.js";
 
 type SupportLevel = "full" | "partial" | "none";
 type RendererName = "mathjax" | "katex" | "xetex";
 const RENDERERS: RendererName[] = ["mathjax", "katex", "xetex"];
+
+const UNSUPPORTED_PATTERNS = [
+  /Undefined control sequence/,
+  /No such environment/,
+  /Environment \S+ undefined/,
+  /Unknown command/,
+];
+
+const SYNTAX_DIVERGENCE_PATTERNS = [
+  /Illegal unit of measure/,
+  /A <box> was supposed to be here/,
+];
+
+/**
+ * Classify an error message into one of three categories:
+ * - unsupported: the renderer does not recognize the command/environment
+ * - syntax_divergence: the renderer has different syntax expectations
+ * - semantic_error: any other error
+ */
+export function classifyError(
+  errorMessage: string,
+  branch: string,
+  baselinePasses: boolean,
+): ErrorCategory {
+  for (const pattern of UNSUPPORTED_PATTERNS) {
+    if (pattern.test(errorMessage)) return "unsupported";
+  }
+  for (const pattern of SYNTAX_DIVERGENCE_PATTERNS) {
+    if (pattern.test(errorMessage)) return "syntax_divergence";
+  }
+  // Heuristic: bare/vary branch fails on a positive case where baseline passes
+  if (
+    (branch.startsWith("bare[") || branch.startsWith("vary:")) &&
+    baselinePasses
+  ) {
+    return "syntax_divergence";
+  }
+  if (/Invalid size/.test(errorMessage) && branch.startsWith("bare[")) {
+    return "syntax_divergence";
+  }
+  return "semantic_error";
+}
 
 function computeSupport(cases: CaseResult[]): Record<RendererName, SupportLevel> {
   const result = {} as Record<RendererName, SupportLevel>;

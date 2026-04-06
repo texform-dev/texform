@@ -63,6 +63,8 @@ export interface RecordTestResult {
   cases: CaseResult[];
 }
 
+export type ErrorCategory = "unsupported" | "syntax_divergence" | "semantic_error";
+
 export interface CaseResult {
   branch: string;
   positive: boolean;
@@ -75,6 +77,11 @@ export interface CaseResult {
   mathjax: boolean;
   katex: boolean;
   xetex: boolean;
+  // Only present when at least one renderer fails
+  errors?: Partial<Record<"mathjax" | "katex" | "xetex", {
+    message: string;
+    category: ErrorCategory;
+  }>>;
 }
 
 export interface ErrorLogEntry {

@@ -1,0 +1,132 @@
+{
+  "generated_at": "2026-04-06T09:07:53.717Z",
+  "total_records": 580,
+  "total_cases": 1241,
+  "by_renderer": {
+    "mathjax": {
+      "full": 573,
+      "partial": 4,
+      "none": 3
+    },
+    "katex": {
+      "full": 285,
+      "partial": 8,
+      "none": 287
+    },
+    "xetex": {
+      "full": 451,
+      "partial": 19,
+      "none": 110
+    }
+  },
+  "by_package": {
+    "boldsymbol": {
+      "records": 1,
+      "mathjax": {
+        "full": 1,
+        "partial": 0,
+        "none": 0
+      },
+      "katex": {
+        "full": 1,
+        "partial": 0,
+        "none": 0
+      },
+      "xetex": {
+        "full": 1,
+        "partial": 0,
+        "none": 0
+      }
+    },
+    "physics": {
+      "records": 179,
+      "mathjax": {
+        "full": 179,
+        "partial": 0,
+        "none": 0
+      },
+      "katex": {
+        "full": 25,
+        "partial": 0,
+        "none": 154
+      },
+      "xetex": {
+        "full": 179,
+        "partial": 0,
+        "none": 0
+      }
+    },
+    "bboldx": {
+      "records": 12,
+      "mathjax": {
+        "full": 12,
+        "partial": 0,
+        "none": 0
+      },
+      "katex": {
+        "full": 1,
+        "partial": 0,
+        "none": 11
+      },
+      "xetex": {
+        "full": 4,
+        "partial": 0,
+        "none": 8
+      }
+    },
+    "textmacros": {
+      "records": 60,
+      "mathjax": {
+        "full": 59,
+        "partial": 0,
+        "none": 1
+      },
+      "katex": {
+        "full": 45,
+        "partial": 2,
+        "none": 13
+      },
+      "xetex": {
+        "full": 43,
+        "partial": 4,
+        "none": 13
+      }
+    },
+    "base": {
+      "records": 265,
+      "mathjax": {
+        "full": 261,
+        "partial": 2,
+        "none": 2
+      },
+      "katex": {
+        "full": 175,
+        "partial": 4,
+        "none": 86
+      },
+      "xetex": {
+        "full": 167,
+        "partial": 14,
+        "none": 84
+      }
+    },
+    "ams": {
+      "records": 63,
+      "mathjax": {
+        "full": 61,
+        "partial": 2,
+        "none": 0
+      },
+      "katex": {
+        "full": 38,
+        "partial": 2,
+        "none": 23
+      },
+      "xetex": {
+        "full": 57,
+        "partial": 1,
+        "none": 5
+      }
+    }
+  }
+}

@@ -1,0 +1,1 @@
+{"package":"boldsymbol","name":"boldsymbol","type":"command","argspec":"m","support":{"mathjax":"full","katex":"full","xetex":"full"},"cases":[{"branch":"baseline","positive":true,"tex":"\\boldsymbol{a}","expect":"pass","mathjax":true,"katex":true,"xetex":true},{"branch":"bare[0]","positive":true,"tex":"\\boldsymbol a","expect":"pass","mathjax":true,"katex":true,"xetex":true}]}
