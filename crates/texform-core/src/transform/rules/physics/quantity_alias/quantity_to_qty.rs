@@ -7,7 +7,7 @@ use crate::transform::alias_rule;
 alias_rule! {
     /// Canonicalize `\quantity` into `\qty`.
     pub static QUANTITY_TO_QTY: QuantityToQtyRule {
-        key: Canonical / "quantity-to-qty",
+        key: Physics / "quantity-to-qty",
         summary: "Canonicalize \\quantity into \\qty",
         phase: Normalize,
         safety: Lossless,
@@ -47,7 +47,7 @@ mod tests {
         assert_eq!(output.transform_report.applied.len(), 1);
         assert_eq!(
             output.transform_report.applied[0].key.to_string(),
-            "canonical/quantity-to-qty"
+            "physics/quantity-to-qty"
         );
 
         let root = output.ast.root();
@@ -79,7 +79,7 @@ mod tests {
 
         let status = statuses
             .iter()
-            .find(|status| status.key.to_string() == "canonical/quantity-to-qty")
+            .find(|status| status.key.to_string() == "physics/quantity-to-qty")
             .expect("quantity-to-qty status should exist");
         assert!(matches!(status.availability, RuleAvailability::Available));
     }

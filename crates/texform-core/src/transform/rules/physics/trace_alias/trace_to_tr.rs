@@ -7,7 +7,7 @@ use crate::transform::alias_rule;
 alias_rule! {
     /// Canonicalize `\Tr`, `\trace`, and `\Trace` into `\tr`.
     pub static TRACE_TO_TR: TraceToTrRule {
-        key: Canonical / "trace-to-tr",
+        key: Physics / "trace-to-tr",
         summary: "Canonicalize \\Tr, \\trace, and \\Trace into \\tr",
         phase: Normalize,
         safety: Lossless,
@@ -37,7 +37,7 @@ mod tests {
             assert_eq!(output.transform_report.applied.len(), 1);
             assert_eq!(
                 output.transform_report.applied[0].key.to_string(),
-                "canonical/trace-to-tr"
+                "physics/trace-to-tr"
             );
 
             let root = output.ast.root();
@@ -63,7 +63,7 @@ mod tests {
 
         let status = statuses
             .iter()
-            .find(|status| status.key.to_string() == "canonical/trace-to-tr")
+            .find(|status| status.key.to_string() == "physics/trace-to-tr")
             .expect("trace-to-tr status should exist");
         assert!(matches!(status.availability, RuleAvailability::Available));
     }

@@ -352,7 +352,7 @@ mod tests {
 
     static SKIP_RULE_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            group: RuleGroup::Canonical,
+            group: RuleGroup::Physics,
             name: "skip-me",
         },
         summary: "mock skip rule",

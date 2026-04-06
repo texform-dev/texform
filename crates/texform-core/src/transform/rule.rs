@@ -6,7 +6,7 @@
 //!
 //! Rules are organized along three axes:
 //!
-//! - **Group** ([`RuleGroup`]) — the semantic category (structural, canonical,
+//! - **Group** ([`RuleGroup`]) — the semantic category (physics, desugar,
 //!   cleanup).
 //! - **Phase** ([`RulePhase`]) — *when* the rule runs (normalize loop vs.
 //!   one-shot cleanup).
@@ -19,20 +19,18 @@ use crate::ast::{NodeId, NodeKind};
 use crate::transform::context::TransformContext;
 use crate::transform::engine::TransformError;
 
-// Domain-specific groups for the rule taxonomy. `Structural` and `Canonical`
-// are legacy groups kept for existing rules during migration.
 // NOTE: `Ord` is derived — variant declaration order determines comparison.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RuleGroup {
     Physics,
     PlainTex,
+    Desugar,
     FontVariant,
+    SymbolAlias,
     SpacingLayout,
     MatrixEnv,
+    PostNorm,
     Cleanup,
-    // Legacy groups — kept for existing rules during migration.
-    Structural,
-    Canonical,
 }
 
 impl RuleGroup {
@@ -40,12 +38,13 @@ impl RuleGroup {
         match self {
             RuleGroup::Physics => "physics",
             RuleGroup::PlainTex => "plain_tex",
+            RuleGroup::Desugar => "desugar",
             RuleGroup::FontVariant => "font_variant",
+            RuleGroup::SymbolAlias => "symbol_alias",
             RuleGroup::SpacingLayout => "spacing_layout",
             RuleGroup::MatrixEnv => "matrix_env",
+            RuleGroup::PostNorm => "post_norm",
             RuleGroup::Cleanup => "cleanup",
-            RuleGroup::Structural => "structural",
-            RuleGroup::Canonical => "canonical",
         }
     }
 }
@@ -227,4 +226,22 @@ pub trait TransformRule: Send + Sync {
         cx: &mut TransformContext<'_>,
         node_id: NodeId,
     ) -> Result<RuleEffect, TransformError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RuleGroup;
+
+    #[test]
+    fn rule_group_strings_match_registry_keys() {
+        assert_eq!(RuleGroup::Physics.as_str(), "physics");
+        assert_eq!(RuleGroup::PlainTex.as_str(), "plain_tex");
+        assert_eq!(RuleGroup::Desugar.as_str(), "desugar");
+        assert_eq!(RuleGroup::FontVariant.as_str(), "font_variant");
+        assert_eq!(RuleGroup::SymbolAlias.as_str(), "symbol_alias");
+        assert_eq!(RuleGroup::SpacingLayout.as_str(), "spacing_layout");
+        assert_eq!(RuleGroup::MatrixEnv.as_str(), "matrix_env");
+        assert_eq!(RuleGroup::PostNorm.as_str(), "post_norm");
+        assert_eq!(RuleGroup::Cleanup.as_str(), "cleanup");
+    }
 }

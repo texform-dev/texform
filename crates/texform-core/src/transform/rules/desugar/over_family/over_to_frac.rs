@@ -14,7 +14,7 @@ use crate::transform::{cmd_targets, cmd_triggers, define_rule};
 define_rule! {
     /// Rewrites the infix `\over` primitive into the prefix `\frac{…}{…}` form.
     pub static OVER_TO_FRAC: OverToFracRule {
-        key: Structural / "over-to-frac",
+        key: Desugar / "over-to-frac",
         summary: "Rewrite infix \\over into prefix \\frac",
         phase: Normalize,
         safety: Semantic,
@@ -66,7 +66,7 @@ mod tests {
         assert_eq!(output.transform_report.applied[0].count, 1);
         assert_eq!(
             output.transform_report.applied[0].key.to_string(),
-            "structural/over-to-frac"
+            "desugar/over-to-frac"
         );
 
         let root = output.ast.root();
@@ -107,7 +107,7 @@ mod tests {
 
         let status = statuses
             .iter()
-            .find(|status| status.key.to_string() == "structural/over-to-frac")
+            .find(|status| status.key.to_string() == "desugar/over-to-frac")
             .expect("over-to-frac status should exist");
         assert!(matches!(status.availability, RuleAvailability::Available));
     }

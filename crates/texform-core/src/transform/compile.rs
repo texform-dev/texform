@@ -707,7 +707,7 @@ mod tests {
 
     static RULE_A_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            group: RuleGroup::Canonical,
+            group: RuleGroup::Physics,
             name: "a",
         },
         summary: "mock rule a",
@@ -725,7 +725,7 @@ mod tests {
 
     static RULE_B_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            group: RuleGroup::Canonical,
+            group: RuleGroup::Physics,
             name: "b",
         },
         summary: "mock rule b",
@@ -743,7 +743,7 @@ mod tests {
 
     static RULE_C_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            group: RuleGroup::Canonical,
+            group: RuleGroup::Physics,
             name: "c",
         },
         summary: "mock rule c",
@@ -765,7 +765,7 @@ mod tests {
 
     static MULTI_VARIANT_RULE_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            group: RuleGroup::Canonical,
+            group: RuleGroup::Physics,
             name: "multi-variant",
         },
         summary: "mock multi-variant rule",
@@ -783,7 +783,7 @@ mod tests {
 
     static SINGLE_VARIANT_RULE_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            group: RuleGroup::Canonical,
+            group: RuleGroup::Physics,
             name: "single-variant",
         },
         summary: "mock single-variant rule",
@@ -801,7 +801,7 @@ mod tests {
 
     static TRIGGER_IGNORED_RULE_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            group: RuleGroup::Canonical,
+            group: RuleGroup::Physics,
             name: "trigger-ignored",
         },
         summary: "mock rule with a missing trigger",
@@ -819,7 +819,7 @@ mod tests {
 
     static DUPLICATE_ELIMINATE_RULE_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            group: RuleGroup::Canonical,
+            group: RuleGroup::Physics,
             name: "duplicate-eliminate",
         },
         summary: "mock rule with duplicate eliminate variants",
