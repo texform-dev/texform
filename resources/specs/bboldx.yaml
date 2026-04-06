@@ -1,73 +1,73 @@
 commands:
   - name: imathbb
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: imathbfbb
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: itextbb
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: text
     tags:
       - mathjax-extension
   - name: itextbfbb
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: text
     tags:
       - mathjax-extension
   - name: jmathbb
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: jmathbfbb
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: jtextbb
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: text
     tags:
       - mathjax-extension
   - name: jtextbfbb
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: text
     tags:
       - mathjax-extension
   - name: mathbb
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags:
       - presentation
   - name: mathbfbb
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags:
       - presentation
   - name: textbb
     kind: prefix
-    spec: m:T
+    argspec: m:T
     allowed_mode: text
     tags:
       - presentation
   - name: textbfbb
     kind: prefix
-    spec: m:T
+    argspec: m:T
     allowed_mode: text
     tags:
       - presentation

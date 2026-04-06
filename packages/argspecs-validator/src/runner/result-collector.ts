@@ -26,7 +26,7 @@ export function buildRecordResult(
 ): RecordTestResult {
   return {
     package: record.package, name: record.name,
-    type: record.type, spec: record.spec,
+    type: record.type, argspec: record.argspec,
     support: computeSupport(cases),
     cases,
   };

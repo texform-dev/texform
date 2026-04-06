@@ -1,918 +1,918 @@
 commands:
   - name: abs
     kind: prefix
-    spec: s m{}
+    argspec: s m{}
     allowed_mode: math
     tags: []
   - name: absolutevalue
     kind: prefix
-    spec: s m{}
+    argspec: s m{}
     allowed_mode: math
     tags: []
   - name: acomm
     kind: prefix
-    spec: s m{} m
+    argspec: s m{} m
     allowed_mode: math
     tags: []
   - name: acos
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: acosecant
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: acosine
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: acot
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: acotangent
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: acsc
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: admat
     kind: prefix
-    spec: g
+    argspec: g
     allowed_mode: math
     tags: []
   - name: anticommutator
     kind: prefix
-    spec: s m{} m
+    argspec: s m{} m
     allowed_mode: math
     tags: []
   - name: antidiagonalmatrix
     kind: prefix
-    spec: g
+    argspec: g
     allowed_mode: math
     tags: []
   - name: arccos
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: arccosecant
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: arccosine
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: arccot
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: arccotangent
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: arccsc
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: arcsec
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: arcsecant
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: arcsin
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: arcsine
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: arctan
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: arctangent
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: asec
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: asecant
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: asin
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: asine
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: atan
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: atangent
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: bmqty
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: bqty
     kind: prefix
-    spec: s m{}
+    argspec: s m{}
     allowed_mode: math
     tags: []
   - name: Bqty
     kind: prefix
-    spec: s m{}
+    argspec: s m{}
     allowed_mode: math
     tags: []
   - name: bra
     kind: prefix
-    spec: s m
+    argspec: s m
     allowed_mode: math
     tags: []
   - name: braket
     kind: prefix
-    spec: s m g
+    argspec: s m g
     allowed_mode: math
     tags: []
   - name: comm
     kind: prefix
-    spec: s m{} m
+    argspec: s m{} m
     allowed_mode: math
     tags: []
   - name: commutator
     kind: prefix
-    spec: s m{} m
+    argspec: s m{} m
     allowed_mode: math
     tags: []
   - name: cos
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: cosecant
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: cosh
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: cosine
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: cot
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: cotangent
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: coth
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: csc
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: csch
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: curl
     kind: prefix
-    spec: d<(,)><[,]><{,}>
+    argspec: d<(,)><[,]><{,}>
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: dd
     kind: prefix
-    spec: o d<(,)><{,}>
+    argspec: o d<(,)><{,}>
     allowed_mode: math
     tags: []
   - name: derivative
     kind: prefix
-    spec: s o m g
+    argspec: s o m g
     allowed_mode: math
     tags: []
   - name: det
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: determinant
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: diagonalmatrix
     kind: prefix
-    spec: g
+    argspec: g
     allowed_mode: math
     tags: []
   - name: diffd
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: differential
     kind: prefix
-    spec: o d<(,)><{,}>
+    argspec: o d<(,)><{,}>
     allowed_mode: math
     tags: []
   - name: div
     kind: prefix
-    spec: d<(,)><[,]><{,}>
+    argspec: d<(,)><[,]><{,}>
     allowed_mode: math
     tags: []
   - name: divergence
     kind: prefix
-    spec: d<(,)><[,]><{,}>
+    argspec: d<(,)><[,]><{,}>
     allowed_mode: math
     tags: []
   - name: dmat
     kind: prefix
-    spec: g
+    argspec: g
     allowed_mode: math
     tags: []
   - name: dv
     kind: prefix
-    spec: s o m g
+    argspec: s o m g
     allowed_mode: math
     tags: []
   - name: dyad
     kind: prefix
-    spec: s m g
+    argspec: s m g
     allowed_mode: math
     tags: []
   - name: erf
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: ev
     kind: prefix
-    spec: s s m g
+    argspec: s s m g
     allowed_mode: math
     tags: []
   - name: eval
     kind: prefix
-    spec: s d<(,|><[,|><{,}>
+    argspec: s d<(,|><[,|><{,}>
     allowed_mode: math
     tags: []
   - name: evaluated
     kind: prefix
-    spec: s d<(,|><[,|><{,}>
+    argspec: s d<(,|><[,|><{,}>
     allowed_mode: math
     tags: []
   - name: exp
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: expectationvalue
     kind: prefix
-    spec: s s m g
+    argspec: s s m g
     allowed_mode: math
     tags: []
   - name: exponential
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: expval
     kind: prefix
-    spec: s s m g
+    argspec: s s m g
     allowed_mode: math
     tags: []
   - name: fderivative
     kind: prefix
-    spec: s o m g
+    argspec: s o m g
     allowed_mode: math
     tags: []
   - name: fdv
     kind: prefix
-    spec: s o m g
+    argspec: s o m g
     allowed_mode: math
     tags: []
   - name: flatfrac
     kind: prefix
-    spec: m m
+    argspec: m m
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: functionalderivative
     kind: prefix
-    spec: s o m g
+    argspec: s o m g
     allowed_mode: math
     tags: []
   - name: grad
     kind: prefix
-    spec: d<(,)><[,]><{,}>
+    argspec: d<(,)><[,]><{,}>
     allowed_mode: math
     tags: []
   - name: gradient
     kind: prefix
-    spec: d<(,)><[,]><{,}>
+    argspec: d<(,)><[,]><{,}>
     allowed_mode: math
     tags: []
   - name: hypcosecant
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: hypcosine
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: hypcotangent
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: hypsecant
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: hypsine
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: hyptangent
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: identitymatrix
     kind: prefix
-    spec: m:I
+    argspec: m:I
     allowed_mode: math
     tags: []
   - name: Im
     kind: prefix
-    spec: d<{,}>
+    argspec: d<{,}>
     allowed_mode: math
     tags: []
   - name: imat
     kind: prefix
-    spec: m:I
+    argspec: m:I
     allowed_mode: math
     tags: []
   - name: innerproduct
     kind: prefix
-    spec: s m g
+    argspec: s m g
     allowed_mode: math
     tags: []
   - name: ip
     kind: prefix
-    spec: s m g
+    argspec: s m g
     allowed_mode: math
     tags: []
   - name: ket
     kind: prefix
-    spec: s m
+    argspec: s m
     allowed_mode: math
     tags: []
   - name: ketbra
     kind: prefix
-    spec: s m g
+    argspec: s m g
     allowed_mode: math
     tags: []
   - name: laplacian
     kind: prefix
-    spec: d<(,)><[,]><{,}>
+    argspec: d<(,)><[,]><{,}>
     allowed_mode: math
     tags: []
   - name: ln
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: log
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: logarithm
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: matrixdeterminant
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: matrixel
     kind: prefix
-    spec: s s m m m
+    argspec: s s m m m
     allowed_mode: math
     tags: []
   - name: matrixelement
     kind: prefix
-    spec: s s m m m
+    argspec: s s m m m
     allowed_mode: math
     tags: []
   - name: mdet
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: mel
     kind: prefix
-    spec: s s m m m
+    argspec: s s m m m
     allowed_mode: math
     tags: []
   - name: naturallogarithm
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: norm
     kind: prefix
-    spec: s m{}
+    argspec: s m{}
     allowed_mode: math
     tags: []
   - name: op
     kind: prefix
-    spec: s m g
+    argspec: s m g
     allowed_mode: math
     tags: []
   - name: order
     kind: prefix
-    spec: s m{}
+    argspec: s m{}
     allowed_mode: math
     tags: []
   - name: outerproduct
     kind: prefix
-    spec: s m g
+    argspec: s m g
     allowed_mode: math
     tags: []
   - name: partialderivative
     kind: prefix
-    spec: s o m g g
+    argspec: s o m g g
     allowed_mode: math
     tags: []
   - name: paulimatrix
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags: []
   - name: pb
     kind: prefix
-    spec: s m{} m
+    argspec: s m{} m
     allowed_mode: math
     tags: []
   - name: pderivative
     kind: prefix
-    spec: s o m g g
+    argspec: s o m g g
     allowed_mode: math
     tags: []
   - name: pdv
     kind: prefix
-    spec: s o m g g
+    argspec: s o m g g
     allowed_mode: math
     tags: []
   - name: pmat
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags: []
   - name: pmqty
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: Pmqty
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: poissonbracket
     kind: prefix
-    spec: s m{} m
+    argspec: s m{} m
     allowed_mode: math
     tags: []
   - name: pqty
     kind: prefix
-    spec: s m{}
+    argspec: s m{}
     allowed_mode: math
     tags: []
   - name: Pr
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: principalvalue
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: Probability
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: pv
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: PV
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: qall
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qand
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qas
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qassume
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qc
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags:
       - spacing
       - mathjax-extension
   - name: qcc
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qcomma
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags:
       - spacing
       - mathjax-extension
   - name: qelse
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qeven
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qfor
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qgiven
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qif
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qin
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qinteger
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qlet
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qodd
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qor
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qotherwise
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qq
     kind: prefix
-    spec: s m:T
+    argspec: s m:T
     allowed_mode: math
     tags: []
   - name: qqtext
     kind: prefix
-    spec: s m:T
+    argspec: s m:T
     allowed_mode: math
     tags: []
   - name: qsince
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qthen
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qty
     kind: prefix
-    spec: d<(,)><[,]><{,}><|,|>
+    argspec: d<(,)><[,]><{,}><|,|>
     allowed_mode: math
     tags: []
   - name: quantity
     kind: prefix
-    spec: d<(,)><[,]><{,}><|,|>
+    argspec: d<(,)><[,]><{,}><|,|>
     allowed_mode: math
     tags: []
   - name: qunless
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: qusing
     kind: prefix
-    spec: s
+    argspec: s
     allowed_mode: math
     tags: []
   - name: rank
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: Re
     kind: prefix
-    spec: d<{,}>
+    argspec: d<{,}>
     allowed_mode: math
     tags: []
   - name: Res
     kind: prefix
-    spec: d<(,)><[,]><{,}>
+    argspec: d<(,)><[,]><{,}>
     allowed_mode: math
     tags: []
   - name: Residue
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: sbmqty
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: sec
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: secant
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: sech
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: sin
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: sine
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: sinh
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: smdet
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: spmqty
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: sPmqty
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: svmqty
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: tan
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: tangent
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: tanh
     kind: prefix
-    spec: o
+    argspec: o
     allowed_mode: math
     tags: []
   - name: tr
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: Tr
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: trace
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: Trace
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: va
     kind: prefix
-    spec: s m
+    argspec: s m
     allowed_mode: math
     tags: []
   - name: var
     kind: prefix
-    spec: o d<(,)><{,}>
+    argspec: o d<(,)><{,}>
     allowed_mode: math
     tags: []
   - name: variation
     kind: prefix
-    spec: o d<(,)><{,}>
+    argspec: o d<(,)><{,}>
     allowed_mode: math
     tags: []
   - name: vb
     kind: prefix
-    spec: s m
+    argspec: s m
     allowed_mode: math
     tags:
       - presentation
   - name: vectorarrow
     kind: prefix
-    spec: s m
+    argspec: s m
     allowed_mode: math
     tags: []
   - name: vectorbold
     kind: prefix
-    spec: s m
+    argspec: s m
     allowed_mode: math
     tags:
       - presentation
   - name: vectorunit
     kind: prefix
-    spec: s m
+    argspec: s m
     allowed_mode: math
     tags: []
   - name: vmqty
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: vnabla
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: vqty
     kind: prefix
-    spec: s m{}
+    argspec: s m{}
     allowed_mode: math
     tags: []
   - name: vu
     kind: prefix
-    spec: s m
+    argspec: s m
     allowed_mode: math
     tags: []
   - name: xmat
     kind: prefix
-    spec: s m m:I m:I
+    argspec: s m m:I m:I
     allowed_mode: math
     tags: []
   - name: xmatrix
     kind: prefix
-    spec: s m m:I m:I
+    argspec: s m m:I m:I
     allowed_mode: math
     tags: []
   - name: zeromatrix
     kind: prefix
-    spec: m:I m:I
+    argspec: m:I m:I
     allowed_mode: math
     tags:
       - mathjax-extension
   - name: zmat
     kind: prefix
-    spec: m:I m:I
+    argspec: m:I m:I
     allowed_mode: math
     tags: []
 environments:
   - name: smallmatrix
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:

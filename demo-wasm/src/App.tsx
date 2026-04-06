@@ -116,7 +116,7 @@ function normalizeStoredCustomKnowledgeRecords(value: unknown): CustomKnowledgeR
       continue
     }
 
-    const spec = typeof candidate.spec === 'string' ? candidate.spec : ''
+    const spec = typeof candidate.argspec === 'string' ? candidate.argspec : ''
     const mode = candidate.mode
     if (!isAllowedMode(mode)) {
       continue
@@ -133,7 +133,7 @@ function normalizeStoredCustomKnowledgeRecords(value: unknown): CustomKnowledgeR
         name,
         mode,
         bodyMode,
-        spec,
+        argspec: spec,
       }
       deduped.set(recordIdentity(record), record)
       continue
@@ -149,7 +149,7 @@ function normalizeStoredCustomKnowledgeRecords(value: unknown): CustomKnowledgeR
       name,
       kind,
       mode,
-      spec,
+      argspec: spec,
     }
     deduped.set(recordIdentity(record), record)
   }
@@ -190,7 +190,7 @@ function customKnowledgeRecordToContextItem(
       name: record.name,
       kind: record.kind,
       allowed_mode: record.mode,
-      spec: record.spec,
+      argspec: record.argspec,
     }
   }
 
@@ -206,7 +206,7 @@ function customKnowledgeRecordToContextItem(
     name: record.name,
     allowed_mode: record.mode,
     body_mode: record.bodyMode,
-    spec: record.spec,
+    argspec: record.argspec,
   }
 }
 
@@ -459,7 +459,7 @@ function App() {
       name,
       kind: customCommandKind,
       mode: customRecordMode,
-      spec: customRecordSpec,
+      argspec: customRecordSpec,
     }
 
     try {
@@ -498,7 +498,7 @@ function App() {
       name,
       mode: customRecordMode,
       bodyMode: customEnvironmentBodyMode,
-      spec: customRecordSpec,
+      argspec: customRecordSpec,
     }
 
     try {

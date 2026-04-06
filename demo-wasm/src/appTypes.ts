@@ -29,14 +29,14 @@ export type CustomKnowledgeRecordEntry =
       name: string
       kind: CommandKind
       mode: AllowedMode
-      spec: string
+      argspec: string
     }
   | {
       target: 'environment'
       name: string
       mode: AllowedMode
       bodyMode: BodyMode
-      spec: string
+      argspec: string
     }
   | {
       target: 'delimiter'

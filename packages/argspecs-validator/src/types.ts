@@ -2,14 +2,14 @@
 export interface CommandEntry {
   name: string;
   kind: "prefix" | "infix" | "declarative";
-  spec: string;
+  argspec: string;
   allowed_mode: "math" | "text" | "both";
   tags: string[];
 }
 
 export interface EnvironmentEntry {
   name: string;
-  spec: string;
+  argspec: string;
   body_mode: "math" | "text";
   allowed_mode: "math" | "text" | "both";
   tags: string[];
@@ -24,7 +24,7 @@ export interface TestRecord {
   package: string;
   name: string;
   type: "command" | "environment";
-  spec: string;
+  argspec: string;
   kind?: "prefix" | "infix" | "declarative";
   body_mode?: "math" | "text";
   allowed_mode: "math" | "text" | "both";
@@ -54,7 +54,7 @@ export interface RecordTestResult {
   package: string;
   name: string;
   type: "command" | "environment";
-  spec: string;
+  argspec: string;
   support: {
     mathjax: "full" | "partial" | "none";
     katex: "full" | "partial" | "none";

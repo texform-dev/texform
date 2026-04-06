@@ -120,7 +120,7 @@ export type ContextItem =
           name: string;
           kind: "prefix" | "infix" | "declarative";
           allowed_mode: "math" | "text" | "both";
-          spec: string;
+          argspec: string;
           tags?: string[];
       }
     | {
@@ -128,7 +128,7 @@ export type ContextItem =
           name: string;
           allowed_mode: "math" | "text" | "both";
           body_mode: "math" | "text";
-          spec: string;
+          argspec: string;
           tags?: string[];
       }
     | {
@@ -144,14 +144,14 @@ enum ContextItemInput {
         name: String,
         kind: String,
         allowed_mode: String,
-        spec: String,
+        argspec: String,
         tags: Option<Vec<String>>,
     },
     Environment {
         name: String,
         allowed_mode: String,
         body_mode: String,
-        spec: String,
+        argspec: String,
         tags: Option<Vec<String>>,
     },
     Delimiter {
@@ -283,12 +283,12 @@ fn parse_context_item_input(input: ContextItemInput) -> Result<ContextItem, JsVa
             name,
             kind,
             allowed_mode,
-            spec,
+            argspec,
             tags,
         } => {
             let kind = parse_command_kind(kind.as_str())?;
             let allowed_mode = parse_allowed_mode(allowed_mode.as_str())?;
-            Ok(CommandItem::new(name, kind, allowed_mode, spec)
+            Ok(CommandItem::new(name, kind, allowed_mode, argspec)
                 .with_tags(tags.unwrap_or_default())
                 .into())
         }
@@ -296,12 +296,12 @@ fn parse_context_item_input(input: ContextItemInput) -> Result<ContextItem, JsVa
             name,
             allowed_mode,
             body_mode,
-            spec,
+            argspec,
             tags,
         } => {
             let allowed_mode = parse_allowed_mode(allowed_mode.as_str())?;
             let body_mode = parse_content_mode(body_mode.as_str())?;
-            Ok(EnvironmentItem::new(name, allowed_mode, body_mode, spec)
+            Ok(EnvironmentItem::new(name, allowed_mode, body_mode, argspec)
                 .with_tags(tags.unwrap_or_default())
                 .into())
         }

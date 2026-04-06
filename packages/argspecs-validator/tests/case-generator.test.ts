@@ -6,7 +6,7 @@ describe("generateCases", () => {
   test("\\sqrt (spec: o m) → baseline + vary:o + bare", () => {
     const record: TestRecord = {
       package: "base", name: "sqrt", type: "command",
-      spec: "o m", kind: "prefix", allowed_mode: "math", tags: [],
+      argspec: "o m", kind: "prefix", allowed_mode: "math", tags: [],
     };
     const cases = generateCases(record);
     const branches = cases.map((c) => c.branch);
@@ -19,7 +19,7 @@ describe("generateCases", () => {
   test("\\textbf (spec: m:T) → baseline + bare + neg:T", () => {
     const record: TestRecord = {
       package: "textmacros", name: "textbf", type: "command",
-      spec: "m:T", kind: "prefix", allowed_mode: "text", tags: [],
+      argspec: "m:T", kind: "prefix", allowed_mode: "text", tags: [],
     };
     const cases = generateCases(record);
     const branches = cases.map((c) => c.branch);
@@ -34,7 +34,7 @@ describe("generateCases", () => {
   test("empty spec → single baseline", () => {
     const record: TestRecord = {
       package: "base", name: "arccos", type: "command",
-      spec: "", kind: "prefix", allowed_mode: "math", tags: [],
+      argspec: "", kind: "prefix", allowed_mode: "math", tags: [],
     };
     const cases = generateCases(record);
     expect(cases).toHaveLength(1);
@@ -45,7 +45,7 @@ describe("generateCases", () => {
   test("environment with matrix tag", () => {
     const record: TestRecord = {
       package: "ams", name: "Bmatrix", type: "environment",
-      spec: "", allowed_mode: "math", tags: ["matrix", "nestable"],
+      argspec: "", allowed_mode: "math", tags: ["matrix", "nestable"],
     };
     const cases = generateCases(record);
     expect(cases).toHaveLength(1);

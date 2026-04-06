@@ -18,7 +18,7 @@ describe("loadSpecs", () => {
     const cmd = records.find((r) => r.name === "frac")!;
     expect(cmd.type).toBe("command");
     expect(cmd.kind).toBe("prefix");
-    expect(cmd.spec).toBe("m m");
+    expect(cmd.argspec).toBe("m m");
     expect(cmd.allowed_mode).toBe("math");
   });
 

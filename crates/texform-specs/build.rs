@@ -98,7 +98,7 @@ struct CommandSpecYaml {
     #[serde(default)]
     allowed_mode: AllowedModeYaml,
     #[serde(default)]
-    spec: String,
+    argspec: String,
     #[serde(default)]
     tags: Vec<String>,
 }
@@ -145,7 +145,7 @@ struct EnvironmentSpecYaml {
     name: String,
     allowed_mode: AllowedModeYaml,
     #[serde(default)]
-    spec: String,
+    argspec: String,
     body_mode: ContentModeYaml,
     #[serde(default)]
     tags: Vec<String>,
@@ -183,7 +183,7 @@ fn load_package(path: &Path) -> BuiltinPackageSource {
         .into_iter()
         .map(|command| {
             let context = format!("command {}", command.name);
-            parse_arg_specs(command.spec.as_str(), context.as_str()).unwrap_or_else(|err| {
+            parse_arg_specs(command.argspec.as_str(), context.as_str()).unwrap_or_else(|err| {
                 panic!("{err}");
             });
             CommandRecordSource {
@@ -191,7 +191,7 @@ fn load_package(path: &Path) -> BuiltinPackageSource {
                 kind: command.kind,
                 allowed_mode: command.allowed_mode,
                 tags: command.tags,
-                spec_string: command.spec,
+                spec_string: command.argspec,
             }
         })
         .collect::<Vec<_>>();
@@ -200,7 +200,7 @@ fn load_package(path: &Path) -> BuiltinPackageSource {
         .into_iter()
         .map(|environment| {
             let context = format!("environment {}", environment.name);
-            parse_arg_specs(environment.spec.as_str(), context.as_str()).unwrap_or_else(|err| {
+            parse_arg_specs(environment.argspec.as_str(), context.as_str()).unwrap_or_else(|err| {
                 panic!("{err}");
             });
             EnvironmentRecordSource {
@@ -208,7 +208,7 @@ fn load_package(path: &Path) -> BuiltinPackageSource {
                 allowed_mode: environment.allowed_mode,
                 body_mode: environment.body_mode,
                 tags: environment.tags,
-                spec_string: environment.spec,
+                spec_string: environment.argspec,
             }
         })
         .collect::<Vec<_>>();

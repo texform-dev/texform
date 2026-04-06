@@ -319,9 +319,9 @@ function LatexInputPane({
                       {record.mode}
                     </span>
                   ) : null}
-                  {'spec' in record ? (
+                  {'argspec' in record ? (
                     <span className="min-w-0 flex-1 truncate text-xs text-slate-400 [font-family:var(--font-code)]">
-                      {record.spec || '(no spec)'}
+                      {record.argspec || '(no spec)'}
                     </span>
                   ) : (
                     <span className="min-w-0 flex-1 truncate text-xs text-slate-400 [font-family:var(--font-code)]">

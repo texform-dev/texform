@@ -483,17 +483,17 @@ commands:
     kind: prefix
     allowed_mode: math
     tags: [discouraged]
-    spec: "m m:D"
+    argspec: "m m:D"
   - name: text
     kind: prefix
     allowed_mode: both
-    spec: "m:T"
+    argspec: "m:T"
 environments:
   - name: matrix
     allowed_mode: math
     body_mode: math
     tags: [matrix]
-    spec: "m:C"
+    argspec: "m:C"
 delimiter_controls: [langle]
 "#;
 
@@ -550,7 +550,7 @@ fn test_parse_column_kind_from_yaml() {
 commands:
   - name: colspec
     kind: prefix
-    spec: "m:C"
+    argspec: "m:C"
 "#;
 
     let specs = load_package_specs_from_str(yaml, "column-kind");

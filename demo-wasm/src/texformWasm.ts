@@ -39,7 +39,7 @@ export type ContextItem =
   | {
       target: 'command'
       name: string
-      spec: string
+      argspec: string
       kind: CommandKind
       allowed_mode: AllowedMode
       tags?: string[]
@@ -47,7 +47,7 @@ export type ContextItem =
   | {
       target: 'environment'
       name: string
-      spec: string
+      argspec: string
       allowed_mode: AllowedMode
       body_mode: BodyMode
       tags?: string[]

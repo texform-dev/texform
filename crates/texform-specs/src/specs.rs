@@ -268,7 +268,7 @@ struct CommandSpecYaml {
     #[serde(default)]
     allowed_mode: AllowedModeYaml,
     #[serde(default)]
-    spec: String,
+    argspec: String,
     #[serde(default)]
     tags: Vec<String>,
 }
@@ -276,9 +276,10 @@ struct CommandSpecYaml {
 impl From<CommandSpecYaml> for CommandSpec {
     fn from(value: CommandSpecYaml) -> Self {
         let context = format!("command {}", value.name);
-        let args = parse_arg_specs(value.spec.as_str(), context.as_str()).unwrap_or_else(|error| {
-            panic!("{error}");
-        });
+        let args =
+            parse_arg_specs(value.argspec.as_str(), context.as_str()).unwrap_or_else(|error| {
+                panic!("{error}");
+            });
 
         CommandSpec {
             name: value.name,
@@ -286,7 +287,7 @@ impl From<CommandSpecYaml> for CommandSpec {
             allowed_mode: value.allowed_mode.into(),
             argspec: OwnedArgSpec {
                 args,
-                source: value.spec,
+                source: value.argspec,
             },
             tags: value.tags,
         }
@@ -335,7 +336,7 @@ struct EnvironmentSpecYaml {
     name: String,
     allowed_mode: AllowedModeYaml,
     #[serde(default)]
-    spec: String,
+    argspec: String,
     body_mode: ContentModeYaml,
     #[serde(default)]
     tags: Vec<String>,
@@ -344,16 +345,17 @@ struct EnvironmentSpecYaml {
 impl From<EnvironmentSpecYaml> for EnvironmentSpec {
     fn from(value: EnvironmentSpecYaml) -> Self {
         let context = format!("environment {}", value.name);
-        let args = parse_arg_specs(value.spec.as_str(), context.as_str()).unwrap_or_else(|error| {
-            panic!("{error}");
-        });
+        let args =
+            parse_arg_specs(value.argspec.as_str(), context.as_str()).unwrap_or_else(|error| {
+                panic!("{error}");
+            });
 
         EnvironmentSpec {
             name: value.name,
             allowed_mode: value.allowed_mode.into(),
             argspec: OwnedArgSpec {
                 args,
-                source: value.spec,
+                source: value.argspec,
             },
             body_mode: value.body_mode.into(),
             tags: value.tags,

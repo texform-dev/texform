@@ -15,7 +15,7 @@ export function loadSpecs(specsDir: string): TestRecord[] {
     for (const cmd of spec.commands ?? []) {
       records.push({
         package: pkg, name: cmd.name, type: "command",
-        spec: cmd.spec, kind: cmd.kind,
+        argspec: cmd.argspec, kind: cmd.kind,
         allowed_mode: cmd.allowed_mode, tags: cmd.tags ?? [],
       });
     }
@@ -23,7 +23,7 @@ export function loadSpecs(specsDir: string): TestRecord[] {
     for (const env of spec.environments ?? []) {
       records.push({
         package: pkg, name: env.name, type: "environment",
-        spec: env.spec, body_mode: env.body_mode,
+        argspec: env.argspec, body_mode: env.body_mode,
         allowed_mode: env.allowed_mode, tags: env.tags ?? [],
       });
     }

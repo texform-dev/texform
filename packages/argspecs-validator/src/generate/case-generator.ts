@@ -4,7 +4,7 @@ import { positivePlaceholder, negativePlaceholder } from "./placeholder.js";
 import { wrapSlot, buildCommandTex, buildEnvironmentTex } from "./tex-builder.js";
 
 export function generateCases(record: TestRecord): TestCase[] {
-  const slots = parseArgSpec(record.spec);
+  const slots = parseArgSpec(record.argspec);
   if (slots === null) return [];
 
   const cases: TestCase[] = [];

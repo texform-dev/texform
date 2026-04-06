@@ -18,7 +18,7 @@ describe("buildCommandTex", () => {
   test("prefix: \\frac{a}{b}", () => {
     const record: TestRecord = {
       package: "base", name: "frac", type: "command",
-      spec: "m m", kind: "prefix", allowed_mode: "math", tags: [],
+      argspec: "m m", kind: "prefix", allowed_mode: "math", tags: [],
     };
     expect(buildCommandTex(record, ["{a}", "{b}"])).toBe("\\frac{a}{b}");
   });
@@ -26,7 +26,7 @@ describe("buildCommandTex", () => {
   test("infix: a \\above 1pt b", () => {
     const record: TestRecord = {
       package: "base", name: "above", type: "command",
-      spec: "m:L", kind: "infix", allowed_mode: "math", tags: [],
+      argspec: "m:L", kind: "infix", allowed_mode: "math", tags: [],
     };
     expect(buildCommandTex(record, ["{1pt}"], ["1pt"])).toBe("a \\above 1pt b");
   });
@@ -34,7 +34,7 @@ describe("buildCommandTex", () => {
   test("declarative: {\\bfseries a}", () => {
     const record: TestRecord = {
       package: "base", name: "bfseries", type: "command",
-      spec: "", kind: "declarative", allowed_mode: "math", tags: [],
+      argspec: "", kind: "declarative", allowed_mode: "math", tags: [],
     };
     expect(buildCommandTex(record, [])).toBe("{\\bfseries a}");
   });
@@ -44,7 +44,7 @@ describe("buildEnvironmentTex", () => {
   test("matrix environment has correct body", () => {
     const record: TestRecord = {
       package: "ams", name: "Bmatrix", type: "environment",
-      spec: "", allowed_mode: "math", tags: ["matrix", "nestable"],
+      argspec: "", allowed_mode: "math", tags: ["matrix", "nestable"],
     };
     const tex = buildEnvironmentTex(record, []);
     expect(tex).toContain("\\begin{Bmatrix}");

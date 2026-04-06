@@ -1,369 +1,369 @@
 commands:
   - name: binom
     kind: prefix
-    spec: m m
+    argspec: m m
     allowed_mode: math
     tags: []
   - name: boxed
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags: []
   - name: cfrac
     kind: prefix
-    spec: o:N m m
+    argspec: o:N m m
     allowed_mode: math
     tags: []
   - name: dbinom
     kind: prefix
-    spec: m m
+    argspec: m m
     allowed_mode: math
     tags: []
   - name: ddddot
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags:
       - decoration
   - name: dddot
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags:
       - decoration
   - name: DeclareMathOperator
     kind: prefix
-    spec: s m:N m
+    argspec: s m:N m
     allowed_mode: math
     tags:
       - invisible
       - newdefine
   - name: dfrac
     kind: prefix
-    spec: m m
+    argspec: m m
     allowed_mode: math
     tags: []
   - name: eqref
     kind: prefix
-    spec: m:N
+    argspec: m:N
     allowed_mode: math
     tags: []
   - name: frac
     kind: prefix
-    spec: m m
+    argspec: m m
     allowed_mode: math
     tags: []
   - name: genfrac
     kind: prefix
-    spec: m:D? m:D? m:L? m:I m m
+    argspec: m:D? m:D? m:L? m:I m m
     allowed_mode: math
     tags: []
   - name: idotsint
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: impliedby
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: implies
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: injlim
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: mathring
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags:
       - decoration
   - name: negmedspace
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags:
       - spacing
   - name: negthickspace
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags:
       - spacing
   - name: nobreakspace
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags:
       - spacing
   - name: notag
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags:
       - invisible
   - name: operatorname
     kind: prefix
-    spec: s m
+    argspec: s m
     allowed_mode: math
     tags: []
   - name: projlim
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: shoveleft
     kind: declarative
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags:
       - spacing
   - name: shoveright
     kind: declarative
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags:
       - spacing
       - presentation
   - name: sideset
     kind: prefix
-    spec: m m m
+    argspec: m m m
     allowed_mode: math
     tags: []
   - name: substack
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags: []
   - name: tag
     kind: prefix
-    spec: s m:T
+    argspec: s m:T
     allowed_mode: math
     tags: []
   - name: tbinom
     kind: prefix
-    spec: m m
+    argspec: m m
     allowed_mode: math
     tags: []
   - name: tfrac
     kind: prefix
-    spec: m m
+    argspec: m m
     allowed_mode: math
     tags: []
   - name: varinjlim
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: varliminf
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: varlimsup
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: varprojlim
     kind: prefix
-    spec: ''
+    argspec: ''
     allowed_mode: math
     tags: []
   - name: xleftarrow
     kind: prefix
-    spec: o m
+    argspec: o m
     allowed_mode: math
     tags: []
   - name: xrightarrow
     kind: prefix
-    spec: o m
+    argspec: o m
     allowed_mode: math
     tags: []
 environments:
   - name: align
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
   - name: align*
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
   - name: alignat
-    spec: m:I
+    argspec: m:I
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
   - name: alignat*
-    spec: m:I
+    argspec: m:I
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
   - name: aligned
-    spec: o
+    argspec: o
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
       - nestable
   - name: alignedat
-    spec: o m:I
+    argspec: o m:I
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
       - nestable
   - name: bmatrix
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - matrix
       - nestable
   - name: Bmatrix
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - matrix
       - nestable
   - name: cases
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - matrix
       - nestable
   - name: eqnarray*
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
       - discouraged
   - name: equation*
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags: []
   - name: flalign
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
   - name: flalign*
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
   - name: gather
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
   - name: gather*
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
   - name: gathered
-    spec: o
+    argspec: o
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
       - nestable
   - name: matrix
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - matrix
       - nestable
   - name: multline
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
   - name: multline*
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
   - name: pmatrix
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - matrix
       - nestable
   - name: smallmatrix
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - matrix
       - nestable
   - name: split
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
       - nestable
   - name: subarray
-    spec: m:C
+    argspec: m:C
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
       - nestable
   - name: vmatrix
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - matrix
       - nestable
   - name: Vmatrix
-    spec: ''
+    argspec: ''
     body_mode: math
     allowed_mode: math
     tags:
       - matrix
       - nestable
   - name: xalignat
-    spec: m:I
+    argspec: m:I
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
   - name: xalignat*
-    spec: m:I
+    argspec: m:I
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
   - name: xxalignat
-    spec: m:I
+    argspec: m:I
     body_mode: math
     allowed_mode: math
     tags:

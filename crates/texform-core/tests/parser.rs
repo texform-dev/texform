@@ -68,112 +68,112 @@ commands:
   - name: frac
     kind: prefix
     allowed_mode: math
-    spec: 'm m'
+    argspec: 'm m'
   - name: sqrt
     kind: prefix
     allowed_mode: math
-    spec: 'o m'
+    argspec: 'o m'
   - name: text
     kind: prefix
     allowed_mode: math
-    spec: 'm:T'
+    argspec: 'm:T'
   - name: alpha
     kind: prefix
     allowed_mode: math
-    spec: ''
+    argspec: ''
   - name: beta
     kind: prefix
     allowed_mode: math
-    spec: ''
+    argspec: ''
   - name: gamma
     kind: prefix
     allowed_mode: math
-    spec: ''
+    argspec: ''
   - name: delim
     kind: prefix
     allowed_mode: math
-    spec: 'm:D'
+    argspec: 'm:D'
   - name: hspace
     kind: prefix
     allowed_mode: both
-    spec: 'm:L'
+    argspec: 'm:L'
   - name: romannumeral
     kind: prefix
     allowed_mode: both
-    spec: 'm:I'
+    argspec: 'm:I'
   - name: includegraphics
     kind: prefix
     allowed_mode: both
-    spec: 'o:K m:T'
+    argspec: 'o:K m:T'
   - name: label
     kind: prefix
     allowed_mode: both
-    spec: 'm:N'
+    argspec: 'm:N'
   - name: over
     kind: infix
     allowed_mode: math
-    spec: ''
+    argspec: ''
   - name: choose
     kind: infix
     allowed_mode: math
-    spec: ''
+    argspec: ''
   - name: bfseries
     kind: declarative
     allowed_mode: both
-    spec: ''
+    argspec: ''
   - name: qty
     kind: prefix
     allowed_mode: math
-    spec: 'd<(,)><[,]><{,}><|,|>'
+    argspec: 'd<(,)><[,]><{,}><|,|>'
   - name: pqty
     kind: prefix
     allowed_mode: math
-    spec: 's r{}'
+    argspec: 's r{}'
   - name: abs
     kind: prefix
     allowed_mode: math
-    spec: 's r{}'
+    argspec: 's r{}'
   - name: eval
     kind: prefix
     allowed_mode: math
-    spec: 's d<(,|><[,|><{,}>'
+    argspec: 's d<(,|><[,|><{,}>'
   - name: mqty
     kind: prefix
     allowed_mode: math
-    spec: 's d<(,)><[,]><{,}><|,|>'
+    argspec: 's d<(,)><[,]><{,}><|,|>'
   - name: dd
     kind: prefix
     allowed_mode: math
-    spec: 'o d<(,)><{,}>'
+    argspec: 'o d<(,)><{,}>'
   - name: dv
     kind: prefix
     allowed_mode: math
-    spec: 's o m g'
+    argspec: 's o m g'
   - name: pdv
     kind: prefix
     allowed_mode: math
-    spec: 's o m g g'
+    argspec: 's o m g g'
   - name: braket
     kind: prefix
     allowed_mode: math
-    spec: 's m g'
+    argspec: 's m g'
   - name: exp
     kind: prefix
     allowed_mode: math
-    spec: ''
+    argspec: ''
 
 environments:
   - name: matrix
     allowed_mode: math
-    spec: ''
+    argspec: ''
     body_mode: math
   - name: align
     allowed_mode: math
-    spec: ''
+    argspec: ''
     body_mode: math
   - name: align*
     allowed_mode: math
-    spec: ''
+    argspec: ''
     body_mode: math
 
 delimiter_controls:

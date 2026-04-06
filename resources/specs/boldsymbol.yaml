@@ -1,7 +1,7 @@
 commands:
   - name: boldsymbol
     kind: prefix
-    spec: m
+    argspec: m
     allowed_mode: math
     tags:
       - presentation
