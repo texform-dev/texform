@@ -11,11 +11,13 @@ import {
   type ContextItem,
   type EnvInfo,
   ensureWasmReady,
+  serializeLatex,
   type Argument,
   type ArgumentValue,
   type GroupKind,
   type ParseDiagnostic,
   type ParseResult,
+  type SerializeOptions,
   type SyntaxNode,
 } from './texformWasm'
 import type {
@@ -25,7 +27,7 @@ import type {
 } from './appTypes'
 import AppHeader from './components/AppHeader'
 import LatexInputPane from './components/LatexInputPane'
-import SyntaxTreePane from './components/SyntaxTreePane'
+import SerializedOutputPane from './components/SerializedOutputPane'
 
 const SAMPLE_LATEX = ''
 const CUSTOM_KNOWLEDGE_RECORDS_STORAGE_KEY = 'texform-custom-knowledge-records'
@@ -316,6 +318,21 @@ function App() {
       }
     }
   }, [source, strictMode, wasmReady, wasmInitError, parseContext])
+
+  const [serializeOptions, setSerializeOptions] = useState<SerializeOptions>({})
+  const [rightTab, setRightTab] = useState<'tree' | 'serialized'>('tree')
+
+  const serializedState = useMemo<{ output: string | null; error: string | null }>(() => {
+    if (!wasmReady || !source) {
+      return { output: null, error: null }
+    }
+    try {
+      const output = serializeLatex(source, strictMode, serializeOptions)
+      return { output, error: null }
+    } catch (error) {
+      return { output: null, error: extractFatalMessage(error) }
+    }
+  }, [source, strictMode, serializeOptions, wasmReady])
 
   const treeRoot = useMemo(() => {
     if (!parseState.result || !parseContext) {
@@ -718,19 +735,77 @@ function App() {
           onResetAllCustomKnowledgeRecords={resetAllCustomKnowledgeRecords}
         />
 
-        <SyntaxTreePane
-          paneClass={paneClass}
-          sectionHeadClass={sectionHeadClass}
-          sectionTitleClass={sectionTitleClass}
-          buttonClass={buttonClass}
-          statusText={statusText}
-          statusToneClass={statusToneClass}
-          treeRoot={treeRoot}
-          parseErrorMessage={parseErrorMessage}
-          onExpandAll={expandAll}
-          onCollapseAll={collapseAll}
-          renderTreeNode={renderTreeNode}
-        />
+        <section className={`${paneClass} min-h-0`}>
+          {/* VS Code style tab bar */}
+          <div className="flex border-b border-slate-300">
+            <button
+              type="button"
+              className={`relative px-3 py-1.5 text-xs font-medium transition-colors ${
+                rightTab === 'tree'
+                  ? 'text-slate-800 after:absolute after:inset-x-0 after:bottom-0 after:h-[2px] after:bg-blue-500'
+                  : 'text-slate-400 hover:text-slate-600'
+              }`}
+              onClick={() => setRightTab('tree')}
+            >
+              Syntax Tree
+            </button>
+            <button
+              type="button"
+              className={`relative px-3 py-1.5 text-xs font-medium transition-colors ${
+                rightTab === 'serialized'
+                  ? 'text-slate-800 after:absolute after:inset-x-0 after:bottom-0 after:h-[2px] after:bg-blue-500'
+                  : 'text-slate-400 hover:text-slate-600'
+              }`}
+              onClick={() => setRightTab('serialized')}
+            >
+              Serialized
+            </button>
+          </div>
+
+          {/* Toolbar row per tab */}
+          {rightTab === 'tree' && (
+            <div className="flex items-center justify-between gap-2 px-1 py-1">
+              <span
+                className={`inline-flex items-center rounded-sm border px-2 py-0.5 text-xs font-medium ${statusToneClass}`}
+              >
+                {statusText}
+              </span>
+              <div className="flex items-center gap-2">
+                <button type="button" className={buttonClass} onClick={expandAll}>
+                  Expand All
+                </button>
+                <button type="button" className={buttonClass} onClick={collapseAll}>
+                  Collapse All
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Tab content */}
+          {rightTab === 'tree' ? (
+            <div className="min-h-0 flex-1 overflow-auto border-t border-slate-200 pt-2 pr-1 text-sm leading-snug [font-family:var(--font-code)]">
+              {treeRoot ? (
+                renderTreeNode(treeRoot)
+              ) : parseErrorMessage !== null ? (
+                <div className="rounded-sm border border-red-200 bg-red-50 p-2.5 text-xs text-red-800">
+                  <div className="font-semibold">Parse Error</div>
+                  <pre className="m-0 mt-1 whitespace-pre-wrap break-words [font-family:var(--font-code)]">
+                    {parseErrorMessage}
+                  </pre>
+                </div>
+              ) : (
+                <p className="m-0 text-xs text-slate-600">No syntax tree available.</p>
+              )}
+            </div>
+          ) : (
+            <SerializedOutputPane
+              serializedOutput={serializedState.output}
+              serializeError={serializedState.error}
+              serializeOptions={serializeOptions}
+              onSerializeOptionsChange={setSerializeOptions}
+            />
+          )}
+        </section>
       </main>
     </div>
   )
@@ -1393,10 +1468,16 @@ function describeArgumentValue(value: ArgumentValue): {
   value?: string
   content: SyntaxNode | null
 } {
-  if ('Content' in value) {
+  if ('MathContent' in value) {
     return {
-      kind: 'Content',
-      content: value.Content,
+      kind: 'MathContent',
+      content: value.MathContent,
+    }
+  }
+  if ('TextContent' in value) {
+    return {
+      kind: 'TextContent',
+      content: value.TextContent,
     }
   }
   if ('Delimiter' in value) {

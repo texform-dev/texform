@@ -23,6 +23,8 @@
 //! the boundary logic local and avoids post-hoc string cleanup — important
 //! because TeX whitespace carries both lexical and semantic weight.
 
+use serde::{Deserialize, Serialize};
+
 use crate::ast::{
     Argument, ArgumentKind, ArgumentSlot, ArgumentValue, Ast, ContentMode, Delimiter, GroupKind,
     Node, NodeId,
@@ -44,21 +46,24 @@ pub fn serialize_with(ast: &Ast, options: &SerializeOptions) -> String {
 ///
 /// `math.*` controls math-mode-specific behavior; `syntax.*` controls
 /// structural LaTeX syntax that is mode-independent.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SerializeOptions {
     pub math: MathSerializeOptions,
     pub syntax: SyntaxSerializeOptions,
 }
 
 /// Math-mode serialization options.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MathSerializeOptions {
     pub spacing: MathSpacingOptions,
     pub scripts: MathScriptOptions,
 }
 
 /// Spacing controls within math mode.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MathSpacingOptions {
     pub commands: CommandSpacing,
     pub group_inner_spacing: MathGroupInnerSpacing,
@@ -66,7 +71,8 @@ pub struct MathSpacingOptions {
 }
 
 /// Sub/superscript formatting controls.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MathScriptOptions {
     pub grouping: ScriptGrouping,
     pub spacing: ScriptSpacing,
@@ -74,20 +80,23 @@ pub struct MathScriptOptions {
 }
 
 /// Structural syntax options (mode-independent).
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SyntaxSerializeOptions {
     pub arguments: ArgumentSerializeOptions,
     pub environments: EnvironmentSerializeOptions,
 }
 
 /// Argument delimiter grouping options.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ArgumentSerializeOptions {
     pub grouping: ArgumentGrouping,
 }
 
 /// Environment header formatting options.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct EnvironmentSerializeOptions {
     pub name_spacing: EnvironmentNameSpacing,
 }
@@ -99,7 +108,8 @@ pub struct EnvironmentSerializeOptions {
 /// `Minimal` only removes the command-to-structure boundary itself; it still
 /// preserves lexical separation when omitting a space would merge a following
 /// letter-like token into the control sequence name (e.g. `\alpha x`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CommandSpacing {
     #[default]
     Spaced,
@@ -114,7 +124,8 @@ pub enum CommandSpacing {
 /// This applies both to explicit/implicit `Group` nodes and to wrapper-owned
 /// braces emitted for command/script arguments. Text-mode content and scalar
 /// fragments (environment names, dimensions, etc.) are never padded.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum MathGroupInnerSpacing {
     #[default]
     Padded,
@@ -126,7 +137,8 @@ pub enum MathGroupInnerSpacing {
 /// `Spaced`: `a b c + d` — `Compact`: `abc+d`.
 /// All `Char` nodes in math mode are treated uniformly; the serializer does
 /// not classify characters as operators vs. letters.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AdjacentCharSpacing {
     #[default]
     Spaced,
@@ -136,7 +148,8 @@ pub enum AdjacentCharSpacing {
 /// Whether script arguments are always wrapped in explicit braces.
 ///
 /// `AlwaysExplicit`: `x ^ { 2 }` even when the argument is a single token.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ScriptGrouping {
     #[default]
     AlwaysExplicit,
@@ -147,7 +160,8 @@ pub enum ScriptGrouping {
 /// `Spaced`: `x _ { i }` — `Compact`: `x_{ i }`.
 /// This only controls the marker boundary itself; inner brace spacing still
 /// follows the normal math group rules.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ScriptSpacing {
     #[default]
     Spaced,
@@ -157,7 +171,8 @@ pub enum ScriptSpacing {
 /// Fixed output order for subscript and superscript.
 ///
 /// `SubFirst`: `x _ { i } ^ { 2 }` — `SupFirst`: `x ^ { 2 } _ { i }`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ScriptOrder {
     #[default]
     SubFirst,
@@ -167,7 +182,8 @@ pub enum ScriptOrder {
 /// Whether command arguments always get explicit delimiters.
 ///
 /// `AlwaysExplicit`: `\frac { 1 } { 2 }` even for single-token arguments.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ArgumentGrouping {
     #[default]
     AlwaysExplicit,
@@ -178,7 +194,8 @@ pub enum ArgumentGrouping {
 /// `Spaced` -> `\begin {matrix}`, `Compact` -> `\begin{matrix}`.
 /// The environment name inside `{}` is always compact, and this setting is
 /// independent from [`CommandSpacing`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EnvironmentNameSpacing {
     #[default]
     Spaced,

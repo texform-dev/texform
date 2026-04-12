@@ -1,21 +1,27 @@
-//! High-level convenience API for one-shot parsing and batch probing.
+//! High-level convenience API for one-shot parsing, batch probing, and
+//! serialization.
 //!
-//! This module sits on top of [`ParseContext`] and provides two main entry points:
+//! This module sits on top of [`ParseContext`] and provides main entry points:
 //!
 //! - [`parse_latex`] — one-shot parse using the default all-packages context.
 //! - [`parse_with_context_items`] — batch parse with caller-supplied context
 //!   items (commands, environments, delimiter controls) injected into a fresh
 //!   context.
+//! - [`serialize_latex`] / [`serialize_latex_with`] — serialize a
+//!   [`SyntaxNode`] back to LaTeX text via the canonical serializer.
 //!
-//! Both functions return [`ParseOutput`], which preserves partial parse results
+//! Parse functions return [`ParseOutput`], which preserves partial parse results
 //! alongside diagnostics so that FFI consumers (Python, WASM) always get
 //! structured feedback.
 
 use serde::Serialize;
+use texform_interface::syntax_node::SyntaxNode;
 
+use crate::ast::Ast;
 use crate::context::{
     ContextItem, KnowledgeBase, ParseContext, ParseDiagnostic, ParseOutput, Span,
 };
+use crate::serialize::{self, SerializeOptions};
 
 /// One parse attempt produced by [`parse_with_context_items`].
 ///
@@ -96,6 +102,18 @@ pub fn parse_with_context_items(
             output: ctx.parse(input, strict),
         })
         .collect()
+}
+
+/// Serialize a [`SyntaxNode`] back to canonical LaTeX text using default options.
+pub fn serialize_latex(node: &SyntaxNode) -> String {
+    let ast = Ast::from_syntax_node(node);
+    serialize::serialize(&ast)
+}
+
+/// Serialize a [`SyntaxNode`] back to LaTeX text with explicit style options.
+pub fn serialize_latex_with(node: &SyntaxNode, options: &SerializeOptions) -> String {
+    let ast = Ast::from_syntax_node(node);
+    serialize::serialize_with(&ast, options)
 }
 
 fn build_probe_kb(

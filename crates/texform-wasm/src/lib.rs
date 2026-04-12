@@ -6,6 +6,7 @@ use texform_core::context::{
     AllowedMode, CharacterMeta, CommandItem, CommandKind, CommandMeta, ContextItem,
     DelimiterControlItem, EnvMeta, EnvironmentItem, KnowledgeBase, ParseOutput,
 };
+use texform_core::serialize::SerializeOptions;
 use wasm_bindgen::prelude::*;
 
 // MANUAL TypeScript type declarations for SyntaxNode and related types.
@@ -136,6 +137,53 @@ export type ContextItem =
           target: "delimiter";
           name: string;
       };
+"#;
+
+#[wasm_bindgen(typescript_custom_section)]
+const SERIALIZE_OPTION_TYPES: &str = r#"
+export type CommandSpacing = "spaced" | "minimal";
+export type MathGroupInnerSpacing = "padded" | "compact";
+export type AdjacentCharSpacing = "spaced" | "compact";
+export type ScriptGrouping = "always_explicit";
+export type ScriptSpacing = "spaced" | "compact";
+export type ScriptOrder = "sub_first" | "sup_first";
+export type ArgumentGrouping = "always_explicit";
+export type EnvironmentNameSpacing = "spaced" | "compact";
+
+export interface MathSpacingOptions {
+    commands?: CommandSpacing;
+    group_inner_spacing?: MathGroupInnerSpacing;
+    adjacent_chars?: AdjacentCharSpacing;
+}
+
+export interface MathScriptOptions {
+    grouping?: ScriptGrouping;
+    spacing?: ScriptSpacing;
+    order?: ScriptOrder;
+}
+
+export interface MathSerializeOptions {
+    spacing?: MathSpacingOptions;
+    scripts?: MathScriptOptions;
+}
+
+export interface ArgumentSerializeOptions {
+    grouping?: ArgumentGrouping;
+}
+
+export interface EnvironmentSerializeOptions {
+    name_spacing?: EnvironmentNameSpacing;
+}
+
+export interface SyntaxSerializeOptions {
+    arguments?: ArgumentSerializeOptions;
+    environments?: EnvironmentSerializeOptions;
+}
+
+export interface SerializeOptions {
+    math?: MathSerializeOptions;
+    syntax?: SyntaxSerializeOptions;
+}
 "#;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -338,6 +386,37 @@ pub fn validate_spec(spec: &str) -> JsValue {
     }
 
     value.into()
+}
+
+/// Parse a LaTeX formula and serialize the result back to canonical LaTeX text.
+///
+/// An optional `options` object may be passed to control formatting; fields
+/// that are omitted default to the canonical style. Returns the serialized
+/// string on success; throws when parsing produces no result at all.
+#[wasm_bindgen]
+pub fn serialize(
+    src: &str,
+    strict: Option<bool>,
+    options: Option<JsValue>,
+) -> Result<String, JsValue> {
+    let strict = strict.unwrap_or(false);
+    let output = api::parse_latex(src, strict);
+
+    let node = output
+        .result
+        .map(|r| r.node)
+        .ok_or_else(|| JsValue::from_str("parse produced no result to serialize"))?;
+
+    let result = match options {
+        Some(opts_js) => {
+            let opts: SerializeOptions = serde_wasm_bindgen::from_value(opts_js)
+                .map_err(|e| JsValue::from_str(&format!("invalid serialize options: {}", e)))?;
+            api::serialize_latex_with(&node, &opts)
+        }
+        None => api::serialize_latex(&node),
+    };
+
+    Ok(result)
 }
 
 fn parse_with_context_output_to_result(

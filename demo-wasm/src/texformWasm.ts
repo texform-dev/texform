@@ -2,6 +2,7 @@ import initWasmModule, {
   ParseContext as WasmParseContext,
   parse as wasmParse,
   parse_with_context_items as wasmParseWithContextItems,
+  serialize as wasmSerialize,
   type Argument,
   type ArgumentValue,
   type GroupKind,
@@ -159,6 +160,43 @@ export function parseWithContextItems(
     packages ?? undefined,
     strict,
   ) as ParseWithContextBatchResult
+}
+
+// -- Serialize option types --
+
+export type CommandSpacing = 'spaced' | 'minimal'
+export type MathGroupInnerSpacing = 'padded' | 'compact'
+export type AdjacentCharSpacing = 'spaced' | 'compact'
+export type ScriptSpacing = 'spaced' | 'compact'
+export type ScriptOrder = 'sub_first' | 'sup_first'
+export type EnvironmentNameSpacing = 'spaced' | 'compact'
+
+export interface SerializeOptions {
+  math?: {
+    spacing?: {
+      commands?: CommandSpacing
+      group_inner_spacing?: MathGroupInnerSpacing
+      adjacent_chars?: AdjacentCharSpacing
+    }
+    scripts?: {
+      spacing?: ScriptSpacing
+      order?: ScriptOrder
+    }
+  }
+  syntax?: {
+    environments?: {
+      name_spacing?: EnvironmentNameSpacing
+    }
+  }
+}
+
+export function serializeLatex(
+  src: string,
+  strict?: boolean | null,
+  options?: SerializeOptions,
+): string {
+  assertReady()
+  return wasmSerialize(src, strict, options ?? undefined)
 }
 
 export type {

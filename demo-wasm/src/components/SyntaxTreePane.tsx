@@ -13,6 +13,7 @@ interface SyntaxTreePaneProps {
   onExpandAll: () => void
   onCollapseAll: () => void
   renderTreeNode: (node: TreeNode) => ReactNode
+  className?: string
 }
 
 function SyntaxTreePane({
@@ -27,9 +28,10 @@ function SyntaxTreePane({
   onExpandAll,
   onCollapseAll,
   renderTreeNode,
+  className,
 }: SyntaxTreePaneProps) {
   return (
-    <section className={`${paneClass} min-h-0`}>
+    <section className={`${paneClass} min-h-0${className ? ` ${className}` : ''}`}>
       <div className={sectionHeadClass}>
         <div className="flex items-center gap-2">
           <h2 className={sectionTitleClass}>Syntax Tree</h2>
