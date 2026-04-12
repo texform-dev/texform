@@ -5,7 +5,11 @@
     "useDefineForClassFields": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
+    "baseUrl": ".",
     "types": ["vite/client"],
+    "paths": {
+      "texform-wasm": ["../crates/texform-wasm/pkg-web/texform_wasm.d.ts"]
+    },
     "skipLibCheck": true,
 
     /* Bundler mode */
