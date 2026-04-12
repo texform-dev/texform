@@ -1305,6 +1305,25 @@ fn test_delimited_group_nested() {
 }
 
 #[test]
+fn test_delimited_group_accepts_space_after_left_and_right() {
+    let (result, _) = parse(r"\left (a+b\right )", false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Group { kind, .. } => match kind {
+                GroupKind::Delimited { left, right } => {
+                    assert_eq!(*left, Delimiter::Char('('));
+                    assert_eq!(*right, Delimiter::Char(')'));
+                }
+                other => panic!("Expected delimited group, got {:?}", other),
+            },
+            other => panic!("Expected inner group, got {:?}", other),
+        },
+        other => panic!("Expected root group, got {:?}", other),
+    }
+}
+
+#[test]
 fn test_environment_basic() {
     let (result, _) = parse(r"\begin{matrix}ab\end{matrix}", false).unwrap();
 
@@ -1328,6 +1347,27 @@ fn test_environment_basic() {
             }
         }
         _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_environment_header_accepts_space_after_begin_and_end() {
+    let (result, _) = parse(r"\begin {matrix}a&b\\c&d\end {matrix}", false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Environment { name, body, .. } => {
+                assert_eq!(name, "matrix");
+                match &**body {
+                    SyntaxNode::Group { children, .. } => {
+                        assert_eq!(children.len(), 7);
+                    }
+                    other => panic!("Expected environment body group, got {:?}", other),
+                }
+            }
+            other => panic!("Expected environment node, got {:?}", other),
+        },
+        other => panic!("Expected root group, got {:?}", other),
     }
 }
 

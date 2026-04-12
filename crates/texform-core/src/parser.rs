@@ -341,10 +341,14 @@ fn delimited_group_parser<'a, P>(
 where
     P: Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
 {
+    let ws = insignificant_whitespace();
+
     control_seq("left")
+        .then_ignore(ws.clone())
         .ignore_then(delimiter(kb))
         .then(math_content)
         .then_ignore(control_seq("right"))
+        .then_ignore(ws)
         .then(delimiter(kb))
         .map(|((left, children), right)| SyntaxNode::Group {
             mode: ContentMode::Math,
@@ -753,7 +757,10 @@ fn parse_env_header<'a>(
 ) -> impl Parser<'a, TokenStream<'a>, (String, Vec<ArgumentSlot>, &'a EnvMeta), ParserError<'a>> + Clone
 {
     custom(move |input| {
+        let ws = insignificant_whitespace();
+
         input.parse(control_seq("begin"))?;
+        let _ = input.parse(ws.clone());
 
         let name_start = input.cursor();
         let name = input.parse(env_name_parser())?;
@@ -801,6 +808,8 @@ fn environment_parser<'a>(
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
     custom(move |input| {
+        let ws = insignificant_whitespace();
+
         let (name, args, meta) = input.parse(parse_env_header(
             kb,
             math_content.clone(),
@@ -827,6 +836,7 @@ fn environment_parser<'a>(
                 ),
             )
         })?;
+        let _ = input.parse(ws.clone());
 
         let end_name = input.parse(env_name_parser()).map_err(|_| {
             Rich::custom(

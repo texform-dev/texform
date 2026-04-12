@@ -159,8 +159,9 @@ mod tests {
     fn module_name_encoding_stays_within_rust_identifier_charset() {
         let name = encode_module_name(Path::new("physics/trace-alias/trace_to_tr.rs"));
         assert!(name.starts_with("rule_"));
-        assert!(name
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_'));
+        assert!(
+            name.chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        );
     }
 }
