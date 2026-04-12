@@ -65,7 +65,8 @@ export type ArgumentKind =
     | { Paired: { open: Delimiter; close: Delimiter } };
 
 export type ArgumentValue =
-    | { Content: SyntaxNode }
+    | { MathContent: SyntaxNode }
+    | { TextContent: SyntaxNode }
     | { Delimiter: Delimiter }
     | { CSName: string }
     | { Dimension: string }

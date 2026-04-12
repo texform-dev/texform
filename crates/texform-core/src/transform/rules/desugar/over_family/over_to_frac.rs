@@ -7,6 +7,7 @@
 
 use texform_specs::builtin::{ams, base};
 
+use crate::ast::ContentMode;
 use crate::transform::helpers::{mandatory_content, prefix_command};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, cmd_triggers, define_rule};
@@ -38,8 +39,8 @@ define_rule! {
                 prefix_command(
                     &base::cmd::FRAC,
                     vec![
-                        mandatory_content(infix.left),
-                        mandatory_content(infix.right),
+                        mandatory_content(infix.left, ContentMode::Math),
+                        mandatory_content(infix.right, ContentMode::Math),
                     ],
                 ),
             );
@@ -81,7 +82,7 @@ mod tests {
                 let left = args[0].as_ref().expect("frac lhs should exist");
                 assert_eq!(left.kind, ArgumentKind::Mandatory);
                 let left_id = match left.value {
-                    ArgumentValue::Content(id) => id,
+                    ArgumentValue::MathContent(id) => id,
                     ref other => panic!("expected lhs content arg, got {:?}", other),
                 };
                 assert_eq!(output.ast.node(left_id), &Node::Char('a'));
@@ -89,7 +90,7 @@ mod tests {
                 let right = args[1].as_ref().expect("frac rhs should exist");
                 assert_eq!(right.kind, ArgumentKind::Mandatory);
                 let right_id = match right.value {
-                    ArgumentValue::Content(id) => id,
+                    ArgumentValue::MathContent(id) => id,
                     ref other => panic!("expected rhs content arg, got {:?}", other),
                 };
                 assert_eq!(output.ast.node(right_id), &Node::Char('b'));

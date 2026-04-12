@@ -6,21 +6,29 @@
 
 use texform_specs::specs::BuiltinCommandRecord;
 
-use crate::ast::{Argument, ArgumentKind, ArgumentSlot, ArgumentValue, Node, NodeId};
+use crate::ast::{Argument, ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Node, NodeId};
 
 /// Creates a mandatory content argument slot wrapping the subtree rooted at `node_id`.
-pub fn mandatory_content(node_id: NodeId) -> ArgumentSlot {
+pub fn mandatory_content(node_id: NodeId, mode: ContentMode) -> ArgumentSlot {
+    let value = match mode {
+        ContentMode::Math => ArgumentValue::MathContent(node_id),
+        ContentMode::Text => ArgumentValue::TextContent(node_id),
+    };
     Some(Argument {
         kind: ArgumentKind::Mandatory,
-        value: ArgumentValue::Content(node_id),
+        value,
     })
 }
 
 /// Creates an optional content argument slot wrapping the subtree rooted at `node_id`.
-pub fn optional_content(node_id: NodeId) -> ArgumentSlot {
+pub fn optional_content(node_id: NodeId, mode: ContentMode) -> ArgumentSlot {
+    let value = match mode {
+        ContentMode::Math => ArgumentValue::MathContent(node_id),
+        ContentMode::Text => ArgumentValue::TextContent(node_id),
+    };
     Some(Argument {
         kind: ArgumentKind::Optional,
-        value: ArgumentValue::Content(node_id),
+        value,
     })
 }
 

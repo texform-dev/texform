@@ -228,6 +228,6 @@ fn mandatory_argument_normalizes_single_explicit_group() {
     let (_, args) = first_command(&output);
     assert_eq!(
         expect_arg(&args[0]).value,
-        ArgumentValue::Content(SyntaxNode::Char('x'))
+        ArgumentValue::MathContent(SyntaxNode::Char('x'))
     );
 }

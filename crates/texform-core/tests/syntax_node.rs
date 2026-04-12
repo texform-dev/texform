@@ -56,19 +56,27 @@ fn test_implicit_group_helpers() {
 #[test]
 fn test_argument_creation() {
     let node = SyntaxNode::Char('x');
-    let mandatory = Argument::mandatory(node.clone());
+    let mandatory = Argument::mandatory(ContentMode::Math, node.clone());
     assert_eq!(mandatory.kind, ArgumentKind::Mandatory);
     assert_eq!(
         mandatory.value,
-        ArgumentValue::Content(SyntaxNode::Char('x'))
+        ArgumentValue::MathContent(SyntaxNode::Char('x'))
     );
 
-    let optional = Argument::optional(node);
+    let optional = Argument::optional(ContentMode::Math, node);
     assert_eq!(optional.kind, ArgumentKind::Optional);
     assert_eq!(
         optional.value,
-        ArgumentValue::Content(SyntaxNode::Char('x'))
+        ArgumentValue::MathContent(SyntaxNode::Char('x'))
     );
+}
+
+#[test]
+fn test_text_argument_uses_text_content_variant_for_single_char_item() {
+    let arg = Argument::mandatory(ContentMode::Text, SyntaxNode::Char('x'));
+
+    assert_eq!(arg.kind, ArgumentKind::Mandatory);
+    assert_eq!(arg.value, ArgumentValue::TextContent(SyntaxNode::Char('x')));
 }
 
 #[test]
@@ -86,8 +94,14 @@ fn test_command_node() {
     let cmd = SyntaxNode::Command {
         name: "frac".to_string(),
         args: vec![
-            Some(Argument::mandatory(SyntaxNode::Char('a'))),
-            Some(Argument::mandatory(SyntaxNode::Char('b'))),
+            Some(Argument::mandatory(
+                ContentMode::Math,
+                SyntaxNode::Char('a'),
+            )),
+            Some(Argument::mandatory(
+                ContentMode::Math,
+                SyntaxNode::Char('b'),
+            )),
         ],
     };
 
@@ -271,9 +285,10 @@ fn test_environment_structure() {
 fn test_declarative_structure() {
     let decl = SyntaxNode::Declarative {
         name: "color".to_string(),
-        args: vec![Some(Argument::mandatory(SyntaxNode::Text(
-            "red".to_string(),
-        )))],
+        args: vec![Some(Argument::mandatory(
+            ContentMode::Text,
+            SyntaxNode::Text("red".to_string()),
+        ))],
         scope: Box::new(SyntaxNode::Text("text".to_string())),
     };
 

@@ -57,8 +57,10 @@ impl ArgumentKind {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub enum ArgumentValue {
-    /// Parsed content subtree.
-    Content(SyntaxNode),
+    /// Parsed math-mode content subtree.
+    MathContent(SyntaxNode),
+    /// Parsed text-mode content subtree.
+    TextContent(SyntaxNode),
     /// Delimiter argument value.
     Delimiter(Delimiter),
     /// Control-sequence name string with no escape/control sequences.
@@ -264,19 +266,26 @@ impl Argument {
         Argument { kind, value }
     }
 
+    fn content_value(mode: ContentMode, value: SyntaxNode) -> ArgumentValue {
+        match mode {
+            ContentMode::Math => ArgumentValue::MathContent(value),
+            ContentMode::Text => ArgumentValue::TextContent(value),
+        }
+    }
+
     /// Create a mandatory argument
-    pub fn mandatory(value: SyntaxNode) -> Self {
+    pub fn mandatory(mode: ContentMode, value: SyntaxNode) -> Self {
         Argument {
             kind: ArgumentKind::Mandatory,
-            value: ArgumentValue::Content(value),
+            value: Self::content_value(mode, value),
         }
     }
 
     /// Create an optional argument
-    pub fn optional(value: SyntaxNode) -> Self {
+    pub fn optional(mode: ContentMode, value: SyntaxNode) -> Self {
         Argument {
             kind: ArgumentKind::Optional,
-            value: ArgumentValue::Content(value),
+            value: Self::content_value(mode, value),
         }
     }
 
@@ -482,7 +491,9 @@ impl ArgumentValue {
     fn fmt_with_indent(&self, f: &mut std::fmt::Formatter<'_>, indent: usize) -> std::fmt::Result {
         let prefix = "  ".repeat(indent);
         match self {
-            ArgumentValue::Content(node) => node.fmt_with_indent(f, indent),
+            ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
+                node.fmt_with_indent(f, indent)
+            }
             ArgumentValue::Delimiter(delim) => writeln!(f, "{}Delimiter({:?})", prefix, delim),
             ArgumentValue::CSName(value) => writeln!(f, "{}CSName(\"{}\")", prefix, value),
             ArgumentValue::Dimension(value) => writeln!(f, "{}Dimension(\"{}\")", prefix, value),

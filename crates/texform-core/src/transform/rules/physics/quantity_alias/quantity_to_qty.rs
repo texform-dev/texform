@@ -61,7 +61,7 @@ mod tests {
 
                 let argument = args[0].as_ref().expect("qty argument should exist");
                 let content_id = match argument.value {
-                    ArgumentValue::Content(id) => id,
+                    ArgumentValue::MathContent(id) => id,
                     ref other => panic!("expected content arg, got {:?}", other),
                 };
                 assert_subtree_contains_char(&output.ast, content_id, 'a');

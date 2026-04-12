@@ -6,7 +6,7 @@ use texform_core::context::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
     KnowledgeBase, ParseContext,
 };
-use texform_interface::syntax_node::SyntaxNode;
+use texform_interface::syntax_node::{ArgumentValue as SyntaxArgumentValue, SyntaxNode};
 
 fn parse_with_items(src: &str, strict: bool, items: Vec<ContextItem>) -> SyntaxNode {
     let mut kb = KnowledgeBase::core_only();
@@ -71,6 +71,43 @@ fn test_conversion_preserves_unknown_command_and_active_space() {
             name: "mystery".to_string(),
         }
     );
+}
+
+#[test]
+fn test_ast_conversion_copies_text_content_variant() {
+    let output = ParseContext::all_packages_shared().parse(r"\text{\%}", true);
+    let syntax = output
+        .result
+        .as_ref()
+        .expect("expected parse result")
+        .node
+        .clone();
+
+    match &syntax {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { args, .. } => {
+                let arg = args[0].as_ref().expect("expected text argument");
+                assert_eq!(
+                    arg.value,
+                    SyntaxArgumentValue::TextContent(SyntaxNode::Char('%'))
+                );
+            }
+            other => panic!("expected text command, got {:?}", other),
+        },
+        other => panic!("expected root group, got {:?}", other),
+    }
+
+    let ast = Ast::from_syntax_node(&syntax);
+    let root = ast.root();
+    let command = ast.children(root)[0];
+
+    match ast.node(command) {
+        Node::Command { args, .. } => {
+            let arg = args[0].as_ref().expect("expected text argument");
+            assert!(matches!(arg.value, ArgumentValue::TextContent(_)));
+        }
+        other => panic!("expected command node, got {:?}", other),
+    }
 }
 
 #[test]
@@ -152,7 +189,7 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
             );
 
             let text = match &args[1].as_ref().unwrap().value {
-                ArgumentValue::Content(id) => *id,
+                ArgumentValue::TextContent(id) => *id,
                 other => panic!("Expected content argument, got {:?}", other),
             };
             assert_eq!(ast.edges(children[3]), vec![(text, Slot::Argument(1))]);
@@ -192,7 +229,7 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
             }
 
             let content = match &arg.value {
-                ArgumentValue::Content(id) => *id,
+                ArgumentValue::MathContent(id) => *id,
                 other => panic!("Expected content argument, got {:?}", other),
             };
             assert_eq!(ast.node(content), &Node::Char('x'));
@@ -226,7 +263,7 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
             }
 
             let content = match &delimited.value {
-                ArgumentValue::Content(id) => *id,
+                ArgumentValue::MathContent(id) => *id,
                 other => panic!("Expected content argument, got {:?}", other),
             };
             assert_eq!(ast.node(content), &Node::Char('y'));

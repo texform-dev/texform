@@ -133,12 +133,14 @@ pub enum ArgumentKind {
 
 /// Parsed argument payload.
 ///
-/// Only [`ArgumentValue::Content`] contributes a tree edge. All scalar variants
+/// Only content-carrying argument variants contribute a tree edge. All scalar variants
 /// are stored inline on the owning node and are skipped by tree traversal.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ArgumentValue {
-    /// Child subtree used as argument content
-    Content(NodeId),
+    /// Child subtree used as math-mode argument content
+    MathContent(NodeId),
+    /// Child subtree used as text-mode argument content
+    TextContent(NodeId),
     /// Parsed delimiter value
     Delimiter(Delimiter),
     /// Control-sequence name without leading backslash
@@ -294,7 +296,7 @@ impl Ast {
     ///
     /// Conversion preserves shape:
     ///
-    /// - `ArgumentValue::Content` is converted directly to the referenced node
+    /// - content argument variants are converted directly to the referenced node
     /// - single-node content is not wrapped in an implicit group
     /// - `Delimiter::Control(&'static str)` becomes [`Delimiter::Control`] with
     ///   owned `String` data
@@ -397,7 +399,7 @@ impl Ast {
     /// Return every direct tree edge of `id` as `(child, slot)` pairs.
     ///
     /// Returned order matches the AST's direct traversal order. Only
-    /// [`ArgumentValue::Content`] entries are exposed as argument edges.
+    /// Content argument entries are exposed as argument edges.
     ///
     /// # Panics
     ///
@@ -982,10 +984,12 @@ impl Ast {
             };
             // Only content arguments participate in tree traversal. Scalar
             // values still live on the node, but they do not become AST edges.
-            let ArgumentValue::Content(child) = &argument.value else {
-                continue;
-            };
-            edges.push((*child, Slot::Argument(index)));
+            match &argument.value {
+                ArgumentValue::MathContent(child) | ArgumentValue::TextContent(child) => {
+                    edges.push((*child, Slot::Argument(index)));
+                }
+                _ => {}
+            }
         }
     }
 
@@ -1121,8 +1125,11 @@ impl Ast {
         match value {
             // Conversion keeps the original shape instead of wrapping single
             // content nodes in an implicit group.
-            syntax_node::ArgumentValue::Content(node) => {
-                ArgumentValue::Content(Self::convert_syntax_node(node, nodes, parent))
+            syntax_node::ArgumentValue::MathContent(node) => {
+                ArgumentValue::MathContent(Self::convert_syntax_node(node, nodes, parent))
+            }
+            syntax_node::ArgumentValue::TextContent(node) => {
+                ArgumentValue::TextContent(Self::convert_syntax_node(node, nodes, parent))
             }
             syntax_node::ArgumentValue::Delimiter(delimiter) => {
                 ArgumentValue::Delimiter(Self::convert_delimiter(*delimiter))

@@ -259,8 +259,25 @@ fn expect_arg(slot: &Option<Argument>) -> &Argument {
 
 fn unwrap_content(slot: &Option<Argument>) -> &SyntaxNode {
     match &expect_arg(slot).value {
-        ArgumentValue::Content(node) => node,
+        ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => node,
         _ => panic!("Expected content argument"),
+    }
+}
+
+#[test]
+fn test_text_argument_uses_text_content_variant_for_single_char_item() {
+    let output = ParseContext::all_packages_shared().parse(r"\text{\%}", true);
+    let result = output.result.expect("expected parse result");
+
+    match result.node {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { args, .. } => {
+                let arg = args[0].as_ref().expect("expected text argument");
+                assert_eq!(arg.value, ArgumentValue::TextContent(SyntaxNode::Char('%')));
+            }
+            other => panic!("expected text command, got {:?}", other),
+        },
+        other => panic!("expected root group, got {:?}", other),
     }
 }
 
@@ -546,14 +563,14 @@ fn test_sqrt_with_optional() {
                     assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Optional);
                     assert_eq!(
                         expect_arg(&args[0]).value,
-                        ArgumentValue::Content(SyntaxNode::Char('3'))
+                        ArgumentValue::MathContent(SyntaxNode::Char('3'))
                     );
 
                     // Mandatory arg - normalized to single Char
                     assert_eq!(expect_arg(&args[1]).kind, ArgumentKind::Mandatory);
                     assert_eq!(
                         expect_arg(&args[1]).value,
-                        ArgumentValue::Content(SyntaxNode::Char('8'))
+                        ArgumentValue::MathContent(SyntaxNode::Char('8'))
                     );
                 }
                 _ => panic!("Expected Command node"),
@@ -1524,7 +1541,7 @@ fn test_optional_content_stops_at_first_closing_bracket() {
                     assert_eq!(args.len(), 2);
 
                     match &expect_arg(&args[0]).value {
-                        ArgumentValue::Content(SyntaxNode::Group { children, .. }) => {
+                        ArgumentValue::MathContent(SyntaxNode::Group { children, .. }) => {
                             assert_eq!(
                                 children,
                                 &vec![
@@ -1539,7 +1556,7 @@ fn test_optional_content_stops_at_first_closing_bracket() {
 
                     assert_eq!(
                         expect_arg(&args[1]).value,
-                        ArgumentValue::Content(SyntaxNode::Char('c'))
+                        ArgumentValue::MathContent(SyntaxNode::Char('c'))
                     );
                 }
                 other => panic!("Expected sqrt command, got {:?}", other),
@@ -2478,7 +2495,7 @@ fn test_qty_supports_multiple_delimiter_pairs() {
         assert_eq!(args.len(), 1);
 
         let arg = expect_arg(&args[0]);
-        assert_eq!(arg.value, ArgumentValue::Content(SyntaxNode::Char('x')));
+        assert_eq!(arg.value, ArgumentValue::MathContent(SyntaxNode::Char('x')));
         match arg.kind {
             ArgumentKind::Paired {
                 open: matched_open,
@@ -2510,7 +2527,10 @@ fn test_arg_true_quantity_commands_require_braces() {
     assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(false));
 
     let content = expect_arg(&args[1]);
-    assert_eq!(content.value, ArgumentValue::Content(SyntaxNode::Char('x')));
+    assert_eq!(
+        content.value,
+        ArgumentValue::MathContent(SyntaxNode::Char('x'))
+    );
     match content.kind {
         ArgumentKind::Delimited { open, close } => {
             assert_eq!(open, Delimiter::Char('{'));
@@ -2524,7 +2544,7 @@ fn test_arg_true_quantity_commands_require_braces() {
     assert_eq!(name, "abs");
     assert_eq!(
         expect_arg(&args[1]).value,
-        ArgumentValue::Content(SyntaxNode::Char('x'))
+        ArgumentValue::MathContent(SyntaxNode::Char('x'))
     );
 
     assert!(parse(r"\pqty(x)", false).is_err());
@@ -2543,7 +2563,10 @@ fn test_eval_uses_nonsymmetric_paired_delimiter() {
     assert_eq!(star.value, ArgumentValue::Boolean(false));
 
     let paired = expect_arg(&args[1]);
-    assert_eq!(paired.value, ArgumentValue::Content(SyntaxNode::Char('x')));
+    assert_eq!(
+        paired.value,
+        ArgumentValue::MathContent(SyntaxNode::Char('x'))
+    );
     match paired.kind {
         ArgumentKind::Paired { open, close } => {
             assert_eq!(open, Delimiter::Char('('));
@@ -2567,7 +2590,7 @@ fn test_dv_and_pdv_group_slots_are_stable() {
     assert!(args[1].is_none(), "optional bracket slot should be None");
     assert_eq!(
         expect_arg(&args[2]).value,
-        ArgumentValue::Content(SyntaxNode::Char('f'))
+        ArgumentValue::MathContent(SyntaxNode::Char('f'))
     );
     assert!(args[3].is_none(), "group slot should be None when absent");
 
@@ -2579,7 +2602,7 @@ fn test_dv_and_pdv_group_slots_are_stable() {
     assert!(args[1].is_none());
     assert_eq!(
         expect_arg(&args[2]).value,
-        ArgumentValue::Content(SyntaxNode::Char('f'))
+        ArgumentValue::MathContent(SyntaxNode::Char('f'))
     );
     assert_eq!(expect_arg(&args[3]).kind, ArgumentKind::Group);
     assert_eq!(expect_arg(&args[4]).kind, ArgumentKind::Group);
@@ -2596,7 +2619,7 @@ fn test_braket_optional_group_slot() {
     );
     assert_eq!(
         expect_arg(&args_full[1]).value,
-        ArgumentValue::Content(SyntaxNode::Char('a'))
+        ArgumentValue::MathContent(SyntaxNode::Char('a'))
     );
     assert_eq!(expect_arg(&args_full[2]).kind, ArgumentKind::Group);
 
@@ -2743,7 +2766,7 @@ fn test_no_leading_space_after_single_token_m_for_optional_brackets() {
                     assert_eq!(args.len(), 2);
                     assert_eq!(
                         expect_arg(&args[0]).value,
-                        ArgumentValue::Content(SyntaxNode::Char('a'))
+                        ArgumentValue::MathContent(SyntaxNode::Char('a'))
                     );
                     assert!(args[1].is_none(), "spaced !o slot should not match");
                 }
@@ -2778,11 +2801,11 @@ fn test_no_leading_space_after_single_token_m_for_optional_brackets() {
                     assert_eq!(args.len(), 2);
                     assert_eq!(
                         expect_arg(&args[0]).value,
-                        ArgumentValue::Content(SyntaxNode::Char('a'))
+                        ArgumentValue::MathContent(SyntaxNode::Char('a'))
                     );
                     assert_eq!(
                         expect_arg(&args[1]).value,
-                        ArgumentValue::Content(SyntaxNode::Char('b'))
+                        ArgumentValue::MathContent(SyntaxNode::Char('b'))
                     );
                 }
                 other => panic!("Expected probe command, got {:?}", other),
@@ -2824,11 +2847,11 @@ fn test_no_leading_space_after_single_token_m_for_group_slot() {
                     assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(true));
                     assert_eq!(
                         expect_arg(&args[1]).value,
-                        ArgumentValue::Content(SyntaxNode::Char('n'))
+                        ArgumentValue::MathContent(SyntaxNode::Char('n'))
                     );
                     assert_eq!(
                         expect_arg(&args[2]).value,
-                        ArgumentValue::Content(SyntaxNode::Char('f'))
+                        ArgumentValue::MathContent(SyntaxNode::Char('f'))
                     );
                     assert!(args[3].is_none(), "spaced !g slot should not match");
                 }
@@ -2872,16 +2895,16 @@ fn test_no_leading_space_after_single_token_m_for_group_slot() {
                     assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(true));
                     assert_eq!(
                         expect_arg(&args[1]).value,
-                        ArgumentValue::Content(SyntaxNode::Char('n'))
+                        ArgumentValue::MathContent(SyntaxNode::Char('n'))
                     );
                     assert_eq!(
                         expect_arg(&args[2]).value,
-                        ArgumentValue::Content(SyntaxNode::Char('f'))
+                        ArgumentValue::MathContent(SyntaxNode::Char('f'))
                     );
                     assert_eq!(expect_arg(&args[3]).kind, ArgumentKind::Group);
                     assert_eq!(
                         expect_arg(&args[3]).value,
-                        ArgumentValue::Content(SyntaxNode::Char('x'))
+                        ArgumentValue::MathContent(SyntaxNode::Char('x'))
                     );
                 }
                 other => panic!("Expected probe command, got {:?}", other),
@@ -2920,7 +2943,7 @@ fn test_required_group_form_enforces_braces() {
                 assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Group);
                 assert_eq!(
                     expect_arg(&args[0]).value,
-                    ArgumentValue::Content(SyntaxNode::Char('x'))
+                    ArgumentValue::MathContent(SyntaxNode::Char('x'))
                 );
             }
             other => panic!("Expected reqgrp command, got {:?}", other),
@@ -3043,12 +3066,12 @@ fn test_required_group_form_composes_with_star_and_standard_slots() {
     assert_eq!(expect_arg(&args[1]).kind, ArgumentKind::Group);
     assert_eq!(
         expect_arg(&args[1]).value,
-        ArgumentValue::Content(SyntaxNode::Char('A'))
+        ArgumentValue::MathContent(SyntaxNode::Char('A'))
     );
     assert_eq!(expect_arg(&args[2]).kind, ArgumentKind::Mandatory);
     assert_eq!(
         expect_arg(&args[2]).value,
-        ArgumentValue::Content(SyntaxNode::Char('B'))
+        ArgumentValue::MathContent(SyntaxNode::Char('B'))
     );
 
     let starred = ctx.parse(r"\probe*{A}B", true);
@@ -3275,7 +3298,7 @@ fn test_mqty_supports_star_plus_optional_paired_slot() {
     assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(true));
     assert_eq!(
         expect_arg(&args[1]).value,
-        ArgumentValue::Content(SyntaxNode::Char('x'))
+        ArgumentValue::MathContent(SyntaxNode::Char('x'))
     );
     match expect_arg(&args[1]).kind {
         ArgumentKind::Paired { open, close } => {
@@ -3300,7 +3323,7 @@ fn test_dd_supports_optional_then_paired_slots() {
     assert!(args[0].is_none(), "optional bracket slot should be None");
     assert_eq!(
         expect_arg(&args[1]).value,
-        ArgumentValue::Content(SyntaxNode::Char('x'))
+        ArgumentValue::MathContent(SyntaxNode::Char('x'))
     );
     match expect_arg(&args[1]).kind {
         ArgumentKind::Paired { open, close } => {
@@ -3314,7 +3337,7 @@ fn test_dd_supports_optional_then_paired_slots() {
     let (_, args_with_opt) = extract_first_command(with_opt);
     assert_eq!(
         expect_arg(&args_with_opt[0]).value,
-        ArgumentValue::Content(SyntaxNode::Char('y'))
+        ArgumentValue::MathContent(SyntaxNode::Char('y'))
     );
     match expect_arg(&args_with_opt[1]).kind {
         ArgumentKind::Paired { open, close } => {

@@ -16,7 +16,7 @@ fn explicit_group(ast: &mut Ast, mode: ContentMode) -> NodeId {
 fn content_arg(kind: ArgumentKind, child: NodeId) -> ArgumentSlot {
     Some(Argument {
         kind,
-        value: ArgumentValue::Content(child),
+        value: ArgumentValue::MathContent(child),
     })
 }
 
@@ -169,6 +169,34 @@ fn test_command_arg_slots_keep_non_content_values_out_of_tree_edges() {
         ast.find_all(root, |node| matches!(node, Node::Char(_))),
         vec![x]
     );
+}
+
+#[test]
+fn test_command_arg_slots_keep_scalar_variants_opaque() {
+    let mut ast = Ast::new();
+    let root = ast.root();
+
+    let content = explicit_group(&mut ast, ContentMode::Math);
+    let x = ast.new_node(Node::Char('x'));
+    ast.append_child(content, x);
+
+    let command = ast.new_node(Node::Command {
+        name: "probe".to_string(),
+        args: vec![
+            Some(Argument {
+                kind: ArgumentKind::Optional,
+                value: ArgumentValue::Integer("12".to_string()),
+            }),
+            Some(Argument {
+                kind: ArgumentKind::Mandatory,
+                value: ArgumentValue::MathContent(content),
+            }),
+        ],
+    });
+    ast.append_child(root, command);
+    ast.assert_invariants();
+
+    assert_eq!(ast.edges(command), vec![(content, Slot::Argument(1))]);
 }
 
 #[test]

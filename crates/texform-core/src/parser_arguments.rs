@@ -147,7 +147,7 @@ fn parse_delimited_value<'src, 'parse>(
     match kind {
         ValueKind::Content { mode } => {
             let node = parse_tokens_as_content(input, kb, mode, tokens, strict)?;
-            Ok(ArgumentValue::Content(node))
+            Ok(argument_content_value(mode, node))
         }
         ValueKind::CSName => {
             if nullable && tokens.iter().all(|t| matches!(t, Token::Whitespaces)) {
@@ -237,6 +237,13 @@ fn parse_delimited_value<'src, 'parse>(
     }
 }
 
+fn argument_content_value(mode: ContentMode, node: SyntaxNode) -> ArgumentValue {
+    match mode {
+        ContentMode::Math => ArgumentValue::MathContent(node),
+        ContentMode::Text => ArgumentValue::TextContent(node),
+    }
+}
+
 fn parse_tokens_as_cs_name<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
     tokens: &[Token],
@@ -288,7 +295,11 @@ pub(super) fn argument_parser<'a>(
                     let parser = choice((braced, single_item))
                         .labelled("mandatory argument")
                         .map(move |node| {
-                            Some(Argument::mandatory(normalize_argument_value(mode, node)))
+                            let node = normalize_argument_value(mode, node);
+                            Some(Argument::from_value(
+                                ArgumentKind::Mandatory,
+                                argument_content_value(mode, node),
+                            ))
                         });
                     input.parse(parser)
                 } else if !matches!(input.peek(), Some(Token::LBracket)) {
@@ -300,7 +311,7 @@ pub(super) fn argument_parser<'a>(
                     let node = parse_tokens_as_content(input, kb, mode, tokens, strict)?;
                     Ok(Some(Argument::from_value(
                         ArgumentKind::Optional,
-                        ArgumentValue::Content(node),
+                        argument_content_value(mode, node),
                     )))
                 }
             }
