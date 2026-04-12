@@ -106,13 +106,14 @@ pub enum CommandSpacing {
     Minimal,
 }
 
-/// Intended to control the inside spacing of brace/delimiter groups in math
-/// mode.
+/// Controls the inside spacing of math brace groups.
 ///
-/// The current implementation fully handles empty padded brace groups (`{ }`),
-/// but non-empty groups still inherit the generic math boundary rules, so this
-/// option is not fully wired yet. Text-mode content and raw fragments
-/// (environment names, dimensions, etc.) are never padded.
+/// `Padded`: `{ a }`, `{ }`, `x ^ { 2 }`.
+/// `Compact`: `{a}`, `{}`, `x ^ {2}`.
+///
+/// This applies both to explicit/implicit `Group` nodes and to wrapper-owned
+/// braces emitted for command/script arguments. Text-mode content and scalar
+/// fragments (environment names, dimensions, etc.) are never padded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MathGroupInnerSpacing {
     #[default]
@@ -174,12 +175,9 @@ pub enum ArgumentGrouping {
 
 /// Whether `\begin` / `\end` get a space before the name brace.
 ///
-/// Intended behavior: `Spaced` -> `\begin {matrix}`, `Compact` ->
-/// `\begin{matrix}`. The environment name inside `{}` is always compact.
-///
-/// The current implementation piggybacks on the generic command-to-brace
-/// boundary rule, so `Spaced` is not fully independent from
-/// [`CommandSpacing`].
+/// `Spaced` -> `\begin {matrix}`, `Compact` -> `\begin{matrix}`.
+/// The environment name inside `{}` is always compact, and this setting is
+/// independent from [`CommandSpacing`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EnvironmentNameSpacing {
     #[default]
@@ -403,7 +401,16 @@ impl<'a> Serializer<'a> {
                 }
             }
             GroupKind::Explicit | GroupKind::Implicit => {
-                self.emit_wrapped(child_mode, AtomKind::Brace, "{", "}", children);
+                if matches!(child_mode, ContentMode::Math)
+                    && matches!(
+                        self.options.math.spacing.group_inner_spacing,
+                        MathGroupInnerSpacing::Compact
+                    )
+                {
+                    self.emit_compact_math_brace_group(children);
+                } else {
+                    self.emit_wrapped(child_mode, AtomKind::Brace, "{", "}", children);
+                }
             }
             GroupKind::Delimited { left, right } => {
                 self.writer.emit(
@@ -514,28 +521,24 @@ impl<'a> Serializer<'a> {
 
     /// Emit `\begin {name}` or `\end {name}` (or compact `\begin{name}`).
     ///
-    /// The opening brace is emitted in a synthetic mode to reuse the existing
-    /// boundary rules. The name itself is always emitted as `TextChunk` so it
-    /// is never token-spaced.
-    ///
-    /// Because command-to-brace spacing is still decided in
-    /// [`AtomWriter::should_insert_space`], `EnvironmentNameSpacing::Spaced`
-    /// currently relies on the command-spacing path instead of being fully
-    /// independent.
+    /// Environment header spacing is intentionally controlled here instead of
+    /// piggybacking on the generic command-to-brace rule, so it stays
+    /// independent from `CommandSpacing`.
     fn emit_environment_head(&mut self, outer_mode: ContentMode, head: &str, name: &str) {
         self.writer
             .emit(outer_mode, AtomKind::ControlSequence, head, self.options);
 
-        let brace_mode = match self.options.syntax.environments.name_spacing {
-            EnvironmentNameSpacing::Spaced => ContentMode::Math,
-            EnvironmentNameSpacing::Compact => ContentMode::Text,
-        };
-        self.writer
-            .emit(brace_mode, AtomKind::Brace, "{", self.options);
-        self.writer
-            .emit(ContentMode::Text, AtomKind::TextChunk, name, self.options);
-        self.writer
-            .emit(ContentMode::Text, AtomKind::Brace, "}", self.options);
+        if matches!(
+            self.options.syntax.environments.name_spacing,
+            EnvironmentNameSpacing::Spaced
+        ) {
+            self.writer.output.push(' ');
+        }
+
+        self.writer.output.push('{');
+        self.writer.output.push_str(name);
+        self.writer.output.push('}');
+        self.writer.previous = Some(AtomKind::Brace);
     }
 
     /// Dispatch a single argument slot to the appropriate emitter.
@@ -690,6 +693,19 @@ impl<'a> Serializer<'a> {
         self.writer.emit(mode, kind, close, self.options);
     }
 
+    fn emit_compact_math_brace_group(&mut self, children: &[NodeId]) {
+        self.writer
+            .emit(ContentMode::Math, AtomKind::Brace, "{", self.options);
+
+        self.writer.previous = None;
+        for &child in children {
+            self.visit(child, ContentMode::Math);
+        }
+
+        self.writer
+            .emit(ContentMode::Text, AtomKind::Brace, "}", self.options);
+    }
+
     /// Emit `{ }` as a single pre-formatted unit.
     ///
     /// Bypasses the normal atom pipeline because there is no interior content
@@ -726,6 +742,18 @@ impl<'a> Serializer<'a> {
         self.writer
             .emit(wrapper_mode, AtomKind::Brace, open, self.options);
 
+        let compact_math_brace = matches!(content_mode, ContentMode::Math)
+            && open == "{"
+            && close == "}"
+            && matches!(
+                self.options.math.spacing.group_inner_spacing,
+                MathGroupInnerSpacing::Compact
+            );
+
+        if compact_math_brace {
+            self.writer.previous = None;
+        }
+
         match self.ast.node(child) {
             Node::Group {
                 children,
@@ -751,8 +779,13 @@ impl<'a> Serializer<'a> {
             _ => self.visit(child, content_mode),
         }
 
+        let close_mode = if compact_math_brace {
+            ContentMode::Text
+        } else {
+            content_mode
+        };
         self.writer
-            .emit(content_mode, AtomKind::Brace, close, self.options);
+            .emit(close_mode, AtomKind::Brace, close, self.options);
     }
 
     /// Emit a scalar argument value inside delimiters as a single opaque chunk.

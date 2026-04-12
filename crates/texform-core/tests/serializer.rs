@@ -2,8 +2,8 @@ use texform_core::{
     ast::{Argument, ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node},
     context::ParseContext,
     serialize::{
-        AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, ScriptOrder, SerializeOptions,
-        serialize, serialize_with,
+        AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, MathGroupInnerSpacing,
+        ScriptOrder, SerializeOptions, serialize, serialize_with,
     },
 };
 
@@ -27,6 +27,15 @@ fn test_serialize_with_minimal_command_spacing() {
     options.math.spacing.commands = CommandSpacing::Minimal;
 
     assert_eq!(serialize_with(&ast, &options), r"\sqrt{ a }");
+}
+
+#[test]
+fn test_compact_math_group_inner_spacing_affects_command_wrapper_braces() {
+    let ast = parse_to_ast(r"\sqrt{a}");
+    let mut options = SerializeOptions::default();
+    options.math.spacing.group_inner_spacing = MathGroupInnerSpacing::Compact;
+
+    assert_eq!(serialize_with(&ast, &options), r"\sqrt {a}");
 }
 
 #[test]
@@ -112,6 +121,15 @@ fn test_serialize_scripted_nodes_use_sub_first_and_explicit_grouping() {
 }
 
 #[test]
+fn test_compact_math_group_inner_spacing_affects_script_wrapper_braces() {
+    let ast = parse_to_ast("x^2_i");
+    let mut options = SerializeOptions::default();
+    options.math.spacing.group_inner_spacing = MathGroupInnerSpacing::Compact;
+
+    assert_eq!(serialize_with(&ast, &options), "x _ {i} ^ {2}");
+}
+
+#[test]
 fn test_serialize_with_sup_first_order() {
     let ast = parse_to_ast("x_i^2");
     let mut options = SerializeOptions::default();
@@ -156,6 +174,15 @@ fn test_empty_group_uses_single_inner_padding_space() {
     ast.append_child(root, group);
 
     assert_eq!(serialize(&ast), "{ }");
+}
+
+#[test]
+fn test_compact_math_group_inner_spacing_removes_brace_padding() {
+    let ast = parse_to_ast("{} {a}");
+    let mut options = SerializeOptions::default();
+    options.math.spacing.group_inner_spacing = MathGroupInnerSpacing::Compact;
+
+    assert_eq!(serialize_with(&ast, &options), "{} {a}");
 }
 
 #[test]
@@ -331,6 +358,19 @@ fn test_serialize_with_compact_environment_header() {
     assert_eq!(
         serialize_with(&ast, &options),
         r"\begin{matrix} a b \end{matrix}"
+    );
+}
+
+#[test]
+fn test_environment_name_spacing_is_independent_from_command_spacing() {
+    let ast = parse_to_ast(r"\begin {matrix}ab\end {matrix}");
+    let mut options = SerializeOptions::default();
+    options.math.spacing.commands = CommandSpacing::Minimal;
+    options.syntax.environments.name_spacing = EnvironmentNameSpacing::Spaced;
+
+    assert_eq!(
+        serialize_with(&ast, &options),
+        r"\begin {matrix} a b \end {matrix}"
     );
 }
 
