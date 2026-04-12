@@ -17,6 +17,7 @@ pub mod column_parser;
 pub mod context;
 pub mod lexer;
 pub mod parser;
+pub mod serialize;
 pub mod transform;
 
 mod knowledge;
