@@ -334,6 +334,10 @@ where
 }
 
 /// Parse `\left ... \right` delimited math group.
+///
+/// Whitespace between `\left`/`\right` and the delimiter is accepted so that
+/// `\left ( ... \right )` round-trips correctly through the canonical
+/// serializer's `Spaced` command spacing.
 fn delimited_group_parser<'a, P>(
     kb: &'a KnowledgeBase,
     math_content: P,
@@ -748,6 +752,10 @@ fn env_name_parser<'a>() -> impl Parser<'a, TokenStream<'a>, String, ParserError
 }
 
 /// Parse `\begin{name}` plus its arguments, returning metadata.
+///
+/// Whitespace between `\begin` and `{name}` is accepted so that
+/// `\begin {matrix}` round-trips through the serializer's `Spaced`
+/// environment name spacing.
 fn parse_env_header<'a>(
     kb: &'a KnowledgeBase,
     math_content: ContentParser<'a>,
