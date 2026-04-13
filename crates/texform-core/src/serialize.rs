@@ -293,7 +293,9 @@ impl AtomWriter {
 
         if matches!(prev, AtomKind::ControlSequence) {
             return match next {
-                AtomKind::Brace => matches!(options.math.spacing.commands, CommandSpacing::Spaced),
+                AtomKind::Brace | AtomKind::DelimiterToken => {
+                    matches!(options.math.spacing.commands, CommandSpacing::Spaced)
+                }
                 _ => true,
             };
         }
@@ -376,7 +378,7 @@ impl<'a> Serializer<'a> {
                 children,
                 kind,
                 mode: child_mode,
-            } => self.visit_group(id, kind, child_mode, &children),
+            } => self.visit_group(kind, child_mode, &children),
             Node::Scripted {
                 base,
                 subscript,
@@ -403,20 +405,8 @@ impl<'a> Serializer<'a> {
     ///
     /// `Explicit` and `Implicit` are treated identically as brace groups — the
     /// distinction is parser/transform history and must not leak into the text.
-    fn visit_group(
-        &mut self,
-        id: NodeId,
-        kind: GroupKind,
-        child_mode: ContentMode,
-        children: &[NodeId],
-    ) {
+    fn visit_group(&mut self, kind: GroupKind, child_mode: ContentMode, children: &[NodeId]) {
         match kind {
-            // Root-level group: content only, no surrounding braces.
-            GroupKind::Explicit | GroupKind::Implicit if id == self.ast.root() => {
-                for &child in children {
-                    self.visit(child, child_mode);
-                }
-            }
             GroupKind::Explicit | GroupKind::Implicit => {
                 if matches!(child_mode, ContentMode::Math)
                     && matches!(
@@ -759,15 +749,13 @@ impl<'a> Serializer<'a> {
         self.writer
             .emit(wrapper_mode, AtomKind::Brace, open, self.options);
 
-        let compact_math_brace = matches!(content_mode, ContentMode::Math)
-            && open == "{"
-            && close == "}"
+        let compact_math_inner = matches!(content_mode, ContentMode::Math)
             && matches!(
                 self.options.math.spacing.group_inner_spacing,
                 MathGroupInnerSpacing::Compact
             );
 
-        if compact_math_brace {
+        if compact_math_inner {
             self.writer.previous = None;
         }
 
@@ -796,7 +784,7 @@ impl<'a> Serializer<'a> {
             _ => self.visit(child, content_mode),
         }
 
-        let close_mode = if compact_math_brace {
+        let close_mode = if compact_math_inner {
             ContentMode::Text
         } else {
             content_mode

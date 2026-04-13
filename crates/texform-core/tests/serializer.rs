@@ -3,7 +3,7 @@ use texform_core::{
     context::ParseContext,
     serialize::{
         AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, MathGroupInnerSpacing,
-        ScriptOrder, SerializeOptions, serialize, serialize_with,
+        ScriptOrder, ScriptSpacing, SerializeOptions, serialize, serialize_with,
     },
 };
 
@@ -587,6 +587,33 @@ fn test_serialize_text_mode_paired_scalar_stays_compact() {
     ast.append_child(root, wrapper);
 
     assert_eq!(serialize(&ast), r"\text {a\mark|12|b}");
+}
+
+#[test]
+fn test_serialize_with_compact_script_spacing() {
+    let ast = parse_to_ast("x^2_i");
+    let mut options = SerializeOptions::default();
+    options.math.scripts.spacing = ScriptSpacing::Compact;
+
+    assert_eq!(serialize_with(&ast, &options), "x_{ i }^{ 2 }");
+}
+
+#[test]
+fn test_serialize_minimal_command_spacing_compacts_left_right_delimiter() {
+    let ast = parse_to_ast(r"\left (a+b\right )");
+    let mut options = SerializeOptions::default();
+    options.math.spacing.commands = CommandSpacing::Minimal;
+
+    assert_eq!(serialize_with(&ast, &options), r"\left( a + b \right)");
+}
+
+#[test]
+fn test_compact_math_group_inner_spacing_affects_optional_argument_brackets() {
+    let ast = parse_to_ast(r"\sqrt[3]{x}");
+    let mut options = SerializeOptions::default();
+    options.math.spacing.group_inner_spacing = MathGroupInnerSpacing::Compact;
+
+    assert_eq!(serialize_with(&ast, &options), r"\sqrt [3] {x}");
 }
 
 #[test]
