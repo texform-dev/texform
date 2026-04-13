@@ -40,11 +40,11 @@ export default function InputSection({
         }
       />
       {!collapsed && (
-        <div className="relative flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col">
           <textarea
             value={source}
             onChange={(e) => onSourceChange(e.target.value)}
-            className="min-h-0 flex-1 resize-none border-0 p-3 pb-7 outline-none"
+            className="min-h-0 flex-1 resize-none border-0 p-3 outline-none"
             style={{
               fontFamily: 'var(--font-mono)',
               fontSize: 14,
@@ -56,11 +56,15 @@ export default function InputSection({
             spellCheck={false}
           />
           <div
-            className="pointer-events-none absolute bottom-1.5 right-3 flex items-center gap-3 text-[11px]"
-            style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-fg-subtle)' }}
+            className="flex shrink-0 items-center justify-between border-t px-3 py-1 text-[11px]"
+            style={{
+              background: 'var(--color-canvas-subtle)',
+              borderColor: 'var(--color-border-muted)',
+              color: 'var(--color-fg-subtle)',
+            }}
           >
             <label
-              className="pointer-events-auto flex cursor-pointer items-center gap-1"
+              className="flex cursor-pointer items-center gap-1"
               style={{ fontFamily: 'var(--font-sans)' }}
             >
               <input
@@ -71,7 +75,7 @@ export default function InputSection({
               />
               strict
             </label>
-            <span>{source.length} chars</span>
+            <span style={{ fontFamily: 'var(--font-mono)' }}>{source.length} chars</span>
           </div>
 
           {hasDiagnostics && (

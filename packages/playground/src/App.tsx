@@ -64,6 +64,7 @@ interface ParseViewState {
   result: ParseResult | null
   diagnostics: ParseDiagnostic[]
   fatalMessage: string | null
+  parseTime: number | null
 }
 
 interface ParseThrowLike {
@@ -176,32 +177,35 @@ export default function App() {
   // -- Derived: parse state --
   const parseState = useMemo<ParseViewState>(() => {
     if (!wasmReady || !parseContext) {
-      return { result: null, diagnostics: [], fatalMessage: wasmInitError }
+      return { result: null, diagnostics: [], fatalMessage: wasmInitError, parseTime: null }
     }
+    const t0 = performance.now()
     try {
       const parsed = parseContext.parse(source, strictMode)
-      return { result: parsed, diagnostics: [], fatalMessage: null }
+      return { result: parsed, diagnostics: [], fatalMessage: null, parseTime: performance.now() - t0 }
     } catch (error) {
+      const parseTime = performance.now() - t0
       const thrown = (error ?? {}) as ParseThrowLike
       const diagnostics = Array.isArray(thrown.diagnostics)
         ? (thrown.diagnostics as ParseDiagnostic[])
         : []
       const partial = isParseResult(thrown.partial_result) ? thrown.partial_result : null
       const fatalMessage = diagnostics.length > 0 ? null : extractFatalMessage(error)
-      return { result: partial, diagnostics, fatalMessage }
+      return { result: partial, diagnostics, fatalMessage, parseTime }
     }
   }, [source, strictMode, wasmReady, wasmInitError, parseContext])
 
   // -- Derived: serialized state --
-  const serializedState = useMemo<{ output: string | null; error: string | null }>(() => {
+  const serializedState = useMemo<{ output: string | null; error: string | null; serializeTime: number | null }>(() => {
     if (!wasmReady || !source) {
-      return { output: null, error: null }
+      return { output: null, error: null, serializeTime: null }
     }
+    const t0 = performance.now()
     try {
       const output = serializeLatex(source, strictMode, serializeOptions)
-      return { output, error: null }
+      return { output, error: null, serializeTime: performance.now() - t0 }
     } catch (error) {
-      return { output: null, error: extractFatalMessage(error) }
+      return { output: null, error: extractFatalMessage(error), serializeTime: performance.now() - t0 }
     }
   }, [source, strictMode, serializeOptions, wasmReady])
 
@@ -530,11 +534,13 @@ export default function App() {
                 onToggleNode={toggleNode}
                 nodeCount={flatNodes.length}
                 treeDepth={treeDepth}
+                parseTime={parseState.parseTime}
               />
             ) : (
               <SerializedTab
                 serializedOutput={serializedState.output}
                 serializeError={serializedState.error}
+                serializeTime={serializedState.serializeTime}
                 serializeOptions={serializeOptions}
                 onSerializeOptionsChange={setSerializeOptions}
                 optionsPanelOpen={optionsPanelOpen}

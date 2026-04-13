@@ -8,6 +8,7 @@ interface SyntaxTreeTabProps {
   onToggleNode: (id: string) => void
   nodeCount: number
   treeDepth: number
+  parseTime: number | null
 }
 
 export default function SyntaxTreeTab({
@@ -17,9 +18,10 @@ export default function SyntaxTreeTab({
   onToggleNode,
   nodeCount,
   treeDepth,
+  parseTime,
 }: SyntaxTreeTabProps) {
   return (
-    <div className="relative flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden">
       <div
         className="flex-1 overflow-auto py-2"
         style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}
@@ -56,11 +58,17 @@ export default function SyntaxTreeTab({
       </div>
 
       <div
-        className="pointer-events-none absolute bottom-1.5 right-3 flex gap-3 text-[11px]"
-        style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-fg-subtle)' }}
+        className="flex shrink-0 items-center justify-end gap-3 border-t px-3 py-1 text-[11px]"
+        style={{
+          fontFamily: 'var(--font-mono)',
+          background: 'var(--color-canvas-subtle)',
+          borderColor: 'var(--color-border-muted)',
+          color: 'var(--color-fg-subtle)',
+        }}
       >
         <span>{nodeCount} nodes</span>
         <span>depth {treeDepth}</span>
+        {parseTime !== null && <span>{parseTime.toFixed(1)} ms</span>}
       </div>
     </div>
   )
