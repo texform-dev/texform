@@ -1,0 +1,108 @@
+@import './primer-tokens.css';
+@import 'tailwindcss';
+
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans',
+    Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+    'Liberation Mono', monospace;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  background: var(--color-canvas-default);
+  color: var(--color-fg-default);
+  user-select: text;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+::selection {
+  background: var(--color-accent-subtle);
+}
+
+/* Shared button primitives (Primer-like) */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  line-height: 20px;
+  color: var(--color-fg-default);
+  background: var(--color-btn-bg);
+  border: 1px solid var(--color-btn-border);
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s;
+}
+.btn:hover {
+  background: var(--color-btn-hover-bg);
+}
+.btn-sm {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+.btn-icon {
+  padding: 5px 8px;
+  color: var(--color-fg-muted);
+}
+.btn-primary {
+  color: #fff;
+  background: var(--color-accent-emphasis);
+  border-color: var(--color-accent-emphasis);
+}
+.btn-primary:hover {
+  opacity: 0.9;
+  background: var(--color-accent-emphasis);
+}
+
+/* Resize handle hover effect */
+.resize-handle:hover {
+  background: var(--color-accent-fg) !important;
+}
+
+/* Clickable tree node row hover */
+.tree-node-row:hover {
+  background: var(--color-neutral-muted);
+}
+
+/* Small action button hover */
+.btn-subtle:hover {
+  background: var(--color-neutral-muted);
+}
+
+/* Form submit button hover */
+.btn-submit:hover {
+  background: color-mix(in srgb, var(--color-accent-fg), transparent 75%) !important;
+}
