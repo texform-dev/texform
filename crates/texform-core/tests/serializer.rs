@@ -114,6 +114,13 @@ fn test_serialize_delimited_group_with_none_delimiter() {
 }
 
 #[test]
+fn test_serialize_delimited_group_with_square_brackets() {
+    let ast = parse_to_ast(r"\left[a+b\right]");
+
+    assert_eq!(serialize(&ast), r"\left [ a + b \right ]");
+}
+
+#[test]
 fn test_serialize_scripted_nodes_use_sub_first_and_explicit_grouping() {
     let ast = parse_to_ast("x^2_i");
 

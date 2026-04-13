@@ -226,6 +226,11 @@ fn delimiter<'a>(
         Token::Char('.') => Delimiter::None,
         Token::Char(c) if matches!(c, '(' | ')' | '[' | ']' | '|' | '<' | '>' | '/' | '\\')
             => Delimiter::Char(c),
+        // Raw square brackets are tokenized separately so optional arguments
+        // can be recognized without backtracking, but they still need to work
+        // as plain delimiters after \left / \right.
+        Token::LBracket => Delimiter::Char('['),
+        Token::RBracket => Delimiter::Char(']'),
         Token::ControlSeq(name) if kb.lookup_delimiter_control(name.as_str()).is_some() => {
             Delimiter::Control(kb.lookup_delimiter_control(name.as_str()).unwrap())
         }

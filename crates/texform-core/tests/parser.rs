@@ -1341,6 +1341,29 @@ fn test_delimited_group_accepts_space_after_left_and_right() {
 }
 
 #[test]
+fn test_delimited_group_square_brackets() {
+    let (result, _) = parse(r"\left[a+b\right]", false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Group { kind, children, .. } => match kind {
+                GroupKind::Delimited { left, right } => {
+                    assert_eq!(*left, Delimiter::Char('['));
+                    assert_eq!(*right, Delimiter::Char(']'));
+                    assert_eq!(children.len(), 3);
+                    assert_eq!(children[0], SyntaxNode::Char('a'));
+                    assert_eq!(children[1], SyntaxNode::Char('+'));
+                    assert_eq!(children[2], SyntaxNode::Char('b'));
+                }
+                other => panic!("Expected delimited group, got {:?}", other),
+            },
+            other => panic!("Expected inner group, got {:?}", other),
+        },
+        other => panic!("Expected root group, got {:?}", other),
+    }
+}
+
+#[test]
 fn test_environment_basic() {
     let (result, _) = parse(r"\begin{matrix}ab\end{matrix}", false).unwrap();
 
