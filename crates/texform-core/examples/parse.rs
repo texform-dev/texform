@@ -217,6 +217,13 @@ fn render_diagnostics(input: &str, diagnostics: &[ParseDiagnostic]) {
             .finish()
             .eprint(source.clone())
             .unwrap();
+
+        for context in &diagnostic.contexts {
+            eprintln!(
+                "  context: {} @ {}..{}",
+                context.label, context.span.start, context.span.end
+            );
+        }
     }
 }
 

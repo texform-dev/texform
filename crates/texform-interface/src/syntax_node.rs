@@ -192,6 +192,13 @@ pub enum SyntaxNode {
     /// and strict mode is disabled.
     UnknownCommand { name: String },
 
+    /// Parser-produced error placeholder.
+    ///
+    /// This keeps recovery output inspectable while making downstream
+    /// conversion and serialization fail fast if the caller tries to treat it
+    /// as a valid syntax tree.
+    Error { message: String, snippet: String },
+
     /// Text string (Text mode only)
     ///
     /// Produced in Text mode or as content of Text-mode arguments/environments.
@@ -230,6 +237,7 @@ impl SyntaxNode {
                 | SyntaxNode::Text(_)
                 | SyntaxNode::ActiveSpace
                 | SyntaxNode::UnknownCommand { .. }
+                | SyntaxNode::Error { .. }
         )
     }
 
@@ -415,6 +423,13 @@ impl SyntaxNode {
             }
             SyntaxNode::UnknownCommand { name } => {
                 writeln!(f, "{}UnknownCommand(\\{})", prefix, name)
+            }
+            SyntaxNode::Error { message, snippet } => {
+                writeln!(
+                    f,
+                    "{}Error(message: {}, snippet: {})",
+                    prefix, message, snippet
+                )
             }
             SyntaxNode::Text(s) => writeln!(f, "{}Text(\"{}\")", prefix, s),
             SyntaxNode::Char(c) => writeln!(f, "{}Char('{}')", prefix, c),

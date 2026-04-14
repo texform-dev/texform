@@ -33,6 +33,7 @@ export type SyntaxNode =
     | { Environment: { name: string; args: ArgumentSlot[]; body: SyntaxNode } }
     | { Scripted: { base: SyntaxNode; subscript?: SyntaxNode; superscript?: SyntaxNode } }
     | { UnknownCommand: { name: string } }
+    | { Error: { message: string; snippet: string } }
     | { Text: string }
     | { Char: string }
     | "ActiveSpace";
@@ -402,21 +403,56 @@ pub fn serialize(
     let strict = strict.unwrap_or(false);
     let output = api::parse_latex(src, strict);
 
-    let node = output
-        .result
-        .map(|r| r.node)
-        .ok_or_else(|| JsValue::from_str("parse produced no result to serialize"))?;
+    let parsed_options = match options {
+        Some(opts_js) => Some(
+            serde_wasm_bindgen::from_value(opts_js)
+                .map_err(|e| JsValue::from_str(&format!("invalid serialize options: {}", e)))?,
+        ),
+        None => None,
+    };
+
+    serialize_parse_output(output, parsed_options.as_ref())
+}
+
+fn serialize_parse_output(
+    output: ParseOutput,
+    options: Option<&SerializeOptions>,
+) -> Result<String, JsValue> {
+    let result = match prepare_parse_output_for_serialize(&output) {
+        Ok(result) => result,
+        Err(SerializePrepareError::DiagnosticsPresent) => return Err(build_parse_error(&output)?),
+        Err(SerializePrepareError::NoResult) => {
+            return Err(JsValue::from_str("parse produced no result to serialize"));
+        }
+    };
+
+    let node = &result.node;
 
     let result = match options {
-        Some(opts_js) => {
-            let opts: SerializeOptions = serde_wasm_bindgen::from_value(opts_js)
-                .map_err(|e| JsValue::from_str(&format!("invalid serialize options: {}", e)))?;
-            api::serialize_latex_with(&node, &opts)
-        }
-        None => api::serialize_latex(&node),
+        Some(opts) => api::serialize_latex_with(node, opts),
+        None => api::serialize_latex(node),
     };
 
     Ok(result)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SerializePrepareError {
+    DiagnosticsPresent,
+    NoResult,
+}
+
+fn prepare_parse_output_for_serialize(
+    output: &ParseOutput,
+) -> Result<&texform_core::context::ParseResult, SerializePrepareError> {
+    if !output.diagnostics.is_empty() {
+        return Err(SerializePrepareError::DiagnosticsPresent);
+    }
+
+    output
+        .result
+        .as_ref()
+        .ok_or(SerializePrepareError::NoResult)
 }
 
 fn parse_with_context_output_to_result(
@@ -514,33 +550,36 @@ fn parse_output_to_result(output: ParseOutput) -> Result<JsValue, JsValue> {
             )),
         }
     } else {
-        // Build structured error: { diagnostics, partial_result, partial_display }
-        let diagnostics = serde_wasm_bindgen::to_value(&output.diagnostics)
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
-
-        let (partial_result, partial_display) = match &output.result {
-            Some(r) => {
-                let js = serde_wasm_bindgen::to_value(r)
-                    .map_err(|e| JsValue::from_str(&e.to_string()))?;
-                let display: JsValue = r.node.to_string().into();
-                (js, display)
-            }
-            None => (JsValue::NULL, JsValue::NULL),
-        };
-
-        let err = js_sys::Object::new();
-        let message = output
-            .diagnostics
-            .first()
-            .map(|diag| diag.message.clone())
-            .unwrap_or_else(|| "parse failed".to_string());
-        js_sys::Reflect::set(&err, &"diagnostics".into(), &diagnostics).unwrap();
-        js_sys::Reflect::set(&err, &"partial_result".into(), &partial_result).unwrap();
-        js_sys::Reflect::set(&err, &"partial_display".into(), &partial_display).unwrap();
-        js_sys::Reflect::set(&err, &"message".into(), &message.into()).unwrap();
-
-        Err(err.into())
+        Err(build_parse_error(&output)?)
     }
+}
+
+fn build_parse_error(output: &ParseOutput) -> Result<JsValue, JsValue> {
+    let diagnostics = serde_wasm_bindgen::to_value(&output.diagnostics)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let (partial_result, partial_display) = match &output.result {
+        Some(r) => {
+            let js =
+                serde_wasm_bindgen::to_value(r).map_err(|e| JsValue::from_str(&e.to_string()))?;
+            let display: JsValue = r.node.to_string().into();
+            (js, display)
+        }
+        None => (JsValue::NULL, JsValue::NULL),
+    };
+
+    let err = js_sys::Object::new();
+    let message = output
+        .diagnostics
+        .first()
+        .map(|diag| diag.message.clone())
+        .unwrap_or_else(|| "parse failed".to_string());
+    js_sys::Reflect::set(&err, &"diagnostics".into(), &diagnostics).unwrap();
+    js_sys::Reflect::set(&err, &"partial_result".into(), &partial_result).unwrap();
+    js_sys::Reflect::set(&err, &"partial_display".into(), &partial_display).unwrap();
+    js_sys::Reflect::set(&err, &"message".into(), &message.into()).unwrap();
+
+    Ok(err.into())
 }
 
 fn parse_command_kind(value: &str) -> Result<CommandKind, JsValue> {
@@ -590,6 +629,20 @@ fn content_mode_to_string(mode: ContentMode) -> &'static str {
     match mode {
         ContentMode::Math => "math",
         ContentMode::Text => "text",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serialize_rejects_diagnostics_bearing_parse_results() {
+        let output = api::parse_latex(r"\unknowncmd", true);
+
+        let err = prepare_parse_output_for_serialize(&output)
+            .expect_err("should reject diagnostics-bearing parse results");
+        assert_eq!(err, SerializePrepareError::DiagnosticsPresent);
     }
 }
 

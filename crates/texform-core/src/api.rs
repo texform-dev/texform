@@ -106,12 +106,14 @@ pub fn parse_with_context_items(
 
 /// Serialize a [`SyntaxNode`] back to canonical LaTeX text using default options.
 pub fn serialize_latex(node: &SyntaxNode) -> String {
+    assert_serializable_syntax_node(node);
     let ast = Ast::from_syntax_node(node);
     serialize::serialize(&ast)
 }
 
 /// Serialize a [`SyntaxNode`] back to LaTeX text with explicit style options.
 pub fn serialize_latex_with(node: &SyntaxNode, options: &SerializeOptions) -> String {
+    assert_serializable_syntax_node(node);
     let ast = Ast::from_syntax_node(node);
     serialize::serialize_with(&ast, options)
 }
@@ -147,7 +149,77 @@ fn invalid_input_output(message: String) -> ParseOutput {
             span: Span { start: 0, end: 0 },
             expected: Vec::new(),
             found: None,
+            contexts: Vec::new(),
         }],
+    }
+}
+
+fn assert_serializable_syntax_node(node: &SyntaxNode) {
+    match node {
+        SyntaxNode::Group { children, .. } => {
+            for child in children {
+                assert_serializable_syntax_node(child);
+            }
+        }
+        SyntaxNode::Command { args, .. } | SyntaxNode::Environment { args, .. } => {
+            for arg in args.iter().flatten() {
+                assert_serializable_argument_value(&arg.value);
+            }
+            if let SyntaxNode::Environment { body, .. } = node {
+                assert_serializable_syntax_node(body);
+            }
+        }
+        SyntaxNode::Infix {
+            args, left, right, ..
+        } => {
+            for arg in args.iter().flatten() {
+                assert_serializable_argument_value(&arg.value);
+            }
+            assert_serializable_syntax_node(left);
+            assert_serializable_syntax_node(right);
+        }
+        SyntaxNode::Declarative { args, scope, .. } => {
+            for arg in args.iter().flatten() {
+                assert_serializable_argument_value(&arg.value);
+            }
+            assert_serializable_syntax_node(scope);
+        }
+        SyntaxNode::Scripted {
+            base,
+            subscript,
+            superscript,
+        } => {
+            assert_serializable_syntax_node(base);
+            if let Some(subscript) = subscript {
+                assert_serializable_syntax_node(subscript);
+            }
+            if let Some(superscript) = superscript {
+                assert_serializable_syntax_node(superscript);
+            }
+        }
+        SyntaxNode::Error { .. } => {
+            panic!("cannot serialize syntax tree containing Error node")
+        }
+        SyntaxNode::UnknownCommand { .. }
+        | SyntaxNode::Text(_)
+        | SyntaxNode::Char(_)
+        | SyntaxNode::ActiveSpace => {}
+    }
+}
+
+fn assert_serializable_argument_value(value: &texform_interface::syntax_node::ArgumentValue) {
+    match value {
+        texform_interface::syntax_node::ArgumentValue::MathContent(node)
+        | texform_interface::syntax_node::ArgumentValue::TextContent(node) => {
+            assert_serializable_syntax_node(node);
+        }
+        texform_interface::syntax_node::ArgumentValue::Delimiter(_)
+        | texform_interface::syntax_node::ArgumentValue::CSName(_)
+        | texform_interface::syntax_node::ArgumentValue::Dimension(_)
+        | texform_interface::syntax_node::ArgumentValue::Integer(_)
+        | texform_interface::syntax_node::ArgumentValue::KeyVal(_)
+        | texform_interface::syntax_node::ArgumentValue::Column(_)
+        | texform_interface::syntax_node::ArgumentValue::Boolean(_) => {}
     }
 }
 

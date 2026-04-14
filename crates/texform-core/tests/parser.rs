@@ -494,6 +494,35 @@ fn test_script_with_group() {
     }
 }
 
+#[test]
+fn test_bare_left_reports_invalid_left_delimiter() {
+    let diagnostics = parse(r"\left\foo x \right)", false).unwrap_err();
+    assert_eq!(diagnostics[0], "invalid \\left delimiter");
+}
+
+#[test]
+fn test_environment_does_not_mask_inner_left_error() {
+    let output = test_context_with_items([environment_item(
+        "aligned",
+        AllowedMode::Math,
+        ContentMode::Math,
+        "",
+    )])
+    .parse(r"\begin{aligned}\left\foo x \right)\end{aligned}", false);
+    let diagnostics: Vec<String> = output
+        .diagnostics
+        .into_iter()
+        .map(|diag| diag.message)
+        .collect();
+    assert_eq!(diagnostics[0], "invalid \\left delimiter");
+}
+
+#[test]
+fn test_later_left_item_reports_invalid_left_delimiter() {
+    let diagnostics = parse(r"\left( x \right) + \left\foo y \right)", false).unwrap_err();
+    assert_eq!(diagnostics[0], "invalid \\left delimiter");
+}
+
 // ========================================================================
 // Stage 3 Tests (Command parsing)
 // ========================================================================

@@ -1069,6 +1069,9 @@ impl Ast {
                     .map(|node| Self::convert_syntax_node(node, nodes, parent)),
             },
             SyntaxNode::UnknownCommand { name } => Node::UnknownCommand { name: name.clone() },
+            SyntaxNode::Error { .. } => {
+                panic!("cannot convert SyntaxNode::Error into AST")
+            }
             SyntaxNode::Text(text) => Node::Text(text.clone()),
             SyntaxNode::Char(ch) => Node::Char(*ch),
             SyntaxNode::ActiveSpace => Node::ActiveSpace,

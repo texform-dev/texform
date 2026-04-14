@@ -1,4 +1,4 @@
-use texform_core::api::{parse_latex, parse_with_context_items};
+use texform_core::api::{parse_latex, parse_with_context_items, serialize_latex};
 use texform_core::context::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
     KnowledgeBase, ParseContext, ParseOutput,
@@ -110,6 +110,78 @@ fn diagnostics_serialize() {
     assert!(diagnostic.get("message").is_some());
     assert!(diagnostic.get("span").is_some());
     assert!(diagnostic.get("expected").is_some());
+}
+
+#[test]
+fn diagnostics_serialize_includes_contexts_field() {
+    let output = parse_latex(r"\unknowncmd", true);
+    let json = serde_json::to_value(&output).unwrap();
+    let diagnostics = json.get("diagnostics").unwrap().as_array().unwrap();
+    assert!(!diagnostics.is_empty());
+    let diagnostic = &diagnostics[0];
+    assert!(diagnostic.get("message").is_some());
+    assert!(diagnostic.get("span").is_some());
+    assert!(diagnostic.get("expected").is_some());
+    assert!(diagnostic.get("contexts").is_some());
+}
+
+#[test]
+fn invalid_left_delimiter_reports_root_cause_and_contexts() {
+    let output = parse_latex(r"\begin{aligned}\left\foo x \right)\end{aligned}", false);
+    assert!(!output.diagnostics.is_empty(), "should have diagnostics");
+
+    let diagnostic = &output.diagnostics[0];
+    assert_eq!(diagnostic.message, "invalid \\left delimiter");
+
+    let labels: Vec<&str> = diagnostic
+        .contexts
+        .iter()
+        .map(|context| context.label.as_str())
+        .collect();
+    assert!(labels.contains(&"left-delimited group"));
+    assert!(labels.contains(&"environment body"));
+}
+
+#[test]
+fn invalid_left_delimiter_reports_bare_left_context_only() {
+    let output = parse_latex(r"\left\foo x \right)", false);
+    assert!(!output.diagnostics.is_empty(), "should have diagnostics");
+
+    let diagnostic = &output.diagnostics[0];
+    assert_eq!(diagnostic.message, "invalid \\left delimiter");
+
+    let labels: Vec<&str> = diagnostic
+        .contexts
+        .iter()
+        .map(|context| context.label.as_str())
+        .collect();
+    assert!(labels.contains(&"left-delimited group"));
+    assert!(!labels.contains(&"environment body"));
+}
+
+#[test]
+#[should_panic(expected = "cannot serialize syntax tree containing Error node")]
+fn serialize_latex_rejects_error_nodes() {
+    let node = SyntaxNode::Error {
+        message: "invalid \\left delimiter".to_string(),
+        snippet: "\\left\\foo x \\right)".to_string(),
+    };
+
+    let _ = serialize_latex(&node);
+}
+
+#[test]
+#[should_panic(expected = "cannot serialize syntax tree containing Error node")]
+fn serialize_latex_rejects_nested_error_nodes() {
+    let node = SyntaxNode::implicit_group(
+        ContentMode::Math,
+        vec![SyntaxNode::Error {
+            message: "invalid \\left delimiter".to_string(),
+            snippet: "\\left\\foo x \\right)".to_string(),
+        }],
+    );
+
+    let _ = serialize_latex(&node);
 }
 
 #[test]

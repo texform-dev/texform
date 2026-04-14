@@ -264,6 +264,20 @@ fn test_unknown_command() {
 }
 
 #[test]
+fn test_error_node_display_and_leaf_status() {
+    let error = SyntaxNode::Error {
+        message: "invalid \\left delimiter".to_string(),
+        snippet: "\\left\\foo x \\right)".to_string(),
+    };
+
+    assert!(error.is_leaf());
+
+    let display = error.to_string();
+    assert!(display.contains("invalid \\left delimiter"));
+    assert!(display.contains("\\left\\foo x \\right)"));
+}
+
+#[test]
 fn test_environment_structure() {
     let env = SyntaxNode::Environment {
         name: "matrix".to_string(),

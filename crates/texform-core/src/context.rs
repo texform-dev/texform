@@ -9,6 +9,7 @@
 use std::sync::{Arc, Mutex, OnceLock};
 
 use chumsky::prelude::*;
+use logos::Logos;
 use serde::Serialize;
 pub use texform_argspec::ArgSpecParseError;
 use texform_interface::syntax_node::SyntaxNode;
@@ -200,6 +201,16 @@ pub struct Span {
     pub end: usize,
 }
 
+/// Additional source span attached to a diagnostic.
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
+pub struct ParseDiagnosticContext {
+    /// Human-readable label for this related span
+    pub label: String,
+    /// Source location referenced by the label
+    pub span: Span,
+}
+
 /// Successful (possibly partial) parse result.
 ///
 /// Even when diagnostics are present, a partial syntax tree may still be
@@ -230,6 +241,8 @@ pub struct ParseDiagnostic {
     pub expected: Vec<String>,
     /// Token actually found, if any
     pub found: Option<String>,
+    /// Additional related source ranges for richer diagnostics
+    pub contexts: Vec<ParseDiagnosticContext>,
 }
 
 /// Unified parse output carrying an optional result and zero or more diagnostics.
@@ -508,7 +521,10 @@ pub(crate) fn parse_with_kb(kb: &KnowledgeBase, src: &str, strict: bool) -> Pars
         },
     });
 
-    let diagnostics = errors.into_iter().map(convert_diagnostic).collect();
+    let diagnostics = errors
+        .into_iter()
+        .map(|err| convert_diagnostic(kb, src, err))
+        .collect();
 
     ParseOutput {
         result,
@@ -532,7 +548,7 @@ fn parse_raw(
     (output, errors)
 }
 
-fn convert_diagnostic(err: Rich<'static, Token>) -> ParseDiagnostic {
+fn convert_diagnostic(kb: &KnowledgeBase, src: &str, err: Rich<'static, Token>) -> ParseDiagnostic {
     let span = {
         let s = err.span();
         Span {
@@ -542,6 +558,16 @@ fn convert_diagnostic(err: Rich<'static, Token>) -> ParseDiagnostic {
     };
 
     let reason = err.reason();
+    let contexts = err
+        .contexts()
+        .map(|(label, span)| ParseDiagnosticContext {
+            label: format!("{label}"),
+            span: Span {
+                start: span.start,
+                end: span.end,
+            },
+        })
+        .collect();
 
     let (message, expected, found) = match reason {
         chumsky::error::RichReason::ExpectedFound {
@@ -557,12 +583,142 @@ fn convert_diagnostic(err: Rich<'static, Token>) -> ParseDiagnostic {
         chumsky::error::RichReason::Custom(msg) => (msg.clone(), Vec::new(), None),
     };
 
-    ParseDiagnostic {
+    let mut diagnostic = ParseDiagnostic {
         message,
         span,
         expected,
         found,
+        contexts,
+    };
+
+    supplement_diagnostic_contexts(kb, src, &mut diagnostic);
+    diagnostic
+}
+
+fn supplement_diagnostic_contexts(kb: &KnowledgeBase, src: &str, diagnostic: &mut ParseDiagnostic) {
+    if !diagnostic.contexts.is_empty() {
+        return;
     }
+
+    let needs_left_context = matches!(
+        diagnostic.message.as_str(),
+        "invalid \\left delimiter"
+            | "missing \\right for \\left-delimited group"
+            | "invalid \\right delimiter"
+    );
+    if !needs_left_context {
+        return;
+    }
+
+    let Some((left_span, env_span)) = find_invalid_left_context(kb, src) else {
+        return;
+    };
+
+    diagnostic.contexts.push(ParseDiagnosticContext {
+        label: "left-delimited group".to_string(),
+        span: left_span,
+    });
+
+    if let Some(env_span) = env_span {
+        diagnostic.contexts.push(ParseDiagnosticContext {
+            label: "environment body".to_string(),
+            span: env_span,
+        });
+    }
+}
+
+fn find_invalid_left_context(kb: &KnowledgeBase, src: &str) -> Option<(Span, Option<Span>)> {
+    let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
+        .spanned()
+        .map(|(token, span)| {
+            let token = token.unwrap_or_else(|()| {
+                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
+            });
+            (token, span)
+        })
+        .collect();
+
+    let mut environment_stack = Vec::new();
+    let mut index = 0;
+
+    while index < tokens.len() {
+        match &tokens[index].0 {
+            Token::ControlSeq(name) if name == "begin" => {
+                environment_stack.push(environment_body_start(&tokens, index));
+            }
+            Token::ControlSeq(name) if name == "end" => {
+                environment_stack.pop();
+            }
+            Token::ControlSeq(name) if name == "left" => {
+                let mut next = index + 1;
+                while matches!(tokens.get(next), Some((Token::Whitespaces, _))) {
+                    next += 1;
+                }
+
+                let Some((token, token_span)) = tokens.get(next) else {
+                    let left_span = Span {
+                        start: tokens[index].1.start,
+                        end: tokens[index].1.end,
+                    };
+                    let env_span = environment_stack.last().map(|start| Span {
+                        start: *start,
+                        end: left_span.end,
+                    });
+                    return Some((left_span, env_span));
+                };
+
+                let is_valid_delimiter = match token {
+                    Token::Char('.') => true,
+                    Token::Char(c)
+                        if matches!(c, '(' | ')' | '[' | ']' | '|' | '<' | '>' | '/' | '\\') =>
+                    {
+                        true
+                    }
+                    Token::LBracket | Token::RBracket => true,
+                    Token::ControlSeq(name) => kb.lookup_delimiter_control(name.as_str()).is_some(),
+                    _ => false,
+                };
+
+                if !is_valid_delimiter {
+                    let left_span = Span {
+                        start: tokens[index].1.start,
+                        end: token_span.end,
+                    };
+                    let env_span = environment_stack.last().map(|start| Span {
+                        start: *start,
+                        end: token_span.end,
+                    });
+                    return Some((left_span, env_span));
+                }
+            }
+            _ => {}
+        }
+
+        index += 1;
+    }
+
+    None
+}
+
+fn environment_body_start(tokens: &[(Token, std::ops::Range<usize>)], begin_index: usize) -> usize {
+    let mut index = begin_index + 1;
+    while matches!(tokens.get(index), Some((Token::Whitespaces, _))) {
+        index += 1;
+    }
+
+    if !matches!(tokens.get(index), Some((Token::LBrace, _))) {
+        return tokens[begin_index].1.start;
+    }
+    index += 1;
+
+    while let Some((token, span)) = tokens.get(index) {
+        if matches!(token, Token::RBrace) {
+            return span.end;
+        }
+        index += 1;
+    }
+
+    tokens[begin_index].1.start
 }
 
 #[cfg(test)]

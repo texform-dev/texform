@@ -25,6 +25,7 @@ mod arguments;
 
 use chumsky::{
     input::{Cursor, InputRef, Stream},
+    label::LabelError,
     prelude::*,
 };
 use logos::Logos;
@@ -352,18 +353,67 @@ where
 {
     let ws = insignificant_whitespace();
 
-    control_seq("left")
-        .then_ignore(ws.clone())
-        .ignore_then(delimiter(kb))
-        .then(math_content)
-        .then_ignore(control_seq("right"))
-        .then_ignore(ws)
-        .then(delimiter(kb))
-        .map(|((left, children), right)| SyntaxNode::Group {
+    custom(move |input| {
+        let group_start = input.cursor();
+        input.parse(control_seq("left"))?;
+        let _ = input.parse(ws.clone());
+
+        let left_start = input.cursor();
+        let left = match input.parse(delimiter(kb)) {
+            Ok(left) => left,
+            Err(_) => {
+                let mut err = Rich::custom(
+                    input.span_from_cursor(&left_start),
+                    "invalid \\left delimiter",
+                );
+                <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                    &mut err,
+                    "left-delimited group",
+                    input.span_from_cursor(&group_start),
+                );
+                return Err(err);
+            }
+        };
+
+        let children = input.parse(math_content.clone())?;
+
+        if input.parse(control_seq("right")).is_err() {
+            let mut err = Rich::custom(
+                input.span_from_cursor(&group_start),
+                "missing \\right for \\left-delimited group",
+            );
+            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                &mut err,
+                "left-delimited group",
+                input.span_from_cursor(&group_start),
+            );
+            return Err(err);
+        }
+        let _ = input.parse(ws.clone());
+
+        let delimiter_start = input.cursor();
+        let right = match input.parse(delimiter(kb)) {
+            Ok(right) => right,
+            Err(_) => {
+                let mut err = Rich::custom(
+                    input.span_from_cursor(&delimiter_start),
+                    "invalid \\right delimiter",
+                );
+                <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                    &mut err,
+                    "left-delimited group",
+                    input.span_from_cursor(&group_start),
+                );
+                return Err(err);
+            }
+        };
+
+        Ok(SyntaxNode::Group {
             mode: ContentMode::Math,
             kind: GroupKind::Delimited { left, right },
             children,
         })
+    })
 }
 
 /// Tracks how the superscript was built so we can detect double-exponent errors.
@@ -405,7 +455,15 @@ where
 {
     let ws = insignificant_whitespace();
 
-    let base_opt = input.parse(atom_for_scripts.clone().or_not())?;
+    let preserve_atom_error = matches!(
+        input.peek(),
+        Some(Token::ControlSeq(name)) if matches!(name.as_str(), "left" | "begin")
+    );
+    let base_opt = if preserve_atom_error {
+        Some(input.parse(atom_for_scripts.clone())?)
+    } else {
+        input.parse(atom_for_scripts.clone().or_not())?
+    };
     let base = match base_opt {
         Some(base) => base,
         None => match input.peek() {
@@ -551,7 +609,42 @@ fn env_body_parser<'a>(
     mode: ContentMode,
     content: ContentParser<'a>,
 ) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
-    implicit_group_parser(mode, content)
+    let body = implicit_group_parser(mode, content);
+    custom(move |input| {
+        let body_start = input.cursor();
+        match input.parse(body.clone()) {
+            Ok(node) => Ok(node),
+            Err(mut err) => {
+                <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                    &mut err,
+                    "environment body",
+                    input.span_from_cursor(&body_start),
+                );
+                Err(err)
+            }
+        }
+    })
+}
+
+fn mode_item_parser<'a>(
+    mode: ContentMode,
+    kb: &'a KnowledgeBase,
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
+    strict: bool,
+) -> NodeParser<'a> {
+    match mode {
+        ContentMode::Math => math_item_parser(kb, math_content, text_content, strict).boxed(),
+        ContentMode::Text => text_item_parser(kb, math_content, text_content, strict).boxed(),
+    }
+}
+
+fn is_outer_closing_boundary(token: Option<&Token>) -> bool {
+    match token {
+        None | Some(Token::RBrace) | Some(Token::RBracket) | Some(Token::MathShift) => true,
+        Some(Token::ControlSeq(name)) => matches!(name.as_str(), "right" | "end"),
+        _ => false,
+    }
 }
 
 /// Consume a control-sequence token, look it up in the KB, and validate that
@@ -618,6 +711,7 @@ fn math_infix_or_decl_guard<'a>(
                 .map(|m| matches!(m.kind, CommandKind::Infix | CommandKind::Declarative))
                 .unwrap_or(false) => ()
     }
+    .rewind()
 }
 
 /// Guard used to stop content parsing before declarative commands.
@@ -630,6 +724,19 @@ fn declarative_guard<'a>(
                 .map(|m| m.kind == CommandKind::Declarative)
                 .unwrap_or(false) => ()
     }
+    .rewind()
+}
+
+fn infix_guard<'a>(
+    kb: &'a KnowledgeBase,
+) -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
+    select! {
+        Token::ControlSeq(name)
+            if kb.lookup_command(name.as_str())
+                .map(|m| m.kind == CommandKind::Infix)
+                .unwrap_or(false) => ()
+    }
+    .rewind()
 }
 
 /// Parse one math item node (with script handling) without outer spacing policy.
@@ -838,28 +945,46 @@ fn environment_parser<'a>(
         let body = input.parse(env_body_parser(meta.body_mode, body_content))?;
 
         let expected_end = name.clone();
+        let missing_end_message = format!(
+            "Environment {} missing closing \\end{{{}}}",
+            expected_end, expected_end
+        );
 
         let end_start = input.cursor();
-        input.parse(control_seq("end")).map_err(|_| {
-            Rich::custom(
-                input.span_from_cursor(&end_start),
-                format!(
-                    "Environment {} missing closing \\end{{{}}}",
-                    expected_end, expected_end
-                ),
+
+        if input.parse(control_seq("end")).is_err() {
+            if is_outer_closing_boundary(input.peek().as_ref()) {
+                return Err(Rich::custom(
+                    input.span_from_cursor(&end_start),
+                    missing_end_message.clone(),
+                ));
+            }
+
+            let checkpoint = input.save();
+            let probe = mode_item_parser(
+                meta.body_mode,
+                kb,
+                math_content.clone(),
+                text_content.clone(),
+                strict,
             )
-        })?;
+            .padded_by(ws.clone());
+            let probe_result = input.parse(probe);
+            input.rewind(checkpoint);
+
+            return match probe_result {
+                Ok(_) => Err(Rich::custom(
+                    input.span_from_cursor(&end_start),
+                    missing_end_message.clone(),
+                )),
+                Err(err) => Err(err),
+            };
+        }
         let _ = input.parse(ws.clone());
 
-        let end_name = input.parse(env_name_parser()).map_err(|_| {
-            Rich::custom(
-                input.span_from_cursor(&end_start),
-                format!(
-                    "Environment {} missing closing \\end{{{}}}",
-                    expected_end, expected_end
-                ),
-            )
-        })?;
+        let end_name = input
+            .parse(env_name_parser())
+            .map_err(|_| Rich::custom(input.span_from_cursor(&end_start), missing_end_message))?;
         let end_span = input.span_from_cursor(&end_start);
 
         if end_name != name {
@@ -907,17 +1032,21 @@ where
     let prefix_command =
         prefix_command_parser(kb, math_content, text_content, ContentMode::Math, strict);
     let unknown_command = unknown_command_parser(kb, strict);
-
-    choice((
-        delimited_group,
+    let fallback = choice((
         explicit_group,
-        environment,
+        environment.clone(),
         escaped_symbol(),
         prefix_command,
         unknown_command,
         active_char(),
         math_char(),
-    ))
+    ));
+
+    custom(move |input| match input.peek() {
+        Some(Token::ControlSeq(name)) if name == "left" => input.parse(delimited_group.clone()),
+        Some(Token::ControlSeq(name)) if name == "begin" => input.parse(environment.clone()),
+        _ => input.parse(fallback.clone()),
+    })
 }
 
 /// Wrap a base atom with script parsing (`^`, `_`, primes).
@@ -1033,7 +1162,12 @@ where
         .not()
         .then(normal_item)
         .map(|(_, item)| item);
-    let right_items = guarded_item.repeated().at_least(1).collect::<Vec<_>>();
+    let right_items = guarded_item
+        .repeated()
+        .at_least(1)
+        .collect::<Vec<_>>()
+        .labelled("infix right operand")
+        .as_context();
 
     infix_cmd.then(right_items)
 }
@@ -1069,7 +1203,11 @@ where
         Ok((name, args))
     });
 
-    let scope_items = normal_item.repeated().collect::<Vec<_>>();
+    let scope_items = normal_item
+        .repeated()
+        .collect::<Vec<_>>()
+        .labelled("declarative scope")
+        .as_context();
     decl_cmd.then(scope_items)
 }
 
@@ -1091,24 +1229,46 @@ where
         .not()
         .then(normal_item.clone())
         .map(|(_, item)| item);
-    let leading = guarded_item.repeated().collect::<Vec<_>>();
+    let leading = custom(move |input| {
+        let mut items = Vec::new();
 
-    let infix_tail = infix_tail_parser(
+        loop {
+            let preserve_first_item_error = matches!(
+                input.peek(),
+                Some(Token::ControlSeq(name)) if matches!(name.as_str(), "left" | "begin")
+            );
+            let checkpoint = input.save();
+            match input.parse(guarded_item.clone()) {
+                Ok(item) => items.push(item),
+                Err(err) => {
+                    if preserve_first_item_error {
+                        return Err(err);
+                    }
+                    input.rewind(checkpoint);
+                    break;
+                }
+            }
+        }
+
+        Ok(items)
+    });
+
+    let infix_tail = infix_guard(kb).ignore_then(infix_tail_parser(
         kb,
         normal_item.clone(),
         math_content.clone(),
         text_content.clone(),
         strict,
-    );
+    ));
 
-    let declarative_tail = declarative_tail_parser(
+    let declarative_tail = declarative_guard(kb).ignore_then(declarative_tail_parser(
         kb,
         normal_item,
         math_content,
         text_content,
         ContentMode::Math,
         strict,
-    );
+    ));
 
     leading
         .then(infix_tail.or_not())
@@ -1180,14 +1340,14 @@ where
         .map(|(_, item)| item);
     let leading = guarded_item.repeated().collect::<Vec<_>>();
 
-    let declarative_tail = declarative_tail_parser(
+    let declarative_tail = declarative_guard(kb).ignore_then(declarative_tail_parser(
         kb,
         normal_item,
         math_content,
         text_content,
         ContentMode::Text,
         strict,
-    );
+    ));
 
     leading
         .then(declarative_tail.or_not())

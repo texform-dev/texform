@@ -294,6 +294,7 @@ pub(super) fn argument_parser<'a>(
                     };
                     let parser = choice((braced, single_item))
                         .labelled("mandatory argument")
+                        .as_context()
                         .map(move |node| {
                             let node = normalize_argument_value(mode, node);
                             Some(Argument::from_value(
@@ -617,7 +618,8 @@ pub(super) fn arguments_parser<'a>(
             }
             let parser =
                 argument_parser(kb, math_content.clone(), text_content.clone(), spec, strict)
-                    .labelled(context);
+                    .labelled(context)
+                    .as_context();
             let arg = input.parse(parser)?;
             args.push(arg);
         }
