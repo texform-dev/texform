@@ -511,7 +511,7 @@ fn all_packages_ctx() -> &'static ParseContext {
 
 pub(crate) fn parse_with_kb(kb: &KnowledgeBase, src: &str, strict: bool) -> ParseOutput {
     let token_stream = build_token_stream(src);
-    let (output, errors) = parse_raw(kb, token_stream, strict);
+    let (output, errors) = parse_raw(kb, src, token_stream, strict);
 
     let result = output.map(|(node, span)| ParseResult {
         node,
@@ -534,10 +534,11 @@ pub(crate) fn parse_with_kb(kb: &KnowledgeBase, src: &str, strict: bool) -> Pars
 
 fn parse_raw(
     kb: &KnowledgeBase,
+    src: &str,
     token_stream: TokenStream<'_>,
     strict: bool,
 ) -> (Option<Spanned<SyntaxNode>>, Vec<Rich<'static, Token>>) {
-    let (output, errors) = parser::math_block_parser(kb, strict)
+    let (output, errors) = parser::math_block_parser_with_source(kb, strict, src)
         .map_with(|node, e| (node, e.span()))
         .then_ignore(end())
         .parse(token_stream)
@@ -596,9 +597,7 @@ fn convert_diagnostic(kb: &KnowledgeBase, src: &str, err: Rich<'static, Token>) 
 }
 
 fn supplement_diagnostic_contexts(kb: &KnowledgeBase, src: &str, diagnostic: &mut ParseDiagnostic) {
-    if !diagnostic.contexts.is_empty() {
-        return;
-    }
+    supplement_environment_mismatch_message(src, diagnostic);
 
     let needs_left_context = matches!(
         diagnostic.message.as_str(),
@@ -614,17 +613,47 @@ fn supplement_diagnostic_contexts(kb: &KnowledgeBase, src: &str, diagnostic: &mu
         return;
     };
 
-    diagnostic.contexts.push(ParseDiagnosticContext {
-        label: "left-delimited group".to_string(),
-        span: left_span,
-    });
+    if !diagnostic
+        .contexts
+        .iter()
+        .any(|context| context.label == "left-delimited group")
+    {
+        diagnostic.contexts.push(ParseDiagnosticContext {
+            label: "left-delimited group".to_string(),
+            span: left_span,
+        });
+    }
 
-    if let Some(env_span) = env_span {
+    if let Some(env_span) = env_span
+        && !diagnostic
+            .contexts
+            .iter()
+            .any(|context| context.label == "environment body")
+    {
         diagnostic.contexts.push(ParseDiagnosticContext {
             label: "environment body".to_string(),
             span: env_span,
         });
     }
+}
+
+fn supplement_environment_mismatch_message(src: &str, diagnostic: &mut ParseDiagnostic) {
+    let is_generic_parse_error = matches!(
+        diagnostic.message.as_str(),
+        "found '}' expected something else" | "found '}' expected something else, or end of input"
+    );
+    if !is_generic_parse_error {
+        return;
+    }
+
+    let Some((expected, found)) = find_environment_name_mismatch(src) else {
+        return;
+    };
+
+    diagnostic.message = format!(
+        "Environment name mismatch: expected \\end{{{}}}, found \\end{{{}}}",
+        expected, found
+    );
 }
 
 fn find_invalid_left_context(kb: &KnowledgeBase, src: &str) -> Option<(Span, Option<Span>)> {
@@ -692,6 +721,76 @@ fn find_invalid_left_context(kb: &KnowledgeBase, src: &str) -> Option<(Span, Opt
                 }
             }
             _ => {}
+        }
+
+        index += 1;
+    }
+
+    None
+}
+
+fn find_environment_name_mismatch(src: &str) -> Option<(String, String)> {
+    let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
+        .spanned()
+        .map(|(token, span)| {
+            let token = token.unwrap_or_else(|()| {
+                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
+            });
+            (token, span)
+        })
+        .collect();
+
+    let mut stack = Vec::new();
+    let mut index = 0;
+
+    while index < tokens.len() {
+        let Some((Token::ControlSeq(head), _)) = tokens.get(index) else {
+            index += 1;
+            continue;
+        };
+
+        if !matches!(head.as_str(), "begin" | "end") {
+            index += 1;
+            continue;
+        }
+
+        let mut next = index + 1;
+        while matches!(tokens.get(next), Some((Token::Whitespaces, _))) {
+            next += 1;
+        }
+        if !matches!(tokens.get(next), Some((Token::LBrace, _))) {
+            index += 1;
+            continue;
+        }
+        next += 1;
+
+        let mut env_name = String::new();
+        while let Some((token, _)) = tokens.get(next) {
+            match token {
+                Token::Char(c) => env_name.push(*c),
+                Token::Star => env_name.push('*'),
+                Token::RBrace => break,
+                _ => {
+                    env_name.clear();
+                    break;
+                }
+            }
+            next += 1;
+        }
+
+        if env_name.is_empty() {
+            index += 1;
+            continue;
+        }
+
+        if head == "begin" {
+            stack.push(env_name);
+        } else if let Some(expected) = stack.last() {
+            if expected == &env_name {
+                stack.pop();
+            } else {
+                return Some((expected.clone(), env_name));
+            }
         }
 
         index += 1;

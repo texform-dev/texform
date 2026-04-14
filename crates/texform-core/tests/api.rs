@@ -160,6 +160,155 @@ fn invalid_left_delimiter_reports_bare_left_context_only() {
 }
 
 #[test]
+fn partial_result_keeps_outer_delimited_group_and_following_siblings() {
+    let output = parse_latex(r"\left( \begin{matrix} a \end{align} \right) + z", false);
+    assert!(!output.diagnostics.is_empty(), "should have diagnostics");
+
+    let result = output
+        .result
+        .as_ref()
+        .expect("should produce a partial result");
+
+    let root_children = match &result.node {
+        SyntaxNode::Group { children, .. } => children,
+        other => panic!("expected root group, got {:?}", other),
+    };
+
+    let delimited_children = match root_children.first() {
+        Some(SyntaxNode::Group {
+            kind: texform_interface::syntax_node::GroupKind::Delimited { .. },
+            children,
+            ..
+        }) => children,
+        other => panic!(
+            "expected first child to be a delimited group, got {:?}",
+            other
+        ),
+    };
+
+    assert!(
+        delimited_children
+            .iter()
+            .any(|child| matches!(child, SyntaxNode::Error { .. })),
+        "delimited group should keep an error placeholder"
+    );
+    assert!(
+        root_children
+            .iter()
+            .any(|child| matches!(child, SyntaxNode::Char('+'))),
+        "following siblings should still contain '+'"
+    );
+    assert!(
+        root_children
+            .iter()
+            .any(|child| matches!(child, SyntaxNode::Char('z'))),
+        "following siblings should still contain 'z'"
+    );
+}
+
+#[test]
+fn partial_result_json_contains_error_node() {
+    let output = parse_latex(r"\left( \begin{matrix} a \end{align} \right) + z", false);
+    assert!(!output.diagnostics.is_empty(), "should have diagnostics");
+
+    let json = serde_json::to_value(&output).expect("parse output should serialize to JSON");
+    let node_json = json
+        .get("result")
+        .and_then(|result| result.get("node"))
+        .expect("partial result JSON should contain result.node");
+    let node_text = serde_json::to_string(node_json).expect("result.node JSON should stringify");
+
+    assert!(
+        node_text.contains("\"Error\""),
+        "result.node JSON should expose the recovered Error node: {node_text}"
+    );
+    assert!(
+        node_text.contains("Environment name mismatch")
+            && node_text.contains("\\end{matrix}")
+            && node_text.contains("\\end{align}"),
+        "result.node JSON should preserve the normalized recovered environment mismatch message: {node_text}"
+    );
+}
+
+#[test]
+fn partial_result_keeps_outer_environment_on_inner_environment_error() {
+    let output = parse_latex(r"\begin{matrix} \begin{align} x \end{matrix}", false);
+    assert!(!output.diagnostics.is_empty(), "should have diagnostics");
+    assert_eq!(
+        output.diagnostics[0].message,
+        "Environment name mismatch: expected \\end{align}, found \\end{matrix}",
+        "inner environment mismatch should stay more specific than an outer missing-end error"
+    );
+
+    let result = output
+        .result
+        .as_ref()
+        .expect("should produce a partial result");
+
+    let root_children = match &result.node {
+        SyntaxNode::Group { children, .. } => children,
+        other => panic!("expected root group, got {:?}", other),
+    };
+
+    let body_children = match root_children.first() {
+        Some(SyntaxNode::Environment { name, body, .. }) => {
+            assert_eq!(name, "matrix");
+            match body.as_ref() {
+                SyntaxNode::Group { children, .. } => children,
+                other => panic!("expected matrix body group, got {:?}", other),
+            }
+        }
+        other => panic!("expected first child to be an environment, got {:?}", other),
+    };
+
+    assert!(
+        body_children
+            .iter()
+            .any(|child| matches!(child, SyntaxNode::Error { .. })),
+        "matrix body should keep an error placeholder for the broken inner environment"
+    );
+}
+
+#[test]
+fn partial_result_keeps_following_siblings_after_environment_mismatch() {
+    let output = parse_latex(r"\begin{matrix} x \end{align} + z", false);
+    assert!(!output.diagnostics.is_empty(), "should have diagnostics");
+    assert_eq!(
+        output.diagnostics[0].message,
+        "Environment name mismatch: expected \\end{matrix}, found \\end{align}"
+    );
+
+    let result = output
+        .result
+        .as_ref()
+        .expect("should produce a partial result");
+
+    let root_children = match &result.node {
+        SyntaxNode::Group { children, .. } => children,
+        other => panic!("expected root group, got {:?}", other),
+    };
+
+    assert!(
+        root_children
+            .iter()
+            .any(|child| matches!(child, SyntaxNode::Error { .. })),
+        "root should keep an error placeholder for the broken environment"
+    );
+    assert!(
+        root_children
+            .iter()
+            .any(|child| matches!(child, SyntaxNode::Char('+'))),
+        "following siblings should still contain '+'"
+    );
+    assert!(
+        root_children
+            .iter()
+            .any(|child| matches!(child, SyntaxNode::Char('z'))),
+        "following siblings should still contain 'z'"
+    );
+}
+
+#[test]
 #[should_panic(expected = "cannot serialize syntax tree containing Error node")]
 fn serialize_latex_rejects_error_nodes() {
     let node = SyntaxNode::Error {

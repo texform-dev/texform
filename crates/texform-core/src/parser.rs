@@ -27,6 +27,7 @@ use chumsky::{
     input::{Cursor, InputRef, Stream},
     label::LabelError,
     prelude::*,
+    recovery::via_parser,
 };
 use logos::Logos;
 
@@ -647,6 +648,349 @@ fn is_outer_closing_boundary(token: Option<&Token>) -> bool {
     }
 }
 
+fn slice_snippet(src: &str, span: SimpleSpan) -> String {
+    src.get(span.start..span.end).unwrap_or("").to_string()
+}
+
+fn is_math_hard_stop(token: &Token) -> bool {
+    matches!(token, Token::RBrace | Token::MathShift)
+        || matches!(token, Token::ControlSeq(name) if matches!(name.as_str(), "right" | "end"))
+}
+
+fn is_text_hard_stop(token: &Token) -> bool {
+    matches!(token, Token::RBrace | Token::MathShift)
+        || matches!(token, Token::ControlSeq(name) if name == "end")
+}
+
+fn is_direct_left_group_error(message: &str) -> bool {
+    matches!(
+        message,
+        "invalid \\left delimiter"
+            | "missing \\right for \\left-delimited group"
+            | "invalid \\right delimiter"
+    )
+}
+
+fn scan_environment_stack_before(src: &str, limit: usize) -> Vec<String> {
+    let mut stack = Vec::new();
+    let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
+        .spanned()
+        .map(|(token, span)| {
+            let token = token.unwrap_or_else(|()| {
+                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
+            });
+            (token, span)
+        })
+        .take_while(|(_, span)| span.start < limit)
+        .collect();
+
+    let mut index = 0;
+    while index < tokens.len() {
+        let Some((Token::ControlSeq(name), _)) = tokens.get(index) else {
+            index += 1;
+            continue;
+        };
+
+        if !matches!(name.as_str(), "begin" | "end") {
+            index += 1;
+            continue;
+        }
+
+        let mut next = index + 1;
+        while matches!(tokens.get(next), Some((Token::Whitespaces, _))) {
+            next += 1;
+        }
+        if !matches!(tokens.get(next), Some((Token::LBrace, _))) {
+            index += 1;
+            continue;
+        }
+        next += 1;
+
+        let mut env_name = String::new();
+        while let Some((token, _)) = tokens.get(next) {
+            match token {
+                Token::Char(c) => env_name.push(*c),
+                Token::Star => env_name.push('*'),
+                Token::RBrace => break,
+                _ => {
+                    env_name.clear();
+                    break;
+                }
+            }
+            next += 1;
+        }
+
+        if env_name.is_empty() {
+            index += 1;
+            continue;
+        }
+
+        if name == "begin" {
+            stack.push(env_name);
+        } else if let Some(pos) = stack.iter().rposition(|open| open == &env_name) {
+            stack.truncate(pos);
+        }
+
+        index += 1;
+    }
+
+    stack
+}
+
+fn peek_environment_name_at_cursor<'src, 'parse>(
+    input: &mut ParserInput<'src, 'parse>,
+    head: &'static str,
+) -> Option<String> {
+    let checkpoint = input.save();
+    let ws = insignificant_whitespace();
+    let result = (|| {
+        input.parse(control_seq(head)).ok()?;
+        let _ = input.parse(ws.clone());
+        input.parse(env_name_parser()).ok()
+    })();
+    input.rewind(checkpoint);
+    result
+}
+
+fn consume_environment_end<'src, 'parse>(input: &mut ParserInput<'src, 'parse>) -> bool {
+    consume_environment_marker(input, "end")
+}
+
+fn consume_environment_marker<'src, 'parse>(
+    input: &mut ParserInput<'src, 'parse>,
+    head: &'static str,
+) -> bool {
+    let checkpoint = input.save();
+    let ws = insignificant_whitespace();
+    if input.parse(control_seq(head)).is_err() {
+        input.rewind(checkpoint);
+        return false;
+    }
+    let _ = input.parse(ws.clone());
+    if input.parse(env_name_parser()).is_err() {
+        input.rewind(checkpoint);
+        return false;
+    }
+    true
+}
+
+fn normalize_recovery_message(src: &str, message: String) -> String {
+    let is_generic_parse_error = matches!(
+        message.as_str(),
+        "found '}' expected something else" | "found '}' expected something else, or end of input"
+    );
+    if !is_generic_parse_error {
+        return message;
+    }
+
+    let tokens: Vec<Token> = Token::lexer(src)
+        .map(|token| {
+            token.unwrap_or_else(|()| panic!("Lexer error while normalizing recovery message"))
+        })
+        .collect();
+    let mut stack = Vec::new();
+    let mut index = 0;
+
+    while index < tokens.len() {
+        let Token::ControlSeq(head) = &tokens[index] else {
+            index += 1;
+            continue;
+        };
+
+        if !matches!(head.as_str(), "begin" | "end") {
+            index += 1;
+            continue;
+        }
+
+        let mut next = index + 1;
+        while matches!(tokens.get(next), Some(Token::Whitespaces)) {
+            next += 1;
+        }
+        if !matches!(tokens.get(next), Some(Token::LBrace)) {
+            index += 1;
+            continue;
+        }
+        next += 1;
+
+        let mut env_name = String::new();
+        while let Some(token) = tokens.get(next) {
+            match token {
+                Token::Char(c) => env_name.push(*c),
+                Token::Star => env_name.push('*'),
+                Token::RBrace => break,
+                _ => {
+                    env_name.clear();
+                    break;
+                }
+            }
+            next += 1;
+        }
+
+        if env_name.is_empty() {
+            index += 1;
+            continue;
+        }
+
+        if head == "begin" {
+            stack.push(env_name);
+        } else if let Some(expected) = stack.last() {
+            if expected == &env_name {
+                stack.pop();
+            } else {
+                return format!(
+                    "Environment name mismatch: expected \\end{{{}}}, found \\end{{{}}}",
+                    expected, env_name
+                );
+            }
+        }
+
+        index += 1;
+    }
+
+    message
+}
+
+fn is_hard_stop_after_whitespace<'src, 'parse>(
+    input: &mut ParserInput<'src, 'parse>,
+    is_hard_stop: fn(&Token) -> bool,
+) -> bool {
+    let checkpoint = input.save();
+    let _ = input.parse(insignificant_whitespace());
+    let result = matches!(input.peek().as_ref(), Some(token) if is_hard_stop(token));
+    input.rewind(checkpoint);
+    result
+}
+
+fn recoverable_content_item_parser<'a, P>(
+    src: &'a str,
+    item: P,
+    is_hard_stop: fn(&Token) -> bool,
+) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
+where
+    P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
+{
+    custom(move |input| {
+        let ws = insignificant_whitespace();
+        let metadata_checkpoint = input.save();
+        let _ = input.parse(ws.clone());
+        let item_start = input.cursor();
+        let item_starts_with_left =
+            matches!(input.peek().as_ref(), Some(Token::ControlSeq(name)) if name == "left");
+        let item_start_index = input.span_from_cursor(&item_start).start;
+        let opening_environment = peek_environment_name_at_cursor(input, "begin");
+        let outer_environment_stack = opening_environment
+            .as_ref()
+            .map(|_| scan_environment_stack_before(src, item_start_index))
+            .unwrap_or_default();
+        input.rewind(metadata_checkpoint);
+
+        let checkpoint = input.save();
+        let err = match input.parse(item.clone()) {
+            Ok(node) => return Ok(node),
+            Err(err) => err,
+        };
+        let direct_left_group_error = item_starts_with_left
+            && matches!(err.reason(), chumsky::error::RichReason::Custom(message) if is_direct_left_group_error(message));
+        if direct_left_group_error {
+            return Err(err);
+        }
+        let failure_environment_stack = scan_environment_stack_before(src, err.span().end);
+        input.rewind(checkpoint);
+
+        if is_hard_stop_after_whitespace(input, is_hard_stop) {
+            return Err(err);
+        }
+
+        let message = match err.reason() {
+            chumsky::error::RichReason::ExpectedFound { .. } => format!("{err}"),
+            chumsky::error::RichReason::Custom(message) => message.clone(),
+        };
+        let message = normalize_recovery_message(src, message);
+
+        let recovery_parser = custom({
+            let message = message.clone();
+            let opening_environment = opening_environment.clone();
+            let outer_environment_stack = outer_environment_stack.clone();
+            move |input| {
+                let start = input.cursor();
+                let ws = insignificant_whitespace();
+                let failure_environment_stack = failure_environment_stack.clone();
+                let mut consumed = false;
+
+                loop {
+                    let boundary_checkpoint = input.save();
+                    let _ = input.parse(ws.clone());
+
+                    if peek_environment_name_at_cursor(input, "begin").is_some() {
+                        if !consume_environment_marker(input, "begin") {
+                            break;
+                        }
+                        consumed = true;
+                        continue;
+                    }
+
+                    if let Some(open_name) = opening_environment.as_ref() {
+                        if let Some(end_name) = peek_environment_name_at_cursor(input, "end") {
+                            if end_name == *open_name {
+                                if failure_environment_stack.last() != Some(open_name) {
+                                    break;
+                                }
+                                if !consume_environment_end(input) {
+                                    break;
+                                }
+                                consumed = true;
+                                break;
+                            }
+
+                            if outer_environment_stack.iter().any(|name| name == &end_name) {
+                                break;
+                            }
+
+                            if !consume_environment_end(input) {
+                                break;
+                            }
+                            consumed = true;
+                            break;
+                        }
+                    }
+
+                    match input.peek().as_ref() {
+                        Some(Token::ControlSeq(name)) if name == "right" => {
+                            break;
+                        }
+                        Some(token) if consumed && is_hard_stop(token) => {
+                            break;
+                        }
+                        _ => input.rewind(boundary_checkpoint),
+                    }
+
+                    match input.peek().as_ref() {
+                        Some(_) => {
+                            let _ = input.next();
+                            consumed = true;
+                        }
+                        None => break,
+                    }
+                }
+
+                if !consumed {
+                    return Err(
+                        input.err_since(&start, "content recovery must consume at least one token")
+                    );
+                }
+
+                let span = input.span_from_cursor(&start);
+                Ok(SyntaxNode::Error {
+                    message: message.clone(),
+                    snippet: slice_snippet(src, span),
+                })
+            }
+        });
+
+        input.parse(item.clone().recover_with(via_parser(recovery_parser)))
+    })
+}
+
 /// Consume a control-sequence token, look it up in the KB, and validate that
 /// it matches the `expected_kind` and is allowed in `current_mode`.
 fn command_head_parser<'src, 'parse>(
@@ -942,6 +1286,7 @@ fn environment_parser<'a>(
             ContentMode::Math => math_content.clone(),
             ContentMode::Text => text_content.clone(),
         };
+        let body_recovery_start = input.save();
         let body = input.parse(env_body_parser(meta.body_mode, body_content))?;
 
         let expected_end = name.clone();
@@ -982,12 +1327,14 @@ fn environment_parser<'a>(
         }
         let _ = input.parse(ws.clone());
 
-        let end_name = input
-            .parse(env_name_parser())
-            .map_err(|_| Rich::custom(input.span_from_cursor(&end_start), missing_end_message))?;
+        let end_name = input.parse(env_name_parser()).map_err(|_| {
+            input.rewind(body_recovery_start.clone());
+            Rich::custom(input.span_from_cursor(&end_start), missing_end_message)
+        })?;
         let end_span = input.span_from_cursor(&end_start);
 
         if end_name != name {
+            input.rewind(body_recovery_start);
             return Err(Rich::custom(
                 end_span,
                 format!(
@@ -1222,26 +1569,33 @@ fn math_group_content_parser<'a, P>(
 where
     P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
 {
+    let ws = insignificant_whitespace();
     let stop_infix_or_decl = math_infix_or_decl_guard(kb);
-    let guarded_item = stop_infix_or_decl
-        .or(control_seq("right"))
-        .or(control_seq("end"))
-        .not()
-        .then(normal_item.clone())
-        .map(|(_, item)| item);
+    let stop_boundary = ws
+        .clone()
+        .ignore_then(stop_infix_or_decl)
+        .or(ws.clone().ignore_then(control_seq("right")))
+        .or(ws.clone().ignore_then(control_seq("end")))
+        .rewind();
+    let guarded_item = stop_boundary.not().ignore_then(normal_item.clone());
     let leading = custom(move |input| {
         let mut items = Vec::new();
 
         loop {
+            let first_item_metadata = input.save();
+            let _ = input.parse(ws.clone());
             let preserve_first_item_error = matches!(
                 input.peek(),
-                Some(Token::ControlSeq(name)) if matches!(name.as_str(), "left" | "begin")
+                Some(Token::ControlSeq(name)) if name == "left"
             );
+            input.rewind(first_item_metadata);
             let checkpoint = input.save();
             match input.parse(guarded_item.clone()) {
                 Ok(item) => items.push(item),
                 Err(err) => {
-                    if preserve_first_item_error {
+                    if preserve_first_item_error
+                        && matches!(err.reason(), chumsky::error::RichReason::Custom(message) if is_direct_left_group_error(message))
+                    {
                         return Err(err);
                     }
                     input.rewind(checkpoint);
@@ -1332,12 +1686,15 @@ where
     P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
 {
     let stop_declarative = declarative_guard(kb);
+    let ws = insignificant_whitespace();
 
-    let guarded_item = stop_declarative
-        .or(control_seq("end"))
-        .not()
-        .then(normal_item.clone())
-        .map(|(_, item)| item);
+    let stop_boundary = ws
+        .clone()
+        .ignore_then(stop_declarative)
+        .or(ws.ignore_then(control_seq("end")))
+        .rewind();
+
+    let guarded_item = stop_boundary.not().ignore_then(normal_item.clone());
     let leading = guarded_item.repeated().collect::<Vec<_>>();
 
     let declarative_tail = declarative_guard(kb).ignore_then(declarative_tail_parser(
@@ -1413,9 +1770,73 @@ fn mode_content_parsers<'a>(
     (math.boxed(), text.boxed())
 }
 
+fn mode_content_parsers_with_source<'a>(
+    kb: &'a KnowledgeBase,
+    strict: bool,
+    src: &'a str,
+) -> (ContentParser<'a>, ContentParser<'a>) {
+    let mut math = Recursive::declare();
+    let mut text = Recursive::declare();
+
+    let math_for_math = math.clone();
+    let text_for_math = text.clone();
+    math.define(recursive(move |group_content| {
+        let ws = insignificant_whitespace();
+        let math_content = math_for_math.clone().boxed();
+        let text_content = text_for_math.clone().boxed();
+        let base_item = math_item_node_parser(
+            kb,
+            group_content,
+            math_content.clone(),
+            text_content.clone(),
+            strict,
+        )
+        .padded_by(ws.clone());
+        let normal_item = if strict {
+            base_item.boxed()
+        } else {
+            recoverable_content_item_parser(src, base_item, is_math_hard_stop).boxed()
+        };
+        math_group_content_parser(kb, normal_item, math_content, text_content, strict).padded_by(ws)
+    }));
+
+    let math_for_text = math.clone();
+    let text_for_text = text.clone();
+    text.define(recursive(move |group_content| {
+        let math_content = math_for_text.clone().boxed();
+        let text_content = text_for_text.clone().boxed();
+        let base_item = text_atom_parser(
+            kb,
+            group_content,
+            math_content.clone(),
+            text_content.clone(),
+            strict,
+        );
+        let normal_item = if strict {
+            base_item.boxed()
+        } else {
+            recoverable_content_item_parser(src, base_item, is_text_hard_stop).boxed()
+        };
+        text_group_content_parser(kb, normal_item, math_content, text_content, strict)
+    }));
+
+    (math.boxed(), text.boxed())
+}
+
 /// Construct top-level math/text group parsers from content parsers.
 fn mode_group_parsers<'a>(kb: &'a KnowledgeBase, strict: bool) -> (NodeParser<'a>, NodeParser<'a>) {
     let (math_content, text_content) = mode_content_parsers(kb, strict);
+    let math_group = implicit_group_parser(ContentMode::Math, math_content).boxed();
+    let text_group = implicit_group_parser(ContentMode::Text, text_content).boxed();
+    (math_group, text_group)
+}
+
+fn mode_group_parsers_with_source<'a>(
+    kb: &'a KnowledgeBase,
+    strict: bool,
+    src: &'a str,
+) -> (NodeParser<'a>, NodeParser<'a>) {
+    let (math_content, text_content) = mode_content_parsers_with_source(kb, strict, src);
     let math_group = implicit_group_parser(ContentMode::Math, math_content).boxed();
     let text_group = implicit_group_parser(ContentMode::Text, text_content).boxed();
     (math_group, text_group)
@@ -1431,9 +1852,28 @@ pub(crate) fn math_block_parser<'a>(kb: &'a KnowledgeBase, strict: bool) -> Node
     math_parser
 }
 
+pub(crate) fn math_block_parser_with_source<'a>(
+    kb: &'a KnowledgeBase,
+    strict: bool,
+    src: &'a str,
+) -> NodeParser<'a> {
+    let (math_parser, _) = mode_group_parsers_with_source(kb, strict, src);
+    math_parser
+}
+
 /// Entry point parser for text mode.
 #[allow(dead_code)] // Text entry point is unused; expose when direct text parsing is needed
 fn text_block_parser<'a>(kb: &'a KnowledgeBase, strict: bool) -> NodeParser<'a> {
     let (_, text_parser) = mode_group_parsers(kb, strict);
+    text_parser
+}
+
+#[allow(dead_code)] // Source-aware text entry point is reserved for future direct text parsing
+fn text_block_parser_with_source<'a>(
+    kb: &'a KnowledgeBase,
+    strict: bool,
+    src: &'a str,
+) -> NodeParser<'a> {
+    let (_, text_parser) = mode_group_parsers_with_source(kb, strict, src);
     text_parser
 }
