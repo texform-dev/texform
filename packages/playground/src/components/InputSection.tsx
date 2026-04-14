@@ -109,7 +109,7 @@ export default function InputSection({
       {!collapsed && (
         <div className="flex min-h-0 flex-1 flex-col">
           {/* Monaco Editor fills available height */}
-          <div style={{ flex: '1 1 0', minHeight: 0, position: 'relative' }}>
+          <div style={{ flex: '1 1 0', minHeight: 0, position: 'relative', overflow: 'hidden' }}>
             <Editor
               height="100%"
               defaultLanguage={LATEX_LANGUAGE_ID}
@@ -133,6 +133,10 @@ export default function InputSection({
                 folding: false,
                 quickSuggestions: false,
                 suggestOnTriggerCharacters: false,
+                // Render hover/suggest widgets with position:fixed so they
+                // escape overflow:hidden ancestors and aren't clipped by the
+                // Header or other panels.
+                fixedOverflowWidgets: true,
                 scrollbar: {
                   horizontal: 'hidden',
                   verticalScrollbarSize: 6,
