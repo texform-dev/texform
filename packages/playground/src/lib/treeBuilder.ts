@@ -318,6 +318,17 @@ export function buildSyntaxTree(
     }
   }
 
+  if ('Error' in node) {
+    const err = node.Error
+    return {
+      id,
+      type: 'Error',
+      errorMessage: err.message,
+      errorSnippet: err.snippet,
+      children: [],
+    }
+  }
+
   return {
     id,
     type: 'UnknownNode',
@@ -636,10 +647,16 @@ export function formatParseErrorMessage(
     sections.push(fatalMessage)
   }
   if (diagnostics.length > 0) {
-    const detailLines = diagnostics.map(
-      (diagnostic, index) =>
-        `${index + 1}. ${diagnostic.message} (span ${diagnostic.span.start}..${diagnostic.span.end})`,
-    )
+    const detailLines = diagnostics.map((diagnostic, index) => {
+      const header = `${index + 1}. ${diagnostic.message} (span ${diagnostic.span.start}..${diagnostic.span.end})`
+      if (diagnostic.contexts && diagnostic.contexts.length > 0) {
+        const contextLines = diagnostic.contexts.map(
+          (ctx) => `   in ${ctx.label} (span ${ctx.span.start}..${ctx.span.end})`,
+        )
+        return `${header}\n${contextLines.join('\n')}`
+      }
+      return header
+    })
     sections.push(`Diagnostics:\n${detailLines.join('\n')}`)
   }
   if (sections.length === 0) {

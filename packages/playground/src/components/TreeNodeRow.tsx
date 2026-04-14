@@ -49,6 +49,8 @@ function nodeColor(type: string): string {
     case 'Unknown':
     case 'UnknownNode':
       return 'var(--node-unknown)'
+    case 'Error':
+      return 'var(--color-danger-fg)'
     default:
       return 'var(--color-accent-fg)'
   }
@@ -161,6 +163,26 @@ export default function TreeNodeRow({
         {/* Value */}
         {node.value ? (
           <span style={{ color: 'var(--color-accent-fg)' }}>{node.value}</span>
+        ) : null}
+
+        {/* Error message + snippet inline */}
+        {node.errorMessage ? (
+          <span className="text-xs" style={{ color: 'var(--color-danger-fg)' }}>
+            {node.errorMessage}
+          </span>
+        ) : null}
+        {node.errorSnippet ? (
+          <span
+            className="rounded-sm px-1 py-px text-xs leading-none"
+            style={{
+              color: 'var(--color-fg-muted)',
+              background: 'var(--color-canvas-subtle)',
+              border: '1px solid var(--color-border-muted)',
+              fontFamily: 'var(--font-mono)',
+            }}
+          >
+            {node.errorSnippet}
+          </span>
         ) : null}
       </div>
 

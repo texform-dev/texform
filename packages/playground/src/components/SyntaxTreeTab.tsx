@@ -3,7 +3,6 @@ import type { TreeNode } from '../lib/types'
 
 interface SyntaxTreeTabProps {
   treeRoot: TreeNode | null
-  parseErrorMessage: string | null
   collapsedNodes: Set<string>
   onToggleNode: (id: string) => void
   nodeCount: number
@@ -13,7 +12,6 @@ interface SyntaxTreeTabProps {
 
 export default function SyntaxTreeTab({
   treeRoot,
-  parseErrorMessage,
   collapsedNodes,
   onToggleNode,
   nodeCount,
@@ -33,23 +31,6 @@ export default function SyntaxTreeTab({
             onToggle={onToggleNode}
             depth={0}
           />
-        ) : parseErrorMessage !== null ? (
-          <div
-            className="mx-3 rounded p-2.5 text-xs"
-            style={{
-              background: 'var(--color-danger-subtle)',
-              color: 'var(--color-danger-fg)',
-              border: '1px solid var(--color-border-default)',
-            }}
-          >
-            <div className="font-semibold">Parse Error</div>
-            <pre
-              className="m-0 mt-1 whitespace-pre-wrap break-words"
-              style={{ fontFamily: 'var(--font-mono)' }}
-            >
-              {parseErrorMessage}
-            </pre>
-          </div>
         ) : (
           <p className="px-3 text-xs" style={{ color: 'var(--color-fg-muted)' }}>
             No syntax tree available.

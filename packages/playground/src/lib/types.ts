@@ -18,6 +18,10 @@ export interface TreeNode {
   characterMathvariant?: string
   argKind?: string
   argIndex?: number
+  /** Present on Error nodes — the parser's error message */
+  errorMessage?: string
+  /** Present on Error nodes — the raw source snippet that failed to parse */
+  errorSnippet?: string
   children: TreeNode[]
 }
 

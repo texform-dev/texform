@@ -44,7 +44,6 @@ import {
   flattenTree,
   computeTreeDepth,
   extractFatalMessage,
-  formatParseErrorMessage,
   isParseResult,
 } from './lib/treeBuilder'
 import {
@@ -224,14 +223,6 @@ export default function App() {
 
   const flatNodes = useMemo(() => (treeRoot ? flattenTree(treeRoot) : []), [treeRoot])
   const treeDepth = useMemo(() => computeTreeDepth(treeRoot), [treeRoot])
-
-  const parseErrorMessage = useMemo(() => {
-    const hasFatal = parseState.fatalMessage !== null
-    const hasDiagnosticsOnlyFailure =
-      parseState.result === null && parseState.diagnostics.length > 0
-    if (!hasFatal && !hasDiagnosticsOnlyFailure) return null
-    return formatParseErrorMessage(parseState.fatalMessage, parseState.diagnostics)
-  }, [parseState.result, parseState.fatalMessage, parseState.diagnostics])
 
   // -- Derived: status --
   const isWasmLoading = !wasmReady && wasmInitError === null
@@ -529,7 +520,6 @@ export default function App() {
             {rightTab === 'tree' ? (
               <SyntaxTreeTab
                 treeRoot={treeRoot}
-                parseErrorMessage={parseErrorMessage}
                 collapsedNodes={collapsedNodes}
                 onToggleNode={toggleNode}
                 nodeCount={flatNodes.length}

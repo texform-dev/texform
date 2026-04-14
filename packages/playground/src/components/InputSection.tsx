@@ -83,12 +83,8 @@ export default function InputSection({
               className="shrink-0 border-t p-2.5 text-xs"
               style={{
                 borderColor: 'var(--color-border-muted)',
-                background: fatalMessage
-                  ? 'var(--color-danger-subtle)'
-                  : 'var(--color-attention-subtle)',
-                color: fatalMessage
-                  ? 'var(--color-danger-fg)'
-                  : 'var(--color-attention-fg)',
+                background: 'var(--color-danger-subtle)',
+                color: 'var(--color-danger-fg)',
               }}
             >
               <div className="font-semibold">
@@ -114,6 +110,18 @@ export default function InputSection({
                       <span style={{ fontFamily: 'var(--font-mono)', opacity: 0.8 }}>
                         span {d.span.start}..{d.span.end}
                       </span>
+                      {d.contexts && d.contexts.length > 0 && (
+                        <ul className="mt-0.5 list-none pl-3" style={{ opacity: 0.75 }}>
+                          {d.contexts.map((ctx, j) => (
+                            <li key={j} style={{ fontFamily: 'var(--font-mono)' }}>
+                              in {ctx.label}{' '}
+                              <span style={{ opacity: 0.8 }}>
+                                span {ctx.span.start}..{ctx.span.end}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </li>
                   ))}
                 </ul>
