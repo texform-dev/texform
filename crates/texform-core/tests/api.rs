@@ -49,6 +49,27 @@ fn parse_with_items(items: &[ContextItem], src: &str, strict: bool) -> ParseOutp
     ctx.parse(src, strict)
 }
 
+fn assert_first_diagnostic_span_eq(output: &ParseOutput, src: &str, expected: &str) {
+    let diagnostic = output
+        .diagnostics
+        .first()
+        .expect("expected at least one diagnostic");
+    assert_eq!(&src[diagnostic.span.start..diagnostic.span.end], expected);
+}
+
+fn assert_first_diagnostic_expected_found(
+    output: &ParseOutput,
+    expected: &[&str],
+    found: Option<&str>,
+) {
+    let diagnostic = output
+        .diagnostics
+        .first()
+        .expect("expected at least one diagnostic");
+    assert_eq!(diagnostic.expected, expected);
+    assert_eq!(diagnostic.found.as_deref(), found);
+}
+
 #[test]
 fn full_success() {
     let output = parse_latex(r"\\*[1cm]", false);
@@ -232,13 +253,16 @@ fn partial_result_json_contains_error_node() {
 
 #[test]
 fn partial_result_keeps_outer_environment_on_inner_environment_error() {
-    let output = parse_latex(r"\begin{matrix} \begin{align} x \end{matrix}", false);
+    let src = r"\begin{matrix} \begin{align} x \end{matrix}";
+    let output = parse_latex(src, false);
     assert!(!output.diagnostics.is_empty(), "should have diagnostics");
     assert_eq!(
         output.diagnostics[0].message,
         "Environment name mismatch: expected \\end{align}, found \\end{matrix}",
         "inner environment mismatch should stay more specific than an outer missing-end error"
     );
+    assert_first_diagnostic_span_eq(&output, src, r"\end{matrix}");
+    assert_first_diagnostic_expected_found(&output, &[r"\end{align}"], Some(r"\end{matrix}"));
 
     let result = output
         .result
@@ -271,12 +295,15 @@ fn partial_result_keeps_outer_environment_on_inner_environment_error() {
 
 #[test]
 fn partial_result_keeps_following_siblings_after_environment_mismatch() {
-    let output = parse_latex(r"\begin{matrix} x \end{align} + z", false);
+    let src = r"\begin{matrix} x \end{align} + z";
+    let output = parse_latex(src, false);
     assert!(!output.diagnostics.is_empty(), "should have diagnostics");
     assert_eq!(
         output.diagnostics[0].message,
         "Environment name mismatch: expected \\end{matrix}, found \\end{align}"
     );
+    assert_first_diagnostic_span_eq(&output, src, r"\end{align}");
+    assert_first_diagnostic_expected_found(&output, &[r"\end{matrix}"], Some(r"\end{align}"));
 
     let result = output
         .result

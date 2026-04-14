@@ -646,7 +646,7 @@ fn supplement_environment_mismatch_message(src: &str, diagnostic: &mut ParseDiag
         return;
     }
 
-    let Some((expected, found)) = find_environment_name_mismatch(src) else {
+    let Some((expected, found, span)) = find_environment_name_mismatch(src) else {
         return;
     };
 
@@ -654,6 +654,9 @@ fn supplement_environment_mismatch_message(src: &str, diagnostic: &mut ParseDiag
         "Environment name mismatch: expected \\end{{{}}}, found \\end{{{}}}",
         expected, found
     );
+    diagnostic.span = span;
+    diagnostic.expected = vec![format!("\\end{{{}}}", expected)];
+    diagnostic.found = Some(format!("\\end{{{}}}", found));
 }
 
 fn find_invalid_left_context(kb: &KnowledgeBase, src: &str) -> Option<(Span, Option<Span>)> {
@@ -729,7 +732,7 @@ fn find_invalid_left_context(kb: &KnowledgeBase, src: &str) -> Option<(Span, Opt
     None
 }
 
-fn find_environment_name_mismatch(src: &str) -> Option<(String, String)> {
+fn find_environment_name_mismatch(src: &str) -> Option<(String, String, Span)> {
     let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
         .spanned()
         .map(|(token, span)| {
@@ -789,7 +792,14 @@ fn find_environment_name_mismatch(src: &str) -> Option<(String, String)> {
             if expected == &env_name {
                 stack.pop();
             } else {
-                return Some((expected.clone(), env_name));
+                return Some((
+                    expected.clone(),
+                    env_name,
+                    Span {
+                        start: tokens[index].1.start,
+                        end: tokens[next].1.end,
+                    },
+                ));
             }
         }
 
