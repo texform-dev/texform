@@ -413,6 +413,7 @@ export default function App() {
               collapsed={inputCollapsed}
               fatalMessage={parseState.fatalMessage}
               diagnostics={parseState.diagnostics}
+              theme={theme}
               onSourceChange={setSource}
               onStrictModeChange={setStrictMode}
               onResetSample={() => setSource(SAMPLE_LATEX)}

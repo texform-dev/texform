@@ -1,6 +1,11 @@
+import { useCallback, useEffect, useRef } from 'react'
 import { RotateCcw } from 'lucide-react'
+import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react'
+import type * as Monaco from 'monaco-editor'
 import SectionHeader from './SectionHeader'
 import type { ParseDiagnostic } from '../lib/texformWasm'
+import type { Theme } from '../lib/theme'
+import { LATEX_LANGUAGE_ID, registerLatexLanguage } from '../lib/latexLanguage'
 
 interface InputSectionProps {
   source: string
@@ -8,6 +13,7 @@ interface InputSectionProps {
   collapsed: boolean
   fatalMessage: string | null
   diagnostics: ParseDiagnostic[]
+  theme: Theme
   onSourceChange: (source: string) => void
   onStrictModeChange: (checked: boolean) => void
   onResetSample: () => void
@@ -20,12 +26,73 @@ export default function InputSection({
   collapsed,
   fatalMessage,
   diagnostics,
+  theme,
   onSourceChange,
   onStrictModeChange,
   onResetSample,
   onToggleCollapsed,
 }: InputSectionProps) {
+  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
+  const monacoRef = useRef<typeof Monaco | null>(null)
+
   const hasDiagnostics = fatalMessage !== null || diagnostics.length > 0
+  const monacoTheme = theme === 'dark' ? 'texform-dark' : 'texform-light'
+
+  // Register language and themes before editor mounts
+  const handleBeforeMount = useCallback<BeforeMount>((monaco) => {
+    registerLatexLanguage(monaco)
+  }, [])
+
+  // Store editor and monaco refs on mount
+  const handleEditorMount = useCallback<OnMount>((editor, monaco) => {
+    editorRef.current = editor
+    monacoRef.current = monaco
+  }, [])
+
+  // Update diagnostic markers whenever diagnostics change
+  useEffect(() => {
+    const editor = editorRef.current
+    const monaco = monacoRef.current
+    if (!editor || !monaco) return
+
+    const model = editor.getModel()
+    if (!model) return
+
+    if (diagnostics.length === 0) {
+      monaco.editor.setModelMarkers(model, 'texform', [])
+      return
+    }
+
+    const markers: Monaco.editor.IMarkerData[] = diagnostics.map((d) => {
+      const start = model.getPositionAt(d.span.start)
+      const end = model.getPositionAt(d.span.end)
+      // Ensure the squiggly range is at least 1 column wide so it's visible
+      const endColumn = start.lineNumber === end.lineNumber && start.column === end.column
+        ? end.column + 1
+        : end.column
+      return {
+        severity: monaco.MarkerSeverity.Error,
+        message: d.message,
+        startLineNumber: start.lineNumber,
+        startColumn: start.column,
+        endLineNumber: end.lineNumber,
+        endColumn,
+      }
+    })
+
+    monaco.editor.setModelMarkers(model, 'texform', markers)
+  }, [diagnostics])
+
+  // Clear markers when component unmounts
+  useEffect(() => {
+    return () => {
+      const monaco = monacoRef.current
+      const editor = editorRef.current
+      if (!monaco || !editor) return
+      const model = editor.getModel()
+      if (model) monaco.editor.setModelMarkers(model, 'texform', [])
+    }
+  }, [])
 
   return (
     <>
@@ -41,20 +108,39 @@ export default function InputSection({
       />
       {!collapsed && (
         <div className="flex min-h-0 flex-1 flex-col">
-          <textarea
-            value={source}
-            onChange={(e) => onSourceChange(e.target.value)}
-            className="min-h-0 flex-1 resize-none border-0 p-3 outline-none"
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 14,
-              lineHeight: 1.6,
-              color: 'var(--color-fg-default)',
-              background: 'var(--color-canvas-default)',
-            }}
-            placeholder="Enter LaTeX formula..."
-            spellCheck={false}
-          />
+          {/* Monaco Editor fills available height */}
+          <div style={{ flex: '1 1 0', minHeight: 0, position: 'relative' }}>
+            <Editor
+              height="100%"
+              defaultLanguage={LATEX_LANGUAGE_ID}
+              theme={monacoTheme}
+              value={source}
+              onChange={(value) => onSourceChange(value ?? '')}
+              beforeMount={handleBeforeMount}
+              onMount={handleEditorMount}
+              options={{
+                fontSize: 14,
+                fontFamily: "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace",
+                lineNumbers: 'on',
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                wordWrap: 'on',
+                overviewRulerBorder: false,
+                overviewRulerLanes: 0,
+                padding: { top: 10, bottom: 10 },
+                renderLineHighlight: 'line',
+                glyphMargin: false,
+                folding: false,
+                quickSuggestions: false,
+                suggestOnTriggerCharacters: false,
+                scrollbar: {
+                  horizontal: 'hidden',
+                  verticalScrollbarSize: 6,
+                },
+              }}
+            />
+          </div>
+
           <div
             className="flex shrink-0 items-center justify-between border-t px-3 py-1 text-[11px]"
             style={{
