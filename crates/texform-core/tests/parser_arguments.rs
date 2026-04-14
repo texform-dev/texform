@@ -164,6 +164,27 @@ fn keyval_argument_rejects_invalid_shapes() {
 }
 
 #[test]
+fn keyval_argument_diagnostic_span_covers_bracket_argument() {
+    let items = [command_item(
+        "includegraphics",
+        CommandKind::Prefix,
+        AllowedMode::Both,
+        "o:K m:T",
+    )];
+    let src = r"\includegraphics[key=]{file}";
+
+    let output = parse_single(&items, src, true);
+    assert!(output.result.is_none(), "invalid keyval should fail");
+
+    let diagnostic = output
+        .diagnostics
+        .first()
+        .expect("expected keyval diagnostic");
+    assert_eq!(diagnostic.message, "keyval missing value");
+    assert_eq!(&src[diagnostic.span.start..diagnostic.span.end], "[key=]");
+}
+
+#[test]
 fn optional_bracket_content_stops_at_top_level_closer() {
     let items = [command_item(
         "includegraphics",

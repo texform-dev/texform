@@ -36,7 +36,9 @@ use crate::knowledge::{CommandKind, CommandMeta, EnvMeta, KnowledgeBase};
 use crate::lexer::Token;
 use texform_interface::syntax_node::{ArgumentSlot, ContentMode, Delimiter, GroupKind, SyntaxNode};
 
-use self::arguments::{arguments_parser, fold_items};
+use self::arguments::{
+    argument_parser, collect_braced_tokens, collect_optional_bracketed_tokens, fold_items,
+};
 
 /// A value paired with its source byte span.
 pub(crate) type Spanned<T> = (T, SimpleSpan);
@@ -456,10 +458,7 @@ where
 {
     let ws = insignificant_whitespace();
 
-    let preserve_atom_error = matches!(
-        input.peek(),
-        Some(Token::ControlSeq(name)) if matches!(name.as_str(), "left" | "begin")
-    );
+    let preserve_atom_error = matches!(input.peek(), Some(Token::ControlSeq(_)));
     let base_opt = if preserve_atom_error {
         Some(input.parse(atom_for_scripts.clone())?)
     } else {
@@ -1153,14 +1152,59 @@ fn prefix_command_parser<'a>(
                 Err(err) => return Err(err),
             };
 
-        let args = input.parse(arguments_parser(
-            kb,
-            math_content.clone(),
-            text_content.clone(),
-            meta.argspec.args,
-            strict,
-            "command argument",
-        ))?;
+        let mut args = Vec::with_capacity(meta.argspec.args.len());
+        for spec in meta.argspec.args {
+            if !spec.no_leading_space {
+                let _ = input.parse(insignificant_whitespace());
+            }
+
+            let arg_checkpoint = input.save();
+            let arg_start = input.cursor();
+            let parser =
+                argument_parser(kb, math_content.clone(), text_content.clone(), spec, strict);
+            let arg = match input.parse(parser) {
+                Ok(arg) => arg,
+                Err(err) => {
+                    input.rewind(arg_checkpoint.clone());
+                    let arg_span = match input.peek() {
+                        Some(Token::LBracket) => {
+                            let _ = collect_optional_bracketed_tokens(input, false);
+                            input.span_from_cursor(&arg_start)
+                        }
+                        Some(Token::LBrace) => {
+                            let _ = collect_braced_tokens(input, true);
+                            input.span_from_cursor(&arg_start)
+                        }
+                        Some(_) => {
+                            let _ = input.next();
+                            input.span_from_cursor(&arg_start)
+                        }
+                        None => input.span_from_cursor(&arg_start),
+                    };
+                    return match err.reason() {
+                        chumsky::error::RichReason::Custom(message) => {
+                            let mut err = Rich::custom(arg_span, message.clone());
+                            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                                &mut err,
+                                "command argument",
+                                arg_span,
+                            );
+                            Err(err)
+                        }
+                        chumsky::error::RichReason::ExpectedFound { .. } => {
+                            let mut err = err;
+                            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                                &mut err,
+                                "command argument",
+                                arg_span,
+                            );
+                            Err(err)
+                        }
+                    };
+                }
+            };
+            args.push(arg);
+        }
 
         Ok(SyntaxNode::Command { name, args })
     })
@@ -1250,14 +1294,47 @@ fn parse_env_header<'a>(
             ));
         }
 
-        let args = input.parse(arguments_parser(
-            kb,
-            math_content.clone(),
-            text_content.clone(),
-            meta.argspec.args,
-            strict,
-            "environment argument",
-        ))?;
+        let mut args = Vec::with_capacity(meta.argspec.args.len());
+        for spec in meta.argspec.args {
+            if !spec.no_leading_space {
+                let _ = input.parse(insignificant_whitespace());
+            }
+
+            let arg_start = input.cursor();
+            let parser =
+                argument_parser(kb, math_content.clone(), text_content.clone(), spec, strict);
+            let arg = match input.parse(parser) {
+                Ok(arg) => arg,
+                Err(err) => {
+                    let arg_span = err
+                        .contexts()
+                        .next()
+                        .map(|(_, span)| *span)
+                        .unwrap_or_else(|| input.span_from_cursor(&arg_start));
+                    return match err.reason() {
+                        chumsky::error::RichReason::Custom(message) => {
+                            let mut err = Rich::custom(arg_span, message.clone());
+                            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                                &mut err,
+                                "environment argument",
+                                arg_span,
+                            );
+                            Err(err)
+                        }
+                        chumsky::error::RichReason::ExpectedFound { .. } => {
+                            let mut err = err;
+                            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                                &mut err,
+                                "environment argument",
+                                arg_span,
+                            );
+                            Err(err)
+                        }
+                    };
+                }
+            };
+            args.push(arg);
+        }
 
         Ok((name, args, meta))
     })
@@ -1383,7 +1460,7 @@ where
         explicit_group,
         environment.clone(),
         escaped_symbol(),
-        prefix_command,
+        prefix_command.clone(),
         unknown_command,
         active_char(),
         math_char(),
@@ -1392,6 +1469,16 @@ where
     custom(move |input| match input.peek() {
         Some(Token::ControlSeq(name)) if name == "left" => input.parse(delimited_group.clone()),
         Some(Token::ControlSeq(name)) if name == "begin" => input.parse(environment.clone()),
+        Some(Token::ControlSeq(name))
+            if matches!(
+                kb.lookup_command(name.as_str()),
+                Some(meta)
+                    if meta.kind == CommandKind::Prefix
+                        && meta.allowed_mode.allows(ContentMode::Math)
+            ) =>
+        {
+            input.parse(prefix_command.clone())
+        }
         _ => input.parse(fallback.clone()),
     })
 }
@@ -1461,16 +1548,31 @@ where
         prefix_command_parser(kb, math_content, text_content, ContentMode::Text, strict);
     let unknown_command = unknown_command_parser(kb, strict);
 
-    choice((
+    let fallback = choice((
         text_chunk(),
         inline_math,
         explicit_group,
-        environment,
+        environment.clone(),
         escaped_symbol(),
-        prefix_command,
+        prefix_command.clone(),
         unknown_command,
         active_char(),
-    ))
+    ));
+
+    custom(move |input| match input.peek() {
+        Some(Token::ControlSeq(name)) if name == "begin" => input.parse(environment.clone()),
+        Some(Token::ControlSeq(name))
+            if matches!(
+                kb.lookup_command(name.as_str()),
+                Some(meta)
+                    if meta.kind == CommandKind::Prefix
+                        && meta.allowed_mode.allows(ContentMode::Text)
+            ) =>
+        {
+            input.parse(prefix_command.clone())
+        }
+        _ => input.parse(fallback.clone()),
+    })
 }
 
 /// Parse the tail after an infix command: the command head plus right operand items.
@@ -1491,14 +1593,47 @@ where
                 Err(err) => return Err(err),
             };
 
-        let args = input.parse(arguments_parser(
-            kb,
-            math_content.clone(),
-            text_content.clone(),
-            meta.argspec.args,
-            strict,
-            "infix command argument",
-        ))?;
+        let mut args = Vec::with_capacity(meta.argspec.args.len());
+        for spec in meta.argspec.args {
+            if !spec.no_leading_space {
+                let _ = input.parse(insignificant_whitespace());
+            }
+
+            let arg_start = input.cursor();
+            let parser =
+                argument_parser(kb, math_content.clone(), text_content.clone(), spec, strict);
+            let arg = match input.parse(parser) {
+                Ok(arg) => arg,
+                Err(err) => {
+                    let arg_span = err
+                        .contexts()
+                        .next()
+                        .map(|(_, span)| *span)
+                        .unwrap_or_else(|| input.span_from_cursor(&arg_start));
+                    return match err.reason() {
+                        chumsky::error::RichReason::Custom(message) => {
+                            let mut err = Rich::custom(arg_span, message.clone());
+                            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                                &mut err,
+                                "infix command argument",
+                                arg_span,
+                            );
+                            Err(err)
+                        }
+                        chumsky::error::RichReason::ExpectedFound { .. } => {
+                            let mut err = err;
+                            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                                &mut err,
+                                "infix command argument",
+                                arg_span,
+                            );
+                            Err(err)
+                        }
+                    };
+                }
+            };
+            args.push(arg);
+        }
 
         Ok((name, args))
     });
@@ -1538,14 +1673,47 @@ where
                 Err(err) => return Err(err),
             };
 
-        let args = input.parse(arguments_parser(
-            kb,
-            math_content.clone(),
-            text_content.clone(),
-            meta.argspec.args,
-            strict,
-            "declarative command argument",
-        ))?;
+        let mut args = Vec::with_capacity(meta.argspec.args.len());
+        for spec in meta.argspec.args {
+            if !spec.no_leading_space {
+                let _ = input.parse(insignificant_whitespace());
+            }
+
+            let arg_start = input.cursor();
+            let parser =
+                argument_parser(kb, math_content.clone(), text_content.clone(), spec, strict);
+            let arg = match input.parse(parser) {
+                Ok(arg) => arg,
+                Err(err) => {
+                    let arg_span = err
+                        .contexts()
+                        .next()
+                        .map(|(_, span)| *span)
+                        .unwrap_or_else(|| input.span_from_cursor(&arg_start));
+                    return match err.reason() {
+                        chumsky::error::RichReason::Custom(message) => {
+                            let mut err = Rich::custom(arg_span, message.clone());
+                            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                                &mut err,
+                                "declarative command argument",
+                                arg_span,
+                            );
+                            Err(err)
+                        }
+                        chumsky::error::RichReason::ExpectedFound { .. } => {
+                            let mut err = err;
+                            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                                &mut err,
+                                "declarative command argument",
+                                arg_span,
+                            );
+                            Err(err)
+                        }
+                    };
+                }
+            };
+            args.push(arg);
+        }
 
         Ok((name, args))
     });
@@ -1577,7 +1745,7 @@ where
         .or(ws.clone().ignore_then(control_seq("right")))
         .or(ws.clone().ignore_then(control_seq("end")))
         .rewind();
-    let guarded_item = stop_boundary.not().ignore_then(normal_item.clone());
+    let guarded_item = stop_boundary.clone().not().ignore_then(normal_item.clone());
     let leading = custom(move |input| {
         let mut items = Vec::new();
 
@@ -1588,7 +1756,15 @@ where
                 input.peek(),
                 Some(Token::ControlSeq(name)) if name == "left"
             );
+            let natural_end = matches!(
+                input.peek().as_ref(),
+                None | Some(Token::RBrace) | Some(Token::MathShift)
+            );
             input.rewind(first_item_metadata);
+            if natural_end || input.parse(stop_boundary.clone()).is_ok() {
+                break;
+            }
+
             let checkpoint = input.save();
             match input.parse(guarded_item.clone()) {
                 Ok(item) => items.push(item),
@@ -1599,7 +1775,7 @@ where
                         return Err(err);
                     }
                     input.rewind(checkpoint);
-                    break;
+                    return Err(err);
                 }
             }
         }
@@ -1691,11 +1867,33 @@ where
     let stop_boundary = ws
         .clone()
         .ignore_then(stop_declarative)
-        .or(ws.ignore_then(control_seq("end")))
+        .or(ws.clone().ignore_then(control_seq("end")))
         .rewind();
 
-    let guarded_item = stop_boundary.not().ignore_then(normal_item.clone());
-    let leading = guarded_item.repeated().collect::<Vec<_>>();
+    let guarded_item = stop_boundary.clone().not().ignore_then(normal_item.clone());
+    let leading = custom(move |input| {
+        let mut items = Vec::new();
+
+        loop {
+            let checkpoint = input.save();
+            let _ = input.parse(ws.clone());
+            let natural_end = matches!(input.peek().as_ref(), None | Some(Token::RBrace));
+            input.rewind(checkpoint.clone());
+            if natural_end || input.parse(stop_boundary.clone()).is_ok() {
+                break;
+            }
+
+            match input.parse(guarded_item.clone()) {
+                Ok(item) => items.push(item),
+                Err(err) => {
+                    input.rewind(checkpoint);
+                    return Err(err);
+                }
+            }
+        }
+
+        Ok(items)
+    });
 
     let declarative_tail = declarative_guard(kb).ignore_then(declarative_tail_parser(
         kb,

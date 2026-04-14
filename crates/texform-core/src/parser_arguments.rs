@@ -10,14 +10,13 @@
 //! delimiters, then re-parse them as a sub-stream. This two-phase approach
 //! avoids exposing delimiter nesting to the main combinator graph.
 
-use chumsky::prelude::*;
+use chumsky::{label::LabelError, prelude::*};
 
 use crate::column_parser::parse_column_template;
 use crate::knowledge::{ArgForm, ArgSpec, DelimiterToken, KnowledgeBase, ValueKind};
 use crate::lexer::Token;
 use texform_interface::syntax_node::{
-    Argument, ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind,
-    SyntaxNode,
+    Argument, ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
 };
 
 use super::{
@@ -596,38 +595,6 @@ pub(super) fn argument_parser<'a>(
     .boxed()
 }
 
-/// Sequence argument parsers for a full argument list.
-///
-/// Iterates over `specs`, building and invoking an [`argument_parser`] for
-/// each slot. Whitespace is consumed between slots unless the spec sets
-/// `no_leading_space`. The `context` label is attached for diagnostics.
-pub(super) fn arguments_parser<'a>(
-    kb: &'a KnowledgeBase,
-    math_content: ContentParser<'a>,
-    text_content: ContentParser<'a>,
-    specs: &'static [ArgSpec],
-    strict: bool,
-    context: &'static str,
-) -> impl Parser<'a, TokenStream<'a>, Vec<ArgumentSlot>, ParserError<'a>> + Clone {
-    custom(move |input| {
-        let mut args = Vec::with_capacity(specs.len());
-
-        for spec in specs {
-            if !spec.no_leading_space {
-                let _ = input.parse(insignificant_whitespace());
-            }
-            let parser =
-                argument_parser(kb, math_content.clone(), text_content.clone(), spec, strict)
-                    .labelled(context)
-                    .as_context();
-            let arg = input.parse(parser)?;
-            args.push(arg);
-        }
-
-        Ok(args)
-    })
-}
-
 /// Collect tokens inside an optional `[…]` argument.
 ///
 /// Returns `None` if the next token is not `[`. When `match_brackets` is
@@ -694,7 +661,7 @@ pub(crate) fn collect_optional_bracketed_tokens<'src, 'parse>(
 /// Consume tokens inside a mandatory `{…}` group.
 ///
 /// When `allow_nested` is false, encountering a nested `{` is an error.
-fn collect_braced_tokens<'src, 'parse>(
+pub(crate) fn collect_braced_tokens<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
     allow_nested: bool,
 ) -> Result<Vec<Token>, Rich<'src, Token>> {
@@ -934,8 +901,8 @@ fn keyval_value<'a>(
     nullable: bool,
 ) -> impl Parser<'a, TokenStream<'a>, String, ParserError<'a>> + Clone {
     custom(move |input| {
+        let start = input.cursor();
         let raw = if required {
-            let start = input.cursor();
             if !matches!(input.peek(), Some(Token::LBrace)) {
                 return Err(input.err_since(&start, "expected keyval argument"));
             }
@@ -952,8 +919,14 @@ fn keyval_value<'a>(
         }
 
         validate_keyval(&raw).map_err(|msg| {
-            let cursor = input.cursor();
-            input.err_peek_or_point(&cursor, msg)
+            let span = input.span_from_cursor(&start);
+            let mut err = Rich::custom(span, msg);
+            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                &mut err,
+                "argument value",
+                span,
+            );
+            err
         })?;
 
         Ok(normalize_keyval_string(&raw))

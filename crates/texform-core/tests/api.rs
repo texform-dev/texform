@@ -336,6 +336,36 @@ fn partial_result_keeps_following_siblings_after_environment_mismatch() {
 }
 
 #[test]
+fn environment_mismatch_rewrite_does_not_capture_later_generic_errors() {
+    let src = r"\begin{matrix} x \end{align}}";
+    let output = parse_latex(src, false);
+    assert_eq!(
+        output.diagnostics.len(),
+        2,
+        "should keep two distinct diagnostics"
+    );
+
+    let mismatch = &output.diagnostics[0];
+    assert_eq!(
+        mismatch.message,
+        "Environment name mismatch: expected \\end{matrix}, found \\end{align}"
+    );
+    assert_eq!(&src[mismatch.span.start..mismatch.span.end], r"\end{align}");
+
+    let trailing_brace = &output.diagnostics[1];
+    assert_eq!(
+        trailing_brace.message,
+        "found '}' expected something else, or end of input"
+    );
+    assert_eq!(
+        &src[trailing_brace.span.start..trailing_brace.span.end],
+        "}"
+    );
+    assert_eq!(trailing_brace.expected, ["something else", "end of input"]);
+    assert_eq!(trailing_brace.found.as_deref(), Some("}"));
+}
+
+#[test]
 #[should_panic(expected = "cannot serialize syntax tree containing Error node")]
 fn serialize_latex_rejects_error_nodes() {
     let node = SyntaxNode::Error {

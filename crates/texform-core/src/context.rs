@@ -598,6 +598,7 @@ fn convert_diagnostic(kb: &KnowledgeBase, src: &str, err: Rich<'static, Token>) 
 
 fn supplement_diagnostic_contexts(kb: &KnowledgeBase, src: &str, diagnostic: &mut ParseDiagnostic) {
     supplement_environment_mismatch_message(src, diagnostic);
+    supplement_argument_validation_span(src, diagnostic);
 
     let needs_left_context = matches!(
         diagnostic.message.as_str(),
@@ -646,7 +647,9 @@ fn supplement_environment_mismatch_message(src: &str, diagnostic: &mut ParseDiag
         return;
     }
 
-    let Some((expected, found, span)) = find_environment_name_mismatch(src) else {
+    let Some((expected, found, span)) =
+        find_environment_name_mismatch(src, diagnostic.span.clone())
+    else {
         return;
     };
 
@@ -657,6 +660,114 @@ fn supplement_environment_mismatch_message(src: &str, diagnostic: &mut ParseDiag
     diagnostic.span = span;
     diagnostic.expected = vec![format!("\\end{{{}}}", expected)];
     diagnostic.found = Some(format!("\\end{{{}}}", found));
+}
+
+fn supplement_argument_validation_span(src: &str, diagnostic: &mut ParseDiagnostic) {
+    if !looks_like_argument_validation_message(diagnostic.message.as_str()) {
+        return;
+    }
+
+    let Some(span_text) = src.get(diagnostic.span.start..diagnostic.span.end) else {
+        return;
+    };
+    if !span_text.starts_with('\\') {
+        return;
+    }
+
+    let Some(argument_span) = find_argument_surface_span(src, diagnostic.span.end) else {
+        return;
+    };
+    diagnostic.span = argument_span;
+}
+
+fn looks_like_argument_validation_message(message: &str) -> bool {
+    matches!(
+        message,
+        "failed to parse delimited argument content"
+            | "invalid dimension argument"
+            | "invalid integer argument"
+            | "invalid delimiter argument"
+            | "escape sequence should not appear in CSName"
+            | "unbalanced brace in keyval"
+            | "keyval missing key"
+            | "keyval missing value"
+            | "Too many column specifiers (perhaps looping column definitions?)"
+            | "Missing close brace"
+            | "First argument to * column specifier must be a number"
+    ) || message.starts_with("Illegal pream-token (")
+        || message.starts_with("Missing dimension or its units for ")
+        || message.starts_with("Missing argument for ")
+}
+
+fn find_argument_surface_span(src: &str, after: usize) -> Option<Span> {
+    let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
+        .spanned()
+        .map(|(token, span)| {
+            let token = token.unwrap_or_else(|()| {
+                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
+            });
+            (token, span)
+        })
+        .collect();
+
+    let mut index = 0;
+    while index < tokens.len() && tokens[index].1.end <= after {
+        index += 1;
+    }
+    while matches!(tokens.get(index), Some((Token::Whitespaces, _))) {
+        index += 1;
+    }
+
+    let Some((token, span)) = tokens.get(index) else {
+        return None;
+    };
+
+    match token {
+        Token::LBracket => {
+            let mut brace_depth = 0usize;
+            let mut bracket_depth = 0usize;
+            let start = span.start;
+            for (token, span) in tokens.iter().skip(index + 1) {
+                match token {
+                    Token::LBracket if brace_depth == 0 => bracket_depth += 1,
+                    Token::RBracket if brace_depth == 0 => {
+                        if bracket_depth == 0 {
+                            return Some(Span {
+                                start,
+                                end: span.end,
+                            });
+                        }
+                        bracket_depth -= 1;
+                    }
+                    Token::LBrace => brace_depth += 1,
+                    Token::RBrace if brace_depth > 0 => brace_depth -= 1,
+                    _ => {}
+                }
+            }
+            None
+        }
+        Token::LBrace => {
+            let mut depth = 0usize;
+            let start = span.start;
+            for (token, span) in tokens.iter().skip(index + 1) {
+                match token {
+                    Token::LBrace => depth += 1,
+                    Token::RBrace => {
+                        if depth == 0 {
+                            return Some(Span {
+                                start,
+                                end: span.end,
+                            });
+                        }
+                        depth -= 1;
+                    }
+                    _ => {}
+                }
+            }
+            None
+        }
+        _ => None,
+    }
 }
 
 fn find_invalid_left_context(kb: &KnowledgeBase, src: &str) -> Option<(Span, Option<Span>)> {
@@ -732,7 +843,7 @@ fn find_invalid_left_context(kb: &KnowledgeBase, src: &str) -> Option<(Span, Opt
     None
 }
 
-fn find_environment_name_mismatch(src: &str) -> Option<(String, String, Span)> {
+fn find_environment_name_mismatch(src: &str, target_span: Span) -> Option<(String, String, Span)> {
     let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
         .spanned()
         .map(|(token, span)| {
@@ -792,6 +903,17 @@ fn find_environment_name_mismatch(src: &str) -> Option<(String, String, Span)> {
             if expected == &env_name {
                 stack.pop();
             } else {
+                let mismatch_closer_span = Span {
+                    start: tokens[next].1.start,
+                    end: tokens[next].1.end,
+                };
+                if mismatch_closer_span.start != target_span.start
+                    || mismatch_closer_span.end != target_span.end
+                {
+                    index += 1;
+                    continue;
+                }
+
                 return Some((
                     expected.clone(),
                     env_name,
