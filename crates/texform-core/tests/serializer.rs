@@ -64,8 +64,10 @@ fn test_serialize_manual_nodes_for_groups_and_literals() {
     });
     let x = ast.new_node(Node::Char('x'));
     let y = ast.new_node(Node::Char('y'));
-    let unknown = ast.new_node(Node::UnknownCommand {
+    let unknown = ast.new_node(Node::Command {
         name: "mystery".to_string(),
+        args: vec![],
+        known: false,
     });
     let active_space = ast.new_node(Node::ActiveSpace);
     let text = ast.new_node(Node::Text("abc".to_string()));
@@ -100,6 +102,7 @@ fn test_serialize_command_argument_does_not_double_wrap_group_content() {
             kind: ArgumentKind::Mandatory,
             value: ArgumentValue::MathContent(group),
         })],
+        known: true,
     });
     ast.append_child(root, command);
 
@@ -224,6 +227,7 @@ fn test_serialize_text_mode_single_char_argument_uses_text_content_variant() {
             kind: ArgumentKind::Mandatory,
             value: ArgumentValue::TextContent(ch),
         })],
+        known: true,
     });
     ast.append_child(root, command);
 
@@ -247,6 +251,7 @@ fn test_serialize_scalar_arguments_stay_opaque() {
                 value: ArgumentValue::TextContent(file),
             }),
         ],
+        known: true,
     });
     ast.append_child(root, command);
 
@@ -264,6 +269,7 @@ fn test_serialize_other_scalar_argument_variants() {
             kind: ArgumentKind::Mandatory,
             value: ArgumentValue::CSName("sec:intro".to_string()),
         })],
+        known: true,
     });
     let numeral = ast.new_node(Node::Command {
         name: "romannumeral".to_string(),
@@ -271,6 +277,7 @@ fn test_serialize_other_scalar_argument_variants() {
             kind: ArgumentKind::Mandatory,
             value: ArgumentValue::Integer("12".to_string()),
         })],
+        known: true,
     });
     let columns = ast.new_node(Node::Command {
         name: "arraycols".to_string(),
@@ -278,6 +285,7 @@ fn test_serialize_other_scalar_argument_variants() {
             kind: ArgumentKind::Mandatory,
             value: ArgumentValue::Column("lcr".to_string()),
         })],
+        known: true,
     });
     let delim = ast.new_node(Node::Command {
         name: "delim".to_string(),
@@ -287,6 +295,7 @@ fn test_serialize_other_scalar_argument_variants() {
                 "langle".to_string(),
             )),
         })],
+        known: true,
     });
 
     ast.append_child(root, label);
@@ -317,6 +326,7 @@ fn test_serialize_paired_argument_replays_recorded_delimiters_and_skips_missing_
                 value: ArgumentValue::MathContent(x),
             }),
         ],
+        known: true,
     });
     ast.append_child(root, command);
 
@@ -340,6 +350,7 @@ fn test_serialize_star_slot_sticks_to_command_name() {
                 value: ArgumentValue::MathContent(body),
             }),
         ],
+        known: true,
     });
     ast.append_child(root, command);
 
@@ -430,6 +441,7 @@ fn test_serialize_environment_preserves_explicit_body_group() {
     let env = ast.new_node(Node::Environment {
         name: "matrix".to_string(),
         args: Vec::new(),
+        known: true,
         body,
     });
     ast.append_child(root, env);
@@ -452,6 +464,7 @@ fn test_serialize_environment_inside_text_mode_stays_compact() {
     let env = ast.new_node(Node::Environment {
         name: "quote".to_string(),
         args: Vec::new(),
+        known: true,
         body,
     });
 
@@ -472,6 +485,7 @@ fn test_serialize_environment_inside_text_mode_stays_compact() {
             kind: ArgumentKind::Mandatory,
             value: ArgumentValue::TextContent(text_group),
         })],
+        known: true,
     });
     ast.append_child(root, command);
 
@@ -491,6 +505,7 @@ fn test_serialize_scalar_paired_argument_keeps_math_spacing() {
             },
             value: ArgumentValue::Integer("12".to_string()),
         })],
+        known: true,
     });
     ast.append_child(root, command);
 
@@ -510,6 +525,7 @@ fn test_serialize_text_mode_control_word_keeps_text_boundary() {
     let alpha = ast.new_node(Node::Command {
         name: "alpha".to_string(),
         args: Vec::new(),
+        known: true,
     });
     let suffix = ast.new_node(Node::Text("x".to_string()));
     ast.append_child(text_group, alpha);
@@ -521,6 +537,7 @@ fn test_serialize_text_mode_control_word_keeps_text_boundary() {
             kind: ArgumentKind::Mandatory,
             value: ArgumentValue::TextContent(text_group),
         })],
+        known: true,
     });
     ast.append_child(root, command);
 
@@ -552,6 +569,7 @@ fn test_serialize_paired_argument_unwraps_multi_item_content_group() {
             },
             value: ArgumentValue::MathContent(content),
         })],
+        known: true,
     });
     ast.append_child(root, command);
 
@@ -579,6 +597,7 @@ fn test_serialize_text_mode_paired_scalar_stays_compact() {
             },
             value: ArgumentValue::Integer("12".to_string()),
         })],
+        known: true,
     });
     ast.append_child(text_group, left);
     ast.append_child(text_group, command);
@@ -590,6 +609,7 @@ fn test_serialize_text_mode_paired_scalar_stays_compact() {
             kind: ArgumentKind::Mandatory,
             value: ArgumentValue::TextContent(text_group),
         })],
+        known: true,
     });
     ast.append_child(root, wrapper);
 

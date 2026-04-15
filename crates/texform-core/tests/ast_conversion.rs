@@ -67,10 +67,31 @@ fn test_conversion_preserves_unknown_command_and_active_space() {
     assert_eq!(ast.node(children[1]), &Node::ActiveSpace);
     assert_eq!(
         ast.node(children[2]),
-        &Node::UnknownCommand {
+        &Node::Command {
             name: "mystery".to_string(),
+            args: vec![],
+            known: false,
         }
     );
+}
+
+#[test]
+fn test_ast_conversion_preserves_unknown_environment_known_flag() {
+    let syntax = parse_with_items(r"\begin{foo}a\end{foo}", false, vec![]);
+    let ast = Ast::from_syntax_node(&syntax);
+    ast.assert_invariants();
+
+    let children = ast.children(ast.root());
+    match ast.node(children[0]) {
+        Node::Environment {
+            name, args, known, ..
+        } => {
+            assert_eq!(name, "foo");
+            assert!(args.is_empty());
+            assert!(!known);
+        }
+        other => panic!("Expected environment node, got {:?}", other),
+    }
 }
 
 #[test]
@@ -147,7 +168,7 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
     assert_eq!(children.len(), 7);
 
     match ast.node(children[0]) {
-        Node::Command { name, args } => {
+        Node::Command { name, args, .. } => {
             assert_eq!(name, "delim");
             let arg = args[0].as_ref().unwrap();
             assert_eq!(arg.kind, ArgumentKind::Mandatory);
@@ -158,7 +179,7 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
     }
 
     match ast.node(children[1]) {
-        Node::Command { name, args } => {
+        Node::Command { name, args, .. } => {
             assert_eq!(name, "hspace");
             let arg = args[0].as_ref().unwrap();
             assert_eq!(arg.kind, ArgumentKind::Mandatory);
@@ -169,7 +190,7 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
     }
 
     match ast.node(children[2]) {
-        Node::Command { name, args } => {
+        Node::Command { name, args, .. } => {
             assert_eq!(name, "romannumeral");
             let arg = args[0].as_ref().unwrap();
             assert_eq!(arg.kind, ArgumentKind::Mandatory);
@@ -180,7 +201,7 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
     }
 
     match ast.node(children[3]) {
-        Node::Command { name, args } => {
+        Node::Command { name, args, .. } => {
             assert_eq!(name, "includegraphics");
             assert_eq!(args.len(), 2);
             assert_eq!(
@@ -206,7 +227,7 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
     }
 
     match ast.node(children[4]) {
-        Node::Command { name, args } => {
+        Node::Command { name, args, .. } => {
             assert_eq!(name, "label");
             let arg = args[0].as_ref().unwrap();
             assert_eq!(arg.value, ArgumentValue::CSName("sec:intro".to_string()));
@@ -216,7 +237,7 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
     }
 
     match ast.node(children[5]) {
-        Node::Command { name, args } => {
+        Node::Command { name, args, .. } => {
             assert_eq!(name, "qty");
             let arg = args[0].as_ref().unwrap();
 
@@ -245,7 +266,7 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
     }
 
     match ast.node(children[6]) {
-        Node::Command { name, args } => {
+        Node::Command { name, args, .. } => {
             assert_eq!(name, "pqty");
             assert_eq!(args.len(), 2);
             assert_eq!(
@@ -423,7 +444,9 @@ fn test_conversion_preserves_declarative_and_environment_structure() {
 
     let env = first_root_child(&environment_ast);
     match environment_ast.node(env) {
-        Node::Environment { name, args, body } => {
+        Node::Environment {
+            name, args, body, ..
+        } => {
             assert_eq!(name, "matrix");
             assert!(args.is_empty());
             assert_eq!(

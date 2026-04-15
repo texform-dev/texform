@@ -598,6 +598,7 @@ fn convert_diagnostic(kb: &KnowledgeBase, src: &str, err: Rich<'static, Token>) 
 
 fn supplement_diagnostic_contexts(kb: &KnowledgeBase, src: &str, diagnostic: &mut ParseDiagnostic) {
     supplement_environment_mismatch_message(src, diagnostic);
+    supplement_unknown_environment_message(kb, src, diagnostic);
     supplement_argument_validation_span(src, diagnostic);
 
     let needs_left_context = matches!(
@@ -660,6 +661,31 @@ fn supplement_environment_mismatch_message(src: &str, diagnostic: &mut ParseDiag
     diagnostic.span = span;
     diagnostic.expected = vec![format!("\\end{{{}}}", expected)];
     diagnostic.found = Some(format!("\\end{{{}}}", found));
+}
+
+fn supplement_unknown_environment_message(
+    kb: &KnowledgeBase,
+    src: &str,
+    diagnostic: &mut ParseDiagnostic,
+) {
+    let is_generic_begin_error = matches!(
+        diagnostic.message.as_str(),
+        "found '\\begin' expected something else"
+            | "found '\\begin' expected something else, or end of input"
+    );
+    if !is_generic_begin_error {
+        return;
+    }
+
+    let Some((name, span)) = find_unknown_environment_at_span(kb, src, diagnostic.span.clone())
+    else {
+        return;
+    };
+
+    diagnostic.message = format!("Unknown environment: {}", name);
+    diagnostic.span = span;
+    diagnostic.expected.clear();
+    diagnostic.found = None;
 }
 
 fn supplement_argument_validation_span(src: &str, diagnostic: &mut ParseDiagnostic) {
@@ -926,6 +952,82 @@ fn find_environment_name_mismatch(src: &str, target_span: Span) -> Option<(Strin
         }
 
         index += 1;
+    }
+
+    None
+}
+
+fn find_unknown_environment_at_span(
+    kb: &KnowledgeBase,
+    src: &str,
+    target_span: Span,
+) -> Option<(String, Span)> {
+    let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
+        .spanned()
+        .map(|(token, span)| {
+            let token = token.unwrap_or_else(|()| {
+                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
+            });
+            (token, span)
+        })
+        .collect();
+
+    let mut index = 0;
+    while index < tokens.len() {
+        let Some((Token::ControlSeq(name), begin_span)) = tokens.get(index) else {
+            index += 1;
+            continue;
+        };
+
+        if name != "begin"
+            || begin_span.start != target_span.start
+            || begin_span.end != target_span.end
+        {
+            index += 1;
+            continue;
+        }
+
+        index += 1;
+        while matches!(tokens.get(index), Some((Token::Whitespaces, _))) {
+            index += 1;
+        }
+
+        let Some((Token::LBrace, _)) = tokens.get(index) else {
+            return None;
+        };
+        index += 1;
+
+        let name_start = tokens.get(index)?.1.start;
+        let mut parsed_name = String::new();
+        let mut name_end = name_start;
+        while let Some((token, span)) = tokens.get(index) {
+            match token {
+                Token::Char(ch) => {
+                    parsed_name.push(*ch);
+                    name_end = span.end;
+                    index += 1;
+                }
+                Token::Star => {
+                    parsed_name.push('*');
+                    name_end = span.end;
+                    index += 1;
+                }
+                Token::RBrace => break,
+                _ => return None,
+            }
+        }
+
+        if parsed_name.is_empty() || kb.lookup_env(parsed_name.as_str()).is_some() {
+            return None;
+        }
+
+        return Some((
+            parsed_name,
+            Span {
+                start: name_start,
+                end: name_end,
+            },
+        ));
     }
 
     None

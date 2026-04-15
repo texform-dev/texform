@@ -723,7 +723,7 @@ fn parse_with_context_items_uses_public_package_loading_order() {
 
     match &result.node {
         SyntaxNode::Group { children, .. } => match &children[0] {
-            SyntaxNode::Command { name, args } => {
+            SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "div");
                 assert_eq!(
                     args.len(),

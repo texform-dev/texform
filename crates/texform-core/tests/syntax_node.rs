@@ -103,12 +103,14 @@ fn test_command_node() {
                 SyntaxNode::Char('b'),
             )),
         ],
+        known: true,
     };
 
     match cmd {
-        SyntaxNode::Command { name, args } => {
+        SyntaxNode::Command { name, args, known } => {
             assert_eq!(name, "frac");
             assert_eq!(args.len(), 2);
+            assert!(known);
         }
         _ => panic!("Expected Command"),
     }
@@ -249,17 +251,21 @@ fn test_default_display_marks_root_group() {
 
 #[test]
 fn test_unknown_command() {
-    let unknown = SyntaxNode::UnknownCommand {
+    let unknown = SyntaxNode::Command {
         name: "foo".to_string(),
+        args: vec![],
+        known: false,
     };
 
     assert!(unknown.is_leaf());
 
     match unknown {
-        SyntaxNode::UnknownCommand { name } => {
+        SyntaxNode::Command { name, args, known } => {
             assert_eq!(name, "foo");
+            assert!(args.is_empty());
+            assert!(!known);
         }
-        _ => panic!("Expected UnknownCommand"),
+        _ => panic!("Expected unknown Command"),
     }
 }
 
@@ -282,13 +288,20 @@ fn test_environment_structure() {
     let env = SyntaxNode::Environment {
         name: "matrix".to_string(),
         args: vec![],
+        known: true,
         body: Box::new(SyntaxNode::empty_group(ContentMode::Math)),
     };
 
     match env {
-        SyntaxNode::Environment { name, args, body } => {
+        SyntaxNode::Environment {
+            name,
+            args,
+            known,
+            body,
+        } => {
             assert_eq!(name, "matrix");
             assert!(args.is_empty());
+            assert!(known);
             assert!(body.is_group());
         }
         _ => panic!("Expected Environment"),

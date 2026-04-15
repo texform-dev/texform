@@ -47,7 +47,7 @@ pub(crate) fn rename_prefix_command_alias(
     alias_names: &[&str],
 ) -> Result<RuleEffect, TransformError> {
     let args = match cx.node(node_id) {
-        Node::Command { name, args } if alias_names.contains(&name.as_str()) => args.clone(),
+        Node::Command { name, args, .. } if alias_names.contains(&name.as_str()) => args.clone(),
         _ => return Ok(RuleEffect::Skipped),
     };
 
@@ -56,6 +56,7 @@ pub(crate) fn rename_prefix_command_alias(
         Node::Command {
             name: canonical.name.to_string(),
             args,
+            known: true,
         },
     );
     Ok(RuleEffect::Applied)

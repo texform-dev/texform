@@ -398,6 +398,7 @@ mod tests {
         let node_id = ast.new_node(Node::Command {
             name: "skip-me".to_string(),
             args: Vec::new(),
+            known: true,
         });
         ast.append_child(ast.root(), node_id);
 

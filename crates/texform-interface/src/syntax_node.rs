@@ -144,6 +144,7 @@ pub enum SyntaxNode {
     Command {
         name: String,
         args: Vec<ArgumentSlot>,
+        known: bool,
     },
 
     /// Infix command: a \over b, {n \choose k}
@@ -172,6 +173,7 @@ pub enum SyntaxNode {
     Environment {
         name: String,
         args: Vec<ArgumentSlot>,
+        known: bool,
         body: Box<SyntaxNode>, // Environment body (always a Group node)
     },
 
@@ -185,12 +187,6 @@ pub enum SyntaxNode {
         subscript: Option<Box<SyntaxNode>>,
         superscript: Option<Box<SyntaxNode>>,
     },
-
-    /// Unknown command (non-strict mode only)
-    ///
-    /// Produced when a command is not found in the knowledge base
-    /// and strict mode is disabled.
-    UnknownCommand { name: String },
 
     /// Parser-produced error placeholder.
     ///
@@ -236,9 +232,15 @@ impl SyntaxNode {
             SyntaxNode::Char(_)
                 | SyntaxNode::Text(_)
                 | SyntaxNode::ActiveSpace
-                | SyntaxNode::UnknownCommand { .. }
                 | SyntaxNode::Error { .. }
-        )
+        ) || matches!(self, SyntaxNode::Command { args, .. } if args.iter().all(|slot| {
+            slot.as_ref().is_none_or(|arg| {
+                !matches!(
+                    arg.value,
+                    ArgumentValue::MathContent(_) | ArgumentValue::TextContent(_)
+                )
+            })
+        }))
     }
 
     /// Get the mode if this is a Group node
@@ -353,8 +355,8 @@ impl SyntaxNode {
                 Self::fmt_group_children_with_indent(f, children, indent + 1)?;
                 writeln!(f, "{}]", prefix)
             }
-            SyntaxNode::Command { name, args } => {
-                writeln!(f, "{}Command(\\{}) [", prefix, name)?;
+            SyntaxNode::Command { name, args, known } => {
+                writeln!(f, "{}Command(\\{}, known={}) [", prefix, name, known)?;
                 for arg in args {
                     fmt_argument_slot(f, arg, indent + 1)?;
                 }
@@ -391,8 +393,13 @@ impl SyntaxNode {
                 scope.fmt_with_indent(f, indent + 2)?;
                 writeln!(f, "{}]", prefix)
             }
-            SyntaxNode::Environment { name, args, body } => {
-                writeln!(f, "{}Environment({}) [", prefix, name)?;
+            SyntaxNode::Environment {
+                name,
+                args,
+                known,
+                body,
+            } => {
+                writeln!(f, "{}Environment({}, known={}) [", prefix, name, known)?;
                 if !args.is_empty() {
                     writeln!(f, "{}  args:", prefix)?;
                     for arg in args {
@@ -420,9 +427,6 @@ impl SyntaxNode {
                     sup.fmt_with_indent(f, indent + 2)?;
                 }
                 writeln!(f, "{}]", prefix)
-            }
-            SyntaxNode::UnknownCommand { name } => {
-                writeln!(f, "{}UnknownCommand(\\{})", prefix, name)
             }
             SyntaxNode::Error { message, snippet } => {
                 writeln!(

@@ -45,7 +45,7 @@ mod tests {
             assert_eq!(children.len(), 1);
 
             match output.ast.node(children[0]) {
-                Node::Command { name, args } => {
+                Node::Command { name, args, .. } => {
                     assert_eq!(name, "tr");
                     assert!(args.is_empty());
                 }

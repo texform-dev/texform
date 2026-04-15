@@ -32,7 +32,7 @@ use chumsky::{
 use logos::Logos;
 
 use crate::context::ParseContext;
-use crate::knowledge::{CommandKind, CommandMeta, EnvMeta, KnowledgeBase};
+use crate::knowledge::{CommandKind, CommandMeta, KnowledgeBase};
 use crate::lexer::Token;
 use texform_interface::syntax_node::{ArgumentSlot, ContentMode, Delimiter, GroupKind, SyntaxNode};
 
@@ -670,6 +670,11 @@ fn is_direct_left_group_error(message: &str) -> bool {
     )
 }
 
+fn is_direct_environment_header_error(message: &str) -> bool {
+    message.starts_with("Unknown environment: ")
+        || (message.starts_with("Environment ") && message.contains(" is not allowed in "))
+}
+
 fn scan_environment_stack_before(src: &str, limit: usize) -> Vec<String> {
     let mut stack = Vec::new();
     let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
@@ -875,6 +880,8 @@ where
         let item_start = input.cursor();
         let item_starts_with_left =
             matches!(input.peek().as_ref(), Some(Token::ControlSeq(name)) if name == "left");
+        let item_starts_with_begin =
+            matches!(input.peek().as_ref(), Some(Token::ControlSeq(name)) if name == "begin");
         let item_start_index = input.span_from_cursor(&item_start).start;
         let opening_environment = peek_environment_name_at_cursor(input, "begin");
         let outer_environment_stack = opening_environment
@@ -890,7 +897,9 @@ where
         };
         let direct_left_group_error = item_starts_with_left
             && matches!(err.reason(), chumsky::error::RichReason::Custom(message) if is_direct_left_group_error(message));
-        if direct_left_group_error {
+        let direct_environment_header_error = item_starts_with_begin
+            && matches!(err.reason(), chumsky::error::RichReason::Custom(message) if is_direct_environment_header_error(message));
+        if direct_left_group_error || direct_environment_header_error {
             return Err(err);
         }
         let failure_environment_stack = scan_environment_stack_before(src, err.span().end);
@@ -1206,7 +1215,11 @@ fn prefix_command_parser<'a>(
             args.push(arg);
         }
 
-        Ok(SyntaxNode::Command { name, args })
+        Ok(SyntaxNode::Command {
+            name,
+            args,
+            known: true,
+        })
     })
 }
 
@@ -1229,7 +1242,11 @@ fn unknown_command_parser<'a>(
         if strict {
             Err(Rich::custom(span, format!("Unknown command: \\{}", name)))
         } else {
-            Ok(SyntaxNode::UnknownCommand { name })
+            Ok(SyntaxNode::Command {
+                name,
+                args: vec![],
+                known: false,
+            })
         }
     })
     .labelled("unknown command")
@@ -1251,95 +1268,6 @@ fn env_name_parser<'a>() -> impl Parser<'a, TokenStream<'a>, String, ParserError
     .labelled("environment name")
 }
 
-/// Parse `\begin{name}` plus its arguments, returning metadata.
-///
-/// Whitespace between `\begin` and `{name}` is accepted so that
-/// `\begin {matrix}` round-trips through the serializer's `Spaced`
-/// environment name spacing.
-fn parse_env_header<'a>(
-    kb: &'a KnowledgeBase,
-    math_content: ContentParser<'a>,
-    text_content: ContentParser<'a>,
-    current_mode: ContentMode,
-    strict: bool,
-) -> impl Parser<'a, TokenStream<'a>, (String, Vec<ArgumentSlot>, &'a EnvMeta), ParserError<'a>> + Clone
-{
-    custom(move |input| {
-        let ws = insignificant_whitespace();
-
-        input.parse(control_seq("begin"))?;
-        let _ = input.parse(ws.clone());
-
-        let name_start = input.cursor();
-        let name = input.parse(env_name_parser())?;
-        let name_span = input.span_from_cursor(&name_start);
-
-        let meta = match kb.lookup_env(name.as_str()) {
-            Some(m) => m,
-            None => {
-                return Err(Rich::custom(
-                    name_span,
-                    format!("Unknown environment: {}", name),
-                ));
-            }
-        };
-
-        if !meta.allowed_mode.allows(current_mode) {
-            return Err(Rich::custom(
-                name_span,
-                format!(
-                    "Environment {} is not allowed in {} mode",
-                    name, current_mode
-                ),
-            ));
-        }
-
-        let mut args = Vec::with_capacity(meta.argspec.args.len());
-        for spec in meta.argspec.args {
-            if !spec.no_leading_space {
-                let _ = input.parse(insignificant_whitespace());
-            }
-
-            let arg_start = input.cursor();
-            let parser =
-                argument_parser(kb, math_content.clone(), text_content.clone(), spec, strict);
-            let arg = match input.parse(parser) {
-                Ok(arg) => arg,
-                Err(err) => {
-                    let arg_span = err
-                        .contexts()
-                        .next()
-                        .map(|(_, span)| *span)
-                        .unwrap_or_else(|| input.span_from_cursor(&arg_start));
-                    return match err.reason() {
-                        chumsky::error::RichReason::Custom(message) => {
-                            let mut err = Rich::custom(arg_span, message.clone());
-                            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
-                                &mut err,
-                                "environment argument",
-                                arg_span,
-                            );
-                            Err(err)
-                        }
-                        chumsky::error::RichReason::ExpectedFound { .. } => {
-                            let mut err = err;
-                            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
-                                &mut err,
-                                "environment argument",
-                                arg_span,
-                            );
-                            Err(err)
-                        }
-                    };
-                }
-            };
-            args.push(arg);
-        }
-
-        Ok((name, args, meta))
-    })
-}
-
 /// Parse a full environment including body and closing tag.
 fn environment_parser<'a>(
     kb: &'a KnowledgeBase,
@@ -1351,20 +1279,84 @@ fn environment_parser<'a>(
     custom(move |input| {
         let ws = insignificant_whitespace();
 
-        let (name, args, meta) = input.parse(parse_env_header(
-            kb,
-            math_content.clone(),
-            text_content.clone(),
-            current_mode,
-            strict,
-        ))?;
+        input.parse(control_seq("begin"))?;
+        let _ = input.parse(ws.clone());
 
-        let body_content = match meta.body_mode {
+        let name_start = input.cursor();
+        let name = input.parse(env_name_parser())?;
+        let name_span = input.span_from_cursor(&name_start);
+
+        let (args, known, body_mode) = if let Some(meta) = kb.lookup_env(name.as_str()) {
+            if !meta.allowed_mode.allows(current_mode) {
+                return Err(Rich::custom(
+                    name_span,
+                    format!(
+                        "Environment {} is not allowed in {} mode",
+                        name, current_mode
+                    ),
+                ));
+            }
+
+            let mut args = Vec::with_capacity(meta.argspec.args.len());
+            for spec in meta.argspec.args {
+                if !spec.no_leading_space {
+                    let _ = input.parse(insignificant_whitespace());
+                }
+
+                let arg_start = input.cursor();
+                let parser =
+                    argument_parser(kb, math_content.clone(), text_content.clone(), spec, strict);
+                let arg = match input.parse(parser) {
+                    Ok(arg) => arg,
+                    Err(err) => {
+                        let arg_span = err
+                            .contexts()
+                            .next()
+                            .map(|(_, span)| *span)
+                            .unwrap_or_else(|| input.span_from_cursor(&arg_start));
+                        return match err.reason() {
+                            chumsky::error::RichReason::Custom(message) => {
+                                let mut err = Rich::custom(arg_span, message.clone());
+                                <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                                    &mut err,
+                                    "environment argument",
+                                    arg_span,
+                                );
+                                Err(err)
+                            }
+                            chumsky::error::RichReason::ExpectedFound { .. } => {
+                                let mut err = err;
+                                <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                                    &mut err,
+                                    "environment argument",
+                                    arg_span,
+                                );
+                                Err(err)
+                            }
+                        };
+                    }
+                };
+                args.push(arg);
+            }
+
+            (args, true, meta.body_mode)
+        } else {
+            if strict {
+                return Err(Rich::custom(
+                    name_span,
+                    format!("Unknown environment: {}", name),
+                ));
+            }
+
+            (vec![], false, current_mode)
+        };
+
+        let body_content = match body_mode {
             ContentMode::Math => math_content.clone(),
             ContentMode::Text => text_content.clone(),
         };
         let body_recovery_start = input.save();
-        let body = input.parse(env_body_parser(meta.body_mode, body_content))?;
+        let body = input.parse(env_body_parser(body_mode, body_content))?;
 
         let expected_end = name.clone();
         let missing_end_message = format!(
@@ -1384,7 +1376,7 @@ fn environment_parser<'a>(
 
             let checkpoint = input.save();
             let probe = mode_item_parser(
-                meta.body_mode,
+                body_mode,
                 kb,
                 math_content.clone(),
                 text_content.clone(),
@@ -1424,6 +1416,7 @@ fn environment_parser<'a>(
         Ok(SyntaxNode::Environment {
             name,
             args,
+            known,
             body: Box::new(body),
         })
     })

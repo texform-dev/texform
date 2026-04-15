@@ -31,7 +31,7 @@ fn first_command(output: &ParseOutput) -> (&str, &Vec<Option<Argument>>) {
         .unwrap_or_else(|| panic!("expected parse result"));
     match &result.node {
         SyntaxNode::Group { children, .. } => match &children[0] {
-            SyntaxNode::Command { name, args } => (name.as_str(), args),
+            SyntaxNode::Command { name, args, .. } => (name.as_str(), args),
             other => panic!("expected command node, got {:?}", other),
         },
         other => panic!("expected root group, got {:?}", other),

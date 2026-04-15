@@ -362,9 +362,9 @@ impl<'a> Serializer<'a> {
 
     fn visit(&mut self, id: NodeId, mode: ContentMode) {
         match self.ast.node(id).clone() {
-            Node::Environment { name, args, body } => {
-                self.visit_environment(&name, &args, body, mode)
-            }
+            Node::Environment {
+                name, args, body, ..
+            } => self.visit_environment(&name, &args, body, mode),
             Node::Infix {
                 name,
                 args,
@@ -384,7 +384,7 @@ impl<'a> Serializer<'a> {
                 subscript,
                 superscript,
             } => self.visit_scripted(base, subscript, superscript),
-            Node::Command { name, args } => self.visit_command(&name, &args, mode),
+            Node::Command { name, args, .. } => self.visit_command(&name, &args, mode),
             Node::Char(ch) => self.visit_char(ch, mode),
             Node::Text(text) => self
                 .writer
@@ -392,12 +392,6 @@ impl<'a> Serializer<'a> {
             Node::ActiveSpace => self
                 .writer
                 .emit(mode, AtomKind::ActiveChar, "~", self.options),
-            Node::UnknownCommand { name } => self.writer.emit(
-                mode,
-                AtomKind::ControlSequence,
-                &format!(r"\{}", name),
-                self.options,
-            ),
         }
     }
 

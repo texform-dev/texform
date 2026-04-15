@@ -45,10 +45,9 @@ pub type ParseWithContextOutput = Vec<ParseWithContextItem>;
 /// lazily-initialized [`ParseContext`] across calls so the knowledge base
 /// is built only once.
 ///
-/// Set `strict` to `true` to reject unknown commands as errors; when
-/// `false`, unknown commands are preserved as [`SyntaxNode::UnknownCommand`].
-///
-/// [`SyntaxNode::UnknownCommand`]: texform_interface::syntax_node::SyntaxNode::UnknownCommand
+/// Set `strict` to `true` to reject unknown command/environment names as
+/// errors; when `false`, they are preserved as ordinary command/environment
+/// nodes with `known: false`.
 pub fn parse_latex(src: &str, strict: bool) -> ParseOutput {
     ParseContext::all_packages_shared().parse(src, strict)
 }
@@ -200,10 +199,7 @@ fn assert_serializable_syntax_node(node: &SyntaxNode) {
         SyntaxNode::Error { .. } => {
             panic!("cannot serialize syntax tree containing Error node")
         }
-        SyntaxNode::UnknownCommand { .. }
-        | SyntaxNode::Text(_)
-        | SyntaxNode::Char(_)
-        | SyntaxNode::ActiveSpace => {}
+        SyntaxNode::Text(_) | SyntaxNode::Char(_) | SyntaxNode::ActiveSpace => {}
     }
 }
 

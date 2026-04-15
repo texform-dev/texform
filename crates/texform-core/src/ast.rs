@@ -79,7 +79,6 @@ pub enum NodeKind {
     Declarative,
     Environment,
     Scripted,
-    UnknownCommand,
     Text,
     Char,
     ActiveSpace,
@@ -189,6 +188,8 @@ pub enum Node {
         name: String,
         /// Slots defined by the matched command spec
         args: Vec<ArgumentSlot>,
+        /// Whether this name is present in the knowledge base.
+        known: bool,
     },
     /// Infix command with explicit left and right operands.
     Infix {
@@ -216,6 +217,8 @@ pub enum Node {
         name: String,
         /// Parsed argument slots attached to the environment
         args: Vec<ArgumentSlot>,
+        /// Whether this name is present in the knowledge base.
+        known: bool,
         /// Environment body subtree. Must be a [`Node::Group`]
         body: NodeId,
     },
@@ -227,11 +230,6 @@ pub enum Node {
         subscript: Option<NodeId>,
         /// Optional superscript subtree
         superscript: Option<NodeId>,
-    },
-    /// Unknown command preserved from non-strict parsing.
-    UnknownCommand {
-        /// Unknown command name without leading backslash
-        name: String,
     },
     /// Text-mode text chunk
     Text(String),
@@ -251,7 +249,6 @@ impl Node {
             Node::Declarative { .. } => NodeKind::Declarative,
             Node::Environment { .. } => NodeKind::Environment,
             Node::Scripted { .. } => NodeKind::Scripted,
-            Node::UnknownCommand { .. } => NodeKind::UnknownCommand,
             Node::Text(_) => NodeKind::Text,
             Node::Char(_) => NodeKind::Char,
             Node::ActiveSpace => NodeKind::ActiveSpace,
@@ -971,7 +968,7 @@ impl Ast {
                     edges.push((*superscript, Slot::ScriptSup));
                 }
             }
-            Node::UnknownCommand { .. } | Node::Text(_) | Node::Char(_) | Node::ActiveSpace => {}
+            Node::Text(_) | Node::Char(_) | Node::ActiveSpace => {}
         }
 
         edges
@@ -1018,12 +1015,13 @@ impl Ast {
                     mode: *mode,
                 }
             }
-            SyntaxNode::Command { name, args } => Node::Command {
+            SyntaxNode::Command { name, args, known } => Node::Command {
                 name: name.clone(),
                 args: args
                     .iter()
                     .map(|slot| Self::convert_argument_slot(slot, nodes, parent))
                     .collect(),
+                known: *known,
             },
             SyntaxNode::Infix {
                 name,
@@ -1047,12 +1045,18 @@ impl Ast {
                     .collect(),
                 scope: Self::convert_syntax_node(scope, nodes, parent),
             },
-            SyntaxNode::Environment { name, args, body } => Node::Environment {
+            SyntaxNode::Environment {
+                name,
+                args,
+                known,
+                body,
+            } => Node::Environment {
                 name: name.clone(),
                 args: args
                     .iter()
                     .map(|slot| Self::convert_argument_slot(slot, nodes, parent))
                     .collect(),
+                known: *known,
                 body: Self::convert_syntax_node(body, nodes, parent),
             },
             SyntaxNode::Scripted {
@@ -1068,7 +1072,6 @@ impl Ast {
                     .as_ref()
                     .map(|node| Self::convert_syntax_node(node, nodes, parent)),
             },
-            SyntaxNode::UnknownCommand { name } => Node::UnknownCommand { name: name.clone() },
             SyntaxNode::Error { .. } => {
                 panic!("cannot convert SyntaxNode::Error into AST")
             }

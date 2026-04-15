@@ -241,7 +241,7 @@ impl<'a> TransformContext<'a> {
         record: &'static BuiltinCommandRecord,
     ) -> Option<CommandView<'_>> {
         match self.ast.node(node_id) {
-            Node::Command { name, args } if name == record.name => Some(CommandView {
+            Node::Command { name, args, .. } if name == record.name => Some(CommandView {
                 name: name.as_str(),
                 args: args.as_slice(),
             }),
@@ -296,13 +296,13 @@ impl<'a> TransformContext<'a> {
         record: &'static BuiltinEnvironmentRecord,
     ) -> Option<EnvironmentView<'_>> {
         match self.ast.node(node_id) {
-            Node::Environment { name, args, body } if name == record.name => {
-                Some(EnvironmentView {
-                    name: name.as_str(),
-                    args: args.as_slice(),
-                    body: *body,
-                })
-            }
+            Node::Environment {
+                name, args, body, ..
+            } if name == record.name => Some(EnvironmentView {
+                name: name.as_str(),
+                args: args.as_slice(),
+                body: *body,
+            }),
             _ => None,
         }
     }

@@ -27,12 +27,11 @@ use wasm_bindgen::prelude::*;
 const SYNTAX_NODE_TYPES: &str = r#"
 export type SyntaxNode =
     | { Group: { mode: ContentMode; kind: GroupKind; children: SyntaxNode[] } }
-    | { Command: { name: string; args: ArgumentSlot[] } }
+    | { Command: { name: string; args: ArgumentSlot[]; known: boolean } }
     | { Infix: { name: string; args: ArgumentSlot[]; left: SyntaxNode; right: SyntaxNode } }
     | { Declarative: { name: string; args: ArgumentSlot[]; scope: SyntaxNode } }
-    | { Environment: { name: string; args: ArgumentSlot[]; body: SyntaxNode } }
+    | { Environment: { name: string; args: ArgumentSlot[]; known: boolean; body: SyntaxNode } }
     | { Scripted: { base: SyntaxNode; subscript?: SyntaxNode; superscript?: SyntaxNode } }
-    | { UnknownCommand: { name: string } }
     | { Error: { message: string; snippet: string } }
     | { Text: string }
     | { Char: string }

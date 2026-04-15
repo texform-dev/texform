@@ -537,7 +537,7 @@ fn test_frac_command() {
             assert_eq!(children.len(), 1);
 
             match &children[0] {
-                SyntaxNode::Command { name, args } => {
+                SyntaxNode::Command { name, args, .. } => {
                     assert_eq!(name, "frac");
                     assert_eq!(args.len(), 2);
 
@@ -924,12 +924,14 @@ fn test_unknown_command_nonstrict() {
         SyntaxNode::Group { children, .. } => {
             assert_eq!(children.len(), 2);
 
-            // First: UnknownCommand node
+            // First: command node with known=false
             match &children[0] {
-                SyntaxNode::UnknownCommand { name } => {
+                SyntaxNode::Command { name, args, known } => {
                     assert_eq!(name, "unknown");
+                    assert!(args.is_empty());
+                    assert!(!known);
                 }
-                _ => panic!("Expected UnknownCommand node"),
+                _ => panic!("Expected unknown Command node"),
             }
 
             // Second: explicit group {x}
@@ -954,6 +956,35 @@ fn test_unknown_command_strict() {
     // "\unknown{x}" in strict mode should error
     let result = parse(r"\unknown{x}", true);
     assert!(result.is_err());
+}
+
+#[test]
+fn test_unknown_environment_nonstrict() {
+    let (result, _) = parse(r"\begin{foo}a\end{foo}", false).unwrap();
+
+    match result {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Environment {
+                name,
+                args,
+                known,
+                body,
+            } => {
+                assert_eq!(name, "foo");
+                assert!(args.is_empty());
+                assert!(!known);
+                assert!(matches!(**body, SyntaxNode::Group { .. }));
+            }
+            other => panic!("Expected Environment node, got {:?}", other),
+        },
+        other => panic!("Expected root Group, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_unknown_environment_strict() {
+    let result = parse(r"\begin{foo}a\end{foo}", true);
+    assert_eq!(result.unwrap_err(), vec!["Unknown environment: foo"]);
 }
 
 // ========================================================================
@@ -1400,7 +1431,9 @@ fn test_environment_basic() {
         SyntaxNode::Group { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
-                SyntaxNode::Environment { name, args, body } => {
+                SyntaxNode::Environment {
+                    name, args, body, ..
+                } => {
                     assert_eq!(name, "matrix");
                     assert!(args.is_empty());
                     match &**body {
@@ -2524,7 +2557,7 @@ fn test_keyval_empty_brackets() {
 fn extract_first_command(node: SyntaxNode) -> (String, Vec<Option<Argument>>) {
     match node {
         SyntaxNode::Group { children, .. } => match &children[0] {
-            SyntaxNode::Command { name, args } => (name.clone(), args.clone()),
+            SyntaxNode::Command { name, args, .. } => (name.clone(), args.clone()),
             other => panic!("Expected command node, got {:?}", other),
         },
         other => panic!("Expected root group, got {:?}", other),
@@ -2688,7 +2721,7 @@ fn test_exp_does_not_consume_star_without_s_slot() {
         SyntaxNode::Group { children, .. } => {
             assert_eq!(children.len(), 2);
             match &children[0] {
-                SyntaxNode::Command { name, args } => {
+                SyntaxNode::Command { name, args, .. } => {
                     assert_eq!(name, "exp");
                     assert!(args.is_empty());
                 }
@@ -2707,7 +2740,7 @@ fn test_exp_does_not_consume_brackets_without_optional_slot() {
         SyntaxNode::Group { children, .. } => {
             assert_eq!(children.len(), 4);
             match &children[0] {
-                SyntaxNode::Command { name, args } => {
+                SyntaxNode::Command { name, args, .. } => {
                     assert_eq!(name, "exp");
                     assert!(args.is_empty());
                 }
@@ -2752,7 +2785,7 @@ fn test_no_leading_space_prefix_for_linebreak_command() {
         SyntaxNode::Group { children, .. } => {
             assert!(!children.is_empty());
             match &children[0] {
-                SyntaxNode::Command { name, args } => {
+                SyntaxNode::Command { name, args, .. } => {
                     assert_eq!(name, "\\");
                     assert_eq!(args.len(), 2);
                     assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(false));
@@ -2770,7 +2803,7 @@ fn test_no_leading_space_prefix_for_linebreak_command() {
         SyntaxNode::Group { children, .. } => {
             assert!(!children.is_empty());
             match &children[0] {
-                SyntaxNode::Command { name, args } => {
+                SyntaxNode::Command { name, args, .. } => {
                     assert_eq!(name, "\\");
                     assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(false));
                     assert!(args[1].is_none());
@@ -3404,7 +3437,7 @@ fn test_dd_supports_optional_then_paired_slots() {
         SyntaxNode::Group { children, .. } => {
             assert_eq!(children.len(), 4);
             match &children[0] {
-                SyntaxNode::Command { name, args } => {
+                SyntaxNode::Command { name, args, .. } => {
                     assert_eq!(name, "dd");
                     assert_eq!(args.len(), 2);
                     assert!(
@@ -3611,7 +3644,9 @@ fn test_environment_star_in_name_is_independent_from_s_arg_slot() {
         .clone();
     match node {
         SyntaxNode::Group { children, .. } => match &children[0] {
-            SyntaxNode::Environment { name, args, body } => {
+            SyntaxNode::Environment {
+                name, args, body, ..
+            } => {
                 assert_eq!(name, "probenv");
                 assert_eq!(args.len(), 1);
                 assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Star);
@@ -3637,7 +3672,7 @@ fn test_sqrt_accepts_command_token_as_best_fit_argument() {
         SyntaxNode::Group { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
-                SyntaxNode::Command { name, args } => {
+                SyntaxNode::Command { name, args, .. } => {
                     assert_eq!(name, "sqrt");
                     assert_eq!(args.len(), 2);
                     assert!(

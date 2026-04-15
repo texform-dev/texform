@@ -131,6 +131,7 @@ fn test_command_arg_slots_keep_non_content_values_out_of_tree_edges() {
                 value: ArgumentValue::Dimension("1em".to_string()),
             }),
         ],
+        known: true,
     });
     ast.assert_invariants();
 
@@ -192,6 +193,7 @@ fn test_command_arg_slots_keep_scalar_variants_opaque() {
                 value: ArgumentValue::MathContent(content),
             }),
         ],
+        known: true,
     });
     ast.append_child(root, command);
     ast.assert_invariants();
@@ -222,6 +224,7 @@ fn test_replace_node_reuses_children_and_detaches_removed_subtrees() {
             content_arg(ArgumentKind::Mandatory, lhs),
             content_arg(ArgumentKind::Mandatory, rhs),
         ],
+        known: true,
     });
     ast.assert_invariants();
     ast.append_child(root, command);
@@ -241,7 +244,7 @@ fn test_replace_node_reuses_children_and_detaches_removed_subtrees() {
     ast.assert_invariants();
 
     match old_node {
-        Node::Command { name, args } => {
+        Node::Command { name, args, .. } => {
             assert_eq!(name, "pair");
             assert_eq!(args.len(), 2);
         }
@@ -315,6 +318,7 @@ fn test_remove_node_deletes_attached_subtree() {
             content_arg(ArgumentKind::Mandatory, numerator),
             content_arg(ArgumentKind::Mandatory, denominator),
         ],
+        known: true,
     });
     ast.assert_invariants();
     ast.append_child(root, frac);
@@ -359,6 +363,7 @@ fn test_detach_rejects_non_group_child_nodes() {
     let command = ast.new_node(Node::Command {
         name: "cmd".to_string(),
         args: vec![content_arg(ArgumentKind::Mandatory, arg)],
+        known: true,
     });
     ast.assert_invariants();
 
@@ -394,6 +399,7 @@ fn test_environment_body_must_be_group() {
     let _ = ast.new_node(Node::Environment {
         name: "aligned".to_string(),
         args: vec![],
+        known: true,
         body,
     });
 }

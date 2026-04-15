@@ -45,5 +45,6 @@ pub fn prefix_command(record: &'static BuiltinCommandRecord, args: Vec<ArgumentS
     Node::Command {
         name: record.name.to_string(),
         args,
+        known: true,
     }
 }
