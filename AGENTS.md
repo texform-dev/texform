@@ -4,6 +4,32 @@
 
 TeXForm is a **rapid-prototype project** for internal data processing.
 
+## Repository Structure
+
+```
+crates/                       # Rust workspace (7 crates)
+├── texform-core/             #   Parser, AST, serializer, transform engine
+├── texform-specs/            #   Knowledge base & command specifications
+├── texform-argspec/          #   xparse-style argument spec parser
+├── texform-argspec-macros/   #   Procedural macros for argspec
+├── texform-interface/        #   Public C/FFI interface layer
+├── texform-python/           #   Python bindings (PyO3 → pytexform)
+└── texform-wasm/             #   WebAssembly bindings
+packages/                     # NPM/TypeScript packages
+├── playground/               #   Interactive WASM playground (Vite + React)
+├── argspecs-validator/       #   Argument spec validator
+└── tex-renderers/            #   LaTeX rendering utilities
+resources/specs/              # Knowledge base YAML (base, ams, physics, …)
+data/spec-tests/              # Specification test data
+docs/                         # Documentation & design (Chinese)
+├── design/                   #   Active design documents
+├── archived-design-docs/     #   Historical designs
+├── plans/                    #   Implementation plans
+└── notes/, reports/, …       #   Notes and reports
+demo-wasm/                    # Deprecated WASM demo app
+references/                   # External reference docs (chumsky, mathjax, …)
+```
+
 ### Language Conventions
 
 **Important**: This project follows these language rules:
