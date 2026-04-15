@@ -21,7 +21,7 @@ use crate::ast::Ast;
 pub use crate::knowledge::KnowledgeBase;
 pub use crate::knowledge::PackageLoadError;
 use crate::lexer::Token;
-use crate::parser::{self, Spanned, TokenStream, build_token_stream};
+use crate::parser::{self, RelativeSpanEntry, TokenStream, TrackedNode, build_token_stream};
 use crate::transform::compile::{CompiledProfile, ProfileCompileError, RuleStatus};
 use crate::transform::config::TransformProfile;
 use crate::transform::engine::{TransformEngineError, TransformReport, transform_ast};
@@ -192,7 +192,7 @@ impl From<DelimiterControlItem> for ContextItem {
 }
 
 /// Byte-offset span within the original source string.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub struct Span {
     /// Inclusive start byte offset
@@ -218,12 +218,29 @@ pub struct ParseDiagnosticContext {
 /// to produce.
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
+pub struct NodeSpanEntry {
+    pub id: String,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 #[cfg_attr(feature = "tsify", tsify(into_wasm_abi))]
 pub struct ParseResult {
     /// The syntax tree produced by parsing
     pub node: SyntaxNode,
     /// Byte range of the parsed input
     pub span: Span,
+    pub node_spans: Vec<NodeSpanEntry>,
+}
+
+impl ParseResult {
+    pub fn span_for(&self, id: &str) -> Option<&Span> {
+        self.node_spans
+            .iter()
+            .find(|entry| entry.id == id)
+            .map(|entry| &entry.span)
+    }
 }
 
 /// A single diagnostic produced during parsing.
@@ -513,12 +530,18 @@ pub(crate) fn parse_with_kb(kb: &KnowledgeBase, src: &str, strict: bool) -> Pars
     let token_stream = build_token_stream(src);
     let (output, errors) = parse_raw(kb, src, token_stream, strict);
 
-    let result = output.map(|(node, span)| ParseResult {
-        node,
-        span: Span {
+    let result = output.map(|tracked| {
+        let (node, span, records) = tracked.finish_root();
+        let span = Span {
             start: span.start,
             end: span.end,
-        },
+        };
+
+        ParseResult {
+            node,
+            span: span.clone(),
+            node_spans: records.into_iter().map(node_span_entry).collect(),
+        }
     });
 
     let diagnostics = errors
@@ -537,9 +560,8 @@ fn parse_raw(
     src: &str,
     token_stream: TokenStream<'_>,
     strict: bool,
-) -> (Option<Spanned<SyntaxNode>>, Vec<Rich<'static, Token>>) {
+) -> (Option<TrackedNode>, Vec<Rich<'static, Token>>) {
     let (output, errors) = parser::math_block_parser_with_source(kb, strict, src)
-        .map_with(|node, e| (node, e.span()))
         .then_ignore(end())
         .parse(token_stream)
         .into_output_errors();
@@ -547,6 +569,16 @@ fn parse_raw(
     // Convert borrowed errors to owned so they outlive the token stream.
     let errors = errors.into_iter().map(|e| e.into_owned()).collect();
     (output, errors)
+}
+
+fn node_span_entry(entry: RelativeSpanEntry) -> NodeSpanEntry {
+    NodeSpanEntry {
+        id: entry.path,
+        span: Span {
+            start: entry.span.start,
+            end: entry.span.end,
+        },
+    }
 }
 
 fn convert_diagnostic(kb: &KnowledgeBase, src: &str, err: Rich<'static, Token>) -> ParseDiagnostic {

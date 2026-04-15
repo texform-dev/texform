@@ -5,6 +5,8 @@ interface SyntaxTreeTabProps {
   treeRoot: TreeNode | null
   collapsedNodes: Set<string>
   onToggleNode: (id: string) => void
+  hoveredNodeId: string | null
+  onHoverNode: (id: string | null) => void
   nodeCount: number
   treeDepth: number
   parseTime: number | null
@@ -14,6 +16,8 @@ export default function SyntaxTreeTab({
   treeRoot,
   collapsedNodes,
   onToggleNode,
+  hoveredNodeId,
+  onHoverNode,
   nodeCount,
   treeDepth,
   parseTime,
@@ -29,6 +33,8 @@ export default function SyntaxTreeTab({
             node={treeRoot}
             collapsedNodes={collapsedNodes}
             onToggle={onToggleNode}
+            hoveredNodeId={hoveredNodeId}
+            onHoverNode={onHoverNode}
             depth={0}
           />
         ) : (

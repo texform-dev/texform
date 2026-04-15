@@ -80,6 +80,10 @@ references/                   # External reference docs (chumsky, mathjax, …)
 - Prefer `unwrap()` in internal code — avoid verbose error handling
 - Use `todo!()` liberally for unimplemented branches, with a brief English note
 
+## Tooling Conventions
+
+- Use `bun` as the package manager for JavaScript/TypeScript packages in this repository
+
 ## Available CLI Examples
 
 Two CLI examples (`parse` and `validate_spec`) are available for quick inspection and debugging. 

@@ -3,7 +3,7 @@ import { RotateCcw } from 'lucide-react'
 import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
 import SectionHeader from './SectionHeader'
-import type { ParseDiagnostic } from '../lib/texformWasm'
+import type { ParseDiagnostic, Span } from '../lib/texformWasm'
 import type { Theme } from '../lib/theme'
 import { LATEX_LANGUAGE_ID, registerLatexLanguage } from '../lib/latexLanguage'
 
@@ -13,6 +13,7 @@ interface InputSectionProps {
   collapsed: boolean
   fatalMessage: string | null
   diagnostics: ParseDiagnostic[]
+  hoveredSpans: Span[]
   theme: Theme
   onSourceChange: (source: string) => void
   onStrictModeChange: (checked: boolean) => void
@@ -26,6 +27,7 @@ export default function InputSection({
   collapsed,
   fatalMessage,
   diagnostics,
+  hoveredSpans,
   theme,
   onSourceChange,
   onStrictModeChange,
@@ -34,6 +36,7 @@ export default function InputSection({
 }: InputSectionProps) {
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
   const monacoRef = useRef<typeof Monaco | null>(null)
+  const hoverDecorationsRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
 
   const hasDiagnostics = fatalMessage !== null || diagnostics.length > 0
   const monacoTheme = theme === 'dark' ? 'texform-dark' : 'texform-light'
@@ -43,11 +46,41 @@ export default function InputSection({
     registerLatexLanguage(monaco)
   }, [])
 
+  const syncHoverDecorations = useCallback(() => {
+    const editor = editorRef.current
+    const monaco = monacoRef.current
+    const decorations = hoverDecorationsRef.current
+    if (!editor || !monaco || !decorations) return
+
+    const model = editor.getModel()
+    if (!model) return
+
+    decorations.set(
+      hoveredSpans.map((span) => {
+        const start = model.getPositionAt(span.start)
+        const end = model.getPositionAt(span.end)
+        const endColumn =
+          start.lineNumber === end.lineNumber && start.column === end.column
+            ? end.column + 1
+            : end.column
+
+        return {
+          range: new monaco.Range(start.lineNumber, start.column, end.lineNumber, endColumn),
+          options: {
+            inlineClassName: 'texform-hover-range',
+          },
+        }
+      }),
+    )
+  }, [hoveredSpans])
+
   // Store editor and monaco refs on mount
   const handleEditorMount = useCallback<OnMount>((editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
-  }, [])
+    hoverDecorationsRef.current = editor.createDecorationsCollection()
+    syncHoverDecorations()
+  }, [syncHoverDecorations])
 
   // Update diagnostic markers whenever diagnostics change
   useEffect(() => {
@@ -83,9 +116,15 @@ export default function InputSection({
     monaco.editor.setModelMarkers(model, 'texform', markers)
   }, [diagnostics])
 
+  useEffect(() => {
+    syncHoverDecorations()
+  }, [syncHoverDecorations])
+
   // Clear markers when component unmounts
   useEffect(() => {
     return () => {
+      hoverDecorationsRef.current?.clear()
+      hoverDecorationsRef.current = null
       const monaco = monacoRef.current
       const editor = editorRef.current
       if (!monaco || !editor) return

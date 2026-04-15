@@ -16,15 +16,48 @@ use crate::column_parser::parse_column_template;
 use crate::knowledge::{ArgForm, ArgSpec, DelimiterToken, KnowledgeBase, ValueKind};
 use crate::lexer::Token;
 use texform_interface::syntax_node::{
-    Argument, ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
+    Argument, ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind,
+    SyntaxNode,
 };
 
 use super::{
-    ArgumentParser, ContentParser, NodeParser, ParserError, ParserInput, ParserInputExt,
-    TokenStream, braced_group_parser, build_token_stream, delimiter, insignificant_whitespace,
-    math_block_parser, math_item_parser, maybe_braced, maybe_braced_or_empty, optional_bracketed,
+    ArgumentParser, ContentParser, ParserError, ParserInput, ParserInputExt, TokenStream,
+    TrackedNode, build_token_stream, delimiter, insignificant_whitespace, math_block_parser,
+    math_item_parser, maybe_braced, maybe_braced_or_empty, optional_bracketed,
     optional_bracketed_or_empty, text_block_parser, text_item_parser,
 };
+
+/// Parsed argument slot bundled with span metadata for node-span tracking.
+///
+/// - `slot`: the public argument value (unchanged from before tracking)
+/// - `span`: byte range of the full argument consumption (including delimiters)
+/// - `content`: tracked content subtree for `arg.N.content` paths (content args only)
+#[derive(Debug, Clone)]
+pub(crate) struct TrackedArgumentSlot {
+    pub slot: ArgumentSlot,
+    pub span: Option<SimpleSpan>,
+    pub content: Option<TrackedNode>,
+}
+
+impl TrackedArgumentSlot {
+    /// Wrap a plain slot with no tracking metadata.
+    fn untracked(slot: ArgumentSlot) -> Self {
+        Self {
+            slot,
+            span: None,
+            content: None,
+        }
+    }
+
+    /// Wrap a slot with span but no content subtree (non-content arguments).
+    fn with_span(slot: ArgumentSlot, span: SimpleSpan) -> Self {
+        Self {
+            slot,
+            span: Some(span),
+            content: None,
+        }
+    }
+}
 
 /// Check whether a lexed token matches a spec-defined delimiter token.
 fn token_matches_delimiter(token: &Token, delimiter: &DelimiterToken) -> bool {
@@ -104,13 +137,18 @@ fn collect_delimited_tokens<'src, 'parse>(
 /// The tokens are serialized back to a string, re-lexed, and fed through
 /// the appropriate mode parser. This two-phase approach isolates delimiter
 /// nesting from the main combinator graph.
+///
+/// Re-parse collected tokens as content, returning a `TrackedNode` with spans
+/// offset back to the original source position. The outer implicit group
+/// produced by the block parser is normalized away via [`TrackedNode::fold`].
 fn parse_tokens_as_content<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
     kb: &'parse KnowledgeBase,
     mode: ContentMode,
     tokens: Vec<Token>,
     strict: bool,
-) -> Result<SyntaxNode, Rich<'src, Token>> {
+    source_offset: usize,
+) -> Result<TrackedNode, Rich<'src, Token>> {
     let src = tokens_to_string(&tokens);
     let token_stream = build_token_stream(src.as_str());
     let parser = match mode {
@@ -118,7 +156,7 @@ fn parse_tokens_as_content<'src, 'parse>(
         ContentMode::Text => text_block_parser(kb, strict),
     };
 
-    let node = parser
+    let tracked = parser
         .then_ignore(end())
         .parse(token_stream)
         .into_result()
@@ -127,7 +165,45 @@ fn parse_tokens_as_content<'src, 'parse>(
             input.err_peek_or_point(&cursor, "failed to parse delimited argument content")
         })?;
 
-    Ok(normalize_argument_value(mode, node))
+    // The sub-stream spans start at 0; shift them to the original source position.
+    // Then normalize (strip outer group from block parser output).
+    let tracked = tracked.offset(source_offset);
+    let content_span = tracked.span;
+    Ok(match tracked.node {
+        SyntaxNode::Group { children, .. } => {
+            // Reconstruct TrackedNodes from decomposed children + records to fold properly.
+            // The block parser always produces an implicit group with child.N records.
+            let mut items = Vec::with_capacity(children.len());
+            for (i, child_node) in children.into_iter().enumerate() {
+                let prefix = format!("child.{i}");
+                let child_span = tracked
+                    .records
+                    .iter()
+                    .find(|r| r.path == prefix)
+                    .map(|r| r.span)
+                    .unwrap_or(content_span);
+                let child_records: Vec<super::RelativeSpanEntry> = tracked
+                    .records
+                    .iter()
+                    .filter_map(|r| {
+                        r.path.strip_prefix(&format!("{prefix}.")).map(|suffix| {
+                            super::RelativeSpanEntry {
+                                path: suffix.to_string(),
+                                span: r.span,
+                            }
+                        })
+                    })
+                    .collect();
+                items.push(TrackedNode {
+                    node: child_node,
+                    span: child_span,
+                    records: child_records,
+                });
+            }
+            TrackedNode::fold(mode, items, content_span)
+        }
+        other => TrackedNode::leaf(other, content_span),
+    })
 }
 
 /// Parse collected tokens into the [`ArgumentValue`] dictated by `kind`.
@@ -145,8 +221,8 @@ fn parse_delimited_value<'src, 'parse>(
 ) -> Result<ArgumentValue, Rich<'src, Token>> {
     match kind {
         ValueKind::Content { mode } => {
-            let node = parse_tokens_as_content(input, kb, mode, tokens, strict)?;
-            Ok(argument_content_value(mode, node))
+            let content = parse_tokens_as_content(input, kb, mode, tokens, strict, 0)?;
+            Ok(argument_content_value(mode, content.node))
         }
         ValueKind::CSName => {
             if nullable && tokens.iter().all(|t| matches!(t, Token::Whitespaces)) {
@@ -260,10 +336,9 @@ fn parse_tokens_as_cs_name<'src, 'parse>(
 
 /// Build a parser for a single argument slot described by `spec`.
 ///
-/// The returned parser produces `Some(Argument)` when the slot is filled,
-/// or `None` when an optional slot is absent. It dispatches on `spec.form`
-/// (Standard / Star / Group / Delimited / Paired) crossed with `spec.kind`
-/// (Content, Delimiter, Dimension, Integer, KeyVal, Column, CSName, Star).
+/// Returns a `TrackedArgumentSlot` that bundles the public `ArgumentSlot`,
+/// its source span, and (for content arguments) a tracked content subtree
+/// so that callers can expose `arg.N` / `arg.N.content` paths.
 pub(super) fn argument_parser<'a>(
     kb: &'a KnowledgeBase,
     math_content: ContentParser<'a>,
@@ -271,328 +346,491 @@ pub(super) fn argument_parser<'a>(
     spec: &'static ArgSpec,
     strict: bool,
 ) -> ArgumentParser<'a> {
-    custom(move |input| match &spec.form {
-        ArgForm::Standard => match spec.kind {
-            ValueKind::Content { mode } => {
-                let content = match mode {
-                    ContentMode::Math => math_content.clone(),
-                    ContentMode::Text => text_content.clone(),
-                };
+    custom(move |input| {
+        let arg_start = input.cursor();
 
-                if spec.required {
-                    let braced = braced_group_parser(mode, content.clone());
-                    let single_item: NodeParser<'a> = match mode {
-                        ContentMode::Math => {
-                            math_item_parser(kb, math_content.clone(), text_content.clone(), strict)
-                                .boxed()
+        match &spec.form {
+            ArgForm::Standard => match spec.kind {
+                ValueKind::Content { mode } => {
+                    if spec.required {
+                        if matches!(input.peek(), Some(Token::LBrace)) {
+                            // Braced content: {abc}
+                            let tokens = collect_braced_tokens(input, true)?;
+                            let arg_span = input.span_from_cursor(&arg_start);
+                            let content_offset = arg_span.start + 1; // skip opening brace
+                            let content = parse_tokens_as_content(
+                                input,
+                                kb,
+                                mode,
+                                tokens,
+                                strict,
+                                content_offset,
+                            )?;
+                            Ok(TrackedArgumentSlot {
+                                slot: Some(Argument::from_value(
+                                    ArgumentKind::Mandatory,
+                                    argument_content_value(mode, content.node.clone()),
+                                )),
+                                span: Some(arg_span),
+                                content: Some(content),
+                            })
+                        } else {
+                            // Shorthand single item: \frac 1 2
+                            let item: TrackedNode = match mode {
+                                ContentMode::Math => input.parse(
+                                    math_item_parser(
+                                        kb,
+                                        math_content.clone(),
+                                        text_content.clone(),
+                                        strict,
+                                    )
+                                    .labelled("mandatory argument")
+                                    .as_context(),
+                                )?,
+                                ContentMode::Text => input.parse(
+                                    text_item_parser(
+                                        kb,
+                                        math_content.clone(),
+                                        text_content.clone(),
+                                        strict,
+                                    )
+                                    .labelled("mandatory argument")
+                                    .as_context(),
+                                )?,
+                            };
+                            let arg_span = input.span_from_cursor(&arg_start);
+                            let content = TrackedNode {
+                                node: normalize_argument_value(mode, item.node.clone()),
+                                span: item.span,
+                                records: item.records,
+                            };
+                            Ok(TrackedArgumentSlot {
+                                slot: Some(Argument::from_value(
+                                    ArgumentKind::Mandatory,
+                                    argument_content_value(mode, content.node.clone()),
+                                )),
+                                span: Some(arg_span),
+                                content: Some(content),
+                            })
                         }
-                        ContentMode::Text => {
-                            text_item_parser(kb, math_content.clone(), text_content.clone(), strict)
-                                .boxed()
+                    } else if !matches!(input.peek(), Some(Token::LBracket)) {
+                        Ok(TrackedArgumentSlot::untracked(None))
+                    } else {
+                        let Some(tokens) = collect_optional_bracketed_tokens(input, false)? else {
+                            return Ok(TrackedArgumentSlot::untracked(None));
+                        };
+                        let arg_span = input.span_from_cursor(&arg_start);
+                        let content_offset = arg_span.start + 1; // skip opening bracket
+                        let content = parse_tokens_as_content(
+                            input,
+                            kb,
+                            mode,
+                            tokens,
+                            strict,
+                            content_offset,
+                        )?;
+                        Ok(TrackedArgumentSlot {
+                            slot: Some(Argument::from_value(
+                                ArgumentKind::Optional,
+                                argument_content_value(mode, content.node.clone()),
+                            )),
+                            span: Some(arg_span),
+                            content: Some(content),
+                        })
+                    }
+                }
+                ValueKind::Delimiter => {
+                    if spec.required {
+                        let parser = if spec.nullable {
+                            maybe_braced_or_empty(delimiter(kb), Delimiter::None).boxed()
+                        } else {
+                            maybe_braced(delimiter(kb)).boxed()
                         }
-                    };
-                    let parser = choice((braced, single_item))
-                        .labelled("mandatory argument")
-                        .as_context()
-                        .map(move |node| {
-                            let node = normalize_argument_value(mode, node);
+                        .map(move |value| {
                             Some(Argument::from_value(
                                 ArgumentKind::Mandatory,
-                                argument_content_value(mode, node),
+                                ArgumentValue::Delimiter(value),
                             ))
                         });
-                    input.parse(parser)
-                } else if !matches!(input.peek(), Some(Token::LBracket)) {
-                    Ok(None)
-                } else {
-                    let Some(tokens) = collect_optional_bracketed_tokens(input, false)? else {
-                        return Ok(None);
-                    };
-                    let node = parse_tokens_as_content(input, kb, mode, tokens, strict)?;
-                    Ok(Some(Argument::from_value(
-                        ArgumentKind::Optional,
-                        argument_content_value(mode, node),
-                    )))
+                        let slot = input.parse(parser)?;
+                        let arg_span = input.span_from_cursor(&arg_start);
+                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                    } else if !matches!(input.peek(), Some(Token::LBracket)) {
+                        Ok(TrackedArgumentSlot::untracked(None))
+                    } else {
+                        let parser = if spec.nullable {
+                            optional_bracketed_or_empty(delimiter(kb), Delimiter::None).boxed()
+                        } else {
+                            optional_bracketed(delimiter(kb)).boxed()
+                        }
+                        .map(move |opt| {
+                            opt.map(|value| {
+                                Argument::from_value(
+                                    ArgumentKind::Optional,
+                                    ArgumentValue::Delimiter(value),
+                                )
+                            })
+                        });
+                        let slot = input.parse(parser)?;
+                        let arg_span = input.span_from_cursor(&arg_start);
+                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                    }
                 }
-            }
-            ValueKind::Delimiter => {
-                if spec.required {
-                    let parser = if spec.nullable {
-                        maybe_braced_or_empty(delimiter(kb), Delimiter::None).boxed()
-                    } else {
-                        maybe_braced(delimiter(kb)).boxed()
-                    }
-                    .map(move |value| {
-                        Some(Argument::from_value(
-                            ArgumentKind::Mandatory,
-                            ArgumentValue::Delimiter(value),
-                        ))
-                    });
-                    input.parse(parser)
-                } else if !matches!(input.peek(), Some(Token::LBracket)) {
-                    Ok(None)
-                } else {
-                    let parser = if spec.nullable {
-                        optional_bracketed_or_empty(delimiter(kb), Delimiter::None).boxed()
-                    } else {
-                        optional_bracketed(delimiter(kb)).boxed()
-                    }
-                    .map(move |opt| {
-                        opt.map(|value| {
-                            Argument::from_value(
-                                ArgumentKind::Optional,
-                                ArgumentValue::Delimiter(value),
-                            )
-                        })
-                    });
-                    input.parse(parser)
-                }
-            }
-            ValueKind::Dimension => {
-                if spec.required {
-                    let parser = if spec.nullable {
-                        maybe_braced_or_empty(dimension(), String::new()).boxed()
-                    } else {
-                        maybe_braced(dimension()).boxed()
-                    }
-                    .map(move |value| {
-                        Some(Argument::from_value(
-                            ArgumentKind::Mandatory,
-                            ArgumentValue::Dimension(value),
-                        ))
-                    });
-                    input.parse(parser)
-                } else if !matches!(input.peek(), Some(Token::LBracket)) {
-                    Ok(None)
-                } else {
-                    let parser = if spec.nullable {
-                        optional_bracketed_or_empty(dimension(), String::new()).boxed()
-                    } else {
-                        optional_bracketed(dimension()).boxed()
-                    }
-                    .map(move |opt| {
-                        opt.map(|value| {
-                            Argument::from_value(
-                                ArgumentKind::Optional,
+                ValueKind::Dimension => {
+                    if spec.required {
+                        let parser = if spec.nullable {
+                            maybe_braced_or_empty(dimension(), String::new()).boxed()
+                        } else {
+                            maybe_braced(dimension()).boxed()
+                        }
+                        .map(move |value| {
+                            Some(Argument::from_value(
+                                ArgumentKind::Mandatory,
                                 ArgumentValue::Dimension(value),
-                            )
-                        })
-                    });
-                    input.parse(parser)
+                            ))
+                        });
+                        let slot = input.parse(parser)?;
+                        let arg_span = input.span_from_cursor(&arg_start);
+                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                    } else if !matches!(input.peek(), Some(Token::LBracket)) {
+                        Ok(TrackedArgumentSlot::untracked(None))
+                    } else {
+                        let parser = if spec.nullable {
+                            optional_bracketed_or_empty(dimension(), String::new()).boxed()
+                        } else {
+                            optional_bracketed(dimension()).boxed()
+                        }
+                        .map(move |opt| {
+                            opt.map(|value| {
+                                Argument::from_value(
+                                    ArgumentKind::Optional,
+                                    ArgumentValue::Dimension(value),
+                                )
+                            })
+                        });
+                        let slot = input.parse(parser)?;
+                        let arg_span = input.span_from_cursor(&arg_start);
+                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                    }
                 }
-            }
-            ValueKind::Integer => {
-                if spec.required {
-                    let parser = if spec.nullable {
-                        maybe_braced_or_empty(integer(), String::new()).boxed()
-                    } else {
-                        maybe_braced(integer()).boxed()
-                    }
-                    .map(move |value| {
-                        Some(Argument::from_value(
-                            ArgumentKind::Mandatory,
-                            ArgumentValue::Integer(value),
-                        ))
-                    });
-                    input.parse(parser)
-                } else if !matches!(input.peek(), Some(Token::LBracket)) {
-                    Ok(None)
-                } else {
-                    let parser = if spec.nullable {
-                        optional_bracketed_or_empty(integer(), String::new()).boxed()
-                    } else {
-                        optional_bracketed(integer()).boxed()
-                    }
-                    .map(move |opt| {
-                        opt.map(|value| {
-                            Argument::from_value(
-                                ArgumentKind::Optional,
+                ValueKind::Integer => {
+                    if spec.required {
+                        let parser = if spec.nullable {
+                            maybe_braced_or_empty(integer(), String::new()).boxed()
+                        } else {
+                            maybe_braced(integer()).boxed()
+                        }
+                        .map(move |value| {
+                            Some(Argument::from_value(
+                                ArgumentKind::Mandatory,
                                 ArgumentValue::Integer(value),
-                            )
-                        })
-                    });
-                    input.parse(parser)
+                            ))
+                        });
+                        let slot = input.parse(parser)?;
+                        let arg_span = input.span_from_cursor(&arg_start);
+                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                    } else if !matches!(input.peek(), Some(Token::LBracket)) {
+                        Ok(TrackedArgumentSlot::untracked(None))
+                    } else {
+                        let parser = if spec.nullable {
+                            optional_bracketed_or_empty(integer(), String::new()).boxed()
+                        } else {
+                            optional_bracketed(integer()).boxed()
+                        }
+                        .map(move |opt| {
+                            opt.map(|value| {
+                                Argument::from_value(
+                                    ArgumentKind::Optional,
+                                    ArgumentValue::Integer(value),
+                                )
+                            })
+                        });
+                        let slot = input.parse(parser)?;
+                        let arg_span = input.span_from_cursor(&arg_start);
+                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                    }
                 }
-            }
-            ValueKind::KeyVal => {
-                if spec.required {
-                    let nullable = spec.nullable;
-                    let parser = keyval_value(true, nullable)
-                        .map(move |value| {
+                ValueKind::KeyVal => {
+                    if spec.required {
+                        let nullable = spec.nullable;
+                        let parser = keyval_value(true, nullable)
+                            .map(move |value| {
+                                Some(Argument::from_value(
+                                    ArgumentKind::Mandatory,
+                                    ArgumentValue::KeyVal(value),
+                                ))
+                            })
+                            .boxed();
+                        let slot = input.parse(parser)?;
+                        let arg_span = input.span_from_cursor(&arg_start);
+                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                    } else if !matches!(input.peek(), Some(Token::LBracket)) {
+                        Ok(TrackedArgumentSlot::untracked(None))
+                    } else {
+                        let nullable = spec.nullable;
+                        let parser = keyval_value(false, nullable)
+                            .map(move |value| {
+                                Some(Argument::from_value(
+                                    ArgumentKind::Optional,
+                                    ArgumentValue::KeyVal(value),
+                                ))
+                            })
+                            .boxed();
+                        let slot = input.parse(parser)?;
+                        let arg_span = input.span_from_cursor(&arg_start);
+                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                    }
+                }
+                ValueKind::Column => {
+                    if spec.required {
+                        let parser = column_spec_value(true)
+                            .map(move |value| {
+                                Some(Argument::from_value(
+                                    ArgumentKind::Mandatory,
+                                    ArgumentValue::Column(value),
+                                ))
+                            })
+                            .boxed();
+                        let slot = input.parse(parser)?;
+                        let arg_span = input.span_from_cursor(&arg_start);
+                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                    } else if !matches!(input.peek(), Some(Token::LBracket)) {
+                        Ok(TrackedArgumentSlot::untracked(None))
+                    } else {
+                        let parser = column_spec_value(false)
+                            .map(move |value| {
+                                Some(Argument::from_value(
+                                    ArgumentKind::Optional,
+                                    ArgumentValue::Column(value),
+                                ))
+                            })
+                            .boxed();
+                        let slot = input.parse(parser)?;
+                        let arg_span = input.span_from_cursor(&arg_start);
+                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                    }
+                }
+                ValueKind::CSName => {
+                    if spec.required {
+                        let value = if matches!(input.peek(), Some(Token::LBrace)) {
+                            let tokens = collect_delimited_tokens(
+                                input,
+                                &DelimiterToken::Char('{'),
+                                &DelimiterToken::Char('}'),
+                            )?;
+                            if spec.nullable && tokens.is_empty() {
+                                String::new()
+                            } else {
+                                parse_tokens_as_cs_name(input, &tokens)?
+                            }
+                        } else {
+                            let cursor = input.cursor();
+                            let token = input.next().ok_or_else(|| {
+                                input.err_peek_or_point(&cursor, "missing required CSName argument")
+                            })?;
+                            parse_tokens_as_cs_name(input, std::slice::from_ref(&token))?
+                        };
+                        let arg_span = input.span_from_cursor(&arg_start);
+                        Ok(TrackedArgumentSlot::with_span(
                             Some(Argument::from_value(
                                 ArgumentKind::Mandatory,
-                                ArgumentValue::KeyVal(value),
-                            ))
-                        })
-                        .boxed();
-                    input.parse(parser)
-                } else if !matches!(input.peek(), Some(Token::LBracket)) {
-                    Ok(None)
-                } else {
-                    let nullable = spec.nullable;
-                    let parser = keyval_value(false, nullable)
-                        .map(move |value| {
-                            Some(Argument::from_value(
-                                ArgumentKind::Optional,
-                                ArgumentValue::KeyVal(value),
-                            ))
-                        })
-                        .boxed();
-                    input.parse(parser)
-                }
-            }
-            ValueKind::Column => {
-                if spec.required {
-                    let parser = column_spec_value(true)
-                        .map(move |value| {
-                            Some(Argument::from_value(
-                                ArgumentKind::Mandatory,
-                                ArgumentValue::Column(value),
-                            ))
-                        })
-                        .boxed();
-                    input.parse(parser)
-                } else if !matches!(input.peek(), Some(Token::LBracket)) {
-                    Ok(None)
-                } else {
-                    let parser = column_spec_value(false)
-                        .map(move |value| {
-                            Some(Argument::from_value(
-                                ArgumentKind::Optional,
-                                ArgumentValue::Column(value),
-                            ))
-                        })
-                        .boxed();
-                    input.parse(parser)
-                }
-            }
-            ValueKind::CSName => {
-                if spec.required {
-                    let value = if matches!(input.peek(), Some(Token::LBrace)) {
-                        let tokens = collect_delimited_tokens(
-                            input,
-                            &DelimiterToken::Char('{'),
-                            &DelimiterToken::Char('}'),
-                        )?;
-                        if spec.nullable && tokens.is_empty() {
+                                ArgumentValue::CSName(value),
+                            )),
+                            arg_span,
+                        ))
+                    } else if !matches!(input.peek(), Some(Token::LBracket)) {
+                        Ok(TrackedArgumentSlot::untracked(None))
+                    } else {
+                        let Some(tokens) = collect_optional_bracketed_tokens(input, false)? else {
+                            return Ok(TrackedArgumentSlot::untracked(None));
+                        };
+                        let value = if spec.nullable
+                            && tokens.iter().all(|t| matches!(t, Token::Whitespaces))
+                        {
                             String::new()
                         } else {
                             parse_tokens_as_cs_name(input, &tokens)?
-                        }
-                    } else {
+                        };
+                        let arg_span = input.span_from_cursor(&arg_start);
+                        Ok(TrackedArgumentSlot::with_span(
+                            Some(Argument::from_value(
+                                ArgumentKind::Optional,
+                                ArgumentValue::CSName(value),
+                            )),
+                            arg_span,
+                        ))
+                    }
+                }
+                ValueKind::Star => {
+                    let cursor = input.cursor();
+                    Err(input
+                        .err_peek_or_point(&cursor, "invalid spec: star kind requires star form"))
+                }
+            },
+            ArgForm::Star => {
+                let present = matches!(input.peek(), Some(Token::Star));
+                if present {
+                    input.next();
+                }
+                let arg_span = input.span_from_cursor(&arg_start);
+                Ok(TrackedArgumentSlot::with_span(
+                    Some(Argument::star(present)),
+                    arg_span,
+                ))
+            }
+            ArgForm::Group => {
+                if !matches!(input.peek(), Some(Token::LBrace)) {
+                    if spec.required {
                         let cursor = input.cursor();
-                        let token = input.next().ok_or_else(|| {
-                            input.err_peek_or_point(&cursor, "missing required CSName argument")
-                        })?;
-                        parse_tokens_as_cs_name(input, std::slice::from_ref(&token))?
-                    };
-
-                    Ok(Some(Argument::from_value(
-                        ArgumentKind::Mandatory,
-                        ArgumentValue::CSName(value),
-                    )))
-                } else if !matches!(input.peek(), Some(Token::LBracket)) {
-                    Ok(None)
-                } else {
-                    let Some(tokens) = collect_optional_bracketed_tokens(input, false)? else {
-                        return Ok(None);
-                    };
-                    let value = if spec.nullable
-                        && tokens.iter().all(|t| matches!(t, Token::Whitespaces))
-                    {
-                        String::new()
-                    } else {
-                        parse_tokens_as_cs_name(input, &tokens)?
-                    };
-                    Ok(Some(Argument::from_value(
-                        ArgumentKind::Optional,
-                        ArgumentValue::CSName(value),
-                    )))
+                        return Err(input
+                            .err_peek_or_point(&cursor, "missing required braced group argument"));
+                    }
+                    return Ok(TrackedArgumentSlot::untracked(None));
                 }
-            }
-            ValueKind::Star => {
-                let cursor = input.cursor();
-                Err(input.err_peek_or_point(&cursor, "invalid spec: star kind requires star form"))
-            }
-        },
-        ArgForm::Star => {
-            let present = matches!(input.peek(), Some(Token::Star));
-            if present {
-                input.next();
-            }
-            Ok(Some(Argument::star(present)))
-        }
-        ArgForm::Group => {
-            if !matches!(input.peek(), Some(Token::LBrace)) {
-                if spec.required {
-                    let cursor = input.cursor();
-                    return Err(
-                        input.err_peek_or_point(&cursor, "missing required braced group argument")
-                    );
+
+                let tokens = collect_delimited_tokens(
+                    input,
+                    &DelimiterToken::Char('{'),
+                    &DelimiterToken::Char('}'),
+                )?;
+                let arg_span = input.span_from_cursor(&arg_start);
+
+                // For content-typed group args, track the content subtree.
+                if let ValueKind::Content { mode } = spec.kind {
+                    let content_offset = arg_span.start + 1;
+                    let content =
+                        parse_tokens_as_content(input, kb, mode, tokens, strict, content_offset)?;
+                    return Ok(TrackedArgumentSlot {
+                        slot: Some(Argument::from_value(
+                            ArgumentKind::Group,
+                            argument_content_value(mode, content.node.clone()),
+                        )),
+                        span: Some(arg_span),
+                        content: Some(content),
+                    });
                 }
-                return Ok(None);
+
+                let value =
+                    parse_delimited_value(input, kb, spec.kind, tokens, strict, spec.nullable)?;
+                Ok(TrackedArgumentSlot::with_span(
+                    Some(Argument::from_value(ArgumentKind::Group, value)),
+                    arg_span,
+                ))
             }
-
-            let tokens = collect_delimited_tokens(
-                input,
-                &DelimiterToken::Char('{'),
-                &DelimiterToken::Char('}'),
-            )?;
-            let value = parse_delimited_value(input, kb, spec.kind, tokens, strict, spec.nullable)?;
-            Ok(Some(Argument::from_value(ArgumentKind::Group, value)))
-        }
-        ArgForm::Delimited { open, close } => {
-            let has_open =
-                matches!(input.peek(), Some(token) if token_matches_delimiter(&token, open));
-            if !has_open {
-                if spec.required {
-                    let cursor = input.cursor();
-                    return Err(
-                        input.err_peek_or_point(&cursor, "missing required delimited argument")
-                    );
+            ArgForm::Delimited { open, close } => {
+                let has_open =
+                    matches!(input.peek(), Some(token) if token_matches_delimiter(&token, open));
+                if !has_open {
+                    if spec.required {
+                        let cursor = input.cursor();
+                        return Err(
+                            input.err_peek_or_point(&cursor, "missing required delimited argument")
+                        );
+                    }
+                    return Ok(TrackedArgumentSlot::untracked(None));
                 }
-                return Ok(None);
+
+                let tokens = collect_delimited_tokens(input, open, close)?;
+                let arg_span = input.span_from_cursor(&arg_start);
+
+                // For content-typed delimited args, track the content subtree.
+                if let ValueKind::Content { mode } = spec.kind {
+                    let open_len = delimiter_token_source_len(open);
+                    let close_len = delimiter_token_source_len(close);
+                    let content_offset = arg_span.start + open_len;
+                    let content_span_end = arg_span.end.saturating_sub(close_len);
+                    let _ = content_span_end; // content span is computed inside parse_tokens_as_content
+                    let content =
+                        parse_tokens_as_content(input, kb, mode, tokens, strict, content_offset)?;
+                    return Ok(TrackedArgumentSlot {
+                        slot: Some(Argument::from_value(
+                            ArgumentKind::Delimited {
+                                open: syntax_delimiter(open),
+                                close: syntax_delimiter(close),
+                            },
+                            argument_content_value(mode, content.node.clone()),
+                        )),
+                        span: Some(arg_span),
+                        content: Some(content),
+                    });
+                }
+
+                let value =
+                    parse_delimited_value(input, kb, spec.kind, tokens, strict, spec.nullable)?;
+                Ok(TrackedArgumentSlot::with_span(
+                    Some(Argument::from_value(
+                        ArgumentKind::Delimited {
+                            open: syntax_delimiter(open),
+                            close: syntax_delimiter(close),
+                        },
+                        value,
+                    )),
+                    arg_span,
+                ))
             }
+            ArgForm::Paired { pairs } => {
+                let matched = input.peek().and_then(|next| {
+                    pairs
+                        .iter()
+                        .find(|(open, _)| token_matches_delimiter(&next, open))
+                });
 
-            let tokens = collect_delimited_tokens(input, open, close)?;
-            let value = parse_delimited_value(input, kb, spec.kind, tokens, strict, spec.nullable)?;
-            Ok(Some(Argument::from_value(
-                ArgumentKind::Delimited {
-                    open: syntax_delimiter(open),
-                    close: syntax_delimiter(close),
-                },
-                value,
-            )))
-        }
-        ArgForm::Paired { pairs } => {
-            let matched = input.peek().and_then(|next| {
-                pairs
-                    .iter()
-                    .find(|(open, _)| token_matches_delimiter(&next, open))
-            });
+                let Some((open, close)) = matched else {
+                    if spec.required {
+                        let cursor = input.cursor();
+                        return Err(
+                            input.err_peek_or_point(&cursor, "missing required paired argument")
+                        );
+                    }
+                    return Ok(TrackedArgumentSlot::untracked(None));
+                };
 
-            let Some((open, close)) = matched else {
-                if spec.required {
-                    let cursor = input.cursor();
-                    return Err(
-                        input.err_peek_or_point(&cursor, "missing required paired argument")
-                    );
+                let tokens = collect_delimited_tokens(input, open, close)?;
+                let arg_span = input.span_from_cursor(&arg_start);
+
+                // For content-typed paired args, track the content subtree.
+                if let ValueKind::Content { mode } = spec.kind {
+                    let open_len = delimiter_token_source_len(open);
+                    let content_offset = arg_span.start + open_len;
+                    let content =
+                        parse_tokens_as_content(input, kb, mode, tokens, strict, content_offset)?;
+                    return Ok(TrackedArgumentSlot {
+                        slot: Some(Argument::from_value(
+                            ArgumentKind::Paired {
+                                open: syntax_delimiter(open),
+                                close: syntax_delimiter(close),
+                            },
+                            argument_content_value(mode, content.node.clone()),
+                        )),
+                        span: Some(arg_span),
+                        content: Some(content),
+                    });
                 }
-                return Ok(None);
-            };
 
-            let tokens = collect_delimited_tokens(input, open, close)?;
-            let value = parse_delimited_value(input, kb, spec.kind, tokens, strict, spec.nullable)?;
-            Ok(Some(Argument::from_value(
-                ArgumentKind::Paired {
-                    open: syntax_delimiter(open),
-                    close: syntax_delimiter(close),
-                },
-                value,
-            )))
+                let value =
+                    parse_delimited_value(input, kb, spec.kind, tokens, strict, spec.nullable)?;
+                Ok(TrackedArgumentSlot::with_span(
+                    Some(Argument::from_value(
+                        ArgumentKind::Paired {
+                            open: syntax_delimiter(open),
+                            close: syntax_delimiter(close),
+                        },
+                        value,
+                    )),
+                    arg_span,
+                ))
+            }
         }
     })
     .boxed()
+}
+
+/// Compute the source-text length of a delimiter token.
+fn delimiter_token_source_len(delimiter: &DelimiterToken) -> usize {
+    match delimiter {
+        DelimiterToken::Char(_) => 1,
+        DelimiterToken::ControlSeq(name) => name.len() + 1, // backslash + name
+    }
 }
 
 /// Collect tokens inside an optional `[…]` argument.

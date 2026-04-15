@@ -97,6 +97,15 @@ textarea {
   background: var(--color-neutral-muted);
 }
 
+.tree-node-row-active {
+  background: color-mix(in srgb, var(--color-accent-fg), transparent 88%);
+}
+
+.texform-hover-range {
+  background: color-mix(in srgb, var(--color-accent-fg), transparent 82%);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-accent-fg), transparent 35%);
+}
+
 /* Small action button hover */
 .btn-subtle:hover {
   background: var(--color-neutral-muted);

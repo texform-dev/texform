@@ -37,11 +37,198 @@ use crate::lexer::Token;
 use texform_interface::syntax_node::{ArgumentSlot, ContentMode, Delimiter, GroupKind, SyntaxNode};
 
 use self::arguments::{
-    argument_parser, collect_braced_tokens, collect_optional_bracketed_tokens, fold_items,
+    TrackedArgumentSlot, argument_parser, collect_braced_tokens, collect_optional_bracketed_tokens,
 };
 
 /// A value paired with its source byte span.
 pub(crate) type Spanned<T> = (T, SimpleSpan);
+
+// ============================================================================
+// Node Span Tracking Infrastructure
+// ============================================================================
+
+// Path segment constants for node span IDs.
+const CHILD: &str = "child";
+const ARG: &str = "arg";
+const CONTENT: &str = "content";
+const LEFT: &str = "left";
+const RIGHT: &str = "right";
+const SCOPE: &str = "scope";
+const BODY: &str = "body";
+const BASE: &str = "base";
+const SUB: &str = "sub";
+const SUP: &str = "sup";
+
+/// Descendant span keyed by a path relative to the current tracked node.
+#[derive(Debug, Clone)]
+pub(crate) struct RelativeSpanEntry {
+    pub path: String,
+    pub span: SimpleSpan,
+}
+
+/// Parser-private wrapper: a syntax node bundled with its span and descendant
+/// path records. This is the only tracking structure in the parser; it is NOT
+/// a mirror of `SyntaxNode` — the node is constructed normally, and the
+/// records are assembled via a handful of decompose/prefix helpers.
+#[derive(Debug, Clone)]
+pub(crate) struct TrackedNode {
+    pub node: SyntaxNode,
+    pub span: SimpleSpan,
+    pub records: Vec<RelativeSpanEntry>,
+}
+
+impl TrackedNode {
+    /// Wrap a syntax node with no descendant records.
+    pub(crate) fn leaf(node: SyntaxNode, span: SimpleSpan) -> Self {
+        Self {
+            node,
+            span,
+            records: Vec::new(),
+        }
+    }
+
+    /// Shift all spans by `offset` bytes. Used when content was re-parsed from
+    /// a token sub-stream whose positions start at 0.
+    pub(crate) fn offset(self, offset: usize) -> Self {
+        TrackedNode {
+            node: self.node,
+            span: SimpleSpan::new((), self.span.start + offset..self.span.end + offset),
+            records: self
+                .records
+                .into_iter()
+                .map(|e| RelativeSpanEntry {
+                    path: e.path,
+                    span: SimpleSpan::new((), e.span.start + offset..e.span.end + offset),
+                })
+                .collect(),
+        }
+    }
+
+    /// Finalize into the root-prefixed record list consumed by `ParseResult`.
+    pub(crate) fn finish_root(self) -> (SyntaxNode, SimpleSpan, Vec<RelativeSpanEntry>) {
+        let mut records = vec![RelativeSpanEntry {
+            path: "root".to_string(),
+            span: self.span,
+        }];
+        for entry in self.records {
+            records.push(RelativeSpanEntry {
+                path: format!("root.{}", entry.path),
+                span: entry.span,
+            });
+        }
+        (self.node, self.span, records)
+    }
+
+    /// Extract syntax nodes and `child.N` records from tracked children.
+    fn decompose_children(children: Vec<TrackedNode>) -> (Vec<SyntaxNode>, Vec<RelativeSpanEntry>) {
+        let mut records = Vec::new();
+        let mut nodes = Vec::with_capacity(children.len());
+        for (index, child) in children.iter().enumerate() {
+            records.extend(prefix_records(&format!("{CHILD}.{index}"), child));
+        }
+        for child in children {
+            nodes.push(child.node);
+        }
+        (nodes, records)
+    }
+
+    /// Extract argument slots and `arg.N` / `arg.N.content` records.
+    fn decompose_args(
+        slots: Vec<TrackedArgumentSlot>,
+    ) -> (Vec<ArgumentSlot>, Vec<RelativeSpanEntry>) {
+        let mut records = Vec::new();
+        for (index, arg) in slots.iter().enumerate() {
+            if let Some(arg_span) = arg.span {
+                let arg_path = format!("{ARG}.{index}");
+                records.push(RelativeSpanEntry {
+                    path: arg_path.clone(),
+                    span: arg_span,
+                });
+                if let Some(content) = &arg.content {
+                    records.extend(prefix_records(&format!("{arg_path}.{CONTENT}"), content));
+                }
+            }
+        }
+        let slots = slots.into_iter().map(|a| a.slot).collect();
+        (slots, records)
+    }
+
+    /// `fold_items` equivalent that preserves span records.
+    ///
+    /// - 0 items → empty implicit group
+    /// - 1 item  → unwrap (reuse child's records, override span)
+    /// - N items → implicit group with `child.N` records
+    fn fold(mode: ContentMode, items: Vec<TrackedNode>, span: SimpleSpan) -> Self {
+        match items.len() {
+            0 => TrackedNode::leaf(
+                SyntaxNode::Group {
+                    mode,
+                    kind: GroupKind::Implicit,
+                    children: vec![],
+                },
+                span,
+            ),
+            1 => {
+                let child = items.into_iter().next().unwrap();
+                TrackedNode { span, ..child }
+            }
+            _ => {
+                let (nodes, records) = TrackedNode::decompose_children(items);
+                TrackedNode {
+                    node: SyntaxNode::Group {
+                        mode,
+                        kind: GroupKind::Implicit,
+                        children: nodes,
+                    },
+                    span,
+                    records,
+                }
+            }
+        }
+    }
+}
+
+/// Compute the aggregate span covering all items (first.start .. last.end).
+/// Returns a zero-width span at `fallback` when the slice is empty.
+fn items_span(items: &[TrackedNode], fallback: usize) -> SimpleSpan {
+    match (items.first(), items.last()) {
+        (Some(first), Some(last)) => SimpleSpan::new((), first.span.start..last.span.end),
+        _ => SimpleSpan::new((), fallback..fallback),
+    }
+}
+
+/// Create records for a child node: one entry for the child itself, plus all
+/// its descendants prefixed under the given path. Takes a reference to avoid
+/// unnecessary cloning at callsites.
+fn prefix_records(prefix: &str, child: &TrackedNode) -> Vec<RelativeSpanEntry> {
+    let mut records = vec![RelativeSpanEntry {
+        path: prefix.to_string(),
+        span: child.span,
+    }];
+    for entry in &child.records {
+        records.push(RelativeSpanEntry {
+            path: format!("{prefix}.{}", entry.path),
+            span: entry.span,
+        });
+    }
+    records
+}
+
+/// Extension trait: convert any `Parser<..., SyntaxNode, ...>` into one that
+/// produces `TrackedNode` by capturing the span. Use on leaf parsers only.
+trait ParserTrackedExt<'a>: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Sized {
+    fn tracked(self) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone
+    where
+        Self: Clone + 'a,
+    {
+        self.map_with(|node, e| TrackedNode::leaf(node, e.span()))
+    }
+}
+
+impl<'a, P> ParserTrackedExt<'a> for P where
+    P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>>
+{
+}
 
 /// The concrete mapped input type fed to all chumsky parsers in this module.
 pub(crate) type TokenStream<'a> = chumsky::input::MappedInput<
@@ -135,14 +322,19 @@ impl<'src, 'parse> ParserInputExt<'src, 'parse> for ParserInput<'src, 'parse> {
     }
 }
 
-/// Boxed parser producing a list of child nodes (group content).
-type ContentParser<'a> = Boxed<'a, 'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>>;
-/// Boxed parser producing a single syntax node.
-type NodeParser<'a> = Boxed<'a, 'a, TokenStream<'a>, SyntaxNode, ParserError<'a>>;
-/// Boxed parser producing an optional argument slot.
-type ArgumentParser<'a> = Boxed<'a, 'a, TokenStream<'a>, ArgumentSlot, ParserError<'a>>;
-/// Return type of infix/declarative tail parsers: (command head, right/scope items).
-type TailParseOutput = ((String, Vec<ArgumentSlot>), Vec<SyntaxNode>);
+/// Boxed parser producing a list of tracked child nodes (group content).
+type ContentParser<'a> = Boxed<'a, 'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>>;
+/// Boxed parser producing a single tracked syntax node.
+type NodeParser<'a> = Boxed<'a, 'a, TokenStream<'a>, TrackedNode, ParserError<'a>>;
+/// Boxed parser producing a tracked argument slot.
+type ArgumentParser<'a> = Boxed<'a, 'a, TokenStream<'a>, TrackedArgumentSlot, ParserError<'a>>;
+/// Return type of infix/declarative tail parsers.
+///
+/// The tuple is `((name, args, cmd_start_byte), right_or_scope_items)`.
+/// `cmd_start_byte` is the byte offset where the command control sequence
+/// begins, so callers can compute the full span from the command head
+/// through the end of the right/scope items.
+type TailParseOutput = ((String, Vec<TrackedArgumentSlot>, usize), Vec<TrackedNode>);
 
 /// Consume insignificant whitespace tokens and produce no output.
 fn insignificant_whitespace<'a>() -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
@@ -243,22 +435,25 @@ fn delimiter<'a>(
 }
 
 /// Parse escaped symbol control sequences into raw `Char` nodes.
-fn escaped_symbol<'a>() -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
+fn escaped_symbol<'a>() -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     select! {
         Token::ControlSeq(name) if matches!(name.as_str(), "%" | "$" | "&" | "#" | "_" | "{" | "}") => {
             SyntaxNode::Char(name.chars().next().unwrap())
         }
     }
     .labelled("escaped symbol")
+    .tracked()
 }
 
 /// Parse the active character `~` into `ActiveSpace`.
-fn active_char<'a>() -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
-    just(Token::ActiveChar).to(SyntaxNode::ActiveSpace)
+fn active_char<'a>() -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
+    just(Token::ActiveChar)
+        .to(SyntaxNode::ActiveSpace)
+        .tracked()
 }
 
 /// Parse plain math characters.
-fn math_char<'a>() -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
+fn math_char<'a>() -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     select! {
         Token::Char(c) => SyntaxNode::Char(c),
         Token::Star => SyntaxNode::Char('*'),
@@ -267,10 +462,11 @@ fn math_char<'a>() -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'
         Token::RBracket => SyntaxNode::Char(']'),
     }
     .labelled("math character")
+    .tracked()
 }
 
 /// Parse and coalesce consecutive text characters/whitespace into a single `Text` node.
-fn text_chunk<'a>() -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
+fn text_chunk<'a>() -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     select! {
         Token::Char(c) => c,
         Token::Whitespaces => ' ',
@@ -297,6 +493,7 @@ fn text_chunk<'a>() -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<
         }
         SyntaxNode::Text(buf)
     })
+    .tracked()
 }
 
 /// Match an exact control sequence.
@@ -313,14 +510,21 @@ fn control_seq<'a>(
 fn implicit_group_parser<'a, P>(
     mode: ContentMode,
     content: P,
-) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone + 'a,
 {
-    content.map(move |children| SyntaxNode::Group {
-        mode,
-        kind: GroupKind::Implicit,
-        children,
+    content.map_with(move |children, e| {
+        let (nodes, records) = TrackedNode::decompose_children(children);
+        TrackedNode {
+            node: SyntaxNode::Group {
+                mode,
+                kind: GroupKind::Implicit,
+                children: nodes,
+            },
+            span: e.span(),
+            records,
+        }
     })
 }
 
@@ -328,17 +532,24 @@ where
 fn braced_group_parser<'a, P>(
     mode: ContentMode,
     content: P,
-) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone + 'a,
 {
     just(Token::LBrace)
         .ignore_then(content)
         .then_ignore(just(Token::RBrace))
-        .map(move |children| SyntaxNode::Group {
-            mode,
-            kind: GroupKind::Explicit,
-            children,
+        .map_with(move |children, e| {
+            let (nodes, records) = TrackedNode::decompose_children(children);
+            TrackedNode {
+                node: SyntaxNode::Group {
+                    mode,
+                    kind: GroupKind::Explicit,
+                    children: nodes,
+                },
+                span: e.span(),
+                records,
+            }
         })
 }
 
@@ -350,9 +561,9 @@ where
 fn delimited_group_parser<'a, P>(
     kb: &'a KnowledgeBase,
     math_content: P,
-) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone + 'a,
 {
     let ws = insignificant_whitespace();
 
@@ -411,10 +622,16 @@ where
             }
         };
 
-        Ok(SyntaxNode::Group {
-            mode: ContentMode::Math,
-            kind: GroupKind::Delimited { left, right },
-            children,
+        let span = input.span_from_cursor(&group_start);
+        let (nodes, records) = TrackedNode::decompose_children(children);
+        Ok(TrackedNode {
+            node: SyntaxNode::Group {
+                mode: ContentMode::Math,
+                kind: GroupKind::Delimited { left, right },
+                children: nodes,
+            },
+            span,
+            records,
         })
     })
 }
@@ -427,19 +644,19 @@ where
 #[derive(Clone, Debug)]
 enum SupState {
     /// Superscript is composed entirely of prime marks
-    Prime(SyntaxNode),
+    Prime(TrackedNode),
     /// Superscript was set by an explicit `^` token
-    Explicit(SyntaxNode),
+    Explicit(TrackedNode),
     /// Prime(s) merged with an explicit superscript
-    Mixed(SyntaxNode),
+    Mixed(TrackedNode),
 }
 
 /// Intermediate result of script parsing before folding into `SyntaxNode::Scripted`.
 #[derive(Debug)]
 struct ScriptComponents {
-    base: SyntaxNode,
-    subscript: Option<SyntaxNode>,
-    superscript: Option<SyntaxNode>,
+    base: TrackedNode,
+    subscript: Option<TrackedNode>,
+    superscript: Option<TrackedNode>,
 }
 
 /// Imperative parser that greedily collects `^`, `_`, and prime tokens after
@@ -454,7 +671,7 @@ fn parse_scripted_components<'src, 'parse, P>(
     atom_for_scripts: P,
 ) -> Result<ScriptComponents, Rich<'src, Token>>
 where
-    P: Parser<'src, TokenStream<'src>, SyntaxNode, ParserError<'src>> + Clone + 'src,
+    P: Parser<'src, TokenStream<'src>, TrackedNode, ParserError<'src>> + Clone + 'src,
 {
     let ws = insignificant_whitespace();
 
@@ -468,11 +685,20 @@ where
         Some(base) => base,
         None => match input.peek() {
             Some(Token::Superscript) | Some(Token::Subscript) | Some(Token::Prime(_)) => {
-                SyntaxNode::Group {
-                    mode: ContentMode::Math,
-                    kind: GroupKind::Implicit,
-                    children: vec![],
-                }
+                // Empty implicit group as base; use zero-width span at current byte position.
+                // Note: span_from_cursor with the same cursor is unreliable for zero-width spans
+                // in chumsky's MappedInput — the cursor's end field defaults to eoi.
+                let pos_cursor = input.cursor();
+                let byte_pos = input.span_from_cursor(&pos_cursor).start;
+                let span = SimpleSpan::new((), byte_pos..byte_pos);
+                TrackedNode::leaf(
+                    SyntaxNode::Group {
+                        mode: ContentMode::Math,
+                        kind: GroupKind::Implicit,
+                        children: vec![],
+                    },
+                    span,
+                )
             }
             _ => {
                 let cursor = input.cursor();
@@ -482,7 +708,7 @@ where
     };
 
     let mut sup_state: Option<SupState> = None;
-    let mut subscript: Option<SyntaxNode> = None;
+    let mut subscript: Option<TrackedNode> = None;
 
     loop {
         let checkpoint = input.save();
@@ -493,20 +719,23 @@ where
         let marker = match input.peek() {
             Some(Token::Superscript) => {
                 input.next();
-                let node = input.parse(atom_for_scripts.clone())?;
-                Some(("sup", node))
+                let tracked = input.parse(atom_for_scripts.clone())?;
+                let span = input.span_from_cursor(&marker_start);
+                Some(("sup", TrackedNode { span, ..tracked }))
             }
             Some(Token::Subscript) => {
                 input.next();
-                let node = input.parse(atom_for_scripts.clone())?;
-                Some(("sub", node))
+                let tracked = input.parse(atom_for_scripts.clone())?;
+                let span = input.span_from_cursor(&marker_start);
+                Some(("sub", TrackedNode { span, ..tracked }))
             }
             Some(Token::Prime(_)) => {
                 let count = match input.next() {
                     Some(Token::Prime(n)) => n,
                     _ => unreachable!("peek ensured prime token"),
                 };
-                let node = if count == 1 {
+                let prime_span = input.span_from_cursor(&marker_start);
+                let prime_node = if count == 1 {
                     SyntaxNode::Char('\'')
                 } else {
                     SyntaxNode::Group {
@@ -515,12 +744,12 @@ where
                         children: (0..count).map(|_| SyntaxNode::Char('\'')).collect(),
                     }
                 };
-                Some(("prime", node))
+                Some(("prime", TrackedNode::leaf(prime_node, prime_span)))
             }
             _ => None,
         };
 
-        let Some((kind, node)) = marker else {
+        let Some((kind, tracked)) = marker else {
             input.rewind(checkpoint);
             break;
         };
@@ -532,17 +761,26 @@ where
                         input.err_since(&marker_start, "Double subscripts: use braces to clarify")
                     );
                 }
-                subscript = Some(node);
+                subscript = Some(tracked);
             }
             "sup" => {
                 let current = sup_state.take();
                 sup_state = match current {
-                    None => Some(SupState::Explicit(node)),
-                    Some(SupState::Prime(existing)) => Some(SupState::Mixed(SyntaxNode::Group {
-                        mode: ContentMode::Math,
-                        kind: GroupKind::Implicit,
-                        children: vec![existing, node],
-                    })),
+                    None => Some(SupState::Explicit(tracked)),
+                    Some(SupState::Prime(existing)) => {
+                        // Merge prime and explicit superscript into an implicit group.
+                        let merged_span =
+                            SimpleSpan::new((), existing.span.start..tracked.span.end);
+                        let merged = TrackedNode::leaf(
+                            SyntaxNode::Group {
+                                mode: ContentMode::Math,
+                                kind: GroupKind::Implicit,
+                                children: vec![existing.node, tracked.node],
+                            },
+                            merged_span,
+                        );
+                        Some(SupState::Mixed(merged))
+                    }
                     Some(SupState::Explicit(_)) | Some(SupState::Mixed(_)) => {
                         return Err(input
                             .err_since(&marker_start, "Double exponent: use braces to clarify"));
@@ -552,12 +790,21 @@ where
             "prime" => {
                 let current = sup_state.take();
                 sup_state = match current {
-                    None => Some(SupState::Prime(node)),
-                    Some(SupState::Prime(existing)) => Some(SupState::Mixed(SyntaxNode::Group {
-                        mode: ContentMode::Math,
-                        kind: GroupKind::Implicit,
-                        children: vec![existing, node],
-                    })),
+                    None => Some(SupState::Prime(tracked)),
+                    Some(SupState::Prime(existing)) => {
+                        // Merge consecutive prime runs into an implicit group.
+                        let merged_span =
+                            SimpleSpan::new((), existing.span.start..tracked.span.end);
+                        let merged = TrackedNode::leaf(
+                            SyntaxNode::Group {
+                                mode: ContentMode::Math,
+                                kind: GroupKind::Implicit,
+                                children: vec![existing.node, tracked.node],
+                            },
+                            merged_span,
+                        );
+                        Some(SupState::Mixed(merged))
+                    }
                     Some(SupState::Explicit(_)) | Some(SupState::Mixed(_)) => {
                         return Err(input.err_since(
                             &marker_start,
@@ -571,7 +818,7 @@ where
     }
 
     let superscript = sup_state.map(|state| match state {
-        SupState::Prime(node) | SupState::Explicit(node) | SupState::Mixed(node) => node,
+        SupState::Prime(t) | SupState::Explicit(t) | SupState::Mixed(t) => t,
     });
 
     Ok(ScriptComponents {
@@ -594,7 +841,7 @@ where
 pub fn parse(src: &str, strict: bool) -> Result<Spanned<SyntaxNode>, Vec<Rich<'_, Token>>> {
     let token_stream = build_token_stream(src);
     math_block_parser(ParseContext::all_packages_shared().kb(), strict)
-        .map_with(|node, e| (node, e.span()))
+        .map_with(|tracked, e| (tracked.node, e.span()))
         .then_ignore(end())
         .parse(token_stream)
         .into_result()
@@ -608,12 +855,12 @@ pub fn parse(src: &str, strict: bool) -> Result<Spanned<SyntaxNode>, Vec<Rich<'_
 fn env_body_parser<'a>(
     mode: ContentMode,
     content: ContentParser<'a>,
-) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     let body = implicit_group_parser(mode, content);
     custom(move |input| {
         let body_start = input.cursor();
         match input.parse(body.clone()) {
-            Ok(node) => Ok(node),
+            Ok(tracked) => Ok(tracked),
             Err(mut err) => {
                 <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
                     &mut err,
@@ -869,9 +1116,9 @@ fn recoverable_content_item_parser<'a, P>(
     src: &'a str,
     item: P,
     is_hard_stop: fn(&Token) -> bool,
-) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
 {
     custom(move |input| {
         let ws = insignificant_whitespace();
@@ -892,7 +1139,7 @@ where
 
         let checkpoint = input.save();
         let err = match input.parse(item.clone()) {
-            Ok(node) => return Ok(node),
+            Ok(tracked) => return Ok(tracked),
             Err(err) => err,
         };
         let direct_left_group_error = item_starts_with_left
@@ -988,10 +1235,13 @@ where
                 }
 
                 let span = input.span_from_cursor(&start);
-                Ok(SyntaxNode::Error {
-                    message: message.clone(),
-                    snippet: slice_snippet(src, span),
-                })
+                Ok(TrackedNode::leaf(
+                    SyntaxNode::Error {
+                        message: message.clone(),
+                        snippet: slice_snippet(src, span),
+                    },
+                    span,
+                ))
             }
         });
 
@@ -1100,9 +1350,9 @@ fn math_item_node_parser<'a, P>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone + 'a,
 {
     let atom = math_atom_parser(kb, group_content, math_content, text_content, strict);
     scripted_atom_parser(atom)
@@ -1117,7 +1367,7 @@ fn math_item_parser<'a>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     let item = math_item_node_parser(kb, math_content.clone(), math_content, text_content, strict);
 
     math_infix_or_decl_guard(kb)
@@ -1133,7 +1383,7 @@ fn text_item_parser<'a>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     let normal_item =
         text_atom_parser(kb, text_content.clone(), math_content, text_content, strict);
 
@@ -1153,15 +1403,16 @@ fn prefix_command_parser<'a>(
     text_content: ContentParser<'a>,
     current_mode: ContentMode,
     strict: bool,
-) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     custom(move |input| {
+        let cmd_start = input.cursor();
         let (name, meta) =
             match command_head_parser(input, kb, CommandKind::Prefix, current_mode, strict) {
                 Ok(data) => data,
                 Err(err) => return Err(err),
             };
 
-        let mut args = Vec::with_capacity(meta.argspec.args.len());
+        let mut cmd_args: Vec<TrackedArgumentSlot> = Vec::with_capacity(meta.argspec.args.len());
         for spec in meta.argspec.args {
             if !spec.no_leading_space {
                 let _ = input.parse(insignificant_whitespace());
@@ -1212,13 +1463,19 @@ fn prefix_command_parser<'a>(
                     };
                 }
             };
-            args.push(arg);
+            cmd_args.push(arg);
         }
 
-        Ok(SyntaxNode::Command {
-            name,
-            args,
-            known: true,
+        let span = input.span_from_cursor(&cmd_start);
+        let (args, records) = TrackedNode::decompose_args(cmd_args);
+        Ok(TrackedNode {
+            node: SyntaxNode::Command {
+                name,
+                args,
+                known: true,
+            },
+            span,
+            records,
         })
     })
 }
@@ -1226,7 +1483,7 @@ fn prefix_command_parser<'a>(
 fn unknown_command_parser<'a>(
     kb: &'a KnowledgeBase,
     strict: bool,
-) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     select! {
         Token::ControlSeq(name)
             if kb.lookup_command(name.as_str()).is_none() => name
@@ -1242,11 +1499,14 @@ fn unknown_command_parser<'a>(
         if strict {
             Err(Rich::custom(span, format!("Unknown command: \\{}", name)))
         } else {
-            Ok(SyntaxNode::Command {
-                name,
-                args: vec![],
-                known: false,
-            })
+            Ok(TrackedNode::leaf(
+                SyntaxNode::Command {
+                    name,
+                    args: vec![],
+                    known: false,
+                },
+                span,
+            ))
         }
     })
     .labelled("unknown command")
@@ -1275,8 +1535,9 @@ fn environment_parser<'a>(
     text_content: ContentParser<'a>,
     current_mode: ContentMode,
     strict: bool,
-) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone {
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     custom(move |input| {
+        let env_start = input.cursor();
         let ws = insignificant_whitespace();
 
         input.parse(control_seq("begin"))?;
@@ -1286,7 +1547,7 @@ fn environment_parser<'a>(
         let name = input.parse(env_name_parser())?;
         let name_span = input.span_from_cursor(&name_start);
 
-        let (args, known, body_mode) = if let Some(meta) = kb.lookup_env(name.as_str()) {
+        let (cmd_args, known, body_mode) = if let Some(meta) = kb.lookup_env(name.as_str()) {
             if !meta.allowed_mode.allows(current_mode) {
                 return Err(Rich::custom(
                     name_span,
@@ -1297,7 +1558,8 @@ fn environment_parser<'a>(
                 ));
             }
 
-            let mut args = Vec::with_capacity(meta.argspec.args.len());
+            let mut cmd_args: Vec<TrackedArgumentSlot> =
+                Vec::with_capacity(meta.argspec.args.len());
             for spec in meta.argspec.args {
                 if !spec.no_leading_space {
                     let _ = input.parse(insignificant_whitespace());
@@ -1336,10 +1598,10 @@ fn environment_parser<'a>(
                         };
                     }
                 };
-                args.push(arg);
+                cmd_args.push(arg);
             }
 
-            (args, true, meta.body_mode)
+            (cmd_args, true, meta.body_mode)
         } else {
             if strict {
                 return Err(Rich::custom(
@@ -1413,11 +1675,18 @@ fn environment_parser<'a>(
             ));
         }
 
-        Ok(SyntaxNode::Environment {
-            name,
-            args,
-            known,
-            body: Box::new(body),
+        let span = input.span_from_cursor(&env_start);
+        let (args, mut records) = TrackedNode::decompose_args(cmd_args);
+        records.extend(prefix_records(BODY, &body));
+        Ok(TrackedNode {
+            node: SyntaxNode::Environment {
+                name,
+                args,
+                known,
+                body: Box::new(body.node),
+            },
+            span,
+            records,
         })
     })
 }
@@ -1433,9 +1702,9 @@ fn math_atom_parser<'a, P>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone + 'a,
 {
     let explicit_group = braced_group_parser(ContentMode::Math, group_content.clone());
     let delimited_group = delimited_group_parser(kb, math_content.clone());
@@ -1482,23 +1751,37 @@ where
 /// consume trailing whitespace after the parsed item.
 fn scripted_atom_parser<'a, P>(
     atom: P,
-) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
 {
     let ws = insignificant_whitespace();
     let atom_for_scripts = ws.ignore_then(atom.clone());
     custom(move |input| {
+        let start = input.cursor();
         let components = parse_scripted_components(input, atom_for_scripts.clone())?;
 
         if components.subscript.is_none() && components.superscript.is_none() {
             return Ok(components.base);
         }
 
-        Ok(SyntaxNode::Scripted {
-            base: Box::new(components.base),
-            subscript: components.subscript.map(Box::new),
-            superscript: components.superscript.map(Box::new),
+        let span = input.span_from_cursor(&start);
+        let mut records = Vec::new();
+        records.extend(prefix_records(BASE, &components.base));
+        if let Some(sub) = &components.subscript {
+            records.extend(prefix_records(SUB, sub));
+        }
+        if let Some(sup_node) = &components.superscript {
+            records.extend(prefix_records(SUP, sup_node));
+        }
+        Ok(TrackedNode {
+            node: SyntaxNode::Scripted {
+                base: Box::new(components.base.node),
+                subscript: components.subscript.map(|t| Box::new(t.node)),
+                superscript: components.superscript.map(|t| Box::new(t.node)),
+            },
+            span,
+            records,
         })
     })
 }
@@ -1510,9 +1793,9 @@ fn text_atom_parser<'a, P>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone + 'a,
 {
     let inline_math = just(Token::MathShift)
         .ignore_then(implicit_group_parser(
@@ -1520,13 +1803,21 @@ where
             math_content.clone(),
         ))
         .then_ignore(just(Token::MathShift))
-        .map(|node| match node {
-            SyntaxNode::Group { mode, children, .. } => SyntaxNode::Group {
-                mode,
-                kind: GroupKind::InlineMath,
-                children,
-            },
-            other => other,
+        .map_with(|tracked, e| {
+            // Reclassify the implicit group as inline-math; preserve span records.
+            let node = match tracked.node {
+                SyntaxNode::Group { mode, children, .. } => SyntaxNode::Group {
+                    mode,
+                    kind: GroupKind::InlineMath,
+                    children,
+                },
+                other => other,
+            };
+            TrackedNode {
+                node,
+                span: e.span(),
+                records: tracked.records,
+            }
         });
 
     let explicit_group = braced_group_parser(ContentMode::Text, group_content);
@@ -1577,16 +1868,18 @@ fn infix_tail_parser<'a, P>(
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, TailParseOutput, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
 {
     let infix_cmd = custom(move |input| {
+        let cmd_start = input.cursor();
+        let cmd_start_byte = input.span_from_cursor(&cmd_start).start;
         let (name, meta) =
             match command_head_parser(input, kb, CommandKind::Infix, ContentMode::Math, strict) {
                 Ok(data) => data,
                 Err(err) => return Err(err),
             };
 
-        let mut args = Vec::with_capacity(meta.argspec.args.len());
+        let mut args: Vec<TrackedArgumentSlot> = Vec::with_capacity(meta.argspec.args.len());
         for spec in meta.argspec.args {
             if !spec.no_leading_space {
                 let _ = input.parse(insignificant_whitespace());
@@ -1628,7 +1921,7 @@ where
             args.push(arg);
         }
 
-        Ok((name, args))
+        Ok((name, args, cmd_start_byte))
     });
 
     let stop_declarative = declarative_guard(kb);
@@ -1657,16 +1950,18 @@ fn declarative_tail_parser<'a, P>(
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, TailParseOutput, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
 {
     let decl_cmd = custom(move |input| {
+        let cmd_start = input.cursor();
+        let cmd_start_byte = input.span_from_cursor(&cmd_start).start;
         let (name, meta) =
             match command_head_parser(input, kb, CommandKind::Declarative, current_mode, strict) {
                 Ok(data) => data,
                 Err(err) => return Err(err),
             };
 
-        let mut args = Vec::with_capacity(meta.argspec.args.len());
+        let mut args: Vec<TrackedArgumentSlot> = Vec::with_capacity(meta.argspec.args.len());
         for spec in meta.argspec.args {
             if !spec.no_leading_space {
                 let _ = input.parse(insignificant_whitespace());
@@ -1708,7 +2003,7 @@ where
             args.push(arg);
         }
 
-        Ok((name, args))
+        Ok((name, args, cmd_start_byte))
     });
 
     let scope_items = normal_item
@@ -1726,9 +2021,9 @@ fn math_group_content_parser<'a, P>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
 {
     let ws = insignificant_whitespace();
     let stop_infix_or_decl = math_infix_or_decl_guard(kb);
@@ -1796,46 +2091,75 @@ where
     leading
         .then(infix_tail.or_not())
         .then(declarative_tail.or_not())
-        .try_map(|((leading, infix_tail), declarative_tail), span| {
+        .try_map(|((leading, infix_tail), declarative_tail), content_span| {
             if let Some((infix_info, right_items)) = infix_tail {
                 if leading.is_empty() {
                     return Err(Rich::custom(
-                        span,
+                        content_span,
                         "Infix command requires non-empty left operand",
                     ));
                 }
 
-                let (name, args) = infix_info;
-                let left = fold_items(ContentMode::Math, leading);
-                let right = fold_items(ContentMode::Math, right_items);
+                let (name, args, _cmd_start) = infix_info;
 
-                let infix_node = SyntaxNode::Infix {
-                    name,
-                    args,
-                    left: Box::new(left),
-                    right: Box::new(right),
+                let left_span = items_span(&leading, content_span.start);
+                let left = TrackedNode::fold(ContentMode::Math, leading, left_span);
+                let right_span = items_span(&right_items, content_span.end);
+                let right = TrackedNode::fold(ContentMode::Math, right_items, right_span);
+
+                let (args, mut records) = TrackedNode::decompose_args(args);
+                records.extend(prefix_records(LEFT, &left));
+                records.extend(prefix_records(RIGHT, &right));
+
+                // Span covers from left start to right end.
+                let infix_span = SimpleSpan::new((), left.span.start..right.span.end);
+                let infix_node = TrackedNode {
+                    node: SyntaxNode::Infix {
+                        name,
+                        args,
+                        left: Box::new(left.node),
+                        right: Box::new(right.node),
+                    },
+                    span: infix_span,
+                    records,
                 };
 
                 let mut nodes = vec![infix_node];
                 if let Some((decl_info, scope_items)) = declarative_tail {
-                    let (decl_name, decl_args) = decl_info;
-                    let scope = fold_items(ContentMode::Math, scope_items);
-                    nodes.push(SyntaxNode::Declarative {
-                        name: decl_name,
-                        args: decl_args,
-                        scope: Box::new(scope),
+                    let (decl_name, decl_args, decl_cmd_start) = decl_info;
+                    let scope_span = items_span(&scope_items, content_span.end);
+                    let scope = TrackedNode::fold(ContentMode::Math, scope_items, scope_span);
+                    let decl_span = SimpleSpan::new((), decl_cmd_start..scope.span.end);
+                    let (decl_args, mut decl_records) = TrackedNode::decompose_args(decl_args);
+                    decl_records.extend(prefix_records(SCOPE, &scope));
+                    nodes.push(TrackedNode {
+                        node: SyntaxNode::Declarative {
+                            name: decl_name,
+                            args: decl_args,
+                            scope: Box::new(scope.node),
+                        },
+                        span: decl_span,
+                        records: decl_records,
                     });
                 }
                 Ok(nodes)
             } else {
                 let mut items = leading;
                 if let Some((decl_info, scope_items)) = declarative_tail {
-                    let (decl_name, decl_args) = decl_info;
-                    let scope = fold_items(ContentMode::Math, scope_items);
-                    items.push(SyntaxNode::Declarative {
-                        name: decl_name,
-                        args: decl_args,
-                        scope: Box::new(scope),
+                    let (decl_name, decl_args, decl_cmd_start) = decl_info;
+                    let scope_span = items_span(&scope_items, content_span.end);
+                    let scope = TrackedNode::fold(ContentMode::Math, scope_items, scope_span);
+                    let decl_span = SimpleSpan::new((), decl_cmd_start..scope.span.end);
+                    let (decl_args, mut decl_records) = TrackedNode::decompose_args(decl_args);
+                    decl_records.extend(prefix_records(SCOPE, &scope));
+                    items.push(TrackedNode {
+                        node: SyntaxNode::Declarative {
+                            name: decl_name,
+                            args: decl_args,
+                            scope: Box::new(scope.node),
+                        },
+                        span: decl_span,
+                        records: decl_records,
                     });
                 }
                 Ok(items)
@@ -1850,9 +2174,9 @@ fn text_group_content_parser<'a, P>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenStream<'a>, Vec<SyntaxNode>, ParserError<'a>> + Clone
+) -> impl Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone
 where
-    P: Parser<'a, TokenStream<'a>, SyntaxNode, ParserError<'a>> + Clone + 'a,
+    P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
 {
     let stop_declarative = declarative_guard(kb);
     let ws = insignificant_whitespace();
@@ -1899,14 +2223,23 @@ where
 
     leading
         .then(declarative_tail.or_not())
-        .map(|(mut leading, declarative_tail)| {
+        .map_with(|(mut leading, declarative_tail), e| {
             if let Some((decl_info, scope_items)) = declarative_tail {
-                let (decl_name, decl_args) = decl_info;
-                let scope = fold_items(ContentMode::Text, scope_items);
-                leading.push(SyntaxNode::Declarative {
-                    name: decl_name,
-                    args: decl_args,
-                    scope: Box::new(scope),
+                let (decl_name, decl_args, decl_cmd_start) = decl_info;
+                let content_span = e.span();
+                let scope_span = items_span(&scope_items, content_span.end);
+                let scope = TrackedNode::fold(ContentMode::Text, scope_items, scope_span);
+                let decl_span = SimpleSpan::new((), decl_cmd_start..scope.span.end);
+                let (decl_args, mut decl_records) = TrackedNode::decompose_args(decl_args);
+                decl_records.extend(prefix_records(SCOPE, &scope));
+                leading.push(TrackedNode {
+                    node: SyntaxNode::Declarative {
+                        name: decl_name,
+                        args: decl_args,
+                        scope: Box::new(scope.node),
+                    },
+                    span: decl_span,
+                    records: decl_records,
                 });
             }
             leading

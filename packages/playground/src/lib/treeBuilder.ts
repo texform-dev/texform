@@ -28,6 +28,7 @@ export function buildSyntaxTree(
       id,
       type: 'ActiveSpace',
       value: quoted('~'),
+      spanIds: [id],
       children: [],
     }
   }
@@ -37,6 +38,7 @@ export function buildSyntaxTree(
       id,
       type: 'UnknownNode',
       value: quoted(String(node)),
+      spanIds: [id],
       children: [],
     }
   }
@@ -46,6 +48,7 @@ export function buildSyntaxTree(
       id,
       type: 'Text',
       value: quoted(node.Text),
+      spanIds: [id],
       children: [],
     }
   }
@@ -55,16 +58,7 @@ export function buildSyntaxTree(
       id,
       type: 'Char',
       value: quoted(node.Char),
-      children: [],
-    }
-  }
-
-  if ('UnknownCommand' in node) {
-    const command = node.UnknownCommand
-    return {
-      id,
-      type: 'Unknown',
-      commandName: `\\${command.name}`,
+      spanIds: [id],
       children: [],
     }
   }
@@ -85,6 +79,7 @@ export function buildSyntaxTree(
       id,
       type: 'Group',
       subtitle: `${group.mode} · ${describeGroupKind(group.kind)}`,
+      spanIds: [id],
       children: mergeConsecutiveChars(rawChildren, id),
     }
   }
@@ -97,8 +92,10 @@ export function buildSyntaxTree(
     return {
       id,
       type: 'Command',
+      known: command.known,
       commandName: `\\${command.name}`,
       subtitle: `${command.args.length} args`,
+      spanIds: [id],
       specString: activeSpec?.spec_string,
       specFromPackages: activeSpec?.from_packages,
       specDetail: activeSpec ? formatSpecDetail(activeSpec.args) : undefined,
@@ -143,6 +140,7 @@ export function buildSyntaxTree(
       type: 'Infix',
       commandName: `\\${infix.name}`,
       subtitle: `${infix.args.length} args`,
+      spanIds: [id],
       specString: activeSpec?.spec_string,
       specFromPackages: activeSpec?.from_packages,
       specDetail: activeSpec ? formatSpecDetail(activeSpec.args) : undefined,
@@ -201,6 +199,7 @@ export function buildSyntaxTree(
       type: 'Declarative',
       commandName: `\\${declarative.name}`,
       subtitle: `${declarative.args.length} args`,
+      spanIds: [id],
       specString: activeSpec?.spec_string,
       specFromPackages: activeSpec?.from_packages,
       specDetail: activeSpec ? formatSpecDetail(activeSpec.args) : undefined,
@@ -244,8 +243,10 @@ export function buildSyntaxTree(
     return {
       id,
       type: 'Environment',
+      known: env.known,
       commandName: env.name,
       subtitle: `${env.args.length} args`,
+      spanIds: [id],
       specString: spec?.spec_string,
       specFromPackages: spec?.from_packages,
       specDetail: spec ? formatSpecDetail(spec.args) : undefined,
@@ -314,6 +315,7 @@ export function buildSyntaxTree(
     return {
       id,
       type: 'Scripted',
+      spanIds: [id],
       children,
     }
   }
@@ -325,6 +327,7 @@ export function buildSyntaxTree(
       type: 'Error',
       errorMessage: err.message,
       errorSnippet: err.snippet,
+      spanIds: [id],
       children: [],
     }
   }
@@ -332,6 +335,7 @@ export function buildSyntaxTree(
   return {
     id,
     type: 'UnknownNode',
+    spanIds: [id],
     children: [],
   }
 }
@@ -351,6 +355,7 @@ export function buildArgumentNode(
       type: 'Arg',
       argIndex: index,
       subtitle: 'missing',
+      spanIds: [],
       children: [],
     }
   }
@@ -376,6 +381,7 @@ export function buildArgumentNode(
       argIndex: index,
       subtitle: value.kind,
       value: value.value,
+      spanIds: [id],
       children: [contentChild],
     }
   }
@@ -387,6 +393,7 @@ export function buildArgumentNode(
     argIndex: index,
     subtitle: value.kind,
     value: value.value,
+    spanIds: [id],
     children: [],
   }
 }
@@ -419,6 +426,7 @@ export function mergeConsecutiveChars(nodes: TreeNode[], parentId: string): Tree
           id: `${parentId}.chars.${runStart}`,
           type: 'Chars',
           value: quoted(combined),
+          spanIds: nodes.slice(runStart, runEnd).flatMap((node) => node.spanIds),
           children: [],
         })
       } else {

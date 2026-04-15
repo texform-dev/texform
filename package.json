@@ -1,5 +1,8 @@
 {
   "private": true,
   "workspaces": ["packages/*"],
+  "scripts": {
+    "dev": "bun run --cwd packages/playground dev"
+  },
   "dependencies": {}
 }

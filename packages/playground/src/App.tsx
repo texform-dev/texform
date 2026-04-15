@@ -110,6 +110,7 @@ export default function App() {
     initialUrlState.tab ?? 'tree',
   )
   const [collapsedNodes, setCollapsedNodes] = useState<Set<string>>(new Set())
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [serializeOptions, setSerializeOptions] = useState<SerializeOptions>(
     initialUrlState.serializeOptions ?? DEFAULT_SERIALIZE_OPTIONS,
   )
@@ -222,7 +223,29 @@ export default function App() {
   }, [parseState.result, parseContext])
 
   const flatNodes = useMemo(() => (treeRoot ? flattenTree(treeRoot) : []), [treeRoot])
+  const nodeSpanMap = useMemo(
+    () => new Map((parseState.result?.node_spans ?? []).map((entry) => [entry.id, entry.span])),
+    [parseState.result],
+  )
+  const flatNodeMap = useMemo(() => new Map(flatNodes.map((node) => [node.id, node])), [flatNodes])
+  const hoveredSpans = useMemo(() => {
+    if (!hoveredNodeId) return []
+    const spanIds = flatNodeMap.get(hoveredNodeId)?.spanIds ?? [hoveredNodeId]
+    return spanIds
+      .map((id) => nodeSpanMap.get(id))
+      .filter((span): span is NonNullable<typeof span> => span != null)
+  }, [hoveredNodeId, flatNodeMap, nodeSpanMap])
   const treeDepth = useMemo(() => computeTreeDepth(treeRoot), [treeRoot])
+
+  useEffect(() => {
+    setHoveredNodeId(null)
+  }, [treeRoot, parseState.result])
+
+  useEffect(() => {
+    if (rightTab !== 'tree') {
+      setHoveredNodeId(null)
+    }
+  }, [rightTab])
 
   // -- Derived: status --
   const isWasmLoading = !wasmReady && wasmInitError === null
@@ -413,6 +436,7 @@ export default function App() {
               collapsed={inputCollapsed}
               fatalMessage={parseState.fatalMessage}
               diagnostics={parseState.diagnostics}
+              hoveredSpans={hoveredSpans}
               theme={theme}
               onSourceChange={setSource}
               onStrictModeChange={setStrictMode}
@@ -523,6 +547,8 @@ export default function App() {
                 treeRoot={treeRoot}
                 collapsedNodes={collapsedNodes}
                 onToggleNode={toggleNode}
+                hoveredNodeId={hoveredNodeId}
+                onHoverNode={setHoveredNodeId}
                 nodeCount={flatNodes.length}
                 treeDepth={treeDepth}
                 parseTime={parseState.parseTime}

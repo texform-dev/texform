@@ -5,6 +5,8 @@ interface TreeNodeRowProps {
   node: TreeNode
   collapsedNodes: Set<string>
   onToggle: (id: string) => void
+  hoveredNodeId: string | null
+  onHoverNode: (id: string | null) => void
   depth: number
 }
 
@@ -27,7 +29,11 @@ function TriangleIcon({ collapsed }: { collapsed: boolean }) {
 }
 
 /** Map node type to its CSS color variable. */
-function nodeColor(type: string): string {
+function nodeColor(type: string, known?: boolean): string {
+  if (known === false && (type === 'Command' || type === 'Environment')) {
+    return 'var(--node-unknown)'
+  }
+
   switch (type) {
     case 'Command':
     case 'Infix':
@@ -60,19 +66,28 @@ export default function TreeNodeRow({
   node,
   collapsedNodes,
   onToggle,
+  hoveredNodeId,
+  onHoverNode,
   depth,
 }: TreeNodeRowProps) {
   const hasChildren = node.children.length > 0
   const isLeaf = !hasChildren
   const collapsed = collapsedNodes.has(node.id)
-  const color = nodeColor(node.type)
+  const isHovered = hoveredNodeId === node.id
+  const color = nodeColor(node.type, node.known)
+  const typeLabel =
+    node.known === false && (node.type === 'Command' || node.type === 'Environment')
+      ? `Unknown ${node.type}`
+      : node.type
 
   return (
     <div className="min-w-max">
       <div
-        className={`flex min-h-5 items-center gap-1.5 whitespace-nowrap rounded-sm${hasChildren ? ' tree-node-row' : ''}`}
+        className={`flex min-h-5 items-center gap-1.5 whitespace-nowrap rounded-sm${hasChildren ? ' tree-node-row' : ''}${isHovered ? ' tree-node-row-active' : ''}`}
         style={{ paddingLeft: depth === 0 ? 4 : 0, cursor: hasChildren ? 'pointer' : 'default' }}
         onClick={hasChildren ? () => onToggle(node.id) : undefined}
+        onMouseEnter={() => onHoverNode(node.id)}
+        onMouseLeave={() => onHoverNode(null)}
       >
         {/* Expand/collapse triangle — leaves get invisible spacer */}
         {isLeaf ? (
@@ -111,7 +126,7 @@ export default function TreeNodeRow({
           className="inline-flex items-baseline gap-1 rounded-sm px-1 py-px text-xs font-medium leading-none"
           style={{ color, background: `color-mix(in srgb, ${color}, transparent 88%)` }}
         >
-          {node.type}
+          {typeLabel}
           {node.argIndex !== undefined ? (
             <span style={{ fontWeight: 400, opacity: 0.6 }}>{node.argIndex}</span>
           ) : null}
@@ -198,6 +213,8 @@ export default function TreeNodeRow({
               node={child}
               collapsedNodes={collapsedNodes}
               onToggle={onToggle}
+              hoveredNodeId={hoveredNodeId}
+              onHoverNode={onHoverNode}
               depth={depth + 1}
             />
           ))}

@@ -3,6 +3,7 @@ import type { AllowedMode, BodyMode, CommandKind } from './texformWasm'
 export interface TreeNode {
   id: string
   type: string
+  known?: boolean
   role?: string
   subtitle?: string
   value?: string
@@ -22,6 +23,7 @@ export interface TreeNode {
   errorMessage?: string
   /** Present on Error nodes — the raw source snippet that failed to parse */
   errorSnippet?: string
+  spanIds: string[]
   children: TreeNode[]
 }
 
