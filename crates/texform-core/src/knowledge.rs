@@ -138,6 +138,10 @@ impl KnowledgeBase {
         new_with_core()
     }
 
+    pub fn core_only_for_mode(target_mode: ContentMode) -> Self {
+        new_with_core_for_mode(target_mode)
+    }
+
     pub fn build_from_packages(packages: &[&str]) -> Self {
         Self::try_build_from_packages(packages).unwrap_or_else(|error| panic!("{error}"))
     }
@@ -146,6 +150,16 @@ impl KnowledgeBase {
         let mut kb = new_with_core();
         let to_load = canonical_package_import_order(packages);
         import_package_names(&mut kb, to_load.as_slice())?;
+        Ok(kb)
+    }
+
+    pub fn try_build_from_packages_for_mode(
+        packages: &[&str],
+        target_mode: ContentMode,
+    ) -> Result<Self, PackageLoadError> {
+        let mut kb = new_with_core_for_mode(target_mode);
+        let to_load = canonical_package_import_order(packages);
+        import_package_names_for_mode(&mut kb, to_load.as_slice(), target_mode)?;
         Ok(kb)
     }
 
@@ -494,6 +508,31 @@ impl KnowledgeBase {
             self.delimiter_controls.insert(name);
         }
     }
+
+    fn import_builtin_package_for_mode(
+        &mut self,
+        package: &'static BuiltinPackage,
+        target_mode: ContentMode,
+    ) {
+        for character in package.characters {
+            if character.allowed_mode.allows(target_mode) {
+                self.insert_builtin_character_with_package(character, package.name);
+            }
+        }
+        for command in package.commands {
+            if command.allowed_mode.allows(target_mode) {
+                self.import_or_merge_builtin_command_with_package(command, package.name);
+            }
+        }
+        for environment in package.environments {
+            if environment.allowed_mode.allows(target_mode) {
+                self.import_or_merge_builtin_environment_with_package(environment, package.name);
+            }
+        }
+        for &name in package.delimiter_controls {
+            self.delimiter_controls.insert(name);
+        }
+    }
 }
 
 fn make_command_meta(
@@ -812,9 +851,31 @@ fn import_package_names(
     Ok(())
 }
 
+fn import_package_names_for_mode(
+    kb: &mut KnowledgeBase,
+    requested: &[&str],
+    target_mode: ContentMode,
+) -> Result<(), PackageLoadError> {
+    for &name in requested {
+        let pkg = texform_specs::builtin::lookup_package(name).ok_or_else(|| {
+            PackageLoadError::UnknownPackage {
+                name: name.to_string(),
+            }
+        })?;
+        kb.import_builtin_package_for_mode(pkg, target_mode);
+    }
+    Ok(())
+}
+
 fn new_with_core() -> KnowledgeBase {
     let mut kb = KnowledgeBase::new();
     kb.import_builtin_package(&texform_specs::core_knowledge::CORE_PACKAGE);
+    kb
+}
+
+fn new_with_core_for_mode(target_mode: ContentMode) -> KnowledgeBase {
+    let mut kb = KnowledgeBase::new();
+    kb.import_builtin_package_for_mode(&texform_specs::core_knowledge::CORE_PACKAGE, target_mode);
     kb
 }
 

@@ -264,6 +264,134 @@ fn unwrap_content(slot: &Option<Argument>) -> &SyntaxNode {
 }
 
 #[test]
+fn underline_uses_math_and_text_variants_in_matching_modes() {
+    let ctx = test_context_with_items([
+        command_item("underline", CommandKind::Prefix, AllowedMode::Math, "m"),
+        command_item("underline", CommandKind::Prefix, AllowedMode::Text, "m:T"),
+    ]);
+
+    let math = ctx
+        .parse(r"\underline{x}", false)
+        .result
+        .expect("expected math parse result")
+        .node;
+    let text = ctx
+        .parse(r"\text{a \underline{b}}", false)
+        .result
+        .expect("expected text parse result")
+        .node;
+
+    match math {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { args, .. } => {
+                assert_eq!(unwrap_content(&args[0]), &SyntaxNode::Char('x'));
+            }
+            other => panic!("expected underline command, got {:?}", other),
+        },
+        other => panic!("expected root group, got {:?}", other),
+    }
+
+    match text {
+        SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Command { args, .. } => match unwrap_content(&args[0]) {
+                SyntaxNode::Group {
+                    mode: ContentMode::Text,
+                    children,
+                    ..
+                } => {
+                    assert_eq!(children.len(), 2);
+                    assert_eq!(children[0], SyntaxNode::Text("a ".to_string()));
+                    match &children[1] {
+                        SyntaxNode::Command { args, .. } => match &expect_arg(&args[0]).value {
+                            ArgumentValue::TextContent(node) => {
+                                assert_eq!(node, &SyntaxNode::Text("b".to_string()));
+                            }
+                            other => panic!("expected text content argument, got {:?}", other),
+                        },
+                        other => panic!("expected nested underline command, got {:?}", other),
+                    }
+                }
+                other => panic!("expected text content group, got {:?}", other),
+            },
+            other => panic!("expected text command, got {:?}", other),
+        },
+        other => panic!("expected root group, got {:?}", other),
+    }
+}
+
+#[test]
+fn known_but_disallowed_command_is_mode_error_even_when_non_strict() {
+    let ctx = test_context_with_items([command_item(
+        "textonly",
+        CommandKind::Prefix,
+        AllowedMode::Text,
+        "m:T",
+    )]);
+
+    let output = ctx.parse(r"\textonly{x}", false);
+    let messages = output
+        .diagnostics
+        .into_iter()
+        .map(|diag| diag.message)
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        messages,
+        vec!["Command \\textonly is not allowed in math mode"]
+    );
+}
+
+#[test]
+fn known_but_disallowed_environment_is_mode_error_in_both_strictness_modes() {
+    let ctx = test_context_with_items([environment_item(
+        "textenv",
+        AllowedMode::Text,
+        ContentMode::Text,
+        "",
+    )]);
+
+    for strict in [false, true] {
+        let output = ctx.parse(r"a \begin{textenv}b\end{textenv} c", strict);
+        let messages = output
+            .diagnostics
+            .into_iter()
+            .map(|diag| diag.message)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            messages,
+            vec!["Environment textenv is not allowed in math mode"],
+            "strict={strict}"
+        );
+    }
+}
+
+#[test]
+fn disallowed_environment_does_not_rewrite_unrelated_generic_error() {
+    let ctx = test_context_with_items([environment_item(
+        "textenv",
+        AllowedMode::Text,
+        ContentMode::Text,
+        "",
+    )]);
+
+    let output = ctx.parse(r"a \begin{textenv}b\end{textenv} }", false);
+    let messages = output
+        .diagnostics
+        .into_iter()
+        .map(|diag| diag.message)
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        messages,
+        vec![
+            "Environment textenv is not allowed in math mode",
+            "found '}' expected something else, or end of input",
+        ]
+    );
+}
+
+#[test]
 fn test_text_argument_uses_text_content_variant_for_single_char_item() {
     let output = ParseContext::all_packages_shared().parse(r"\text{\%}", true);
     let result = output.result.expect("expected parse result");

@@ -31,7 +31,7 @@ use chumsky::{
 };
 use logos::Logos;
 
-use crate::knowledge::{CommandKind, CommandMeta, KnowledgeBase};
+use crate::knowledge::{CommandKind, CommandMeta};
 use crate::lexer::Token;
 use crate::parse::ParseContext;
 use texform_interface::syntax_node::{ArgumentSlot, ContentMode, Delimiter, GroupKind, SyntaxNode};
@@ -416,7 +416,7 @@ where
 
 /// Parse a math delimiter token into a typed `Delimiter`.
 fn delimiter<'a>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
 ) -> impl Parser<'a, TokenStream<'a>, Delimiter, ParserError<'a>> + Clone {
     select! {
         Token::Char('.') => Delimiter::None,
@@ -427,8 +427,8 @@ fn delimiter<'a>(
         // as plain delimiters after \left / \right.
         Token::LBracket => Delimiter::Char('['),
         Token::RBracket => Delimiter::Char(']'),
-        Token::ControlSeq(name) if kb.lookup_delimiter_control(name.as_str()).is_some() => {
-            Delimiter::Control(kb.lookup_delimiter_control(name.as_str()).unwrap())
+        Token::ControlSeq(name) if ctx.lookup_delimiter_control(name.as_str()).is_some() => {
+            Delimiter::Control(ctx.lookup_delimiter_control(name.as_str()).unwrap())
         }
     }
     .labelled("delimiter")
@@ -559,7 +559,7 @@ where
 /// `\left ( ... \right )` round-trips correctly through the canonical
 /// serializer's `Spaced` command spacing.
 fn delimited_group_parser<'a, P>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     math_content: P,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone
 where
@@ -573,7 +573,7 @@ where
         let _ = input.parse(ws.clone());
 
         let left_start = input.cursor();
-        let left = match input.parse(delimiter(kb)) {
+        let left = match input.parse(delimiter(ctx)) {
             Ok(left) => left,
             Err(_) => {
                 let mut err = Rich::custom(
@@ -606,7 +606,7 @@ where
         let _ = input.parse(ws.clone());
 
         let delimiter_start = input.cursor();
-        let right = match input.parse(delimiter(kb)) {
+        let right = match input.parse(delimiter(ctx)) {
             Ok(right) => right,
             Err(_) => {
                 let mut err = Rich::custom(
@@ -840,7 +840,7 @@ where
 /// instead.
 pub fn parse(src: &str, strict: bool) -> Result<Spanned<SyntaxNode>, Vec<Rich<'_, Token>>> {
     let token_stream = build_token_stream(src);
-    math_block_parser(ParseContext::all_packages_shared().kb(), strict)
+    math_block_parser(ParseContext::all_packages_shared(), strict)
         .map_with(|tracked, e| (tracked.node, e.span()))
         .then_ignore(end())
         .parse(token_stream)
@@ -875,14 +875,55 @@ fn env_body_parser<'a>(
 
 fn mode_item_parser<'a>(
     mode: ContentMode,
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
 ) -> NodeParser<'a> {
     match mode {
-        ContentMode::Math => math_item_parser(kb, math_content, text_content, strict).boxed(),
-        ContentMode::Text => text_item_parser(kb, math_content, text_content, strict).boxed(),
+        ContentMode::Math => math_item_parser(ctx, math_content, text_content, strict).boxed(),
+        ContentMode::Text => text_item_parser(ctx, math_content, text_content, strict).boxed(),
+    }
+}
+
+enum LookupResult<'a, T> {
+    Active(&'a T),
+    KnownButDisallowed,
+    Unknown,
+}
+
+fn other_mode(mode: ContentMode) -> ContentMode {
+    match mode {
+        ContentMode::Math => ContentMode::Text,
+        ContentMode::Text => ContentMode::Math,
+    }
+}
+
+fn lookup_command_for_parse<'a>(
+    ctx: &'a ParseContext,
+    name: &str,
+    mode: ContentMode,
+) -> LookupResult<'a, CommandMeta> {
+    if let Some(meta) = ctx.lookup_command(name, mode) {
+        LookupResult::Active(meta)
+    } else if ctx.lookup_command(name, other_mode(mode)).is_some() {
+        LookupResult::KnownButDisallowed
+    } else {
+        LookupResult::Unknown
+    }
+}
+
+fn lookup_env_for_parse<'a>(
+    ctx: &'a ParseContext,
+    name: &str,
+    mode: ContentMode,
+) -> LookupResult<'a, texform_specs::specs::EnvMeta> {
+    if let Some(meta) = ctx.lookup_env(name, mode) {
+        LookupResult::Active(meta)
+    } else if ctx.lookup_env(name, other_mode(mode)).is_some() {
+        LookupResult::KnownButDisallowed
+    } else {
+        LookupResult::Unknown
     }
 }
 
@@ -1025,13 +1066,47 @@ fn consume_environment_marker<'src, 'parse>(
     true
 }
 
-fn normalize_recovery_message(src: &str, message: String) -> String {
+fn leading_begin_environment_name(src: &str) -> Option<String> {
+    let rest = src.trim_start();
+    let rest = rest.strip_prefix("\\begin")?.trim_start();
+    let rest = rest.strip_prefix('{')?;
+    let end = rest.find('}')?;
+    let env_name = &rest[..end];
+    if env_name.is_empty()
+        || !env_name
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '*')
+    {
+        None
+    } else {
+        Some(env_name.to_string())
+    }
+}
+
+fn normalize_recovery_message(
+    ctx: &ParseContext,
+    current_mode: ContentMode,
+    src: &str,
+    message: String,
+) -> String {
     let is_generic_parse_error = matches!(
         message.as_str(),
         "found '}' expected something else" | "found '}' expected something else, or end of input"
     );
     if !is_generic_parse_error {
         return message;
+    }
+
+    if let Some(env_name) = leading_begin_environment_name(src)
+        && ctx.lookup_env(env_name.as_str(), current_mode).is_none()
+        && ctx
+            .lookup_env(env_name.as_str(), other_mode(current_mode))
+            .is_some()
+    {
+        return format!(
+            "Environment {} is not allowed in {} mode",
+            env_name, current_mode
+        );
     }
 
     let tokens: Vec<Token> = Token::lexer(src)
@@ -1113,6 +1188,8 @@ fn is_hard_stop_after_whitespace<'src, 'parse>(
 }
 
 fn recoverable_content_item_parser<'a, P>(
+    ctx: &'a ParseContext,
+    current_mode: ContentMode,
     src: &'a str,
     item: P,
     is_hard_stop: fn(&Token) -> bool,
@@ -1156,11 +1233,28 @@ where
             return Err(err);
         }
 
-        let message = match err.reason() {
-            chumsky::error::RichReason::ExpectedFound { .. } => format!("{err}"),
-            chumsky::error::RichReason::Custom(message) => message.clone(),
-        };
-        let message = normalize_recovery_message(src, message);
+        let message = opening_environment
+            .as_ref()
+            .and_then(|env_name| {
+                if ctx.lookup_env(env_name.as_str(), current_mode).is_none()
+                    && ctx
+                        .lookup_env(env_name.as_str(), other_mode(current_mode))
+                        .is_some()
+                {
+                    Some(format!(
+                        "Environment {} is not allowed in {} mode",
+                        env_name, current_mode
+                    ))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| match err.reason() {
+                chumsky::error::RichReason::ExpectedFound { .. } => format!("{err}"),
+                chumsky::error::RichReason::Custom(message) => message.clone(),
+            });
+        let recovery_src = src.get(item_start_index..).unwrap_or(src);
+        let message = normalize_recovery_message(ctx, current_mode, recovery_src, message);
 
         let recovery_parser = custom({
             let message = message.clone();
@@ -1175,6 +1269,20 @@ where
                 loop {
                     let boundary_checkpoint = input.save();
                     let _ = input.parse(ws.clone());
+
+                    if message.starts_with("Command \\") && message.contains(" is not allowed in ")
+                    {
+                        if matches!(input.peek(), Some(Token::LBracket)) {
+                            let _ = collect_optional_bracketed_tokens(input, true);
+                            consumed = true;
+                            continue;
+                        }
+                        if matches!(input.peek(), Some(Token::LBrace)) {
+                            let _ = collect_braced_tokens(input, true);
+                            consumed = true;
+                            continue;
+                        }
+                    }
 
                     if peek_environment_name_at_cursor(input, "begin").is_some() {
                         if !consume_environment_marker(input, "begin") {
@@ -1253,7 +1361,7 @@ where
 /// it matches the `expected_kind` and is allowed in `current_mode`.
 fn command_head_parser<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
-    kb: &'parse KnowledgeBase,
+    ctx: &'parse ParseContext,
     expected_kind: CommandKind,
     current_mode: ContentMode,
     strict: bool,
@@ -1268,15 +1376,21 @@ fn command_head_parser<'src, 'parse>(
 
     let cmd_span = input.span_from_cursor(&cmd_start);
 
-    let meta = match kb.lookup_command(&name) {
-        Some(meta) if meta.kind == expected_kind => meta,
-        Some(_) => {
+    let meta = match lookup_command_for_parse(ctx, &name, current_mode) {
+        LookupResult::Active(meta) if meta.kind == expected_kind => meta,
+        LookupResult::Active(_) => {
             return Err(Rich::custom(
                 cmd_span,
                 format!("not {}", expected_kind.label()),
             ));
         }
-        None => {
+        LookupResult::KnownButDisallowed => {
+            return Err(Rich::custom(
+                cmd_span,
+                format!("Command \\{} is not allowed in {} mode", name, current_mode),
+            ));
+        }
+        LookupResult::Unknown => {
             if strict {
                 return Err(Rich::custom(
                     cmd_span,
@@ -1288,13 +1402,6 @@ fn command_head_parser<'src, 'parse>(
         }
     };
 
-    if !meta.allowed_mode.allows(current_mode) {
-        return Err(Rich::custom(
-            cmd_span,
-            format!("Command \\{} is not allowed in {} mode", name, current_mode),
-        ));
-    }
-
     Ok((name, meta))
 }
 
@@ -1305,38 +1412,47 @@ fn command_head_parser<'src, 'parse>(
 /// Lookahead guard that succeeds when the next token is an infix or
 /// declarative command. Used as a stop condition for leading-item collection.
 fn math_infix_or_decl_guard<'a>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
+    current_mode: ContentMode,
 ) -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
     select! {
         Token::ControlSeq(name)
-            if kb.lookup_command(name.as_str())
-                .map(|m| matches!(m.kind, CommandKind::Infix | CommandKind::Declarative))
-                .unwrap_or(false) => ()
+            if matches!(lookup_command_for_parse(ctx, name.as_str(), current_mode),
+                LookupResult::Active(meta) if matches!(meta.kind, CommandKind::Infix | CommandKind::Declarative))
+                || ctx.lookup_command(name.as_str(), other_mode(current_mode))
+                    .map(|meta| matches!(meta.kind, CommandKind::Infix | CommandKind::Declarative))
+                    .unwrap_or(false) => ()
     }
     .rewind()
 }
 
 /// Guard used to stop content parsing before declarative commands.
 fn declarative_guard<'a>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
+    current_mode: ContentMode,
 ) -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
     select! {
         Token::ControlSeq(name)
-            if kb.lookup_command(name.as_str())
-                .map(|m| m.kind == CommandKind::Declarative)
-                .unwrap_or(false) => ()
+            if matches!(lookup_command_for_parse(ctx, name.as_str(), current_mode),
+                LookupResult::Active(meta) if meta.kind == CommandKind::Declarative)
+                || ctx.lookup_command(name.as_str(), other_mode(current_mode))
+                    .map(|meta| meta.kind == CommandKind::Declarative)
+                    .unwrap_or(false) => ()
     }
     .rewind()
 }
 
 fn infix_guard<'a>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
+    current_mode: ContentMode,
 ) -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
     select! {
         Token::ControlSeq(name)
-            if kb.lookup_command(name.as_str())
-                .map(|m| m.kind == CommandKind::Infix)
-                .unwrap_or(false) => ()
+            if matches!(lookup_command_for_parse(ctx, name.as_str(), current_mode),
+                LookupResult::Active(meta) if meta.kind == CommandKind::Infix)
+                || ctx.lookup_command(name.as_str(), other_mode(current_mode))
+                    .map(|meta| meta.kind == CommandKind::Infix)
+                    .unwrap_or(false) => ()
     }
     .rewind()
 }
@@ -1345,7 +1461,7 @@ fn infix_guard<'a>(
 ///
 /// Callers decide whether to wrap it with padding or stop-guards.
 fn math_item_node_parser<'a, P>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     group_content: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
@@ -1354,7 +1470,7 @@ fn math_item_node_parser<'a, P>(
 where
     P: Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone + 'a,
 {
-    let atom = math_atom_parser(kb, group_content, math_content, text_content, strict);
+    let atom = math_atom_parser(ctx, group_content, math_content, text_content, strict);
     scripted_atom_parser(atom)
 }
 
@@ -1363,14 +1479,20 @@ where
 /// This parser does not consume trailing whitespace so the following argument
 /// slot can still enforce `no_leading_space`.
 fn math_item_parser<'a>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
-    let item = math_item_node_parser(kb, math_content.clone(), math_content, text_content, strict);
+    let item = math_item_node_parser(
+        ctx,
+        math_content.clone(),
+        math_content,
+        text_content,
+        strict,
+    );
 
-    math_infix_or_decl_guard(kb)
+    math_infix_or_decl_guard(ctx, ContentMode::Math)
         .or(control_seq("right"))
         .or(control_seq("end"))
         .not()
@@ -1379,15 +1501,20 @@ fn math_item_parser<'a>(
 
 /// Parse a single text item (respecting stop guards).
 fn text_item_parser<'a>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
-    let normal_item =
-        text_atom_parser(kb, text_content.clone(), math_content, text_content, strict);
+    let normal_item = text_atom_parser(
+        ctx,
+        text_content.clone(),
+        math_content,
+        text_content,
+        strict,
+    );
 
-    declarative_guard(kb)
+    declarative_guard(ctx, ContentMode::Text)
         .or(control_seq("end"))
         .not()
         .ignore_then(normal_item)
@@ -1398,7 +1525,7 @@ fn text_item_parser<'a>(
 // ============================================================================
 
 fn prefix_command_parser<'a>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     current_mode: ContentMode,
@@ -1407,7 +1534,7 @@ fn prefix_command_parser<'a>(
     custom(move |input| {
         let cmd_start = input.cursor();
         let (name, meta) =
-            match command_head_parser(input, kb, CommandKind::Prefix, current_mode, strict) {
+            match command_head_parser(input, ctx, CommandKind::Prefix, current_mode, strict) {
                 Ok(data) => data,
                 Err(err) => return Err(err),
             };
@@ -1420,8 +1547,13 @@ fn prefix_command_parser<'a>(
 
             let arg_checkpoint = input.save();
             let arg_start = input.cursor();
-            let parser =
-                argument_parser(kb, math_content.clone(), text_content.clone(), spec, strict);
+            let parser = argument_parser(
+                ctx,
+                math_content.clone(),
+                text_content.clone(),
+                spec,
+                strict,
+            );
             let arg = match input.parse(parser) {
                 Ok(arg) => arg,
                 Err(err) => {
@@ -1481,12 +1613,12 @@ fn prefix_command_parser<'a>(
 }
 
 fn unknown_command_parser<'a>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     select! {
         Token::ControlSeq(name)
-            if kb.lookup_command(name.as_str()).is_none() => name
+            if !ctx.knows_command_name(name.as_str()) => name
     }
     .try_map(move |name, span| {
         if matches!(name.as_str(), "begin" | "end") {
@@ -1530,7 +1662,7 @@ fn env_name_parser<'a>() -> impl Parser<'a, TokenStream<'a>, String, ParserError
 
 /// Parse a full environment including body and closing tag.
 fn environment_parser<'a>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     current_mode: ContentMode,
@@ -1547,71 +1679,83 @@ fn environment_parser<'a>(
         let name = input.parse(env_name_parser())?;
         let name_span = input.span_from_cursor(&name_start);
 
-        let (cmd_args, known, body_mode) = if let Some(meta) = kb.lookup_env(name.as_str()) {
-            if !meta.allowed_mode.allows(current_mode) {
-                return Err(Rich::custom(
-                    name_span,
-                    format!(
-                        "Environment {} is not allowed in {} mode",
-                        name, current_mode
-                    ),
-                ));
-            }
+        let (cmd_args, known, body_mode) =
+            match lookup_env_for_parse(ctx, name.as_str(), current_mode) {
+                LookupResult::Active(meta) => {
+                    let mut cmd_args: Vec<TrackedArgumentSlot> =
+                        Vec::with_capacity(meta.argspec.args.len());
+                    for spec in meta.argspec.args {
+                        if !spec.no_leading_space {
+                            let _ = input.parse(insignificant_whitespace());
+                        }
 
-            let mut cmd_args: Vec<TrackedArgumentSlot> =
-                Vec::with_capacity(meta.argspec.args.len());
-            for spec in meta.argspec.args {
-                if !spec.no_leading_space {
-                    let _ = input.parse(insignificant_whitespace());
-                }
-
-                let arg_start = input.cursor();
-                let parser =
-                    argument_parser(kb, math_content.clone(), text_content.clone(), spec, strict);
-                let arg = match input.parse(parser) {
-                    Ok(arg) => arg,
-                    Err(err) => {
-                        let arg_span = err
-                            .contexts()
-                            .next()
-                            .map(|(_, span)| *span)
-                            .unwrap_or_else(|| input.span_from_cursor(&arg_start));
-                        return match err.reason() {
-                            chumsky::error::RichReason::Custom(message) => {
-                                let mut err = Rich::custom(arg_span, message.clone());
-                                <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
-                                    &mut err,
-                                    "environment argument",
-                                    arg_span,
-                                );
-                                Err(err)
-                            }
-                            chumsky::error::RichReason::ExpectedFound { .. } => {
-                                let mut err = err;
-                                <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
-                                    &mut err,
-                                    "environment argument",
-                                    arg_span,
-                                );
-                                Err(err)
+                        let arg_start = input.cursor();
+                        let parser = argument_parser(
+                            ctx,
+                            math_content.clone(),
+                            text_content.clone(),
+                            spec,
+                            strict,
+                        );
+                        let arg = match input.parse(parser) {
+                            Ok(arg) => arg,
+                            Err(err) => {
+                                let arg_span = err
+                                    .contexts()
+                                    .next()
+                                    .map(|(_, span)| *span)
+                                    .unwrap_or_else(|| input.span_from_cursor(&arg_start));
+                                return match err.reason() {
+                                    chumsky::error::RichReason::Custom(message) => {
+                                        let mut err = Rich::custom(arg_span, message.clone());
+                                        <Rich<'a, Token> as LabelError<
+                                            'a,
+                                            TokenStream<'a>,
+                                            &str,
+                                        >>::in_context(
+                                            &mut err, "environment argument", arg_span
+                                        );
+                                        Err(err)
+                                    }
+                                    chumsky::error::RichReason::ExpectedFound { .. } => {
+                                        let mut err = err;
+                                        <Rich<'a, Token> as LabelError<
+                                            'a,
+                                            TokenStream<'a>,
+                                            &str,
+                                        >>::in_context(
+                                            &mut err, "environment argument", arg_span
+                                        );
+                                        Err(err)
+                                    }
+                                };
                             }
                         };
+                        cmd_args.push(arg);
                     }
-                };
-                cmd_args.push(arg);
-            }
 
-            (cmd_args, true, meta.body_mode)
-        } else {
-            if strict {
-                return Err(Rich::custom(
-                    name_span,
-                    format!("Unknown environment: {}", name),
-                ));
-            }
+                    (cmd_args, true, meta.body_mode)
+                }
+                LookupResult::KnownButDisallowed => {
+                    return Err(Rich::custom(
+                        name_span,
+                        format!(
+                            "Environment {} is not allowed in {} mode",
+                            name, current_mode
+                        ),
+                    ));
+                }
+                LookupResult::Unknown => {
+                    if strict {
+                        return Err(Rich::custom(
+                            name_span,
+                            format!("Unknown environment: {}", name),
+                        ));
+                    }
 
-            (vec![], false, current_mode)
-        };
+                    (vec![], false, current_mode)
+                }
+            };
 
         let body_content = match body_mode {
             ContentMode::Math => math_content.clone(),
@@ -1639,7 +1783,7 @@ fn environment_parser<'a>(
             let checkpoint = input.save();
             let probe = mode_item_parser(
                 body_mode,
-                kb,
+                ctx,
                 math_content.clone(),
                 text_content.clone(),
                 strict,
@@ -1697,7 +1841,7 @@ fn environment_parser<'a>(
 
 /// Parse a math atom (group/command/env/char) without scripts.
 fn math_atom_parser<'a, P>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     group_content: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
@@ -1707,17 +1851,17 @@ where
     P: Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone + 'a,
 {
     let explicit_group = braced_group_parser(ContentMode::Math, group_content.clone());
-    let delimited_group = delimited_group_parser(kb, math_content.clone());
+    let delimited_group = delimited_group_parser(ctx, math_content.clone());
     let environment = environment_parser(
-        kb,
+        ctx,
         math_content.clone(),
         text_content.clone(),
         ContentMode::Math,
         strict,
     );
     let prefix_command =
-        prefix_command_parser(kb, math_content, text_content, ContentMode::Math, strict);
-    let unknown_command = unknown_command_parser(kb, strict);
+        prefix_command_parser(ctx, math_content, text_content, ContentMode::Math, strict);
+    let unknown_command = unknown_command_parser(ctx, strict);
     let fallback = choice((
         explicit_group,
         environment.clone(),
@@ -1733,10 +1877,9 @@ where
         Some(Token::ControlSeq(name)) if name == "begin" => input.parse(environment.clone()),
         Some(Token::ControlSeq(name))
             if matches!(
-                kb.lookup_command(name.as_str()),
+                ctx.lookup_command(name.as_str(), ContentMode::Math),
                 Some(meta)
                     if meta.kind == CommandKind::Prefix
-                        && meta.allowed_mode.allows(ContentMode::Math)
             ) =>
         {
             input.parse(prefix_command.clone())
@@ -1788,7 +1931,7 @@ where
 
 /// Parse a text atom (text chunk, inline math, group, command, env).
 fn text_atom_parser<'a, P>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     group_content: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
@@ -1822,15 +1965,15 @@ where
 
     let explicit_group = braced_group_parser(ContentMode::Text, group_content);
     let environment = environment_parser(
-        kb,
+        ctx,
         math_content.clone(),
         text_content.clone(),
         ContentMode::Text,
         strict,
     );
     let prefix_command =
-        prefix_command_parser(kb, math_content, text_content, ContentMode::Text, strict);
-    let unknown_command = unknown_command_parser(kb, strict);
+        prefix_command_parser(ctx, math_content, text_content, ContentMode::Text, strict);
+    let unknown_command = unknown_command_parser(ctx, strict);
 
     let fallback = choice((
         text_chunk(),
@@ -1847,10 +1990,9 @@ where
         Some(Token::ControlSeq(name)) if name == "begin" => input.parse(environment.clone()),
         Some(Token::ControlSeq(name))
             if matches!(
-                kb.lookup_command(name.as_str()),
+                ctx.lookup_command(name.as_str(), ContentMode::Text),
                 Some(meta)
                     if meta.kind == CommandKind::Prefix
-                        && meta.allowed_mode.allows(ContentMode::Text)
             ) =>
         {
             input.parse(prefix_command.clone())
@@ -1861,7 +2003,7 @@ where
 
 /// Parse the tail after an infix command: the command head plus right operand items.
 fn infix_tail_parser<'a, P>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     normal_item: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
@@ -1874,7 +2016,7 @@ where
         let cmd_start = input.cursor();
         let cmd_start_byte = input.span_from_cursor(&cmd_start).start;
         let (name, meta) =
-            match command_head_parser(input, kb, CommandKind::Infix, ContentMode::Math, strict) {
+            match command_head_parser(input, ctx, CommandKind::Infix, ContentMode::Math, strict) {
                 Ok(data) => data,
                 Err(err) => return Err(err),
             };
@@ -1886,8 +2028,13 @@ where
             }
 
             let arg_start = input.cursor();
-            let parser =
-                argument_parser(kb, math_content.clone(), text_content.clone(), spec, strict);
+            let parser = argument_parser(
+                ctx,
+                math_content.clone(),
+                text_content.clone(),
+                spec,
+                strict,
+            );
             let arg = match input.parse(parser) {
                 Ok(arg) => arg,
                 Err(err) => {
@@ -1924,7 +2071,7 @@ where
         Ok((name, args, cmd_start_byte))
     });
 
-    let stop_declarative = declarative_guard(kb);
+    let stop_declarative = declarative_guard(ctx, ContentMode::Math);
 
     let guarded_item = stop_declarative
         .not()
@@ -1942,7 +2089,7 @@ where
 
 /// Parse the tail of a declarative command: command head plus scoped items.
 fn declarative_tail_parser<'a, P>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     normal_item: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
@@ -1956,7 +2103,7 @@ where
         let cmd_start = input.cursor();
         let cmd_start_byte = input.span_from_cursor(&cmd_start).start;
         let (name, meta) =
-            match command_head_parser(input, kb, CommandKind::Declarative, current_mode, strict) {
+            match command_head_parser(input, ctx, CommandKind::Declarative, current_mode, strict) {
                 Ok(data) => data,
                 Err(err) => return Err(err),
             };
@@ -1968,8 +2115,13 @@ where
             }
 
             let arg_start = input.cursor();
-            let parser =
-                argument_parser(kb, math_content.clone(), text_content.clone(), spec, strict);
+            let parser = argument_parser(
+                ctx,
+                math_content.clone(),
+                text_content.clone(),
+                spec,
+                strict,
+            );
             let arg = match input.parse(parser) {
                 Ok(arg) => arg,
                 Err(err) => {
@@ -2016,7 +2168,7 @@ where
 
 /// Build math-mode group content (leading items + optional infix/declarative tails).
 fn math_group_content_parser<'a, P>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     normal_item: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
@@ -2026,7 +2178,7 @@ where
     P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
 {
     let ws = insignificant_whitespace();
-    let stop_infix_or_decl = math_infix_or_decl_guard(kb);
+    let stop_infix_or_decl = math_infix_or_decl_guard(ctx, ContentMode::Math);
     let stop_boundary = ws
         .clone()
         .ignore_then(stop_infix_or_decl)
@@ -2071,22 +2223,23 @@ where
         Ok(items)
     });
 
-    let infix_tail = infix_guard(kb).ignore_then(infix_tail_parser(
-        kb,
+    let infix_tail = infix_guard(ctx, ContentMode::Math).ignore_then(infix_tail_parser(
+        ctx,
         normal_item.clone(),
         math_content.clone(),
         text_content.clone(),
         strict,
     ));
 
-    let declarative_tail = declarative_guard(kb).ignore_then(declarative_tail_parser(
-        kb,
-        normal_item,
-        math_content,
-        text_content,
-        ContentMode::Math,
-        strict,
-    ));
+    let declarative_tail =
+        declarative_guard(ctx, ContentMode::Math).ignore_then(declarative_tail_parser(
+            ctx,
+            normal_item,
+            math_content,
+            text_content,
+            ContentMode::Math,
+            strict,
+        ));
 
     leading
         .then(infix_tail.or_not())
@@ -2169,7 +2322,7 @@ where
 
 /// Build text-mode group content (leading items + optional declarative tail).
 fn text_group_content_parser<'a, P>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     normal_item: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
@@ -2178,7 +2331,7 @@ fn text_group_content_parser<'a, P>(
 where
     P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
 {
-    let stop_declarative = declarative_guard(kb);
+    let stop_declarative = declarative_guard(ctx, ContentMode::Text);
     let ws = insignificant_whitespace();
 
     let stop_boundary = ws
@@ -2212,14 +2365,15 @@ where
         Ok(items)
     });
 
-    let declarative_tail = declarative_guard(kb).ignore_then(declarative_tail_parser(
-        kb,
-        normal_item,
-        math_content,
-        text_content,
-        ContentMode::Text,
-        strict,
-    ));
+    let declarative_tail =
+        declarative_guard(ctx, ContentMode::Text).ignore_then(declarative_tail_parser(
+            ctx,
+            normal_item,
+            math_content,
+            text_content,
+            ContentMode::Text,
+            strict,
+        ));
 
     leading
         .then(declarative_tail.or_not())
@@ -2253,7 +2407,7 @@ where
 /// [`chumsky::recursive`] and wired to each other before being returned
 /// as boxed parsers.
 fn mode_content_parsers<'a>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     strict: bool,
 ) -> (ContentParser<'a>, ContentParser<'a>) {
     let mut math = Recursive::declare();
@@ -2266,14 +2420,15 @@ fn mode_content_parsers<'a>(
         let math_content = math_for_math.clone().boxed();
         let text_content = text_for_math.clone().boxed();
         let normal_item = math_item_node_parser(
-            kb,
+            ctx,
             group_content,
             math_content.clone(),
             text_content.clone(),
             strict,
         )
         .padded_by(ws.clone());
-        math_group_content_parser(kb, normal_item, math_content, text_content, strict).padded_by(ws)
+        math_group_content_parser(ctx, normal_item, math_content, text_content, strict)
+            .padded_by(ws)
     }));
 
     let math_for_text = math.clone();
@@ -2282,20 +2437,20 @@ fn mode_content_parsers<'a>(
         let math_content = math_for_text.clone().boxed();
         let text_content = text_for_text.clone().boxed();
         let normal_item = text_atom_parser(
-            kb,
+            ctx,
             group_content,
             math_content.clone(),
             text_content.clone(),
             strict,
         );
-        text_group_content_parser(kb, normal_item, math_content, text_content, strict)
+        text_group_content_parser(ctx, normal_item, math_content, text_content, strict)
     }));
 
     (math.boxed(), text.boxed())
 }
 
 fn mode_content_parsers_with_source<'a>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     strict: bool,
     src: &'a str,
 ) -> (ContentParser<'a>, ContentParser<'a>) {
@@ -2309,7 +2464,7 @@ fn mode_content_parsers_with_source<'a>(
         let math_content = math_for_math.clone().boxed();
         let text_content = text_for_math.clone().boxed();
         let base_item = math_item_node_parser(
-            kb,
+            ctx,
             group_content,
             math_content.clone(),
             text_content.clone(),
@@ -2319,9 +2474,17 @@ fn mode_content_parsers_with_source<'a>(
         let normal_item = if strict {
             base_item.boxed()
         } else {
-            recoverable_content_item_parser(src, base_item, is_math_hard_stop).boxed()
+            recoverable_content_item_parser(
+                ctx,
+                ContentMode::Math,
+                src,
+                base_item,
+                is_math_hard_stop,
+            )
+            .boxed()
         };
-        math_group_content_parser(kb, normal_item, math_content, text_content, strict).padded_by(ws)
+        math_group_content_parser(ctx, normal_item, math_content, text_content, strict)
+            .padded_by(ws)
     }));
 
     let math_for_text = math.clone();
@@ -2330,7 +2493,7 @@ fn mode_content_parsers_with_source<'a>(
         let math_content = math_for_text.clone().boxed();
         let text_content = text_for_text.clone().boxed();
         let base_item = text_atom_parser(
-            kb,
+            ctx,
             group_content,
             math_content.clone(),
             text_content.clone(),
@@ -2339,28 +2502,35 @@ fn mode_content_parsers_with_source<'a>(
         let normal_item = if strict {
             base_item.boxed()
         } else {
-            recoverable_content_item_parser(src, base_item, is_text_hard_stop).boxed()
+            recoverable_content_item_parser(
+                ctx,
+                ContentMode::Text,
+                src,
+                base_item,
+                is_text_hard_stop,
+            )
+            .boxed()
         };
-        text_group_content_parser(kb, normal_item, math_content, text_content, strict)
+        text_group_content_parser(ctx, normal_item, math_content, text_content, strict)
     }));
 
     (math.boxed(), text.boxed())
 }
 
 /// Construct top-level math/text group parsers from content parsers.
-fn mode_group_parsers<'a>(kb: &'a KnowledgeBase, strict: bool) -> (NodeParser<'a>, NodeParser<'a>) {
-    let (math_content, text_content) = mode_content_parsers(kb, strict);
+fn mode_group_parsers<'a>(ctx: &'a ParseContext, strict: bool) -> (NodeParser<'a>, NodeParser<'a>) {
+    let (math_content, text_content) = mode_content_parsers(ctx, strict);
     let math_group = implicit_group_parser(ContentMode::Math, math_content).boxed();
     let text_group = implicit_group_parser(ContentMode::Text, text_content).boxed();
     (math_group, text_group)
 }
 
 fn mode_group_parsers_with_source<'a>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     strict: bool,
     src: &'a str,
 ) -> (NodeParser<'a>, NodeParser<'a>) {
-    let (math_content, text_content) = mode_content_parsers_with_source(kb, strict, src);
+    let (math_content, text_content) = mode_content_parsers_with_source(ctx, strict, src);
     let math_group = implicit_group_parser(ContentMode::Math, math_content).boxed();
     let text_group = implicit_group_parser(ContentMode::Text, text_content).boxed();
     (math_group, text_group)
@@ -2371,33 +2541,33 @@ fn mode_group_parsers_with_source<'a>(
 /// Returns a boxed parser that produces an implicit math-mode group
 /// wrapping all parsed items. This is the parser used by
 /// [`ParseContext::parse`](crate::parse::ParseContext::parse).
-pub(crate) fn math_block_parser<'a>(kb: &'a KnowledgeBase, strict: bool) -> NodeParser<'a> {
-    let (math_parser, _) = mode_group_parsers(kb, strict);
+pub(crate) fn math_block_parser<'a>(ctx: &'a ParseContext, strict: bool) -> NodeParser<'a> {
+    let (math_parser, _) = mode_group_parsers(ctx, strict);
     math_parser
 }
 
 pub(crate) fn math_block_parser_with_source<'a>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     strict: bool,
     src: &'a str,
 ) -> NodeParser<'a> {
-    let (math_parser, _) = mode_group_parsers_with_source(kb, strict, src);
+    let (math_parser, _) = mode_group_parsers_with_source(ctx, strict, src);
     math_parser
 }
 
 /// Entry point parser for text mode.
 #[allow(dead_code)] // Text entry point is unused; expose when direct text parsing is needed
-fn text_block_parser<'a>(kb: &'a KnowledgeBase, strict: bool) -> NodeParser<'a> {
-    let (_, text_parser) = mode_group_parsers(kb, strict);
+fn text_block_parser<'a>(ctx: &'a ParseContext, strict: bool) -> NodeParser<'a> {
+    let (_, text_parser) = mode_group_parsers(ctx, strict);
     text_parser
 }
 
 #[allow(dead_code)] // Source-aware text entry point is reserved for future direct text parsing
 fn text_block_parser_with_source<'a>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     strict: bool,
     src: &'a str,
 ) -> NodeParser<'a> {
-    let (_, text_parser) = mode_group_parsers_with_source(kb, strict, src);
+    let (_, text_parser) = mode_group_parsers_with_source(ctx, strict, src);
     text_parser
 }

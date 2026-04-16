@@ -38,6 +38,7 @@ export async function ensureWasmReady(): Promise<void> {
 export type CommandKind = 'prefix' | 'infix' | 'declarative'
 export type AllowedMode = 'math' | 'text' | 'both'
 export type BodyMode = 'math' | 'text'
+export type ContentMode = 'math' | 'text'
 export type ContextItem =
   | {
       target: 'command'
@@ -131,20 +132,28 @@ export class ParseContext {
     return this.inner.serialize(src, strict, options ?? undefined)
   }
 
-  lookupActiveCommand(name: string): CommandInfo | null {
-    return this.inner.lookup_active_command(name) as CommandInfo | null
+  lookupCommand(name: string, mode: ContentMode): CommandInfo | null {
+    return this.inner.lookup_command(name, mode) as CommandInfo | null
   }
 
-  lookupExplicitCommand(name: string): CommandInfo | null {
-    return this.inner.lookup_explicit_command(name) as CommandInfo | null
+  lookupExplicitCommand(name: string, mode: ContentMode): CommandInfo | null {
+    return this.inner.lookup_explicit_command(name, mode) as CommandInfo | null
   }
 
-  lookupCharacter(name: string): CharacterInfo | null {
-    return this.inner.lookup_character(name) as CharacterInfo | null
+  lookupCharacter(name: string, mode: ContentMode): CharacterInfo | null {
+    return this.inner.lookup_character(name, mode) as CharacterInfo | null
   }
 
-  lookupEnv(name: string): EnvInfo | null {
-    return this.inner.lookup_env(name) as EnvInfo | null
+  lookupEnv(name: string, mode: ContentMode): EnvInfo | null {
+    return this.inner.lookup_env(name, mode) as EnvInfo | null
+  }
+
+  knowsCommandName(name: string): boolean {
+    return this.inner.knows_command_name(name)
+  }
+
+  knowsEnvName(name: string): boolean {
+    return this.inner.knows_env_name(name)
   }
 }
 

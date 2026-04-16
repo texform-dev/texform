@@ -268,32 +268,70 @@ impl ParseContext {
         serialize_parse_output(output, parsed_options.as_ref())
     }
 
-    pub fn lookup_active_command(&self, name: &str) -> JsValue {
-        match self.inner.lookup_command(name) {
+    pub fn lookup_command(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
+        Ok(match self.lookup_command_meta(name, mode)? {
             Some(meta) => command_meta_to_js(meta),
             None => JsValue::NULL,
-        }
+        })
     }
 
-    pub fn lookup_explicit_command(&self, name: &str) -> JsValue {
-        match self.inner.lookup_explicit_command(name) {
+    pub fn lookup_explicit_command(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
+        Ok(match self.lookup_explicit_command_meta(name, mode)? {
             Some(meta) => command_meta_to_js(meta),
             None => JsValue::NULL,
-        }
+        })
     }
 
-    pub fn lookup_character(&self, name: &str) -> JsValue {
-        match self.inner.lookup_character(name) {
+    pub fn lookup_character(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
+        Ok(match self.lookup_character_meta(name, mode)? {
             Some(meta) => character_meta_to_js(meta),
             None => JsValue::NULL,
-        }
+        })
     }
 
-    pub fn lookup_env(&self, name: &str) -> JsValue {
-        match self.inner.lookup_env(name) {
+    pub fn lookup_env(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
+        Ok(match self.lookup_env_meta(name, mode)? {
             Some(meta) => env_meta_to_js(meta),
             None => JsValue::NULL,
-        }
+        })
+    }
+
+    pub fn knows_command_name(&self, name: &str) -> bool {
+        self.inner.knows_command_name(name)
+    }
+
+    pub fn knows_env_name(&self, name: &str) -> bool {
+        self.inner.knows_env_name(name)
+    }
+}
+
+impl ParseContext {
+    fn lookup_command_meta(&self, name: &str, mode: &str) -> Result<Option<&CommandMeta>, JsValue> {
+        let mode = parse_content_mode(mode)?;
+        Ok(self.inner.lookup_command(name, mode))
+    }
+
+    fn lookup_explicit_command_meta(
+        &self,
+        name: &str,
+        mode: &str,
+    ) -> Result<Option<&CommandMeta>, JsValue> {
+        let mode = parse_content_mode(mode)?;
+        Ok(self.inner.lookup_explicit_command(name, mode))
+    }
+
+    fn lookup_character_meta(
+        &self,
+        name: &str,
+        mode: &str,
+    ) -> Result<Option<&CharacterMeta>, JsValue> {
+        let mode = parse_content_mode(mode)?;
+        Ok(self.inner.lookup_character(name, mode))
+    }
+
+    fn lookup_env_meta(&self, name: &str, mode: &str) -> Result<Option<&EnvMeta>, JsValue> {
+        let mode = parse_content_mode(mode)?;
+        Ok(self.inner.lookup_env(name, mode))
     }
 }
 
@@ -722,8 +760,18 @@ mod tests {
         let empty_packages_ctx = ParseContext::new(Some(vec![]), None)
             .expect("empty package list parse context should build");
 
-        assert!(default_ctx.inner.lookup_command("frac").is_some());
-        assert!(empty_packages_ctx.inner.lookup_command("frac").is_none());
+        assert!(
+            default_ctx
+                .inner
+                .lookup_command("frac", ContentMode::Math)
+                .is_some()
+        );
+        assert!(
+            empty_packages_ctx
+                .inner
+                .lookup_command("frac", ContentMode::Math)
+                .is_none()
+        );
     }
 
     #[test]
@@ -740,6 +788,25 @@ mod tests {
             .expect("custom command should serialize with instance context");
 
         assert_eq!(output, r"\probe { x }");
+    }
+
+    #[test]
+    fn lookup_command_is_mode_specific() {
+        let ctx = ParseContext::new(Some(vec!["base".into(), "textmacros".into()]), None)
+            .expect("parse context should build");
+
+        let math = ctx
+            .lookup_command_meta("underline", "math")
+            .expect("math lookup should succeed")
+            .expect("underline should be known in math mode");
+        let text = ctx
+            .lookup_command_meta("underline", "text")
+            .expect("text lookup should succeed")
+            .expect("underline should be known in text mode");
+
+        assert_eq!(math.argspec.source, "m");
+        assert_eq!(text.argspec.source, "m:T");
+        assert!(ctx.knows_command_name("underline"));
     }
 }
 

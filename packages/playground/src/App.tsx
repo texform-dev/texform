@@ -214,10 +214,8 @@ export default function App() {
     return buildSyntaxTree(
       parseState.result.node,
       'root',
-      (name) => parseContext.lookupActiveCommand(name),
-      (name) => parseContext.lookupExplicitCommand(name),
-      (name) => parseContext.lookupCharacter(name),
-      (name) => parseContext.lookupEnv(name),
+      'math',
+      parseContext,
     )
   }, [parseState.result, parseContext])
 

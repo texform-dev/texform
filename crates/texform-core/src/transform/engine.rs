@@ -139,7 +139,13 @@ pub fn transform_ast(
         let snapshot = preorder_snapshot(ast);
 
         {
-            let mut cx = RuleContext::new(ast, parse_ctx.kb(), transform_ctx, &mut report);
+            let mut cx = RuleContext::new(
+                ast,
+                parse_ctx.math_kb(),
+                parse_ctx.text_kb(),
+                transform_ctx,
+                &mut report,
+            );
             for node_id in snapshot {
                 if !cx.ast.contains(node_id) {
                     continue;
@@ -181,7 +187,13 @@ pub fn transform_ast(
 
     if !transform_ctx.cleanup_rules().is_empty() {
         let snapshot = preorder_snapshot(ast);
-        let mut cx = RuleContext::new(ast, parse_ctx.kb(), transform_ctx, &mut report);
+        let mut cx = RuleContext::new(
+            ast,
+            parse_ctx.math_kb(),
+            parse_ctx.text_kb(),
+            transform_ctx,
+            &mut report,
+        );
         for node_id in snapshot {
             if !cx.ast.contains(node_id) {
                 continue;
@@ -230,18 +242,18 @@ fn rule_matches(meta: &RuleMeta, node_id: NodeId, cx: &RuleContext<'_>) -> bool 
 fn trigger_matches(trigger: RuleTrigger, node_id: NodeId, cx: &RuleContext<'_>) -> bool {
     match trigger {
         RuleTrigger::NodeKind(kind) => cx.ast.kind(node_id) == kind,
+        // Trigger matching now follows the AST node name on purpose. The parser
+        // never emits `known: false` for builtin names, so existing rules do not widen unexpectedly.
         RuleTrigger::Command(record) => cx
             .active_command(node_id)
             .is_some_and(|active| active.name == record.name),
         RuleTrigger::Environment(record) => cx
             .active_env(node_id)
             .is_some_and(|active| active.name == record.name),
-        RuleTrigger::CommandTag(tag) => cx
-            .active_command(node_id)
-            .is_some_and(|active| active.tags.contains(&tag)),
-        RuleTrigger::EnvironmentTag(tag) => cx
-            .active_env(node_id)
-            .is_some_and(|active| active.tags.contains(&tag)),
+        RuleTrigger::CommandTag(tag) => lookup_command_node_name(cx.ast.node(node_id))
+            .is_some_and(|name| cx.command_has_tag(name, tag)),
+        RuleTrigger::EnvironmentTag(tag) => lookup_environment_node_name(cx.ast.node(node_id))
+            .is_some_and(|name| cx.env_has_tag(name, tag)),
     }
 }
 
@@ -281,11 +293,11 @@ fn target_present(
     match target.kind {
         crate::transform::rule::RuleTargetKind::Command => {
             lookup_command_node_name(ast.node(node_id))
-                .is_some_and(|name| name == target.name && parse_ctx.lookup_command(name).is_some())
+                .is_some_and(|name| name == target.name && parse_ctx.knows_command_name(name))
         }
         crate::transform::rule::RuleTargetKind::Environment => {
             lookup_environment_node_name(ast.node(node_id))
-                .is_some_and(|name| name == target.name && parse_ctx.lookup_env(name).is_some())
+                .is_some_and(|name| name == target.name && parse_ctx.knows_env_name(name))
         }
     }
 }
@@ -294,7 +306,7 @@ fn target_present(
 mod tests {
     use super::*;
     use crate::ast::{Node, NodeId};
-    use crate::parse::{AllowedMode, ParseContext, ParseContextBuilder};
+    use crate::parse::{AllowedMode, ContentMode, ParseContext, ParseContextBuilder};
     use crate::transform::context::TransformContext;
     use crate::transform::rule::{
         RuleConsumes, RuleEffect, RuleGroup, RuleMeta, RulePhase, RuleProduces, RuleSafety,
@@ -389,7 +401,11 @@ mod tests {
     #[test]
     fn contract_ignores_unloaded_unknown_command_forms() {
         let parse_ctx = ParseContext::core_only();
-        assert!(parse_ctx.lookup_command("quantity").is_none());
+        assert!(
+            parse_ctx
+                .lookup_command("quantity", ContentMode::Math)
+                .is_none()
+        );
 
         let mut ast = parse_ctx
             .parse_to_ast(r"\quantity{a}", false)
@@ -414,5 +430,153 @@ mod tests {
 
         transform_ast(&mut ast, &parse_ctx, &transform_ctx)
             .expect("runtime contract should ignore forms unavailable in this parse context");
+    }
+
+    #[test]
+    fn command_tag_trigger_checks_both_lanes() {
+        let parse_ctx = ParseContextBuilder::new()
+            .empty()
+            .insert_item(
+                crate::parse::CommandItem::new(
+                    "dual-tagged",
+                    CommandKind::Prefix,
+                    AllowedMode::Text,
+                    "m:T",
+                )
+                .with_tags(["presentation"]),
+            )
+            .insert_item(crate::parse::CommandItem::new(
+                "dual-tagged",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "m",
+            ))
+            .build()
+            .expect("parse context should build");
+
+        let mut ast = Ast::new();
+        let node_id = ast.new_node(Node::Command {
+            name: "dual-tagged".to_string(),
+            args: Vec::new(),
+            known: true,
+        });
+        ast.append_child(ast.root(), node_id);
+
+        static TAG_RULE_META: RuleMeta = RuleMeta {
+            key: RuleKey {
+                group: RuleGroup::Physics,
+                name: "tag-trigger",
+            },
+            summary: "mock tag trigger rule",
+            phase: RulePhase::Normalize,
+            safety: RuleSafety::Lossless,
+            triggers: &[RuleTrigger::CommandTag("presentation")],
+            consumes: RuleConsumes {
+                eliminates: &[],
+                requires: &[],
+            },
+            produces: RuleProduces { targets: &[] },
+        };
+
+        struct TagSkipRule;
+
+        impl TransformRule for TagSkipRule {
+            fn meta(&self) -> &'static RuleMeta {
+                &TAG_RULE_META
+            }
+
+            fn apply(
+                &self,
+                _cx: &mut RuleContext<'_>,
+                _node_id: NodeId,
+            ) -> Result<RuleEffect, TransformError> {
+                Ok(RuleEffect::Skipped)
+            }
+        }
+
+        static TAG_SKIP_RULE: TagSkipRule = TagSkipRule;
+
+        let report = transform_ast(
+            &mut ast,
+            &parse_ctx,
+            &transform_context_with(&TAG_SKIP_RULE),
+        )
+        .expect("tag trigger should match text-lane metadata");
+
+        assert_eq!(
+            report.applied,
+            vec![AppliedRuleStat {
+                key: TAG_RULE_META.key,
+                count: 0,
+                skipped_count: 1,
+            }]
+        );
+    }
+
+    #[test]
+    fn contract_uses_name_known_union_across_both_lanes() {
+        let parse_ctx = ParseContextBuilder::new()
+            .empty()
+            .insert_item(crate::parse::CommandItem::new(
+                "textonly-target",
+                CommandKind::Prefix,
+                AllowedMode::Text,
+                "m:T",
+            ))
+            .build()
+            .expect("parse context should build");
+
+        assert!(
+            parse_ctx
+                .lookup_command("textonly-target", ContentMode::Math)
+                .is_none()
+        );
+        assert!(parse_ctx.knows_command_name("textonly-target"));
+
+        let transform_ctx =
+            TransformContext::from_parts_for_test(Vec::new(), Vec::new(), Vec::new(), 4);
+        let mut report = TransformReport {
+            applied: Vec::new(),
+            iterations: 0,
+        };
+
+        let mut scratch_ast = Ast::new();
+        let cx = RuleContext::new(
+            &mut scratch_ast,
+            parse_ctx.math_kb(),
+            parse_ctx.text_kb(),
+            &transform_ctx,
+            &mut report,
+        );
+        assert!(cx.knows_command_name("textonly-target"));
+
+        let mut ast = Ast::new();
+        let node_id = ast.new_node(Node::Command {
+            name: "textonly-target".to_string(),
+            args: Vec::new(),
+            known: true,
+        });
+        ast.append_child(ast.root(), node_id);
+
+        let transform_ctx = TransformContext::from_parts_for_test(
+            Vec::new(),
+            Vec::new(),
+            vec![RuleTargetKey {
+                kind: crate::transform::rule::RuleTargetKind::Command,
+                name: "textonly-target",
+            }],
+            4,
+        );
+
+        let error = transform_ast(&mut ast, &parse_ctx, &transform_ctx)
+            .expect_err("known command names should still trip contract outside the active lane");
+
+        match error {
+            TransformEngineError::ContractViolation { target, node_name } => {
+                assert_eq!(target.name, "textonly-target");
+                assert_eq!(node_name.as_deref(), Some("textonly-target"));
+            }
+            other => panic!("expected contract violation, got {other:?}"),
+        }
     }
 }

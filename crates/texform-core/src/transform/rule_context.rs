@@ -13,6 +13,7 @@
 
 use crate::ast::{ArgumentSlot, Ast, Node, NodeId};
 use crate::knowledge::{KnowledgeBase, lookup_command_node_name, lookup_environment_node_name};
+use crate::parse::ContentMode;
 use crate::transform::context::TransformContext;
 use crate::transform::engine::{TransformError, TransformReport};
 use crate::transform::rule::RuleKey;
@@ -85,7 +86,8 @@ pub struct RuleContext<'a> {
     /// This field stays public so rules can perform bespoke tree surgery when
     /// helper functions are not expressive enough.
     pub ast: &'a mut Ast,
-    kb: &'a KnowledgeBase,
+    math_kb: &'a KnowledgeBase,
+    text_kb: &'a KnowledgeBase,
     transform_ctx: &'a TransformContext,
     report: &'a mut TransformReport,
 }
@@ -93,49 +95,91 @@ pub struct RuleContext<'a> {
 impl<'a> RuleContext<'a> {
     pub fn new(
         ast: &'a mut Ast,
-        kb: &'a KnowledgeBase,
+        math_kb: &'a KnowledgeBase,
+        text_kb: &'a KnowledgeBase,
         transform_ctx: &'a TransformContext,
         report: &'a mut TransformReport,
     ) -> Self {
         Self {
             ast,
-            kb,
+            math_kb,
+            text_kb,
             transform_ctx,
             report,
         }
     }
 
+    fn kb_for(&self, mode: ContentMode) -> &'a KnowledgeBase {
+        match mode {
+            ContentMode::Math => self.math_kb,
+            ContentMode::Text => self.text_kb,
+        }
+    }
+
+    pub fn knows_command_name(&self, name: &str) -> bool {
+        self.lookup_command(name, ContentMode::Math).is_some()
+            || self.lookup_command(name, ContentMode::Text).is_some()
+    }
+
+    pub fn knows_env_name(&self, name: &str) -> bool {
+        self.lookup_env(name, ContentMode::Math).is_some()
+            || self.lookup_env(name, ContentMode::Text).is_some()
+    }
+
+    pub fn command_has_tag(&self, name: &str, tag: &str) -> bool {
+        self.lookup_command(name, ContentMode::Math)
+            .is_some_and(|record| record.tags.contains(&tag))
+            || self
+                .lookup_command(name, ContentMode::Text)
+                .is_some_and(|record| record.tags.contains(&tag))
+    }
+
+    pub fn env_has_tag(&self, name: &str, tag: &str) -> bool {
+        self.lookup_env(name, ContentMode::Math)
+            .is_some_and(|record| record.tags.contains(&tag))
+            || self
+                .lookup_env(name, ContentMode::Text)
+                .is_some_and(|record| record.tags.contains(&tag))
+    }
+
     /// Looks up the active command record for the node at `node_id` by extracting its name from the AST.
     pub fn active_command(&self, node_id: NodeId) -> Option<&ActiveCommandRecord> {
         let name = lookup_command_node_name(self.ast.node(node_id))?;
-        self.kb.lookup_command(name)
+        self.lookup_command(name, ContentMode::Math)
+            .or_else(|| self.lookup_command(name, ContentMode::Text))
     }
 
     /// Looks up the active character record for the node at `node_id` by extracting its name from the AST.
     pub fn active_character(&self, node_id: NodeId) -> Option<&ActiveCharacterRecord> {
         let name = lookup_command_node_name(self.ast.node(node_id))?;
-        self.kb.lookup_character(name)
+        self.lookup_character(name, ContentMode::Math)
+            .or_else(|| self.lookup_character(name, ContentMode::Text))
     }
 
     /// Looks up the active environment record for the node at `node_id` by extracting its name from the AST.
     pub fn active_env(&self, node_id: NodeId) -> Option<&ActiveEnvironmentRecord> {
         let name = lookup_environment_node_name(self.ast.node(node_id))?;
-        self.kb.lookup_env(name)
+        self.lookup_env(name, ContentMode::Math)
+            .or_else(|| self.lookup_env(name, ContentMode::Text))
     }
 
-    /// Looks up a command record by name directly in the knowledge base.
-    pub fn lookup_command(&self, name: &str) -> Option<&ActiveCommandRecord> {
-        self.kb.lookup_command(name)
+    /// Looks up a command record by name directly in the selected knowledge-base lane.
+    pub fn lookup_command(&self, name: &str, mode: ContentMode) -> Option<&ActiveCommandRecord> {
+        self.kb_for(mode).lookup_command(name)
     }
 
-    /// Looks up a character record by name directly in the knowledge base.
-    pub fn lookup_character(&self, name: &str) -> Option<&ActiveCharacterRecord> {
-        self.kb.lookup_character(name)
+    /// Looks up a character record by name directly in the selected knowledge-base lane.
+    pub fn lookup_character(
+        &self,
+        name: &str,
+        mode: ContentMode,
+    ) -> Option<&ActiveCharacterRecord> {
+        self.kb_for(mode).lookup_character(name)
     }
 
-    /// Looks up an environment record by name directly in the knowledge base.
-    pub fn lookup_env(&self, name: &str) -> Option<&ActiveEnvironmentRecord> {
-        self.kb.lookup_env(name)
+    /// Looks up an environment record by name directly in the selected knowledge-base lane.
+    pub fn lookup_env(&self, name: &str, mode: ContentMode) -> Option<&ActiveEnvironmentRecord> {
+        self.kb_for(mode).lookup_env(name)
     }
 
     pub fn transform_context(&self) -> &TransformContext {

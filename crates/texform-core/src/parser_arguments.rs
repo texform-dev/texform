@@ -13,8 +13,9 @@
 use chumsky::{label::LabelError, prelude::*};
 
 use crate::column_parser::parse_column_template;
-use crate::knowledge::{ArgForm, ArgSpec, DelimiterToken, KnowledgeBase, ValueKind};
+use crate::knowledge::{ArgForm, ArgSpec, DelimiterToken, ValueKind};
 use crate::lexer::Token;
+use crate::parse::ParseContext;
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind,
     SyntaxNode,
@@ -143,7 +144,7 @@ fn collect_delimited_tokens<'src, 'parse>(
 /// produced by the block parser is normalized away via [`TrackedNode::fold`].
 fn parse_tokens_as_content<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
-    kb: &'parse KnowledgeBase,
+    ctx: &'parse ParseContext,
     mode: ContentMode,
     tokens: Vec<Token>,
     strict: bool,
@@ -152,8 +153,8 @@ fn parse_tokens_as_content<'src, 'parse>(
     let src = tokens_to_string(&tokens);
     let token_stream = build_token_stream(src.as_str());
     let parser = match mode {
-        ContentMode::Math => math_block_parser(kb, strict),
-        ContentMode::Text => text_block_parser(kb, strict),
+        ContentMode::Math => math_block_parser(ctx, strict),
+        ContentMode::Text => text_block_parser(ctx, strict),
     };
 
     let tracked = parser
@@ -213,7 +214,7 @@ fn parse_tokens_as_content<'src, 'parse>(
 /// parsing depending on the spec.
 fn parse_delimited_value<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
-    kb: &'parse KnowledgeBase,
+    ctx: &'parse ParseContext,
     kind: ValueKind,
     tokens: Vec<Token>,
     strict: bool,
@@ -221,7 +222,7 @@ fn parse_delimited_value<'src, 'parse>(
 ) -> Result<ArgumentValue, Rich<'src, Token>> {
     match kind {
         ValueKind::Content { mode } => {
-            let content = parse_tokens_as_content(input, kb, mode, tokens, strict, 0)?;
+            let content = parse_tokens_as_content(input, ctx, mode, tokens, strict, 0)?;
             Ok(argument_content_value(mode, content.node))
         }
         ValueKind::CSName => {
@@ -291,7 +292,7 @@ fn parse_delimited_value<'src, 'parse>(
                 return Ok(ArgumentValue::Delimiter(Delimiter::None));
             }
             let value = insignificant_whitespace()
-                .ignore_then(delimiter(kb))
+                .ignore_then(delimiter(ctx))
                 .then_ignore(insignificant_whitespace())
                 .then_ignore(end())
                 .parse(build_token_stream(src.as_str()))
@@ -340,7 +341,7 @@ fn parse_tokens_as_cs_name<'src, 'parse>(
 /// its source span, and (for content arguments) a tracked content subtree
 /// so that callers can expose `arg.N` / `arg.N.content` paths.
 pub(super) fn argument_parser<'a>(
-    kb: &'a KnowledgeBase,
+    ctx: &'a ParseContext,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     spec: &'static ArgSpec,
@@ -360,7 +361,7 @@ pub(super) fn argument_parser<'a>(
                             let content_offset = arg_span.start + 1; // skip opening brace
                             let content = parse_tokens_as_content(
                                 input,
-                                kb,
+                                ctx,
                                 mode,
                                 tokens,
                                 strict,
@@ -379,7 +380,7 @@ pub(super) fn argument_parser<'a>(
                             let item: TrackedNode = match mode {
                                 ContentMode::Math => input.parse(
                                     math_item_parser(
-                                        kb,
+                                        ctx,
                                         math_content.clone(),
                                         text_content.clone(),
                                         strict,
@@ -389,7 +390,7 @@ pub(super) fn argument_parser<'a>(
                                 )?,
                                 ContentMode::Text => input.parse(
                                     text_item_parser(
-                                        kb,
+                                        ctx,
                                         math_content.clone(),
                                         text_content.clone(),
                                         strict,
@@ -423,7 +424,7 @@ pub(super) fn argument_parser<'a>(
                         let content_offset = arg_span.start + 1; // skip opening bracket
                         let content = parse_tokens_as_content(
                             input,
-                            kb,
+                            ctx,
                             mode,
                             tokens,
                             strict,
@@ -442,9 +443,9 @@ pub(super) fn argument_parser<'a>(
                 ValueKind::Delimiter => {
                     if spec.required {
                         let parser = if spec.nullable {
-                            maybe_braced_or_empty(delimiter(kb), Delimiter::None).boxed()
+                            maybe_braced_or_empty(delimiter(ctx), Delimiter::None).boxed()
                         } else {
-                            maybe_braced(delimiter(kb)).boxed()
+                            maybe_braced(delimiter(ctx)).boxed()
                         }
                         .map(move |value| {
                             Some(Argument::from_value(
@@ -459,9 +460,9 @@ pub(super) fn argument_parser<'a>(
                         Ok(TrackedArgumentSlot::untracked(None))
                     } else {
                         let parser = if spec.nullable {
-                            optional_bracketed_or_empty(delimiter(kb), Delimiter::None).boxed()
+                            optional_bracketed_or_empty(delimiter(ctx), Delimiter::None).boxed()
                         } else {
-                            optional_bracketed(delimiter(kb)).boxed()
+                            optional_bracketed(delimiter(ctx)).boxed()
                         }
                         .map(move |opt| {
                             opt.map(|value| {
@@ -699,7 +700,7 @@ pub(super) fn argument_parser<'a>(
                 if let ValueKind::Content { mode } = spec.kind {
                     let content_offset = arg_span.start + 1;
                     let content =
-                        parse_tokens_as_content(input, kb, mode, tokens, strict, content_offset)?;
+                        parse_tokens_as_content(input, ctx, mode, tokens, strict, content_offset)?;
                     return Ok(TrackedArgumentSlot {
                         slot: Some(Argument::from_value(
                             ArgumentKind::Group,
@@ -711,7 +712,7 @@ pub(super) fn argument_parser<'a>(
                 }
 
                 let value =
-                    parse_delimited_value(input, kb, spec.kind, tokens, strict, spec.nullable)?;
+                    parse_delimited_value(input, ctx, spec.kind, tokens, strict, spec.nullable)?;
                 Ok(TrackedArgumentSlot::with_span(
                     Some(Argument::from_value(ArgumentKind::Group, value)),
                     arg_span,
@@ -741,7 +742,7 @@ pub(super) fn argument_parser<'a>(
                     let content_span_end = arg_span.end.saturating_sub(close_len);
                     let _ = content_span_end; // content span is computed inside parse_tokens_as_content
                     let content =
-                        parse_tokens_as_content(input, kb, mode, tokens, strict, content_offset)?;
+                        parse_tokens_as_content(input, ctx, mode, tokens, strict, content_offset)?;
                     return Ok(TrackedArgumentSlot {
                         slot: Some(Argument::from_value(
                             ArgumentKind::Delimited {
@@ -756,7 +757,7 @@ pub(super) fn argument_parser<'a>(
                 }
 
                 let value =
-                    parse_delimited_value(input, kb, spec.kind, tokens, strict, spec.nullable)?;
+                    parse_delimited_value(input, ctx, spec.kind, tokens, strict, spec.nullable)?;
                 Ok(TrackedArgumentSlot::with_span(
                     Some(Argument::from_value(
                         ArgumentKind::Delimited {
@@ -793,7 +794,7 @@ pub(super) fn argument_parser<'a>(
                     let open_len = delimiter_token_source_len(open);
                     let content_offset = arg_span.start + open_len;
                     let content =
-                        parse_tokens_as_content(input, kb, mode, tokens, strict, content_offset)?;
+                        parse_tokens_as_content(input, ctx, mode, tokens, strict, content_offset)?;
                     return Ok(TrackedArgumentSlot {
                         slot: Some(Argument::from_value(
                             ArgumentKind::Paired {
@@ -808,7 +809,7 @@ pub(super) fn argument_parser<'a>(
                 }
 
                 let value =
-                    parse_delimited_value(input, kb, spec.kind, tokens, strict, spec.nullable)?;
+                    parse_delimited_value(input, ctx, spec.kind, tokens, strict, spec.nullable)?;
                 Ok(TrackedArgumentSlot::with_span(
                     Some(Argument::from_value(
                         ArgumentKind::Paired {

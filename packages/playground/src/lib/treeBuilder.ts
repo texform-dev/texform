@@ -5,6 +5,7 @@ import type {
   ArgumentValue,
   CharacterInfo,
   CommandInfo,
+  ContentMode,
   EnvInfo,
   GroupKind,
   ParseDiagnostic,
@@ -15,13 +16,18 @@ import type { TreeNode } from './types'
 
 // -- Tree building --
 
+export interface LookupContext {
+  lookupCommand(name: string, mode: ContentMode): CommandInfo | null
+  lookupExplicitCommand(name: string, mode: ContentMode): CommandInfo | null
+  lookupCharacter(name: string, mode: ContentMode): CharacterInfo | null
+  lookupEnv(name: string, mode: ContentMode): EnvInfo | null
+}
+
 export function buildSyntaxTree(
   node: SyntaxNode,
   id: string,
-  lookupActiveCommand: (name: string) => CommandInfo | null,
-  lookupExplicitCommand: (name: string) => CommandInfo | null,
-  lookupCharacter: (name: string) => CharacterInfo | null,
-  lookupEnv: (name: string) => EnvInfo | null,
+  currentMode: ContentMode,
+  lookup: LookupContext,
 ): TreeNode {
   if (node === 'ActiveSpace') {
     return {
@@ -69,10 +75,8 @@ export function buildSyntaxTree(
       buildSyntaxTree(
         child,
         `${id}.child.${index}`,
-        lookupActiveCommand,
-        lookupExplicitCommand,
-        lookupCharacter,
-        lookupEnv,
+        group.mode.toLowerCase() as ContentMode,
+        lookup,
       ),
     )
     return {
@@ -86,9 +90,9 @@ export function buildSyntaxTree(
 
   if ('Command' in node) {
     const command = node.Command
-    const activeSpec = lookupActiveCommand(command.name)
-    const explicitSpec = lookupExplicitCommand(command.name)
-    const character = lookupCharacter(command.name)
+    const activeSpec = lookup.lookupCommand(command.name, currentMode)
+    const explicitSpec = lookup.lookupExplicitCommand(command.name, currentMode)
+    const character = lookup.lookupCharacter(command.name, currentMode)
     return {
       id,
       type: 'Command',
@@ -110,10 +114,8 @@ export function buildSyntaxTree(
           arg,
           `${id}.arg.${index}`,
           index,
-          lookupActiveCommand,
-          lookupExplicitCommand,
-          lookupCharacter,
-          lookupEnv,
+          currentMode,
+          lookup,
         ),
       ),
     }
@@ -121,18 +123,16 @@ export function buildSyntaxTree(
 
   if ('Infix' in node) {
     const infix = node.Infix
-    const activeSpec = lookupActiveCommand(infix.name)
-    const explicitSpec = lookupExplicitCommand(infix.name)
-    const character = lookupCharacter(infix.name)
+    const activeSpec = lookup.lookupCommand(infix.name, currentMode)
+    const explicitSpec = lookup.lookupExplicitCommand(infix.name, currentMode)
+    const character = lookup.lookupCharacter(infix.name, currentMode)
     const args = infix.args.map((arg: ArgumentSlot, index: number) =>
       buildArgumentNode(
         arg,
         `${id}.arg.${index}`,
         index,
-        lookupActiveCommand,
-        lookupExplicitCommand,
-        lookupCharacter,
-        lookupEnv,
+        currentMode,
+        lookup,
       ),
     )
     return {
@@ -155,10 +155,8 @@ export function buildSyntaxTree(
           buildSyntaxTree(
             infix.left,
             `${id}.left`,
-            lookupActiveCommand,
-            lookupExplicitCommand,
-            lookupCharacter,
-            lookupEnv,
+            currentMode,
+            lookup,
           ),
           'left',
         ),
@@ -167,10 +165,8 @@ export function buildSyntaxTree(
           buildSyntaxTree(
             infix.right,
             `${id}.right`,
-            lookupActiveCommand,
-            lookupExplicitCommand,
-            lookupCharacter,
-            lookupEnv,
+            currentMode,
+            lookup,
           ),
           'right',
         ),
@@ -180,18 +176,16 @@ export function buildSyntaxTree(
 
   if ('Declarative' in node) {
     const declarative = node.Declarative
-    const activeSpec = lookupActiveCommand(declarative.name)
-    const explicitSpec = lookupExplicitCommand(declarative.name)
-    const character = lookupCharacter(declarative.name)
+    const activeSpec = lookup.lookupCommand(declarative.name, currentMode)
+    const explicitSpec = lookup.lookupExplicitCommand(declarative.name, currentMode)
+    const character = lookup.lookupCharacter(declarative.name, currentMode)
     const args = declarative.args.map((arg: ArgumentSlot, index: number) =>
       buildArgumentNode(
         arg,
         `${id}.arg.${index}`,
         index,
-        lookupActiveCommand,
-        lookupExplicitCommand,
-        lookupCharacter,
-        lookupEnv,
+        currentMode,
+        lookup,
       ),
     )
     return {
@@ -215,10 +209,8 @@ export function buildSyntaxTree(
           buildSyntaxTree(
             declarative.scope,
             `${id}.scope`,
-            lookupActiveCommand,
-            lookupExplicitCommand,
-            lookupCharacter,
-            lookupEnv,
+            currentMode,
+            lookup,
           ),
           'scope',
         ),
@@ -228,16 +220,14 @@ export function buildSyntaxTree(
 
   if ('Environment' in node) {
     const env = node.Environment
-    const spec = lookupEnv(env.name)
+    const spec = lookup.lookupEnv(env.name, currentMode)
     const args = env.args.map((arg: ArgumentSlot, index: number) =>
       buildArgumentNode(
         arg,
         `${id}.arg.${index}`,
         index,
-        lookupActiveCommand,
-        lookupExplicitCommand,
-        lookupCharacter,
-        lookupEnv,
+        currentMode,
+        lookup,
       ),
     )
     return {
@@ -256,10 +246,8 @@ export function buildSyntaxTree(
           buildSyntaxTree(
             env.body,
             `${id}.body`,
-            lookupActiveCommand,
-            lookupExplicitCommand,
-            lookupCharacter,
-            lookupEnv,
+            currentMode,
+            lookup,
           ),
           'body',
         ),
@@ -274,10 +262,8 @@ export function buildSyntaxTree(
         buildSyntaxTree(
           scripted.base,
           `${id}.base`,
-          lookupActiveCommand,
-          lookupExplicitCommand,
-          lookupCharacter,
-          lookupEnv,
+          currentMode,
+          lookup,
         ),
         'base',
       ),
@@ -288,10 +274,8 @@ export function buildSyntaxTree(
           buildSyntaxTree(
             scripted.subscript,
             `${id}.sub`,
-            lookupActiveCommand,
-            lookupExplicitCommand,
-            lookupCharacter,
-            lookupEnv,
+            currentMode,
+            lookup,
           ),
           'sub',
         ),
@@ -303,10 +287,8 @@ export function buildSyntaxTree(
           buildSyntaxTree(
             scripted.superscript,
             `${id}.sup`,
-            lookupActiveCommand,
-            lookupExplicitCommand,
-            lookupCharacter,
-            lookupEnv,
+            currentMode,
+            lookup,
           ),
           'sup',
         ),
@@ -344,10 +326,8 @@ export function buildArgumentNode(
   argument: ArgumentSlot,
   id: string,
   index: number,
-  lookupActiveCommand: (name: string) => CommandInfo | null,
-  lookupExplicitCommand: (name: string) => CommandInfo | null,
-  lookupCharacter: (name: string) => CharacterInfo | null,
-  lookupEnv: (name: string) => EnvInfo | null,
+  currentMode: ContentMode,
+  lookup: LookupContext,
 ): TreeNode {
   if (argument == null || typeof argument !== 'object' || !('value' in argument)) {
     return {
@@ -367,10 +347,8 @@ export function buildArgumentNode(
     const contentChild = buildSyntaxTree(
       value.content,
       `${id}.content`,
-      lookupActiveCommand,
-      lookupExplicitCommand,
-      lookupCharacter,
-      lookupEnv,
+      value.contentMode ?? currentMode,
+      lookup,
     )
     // If the content child is a Group with children, we can still flatten
     // by promoting the content node and annotating it with arg info
@@ -502,17 +480,20 @@ export function describeArgumentValue(value: ArgumentValue): {
   kind: string
   value?: string
   content: SyntaxNode | null
+  contentMode: ContentMode | null
 } {
   if ('MathContent' in value) {
     return {
       kind: 'MathContent',
       content: value.MathContent,
+      contentMode: 'math',
     }
   }
   if ('TextContent' in value) {
     return {
       kind: 'TextContent',
       content: value.TextContent,
+      contentMode: 'text',
     }
   }
   if ('Delimiter' in value) {
@@ -520,6 +501,7 @@ export function describeArgumentValue(value: ArgumentValue): {
       kind: 'Delimiter',
       value: describeDelimiter(value.Delimiter),
       content: null,
+      contentMode: null,
     }
   }
   if ('CSName' in value) {
@@ -527,6 +509,7 @@ export function describeArgumentValue(value: ArgumentValue): {
       kind: 'CSName',
       value: value.CSName,
       content: null,
+      contentMode: null,
     }
   }
   if ('Dimension' in value) {
@@ -534,6 +517,7 @@ export function describeArgumentValue(value: ArgumentValue): {
       kind: 'Dimension',
       value: value.Dimension,
       content: null,
+      contentMode: null,
     }
   }
   if ('Integer' in value) {
@@ -541,6 +525,7 @@ export function describeArgumentValue(value: ArgumentValue): {
       kind: 'Integer',
       value: value.Integer,
       content: null,
+      contentMode: null,
     }
   }
   if ('KeyVal' in value) {
@@ -548,6 +533,7 @@ export function describeArgumentValue(value: ArgumentValue): {
       kind: 'KeyVal',
       value: value.KeyVal,
       content: null,
+      contentMode: null,
     }
   }
   if ('Column' in value) {
@@ -555,6 +541,7 @@ export function describeArgumentValue(value: ArgumentValue): {
       kind: 'Column',
       value: value.Column,
       content: null,
+      contentMode: null,
     }
   }
   if ('Boolean' in value) {
@@ -562,11 +549,13 @@ export function describeArgumentValue(value: ArgumentValue): {
       kind: 'Boolean',
       value: String(value.Boolean),
       content: null,
+      contentMode: null,
     }
   }
   return {
     kind: 'Unknown',
     content: null,
+    contentMode: null,
   }
 }
 

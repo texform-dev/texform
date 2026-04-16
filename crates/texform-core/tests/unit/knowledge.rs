@@ -531,3 +531,41 @@ fn test_spec_mismatch_commands_do_not_merge_under_public_loading() {
     assert_eq!(underline.allowed_mode, AllowedMode::Text);
     assert_from_packages(underline.from_packages, &["textmacros"]);
 }
+
+#[test]
+fn test_spec_mismatch_commands_split_by_target_mode() {
+    let math_kb = KnowledgeBase::try_build_from_packages_for_mode(
+        &["textmacros", "physics", "base"],
+        ContentMode::Math,
+    )
+    .expect("expected math kb build");
+    let text_kb = KnowledgeBase::try_build_from_packages_for_mode(
+        &["textmacros", "physics", "base"],
+        ContentMode::Text,
+    )
+    .expect("expected text kb build");
+
+    let math_underline = math_kb
+        .lookup_command("underline")
+        .expect("expected math underline command");
+    assert_eq!(math_underline.argspec.source, "m");
+    assert_eq!(math_underline.allowed_mode, AllowedMode::Math);
+    assert_from_packages(math_underline.from_packages, &["base"]);
+
+    let text_underline = text_kb
+        .lookup_command("underline")
+        .expect("expected text underline command");
+    assert_eq!(text_underline.argspec.source, "m:T");
+    assert_eq!(text_underline.allowed_mode, AllowedMode::Text);
+    assert_from_packages(text_underline.from_packages, &["textmacros"]);
+
+    let math_bbb = math_kb.lookup_command("Bbb").expect("expected math Bbb");
+    assert_eq!(math_bbb.argspec.source, "m");
+    assert_eq!(math_bbb.allowed_mode, AllowedMode::Math);
+    assert_from_packages(math_bbb.from_packages, &["base"]);
+
+    let text_bbb = text_kb.lookup_command("Bbb").expect("expected text Bbb");
+    assert_eq!(text_bbb.argspec.source, "m:T");
+    assert_eq!(text_bbb.allowed_mode, AllowedMode::Text);
+    assert_from_packages(text_bbb.from_packages, &["textmacros"]);
+}

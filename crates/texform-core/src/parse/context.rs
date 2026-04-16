@@ -282,14 +282,21 @@ impl ParseContextBuilder {
     }
 
     pub fn build(self) -> Result<ParseContext, ParseContextBuildError> {
-        let mut kb = if self.use_empty {
-            KnowledgeBase::empty()
+        let (mut math_kb, mut text_kb) = if self.use_empty {
+            (KnowledgeBase::empty(), KnowledgeBase::empty())
         } else if self.use_core_only {
-            KnowledgeBase::core_only()
+            (
+                KnowledgeBase::core_only_for_mode(ContentMode::Math),
+                KnowledgeBase::core_only_for_mode(ContentMode::Text),
+            )
         } else {
             let refs = self.packages.iter().map(String::as_str).collect::<Vec<_>>();
-            KnowledgeBase::try_build_from_packages(refs.as_slice())
-                .map_err(ParseContextBuildError::PackageLoad)?
+            (
+                KnowledgeBase::try_build_from_packages_for_mode(refs.as_slice(), ContentMode::Math)
+                    .map_err(ParseContextBuildError::PackageLoad)?,
+                KnowledgeBase::try_build_from_packages_for_mode(refs.as_slice(), ContentMode::Text)
+                    .map_err(ParseContextBuildError::PackageLoad)?,
+            )
         };
 
         let mut mutation_summary = MutationSummary::default();
@@ -298,38 +305,62 @@ impl ParseContextBuilder {
             match op {
                 BuilderOp::Insert(item) => {
                     record_insert(&mut mutation_summary, &item);
-                    kb.insert_item(item.clone()).map_err(|source| {
-                        ParseContextBuildError::InvalidContextItem {
+                    insert_item_into_lane(&mut math_kb, &item, ContentMode::Math).map_err(
+                        |source| ParseContextBuildError::InvalidContextItem {
                             name: item.name().to_string(),
                             source,
-                        }
-                    })?;
+                        },
+                    )?;
+                    insert_item_into_lane(&mut text_kb, &item, ContentMode::Text).map_err(
+                        |source| ParseContextBuildError::InvalidContextItem {
+                            name: item.name().to_string(),
+                            source,
+                        },
+                    )?;
                 }
                 BuilderOp::RemoveCommand(name) => {
                     mutation_summary.touched_commands.insert(name.clone());
-                    kb.remove_item(CommandItem::new(
-                        name,
-                        CommandKind::Prefix,
-                        AllowedMode::Math,
-                        "",
-                    ));
+                    let item = CommandItem::new(name, CommandKind::Prefix, AllowedMode::Math, "");
+                    math_kb.remove_item(item.clone());
+                    text_kb.remove_item(item);
                 }
                 BuilderOp::RemoveEnvironment(name) => {
                     mutation_summary.touched_environments.insert(name.clone());
-                    kb.remove_item(EnvironmentItem::new(
-                        name,
-                        AllowedMode::Math,
-                        ContentMode::Math,
-                        "",
-                    ));
+                    let item = EnvironmentItem::new(name, AllowedMode::Math, ContentMode::Math, "");
+                    math_kb.remove_item(item.clone());
+                    text_kb.remove_item(item);
                 }
                 BuilderOp::RemoveDelimiterControl(name) => {
-                    kb.remove_item(DelimiterControlItem::new(name));
+                    let item = DelimiterControlItem::new(name);
+                    math_kb.remove_item(item.clone());
+                    text_kb.remove_item(item);
                 }
             }
         }
 
-        Ok(ParseContext::from_parts(kb, mutation_summary))
+        Ok(ParseContext::from_parts(math_kb, text_kb, mutation_summary))
+    }
+}
+
+fn insert_item_into_lane(
+    kb: &mut KnowledgeBase,
+    item: &ContextItem,
+    mode: ContentMode,
+) -> Result<(), ArgSpecParseError> {
+    match item {
+        ContextItem::Command(command) => {
+            if command.allowed_mode.allows(mode) {
+                kb.insert_item(command.clone())?;
+            }
+            Ok(())
+        }
+        ContextItem::Environment(environment) => {
+            if environment.allowed_mode.allows(mode) {
+                kb.insert_item(environment.clone())?;
+            }
+            Ok(())
+        }
+        ContextItem::DelimiterControl(item) => kb.insert_item(item.clone()),
     }
 }
 
@@ -464,28 +495,31 @@ impl std::error::Error for ParseAstError {}
 ///
 #[derive(Clone)]
 pub struct ParseContext {
-    kb: KnowledgeBase,
+    math_kb: KnowledgeBase,
+    text_kb: KnowledgeBase,
     mutation_summary: MutationSummary,
 }
 
 impl std::fmt::Debug for ParseContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ParseContext")
-            .field("kb", &self.kb)
+            .field("math_kb", &self.math_kb)
+            .field("text_kb", &self.text_kb)
             .finish_non_exhaustive()
     }
 }
 
 impl ParseContext {
-    pub(crate) fn from_parts(kb: KnowledgeBase, mutation_summary: MutationSummary) -> Self {
+    pub(crate) fn from_parts(
+        math_kb: KnowledgeBase,
+        text_kb: KnowledgeBase,
+        mutation_summary: MutationSummary,
+    ) -> Self {
         ParseContext {
-            kb,
+            math_kb,
+            text_kb,
             mutation_summary,
         }
-    }
-
-    pub(crate) fn kb(&self) -> &KnowledgeBase {
-        &self.kb
     }
 
     pub(crate) fn mutation_summary(&self) -> &MutationSummary {
@@ -559,12 +593,14 @@ impl ParseContext {
 
     /// Check whether `name` is a registered delimiter control sequence.
     pub fn is_delimiter_control(&self, name: &str) -> bool {
-        self.kb.is_delimiter_control(name)
+        self.math_kb.is_delimiter_control(name) || self.text_kb.is_delimiter_control(name)
     }
 
     /// Look up a delimiter control by name, returning the interned name.
     pub fn lookup_delimiter_control(&self, name: &str) -> Option<&'static str> {
-        self.kb.lookup_delimiter_control(name)
+        self.math_kb
+            .lookup_delimiter_control(name)
+            .or_else(|| self.text_kb.lookup_delimiter_control(name))
     }
 
     /// Parse a LaTeX formula and return a unified output.
@@ -572,7 +608,7 @@ impl ParseContext {
     /// Uses chumsky's output+errors semantics so that a partial syntax tree
     /// can coexist with diagnostics. Set `strict` to reject unknown commands.
     pub fn parse(&self, src: &str, strict: bool) -> ParseOutput {
-        parse_with_kb(&self.kb, src, strict)
+        parse_with_context(self, src, strict)
     }
 
     pub fn parse_to_ast(&self, src: &str, strict: bool) -> Result<ParseAstOutput, ParseAstError> {
@@ -591,23 +627,57 @@ impl ParseContext {
     /// The active entry may come from an explicit command definition or a
     /// character-derived zero-arg view. Returns `None` if the name is unknown
     /// or has been suppressed.
-    pub fn lookup_command(&self, name: &str) -> Option<&CommandMeta> {
-        self.kb.lookup_command(name)
+    pub fn kb_for(&self, mode: ContentMode) -> &KnowledgeBase {
+        match mode {
+            ContentMode::Math => &self.math_kb,
+            ContentMode::Text => &self.text_kb,
+        }
+    }
+
+    pub fn math_kb(&self) -> &KnowledgeBase {
+        &self.math_kb
+    }
+
+    pub fn text_kb(&self) -> &KnowledgeBase {
+        &self.text_kb
+    }
+
+    /// Look up the active command metadata for `name` in the selected lane.
+    pub fn lookup_command(&self, name: &str, mode: ContentMode) -> Option<&CommandMeta> {
+        self.kb_for(mode).lookup_command(name)
     }
 
     /// Look up only the explicit (non-character-derived) command for `name`.
-    pub fn lookup_explicit_command(&self, name: &str) -> Option<&CommandMeta> {
-        self.kb.lookup_explicit_command(name)
+    pub fn lookup_explicit_command(&self, name: &str, mode: ContentMode) -> Option<&CommandMeta> {
+        self.kb_for(mode).lookup_explicit_command(name)
     }
 
     /// Look up character metadata for a control sequence name.
-    pub fn lookup_character(&self, name: &str) -> Option<&CharacterMeta> {
-        self.kb.lookup_character(name)
+    pub fn lookup_character(&self, name: &str, mode: ContentMode) -> Option<&CharacterMeta> {
+        self.kb_for(mode).lookup_character(name)
     }
 
     /// Look up environment metadata by name.
-    pub fn lookup_env(&self, name: &str) -> Option<&EnvMeta> {
-        self.kb.lookup_env(name)
+    pub fn lookup_env(&self, name: &str, mode: ContentMode) -> Option<&EnvMeta> {
+        self.kb_for(mode).lookup_env(name)
+    }
+
+    pub fn knows_command_name(&self, name: &str) -> bool {
+        self.knows_command_name_in(name, ContentMode::Math)
+            || self.knows_command_name_in(name, ContentMode::Text)
+    }
+
+    pub fn knows_env_name(&self, name: &str) -> bool {
+        self.knows_env_name_in(name, ContentMode::Math)
+            || self.knows_env_name_in(name, ContentMode::Text)
+    }
+
+    fn knows_command_name_in(&self, name: &str, mode: ContentMode) -> bool {
+        self.lookup_command(name, mode).is_some()
+    }
+
+    fn knows_env_name_in(&self, name: &str, mode: ContentMode) -> bool {
+        self.lookup_env(name, mode).is_some()
     }
 }
 
@@ -616,9 +686,9 @@ fn all_packages_ctx() -> &'static ParseContext {
     DEFAULT.get_or_init(ParseContext::all_packages)
 }
 
-pub(crate) fn parse_with_kb(kb: &KnowledgeBase, src: &str, strict: bool) -> ParseOutput {
+pub(crate) fn parse_with_context(ctx: &ParseContext, src: &str, strict: bool) -> ParseOutput {
     let token_stream = build_token_stream(src);
-    let (output, errors) = parse_raw(kb, src, token_stream, strict);
+    let (output, errors) = parse_raw(ctx, src, token_stream, strict);
 
     let result = output.map(|tracked| {
         let (node, span, records) = tracked.finish_root();
@@ -636,7 +706,7 @@ pub(crate) fn parse_with_kb(kb: &KnowledgeBase, src: &str, strict: bool) -> Pars
 
     let diagnostics = errors
         .into_iter()
-        .map(|err| convert_diagnostic(kb, src, err))
+        .map(|err| convert_diagnostic(ctx, src, err))
         .collect();
 
     ParseOutput {
@@ -646,12 +716,12 @@ pub(crate) fn parse_with_kb(kb: &KnowledgeBase, src: &str, strict: bool) -> Pars
 }
 
 fn parse_raw(
-    kb: &KnowledgeBase,
+    ctx: &ParseContext,
     src: &str,
     token_stream: TokenStream<'_>,
     strict: bool,
 ) -> (Option<TrackedNode>, Vec<Rich<'static, Token>>) {
-    let (output, errors) = parser::math_block_parser_with_source(kb, strict, src)
+    let (output, errors) = parser::math_block_parser_with_source(ctx, strict, src)
         .then_ignore(end())
         .parse(token_stream)
         .into_output_errors();
@@ -671,7 +741,7 @@ fn node_span_entry(entry: RelativeSpanEntry) -> NodeSpanEntry {
     }
 }
 
-fn convert_diagnostic(kb: &KnowledgeBase, src: &str, err: Rich<'static, Token>) -> ParseDiagnostic {
+fn convert_diagnostic(ctx: &ParseContext, src: &str, err: Rich<'static, Token>) -> ParseDiagnostic {
     let span = {
         let s = err.span();
         Span {
@@ -714,13 +784,14 @@ fn convert_diagnostic(kb: &KnowledgeBase, src: &str, err: Rich<'static, Token>) 
         contexts,
     };
 
-    supplement_diagnostic_contexts(kb, src, &mut diagnostic);
+    supplement_diagnostic_contexts(ctx, src, &mut diagnostic);
     diagnostic
 }
 
-fn supplement_diagnostic_contexts(kb: &KnowledgeBase, src: &str, diagnostic: &mut ParseDiagnostic) {
+fn supplement_diagnostic_contexts(ctx: &ParseContext, src: &str, diagnostic: &mut ParseDiagnostic) {
+    supplement_environment_mode_error_message(ctx, src, diagnostic);
     supplement_environment_mismatch_message(src, diagnostic);
-    supplement_unknown_environment_message(kb, src, diagnostic);
+    supplement_unknown_environment_message(ctx, src, diagnostic);
     supplement_argument_validation_span(src, diagnostic);
 
     let needs_left_context = matches!(
@@ -733,7 +804,7 @@ fn supplement_diagnostic_contexts(kb: &KnowledgeBase, src: &str, diagnostic: &mu
         return;
     }
 
-    let Some((left_span, env_span)) = find_invalid_left_context(kb, src) else {
+    let Some((left_span, env_span)) = find_invalid_left_context(ctx, src) else {
         return;
     };
 
@@ -761,6 +832,38 @@ fn supplement_diagnostic_contexts(kb: &KnowledgeBase, src: &str, diagnostic: &mu
     }
 }
 
+fn supplement_environment_mode_error_message(
+    ctx: &ParseContext,
+    src: &str,
+    diagnostic: &mut ParseDiagnostic,
+) {
+    let is_generic_parse_error = diagnostic.message.starts_with("found '")
+        && diagnostic.message.contains(" expected something else");
+    if !is_generic_parse_error {
+        return;
+    }
+
+    let Some((name, disallowed_mode, span)) =
+        find_environment_mode_error_at_span(ctx, src, diagnostic.span.clone()).or_else(|| {
+            if diagnostic.span.start == 0 {
+                find_first_known_but_disallowed_environment(ctx, src)
+            } else {
+                None
+            }
+        })
+    else {
+        return;
+    };
+
+    diagnostic.message = format!(
+        "Environment {} is not allowed in {} mode",
+        name, disallowed_mode
+    );
+    diagnostic.span = span;
+    diagnostic.expected.clear();
+    diagnostic.found = None;
+}
+
 fn supplement_environment_mismatch_message(src: &str, diagnostic: &mut ParseDiagnostic) {
     let is_generic_parse_error = matches!(
         diagnostic.message.as_str(),
@@ -786,7 +889,7 @@ fn supplement_environment_mismatch_message(src: &str, diagnostic: &mut ParseDiag
 }
 
 fn supplement_unknown_environment_message(
-    kb: &KnowledgeBase,
+    ctx: &ParseContext,
     src: &str,
     diagnostic: &mut ParseDiagnostic,
 ) {
@@ -799,7 +902,7 @@ fn supplement_unknown_environment_message(
         return;
     }
 
-    let Some((name, span)) = find_unknown_environment_at_span(kb, src, diagnostic.span.clone())
+    let Some((name, span)) = find_unknown_environment_at_span(ctx, src, diagnostic.span.clone())
     else {
         return;
     };
@@ -918,7 +1021,7 @@ fn find_argument_surface_span(src: &str, after: usize) -> Option<Span> {
     }
 }
 
-fn find_invalid_left_context(kb: &KnowledgeBase, src: &str) -> Option<(Span, Option<Span>)> {
+fn find_invalid_left_context(ctx: &ParseContext, src: &str) -> Option<(Span, Option<Span>)> {
     let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
         .spanned()
         .map(|(token, span)| {
@@ -966,7 +1069,9 @@ fn find_invalid_left_context(kb: &KnowledgeBase, src: &str) -> Option<(Span, Opt
                         true
                     }
                     Token::LBracket | Token::RBracket => true,
-                    Token::ControlSeq(name) => kb.lookup_delimiter_control(name.as_str()).is_some(),
+                    Token::ControlSeq(name) => {
+                        ctx.lookup_delimiter_control(name.as_str()).is_some()
+                    }
                     _ => false,
                 };
 
@@ -1080,7 +1185,7 @@ fn find_environment_name_mismatch(src: &str, target_span: Span) -> Option<(Strin
 }
 
 fn find_unknown_environment_at_span(
-    kb: &KnowledgeBase,
+    ctx: &ParseContext,
     src: &str,
     target_span: Span,
 ) -> Option<(String, Span)> {
@@ -1139,7 +1244,7 @@ fn find_unknown_environment_at_span(
             }
         }
 
-        if parsed_name.is_empty() || kb.lookup_env(parsed_name.as_str()).is_some() {
+        if parsed_name.is_empty() || ctx.knows_env_name(parsed_name.as_str()) {
             return None;
         }
 
@@ -1148,6 +1253,181 @@ fn find_unknown_environment_at_span(
             Span {
                 start: name_start,
                 end: name_end,
+            },
+        ));
+    }
+
+    None
+}
+
+fn find_first_known_but_disallowed_environment(
+    ctx: &ParseContext,
+    src: &str,
+) -> Option<(String, ContentMode, Span)> {
+    let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
+        .spanned()
+        .map(|(token, span)| {
+            let token = token.unwrap_or_else(|()| {
+                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
+            });
+            (token, span)
+        })
+        .collect();
+
+    let mut index = 0;
+    while index < tokens.len() {
+        let Some((Token::ControlSeq(name), head_span)) = tokens.get(index) else {
+            index += 1;
+            continue;
+        };
+        if name != "begin" {
+            index += 1;
+            continue;
+        }
+
+        let begin_start = head_span.start;
+        index += 1;
+        while matches!(tokens.get(index), Some((Token::Whitespaces, _))) {
+            index += 1;
+        }
+        if !matches!(tokens.get(index), Some((Token::LBrace, _))) {
+            continue;
+        }
+        index += 1;
+
+        let mut parsed_name = String::new();
+        while let Some((token, _)) = tokens.get(index) {
+            match token {
+                Token::Char(ch) => {
+                    parsed_name.push(*ch);
+                    index += 1;
+                }
+                Token::Star => {
+                    parsed_name.push('*');
+                    index += 1;
+                }
+                Token::RBrace => break,
+                _ => return None,
+            }
+        }
+
+        let Some((Token::RBrace, close_span)) = tokens.get(index) else {
+            return None;
+        };
+        if parsed_name.is_empty() {
+            index += 1;
+            continue;
+        }
+
+        let math_known = ctx
+            .lookup_env(parsed_name.as_str(), ContentMode::Math)
+            .is_some();
+        let text_known = ctx
+            .lookup_env(parsed_name.as_str(), ContentMode::Text)
+            .is_some();
+        let disallowed_mode = match (math_known, text_known) {
+            (false, true) => ContentMode::Math,
+            (true, false) => ContentMode::Text,
+            _ => {
+                index += 1;
+                continue;
+            }
+        };
+
+        return Some((
+            parsed_name,
+            disallowed_mode,
+            Span {
+                start: begin_start,
+                end: close_span.end,
+            },
+        ));
+    }
+
+    None
+}
+
+fn find_environment_mode_error_at_span(
+    ctx: &ParseContext,
+    src: &str,
+    target_span: Span,
+) -> Option<(String, ContentMode, Span)> {
+    let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
+        .spanned()
+        .map(|(token, span)| {
+            let token = token.unwrap_or_else(|()| {
+                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
+            });
+            (token, span)
+        })
+        .collect();
+
+    let mut index = 0;
+    while index < tokens.len() {
+        let Some((Token::ControlSeq(name), _)) = tokens.get(index) else {
+            index += 1;
+            continue;
+        };
+        if name != "begin" {
+            index += 1;
+            continue;
+        }
+
+        let begin_start = tokens[index].1.start;
+        index += 1;
+        while matches!(tokens.get(index), Some((Token::Whitespaces, _))) {
+            index += 1;
+        }
+        if !matches!(tokens.get(index), Some((Token::LBrace, _))) {
+            continue;
+        }
+        index += 1;
+
+        let mut parsed_name = String::new();
+        while let Some((token, _)) = tokens.get(index) {
+            match token {
+                Token::Char(ch) => {
+                    parsed_name.push(*ch);
+                    index += 1;
+                }
+                Token::Star => {
+                    parsed_name.push('*');
+                    index += 1;
+                }
+                Token::RBrace => break,
+                _ => return None,
+            }
+        }
+
+        let Some((Token::RBrace, close_span)) = tokens.get(index) else {
+            return None;
+        };
+
+        let matches_target =
+            close_span.start == target_span.start || close_span.end == target_span.end;
+        if !matches_target || parsed_name.is_empty() {
+            index += 1;
+            continue;
+        }
+
+        let math_known = ctx
+            .lookup_env(parsed_name.as_str(), ContentMode::Math)
+            .is_some();
+        let text_known = ctx
+            .lookup_env(parsed_name.as_str(), ContentMode::Text)
+            .is_some();
+        let disallowed_mode = match (math_known, text_known) {
+            (false, true) => ContentMode::Math,
+            (true, false) => ContentMode::Text,
+            _ => return None,
+        };
+
+        return Some((
+            parsed_name,
+            disallowed_mode,
+            Span {
+                start: begin_start,
+                end: close_span.end,
             },
         ));
     }
