@@ -4,7 +4,8 @@ This directory stores concrete transform rules.
 
 ## Adding a New Rule
 
-1. Create a new `.rs` file in this directory (e.g., `my_rule.rs`).
+1. Create a new `.rs` file anywhere under this directory tree (e.g., `my_rule.rs`
+   or `desugar/my_rule.rs`).
 2. Define and export exactly one `pub static MY_RULE: MyRuleType` where the
    constant name is the UPPER_SNAKE_CASE form of the file stem.
 3. That's it — the build script auto-discovers the file and registers it.
@@ -101,21 +102,23 @@ Authoring rules with package variants follows three constraints:
    Runtime matching is name-based, so the package of the chosen record does not
    affect behavior.
 
-The compile step enforces one invariant in debug builds:
+Package variants are collapsed by `RuleTargetKey` (`kind + name`) when the
+transform plan is built and executed:
 
 1. All same-name package variants inside one target group must stay
-   structurally consistent. Violations are programming errors and trip a
-   `debug_assert!`.
-2. Structurally consistent variants are availability-equivalent for the same
-   active record, so grouping them does not change single-variant semantics.
+   structurally consistent. Mixing incompatible variants is an authoring bug.
+2. Structurally consistent variants collapse to the same runtime dependency key,
+   so grouping them does not change topo sort, cleanup-boundary checks, or
+   eliminated-form derivation.
 
-Trigger availability is intentionally not validated at compile time:
+Trigger availability is intentionally not validated during transform-context
+construction:
 
 1. Triggers are only OR-matched by the engine at runtime.
-2. Triggers do not participate in topo sort or normal-form contract derivation.
-3. A missing trigger therefore degrades to a no-op instead of a compile error.
-   If a rule never fires but still promises to eliminate a form, final contract
-   validation catches the mismatch.
+2. Triggers do not participate in topo sort or eliminated-form derivation.
+3. A missing trigger therefore degrades to a no-op instead of a build error.
+   If a recognized form still remains after a rule promises to eliminate it,
+   final eliminated-form validation catches the mismatch.
 
 ## define_rule!
 
@@ -147,7 +150,7 @@ define_rule! {
 Prefer this macro for rules that:
 
 1. Rebuild nodes or subtrees
-2. Need shape validation with `TransformContext`
+2. Need shape validation with `RuleContext`
 3. Need bespoke matching logic beyond simple rename canonicalization
 
 The inline form always binds an explicit rule variable, such as `rule`, so the
@@ -221,17 +224,17 @@ For shared transform helpers, import the specific functions you use:
 use crate::transform::helpers::{mandatory_content, prefix_command};
 ```
 
-Use `TransformContext` helpers for node matching and shape checks when possible:
+Use `RuleContext` helpers for node matching and shape checks when possible:
 
 ```rust
 let Some(infix) = cx.match_infix(node_id, &base::cmd::OVER) else {
     return Ok(RuleEffect::Skipped);
 };
-cx.expect_no_args(self.meta().key, infix.args, "\\over")?;
+cx.expect_no_args(rule.meta().key, infix.args, "\\over")?;
 ```
 
 Preferred style:
 
 1. Keep package prefixes for builtin records, such as `base::cmd::OVER`
 2. Import shared constructor helpers directly, such as `prefix_command` and `mandatory_content`
-3. Prefer `TransformContext` match/shape helpers over open-coded `match` + repeated error construction
+3. Prefer `RuleContext` match/shape helpers over open-coded `match` + repeated error construction
