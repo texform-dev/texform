@@ -23,9 +23,9 @@ use texform_interface::syntax_node::{
 
 use super::{
     ArgumentParser, ContentParser, ParserError, ParserInput, ParserInputExt, TokenStream,
-    TrackedNode, build_token_stream, delimiter, insignificant_whitespace, math_block_parser,
-    math_item_parser, maybe_braced, maybe_braced_or_empty, optional_bracketed,
-    optional_bracketed_or_empty, text_block_parser, text_item_parser,
+    TrackedNode, build_token_stream, content_block_parser_with_source, delimiter,
+    insignificant_whitespace, math_item_parser, maybe_braced, maybe_braced_or_empty,
+    optional_bracketed, optional_bracketed_or_empty, shift_owned_rich_span, text_item_parser,
 };
 
 /// Parsed argument slot bundled with span metadata for node-span tracking.
@@ -139,84 +139,206 @@ fn collect_delimited_tokens<'src, 'parse>(
 /// the appropriate mode parser. This two-phase approach isolates delimiter
 /// nesting from the main combinator graph.
 ///
-/// Re-parse collected tokens as content, returning a `TrackedNode` with spans
-/// offset back to the original source position. The outer implicit group
-/// produced by the block parser is normalized away via [`TrackedNode::fold`].
-fn parse_tokens_as_content<'src, 'parse>(
-    input: &mut ParserInput<'src, 'parse>,
-    ctx: &'parse ParseContext,
+/// Re-parse a delimited content slice in isolation and return both the best
+/// recoverable tree and the diagnostics that still need to surface at the top.
+///
+/// Keeping the diagnostics alongside the optional tree lets the caller decide
+/// whether this subparse should stay recoverable or fall back to the outer
+/// argument error path without re-running the parser.
+fn parse_content_substream(
+    ctx: &ParseContext,
     mode: ContentMode,
-    tokens: Vec<Token>,
+    tokens: &[Token],
     strict: bool,
     source_offset: usize,
-) -> Result<TrackedNode, Rich<'src, Token>> {
+) -> (Option<TrackedNode>, Vec<Rich<'static, Token>>) {
     let src = tokens_to_string(&tokens);
     let token_stream = build_token_stream(src.as_str());
-    let parser = match mode {
-        ContentMode::Math => math_block_parser(ctx, strict),
-        ContentMode::Text => text_block_parser(ctx, strict),
-    };
+    let parser = content_block_parser_with_source(mode, ctx, strict, src.as_str());
 
     let (tracked, errors) = parser
         .then_ignore(end())
         .parse(token_stream)
         .into_output_errors();
 
-    let tracked = if errors.is_empty() {
-        tracked
+    let shifted_errors: Vec<_> = errors
+        .into_iter()
+        .map(|err| shift_owned_rich_span(err.into_owned(), source_offset))
+        .collect();
+    let diagnostics = filter_outer_errors(shifted_errors.clone(), source_offset + src.len());
+
+    let (tracked, diagnostics) = if let Some(tracked) = tracked {
+        (Some(tracked), diagnostics)
+    } else if let Some((tracked, recover_diagnostics)) = recover_direct_error_substream(
+        mode,
+        ctx,
+        strict,
+        src.as_str(),
+        source_offset,
+        shifted_errors.as_slice(),
+    ) {
+        (Some(tracked), recover_diagnostics)
     } else {
-        if matches!(mode, ContentMode::Text)
-            && let Some(script_span) =
-                find_text_script_marker_span(tokens.as_slice(), source_offset)
-        {
-            return Err(Rich::custom(
-                script_span,
-                "Scripted syntax is not allowed in Text mode",
-            ));
-        }
+        (None, diagnostics)
+    };
 
-        let propagated_error = errors
-            .into_iter()
-            .filter(|err| match err.reason() {
-                chumsky::error::RichReason::Custom(message) => !matches!(
-                    message.as_str(),
-                    "not a command"
-                        | "unknown"
-                        | "content recovery must consume at least one token"
-                ),
-                chumsky::error::RichReason::ExpectedFound { .. } => false,
-            })
-            .max_by_key(|err| {
-                let span = err.span();
-                (span.end, span.start)
-            });
+    let tracked = tracked.map(|tracked| {
+        normalize_content_subparse(mode, tracked.offset(source_offset))
+            .with_diagnostics(diagnostics.clone())
+    });
 
-        if let Some(inner_error) = propagated_error {
-            let message = match inner_error.reason() {
-                chumsky::error::RichReason::Custom(message) => message,
-                chumsky::error::RichReason::ExpectedFound { .. } => unreachable!(),
-            };
-            let inner_span = inner_error.span();
-            let shifted_span = SimpleSpan::new(
-                (),
-                source_offset + inner_span.start..source_offset + inner_span.end,
-            );
-            return Err(Rich::custom(shifted_span, message.clone()));
-        }
+    (tracked, diagnostics)
+}
 
-        let cursor = input.cursor();
-        return Err(input.err_peek_or_point(&cursor, "failed to parse delimited argument content"));
+// Retry the block parser without `end()` and only accept it when it surfaces a direct inner error.
+fn recover_direct_error_substream(
+    mode: ContentMode,
+    ctx: &ParseContext,
+    strict: bool,
+    src: &str,
+    source_offset: usize,
+    shifted_errors: &[Rich<'static, Token>],
+) -> Option<(TrackedNode, Vec<Rich<'static, Token>>)> {
+    let recover_end = shifted_errors
+        .iter()
+        .filter(|err| {
+            matches!(
+                err.reason(),
+                chumsky::error::RichReason::ExpectedFound { .. }
+            )
+        })
+        .map(|err| err.span().start.saturating_sub(source_offset))
+        .min()
+        .unwrap_or(src.len());
+    let recover_src = src.get(..recover_end).unwrap_or(src);
+    let token_stream = build_token_stream(recover_src);
+    let parser = content_block_parser_with_source(mode, ctx, strict, recover_src);
+    let (tracked, errors) = parser.parse(token_stream).into_output_errors();
+    let diagnostics: Vec<_> = errors
+        .into_iter()
+        .map(|err| shift_owned_rich_span(err.into_owned(), source_offset))
+        .collect();
+
+    let tracked_has_direct = tracked
+        .as_ref()
+        .is_some_and(|tracked| tracked.diagnostics.iter().any(is_direct_custom_error));
+
+    if !tracked_has_direct && !diagnostics.iter().any(is_direct_custom_error) {
+        return None;
     }
-    .expect("content parse without errors must produce a node");
 
-    // The sub-stream spans start at 0; shift them to the original source position.
-    // Then normalize (strip outer group from block parser output).
-    let tracked = tracked.offset(source_offset);
+    tracked.map(|tracked| (tracked, diagnostics))
+}
+
+/// Drop only the synthetic `then_ignore(end())` tail error when the subparse
+/// already produced a more specific direct diagnostic for the same content.
+fn filter_outer_errors(
+    diagnostics: Vec<Rich<'static, Token>>,
+    subparse_end: usize,
+) -> Vec<Rich<'static, Token>> {
+    let first_direct_start = diagnostics
+        .iter()
+        .filter(|err| is_direct_custom_error(err))
+        .map(|err| err.span().start)
+        .min();
+
+    diagnostics
+        .into_iter()
+        .filter(|err| !is_trailing_outer_error(err, subparse_end, first_direct_start))
+        .collect()
+}
+
+/// Only custom diagnostics that describe a real inner parse failure should
+/// suppress the trailing outer `ExpectedFound` wrapper error.
+fn is_direct_custom_error(err: &Rich<'static, Token>) -> bool {
+    match err.reason() {
+        chumsky::error::RichReason::Custom(message) => !matches!(
+            message.as_str(),
+            "not a command" | "unknown" | "content recovery must consume at least one token"
+        ),
+        chumsky::error::RichReason::ExpectedFound { .. } => false,
+    }
+}
+
+/// Keep recoverable error nodes in sync with the public diagnostic wording for
+/// inner generic content failures that get normalized later during conversion.
+fn normalized_inner_generic_message(err: &Rich<'static, Token>) -> String {
+    let message = format!("{err}");
+    if matches!(
+        message.as_str(),
+        "found '$' expected something else, or '$'"
+            | "found end of input expected something else, or '$'"
+    ) {
+        "found '$' expected something else, or end of input".to_string()
+    } else {
+        message
+    }
+}
+
+/// Rebuild the inner generic parse error in the caller lifetime without
+/// degrading it to a custom message-only diagnostic.
+fn rebuild_generic_expected_found<'src>(err: &Rich<'static, Token>) -> Rich<'src, Token> {
+    match err.reason() {
+        chumsky::error::RichReason::ExpectedFound { expected, found } => {
+            <Rich<'src, Token> as LabelError<
+                'src,
+                TokenStream<'src>,
+                chumsky::error::RichPattern<'src, Token>,
+            >>::expected_found(expected.iter().cloned(), found.clone(), *err.span())
+        }
+        chumsky::error::RichReason::Custom(_) => unreachable!(),
+    }
+}
+
+// Rebuild an owned inner error in the caller lifetime without changing its span or contexts.
+fn rebuild_owned_rich<'src>(err: &Rich<'static, Token>) -> Rich<'src, Token> {
+    let mut rebuilt = match err.reason() {
+        chumsky::error::RichReason::Custom(message) => Rich::custom(*err.span(), message.clone()),
+        chumsky::error::RichReason::ExpectedFound { .. } => rebuild_generic_expected_found(err),
+    };
+
+    for (label, span) in err.contexts() {
+        <Rich<'src, Token> as LabelError<'src, TokenStream<'src>, String>>::in_context(
+            &mut rebuilt,
+            label.to_string(),
+            *span,
+        );
+    }
+
+    rebuilt
+}
+
+/// Keep this predicate intentionally narrow so we do not swallow generic parse
+/// errors that still carry useful information away from the subparse tail.
+fn is_trailing_outer_error(
+    err: &Rich<'static, Token>,
+    subparse_end: usize,
+    first_direct_start: Option<usize>,
+) -> bool {
+    let Some(first_direct_start) = first_direct_start else {
+        return false;
+    };
+
+    if !matches!(
+        err.reason(),
+        chumsky::error::RichReason::ExpectedFound { .. }
+    ) {
+        return false;
+    }
+
+    let span = err.span();
+    span.end == subparse_end && span.start > first_direct_start
+}
+
+/// Content argument parsing wants the inner items, not the block parser's
+/// wrapper group, but the aggregated diagnostics still belong to the returned
+/// content node after the wrapper is stripped away.
+fn normalize_content_subparse(mode: ContentMode, tracked: TrackedNode) -> TrackedNode {
     let content_span = tracked.span;
-    Ok(match tracked.node {
+    let existing_diagnostics = tracked.diagnostics.clone();
+
+    let normalized = match tracked.node {
         SyntaxNode::Group { children, .. } => {
-            // Reconstruct TrackedNodes from decomposed children + records to fold properly.
-            // The block parser always produces an implicit group with child.N records.
             let mut items = Vec::with_capacity(children.len());
             for (i, child_node) in children.into_iter().enumerate() {
                 let prefix = format!("child.{i}");
@@ -242,12 +364,78 @@ fn parse_tokens_as_content<'src, 'parse>(
                     node: child_node,
                     span: child_span,
                     records: child_records,
+                    diagnostics: Vec::new(),
                 });
             }
             TrackedNode::fold(mode, items, content_span)
         }
         other => TrackedNode::leaf(other, content_span),
-    })
+    };
+
+    normalized.with_diagnostics(existing_diagnostics)
+}
+
+/// Convert a collected token slice into an argument value while preserving the
+/// most specific inner diagnostic we have. The generic outer argument error is
+/// only a last resort once the subparse produced neither a recoverable tree nor
+/// a useful direct diagnostic.
+fn parse_tokens_as_content<'src, 'parse>(
+    input: &mut ParserInput<'src, 'parse>,
+    ctx: &'parse ParseContext,
+    mode: ContentMode,
+    tokens: Vec<Token>,
+    strict: bool,
+    source_offset: usize,
+) -> Result<TrackedNode, Rich<'src, Token>> {
+    let (content, diagnostics) = parse_content_substream(ctx, mode, &tokens, strict, source_offset);
+    if let Some(content) = content {
+        return Ok(content);
+    }
+
+    let propagated_error = diagnostics
+        .iter()
+        .filter(|err| is_direct_custom_error(err))
+        .max_by_key(|err| {
+            let span = err.span();
+            (span.end, span.start)
+        });
+
+    if let Some(inner_error) = propagated_error {
+        return Err(rebuild_owned_rich(inner_error));
+    }
+
+    let generic_error = diagnostics
+        .iter()
+        .filter(|err| {
+            matches!(
+                err.reason(),
+                chumsky::error::RichReason::ExpectedFound { .. }
+            )
+        })
+        .max_by_key(|err| {
+            let span = err.span();
+            (span.end, span.start)
+        });
+
+    if let Some(generic_error) = generic_error {
+        if strict {
+            return Err(rebuild_owned_rich(generic_error));
+        }
+
+        let snippet = tokens_to_string(tokens.as_slice());
+        let span = SimpleSpan::new((), source_offset..source_offset + snippet.len());
+        return Ok(TrackedNode::leaf(
+            SyntaxNode::Error {
+                message: normalized_inner_generic_message(generic_error),
+                snippet,
+            },
+            span,
+        )
+        .with_diagnostics(diagnostics));
+    }
+
+    let cursor = input.cursor();
+    Err(input.err_peek_or_point(&cursor, "failed to parse delimited argument content"))
 }
 
 /// Parse collected tokens into the [`ArgumentValue`] dictated by `kind`.
@@ -447,6 +635,7 @@ pub(super) fn argument_parser<'a>(
                                 node: normalize_argument_value(mode, item.node.clone()),
                                 span: item.span,
                                 records: item.records,
+                                diagnostics: item.diagnostics,
                             };
                             Ok(TrackedArgumentSlot {
                                 slot: Some(Argument::from_value(
@@ -1015,47 +1204,6 @@ fn tokens_to_string(tokens: &[Token]) -> String {
         }
     }
     out
-}
-
-fn find_text_script_marker_span(tokens: &[Token], source_offset: usize) -> Option<SimpleSpan> {
-    let mut byte_pos = source_offset;
-    let mut in_inline_math = false;
-
-    for token in tokens {
-        let token_len = token_source_len(token);
-        let token_span = SimpleSpan::new((), byte_pos..byte_pos + token_len);
-
-        match token {
-            Token::MathShift => in_inline_math = !in_inline_math,
-            Token::Superscript | Token::Subscript if !in_inline_math => return Some(token_span),
-            _ => {}
-        }
-
-        byte_pos += token_len;
-    }
-
-    None
-}
-
-fn token_source_len(token: &Token) -> usize {
-    match token {
-        Token::ControlSeq(name) => name.len() + 1,
-        Token::Char(c) => c.len_utf8(),
-        Token::Prime(count) => *count,
-        Token::Comment => 0,
-        Token::Star
-        | Token::Alignment
-        | Token::MathShift
-        | Token::Parameter
-        | Token::Superscript
-        | Token::Subscript
-        | Token::ActiveChar
-        | Token::LBracket
-        | Token::RBracket
-        | Token::LBrace
-        | Token::RBrace
-        | Token::Whitespaces => 1,
-    }
 }
 
 /// Validate that `raw` is a well-formed `key=value,…` sequence.

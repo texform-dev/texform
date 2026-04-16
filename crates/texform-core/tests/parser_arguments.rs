@@ -1,5 +1,8 @@
 use texform_core::api::parse_with_context_items;
-use texform_core::parse::{AllowedMode, CommandItem, CommandKind, ContextItem, ParseOutput};
+use texform_core::parse::{
+    AllowedMode, CommandItem, CommandKind, ContextItem, ParseContext, ParseContextBuilder,
+    ParseOutput,
+};
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentValue, Delimiter, SyntaxNode,
 };
@@ -19,6 +22,33 @@ fn parse_single(items: &[ContextItem], src: &str, strict: bool) -> ParseOutput {
     outputs.remove(0).output
 }
 
+fn text_command_item() -> ContextItem {
+    command_item("text", CommandKind::Prefix, AllowedMode::Math, "m:T")
+}
+
+fn frac_command_item() -> ContextItem {
+    command_item("frac", CommandKind::Prefix, AllowedMode::Math, "m m")
+}
+
+fn underline_math_item() -> ContextItem {
+    command_item("underline", CommandKind::Prefix, AllowedMode::Math, "m")
+}
+
+fn underline_text_item() -> ContextItem {
+    command_item("underline", CommandKind::Prefix, AllowedMode::Text, "m:T")
+}
+
+fn content_test_context() -> ParseContext {
+    ParseContextBuilder::new()
+        .core_only()
+        .insert_item(text_command_item())
+        .insert_item(frac_command_item())
+        .insert_item(underline_math_item())
+        .insert_item(underline_text_item())
+        .build()
+        .expect("content test context should build")
+}
+
 fn expect_arg(slot: &Option<Argument>) -> &Argument {
     slot.as_ref()
         .unwrap_or_else(|| panic!("expected argument slot to be present"))
@@ -35,6 +65,93 @@ fn first_command(output: &ParseOutput) -> (&str, &Vec<Option<Argument>>) {
             other => panic!("expected command node, got {:?}", other),
         },
         other => panic!("expected root group, got {:?}", other),
+    }
+}
+
+fn collect_messages(output: &ParseOutput) -> Vec<&str> {
+    output
+        .diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.message.as_str())
+        .collect()
+}
+
+fn assert_first_diagnostic_span_eq(output: &ParseOutput, src: &str, expected: &str) {
+    let diagnostic = output
+        .diagnostics
+        .first()
+        .expect("expected at least one diagnostic");
+    assert_eq!(&src[diagnostic.span.start..diagnostic.span.end], expected);
+}
+
+fn slot_contains_command_named(slot: &Option<Argument>, expected: &str) -> bool {
+    slot.as_ref().is_some_and(|arg| match &arg.value {
+        ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
+            contains_command_named(node, expected)
+        }
+        _ => false,
+    })
+}
+
+fn contains_command_named(node: &SyntaxNode, expected: &str) -> bool {
+    match node {
+        SyntaxNode::Command { name, .. } if name == expected => true,
+        SyntaxNode::Group { children, .. } => children
+            .iter()
+            .any(|child| contains_command_named(child, expected)),
+        SyntaxNode::Command { args, .. } => args
+            .iter()
+            .any(|slot| slot_contains_command_named(slot, expected)),
+        SyntaxNode::Declarative { args, scope, .. } => {
+            args.iter()
+                .any(|slot| slot_contains_command_named(slot, expected))
+                || contains_command_named(scope, expected)
+        }
+        SyntaxNode::Environment { args, body, .. } => {
+            args.iter()
+                .any(|slot| slot_contains_command_named(slot, expected))
+                || contains_command_named(body, expected)
+        }
+        SyntaxNode::Infix {
+            args, left, right, ..
+        } => {
+            args.iter()
+                .any(|slot| slot_contains_command_named(slot, expected))
+                || contains_command_named(left, expected)
+                || contains_command_named(right, expected)
+        }
+        _ => false,
+    }
+}
+
+fn slot_contains_error(slot: &Option<Argument>) -> bool {
+    slot.as_ref().is_some_and(|arg| match &arg.value {
+        ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
+            contains_error_node(node)
+        }
+        _ => false,
+    })
+}
+
+fn contains_error_node(node: &SyntaxNode) -> bool {
+    match node {
+        SyntaxNode::Error { .. } => true,
+        SyntaxNode::Group { children, .. } => children.iter().any(contains_error_node),
+        SyntaxNode::Command { args, .. } => args.iter().any(slot_contains_error),
+        SyntaxNode::Declarative { args, scope, .. } => {
+            args.iter().any(slot_contains_error) || contains_error_node(scope)
+        }
+        SyntaxNode::Environment { args, body, .. } => {
+            args.iter().any(slot_contains_error) || contains_error_node(body)
+        }
+        SyntaxNode::Infix {
+            args, left, right, ..
+        } => {
+            args.iter().any(slot_contains_error)
+                || contains_error_node(left)
+                || contains_error_node(right)
+        }
+        _ => false,
     }
 }
 
@@ -251,4 +368,73 @@ fn mandatory_argument_normalizes_single_explicit_group() {
         expect_arg(&args[0]).value,
         ArgumentValue::MathContent(SyntaxNode::Char('x'))
     );
+}
+
+#[test]
+fn text_content_generic_only_error_keeps_expected_found_diagnostic() {
+    let items = [text_command_item()];
+
+    let output = parse_single(&items, r"\text{$x}", true);
+
+    assert!(
+        output.result.is_none(),
+        "strict mode should not keep a partial result"
+    );
+    assert_eq!(
+        collect_messages(&output),
+        vec!["found '$' expected something else, or end of input"]
+    );
+    assert!(
+        !output.diagnostics[0].expected.is_empty(),
+        "expected/found details should stay available"
+    );
+}
+
+#[test]
+fn strict_text_content_command_error_points_to_inner_command() {
+    let src = r"\text{\frac{a}{b}}";
+    let items = [text_command_item(), frac_command_item()];
+
+    let output = parse_single(&items, src, true);
+
+    assert_eq!(
+        collect_messages(&output),
+        vec![r"Command \frac is not allowed in text mode"]
+    );
+    assert_first_diagnostic_span_eq(&output, src, r"\frac");
+}
+
+#[test]
+fn strict_text_content_command_error_has_no_partial_result() {
+    let items = [text_command_item(), frac_command_item()];
+
+    let output = parse_single(&items, r"\text{\frac{a}{b}}", true);
+
+    assert!(
+        output.result.is_none(),
+        "strict content argument errors should not keep a partial result"
+    );
+    assert_eq!(
+        collect_messages(&output),
+        vec![r"Command \frac is not allowed in text mode"]
+    );
+}
+
+#[test]
+fn nonstrict_text_content_direct_error_survives_trailing_generic() {
+    let ctx = content_test_context();
+    let output = ctx.parse(r"\text{\underline{a^2}$}", false);
+
+    assert_eq!(
+        collect_messages(&output),
+        vec!["Scripted syntax is not allowed in Text mode"]
+    );
+
+    let result = output
+        .result
+        .as_ref()
+        .expect("non-strict direct error should keep a partial result");
+    assert!(contains_command_named(&result.node, "text"));
+    assert!(contains_command_named(&result.node, "underline"));
+    assert!(contains_error_node(&result.node));
 }

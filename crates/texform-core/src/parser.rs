@@ -75,6 +75,7 @@ pub(crate) struct TrackedNode {
     pub node: SyntaxNode,
     pub span: SimpleSpan,
     pub records: Vec<RelativeSpanEntry>,
+    diagnostics: Vec<Rich<'static, Token>>,
 }
 
 impl TrackedNode {
@@ -84,7 +85,13 @@ impl TrackedNode {
             node,
             span,
             records: Vec::new(),
+            diagnostics: Vec::new(),
         }
+    }
+
+    pub(crate) fn with_diagnostics(mut self, diagnostics: Vec<Rich<'static, Token>>) -> Self {
+        self.diagnostics.extend(diagnostics);
+        self
     }
 
     /// Shift all spans by `offset` bytes. Used when content was re-parsed from
@@ -101,11 +108,23 @@ impl TrackedNode {
                     span: SimpleSpan::new((), e.span.start + offset..e.span.end + offset),
                 })
                 .collect(),
+            diagnostics: self
+                .diagnostics
+                .into_iter()
+                .map(|err| shift_owned_rich_span(err, offset))
+                .collect(),
         }
     }
 
     /// Finalize into the root-prefixed record list consumed by `ParseResult`.
-    pub(crate) fn finish_root(self) -> (SyntaxNode, SimpleSpan, Vec<RelativeSpanEntry>) {
+    pub(crate) fn finish_root(
+        self,
+    ) -> (
+        SyntaxNode,
+        SimpleSpan,
+        Vec<RelativeSpanEntry>,
+        Vec<Rich<'static, Token>>,
+    ) {
         let mut records = vec![RelativeSpanEntry {
             path: "root".to_string(),
             span: self.span,
@@ -116,27 +135,40 @@ impl TrackedNode {
                 span: entry.span,
             });
         }
-        (self.node, self.span, records)
+        (self.node, self.span, records, self.diagnostics)
     }
 
     /// Extract syntax nodes and `child.N` records from tracked children.
-    fn decompose_children(children: Vec<TrackedNode>) -> (Vec<SyntaxNode>, Vec<RelativeSpanEntry>) {
+    fn decompose_children(
+        children: Vec<TrackedNode>,
+    ) -> (
+        Vec<SyntaxNode>,
+        Vec<RelativeSpanEntry>,
+        Vec<Rich<'static, Token>>,
+    ) {
         let mut records = Vec::new();
+        let mut diagnostics = Vec::new();
         let mut nodes = Vec::with_capacity(children.len());
         for (index, child) in children.iter().enumerate() {
             records.extend(prefix_records(&format!("{CHILD}.{index}"), child));
+            extend_unique_diagnostics(&mut diagnostics, child.diagnostics.iter().cloned());
         }
         for child in children {
             nodes.push(child.node);
         }
-        (nodes, records)
+        (nodes, records, diagnostics)
     }
 
     /// Extract argument slots and `arg.N` / `arg.N.content` records.
     fn decompose_args(
         slots: Vec<TrackedArgumentSlot>,
-    ) -> (Vec<ArgumentSlot>, Vec<RelativeSpanEntry>) {
+    ) -> (
+        Vec<ArgumentSlot>,
+        Vec<RelativeSpanEntry>,
+        Vec<Rich<'static, Token>>,
+    ) {
         let mut records = Vec::new();
+        let mut diagnostics = Vec::new();
         for (index, arg) in slots.iter().enumerate() {
             if let Some(arg_span) = arg.span {
                 let arg_path = format!("{ARG}.{index}");
@@ -146,11 +178,15 @@ impl TrackedNode {
                 });
                 if let Some(content) = &arg.content {
                     records.extend(prefix_records(&format!("{arg_path}.{CONTENT}"), content));
+                    extend_unique_diagnostics(
+                        &mut diagnostics,
+                        content.diagnostics.iter().cloned(),
+                    );
                 }
             }
         }
         let slots = slots.into_iter().map(|a| a.slot).collect();
-        (slots, records)
+        (slots, records, diagnostics)
     }
 
     /// `fold_items` equivalent that preserves span records.
@@ -173,7 +209,7 @@ impl TrackedNode {
                 TrackedNode { span, ..child }
             }
             _ => {
-                let (nodes, records) = TrackedNode::decompose_children(items);
+                let (nodes, records, diagnostics) = TrackedNode::decompose_children(items);
                 TrackedNode {
                     node: SyntaxNode::Group {
                         mode,
@@ -182,6 +218,7 @@ impl TrackedNode {
                     },
                     span,
                     records,
+                    diagnostics,
                 }
             }
         }
@@ -212,6 +249,114 @@ fn prefix_records(prefix: &str, child: &TrackedNode) -> Vec<RelativeSpanEntry> {
         });
     }
     records
+}
+
+// Nested content reparses can surface the same inner diagnostic at multiple wrapper levels.
+fn extend_unique_diagnostics(
+    diagnostics: &mut Vec<Rich<'static, Token>>,
+    incoming: impl IntoIterator<Item = Rich<'static, Token>>,
+) {
+    for candidate in incoming {
+        if diagnostics
+            .iter()
+            .any(|existing| rich_diagnostics_match(existing, &candidate))
+        {
+            continue;
+        }
+        diagnostics.push(candidate);
+    }
+}
+
+fn rich_diagnostics_match(left: &Rich<'static, Token>, right: &Rich<'static, Token>) -> bool {
+    left.span() == right.span()
+        && rich_reason_key(left) == rich_reason_key(right)
+        && rich_contexts_key(left) == rich_contexts_key(right)
+}
+
+fn rich_reason_key(err: &Rich<'static, Token>) -> (Option<String>, Vec<String>, Option<String>) {
+    match err.reason() {
+        chumsky::error::RichReason::Custom(message) => (Some(message.clone()), Vec::new(), None),
+        chumsky::error::RichReason::ExpectedFound { expected, found } => (
+            None,
+            expected.iter().map(|pattern| pattern.to_string()).collect(),
+            found.as_ref().map(|token| token.to_string()),
+        ),
+    }
+}
+
+fn rich_contexts_key(err: &Rich<'static, Token>) -> Vec<(String, SimpleSpan)> {
+    err.contexts()
+        .map(|(label, span)| (label.to_string(), *span))
+        .collect()
+}
+
+pub(crate) fn shift_owned_rich_span(
+    err: Rich<'static, Token>,
+    offset: usize,
+) -> Rich<'static, Token> {
+    let shift = |span: SimpleSpan| SimpleSpan::new((), span.start + offset..span.end + offset);
+    let original_span = err.span();
+
+    let mut rebuilt = match err.reason() {
+        chumsky::error::RichReason::Custom(message) => {
+            Rich::custom(shift(*original_span), message.clone())
+        }
+        chumsky::error::RichReason::ExpectedFound { expected, found } => {
+            <Rich<'static, Token> as LabelError<
+                'static,
+                TokenStream<'static>,
+                chumsky::error::RichPattern<'static, Token>,
+            >>::expected_found(
+                expected.iter().cloned(),
+                found.clone(),
+                shift(*original_span),
+            )
+        }
+    };
+
+    for (label, span) in err.contexts() {
+        <Rich<'static, Token> as LabelError<'static, TokenStream<'static>, String>>::in_context(
+            &mut rebuilt,
+            label.to_string(),
+            shift(*span),
+        );
+    }
+
+    rebuilt
+}
+
+// Keep the original error location while attaching the outer argument wrapper as context.
+fn with_argument_context<'a>(
+    err: Rich<'a, Token>,
+    label: &'static str,
+    span: SimpleSpan,
+) -> Rich<'a, Token> {
+    let mut err = clone_rich_error(&err);
+    <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(&mut err, label, span);
+    err
+}
+
+fn clone_rich_error<'a>(err: &Rich<'a, Token>) -> Rich<'a, Token> {
+    let mut cloned = match err.reason() {
+        chumsky::error::RichReason::Custom(message) => Rich::custom(*err.span(), message.clone()),
+        chumsky::error::RichReason::ExpectedFound { expected, found } => {
+            <Rich<'a, Token> as LabelError<
+                'a,
+                TokenStream<'a>,
+                chumsky::error::RichPattern<'a, Token>,
+            >>::expected_found(expected.iter().cloned(), found.clone(), *err.span())
+        }
+    };
+
+    for (label, span) in err.contexts() {
+        <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, String>>::in_context(
+            &mut cloned,
+            label.to_string(),
+            *span,
+        );
+    }
+
+    cloned
 }
 
 /// Extension trait: convert any `Parser<..., SyntaxNode, ...>` into one that
@@ -515,7 +660,7 @@ where
     P: Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone + 'a,
 {
     content.map_with(move |children, e| {
-        let (nodes, records) = TrackedNode::decompose_children(children);
+        let (nodes, records, diagnostics) = TrackedNode::decompose_children(children);
         TrackedNode {
             node: SyntaxNode::Group {
                 mode,
@@ -524,6 +669,7 @@ where
             },
             span: e.span(),
             records,
+            diagnostics,
         }
     })
 }
@@ -540,7 +686,7 @@ where
         .ignore_then(content)
         .then_ignore(just(Token::RBrace))
         .map_with(move |children, e| {
-            let (nodes, records) = TrackedNode::decompose_children(children);
+            let (nodes, records, diagnostics) = TrackedNode::decompose_children(children);
             TrackedNode {
                 node: SyntaxNode::Group {
                     mode,
@@ -549,6 +695,7 @@ where
                 },
                 span: e.span(),
                 records,
+                diagnostics,
             }
         })
 }
@@ -623,7 +770,7 @@ where
         };
 
         let span = input.span_from_cursor(&group_start);
-        let (nodes, records) = TrackedNode::decompose_children(children);
+        let (nodes, records, diagnostics) = TrackedNode::decompose_children(children);
         Ok(TrackedNode {
             node: SyntaxNode::Group {
                 mode: ContentMode::Math,
@@ -632,6 +779,7 @@ where
             },
             span,
             records,
+            diagnostics,
         })
     })
 }
@@ -1545,7 +1693,6 @@ fn prefix_command_parser<'a>(
                 let _ = input.parse(insignificant_whitespace());
             }
 
-            let arg_checkpoint = input.save();
             let arg_start = input.cursor();
             let parser = argument_parser(
                 ctx,
@@ -1557,40 +1704,17 @@ fn prefix_command_parser<'a>(
             let arg = match input.parse(parser) {
                 Ok(arg) => arg,
                 Err(err) => {
-                    input.rewind(arg_checkpoint.clone());
-                    let arg_span = match input.peek() {
-                        Some(Token::LBracket) => {
-                            let _ = collect_optional_bracketed_tokens(input, false);
-                            input.span_from_cursor(&arg_start)
-                        }
-                        Some(Token::LBrace) => {
-                            let _ = collect_braced_tokens(input, true);
-                            input.span_from_cursor(&arg_start)
-                        }
-                        Some(_) => {
-                            let _ = input.next();
-                            input.span_from_cursor(&arg_start)
-                        }
-                        None => input.span_from_cursor(&arg_start),
-                    };
+                    let arg_span = err
+                        .contexts()
+                        .next()
+                        .map(|(_, span)| *span)
+                        .unwrap_or_else(|| input.span_from_cursor(&arg_start));
                     return match err.reason() {
-                        chumsky::error::RichReason::Custom(message) => {
-                            let mut err = Rich::custom(arg_span, message.clone());
-                            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
-                                &mut err,
-                                "command argument",
-                                arg_span,
-                            );
-                            Err(err)
+                        chumsky::error::RichReason::Custom(_) => {
+                            Err(with_argument_context(err, "command argument", arg_span))
                         }
                         chumsky::error::RichReason::ExpectedFound { .. } => {
-                            let mut err = err;
-                            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
-                                &mut err,
-                                "command argument",
-                                arg_span,
-                            );
-                            Err(err)
+                            Err(with_argument_context(err, "command argument", arg_span))
                         }
                     };
                 }
@@ -1599,7 +1723,7 @@ fn prefix_command_parser<'a>(
         }
 
         let span = input.span_from_cursor(&cmd_start);
-        let (args, records) = TrackedNode::decompose_args(cmd_args);
+        let (args, records, diagnostics) = TrackedNode::decompose_args(cmd_args);
         Ok(TrackedNode {
             node: SyntaxNode::Command {
                 name,
@@ -1608,6 +1732,7 @@ fn prefix_command_parser<'a>(
             },
             span,
             records,
+            diagnostics,
         })
     })
 }
@@ -1706,27 +1831,19 @@ fn environment_parser<'a>(
                                     .map(|(_, span)| *span)
                                     .unwrap_or_else(|| input.span_from_cursor(&arg_start));
                                 return match err.reason() {
-                                    chumsky::error::RichReason::Custom(message) => {
-                                        let mut err = Rich::custom(arg_span, message.clone());
-                                        <Rich<'a, Token> as LabelError<
-                                            'a,
-                                            TokenStream<'a>,
-                                            &str,
-                                        >>::in_context(
-                                            &mut err, "environment argument", arg_span
-                                        );
-                                        Err(err)
+                                    chumsky::error::RichReason::Custom(_) => {
+                                        Err(with_argument_context(
+                                            err,
+                                            "environment argument",
+                                            arg_span,
+                                        ))
                                     }
                                     chumsky::error::RichReason::ExpectedFound { .. } => {
-                                        let mut err = err;
-                                        <Rich<'a, Token> as LabelError<
-                                            'a,
-                                            TokenStream<'a>,
-                                            &str,
-                                        >>::in_context(
-                                            &mut err, "environment argument", arg_span
-                                        );
-                                        Err(err)
+                                        Err(with_argument_context(
+                                            err,
+                                            "environment argument",
+                                            arg_span,
+                                        ))
                                     }
                                 };
                             }
@@ -1820,8 +1937,9 @@ fn environment_parser<'a>(
         }
 
         let span = input.span_from_cursor(&env_start);
-        let (args, mut records) = TrackedNode::decompose_args(cmd_args);
+        let (args, mut records, mut diagnostics) = TrackedNode::decompose_args(cmd_args);
         records.extend(prefix_records(BODY, &body));
+        diagnostics.extend(body.diagnostics.clone());
         Ok(TrackedNode {
             node: SyntaxNode::Environment {
                 name,
@@ -1831,6 +1949,7 @@ fn environment_parser<'a>(
             },
             span,
             records,
+            diagnostics,
         })
     })
 }
@@ -1910,12 +2029,16 @@ where
 
         let span = input.span_from_cursor(&start);
         let mut records = Vec::new();
+        let mut diagnostics = Vec::new();
         records.extend(prefix_records(BASE, &components.base));
+        diagnostics.extend(components.base.diagnostics.clone());
         if let Some(sub) = &components.subscript {
             records.extend(prefix_records(SUB, sub));
+            diagnostics.extend(sub.diagnostics.clone());
         }
         if let Some(sup_node) = &components.superscript {
             records.extend(prefix_records(SUP, sup_node));
+            diagnostics.extend(sup_node.diagnostics.clone());
         }
         Ok(TrackedNode {
             node: SyntaxNode::Scripted {
@@ -1925,6 +2048,7 @@ where
             },
             span,
             records,
+            diagnostics,
         })
     })
 }
@@ -1960,6 +2084,7 @@ where
                 node,
                 span: e.span(),
                 records: tracked.records,
+                diagnostics: tracked.diagnostics,
             }
         });
 
@@ -1986,29 +2111,23 @@ where
         prefix_command_parser(ctx, math_content, text_content, ContentMode::Text, strict);
     let unknown_command = unknown_command_parser(ctx, strict);
 
-    let fallback = choice((
-        text_chunk(),
-        inline_math,
-        explicit_group,
+    let control_seq_fallback = choice((
         environment.clone(),
         escaped_symbol(),
         prefix_command.clone(),
         unknown_command,
+    ));
+
+    let fallback = choice((
+        text_chunk(),
+        inline_math,
+        explicit_group,
         scripted_marker,
         active_char(),
     ));
 
     custom(move |input| match input.peek() {
-        Some(Token::ControlSeq(name)) if name == "begin" => input.parse(environment.clone()),
-        Some(Token::ControlSeq(name))
-            if matches!(
-                ctx.lookup_command(name.as_str(), ContentMode::Text),
-                Some(meta)
-                    if meta.kind == CommandKind::Prefix
-            ) =>
-        {
-            input.parse(prefix_command.clone())
-        }
+        Some(Token::ControlSeq(_)) => input.parse(control_seq_fallback.clone()),
         _ => input.parse(fallback.clone()),
     })
 }
@@ -2056,24 +2175,14 @@ where
                         .map(|(_, span)| *span)
                         .unwrap_or_else(|| input.span_from_cursor(&arg_start));
                     return match err.reason() {
-                        chumsky::error::RichReason::Custom(message) => {
-                            let mut err = Rich::custom(arg_span, message.clone());
-                            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
-                                &mut err,
-                                "infix command argument",
-                                arg_span,
-                            );
-                            Err(err)
-                        }
-                        chumsky::error::RichReason::ExpectedFound { .. } => {
-                            let mut err = err;
-                            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
-                                &mut err,
-                                "infix command argument",
-                                arg_span,
-                            );
-                            Err(err)
-                        }
+                        chumsky::error::RichReason::Custom(_) => Err(with_argument_context(
+                            err,
+                            "infix command argument",
+                            arg_span,
+                        )),
+                        chumsky::error::RichReason::ExpectedFound { .. } => Err(
+                            with_argument_context(err, "infix command argument", arg_span),
+                        ),
                     };
                 }
             };
@@ -2143,24 +2252,14 @@ where
                         .map(|(_, span)| *span)
                         .unwrap_or_else(|| input.span_from_cursor(&arg_start));
                     return match err.reason() {
-                        chumsky::error::RichReason::Custom(message) => {
-                            let mut err = Rich::custom(arg_span, message.clone());
-                            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
-                                &mut err,
-                                "declarative command argument",
-                                arg_span,
-                            );
-                            Err(err)
-                        }
-                        chumsky::error::RichReason::ExpectedFound { .. } => {
-                            let mut err = err;
-                            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
-                                &mut err,
-                                "declarative command argument",
-                                arg_span,
-                            );
-                            Err(err)
-                        }
+                        chumsky::error::RichReason::Custom(_) => Err(with_argument_context(
+                            err,
+                            "declarative command argument",
+                            arg_span,
+                        )),
+                        chumsky::error::RichReason::ExpectedFound { .. } => Err(
+                            with_argument_context(err, "declarative command argument", arg_span),
+                        ),
                     };
                 }
             };
@@ -2272,9 +2371,11 @@ where
                 let right_span = items_span(&right_items, content_span.end);
                 let right = TrackedNode::fold(ContentMode::Math, right_items, right_span);
 
-                let (args, mut records) = TrackedNode::decompose_args(args);
+                let (args, mut records, mut diagnostics) = TrackedNode::decompose_args(args);
                 records.extend(prefix_records(LEFT, &left));
                 records.extend(prefix_records(RIGHT, &right));
+                diagnostics.extend(left.diagnostics.clone());
+                diagnostics.extend(right.diagnostics.clone());
 
                 // Span covers from left start to right end.
                 let infix_span = SimpleSpan::new((), left.span.start..right.span.end);
@@ -2287,6 +2388,7 @@ where
                     },
                     span: infix_span,
                     records,
+                    diagnostics,
                 };
 
                 let mut nodes = vec![infix_node];
@@ -2295,8 +2397,10 @@ where
                     let scope_span = items_span(&scope_items, content_span.end);
                     let scope = TrackedNode::fold(ContentMode::Math, scope_items, scope_span);
                     let decl_span = SimpleSpan::new((), decl_cmd_start..scope.span.end);
-                    let (decl_args, mut decl_records) = TrackedNode::decompose_args(decl_args);
+                    let (decl_args, mut decl_records, mut decl_diagnostics) =
+                        TrackedNode::decompose_args(decl_args);
                     decl_records.extend(prefix_records(SCOPE, &scope));
+                    decl_diagnostics.extend(scope.diagnostics.clone());
                     nodes.push(TrackedNode {
                         node: SyntaxNode::Declarative {
                             name: decl_name,
@@ -2305,6 +2409,7 @@ where
                         },
                         span: decl_span,
                         records: decl_records,
+                        diagnostics: decl_diagnostics,
                     });
                 }
                 Ok(nodes)
@@ -2315,8 +2420,10 @@ where
                     let scope_span = items_span(&scope_items, content_span.end);
                     let scope = TrackedNode::fold(ContentMode::Math, scope_items, scope_span);
                     let decl_span = SimpleSpan::new((), decl_cmd_start..scope.span.end);
-                    let (decl_args, mut decl_records) = TrackedNode::decompose_args(decl_args);
+                    let (decl_args, mut decl_records, mut decl_diagnostics) =
+                        TrackedNode::decompose_args(decl_args);
                     decl_records.extend(prefix_records(SCOPE, &scope));
+                    decl_diagnostics.extend(scope.diagnostics.clone());
                     items.push(TrackedNode {
                         node: SyntaxNode::Declarative {
                             name: decl_name,
@@ -2325,6 +2432,7 @@ where
                         },
                         span: decl_span,
                         records: decl_records,
+                        diagnostics: decl_diagnostics,
                     });
                 }
                 Ok(items)
@@ -2396,8 +2504,10 @@ where
                 let scope_span = items_span(&scope_items, content_span.end);
                 let scope = TrackedNode::fold(ContentMode::Text, scope_items, scope_span);
                 let decl_span = SimpleSpan::new((), decl_cmd_start..scope.span.end);
-                let (decl_args, mut decl_records) = TrackedNode::decompose_args(decl_args);
+                let (decl_args, mut decl_records, mut decl_diagnostics) =
+                    TrackedNode::decompose_args(decl_args);
                 decl_records.extend(prefix_records(SCOPE, &scope));
+                decl_diagnostics.extend(scope.diagnostics.clone());
                 leading.push(TrackedNode {
                     node: SyntaxNode::Declarative {
                         name: decl_name,
@@ -2406,6 +2516,7 @@ where
                     },
                     span: decl_span,
                     records: decl_records,
+                    diagnostics: decl_diagnostics,
                 });
             }
             leading
@@ -2431,14 +2542,19 @@ fn mode_content_parsers<'a>(
         let ws = insignificant_whitespace();
         let math_content = math_for_math.clone().boxed();
         let text_content = text_for_math.clone().boxed();
-        let normal_item = math_item_node_parser(
+        let base_item = math_item_node_parser(
             ctx,
             group_content,
             math_content.clone(),
             text_content.clone(),
             strict,
-        )
-        .padded_by(ws.clone());
+        );
+        let normal_item = if strict {
+            // Strict math still needs per-item whitespace so infix/declarative tails see the command head.
+            base_item.padded_by(ws.clone()).boxed()
+        } else {
+            base_item.padded_by(ws.clone()).boxed()
+        };
         math_group_content_parser(ctx, normal_item, math_content, text_content, strict)
             .padded_by(ws)
     }));
@@ -2481,16 +2597,16 @@ fn mode_content_parsers_with_source<'a>(
             math_content.clone(),
             text_content.clone(),
             strict,
-        )
-        .padded_by(ws.clone());
+        );
         let normal_item = if strict {
-            base_item.boxed()
+            // Strict math still needs per-item whitespace so infix/declarative tails see the command head.
+            base_item.padded_by(ws.clone()).boxed()
         } else {
             recoverable_content_item_parser(
                 ctx,
                 ContentMode::Math,
                 src,
-                base_item,
+                base_item.padded_by(ws.clone()),
                 is_math_hard_stop,
             )
             .boxed()
@@ -2567,19 +2683,17 @@ pub(crate) fn math_block_parser_with_source<'a>(
     math_parser
 }
 
-/// Entry point parser for text mode.
-#[allow(dead_code)] // Text entry point is unused; expose when direct text parsing is needed
-fn text_block_parser<'a>(ctx: &'a ParseContext, strict: bool) -> NodeParser<'a> {
-    let (_, text_parser) = mode_group_parsers(ctx, strict);
-    text_parser
-}
-
-#[allow(dead_code)] // Source-aware text entry point is reserved for future direct text parsing
-fn text_block_parser_with_source<'a>(
+pub(crate) fn content_block_parser_with_source<'a>(
+    mode: ContentMode,
     ctx: &'a ParseContext,
     strict: bool,
     src: &'a str,
 ) -> NodeParser<'a> {
-    let (_, text_parser) = mode_group_parsers_with_source(ctx, strict, src);
-    text_parser
+    match mode {
+        ContentMode::Math => math_block_parser_with_source(ctx, strict, src),
+        ContentMode::Text => {
+            let (_, text_parser) = mode_group_parsers_with_source(ctx, strict, src);
+            text_parser
+        }
+    }
 }

@@ -1156,6 +1156,42 @@ fn test_infix_over_simple() {
 }
 
 #[test]
+fn test_infix_over_simple_strict() {
+    let (result, _) = match parse(r"a \over b", true) {
+        Ok(r) => r,
+        Err(errors) => {
+            eprintln!("Parse errors:");
+            for err in &errors {
+                eprintln!("  {:?}", err);
+            }
+            panic!("Parse failed with {} errors", errors.len());
+        }
+    };
+
+    match result {
+        SyntaxNode::Group { children, .. } => {
+            assert_eq!(children.len(), 1);
+
+            match &children[0] {
+                SyntaxNode::Infix {
+                    name,
+                    left,
+                    right,
+                    args,
+                } => {
+                    assert_eq!(name, "over");
+                    assert!(args.is_empty());
+                    assert_eq!(**left, SyntaxNode::Char('a'));
+                    assert_eq!(**right, SyntaxNode::Char('b'));
+                }
+                _ => panic!("Expected Infix node, got {:?}", children[0]),
+            }
+        }
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
 fn test_infix_choose() {
     // "n \choose k"
     let (result, _) = parse(r"n \choose k", false).unwrap();

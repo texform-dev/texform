@@ -688,10 +688,11 @@ fn all_packages_ctx() -> &'static ParseContext {
 
 pub(crate) fn parse_with_context(ctx: &ParseContext, src: &str, strict: bool) -> ParseOutput {
     let token_stream = build_token_stream(src);
-    let (output, errors) = parse_raw(ctx, src, token_stream, strict);
+    let (output, mut errors) = parse_raw(ctx, src, token_stream, strict);
 
     let result = output.map(|tracked| {
-        let (node, span, records) = tracked.finish_root();
+        let (node, span, records, diagnostics) = tracked.finish_root();
+        errors.extend(diagnostics);
         let span = Span {
             start: span.start,
             end: span.end,
@@ -792,6 +793,8 @@ fn supplement_diagnostic_contexts(ctx: &ParseContext, src: &str, diagnostic: &mu
     supplement_environment_mode_error_message(ctx, src, diagnostic);
     supplement_environment_mismatch_message(src, diagnostic);
     supplement_unknown_environment_message(ctx, src, diagnostic);
+    supplement_unclosed_inline_math_message(src, diagnostic);
+    supplement_inner_content_error_span(src, diagnostic);
     supplement_argument_validation_span(src, diagnostic);
 
     let needs_left_context = matches!(
@@ -830,6 +833,46 @@ fn supplement_diagnostic_contexts(ctx: &ParseContext, src: &str, diagnostic: &mu
             span: env_span,
         });
     }
+}
+
+/// Normalize the lone inline-math opener message so recoverable content
+/// subparses report the same generic tail error shape as the top-level parser.
+fn supplement_unclosed_inline_math_message(src: &str, diagnostic: &mut ParseDiagnostic) {
+    if !matches!(
+        diagnostic.message.as_str(),
+        "found '$' expected something else, or '$'"
+            | "found end of input expected something else, or '$'"
+            | "found '\\text' expected something else, or '$'"
+    ) {
+        return;
+    }
+
+    diagnostic.message = "found '$' expected something else, or end of input".to_string();
+    if diagnostic.expected == ["something else", "'$'"] {
+        diagnostic.expected = vec!["something else".to_string(), "end of input".to_string()];
+    }
+    if diagnostic.found.as_deref() == Some("\\text")
+        && let Some(span) = find_inline_math_shift_after_command(src, diagnostic.span.clone())
+    {
+        diagnostic.span = span;
+        diagnostic.found = Some("$".to_string());
+    }
+}
+
+/// Locate the `$` that immediately starts a braced inline-math argument after a command span.
+fn find_inline_math_shift_after_command(src: &str, command_span: Span) -> Option<Span> {
+    let mut offset = command_span.end;
+    while matches!(src.as_bytes().get(offset), Some(b' ' | b'\t' | b'\n')) {
+        offset += 1;
+    }
+    if src.as_bytes().get(offset) != Some(&b'{') || src.as_bytes().get(offset + 1) != Some(&b'$') {
+        return None;
+    }
+
+    Some(Span {
+        start: offset + 1,
+        end: offset + 2,
+    })
 }
 
 fn supplement_environment_mode_error_message(
@@ -929,6 +972,60 @@ fn supplement_argument_validation_span(src: &str, diagnostic: &mut ParseDiagnost
         return;
     };
     diagnostic.span = argument_span;
+}
+
+fn supplement_inner_content_error_span(src: &str, diagnostic: &mut ParseDiagnostic) {
+    let Some(span_text) = src.get(diagnostic.span.start..diagnostic.span.end) else {
+        return;
+    };
+    if !span_text.starts_with('\\') {
+        return;
+    }
+
+    let Some(argument_span) = find_argument_surface_span(src, diagnostic.span.end) else {
+        return;
+    };
+
+    if diagnostic.message == "Scripted syntax is not allowed in Text mode"
+        && let Some(span) = find_first_script_marker_in_span(src, argument_span.clone())
+    {
+        diagnostic.span = span;
+        return;
+    }
+
+    let Some(command_name) = diagnostic
+        .message
+        .strip_prefix("Command ")
+        .and_then(|rest| rest.split(" is not allowed in ").next())
+    else {
+        return;
+    };
+
+    if span_text == command_name {
+        return;
+    }
+
+    if let Some(span) = find_command_name_in_span(src, argument_span, command_name) {
+        diagnostic.span = span;
+    }
+}
+
+fn find_first_script_marker_in_span(src: &str, span: Span) -> Option<Span> {
+    let slice = src.get(span.start..span.end)?;
+    let offset = slice.find(['^', '_'])?;
+    Some(Span {
+        start: span.start + offset,
+        end: span.start + offset + 1,
+    })
+}
+
+fn find_command_name_in_span(src: &str, span: Span, command_name: &str) -> Option<Span> {
+    let slice = src.get(span.start..span.end)?;
+    let offset = slice.find(command_name)?;
+    Some(Span {
+        start: span.start + offset,
+        end: span.start + offset + command_name.len(),
+    })
 }
 
 fn looks_like_argument_validation_message(message: &str) -> bool {
