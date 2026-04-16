@@ -157,14 +157,57 @@ fn parse_tokens_as_content<'src, 'parse>(
         ContentMode::Text => text_block_parser(ctx, strict),
     };
 
-    let tracked = parser
+    let (tracked, errors) = parser
         .then_ignore(end())
         .parse(token_stream)
-        .into_result()
-        .map_err(|_| {
-            let cursor = input.cursor();
-            input.err_peek_or_point(&cursor, "failed to parse delimited argument content")
-        })?;
+        .into_output_errors();
+
+    let tracked = if errors.is_empty() {
+        tracked
+    } else {
+        if matches!(mode, ContentMode::Text)
+            && let Some(script_span) =
+                find_text_script_marker_span(tokens.as_slice(), source_offset)
+        {
+            return Err(Rich::custom(
+                script_span,
+                "Scripted syntax is not allowed in Text mode",
+            ));
+        }
+
+        let propagated_error = errors
+            .into_iter()
+            .filter(|err| match err.reason() {
+                chumsky::error::RichReason::Custom(message) => !matches!(
+                    message.as_str(),
+                    "not a command"
+                        | "unknown"
+                        | "content recovery must consume at least one token"
+                ),
+                chumsky::error::RichReason::ExpectedFound { .. } => false,
+            })
+            .max_by_key(|err| {
+                let span = err.span();
+                (span.end, span.start)
+            });
+
+        if let Some(inner_error) = propagated_error {
+            let message = match inner_error.reason() {
+                chumsky::error::RichReason::Custom(message) => message,
+                chumsky::error::RichReason::ExpectedFound { .. } => unreachable!(),
+            };
+            let inner_span = inner_error.span();
+            let shifted_span = SimpleSpan::new(
+                (),
+                source_offset + inner_span.start..source_offset + inner_span.end,
+            );
+            return Err(Rich::custom(shifted_span, message.clone()));
+        }
+
+        let cursor = input.cursor();
+        return Err(input.err_peek_or_point(&cursor, "failed to parse delimited argument content"));
+    }
+    .expect("content parse without errors must produce a node");
 
     // The sub-stream spans start at 0; shift them to the original source position.
     // Then normalize (strip outer group from block parser output).
@@ -972,6 +1015,47 @@ fn tokens_to_string(tokens: &[Token]) -> String {
         }
     }
     out
+}
+
+fn find_text_script_marker_span(tokens: &[Token], source_offset: usize) -> Option<SimpleSpan> {
+    let mut byte_pos = source_offset;
+    let mut in_inline_math = false;
+
+    for token in tokens {
+        let token_len = token_source_len(token);
+        let token_span = SimpleSpan::new((), byte_pos..byte_pos + token_len);
+
+        match token {
+            Token::MathShift => in_inline_math = !in_inline_math,
+            Token::Superscript | Token::Subscript if !in_inline_math => return Some(token_span),
+            _ => {}
+        }
+
+        byte_pos += token_len;
+    }
+
+    None
+}
+
+fn token_source_len(token: &Token) -> usize {
+    match token {
+        Token::ControlSeq(name) => name.len() + 1,
+        Token::Char(c) => c.len_utf8(),
+        Token::Prime(count) => *count,
+        Token::Comment => 0,
+        Token::Star
+        | Token::Alignment
+        | Token::MathShift
+        | Token::Parameter
+        | Token::Superscript
+        | Token::Subscript
+        | Token::ActiveChar
+        | Token::LBracket
+        | Token::RBracket
+        | Token::LBrace
+        | Token::RBrace
+        | Token::Whitespaces => 1,
+    }
 }
 
 /// Validate that `raw` is a well-formed `key=value,…` sequence.

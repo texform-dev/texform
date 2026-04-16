@@ -1963,6 +1963,17 @@ where
             }
         });
 
+    let scripted_marker = select! {
+        Token::Superscript => (),
+        Token::Subscript => (),
+    }
+    .try_map(|_, span| {
+        Err(Rich::custom(
+            span,
+            "Scripted syntax is not allowed in Text mode",
+        ))
+    });
+
     let explicit_group = braced_group_parser(ContentMode::Text, group_content);
     let environment = environment_parser(
         ctx,
@@ -1983,6 +1994,7 @@ where
         escaped_symbol(),
         prefix_command.clone(),
         unknown_command,
+        scripted_marker,
         active_char(),
     ));
 

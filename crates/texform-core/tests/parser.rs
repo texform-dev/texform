@@ -1413,6 +1413,27 @@ fn test_environment_mode_mismatch_reports_explicit_error() {
 }
 
 #[test]
+fn test_text_mode_scripted_syntax_reports_explicit_error() {
+    let ctx = test_context_with_items([
+        command_item("underline", CommandKind::Prefix, AllowedMode::Math, "m"),
+        command_item("underline", CommandKind::Prefix, AllowedMode::Text, "m:T"),
+    ]);
+
+    let errors = ctx
+        .parse(r"\text{\underline{a^2}}", true)
+        .diagnostics
+        .into_iter()
+        .map(|diag| diag.message)
+        .collect::<Vec<_>>();
+
+    assert!(
+        !errors.is_empty(),
+        "scripted syntax should fail in text mode"
+    );
+    assert_eq!(errors, vec!["Scripted syntax is not allowed in Text mode"]);
+}
+
+#[test]
 fn test_delimited_group_simple() {
     // "\left( a+b \right)"
     let (result, _) = parse(r"\left(a+b\right)", false).unwrap();
