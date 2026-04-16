@@ -548,8 +548,6 @@ fn parse_output_to_batch_entry(input: &str, output: &ParseOutput) -> Result<JsVa
                 js_sys::Reflect::set(&value, &"display".into(), &display.into()).unwrap();
                 js_sys::Reflect::set(&value, &"diagnostics".into(), &diagnostics.into()).unwrap();
                 js_sys::Reflect::set(&value, &"partial_result".into(), &JsValue::NULL).unwrap();
-                js_sys::Reflect::set(&value, &"partial_display".into(), &JsValue::NULL).unwrap();
-                js_sys::Reflect::set(&value, &"error".into(), &JsValue::NULL).unwrap();
                 Ok(value.into())
             }
             None => {
@@ -559,13 +557,6 @@ fn parse_output_to_batch_entry(input: &str, output: &ParseOutput) -> Result<JsVa
                 js_sys::Reflect::set(&value, &"display".into(), &JsValue::NULL).unwrap();
                 js_sys::Reflect::set(&value, &"diagnostics".into(), &diagnostics.into()).unwrap();
                 js_sys::Reflect::set(&value, &"partial_result".into(), &JsValue::NULL).unwrap();
-                js_sys::Reflect::set(&value, &"partial_display".into(), &JsValue::NULL).unwrap();
-                js_sys::Reflect::set(
-                    &value,
-                    &"error".into(),
-                    &JsValue::from_str("parse produced no output and no diagnostics"),
-                )
-                .unwrap();
                 Ok(value.into())
             }
         }
@@ -573,28 +564,17 @@ fn parse_output_to_batch_entry(input: &str, output: &ParseOutput) -> Result<JsVa
         let diagnostics = serde_wasm_bindgen::to_value(&output.diagnostics)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-        let (partial_result, partial_display) = match &output.result {
-            Some(result) => {
-                let js = serde_wasm_bindgen::to_value(result)
-                    .map_err(|e| JsValue::from_str(&e.to_string()))?;
-                (js, result.node.to_string().into())
-            }
-            None => (JsValue::NULL, JsValue::NULL),
+        let partial_result = match &output.result {
+            Some(result) => serde_wasm_bindgen::to_value(result)
+                .map_err(|e| JsValue::from_str(&e.to_string()))?,
+            None => JsValue::NULL,
         };
-
-        let message = output
-            .diagnostics
-            .first()
-            .map(|diag| diag.message.clone())
-            .unwrap_or_else(|| "parse failed".to_string());
 
         js_sys::Reflect::set(&value, &"success".into(), &JsValue::FALSE).unwrap();
         js_sys::Reflect::set(&value, &"result".into(), &JsValue::NULL).unwrap();
         js_sys::Reflect::set(&value, &"display".into(), &JsValue::NULL).unwrap();
         js_sys::Reflect::set(&value, &"diagnostics".into(), &diagnostics).unwrap();
         js_sys::Reflect::set(&value, &"partial_result".into(), &partial_result).unwrap();
-        js_sys::Reflect::set(&value, &"partial_display".into(), &partial_display).unwrap();
-        js_sys::Reflect::set(&value, &"error".into(), &message.into()).unwrap();
 
         Ok(value.into())
     }
@@ -623,26 +603,16 @@ fn build_parse_error(output: &ParseOutput) -> Result<JsValue, JsValue> {
     let diagnostics = serde_wasm_bindgen::to_value(&output.diagnostics)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    let (partial_result, partial_display) = match &output.result {
+    let partial_result = match &output.result {
         Some(r) => {
-            let js =
-                serde_wasm_bindgen::to_value(r).map_err(|e| JsValue::from_str(&e.to_string()))?;
-            let display: JsValue = r.node.to_string().into();
-            (js, display)
+            serde_wasm_bindgen::to_value(r).map_err(|e| JsValue::from_str(&e.to_string()))?
         }
-        None => (JsValue::NULL, JsValue::NULL),
+        None => JsValue::NULL,
     };
 
     let err = js_sys::Object::new();
-    let message = output
-        .diagnostics
-        .first()
-        .map(|diag| diag.message.clone())
-        .unwrap_or_else(|| "parse failed".to_string());
     js_sys::Reflect::set(&err, &"diagnostics".into(), &diagnostics).unwrap();
     js_sys::Reflect::set(&err, &"partial_result".into(), &partial_result).unwrap();
-    js_sys::Reflect::set(&err, &"partial_display".into(), &partial_display).unwrap();
-    js_sys::Reflect::set(&err, &"message".into(), &message.into()).unwrap();
 
     Ok(err.into())
 }

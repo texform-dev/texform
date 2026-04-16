@@ -68,8 +68,6 @@ export interface ParseWithContextSingleResult {
   display: string | null
   diagnostics: ParseDiagnostic[]
   partial_result: ParseResult | null
-  partial_display: string | null
-  error: string | null
 }
 
 export type ParseWithContextBatchResult = ParseWithContextSingleResult[]

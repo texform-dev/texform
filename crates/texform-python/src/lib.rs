@@ -29,7 +29,8 @@ fn parse(py: Python<'_>, src: &str, strict: bool) -> PyResult<Py<PyAny>> {
             None => py.None(),
         };
 
-        let err = ParseError::new_err("parse error");
+        let first_msg = output.diagnostics[0].message.clone();
+        let err = ParseError::new_err(first_msg);
         let err_value = err.value(py);
         err_value.setattr("diagnostics", diagnostics)?;
         err_value.setattr("partial_result", partial_result)?;
