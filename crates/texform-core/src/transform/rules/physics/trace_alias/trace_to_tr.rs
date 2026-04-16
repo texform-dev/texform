@@ -23,28 +23,31 @@ alias_rule! {
 #[cfg(test)]
 mod tests {
     use crate::ast::Node;
-    use crate::context::ParseContext;
-    use crate::transform::{RuleAvailability, TransformProfile};
+    use crate::parse::ParseContext;
+    use crate::transform::{transform_ast, BuiltinRuleSetId, TransformContextBuilder};
 
     #[test]
     fn rewrites_all_trace_aliases_to_tr() {
-        let ctx = ParseContext::from_packages(&["physics"]);
+        let parse_ctx = ParseContext::from_packages(&["physics"]);
+        let transform_ctx = TransformContextBuilder::new(BuiltinRuleSetId::Normalize)
+            .build_with(&parse_ctx)
+            .expect("transform context should build");
         for input in [r"\Tr", r"\trace", r"\Trace"] {
-            let output = ctx
-                .parse_and_transform(input, true, &TransformProfile::default())
+            let mut ast = parse_ctx
+                .parse_to_ast(input, true)
+                .expect("parse should succeed")
+                .ast;
+            let output = transform_ast(&mut ast, &parse_ctx, &transform_ctx)
                 .unwrap_or_else(|error| panic!("trace-to-tr transform should succeed: {error:?}"));
 
-            assert_eq!(output.transform_report.applied.len(), 1);
-            assert_eq!(
-                output.transform_report.applied[0].key.to_string(),
-                "physics/trace-to-tr"
-            );
+            assert_eq!(output.applied.len(), 1);
+            assert_eq!(output.applied[0].key.to_string(), "physics/trace-to-tr");
 
-            let root = output.ast.root();
-            let children = output.ast.children(root);
+            let root = ast.root();
+            let children = ast.children(root);
             assert_eq!(children.len(), 1);
 
-            match output.ast.node(children[0]) {
+            match ast.node(children[0]) {
                 Node::Command { name, args, .. } => {
                     assert_eq!(name, "tr");
                     assert!(args.is_empty());
@@ -52,19 +55,5 @@ mod tests {
                 other => panic!("expected tr command after transform, got {:?}", other),
             }
         }
-    }
-
-    #[test]
-    fn reports_rule_as_available_for_physics_profile() {
-        let ctx = ParseContext::from_packages(&["physics"]);
-        let statuses = ctx
-            .transform_rule_statuses(&TransformProfile::default())
-            .expect("profile compilation should succeed");
-
-        let status = statuses
-            .iter()
-            .find(|status| status.key.to_string() == "physics/trace-to-tr")
-            .expect("trace-to-tr status should exist");
-        assert!(matches!(status.availability, RuleAvailability::Available));
     }
 }

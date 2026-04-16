@@ -1,6 +1,6 @@
-use texform_core::context::{
+use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
-    KnowledgeBase, ParseContext, ParseResult, Span,
+    ParseContext, ParseContextBuilder, ParseResult, Span,
 };
 use texform_interface::syntax_node::ContentMode;
 
@@ -15,13 +15,15 @@ fn parse_ok(src: &str) -> ParseResult {
 }
 
 fn parse_ok_with_items(items: &[ContextItem], src: &str) -> ParseResult {
-    let mut kb = KnowledgeBase::core_only();
+    let mut builder = ParseContextBuilder::new().core_only();
     for item in items {
-        kb.insert_item(item.clone())
-            .expect("context items should be valid");
+        builder = builder.insert_item(item.clone());
     }
 
-    let output = ParseContext::new(kb).parse(src, false);
+    let output = builder
+        .build()
+        .expect("context items should be valid")
+        .parse(src, false);
     assert!(
         output.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",

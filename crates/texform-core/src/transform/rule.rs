@@ -16,8 +16,8 @@
 use texform_specs::specs::{BuiltinCommandRecord, BuiltinEnvironmentRecord};
 
 use crate::ast::{NodeId, NodeKind};
-use crate::transform::context::TransformContext;
 use crate::transform::engine::TransformError;
+use crate::transform::rule_context::RuleContext;
 
 // NOTE: `Ord` is derived — variant declaration order determines comparison.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -65,9 +65,9 @@ pub enum RulePhase {
 
 /// How much information a rule preserves when it transforms a node.
 ///
-/// Safety levels are used by profiles to decide which rules are acceptable
-/// for a given use case (e.g. MER normalization tolerates `Semantic` but
-/// not `Destructive`).
+/// Safety levels let callers and builders describe how aggressively a rule set
+/// may rewrite the AST, and they provide useful diagnostics when comparing
+/// rules with different tradeoffs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum RuleSafety {
     /// The transformation is fully reversible; no information is lost.
@@ -81,7 +81,7 @@ pub enum RuleSafety {
 /// Unique identifier for a rule, composed of its group and a human-readable name.
 ///
 /// The `Display` impl produces the slash-separated form `"group/name"` which is
-/// used in diagnostics and profile overrides.
+/// used in diagnostics, builder filters, and rule-selection configuration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RuleKey {
     /// The group this rule belongs to.
@@ -108,7 +108,41 @@ pub enum RuleTarget {
     Environment(&'static BuiltinEnvironmentRecord),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RuleTargetKind {
+    Command,
+    Environment,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RuleTargetKey {
+    pub kind: RuleTargetKind,
+    pub name: &'static str,
+}
+
+impl RuleTargetKey {
+    pub const fn kind_label(self) -> &'static str {
+        match self.kind {
+            RuleTargetKind::Command => "command",
+            RuleTargetKind::Environment => "environment",
+        }
+    }
+}
+
 impl RuleTarget {
+    pub const fn key(self) -> RuleTargetKey {
+        match self {
+            RuleTarget::Command(record) => RuleTargetKey {
+                kind: RuleTargetKind::Command,
+                name: record.name,
+            },
+            RuleTarget::Environment(record) => RuleTargetKey {
+                kind: RuleTargetKind::Environment,
+                name: record.name,
+            },
+        }
+    }
+
     pub const fn kind_label(self) -> &'static str {
         match self {
             RuleTarget::Command(_) => "command",
@@ -121,6 +155,12 @@ impl RuleTarget {
             RuleTarget::Command(record) => record.name,
             RuleTarget::Environment(record) => record.name,
         }
+    }
+}
+
+impl From<RuleTarget> for RuleTargetKey {
+    fn from(value: RuleTarget) -> Self {
+        value.key()
     }
 }
 
@@ -223,7 +263,7 @@ pub trait TransformRule: Send + Sync {
     /// [`RuleEffect::Skipped`] if the node did not need transformation.
     fn apply(
         &self,
-        cx: &mut TransformContext<'_>,
+        cx: &mut RuleContext<'_>,
         node_id: NodeId,
     ) -> Result<RuleEffect, TransformError>;
 }

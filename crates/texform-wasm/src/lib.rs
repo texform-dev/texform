@@ -1,10 +1,10 @@
 use serde::Deserialize;
 use texform_argspec::{ArgForm, ArgSpec, DelimiterToken, ValueKind, parse_arg_specs};
 use texform_core::api;
-use texform_core::context::ContentMode;
-use texform_core::context::{
-    AllowedMode, CharacterMeta, CommandItem, CommandKind, CommandMeta, ContextItem,
-    DelimiterControlItem, EnvMeta, EnvironmentItem, KnowledgeBase, ParseOutput,
+use texform_core::parse::{
+    AllowedMode, CharacterMeta, CommandItem, CommandKind, CommandMeta, ContentMode, ContextItem,
+    DelimiterControlItem, EnvMeta, EnvironmentItem, ParseContextBuildError, ParseOutput,
+    ParseResult,
 };
 use texform_core::serialize::SerializeOptions;
 use wasm_bindgen::prelude::*;
@@ -210,7 +210,7 @@ enum ContextItemInput {
 
 #[wasm_bindgen]
 pub struct ParseContext {
-    inner: texform_core::context::ParseContext,
+    inner: texform_core::parse::ParseContext,
 }
 
 #[wasm_bindgen]
@@ -220,28 +220,23 @@ impl ParseContext {
         packages: Option<Vec<String>>,
         items: Option<JsValue>,
     ) -> Result<ParseContext, JsValue> {
-        let mut kb = match packages {
-            Some(pkgs) if !pkgs.is_empty() => {
+        let mut builder = match packages {
+            Some(pkgs) => {
                 let refs: Vec<&str> = pkgs.iter().map(String::as_str).collect();
-                KnowledgeBase::try_build_from_packages(refs.as_slice()).map_err(|error| {
-                    JsValue::from_str(&format!("package loading failed: {}", error))
-                })?
+                texform_core::parse::ParseContextBuilder::new().packages(refs.as_slice())
             }
-            _ => KnowledgeBase::all_packages(),
+            _ => texform_core::parse::ParseContextBuilder::new(),
         };
         if let Some(items) = items {
             let items: Vec<ContextItemInput> = serde_wasm_bindgen::from_value(items)
                 .map_err(|error| JsValue::from_str(&format!("invalid context items: {}", error)))?;
             for item in items {
-                kb.insert_item(parse_context_item_input(item)?)
-                    .map_err(|error| {
-                        JsValue::from_str(&format!("spec validation failed: {}", error))
-                    })?;
+                builder = builder.insert_item(parse_context_item_input(item)?);
             }
         }
-        Ok(ParseContext {
-            inner: texform_core::context::ParseContext::new(kb),
-        })
+
+        let inner = builder.build().map_err(parse_context_build_error_to_js)?;
+        Ok(ParseContext { inner })
     }
 
     pub fn is_delimiter_control(&self, name: &str) -> bool {
@@ -251,6 +246,26 @@ impl ParseContext {
     pub fn parse(&self, src: &str, strict: Option<bool>) -> Result<JsValue, JsValue> {
         let strict = strict.unwrap_or(false);
         parse_output_to_result(self.inner.parse(src, strict))
+    }
+
+    pub fn serialize(
+        &self,
+        src: &str,
+        strict: Option<bool>,
+        options: Option<JsValue>,
+    ) -> Result<String, JsValue> {
+        let strict = strict.unwrap_or(false);
+        let output = self.inner.parse(src, strict);
+
+        let parsed_options = match options {
+            Some(opts_js) => Some(
+                serde_wasm_bindgen::from_value(opts_js)
+                    .map_err(|e| JsValue::from_str(&format!("invalid serialize options: {}", e)))?,
+            ),
+            None => None,
+        };
+
+        serialize_parse_output(output, parsed_options.as_ref())
     }
 
     pub fn lookup_active_command(&self, name: &str) -> JsValue {
@@ -443,7 +458,7 @@ enum SerializePrepareError {
 
 fn prepare_parse_output_for_serialize(
     output: &ParseOutput,
-) -> Result<&texform_core::context::ParseResult, SerializePrepareError> {
+) -> Result<&ParseResult, SerializePrepareError> {
     if !output.diagnostics.is_empty() {
         return Err(SerializePrepareError::DiagnosticsPresent);
     }
@@ -452,6 +467,19 @@ fn prepare_parse_output_for_serialize(
         .result
         .as_ref()
         .ok_or(SerializePrepareError::NoResult)
+}
+
+fn format_parse_context_build_error(error: ParseContextBuildError) -> String {
+    match error {
+        ParseContextBuildError::PackageLoad(error) => format!("package loading failed: {}", error),
+        ParseContextBuildError::InvalidContextItem { name, source } => {
+            format!("spec validation failed for {}: {}", name, source)
+        }
+    }
+}
+
+fn parse_context_build_error_to_js(error: ParseContextBuildError) -> JsValue {
+    JsValue::from_str(&format_parse_context_build_error(error))
 }
 
 fn parse_with_context_output_to_result(
@@ -634,6 +662,21 @@ fn content_mode_to_string(mode: ContentMode) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use texform_core::parse::{PackageLoadError, ParseContextBuildError};
+
+    fn custom_command_context() -> ParseContext {
+        ParseContext {
+            inner: texform_core::parse::ParseContextBuilder::new()
+                .insert_item(CommandItem::new(
+                    "probe",
+                    CommandKind::Prefix,
+                    AllowedMode::Math,
+                    "m",
+                ))
+                .build()
+                .expect("custom parse context should build"),
+        }
+    }
 
     #[test]
     fn serialize_rejects_diagnostics_bearing_parse_results() {
@@ -642,6 +685,61 @@ mod tests {
         let err = prepare_parse_output_for_serialize(&output)
             .expect_err("should reject diagnostics-bearing parse results");
         assert_eq!(err, SerializePrepareError::DiagnosticsPresent);
+    }
+
+    #[test]
+    fn package_load_build_errors_keep_package_loading_prefix() {
+        let error = format_parse_context_build_error(ParseContextBuildError::PackageLoad(
+            PackageLoadError::UnknownPackage {
+                name: "missing".to_string(),
+            },
+        ));
+
+        assert_eq!(error, "package loading failed: unknown package: missing");
+    }
+
+    #[test]
+    fn invalid_context_item_build_errors_include_item_name() {
+        let error = format_parse_context_build_error(ParseContextBuildError::InvalidContextItem {
+            name: "foo".to_string(),
+            source: texform_core::parse::ArgSpecParseError {
+                context: "foo".to_string(),
+                char_index: 0,
+                message: "expected argument kind".to_string(),
+            },
+        });
+
+        assert_eq!(
+            error,
+            "spec validation failed for foo: invalid argspec (foo) at char 0: expected argument kind"
+        );
+    }
+
+    #[test]
+    fn empty_package_list_is_not_treated_like_default_all_packages() {
+        let default_ctx =
+            ParseContext::new(None, None).expect("default parse context should build");
+        let empty_packages_ctx = ParseContext::new(Some(vec![]), None)
+            .expect("empty package list parse context should build");
+
+        assert!(default_ctx.inner.lookup_command("frac").is_some());
+        assert!(empty_packages_ctx.inner.lookup_command("frac").is_none());
+    }
+
+    #[test]
+    fn parse_context_serialize_uses_context_items() {
+        let ctx = custom_command_context();
+        let global_output = api::parse_latex(r"\probe{x}", true);
+
+        let global_err = prepare_parse_output_for_serialize(&global_output)
+            .expect_err("global parse path should reject the custom command");
+        assert_eq!(global_err, SerializePrepareError::DiagnosticsPresent);
+
+        let output = ctx
+            .serialize(r"\probe{x}", Some(true), None)
+            .expect("custom command should serialize with instance context");
+
+        assert_eq!(output, r"\probe { x }");
     }
 }
 

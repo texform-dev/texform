@@ -1,12 +1,13 @@
 //! Parse context that owns a per-instance immutable knowledge base.
 //!
 //! [`ParseContext`] is the primary public API surface for freezing a knowledge
-//! base, parsing LaTeX formulas, and running transform profiles.
+//! base and parsing LaTeX formulas with a stable package-backed view.
 //!
 //! The module also defines the shared output types ([`ParseOutput`],
 //! [`ParseResult`], [`ParseDiagnostic`]) used by every parse entry point.
 
-use std::sync::{Arc, Mutex, OnceLock};
+use std::collections::HashSet;
+use std::sync::OnceLock;
 
 use chumsky::prelude::*;
 use logos::Logos;
@@ -22,15 +23,6 @@ pub use crate::knowledge::KnowledgeBase;
 pub use crate::knowledge::PackageLoadError;
 use crate::lexer::Token;
 use crate::parser::{self, RelativeSpanEntry, TokenStream, TrackedNode, build_token_stream};
-use crate::transform::compile::{CompiledProfile, ProfileCompileError, RuleStatus};
-use crate::transform::config::TransformProfile;
-use crate::transform::engine::{TransformEngineError, TransformReport, transform_ast};
-
-type CachedProfileCompile = (
-    TransformProfile,
-    Result<CompiledProfile, ProfileCompileError>,
-);
-type ProfileCache = Arc<Mutex<Vec<CachedProfileCompile>>>;
 
 /// A runtime-injectable definition that augments the knowledge base.
 ///
@@ -191,6 +183,162 @@ impl From<DelimiterControlItem> for ContextItem {
     }
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct MutationSummary {
+    pub touched_commands: HashSet<String>,
+    pub touched_environments: HashSet<String>,
+}
+
+enum BuilderOp {
+    Insert(ContextItem),
+    RemoveCommand(String),
+    RemoveEnvironment(String),
+    RemoveDelimiterControl(String),
+}
+
+fn record_insert(summary: &mut MutationSummary, item: &ContextItem) {
+    match item {
+        ContextItem::Command(command) => {
+            summary.touched_commands.insert(command.name.clone());
+        }
+        ContextItem::Environment(environment) => {
+            summary
+                .touched_environments
+                .insert(environment.name.clone());
+        }
+        ContextItem::DelimiterControl(_) => {}
+    }
+}
+
+#[derive(Debug)]
+pub enum ParseContextBuildError {
+    PackageLoad(PackageLoadError),
+    InvalidContextItem {
+        name: String,
+        source: ArgSpecParseError,
+    },
+}
+
+pub struct ParseContextBuilder {
+    packages: Vec<String>,
+    use_core_only: bool,
+    use_empty: bool,
+    ops: Vec<BuilderOp>,
+}
+
+impl ParseContextBuilder {
+    pub fn new() -> Self {
+        Self {
+            packages: texform_specs::builtin::all_package_names()
+                .into_iter()
+                .map(ToString::to_string)
+                .collect(),
+            use_core_only: false,
+            use_empty: false,
+            ops: Vec::new(),
+        }
+    }
+
+    pub fn packages(mut self, packages: &[&str]) -> Self {
+        self.packages = packages.iter().map(|name| (*name).to_string()).collect();
+        self.use_core_only = false;
+        self.use_empty = false;
+        self
+    }
+
+    pub fn core_only(mut self) -> Self {
+        self.use_core_only = true;
+        self.use_empty = false;
+        self.packages.clear();
+        self
+    }
+
+    pub fn empty(mut self) -> Self {
+        self.use_empty = true;
+        self.use_core_only = false;
+        self.packages.clear();
+        self
+    }
+
+    pub fn insert_item(mut self, item: impl Into<ContextItem>) -> Self {
+        self.ops.push(BuilderOp::Insert(item.into()));
+        self
+    }
+
+    pub fn remove_command(mut self, name: impl Into<String>) -> Self {
+        self.ops.push(BuilderOp::RemoveCommand(name.into()));
+        self
+    }
+
+    pub fn remove_environment(mut self, name: impl Into<String>) -> Self {
+        self.ops.push(BuilderOp::RemoveEnvironment(name.into()));
+        self
+    }
+
+    pub fn remove_delimiter_control(mut self, name: impl Into<String>) -> Self {
+        self.ops
+            .push(BuilderOp::RemoveDelimiterControl(name.into()));
+        self
+    }
+
+    pub fn build(self) -> Result<ParseContext, ParseContextBuildError> {
+        let mut kb = if self.use_empty {
+            KnowledgeBase::empty()
+        } else if self.use_core_only {
+            KnowledgeBase::core_only()
+        } else {
+            let refs = self.packages.iter().map(String::as_str).collect::<Vec<_>>();
+            KnowledgeBase::try_build_from_packages(refs.as_slice())
+                .map_err(ParseContextBuildError::PackageLoad)?
+        };
+
+        let mut mutation_summary = MutationSummary::default();
+
+        for op in self.ops {
+            match op {
+                BuilderOp::Insert(item) => {
+                    record_insert(&mut mutation_summary, &item);
+                    kb.insert_item(item.clone()).map_err(|source| {
+                        ParseContextBuildError::InvalidContextItem {
+                            name: item.name().to_string(),
+                            source,
+                        }
+                    })?;
+                }
+                BuilderOp::RemoveCommand(name) => {
+                    mutation_summary.touched_commands.insert(name.clone());
+                    kb.remove_item(CommandItem::new(
+                        name,
+                        CommandKind::Prefix,
+                        AllowedMode::Math,
+                        "",
+                    ));
+                }
+                BuilderOp::RemoveEnvironment(name) => {
+                    mutation_summary.touched_environments.insert(name.clone());
+                    kb.remove_item(EnvironmentItem::new(
+                        name,
+                        AllowedMode::Math,
+                        ContentMode::Math,
+                        "",
+                    ));
+                }
+                BuilderOp::RemoveDelimiterControl(name) => {
+                    kb.remove_item(DelimiterControlItem::new(name));
+                }
+            }
+        }
+
+        Ok(ParseContext::from_parts(kb, mutation_summary))
+    }
+}
+
+impl Default for ParseContextBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Byte-offset span within the original source string.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
@@ -282,12 +430,6 @@ pub struct ParseAstOutput {
 }
 
 #[derive(Debug, Clone)]
-pub struct TransformOutput {
-    pub ast: Ast,
-    pub transform_report: TransformReport,
-}
-
-#[derive(Debug, Clone)]
 pub enum ParseAstError {
     NoParseResult { diagnostics: Vec<ParseDiagnostic> },
     DiagnosticsPresent { diagnostics: Vec<ParseDiagnostic> },
@@ -303,23 +445,6 @@ impl std::fmt::Display for ParseAstError {
 }
 
 impl std::error::Error for ParseAstError {}
-
-#[derive(Debug, Clone)]
-pub enum ParseAndTransformError {
-    Parse(ParseAstError),
-    Transform(TransformEngineError),
-}
-
-impl std::fmt::Display for ParseAndTransformError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ParseAndTransformError::Parse(error) => error.fmt(f),
-            ParseAndTransformError::Transform(error) => error.fmt(f),
-        }
-    }
-}
-
-impl std::error::Error for ParseAndTransformError {}
 
 /// Immutable parse context owning an isolated knowledge base.
 ///
@@ -337,17 +462,10 @@ impl std::error::Error for ParseAndTransformError {}
 /// | [`all_packages()`](Self::all_packages) | Core + every registered package |
 /// | [`all_packages_shared()`](Self::all_packages_shared) | Same as above, lazily cached `&'static` ref |
 ///
+#[derive(Clone)]
 pub struct ParseContext {
     kb: KnowledgeBase,
-    // The compiled-profile cache is an internal optimization and remains
-    // instance-local. Cloning a ParseContext starts with a fresh empty cache.
-    profile_cache: ProfileCache,
-}
-
-impl Clone for ParseContext {
-    fn clone(&self) -> Self {
-        Self::new(self.kb.clone())
-    }
+    mutation_summary: MutationSummary,
 }
 
 impl std::fmt::Debug for ParseContext {
@@ -359,10 +477,10 @@ impl std::fmt::Debug for ParseContext {
 }
 
 impl ParseContext {
-    pub fn new(kb: KnowledgeBase) -> Self {
+    pub(crate) fn from_parts(kb: KnowledgeBase, mutation_summary: MutationSummary) -> Self {
         ParseContext {
             kb,
-            profile_cache: Arc::new(Mutex::new(Vec::new())),
+            mutation_summary,
         }
     }
 
@@ -370,16 +488,26 @@ impl ParseContext {
         &self.kb
     }
 
+    pub(crate) fn mutation_summary(&self) -> &MutationSummary {
+        &self.mutation_summary
+    }
+
     /// Build an empty context with no package specs loaded.
     ///
     /// Useful as a blank slate when every definition will be injected manually.
     pub fn empty() -> Self {
-        Self::new(KnowledgeBase::empty())
+        ParseContextBuilder::new()
+            .empty()
+            .build()
+            .expect("empty parse context should build")
     }
 
     /// Build a context containing only core knowledge (line breaks, etc.)
     pub fn core_only() -> Self {
-        Self::new(KnowledgeBase::core_only())
+        ParseContextBuilder::new()
+            .core_only()
+            .build()
+            .expect("core-only parse context should build")
     }
 
     /// Build a context from an explicit list of package names.
@@ -392,7 +520,10 @@ impl ParseContext {
     /// Panics if any package name is unrecognized. Use [`try_from_packages`](Self::try_from_packages)
     /// for fallible loading.
     pub fn from_packages(packages: &[&str]) -> Self {
-        Self::new(KnowledgeBase::build_from_packages(packages))
+        ParseContextBuilder::new()
+            .packages(packages)
+            .build()
+            .expect("package parse context should build")
     }
 
     /// Fallible variant of [`from_packages`](Self::from_packages).
@@ -400,12 +531,22 @@ impl ParseContext {
     /// Returns [`PackageLoadError`] instead of panicking when a package name
     /// is unrecognized.
     pub fn try_from_packages(packages: &[&str]) -> Result<Self, PackageLoadError> {
-        Ok(Self::new(KnowledgeBase::try_build_from_packages(packages)?))
+        ParseContextBuilder::new()
+            .packages(packages)
+            .build()
+            .map_err(|error| match error {
+                ParseContextBuildError::PackageLoad(error) => error,
+                ParseContextBuildError::InvalidContextItem { .. } => {
+                    panic!("try_from_packages should not hit invalid context item")
+                }
+            })
     }
 
     /// Build a context containing all registered packages.
     pub fn all_packages() -> Self {
-        Self::new(KnowledgeBase::all_packages())
+        ParseContextBuilder::new()
+            .build()
+            .expect("all-packages parse context should build")
     }
 
     /// Borrow the lazily-initialized all-packages context.
@@ -445,43 +586,6 @@ impl ParseContext {
         }
     }
 
-    pub fn transform(
-        &self,
-        ast: &mut Ast,
-        profile: &TransformProfile,
-    ) -> Result<TransformReport, TransformEngineError> {
-        let compiled = self
-            .get_or_compile_profile(profile)
-            .map_err(TransformEngineError::Profile)?;
-        transform_ast(ast, &self.kb, &compiled)
-    }
-
-    pub fn parse_and_transform(
-        &self,
-        src: &str,
-        strict: bool,
-        profile: &TransformProfile,
-    ) -> Result<TransformOutput, ParseAndTransformError> {
-        let mut ast = self
-            .parse_to_ast(src, strict)
-            .map_err(ParseAndTransformError::Parse)?
-            .ast;
-        let transform_report = self
-            .transform(&mut ast, profile)
-            .map_err(ParseAndTransformError::Transform)?;
-        Ok(TransformOutput {
-            ast,
-            transform_report,
-        })
-    }
-
-    pub fn transform_rule_statuses(
-        &self,
-        profile: &TransformProfile,
-    ) -> Result<Vec<RuleStatus>, ProfileCompileError> {
-        Ok(self.get_or_compile_profile(profile)?.statuses.clone())
-    }
-
     /// Look up the active command metadata for `name`.
     ///
     /// The active entry may come from an explicit command definition or a
@@ -504,20 +608,6 @@ impl ParseContext {
     /// Look up environment metadata by name.
     pub fn lookup_env(&self, name: &str) -> Option<&EnvMeta> {
         self.kb.lookup_env(name)
-    }
-
-    fn get_or_compile_profile(
-        &self,
-        profile: &TransformProfile,
-    ) -> Result<CompiledProfile, ProfileCompileError> {
-        let mut cache = self.profile_cache.lock().unwrap();
-        if let Some((_, compiled)) = cache.iter().find(|(cached, _)| cached == profile) {
-            return compiled.clone();
-        }
-
-        let compiled = crate::transform::compile::compile_profile(&self.kb, profile);
-        cache.push((profile.clone(), compiled.clone()));
-        compiled
     }
 }
 
@@ -1091,22 +1181,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_context_clone_starts_with_fresh_profile_cache() {
-        let ctx = ParseContext::from_packages(&["base"]);
-        ctx.transform_rule_statuses(&TransformProfile::default())
-            .expect("profile should compile for base context");
-        assert_eq!(ctx.profile_cache.lock().unwrap().len(), 1);
-
-        let cloned = ctx.clone();
-        assert_eq!(ctx.profile_cache.lock().unwrap().len(), 1);
-        assert_eq!(cloned.profile_cache.lock().unwrap().len(), 0);
-    }
-
-    #[test]
-    fn parse_context_debug_omits_internal_cache() {
+    fn parse_context_debug_omits_mutation_summary() {
         let debug = format!("{:?}", ParseContext::core_only());
         assert!(debug.contains("ParseContext"));
         assert!(debug.contains("kb"));
-        assert!(!debug.contains("profile_cache"));
+        assert!(!debug.contains("mutation_summary"));
     }
 }

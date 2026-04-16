@@ -1,5 +1,5 @@
 use texform_core::api::parse_with_context_items;
-use texform_core::context::{AllowedMode, CommandItem, CommandKind, ContextItem, ParseOutput};
+use texform_core::parse::{AllowedMode, CommandItem, CommandKind, ContextItem, ParseOutput};
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentValue, Delimiter, SyntaxNode,
 };

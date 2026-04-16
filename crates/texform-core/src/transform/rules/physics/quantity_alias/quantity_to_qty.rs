@@ -19,8 +19,8 @@ alias_rule! {
 #[cfg(test)]
 mod tests {
     use crate::ast::{ArgumentValue, Ast, Node, NodeId};
-    use crate::context::ParseContext;
-    use crate::transform::{RuleAvailability, TransformProfile};
+    use crate::parse::ParseContext;
+    use crate::transform::{transform_ast, BuiltinRuleSetId, TransformContextBuilder};
 
     fn assert_subtree_contains_char(ast: &Ast, node_id: NodeId, expected: char) {
         match ast.node(node_id) {
@@ -39,22 +39,26 @@ mod tests {
 
     #[test]
     fn rewrites_quantity_to_qty_and_preserves_argument_content() {
-        let ctx = ParseContext::from_packages(&["physics"]);
-        let output = ctx
-            .parse_and_transform(r"\quantity{a}", true, &TransformProfile::default())
+        let parse_ctx = ParseContext::from_packages(&["physics"]);
+        let transform_ctx = TransformContextBuilder::new(BuiltinRuleSetId::Normalize)
+            .build_with(&parse_ctx)
+            .expect("transform context should build");
+        let mut ast = parse_ctx
+            .parse_to_ast(r"\quantity{a}", true)
+            .expect("parse should succeed")
+            .ast;
+
+        let output = transform_ast(&mut ast, &parse_ctx, &transform_ctx)
             .expect("quantity-to-qty transform should succeed");
 
-        assert_eq!(output.transform_report.applied.len(), 1);
-        assert_eq!(
-            output.transform_report.applied[0].key.to_string(),
-            "physics/quantity-to-qty"
-        );
+        assert_eq!(output.applied.len(), 1);
+        assert_eq!(output.applied[0].key.to_string(), "physics/quantity-to-qty");
 
-        let root = output.ast.root();
-        let children = output.ast.children(root);
+        let root = ast.root();
+        let children = ast.children(root);
         assert_eq!(children.len(), 1);
 
-        match output.ast.node(children[0]) {
+        match ast.node(children[0]) {
             Node::Command { name, args, .. } => {
                 assert_eq!(name, "qty");
                 assert_eq!(args.len(), 1);
@@ -64,23 +68,9 @@ mod tests {
                     ArgumentValue::MathContent(id) => id,
                     ref other => panic!("expected content arg, got {:?}", other),
                 };
-                assert_subtree_contains_char(&output.ast, content_id, 'a');
+                assert_subtree_contains_char(&ast, content_id, 'a');
             }
             other => panic!("expected qty command after transform, got {:?}", other),
         }
-    }
-
-    #[test]
-    fn reports_rule_as_available_for_physics_profile() {
-        let ctx = ParseContext::from_packages(&["physics"]);
-        let statuses = ctx
-            .transform_rule_statuses(&TransformProfile::default())
-            .expect("profile compilation should succeed");
-
-        let status = statuses
-            .iter()
-            .find(|status| status.key.to_string() == "physics/quantity-to-qty")
-            .expect("quantity-to-qty status should exist");
-        assert!(matches!(status.availability, RuleAvailability::Available));
     }
 }

@@ -1,9 +1,9 @@
 use texform_specs::specs::{BuiltinCommandRecord, CommandKind};
 
 use crate::ast::{Node, NodeId};
-use crate::transform::context::TransformContext;
 use crate::transform::engine::TransformError;
 use crate::transform::rule::RuleEffect;
+use crate::transform::rule_context::RuleContext;
 
 pub(crate) fn debug_assert_prefix_alias_group_compatible(
     canonical: &'static BuiltinCommandRecord,
@@ -41,7 +41,7 @@ pub(crate) fn debug_assert_prefix_alias_group_compatible(
 }
 
 pub(crate) fn rename_prefix_command_alias(
-    cx: &mut TransformContext<'_>,
+    cx: &mut RuleContext<'_>,
     node_id: NodeId,
     canonical: &'static BuiltinCommandRecord,
     alias_names: &[&str],

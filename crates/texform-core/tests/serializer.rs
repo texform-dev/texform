@@ -1,6 +1,6 @@
 use texform_core::{
     ast::{Argument, ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node},
-    context::ParseContext,
+    parse::ParseContext,
     serialize::{
         AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, MathGroupInnerSpacing,
         ScriptOrder, ScriptSpacing, SerializeOptions, serialize, serialize_with,

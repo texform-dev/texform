@@ -31,9 +31,9 @@ use chumsky::{
 };
 use logos::Logos;
 
-use crate::context::ParseContext;
 use crate::knowledge::{CommandKind, CommandMeta, KnowledgeBase};
 use crate::lexer::Token;
+use crate::parse::ParseContext;
 use texform_interface::syntax_node::{ArgumentSlot, ContentMode, Delimiter, GroupKind, SyntaxNode};
 
 use self::arguments::{
@@ -836,7 +836,7 @@ where
 ///
 /// Returns the root [`SyntaxNode`] together with its byte span on success,
 /// or a list of rich diagnostics on failure. For partial-parse semantics
-/// (result + diagnostics), use [`ParseContext::parse`](crate::context::ParseContext::parse)
+/// (result + diagnostics), use [`ParseContext::parse`](crate::parse::ParseContext::parse)
 /// instead.
 pub fn parse(src: &str, strict: bool) -> Result<Spanned<SyntaxNode>, Vec<Rich<'_, Token>>> {
     let token_stream = build_token_stream(src);
@@ -2370,7 +2370,7 @@ fn mode_group_parsers_with_source<'a>(
 ///
 /// Returns a boxed parser that produces an implicit math-mode group
 /// wrapping all parsed items. This is the parser used by
-/// [`ParseContext::parse`](crate::context::ParseContext::parse).
+/// [`ParseContext::parse`](crate::parse::ParseContext::parse).
 pub(crate) fn math_block_parser<'a>(kb: &'a KnowledgeBase, strict: bool) -> NodeParser<'a> {
     let (math_parser, _) = mode_group_parsers(kb, strict);
     math_parser

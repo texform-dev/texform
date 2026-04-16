@@ -18,8 +18,9 @@ use serde::Serialize;
 use texform_interface::syntax_node::SyntaxNode;
 
 use crate::ast::Ast;
-use crate::context::{
-    ContextItem, KnowledgeBase, ParseContext, ParseDiagnostic, ParseOutput, Span,
+use crate::parse::{
+    ContextItem, ParseContext, ParseContextBuildError, ParseContextBuilder, ParseDiagnostic,
+    ParseOutput, Span,
 };
 use crate::serialize::{self, SerializeOptions};
 
@@ -70,29 +71,31 @@ pub fn parse_with_context_items(
     packages: Option<&[&str]>,
     strict: bool,
 ) -> ParseWithContextOutput {
-    let mut kb = match build_probe_kb(packages) {
-        Ok(kb) => kb,
-        Err(error) => {
-            return invalid_inputs_output(inputs, format!("package loading failed: {}", error));
-        }
-    };
-
     if let Some(message) = validate_context_items(items) {
         return invalid_inputs_output(inputs, message);
     }
 
-    for item in items {
-        let insert_result = kb.insert_item(item.clone());
+    let mut builder = match packages {
+        Some(package_names) => ParseContextBuilder::new().packages(package_names),
+        None => ParseContextBuilder::new().core_only(),
+    };
 
-        if let Err(error) = insert_result {
-            return invalid_inputs_output(
-                inputs,
-                format!("spec validation failed for {}: {}", item.name(), error),
-            );
-        }
+    for item in items {
+        builder = builder.insert_item(item.clone());
     }
 
-    let ctx = ParseContext::new(kb);
+    let ctx = match builder.build() {
+        Ok(ctx) => ctx,
+        Err(ParseContextBuildError::PackageLoad(error)) => {
+            return invalid_inputs_output(inputs, format!("package loading failed: {}", error));
+        }
+        Err(ParseContextBuildError::InvalidContextItem { name, source }) => {
+            return invalid_inputs_output(
+                inputs,
+                format!("spec validation failed for {}: {}", name, source),
+            );
+        }
+    };
 
     inputs
         .iter()
@@ -115,15 +118,6 @@ pub fn serialize_latex_with(node: &SyntaxNode, options: &SerializeOptions) -> St
     assert_serializable_syntax_node(node);
     let ast = Ast::from_syntax_node(node);
     serialize::serialize_with(&ast, options)
-}
-
-fn build_probe_kb(
-    packages: Option<&[&str]>,
-) -> Result<KnowledgeBase, crate::context::PackageLoadError> {
-    match packages {
-        Some(package_names) => KnowledgeBase::try_build_from_packages(package_names),
-        None => Ok(KnowledgeBase::core_only()),
-    }
 }
 
 fn validate_context_items(items: &[ContextItem]) -> Option<String> {

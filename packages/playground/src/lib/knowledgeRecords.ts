@@ -149,7 +149,8 @@ export function customKnowledgeRecordToContextItem(
 
 export function buildParseContext(
   records: CustomKnowledgeRecordEntry[],
+  packages?: string[] | null,
 ): ParseContext {
   const items = records.map(customKnowledgeRecordToContextItem)
-  return new ParseContext(undefined, items)
+  return new ParseContext(packages, items)
 }

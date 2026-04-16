@@ -118,13 +118,17 @@ export interface CharacterInfo {
 export class ParseContext {
   private readonly inner: WasmParseContext
 
-  constructor(packages?: string[], items?: ContextItem[]) {
+  constructor(packages?: string[] | null, items?: ContextItem[]) {
     assertReady()
     this.inner = new WasmParseContext(packages ?? undefined, items ?? undefined)
   }
 
   parse(src: string, strict?: boolean | null): ParseResult {
     return this.inner.parse(src, strict)
+  }
+
+  serialize(src: string, strict?: boolean | null, options?: SerializeOptions): string {
+    return this.inner.serialize(src, strict, options ?? undefined)
   }
 
   lookupActiveCommand(name: string): CommandInfo | null {

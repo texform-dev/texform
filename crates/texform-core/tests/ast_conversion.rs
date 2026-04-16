@@ -2,19 +2,20 @@ use texform_core::ast::{
     ArgumentKind, ArgumentValue, Ast, ContentMode, Delimiter, GroupKind, Node, NodeId, ParentLink,
     Slot,
 };
-use texform_core::context::{
+use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
-    KnowledgeBase, ParseContext,
+    ParseContext, ParseContextBuilder,
 };
 use texform_interface::syntax_node::{ArgumentValue as SyntaxArgumentValue, SyntaxNode};
 
 fn parse_with_items(src: &str, strict: bool, items: Vec<ContextItem>) -> SyntaxNode {
-    let mut kb = KnowledgeBase::core_only();
+    let mut builder = ParseContextBuilder::new().core_only();
     for item in items {
-        kb.insert_item(item)
-            .expect("test items should have valid xparse specs");
+        builder = builder.insert_item(item);
     }
-    let ctx = ParseContext::new(kb);
+    let ctx = builder
+        .build()
+        .expect("test items should have valid xparse specs");
 
     let output = ctx.parse(src, strict);
     assert!(

@@ -1,4 +1,4 @@
-//! Transform engine that applies compiled transformation rules to an AST.
+//! Transform engine that applies transformation rules to an AST.
 //!
 //! The engine executes in two phases:
 //!
@@ -7,13 +7,14 @@
 //! 2. **Cleanup** — runs a single pass of cleanup rules after normalization is complete.
 //!
 //! After both phases, the engine validates the resulting AST against the
-//! [`NormalFormContract`] to ensure all expected forms have been eliminated.
+//! eliminated-form contract derived into [`TransformContext`].
 
-use crate::ast::{Ast, NodeKind};
-use crate::knowledge::{KnowledgeBase, lookup_command_node_name, lookup_environment_node_name};
-use crate::transform::compile::{CompiledProfile, NormalFormContract, ProfileCompileError};
+use crate::ast::{Ast, NodeId, NodeKind};
+use crate::knowledge::{lookup_command_node_name, lookup_environment_node_name};
+use crate::parse::ParseContext;
 use crate::transform::context::TransformContext;
-use crate::transform::rule::{RuleEffect, RuleKey, RuleMeta, RuleTarget, RuleTrigger};
+use crate::transform::rule::{RuleEffect, RuleKey, RuleMeta, RuleTargetKey, RuleTrigger};
+use crate::transform::rule_context::RuleContext;
 
 /// Tracks how often a specific rule changed the AST or skipped after a trigger match.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -91,13 +92,11 @@ impl std::error::Error for TransformError {}
 /// Top-level errors produced by the transform engine.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TransformEngineError {
-    /// The profile failed to compile.
-    Profile(ProfileCompileError),
     /// An individual rule returned an error during application.
     Rule(TransformError),
     /// The output AST still contains a form that the contract requires to be eliminated.
     ContractViolation {
-        target: RuleTarget,
+        target: RuleTargetKey,
         node_name: Option<String>,
     },
     /// The normalize phase did not converge within the allowed iteration budget.
@@ -107,13 +106,12 @@ pub enum TransformEngineError {
 impl std::fmt::Display for TransformEngineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TransformEngineError::Profile(error) => error.fmt(f),
             TransformEngineError::Rule(error) => error.fmt(f),
             TransformEngineError::ContractViolation { target, node_name } => write!(
                 f,
                 "transform contract violated for {} `{}` (node {:?})",
                 target.kind_label(),
-                target.name(),
+                target.name,
                 node_name
             ),
             TransformEngineError::MaxIterationsExceeded { max_iterations } => {
@@ -125,42 +123,29 @@ impl std::fmt::Display for TransformEngineError {
 
 impl std::error::Error for TransformEngineError {}
 
-/// Applies compiled transformation rules to an AST and returns a report of what changed.
-///
-/// Execution proceeds in two phases:
-/// 1. **Normalize** — loops over the AST repeatedly, applying normalization rules until
-///    no rule fires (fixed-point) or `max_iterations` is reached.
-/// 2. **Cleanup** — makes a single pass with cleanup rules. Cleanup runs after
-///    normalization is complete and is not expected to trigger further normalization.
-///
-/// After both phases, the output AST is validated against the [`NormalFormContract`].
+/// Applies transformation rules to an AST and returns a report of what changed.
 pub fn transform_ast(
     ast: &mut Ast,
-    kb: &KnowledgeBase,
-    compiled: &CompiledProfile,
+    parse_ctx: &ParseContext,
+    transform_ctx: &TransformContext,
 ) -> Result<TransformReport, TransformEngineError> {
     let mut report = TransformReport {
         applied: Vec::new(),
         iterations: 0,
     };
 
-    // --- Phase 1: Normalize (fixed-point loop) ---
-    for iteration in 0..compiled.max_iterations {
+    for iteration in 0..transform_ctx.max_iterations() {
         let mut changed = false;
-        // Snapshot node IDs before this iteration so we iterate over a stable
-        // list while rules mutate the AST (avoids iterator invalidation).
         let snapshot = preorder_snapshot(ast);
 
         {
-            let mut cx = TransformContext::new(ast, kb, compiled, &mut report);
+            let mut cx = RuleContext::new(ast, parse_ctx.kb(), transform_ctx, &mut report);
             for node_id in snapshot {
-                // A node may have been removed by an earlier rule application
-                // within this same iteration, so check that it still exists.
                 if !cx.ast.contains(node_id) {
                     continue;
                 }
 
-                for rule in &compiled.normalize_phase.ordered_rules {
+                for rule in transform_ctx.normalize_rules() {
                     if !rule_matches(rule.meta(), node_id, &cx) {
                         continue;
                     }
@@ -187,25 +172,22 @@ pub fn transform_ast(
             break;
         }
 
-        if iteration + 1 == compiled.max_iterations {
+        if iteration + 1 == transform_ctx.max_iterations() {
             return Err(TransformEngineError::MaxIterationsExceeded {
-                max_iterations: compiled.max_iterations,
+                max_iterations: transform_ctx.max_iterations(),
             });
         }
     }
 
-    // --- Phase 2: Cleanup (single pass) ---
-    // Cleanup rules run once after normalization converges. They are not expected
-    // to produce forms that would re-trigger normalization rules.
-    if let Some(cleanup_phase) = &compiled.cleanup_phase {
+    if !transform_ctx.cleanup_rules().is_empty() {
         let snapshot = preorder_snapshot(ast);
-        let mut cx = TransformContext::new(ast, kb, compiled, &mut report);
+        let mut cx = RuleContext::new(ast, parse_ctx.kb(), transform_ctx, &mut report);
         for node_id in snapshot {
             if !cx.ast.contains(node_id) {
                 continue;
             }
 
-            for rule in &cleanup_phase.ordered_rules {
+            for rule in transform_ctx.cleanup_rules() {
                 if !rule_matches(rule.meta(), node_id, &cx) {
                     continue;
                 }
@@ -226,23 +208,15 @@ pub fn transform_ast(
         }
     }
 
-    validate_contract(ast, &compiled.contract)?;
+    assert_eliminated_forms(ast, parse_ctx, transform_ctx.eliminated_forms())?;
     Ok(report)
 }
 
-/// Collects all node IDs in pre-order traversal to produce a stable snapshot.
-///
-/// The snapshot is taken before each iteration so that rule applications can
-/// safely mutate the AST without invalidating the traversal order.
-fn preorder_snapshot(ast: &Ast) -> Vec<crate::ast::NodeId> {
+fn preorder_snapshot(ast: &Ast) -> Vec<NodeId> {
     ast.find_all(ast.root(), |_| true)
 }
 
-/// Returns `true` if the rule's trigger conditions match the given node.
-///
-/// When a rule declares no triggers, it matches every node (convention: an
-/// empty trigger list means universal applicability).
-fn rule_matches(meta: &RuleMeta, node_id: crate::ast::NodeId, cx: &TransformContext<'_>) -> bool {
+fn rule_matches(meta: &RuleMeta, node_id: NodeId, cx: &RuleContext<'_>) -> bool {
     if meta.triggers.is_empty() {
         return true;
     }
@@ -253,12 +227,7 @@ fn rule_matches(meta: &RuleMeta, node_id: crate::ast::NodeId, cx: &TransformCont
         .any(|trigger| trigger_matches(trigger, node_id, cx))
 }
 
-/// Checks whether a single trigger condition is satisfied for the given node.
-fn trigger_matches(
-    trigger: RuleTrigger,
-    node_id: crate::ast::NodeId,
-    cx: &TransformContext<'_>,
-) -> bool {
+fn trigger_matches(trigger: RuleTrigger, node_id: NodeId, cx: &RuleContext<'_>) -> bool {
     match trigger {
         RuleTrigger::NodeKind(kind) => cx.ast.kind(node_id) == kind,
         RuleTrigger::Command(record) => cx
@@ -276,11 +245,14 @@ fn trigger_matches(
     }
 }
 
-/// Walks the AST and verifies that no eliminated form from the contract is still present.
-fn validate_contract(ast: &Ast, contract: &NormalFormContract) -> Result<(), TransformEngineError> {
+fn assert_eliminated_forms(
+    ast: &Ast,
+    parse_ctx: &ParseContext,
+    eliminated_forms: &[RuleTargetKey],
+) -> Result<(), TransformEngineError> {
     for node_id in ast.find_all(ast.root(), |_| true) {
-        for target in &contract.eliminated_forms {
-            if target_present(ast, node_id, *target) {
+        for target in eliminated_forms {
+            if target_present(ast, node_id, *target, parse_ctx) {
                 let node_name = match ast.kind(node_id) {
                     NodeKind::Command | NodeKind::Infix | NodeKind::Declarative => {
                         lookup_command_node_name(ast.node(node_id)).map(ToString::to_string)
@@ -300,14 +272,20 @@ fn validate_contract(ast: &Ast, contract: &NormalFormContract) -> Result<(), Tra
     Ok(())
 }
 
-/// Returns `true` if the given node matches the specified rule target form.
-fn target_present(ast: &Ast, node_id: crate::ast::NodeId, target: RuleTarget) -> bool {
-    match target {
-        RuleTarget::Command(record) => {
-            lookup_command_node_name(ast.node(node_id)).is_some_and(|name| name == record.name)
+fn target_present(
+    ast: &Ast,
+    node_id: NodeId,
+    target: RuleTargetKey,
+    parse_ctx: &ParseContext,
+) -> bool {
+    match target.kind {
+        crate::transform::rule::RuleTargetKind::Command => {
+            lookup_command_node_name(ast.node(node_id))
+                .is_some_and(|name| name == target.name && parse_ctx.lookup_command(name).is_some())
         }
-        RuleTarget::Environment(record) => {
-            lookup_environment_node_name(ast.node(node_id)).is_some_and(|name| name == record.name)
+        crate::transform::rule::RuleTargetKind::Environment => {
+            lookup_environment_node_name(ast.node(node_id))
+                .is_some_and(|name| name == target.name && parse_ctx.lookup_env(name).is_some())
         }
     }
 }
@@ -315,16 +293,17 @@ fn target_present(ast: &Ast, node_id: crate::ast::NodeId, target: RuleTarget) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Ast, Node, NodeId};
-    use crate::knowledge::KnowledgeBase;
-    use crate::transform::compile::{CompiledPhase, CompiledProfile};
+    use crate::ast::{Node, NodeId};
+    use crate::parse::{AllowedMode, ParseContext, ParseContextBuilder};
     use crate::transform::context::TransformContext;
     use crate::transform::rule::{
         RuleConsumes, RuleEffect, RuleGroup, RuleMeta, RulePhase, RuleProduces, RuleSafety,
-        RuleTrigger, TransformRule,
+        RuleTarget, RuleTrigger, TransformRule,
     };
+    use crate::transform::rule_context::RuleContext;
     use texform_specs::argspec;
-    use texform_specs::specs::{AllowedMode, BuiltinCommandRecord, CommandKind, CommandSpec};
+    use texform_specs::builtin::physics;
+    use texform_specs::specs::{BuiltinCommandRecord, CommandKind};
 
     struct SkipRule;
 
@@ -335,7 +314,7 @@ mod tests {
 
         fn apply(
             &self,
-            _cx: &mut TransformContext<'_>,
+            _cx: &mut RuleContext<'_>,
             _node_id: NodeId,
         ) -> Result<RuleEffect, TransformError> {
             Ok(RuleEffect::Skipped)
@@ -368,31 +347,22 @@ mod tests {
 
     static SKIP_RULE: SkipRule = SkipRule;
 
-    fn compiled_profile_with(rule: &'static dyn TransformRule) -> CompiledProfile {
-        CompiledProfile {
-            normalize_phase: CompiledPhase {
-                phase: RulePhase::Normalize,
-                ordered_rules: vec![rule],
-            },
-            cleanup_phase: None,
-            statuses: Vec::new(),
-            contract: NormalFormContract {
-                eliminated_forms: Vec::new(),
-            },
-            max_iterations: 4,
-        }
+    fn transform_context_with(rule: &'static dyn TransformRule) -> TransformContext {
+        TransformContext::from_parts_for_test(vec![rule], Vec::new(), Vec::new(), 4)
     }
 
     #[test]
     fn report_tracks_skipped_rule_attempts_after_trigger_match() {
-        let mut kb = KnowledgeBase::empty();
-        kb.insert_or_override_command(CommandSpec {
-            name: "skip-me".to_string(),
-            kind: CommandKind::Prefix,
-            allowed_mode: AllowedMode::Math,
-            argspec: argspec!("").into(),
-            tags: vec![],
-        });
+        let parse_ctx = ParseContextBuilder::new()
+            .empty()
+            .insert_item(crate::parse::CommandItem::new(
+                "skip-me",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "",
+            ))
+            .build()
+            .expect("parse context should build");
 
         let mut ast = Ast::new();
         let node_id = ast.new_node(Node::Command {
@@ -402,7 +372,7 @@ mod tests {
         });
         ast.append_child(ast.root(), node_id);
 
-        let report = transform_ast(&mut ast, &kb, &compiled_profile_with(&SKIP_RULE))
+        let report = transform_ast(&mut ast, &parse_ctx, &transform_context_with(&SKIP_RULE))
             .expect("transform with skip-only rule should succeed");
 
         assert_eq!(report.iterations, 1);
@@ -414,5 +384,35 @@ mod tests {
                 skipped_count: 1,
             }]
         );
+    }
+
+    #[test]
+    fn contract_ignores_unloaded_unknown_command_forms() {
+        let parse_ctx = ParseContext::core_only();
+        assert!(parse_ctx.lookup_command("quantity").is_none());
+
+        let mut ast = parse_ctx
+            .parse_to_ast(r"\quantity{a}", false)
+            .expect("non-strict parse should preserve unknown package command")
+            .ast;
+
+        let root_children = ast.children(ast.root());
+        match ast.node(root_children[0]) {
+            Node::Command { name, known, .. } => {
+                assert_eq!(name, "quantity");
+                assert!(!known);
+            }
+            other => panic!("expected unknown command node, got {:?}", other),
+        }
+
+        let transform_ctx = TransformContext::from_parts_for_test(
+            Vec::new(),
+            Vec::new(),
+            vec![RuleTarget::Command(&physics::cmd::QUANTITY).key()],
+            4,
+        );
+
+        transform_ast(&mut ast, &parse_ctx, &transform_ctx)
+            .expect("runtime contract should ignore forms unavailable in this parse context");
     }
 }

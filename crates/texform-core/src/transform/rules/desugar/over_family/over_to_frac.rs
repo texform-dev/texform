@@ -52,29 +52,33 @@ define_rule! {
 #[cfg(test)]
 mod tests {
     use crate::ast::{ArgumentKind, ArgumentValue, Node};
-    use crate::context::ParseContext;
-    use crate::transform::{RuleAvailability, TransformProfile};
+    use crate::parse::ParseContext;
+    use crate::transform::{transform_ast, BuiltinRuleSetId, TransformContextBuilder};
 
     #[test]
     fn rewrites_infix_over_into_frac_command() {
-        let ctx = ParseContext::from_packages(&["base"]);
-        let output = ctx
-            .parse_and_transform(r"a \over b", true, &TransformProfile::default())
+        let parse_ctx = ParseContext::from_packages(&["base"]);
+        let transform_ctx = TransformContextBuilder::new(BuiltinRuleSetId::Normalize)
+            .build_with(&parse_ctx)
+            .expect("transform context should build");
+        let mut ast = parse_ctx
+            .parse_to_ast(r"a \over b", true)
+            .expect("parse should succeed")
+            .ast;
+
+        let output = transform_ast(&mut ast, &parse_ctx, &transform_ctx)
             .expect("over-to-frac transform should succeed");
 
-        assert_eq!(output.transform_report.iterations, 2);
-        assert_eq!(output.transform_report.applied.len(), 1);
-        assert_eq!(output.transform_report.applied[0].count, 1);
-        assert_eq!(
-            output.transform_report.applied[0].key.to_string(),
-            "desugar/over-to-frac"
-        );
+        assert_eq!(output.iterations, 2);
+        assert_eq!(output.applied.len(), 1);
+        assert_eq!(output.applied[0].count, 1);
+        assert_eq!(output.applied[0].key.to_string(), "desugar/over-to-frac");
 
-        let root = output.ast.root();
-        let children = output.ast.children(root);
+        let root = ast.root();
+        let children = ast.children(root);
         assert_eq!(children.len(), 1);
 
-        match output.ast.node(children[0]) {
+        match ast.node(children[0]) {
             Node::Command { name, args, .. } => {
                 assert_eq!(name, "frac");
                 assert_eq!(args.len(), 2);
@@ -85,7 +89,7 @@ mod tests {
                     ArgumentValue::MathContent(id) => id,
                     ref other => panic!("expected lhs content arg, got {:?}", other),
                 };
-                assert_eq!(output.ast.node(left_id), &Node::Char('a'));
+                assert_eq!(ast.node(left_id), &Node::Char('a'));
 
                 let right = args[1].as_ref().expect("frac rhs should exist");
                 assert_eq!(right.kind, ArgumentKind::Mandatory);
@@ -93,23 +97,9 @@ mod tests {
                     ArgumentValue::MathContent(id) => id,
                     ref other => panic!("expected rhs content arg, got {:?}", other),
                 };
-                assert_eq!(output.ast.node(right_id), &Node::Char('b'));
+                assert_eq!(ast.node(right_id), &Node::Char('b'));
             }
             other => panic!("expected frac command after transform, got {:?}", other),
         }
-    }
-
-    #[test]
-    fn reports_rule_as_available_for_base_profile() {
-        let ctx = ParseContext::from_packages(&["base"]);
-        let statuses = ctx
-            .transform_rule_statuses(&TransformProfile::default())
-            .expect("profile compilation should succeed");
-
-        let status = statuses
-            .iter()
-            .find(|status| status.key.to_string() == "desugar/over-to-frac")
-            .expect("over-to-frac status should exist");
-        assert!(matches!(status.availability, RuleAvailability::Available));
     }
 }

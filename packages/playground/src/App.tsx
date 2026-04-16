@@ -37,7 +37,6 @@ import {
   type ParseResult,
   ParseContext,
   ensureWasmReady,
-  serializeLatex,
 } from './lib/texformWasm'
 import {
   buildSyntaxTree,
@@ -149,7 +148,7 @@ export default function App() {
           } catch {
             restored = []
             persistCustomKnowledgeRecords([])
-            ctx = new ParseContext()
+            ctx = buildParseContext([])
           }
 
           if (!alive) return
@@ -197,17 +196,17 @@ export default function App() {
 
   // -- Derived: serialized state --
   const serializedState = useMemo<{ output: string | null; error: string | null; serializeTime: number | null }>(() => {
-    if (!wasmReady || !source) {
+    if (!wasmReady || !parseContext || !source) {
       return { output: null, error: null, serializeTime: null }
     }
     const t0 = performance.now()
     try {
-      const output = serializeLatex(source, strictMode, serializeOptions)
+      const output = parseContext.serialize(source, strictMode, serializeOptions)
       return { output, error: null, serializeTime: performance.now() - t0 }
     } catch (error) {
       return { output: null, error: extractFatalMessage(error), serializeTime: performance.now() - t0 }
     }
-  }, [source, strictMode, serializeOptions, wasmReady])
+  }, [source, strictMode, serializeOptions, wasmReady, parseContext])
 
   // -- Derived: syntax tree --
   const treeRoot = useMemo(() => {

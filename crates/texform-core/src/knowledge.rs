@@ -1,4 +1,4 @@
-//! Knowledge base: the backing store behind [`ParseContext`](crate::context::ParseContext).
+//! Knowledge base: the backing store behind [`ParseContext`](crate::parse::ParseContext).
 //!
 //! A [`KnowledgeBase`] holds indexed command, environment, character, and
 //! delimiter-control metadata loaded from `texform-specs` package definitions.
@@ -31,7 +31,7 @@ use texform_argspec::parse_arg_specs;
 use texform_interface::syntax_node::ContentMode;
 use texform_specs::builtin::BuiltinPackage;
 
-use crate::context::{CommandItem, ContextItem, DelimiterControlItem, EnvironmentItem};
+use crate::parse::{CommandItem, ContextItem, DelimiterControlItem, EnvironmentItem};
 
 pub use texform_argspec::{
     ArgForm, ArgSpec, ArgSpecParseError, DelimiterToken, ParsedArgSpec, ValueKind,
@@ -162,21 +162,6 @@ impl KnowledgeBase {
         match self.active_command_idx_by_name.get(name).copied()? {
             ActiveCommandSource::Explicit(idx) => Some(&self.commands[idx]),
             ActiveCommandSource::Character(idx) => Some(&self.character_command_views[idx]),
-        }
-    }
-
-    /// Look up the active command only when the active source is explicit.
-    ///
-    /// Returns `None` when the name is unknown, suppressed, or currently
-    /// resolved through a character-derived command view.
-    pub(crate) fn lookup_active_explicit_command(&self, name: &str) -> Option<&CommandMeta> {
-        if self.suppressed_command_names.contains(name) {
-            return None;
-        }
-
-        match self.active_command_idx_by_name.get(name).copied()? {
-            ActiveCommandSource::Explicit(idx) => Some(&self.commands[idx]),
-            ActiveCommandSource::Character(_) => None,
         }
     }
 

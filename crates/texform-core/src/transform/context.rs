@@ -1,309 +1,605 @@
-//! Transform context and typed node views for rule matching.
-//!
-//! This module provides [`TransformContext`], the main context object passed to
-//! [`TransformRule::apply()`](super::rule::TransformRule::apply) during AST
-//! transformation. It bundles mutable AST access with knowledge-base lookups,
-//! validation helpers, and statistics tracking.
-//!
-//! It also defines a family of read-only *view* structs ([`CommandView`],
-//! [`InfixView`], [`DeclarativeView`], [`EnvironmentView`]) that the
-//! `match_*` helpers extract from AST nodes. Rules operate on these views
-//! instead of pattern-matching raw [`Node`] variants directly, which keeps
-//! rule implementations concise and type-safe.
+//! Build-time transform context assembled from a parse context and rule set.
 
-use crate::ast::{ArgumentSlot, Ast, Node, NodeId};
-use crate::knowledge::{KnowledgeBase, lookup_command_node_name, lookup_environment_node_name};
-use crate::transform::compile::{CompiledProfile, RuleStatus};
-use crate::transform::engine::{TransformError, TransformReport};
-use crate::transform::rule::RuleKey;
-use texform_specs::specs::{
-    ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, BuiltinCommandRecord,
-    BuiltinEnvironmentRecord,
+use std::collections::{BTreeSet, VecDeque};
+
+use crate::parse::ParseContext;
+use crate::transform::registry::rules_for_ruleset;
+use crate::transform::rule::{
+    RuleKey, RulePhase, RuleTarget, RuleTargetKey, RuleTargetKind, TransformRule,
 };
 
-/// A read-only view of a prefix command node for use in rule matching.
-#[derive(Clone, Copy)]
-pub struct CommandView<'a> {
-    /// The command name without the leading backslash.
-    pub name: &'a str,
-    /// The explicit argument slots parsed for this command.
-    pub args: &'a [ArgumentSlot],
+pub(crate) type RuleList = Vec<&'static dyn TransformRule>;
+pub(crate) type EliminatedForms = Vec<RuleTargetKey>;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BuiltinRuleSetId {
+    Normalize,
+    Mer,
 }
 
-/// A read-only view of an infix command node for use in rule matching.
-#[derive(Clone, Copy)]
-pub struct InfixView<'a> {
-    /// The command name without the leading backslash.
-    pub name: &'a str,
-    /// The explicit argument slots parsed for this command.
-    pub args: &'a [ArgumentSlot],
-    /// The left operand subtree collected by the parser.
-    pub left: NodeId,
-    /// The right operand subtree collected by the parser.
-    pub right: NodeId,
+#[derive(Clone)]
+pub struct TransformContext {
+    normalize_rules: RuleList,
+    cleanup_rules: RuleList,
+    eliminated_forms: EliminatedForms,
+    max_iterations: usize,
 }
 
-/// A read-only view of a declarative command node for use in rule matching.
-#[derive(Clone, Copy)]
-pub struct DeclarativeView<'a> {
-    /// The command name without the leading backslash.
-    pub name: &'a str,
-    /// The explicit argument slots parsed for this command.
-    pub args: &'a [ArgumentSlot],
-    /// The scope subtree that this declaration affects (up to the enclosing group boundary).
-    pub scope: NodeId,
-}
+impl TransformContext {
+    pub fn normalize_rules(&self) -> &[&'static dyn TransformRule] {
+        self.normalize_rules.as_slice()
+    }
 
-/// A read-only view of an environment node for use in rule matching.
-#[derive(Clone, Copy)]
-pub struct EnvironmentView<'a> {
-    /// The environment name (as it appears between `\begin{…}` and `\end{…}`).
-    pub name: &'a str,
-    /// The explicit argument slots parsed for this environment.
-    pub args: &'a [ArgumentSlot],
-    /// The body subtree between `\begin` and `\end`.
-    pub body: NodeId,
-}
+    pub fn cleanup_rules(&self) -> &[&'static dyn TransformRule] {
+        self.cleanup_rules.as_slice()
+    }
 
-/// The main context object passed to [`TransformRule::apply()`](super::rule::TransformRule::apply).
-///
-/// It bundles mutable AST access with knowledge-base lookups, node-shape
-/// validation helpers, and statistics tracking. Rules receive a mutable
-/// reference to this context and use it both to inspect the current tree
-/// and to record replacement nodes.
-///
-/// `ast` is intentionally public because many transforms need unrestricted
-/// structural mutation, not just a narrow helper surface. The tradeoff is that
-/// rules can also violate AST invariants if they misuse low-level operations,
-/// so debug builds re-run [`Ast::assert_invariants()`](crate::ast::Ast::assert_invariants)
-/// after every successful rewrite. Knowledge-base access, profile status, and
-/// report mutation stay mediated through methods because those interactions are
-/// semantic rather than structural.
-pub struct TransformContext<'a> {
-    /// Mutable access to the AST being transformed.
-    ///
-    /// This field stays public so rules can perform bespoke tree surgery when
-    /// helper functions are not expressive enough.
-    pub ast: &'a mut Ast,
-    kb: &'a KnowledgeBase,
-    profile: &'a CompiledProfile,
-    report: &'a mut TransformReport,
-}
+    pub fn eliminated_forms(&self) -> &[RuleTargetKey] {
+        self.eliminated_forms.as_slice()
+    }
 
-impl<'a> TransformContext<'a> {
-    pub fn new(
-        ast: &'a mut Ast,
-        kb: &'a KnowledgeBase,
-        profile: &'a CompiledProfile,
-        report: &'a mut TransformReport,
+    pub fn max_iterations(&self) -> usize {
+        self.max_iterations
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn from_parts_for_test(
+        normalize_rules: RuleList,
+        cleanup_rules: RuleList,
+        eliminated_forms: EliminatedForms,
+        max_iterations: usize,
     ) -> Self {
         Self {
-            ast,
-            kb,
-            profile,
-            report,
+            normalize_rules,
+            cleanup_rules,
+            eliminated_forms,
+            max_iterations,
         }
     }
+}
 
-    /// Looks up the active command record for the node at `node_id` by extracting its name from the AST.
-    pub fn active_command(&self, node_id: NodeId) -> Option<&ActiveCommandRecord> {
-        let name = lookup_command_node_name(self.ast.node(node_id))?;
-        self.kb.lookup_command(name)
-    }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TransformBuildError {
+    EmptyRuleSet {
+        ruleset: BuiltinRuleSetId,
+    },
+    DependencyCycle {
+        chain: Vec<RuleKey>,
+    },
+    CleanupBoundaryConflict {
+        cleanup_rule: RuleKey,
+        normalize_rule: RuleKey,
+    },
+}
 
-    /// Looks up the active character record for the node at `node_id` by extracting its name from the AST.
-    pub fn active_character(&self, node_id: NodeId) -> Option<&ActiveCharacterRecord> {
-        let name = lookup_command_node_name(self.ast.node(node_id))?;
-        self.kb.lookup_character(name)
-    }
-
-    /// Looks up the active environment record for the node at `node_id` by extracting its name from the AST.
-    pub fn active_env(&self, node_id: NodeId) -> Option<&ActiveEnvironmentRecord> {
-        let name = lookup_environment_node_name(self.ast.node(node_id))?;
-        self.kb.lookup_env(name)
-    }
-
-    /// Looks up a command record by name directly in the knowledge base.
-    pub fn lookup_command(&self, name: &str) -> Option<&ActiveCommandRecord> {
-        self.kb.lookup_command(name)
-    }
-
-    /// Looks up a character record by name directly in the knowledge base.
-    pub fn lookup_character(&self, name: &str) -> Option<&ActiveCharacterRecord> {
-        self.kb.lookup_character(name)
-    }
-
-    /// Looks up an environment record by name directly in the knowledge base.
-    pub fn lookup_env(&self, name: &str) -> Option<&ActiveEnvironmentRecord> {
-        self.kb.lookup_env(name)
-    }
-
-    /// Returns the compiled status for a rule, including its availability and config setting.
-    pub fn rule_status(&self, key: RuleKey) -> Option<&RuleStatus> {
-        self.profile
-            .statuses
-            .iter()
-            .find(|status| status.key == key)
-    }
-
-    /// Records that a rule was successfully applied, incrementing its count in the report.
-    pub fn mark_rule_applied(&mut self, key: RuleKey) {
-        self.report.mark_rule_applied(key);
-    }
-
-    /// Records that a rule was attempted after trigger matching but made no change.
-    pub fn mark_rule_skipped(&mut self, key: RuleKey) {
-        self.report.mark_rule_skipped(key);
-    }
-
-    /// Records the total number of fixed-point iterations the engine performed.
-    pub fn record_iteration(&mut self, iterations: usize) {
-        self.report.record_iteration(iterations);
-    }
-
-    /// Returns the AST node for the given identifier.
-    pub fn node(&self, node_id: NodeId) -> &Node {
-        self.ast.node(node_id)
-    }
-
-    // --- Validation helpers ---
-
-    /// Creates an [`InvalidNodeShape`](TransformError::InvalidNodeShape) error for the given rule.
-    pub fn invalid_shape(&self, rule: RuleKey, message: impl Into<String>) -> TransformError {
-        TransformError::InvalidNodeShape {
-            rule,
-            message: message.into(),
-        }
-    }
-
-    /// Creates a [`MissingMetadata`](TransformError::MissingMetadata) error for the given rule.
-    pub fn missing_metadata(&self, rule: RuleKey, name: impl Into<String>) -> TransformError {
-        TransformError::MissingMetadata {
-            rule,
-            name: name.into(),
-        }
-    }
-
-    /// Returns `Ok(())` when `condition` is true, or an [`InvalidNodeShape`](TransformError::InvalidNodeShape) error otherwise.
-    pub fn ensure_shape(
-        &self,
-        condition: bool,
-        rule: RuleKey,
-        message: impl Into<String>,
-    ) -> Result<(), TransformError> {
-        if condition {
-            Ok(())
-        } else {
-            Err(self.invalid_shape(rule, message))
-        }
-    }
-
-    /// Asserts that `args` has exactly `expected` slots, returning an error that names `subject` on mismatch.
-    pub fn expect_arg_len(
-        &self,
-        rule: RuleKey,
-        args: &[ArgumentSlot],
-        expected: usize,
-        subject: &str,
-    ) -> Result<(), TransformError> {
-        self.ensure_shape(
-            args.len() == expected,
-            rule,
-            format!(
-                "{subject} should carry exactly {expected} explicit argument slots, got {}",
-                args.len()
-            ),
-        )
-    }
-
-    /// Shorthand for [`expect_arg_len`](Self::expect_arg_len) with `expected = 0`.
-    pub fn expect_no_args(
-        &self,
-        rule: RuleKey,
-        args: &[ArgumentSlot],
-        subject: &str,
-    ) -> Result<(), TransformError> {
-        self.expect_arg_len(rule, args, 0, subject)
-    }
-
-    // --- Pattern-matching helpers ---
-    //
-    // Each `match_*` method follows the same pattern:
-    //   1. Destructure the AST node at `node_id` into the expected `Node` variant.
-    //   2. Guard on the node's name matching the builtin record's name.
-    //   3. On match, return a lightweight typed view; otherwise return `None`.
-    // This lets rules attempt a match without manually unpacking node variants.
-
-    /// Tries to extract a [`CommandView`] from the node, returning `None` if it is not a matching prefix command.
-    pub fn match_command(
-        &self,
-        node_id: NodeId,
-        record: &'static BuiltinCommandRecord,
-    ) -> Option<CommandView<'_>> {
-        match self.ast.node(node_id) {
-            Node::Command { name, args, .. } if name == record.name => Some(CommandView {
-                name: name.as_str(),
-                args: args.as_slice(),
-            }),
-            _ => None,
-        }
-    }
-
-    /// Tries to extract an [`InfixView`] from the node, returning `None` if it is not a matching infix command.
-    pub fn match_infix(
-        &self,
-        node_id: NodeId,
-        record: &'static BuiltinCommandRecord,
-    ) -> Option<InfixView<'_>> {
-        match self.ast.node(node_id) {
-            Node::Infix {
-                name,
-                args,
-                left,
-                right,
-            } if name == record.name => Some(InfixView {
-                name: name.as_str(),
-                args: args.as_slice(),
-                left: *left,
-                right: *right,
-            }),
-            _ => None,
-        }
-    }
-
-    /// Tries to extract a [`DeclarativeView`] from the node, returning `None` if it is not a matching declarative command.
-    pub fn match_declarative(
-        &self,
-        node_id: NodeId,
-        record: &'static BuiltinCommandRecord,
-    ) -> Option<DeclarativeView<'_>> {
-        match self.ast.node(node_id) {
-            Node::Declarative { name, args, scope } if name == record.name => {
-                Some(DeclarativeView {
-                    name: name.as_str(),
-                    args: args.as_slice(),
-                    scope: *scope,
-                })
+impl std::fmt::Display for TransformBuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TransformBuildError::EmptyRuleSet { ruleset } => {
+                write!(f, "transform ruleset {:?} has no active rules", ruleset)
             }
-            _ => None,
+            TransformBuildError::DependencyCycle { chain } => {
+                let chain = chain
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" -> ");
+                write!(f, "transform dependency cycle detected: {chain}")
+            }
+            TransformBuildError::CleanupBoundaryConflict {
+                cleanup_rule,
+                normalize_rule,
+            } => write!(
+                f,
+                "cleanup rule {cleanup_rule} produces input consumed by normalize rule {normalize_rule}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for TransformBuildError {}
+
+pub struct TransformContextBuilder {
+    ruleset: BuiltinRuleSetId,
+    only: Option<BTreeSet<RuleKey>>,
+    disabled: BTreeSet<RuleKey>,
+    max_iterations: usize,
+}
+
+impl TransformContextBuilder {
+    pub fn new(ruleset: BuiltinRuleSetId) -> Self {
+        Self {
+            ruleset,
+            only: None,
+            disabled: BTreeSet::new(),
+            max_iterations: 100,
         }
     }
 
-    /// Tries to extract an [`EnvironmentView`] from the node, returning `None` if it is not a matching environment.
-    pub fn match_environment(
-        &self,
-        node_id: NodeId,
-        record: &'static BuiltinEnvironmentRecord,
-    ) -> Option<EnvironmentView<'_>> {
-        match self.ast.node(node_id) {
-            Node::Environment {
-                name, args, body, ..
-            } if name == record.name => Some(EnvironmentView {
-                name: name.as_str(),
-                args: args.as_slice(),
-                body: *body,
-            }),
-            _ => None,
+    pub fn only(mut self, key: RuleKey) -> Self {
+        self.only = Some(std::iter::once(key).collect());
+        self
+    }
+
+    pub fn only_many(mut self, keys: &[RuleKey]) -> Self {
+        self.only = Some(keys.iter().copied().collect());
+        self
+    }
+
+    pub fn disable(mut self, key: RuleKey) -> Self {
+        self.disabled.insert(key);
+        self
+    }
+
+    pub fn max_iterations(mut self, max_iterations: usize) -> Self {
+        self.max_iterations = max_iterations;
+        self
+    }
+
+    pub fn build_with(
+        self,
+        parse_ctx: &ParseContext,
+    ) -> Result<TransformContext, TransformBuildError> {
+        let all_rules = rules_for_ruleset(self.ruleset);
+        let only = self.only.unwrap_or_else(|| {
+            all_rules
+                .iter()
+                .map(|rule| rule.meta().key)
+                .collect::<BTreeSet<_>>()
+        });
+
+        let enabled = all_rules
+            .iter()
+            .copied()
+            .filter(|rule| only.contains(&rule.meta().key))
+            .filter(|rule| !self.disabled.contains(&rule.meta().key))
+            .filter(|rule| !rule_touched_by_mutations(rule, parse_ctx.mutation_summary()))
+            .collect::<Vec<_>>();
+
+        if enabled.is_empty() {
+            return Err(TransformBuildError::EmptyRuleSet {
+                ruleset: self.ruleset,
+            });
         }
+
+        let normalize_rules = topological_sort(
+            enabled
+                .iter()
+                .copied()
+                .filter(|rule| matches!(rule.meta().phase, RulePhase::Normalize))
+                .collect::<Vec<_>>()
+                .as_slice(),
+        )?;
+        let cleanup_rules = topological_sort(
+            enabled
+                .iter()
+                .copied()
+                .filter(|rule| matches!(rule.meta().phase, RulePhase::Cleanup))
+                .collect::<Vec<_>>()
+                .as_slice(),
+        )?;
+
+        assert_cleanup_boundary(normalize_rules.as_slice(), cleanup_rules.as_slice())?;
+
+        Ok(TransformContext {
+            normalize_rules,
+            cleanup_rules,
+            eliminated_forms: derive_eliminated_forms(enabled.as_slice()),
+            max_iterations: self.max_iterations,
+        })
+    }
+}
+
+fn derive_eliminated_forms(rules: &[&'static dyn TransformRule]) -> EliminatedForms {
+    let mut forms = Vec::new();
+    for rule in rules {
+        for target in rule
+            .meta()
+            .consumes
+            .eliminates
+            .iter()
+            .copied()
+            .map(RuleTarget::key)
+        {
+            if !forms.contains(&target) {
+                forms.push(target);
+            }
+        }
+    }
+    forms
+}
+
+fn assert_cleanup_boundary(
+    normalize_rules: &[&'static dyn TransformRule],
+    cleanup_rules: &[&'static dyn TransformRule],
+) -> Result<(), TransformBuildError> {
+    for cleanup_rule in cleanup_rules {
+        for produced in cleanup_rule
+            .meta()
+            .produces
+            .targets
+            .iter()
+            .copied()
+            .map(RuleTarget::key)
+        {
+            for normalize_rule in normalize_rules {
+                let consumes = normalize_rule
+                    .meta()
+                    .consumes
+                    .eliminates
+                    .iter()
+                    .chain(normalize_rule.meta().consumes.requires.iter())
+                    .copied()
+                    .map(RuleTarget::key);
+                if consumes.into_iter().any(|consumed| consumed == produced) {
+                    return Err(TransformBuildError::CleanupBoundaryConflict {
+                        cleanup_rule: cleanup_rule.meta().key,
+                        normalize_rule: normalize_rule.meta().key,
+                    });
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn topological_sort(
+    rules: &[&'static dyn TransformRule],
+) -> Result<Vec<&'static dyn TransformRule>, TransformBuildError> {
+    let mut incoming = vec![0usize; rules.len()];
+    let mut edges = vec![Vec::<usize>::new(); rules.len()];
+
+    for (from_index, from_rule) in rules.iter().enumerate() {
+        for (to_index, to_rule) in rules.iter().enumerate() {
+            if from_index == to_index {
+                continue;
+            }
+            if rules_intersect(from_rule, to_rule) {
+                edges[from_index].push(to_index);
+                incoming[to_index] += 1;
+            }
+        }
+    }
+
+    let mut queue = VecDeque::new();
+    for (index, &count) in incoming.iter().enumerate() {
+        if count == 0 {
+            queue.push_back(index);
+        }
+    }
+
+    let mut ordered = Vec::with_capacity(rules.len());
+    while let Some(index) = queue.pop_front() {
+        ordered.push(rules[index]);
+        for next in &edges[index] {
+            incoming[*next] -= 1;
+            if incoming[*next] == 0 {
+                queue.push_back(*next);
+            }
+        }
+    }
+
+    if ordered.len() == rules.len() {
+        return Ok(ordered);
+    }
+
+    Err(TransformBuildError::DependencyCycle {
+        chain: detect_cycle(rules, edges.as_slice()),
+    })
+}
+
+fn rules_intersect(
+    from_rule: &&'static dyn TransformRule,
+    to_rule: &&'static dyn TransformRule,
+) -> bool {
+    from_rule
+        .meta()
+        .produces
+        .targets
+        .iter()
+        .copied()
+        .map(RuleTarget::key)
+        .any(|produced| {
+            to_rule
+                .meta()
+                .consumes
+                .eliminates
+                .iter()
+                .chain(to_rule.meta().consumes.requires.iter())
+                .copied()
+                .map(RuleTarget::key)
+                .any(|consumed| consumed == produced)
+        })
+}
+
+fn detect_cycle(rules: &[&'static dyn TransformRule], edges: &[Vec<usize>]) -> Vec<RuleKey> {
+    let mut stack = Vec::new();
+    let mut state = vec![0u8; rules.len()];
+
+    for index in 0..rules.len() {
+        if let Some(chain) = visit_cycle(index, rules, edges, &mut state, &mut stack) {
+            return chain;
+        }
+    }
+
+    rules.iter().map(|rule| rule.meta().key).collect()
+}
+
+fn visit_cycle(
+    index: usize,
+    rules: &[&'static dyn TransformRule],
+    edges: &[Vec<usize>],
+    state: &mut [u8],
+    stack: &mut Vec<usize>,
+) -> Option<Vec<RuleKey>> {
+    if state[index] == 1 {
+        let cycle_start = stack.iter().position(|node| *node == index).unwrap_or(0);
+        let mut chain = stack[cycle_start..]
+            .iter()
+            .map(|node| rules[*node].meta().key)
+            .collect::<Vec<_>>();
+        chain.push(rules[index].meta().key);
+        return Some(chain);
+    }
+
+    if state[index] == 2 {
+        return None;
+    }
+
+    state[index] = 1;
+    stack.push(index);
+    for &next in &edges[index] {
+        if let Some(chain) = visit_cycle(next, rules, edges, state, stack) {
+            return Some(chain);
+        }
+    }
+    stack.pop();
+    state[index] = 2;
+    None
+}
+
+fn rule_touched_by_mutations(
+    rule: &&'static dyn TransformRule,
+    summary: &crate::parse::MutationSummary,
+) -> bool {
+    rule.meta()
+        .consumes
+        .eliminates
+        .iter()
+        .chain(rule.meta().consumes.requires.iter())
+        .chain(rule.meta().produces.targets.iter())
+        .copied()
+        .map(RuleTarget::key)
+        .any(|target| match target.kind {
+            RuleTargetKind::Command => summary.touched_commands.contains(target.name),
+            RuleTargetKind::Environment => summary.touched_environments.contains(target.name),
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::NodeId;
+    use crate::transform::engine::TransformError;
+    use crate::transform::rule::{
+        RuleConsumes, RuleEffect, RuleGroup, RuleMeta, RuleProduces, RuleSafety, TransformRule,
+    };
+    use crate::transform::rule_context::RuleContext;
+    use texform_specs::argspec;
+    use texform_specs::specs::{AllowedMode, BuiltinCommandRecord, CommandKind};
+
+    struct MockRule {
+        meta: &'static RuleMeta,
+    }
+
+    impl TransformRule for MockRule {
+        fn meta(&self) -> &'static RuleMeta {
+            self.meta
+        }
+
+        fn apply(
+            &self,
+            _cx: &mut RuleContext<'_>,
+            _node_id: NodeId,
+        ) -> Result<RuleEffect, TransformError> {
+            Ok(RuleEffect::Skipped)
+        }
+    }
+
+    static COMMAND_A: BuiltinCommandRecord = BuiltinCommandRecord {
+        name: "rule-a-target",
+        kind: CommandKind::Prefix,
+        allowed_mode: AllowedMode::Math,
+        argspec: argspec!(""),
+        tags: &[],
+    };
+
+    static COMMAND_B: BuiltinCommandRecord = BuiltinCommandRecord {
+        name: "rule-b-target",
+        kind: CommandKind::Prefix,
+        allowed_mode: AllowedMode::Math,
+        argspec: argspec!(""),
+        tags: &[],
+    };
+
+    static COMMAND_C: BuiltinCommandRecord = BuiltinCommandRecord {
+        name: "rule-c-target",
+        kind: CommandKind::Prefix,
+        allowed_mode: AllowedMode::Math,
+        argspec: argspec!(""),
+        tags: &[],
+    };
+
+    static SHARED_VARIANT_BASE: BuiltinCommandRecord = BuiltinCommandRecord {
+        name: "shared-target",
+        kind: CommandKind::Prefix,
+        allowed_mode: AllowedMode::Math,
+        argspec: argspec!("m"),
+        tags: &[],
+    };
+
+    static SHARED_VARIANT_AMS: BuiltinCommandRecord = BuiltinCommandRecord {
+        name: "shared-target",
+        kind: CommandKind::Prefix,
+        allowed_mode: AllowedMode::Both,
+        argspec: argspec!("m"),
+        tags: &[],
+    };
+
+    static SHARED_VARIANT_TARGETS: [RuleTarget; 2] = [
+        RuleTarget::Command(&SHARED_VARIANT_BASE),
+        RuleTarget::Command(&SHARED_VARIANT_AMS),
+    ];
+
+    static RULE_A_META: RuleMeta = RuleMeta {
+        key: RuleKey {
+            group: RuleGroup::Physics,
+            name: "a",
+        },
+        summary: "mock rule a",
+        phase: RulePhase::Normalize,
+        safety: RuleSafety::Lossless,
+        triggers: &[],
+        consumes: RuleConsumes {
+            eliminates: &[RuleTarget::Command(&COMMAND_C)],
+            requires: &[],
+        },
+        produces: RuleProduces {
+            targets: &[RuleTarget::Command(&COMMAND_A)],
+        },
+    };
+
+    static RULE_B_META: RuleMeta = RuleMeta {
+        key: RuleKey {
+            group: RuleGroup::Physics,
+            name: "b",
+        },
+        summary: "mock rule b",
+        phase: RulePhase::Normalize,
+        safety: RuleSafety::Lossless,
+        triggers: &[],
+        consumes: RuleConsumes {
+            eliminates: &[RuleTarget::Command(&COMMAND_A)],
+            requires: &[],
+        },
+        produces: RuleProduces {
+            targets: &[RuleTarget::Command(&COMMAND_B)],
+        },
+    };
+
+    static RULE_C_META: RuleMeta = RuleMeta {
+        key: RuleKey {
+            group: RuleGroup::Physics,
+            name: "c",
+        },
+        summary: "mock rule c",
+        phase: RulePhase::Normalize,
+        safety: RuleSafety::Lossless,
+        triggers: &[],
+        consumes: RuleConsumes {
+            eliminates: &[RuleTarget::Command(&COMMAND_B)],
+            requires: &[],
+        },
+        produces: RuleProduces {
+            targets: &[RuleTarget::Command(&COMMAND_C)],
+        },
+    };
+
+    static CLEANUP_RULE_META: RuleMeta = RuleMeta {
+        key: RuleKey {
+            group: RuleGroup::Cleanup,
+            name: "cleanup",
+        },
+        summary: "mock cleanup rule",
+        phase: RulePhase::Cleanup,
+        safety: RuleSafety::Lossless,
+        triggers: &[],
+        consumes: RuleConsumes {
+            eliminates: &[],
+            requires: &[],
+        },
+        produces: RuleProduces {
+            targets: &[RuleTarget::Command(&COMMAND_A)],
+        },
+    };
+
+    static DUPLICATE_ELIMINATE_RULE_META: RuleMeta = RuleMeta {
+        key: RuleKey {
+            group: RuleGroup::Physics,
+            name: "duplicate-eliminate",
+        },
+        summary: "mock rule with duplicate eliminate variants",
+        phase: RulePhase::Normalize,
+        safety: RuleSafety::Lossless,
+        triggers: &[],
+        consumes: RuleConsumes {
+            eliminates: &SHARED_VARIANT_TARGETS,
+            requires: &[],
+        },
+        produces: RuleProduces { targets: &[] },
+    };
+
+    static RULE_A: MockRule = MockRule { meta: &RULE_A_META };
+    static RULE_B: MockRule = MockRule { meta: &RULE_B_META };
+    static RULE_C: MockRule = MockRule { meta: &RULE_C_META };
+    static CLEANUP_RULE: MockRule = MockRule {
+        meta: &CLEANUP_RULE_META,
+    };
+    static DUPLICATE_ELIMINATE_RULE: MockRule = MockRule {
+        meta: &DUPLICATE_ELIMINATE_RULE_META,
+    };
+
+    #[test]
+    fn topological_sort_reports_concrete_cycle_chain() {
+        let rules: [&'static dyn TransformRule; 3] = [&RULE_A, &RULE_B, &RULE_C];
+
+        let error = match topological_sort(rules.as_slice()) {
+            Ok(_) => panic!("expected a cycle"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error,
+            TransformBuildError::DependencyCycle {
+                chain: vec![
+                    RULE_A_META.key,
+                    RULE_B_META.key,
+                    RULE_C_META.key,
+                    RULE_A_META.key,
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn cleanup_boundary_reports_conflicting_rules() {
+        let normalize_rules: [&'static dyn TransformRule; 1] = [&RULE_B];
+        let cleanup_rules: [&'static dyn TransformRule; 1] = [&CLEANUP_RULE];
+
+        let error = assert_cleanup_boundary(normalize_rules.as_slice(), cleanup_rules.as_slice())
+            .expect_err("cleanup boundary should reject normalize input");
+
+        assert_eq!(
+            error,
+            TransformBuildError::CleanupBoundaryConflict {
+                cleanup_rule: CLEANUP_RULE_META.key,
+                normalize_rule: RULE_B_META.key,
+            }
+        );
+    }
+
+    #[test]
+    fn derive_eliminated_forms_deduplicates_same_name_package_variants() {
+        let enabled_rules: [&'static dyn TransformRule; 1] = [&DUPLICATE_ELIMINATE_RULE];
+        let eliminated_forms = derive_eliminated_forms(enabled_rules.as_slice());
+
+        assert_eq!(eliminated_forms.len(), 1);
+        assert_eq!(
+            eliminated_forms[0],
+            RuleTargetKey {
+                kind: RuleTargetKind::Command,
+                name: "shared-target",
+            }
+        );
     }
 }

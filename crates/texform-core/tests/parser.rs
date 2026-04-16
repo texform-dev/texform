@@ -1,8 +1,8 @@
 use std::sync::OnceLock;
 
-use texform_core::context::{
+use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
-    KnowledgeBase, ParseContext,
+    ParseContext, ParseContextBuilder,
 };
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
@@ -29,19 +29,14 @@ fn parse(src: &str, strict: bool) -> Result<(SyntaxNode, chumsky::span::SimpleSp
 }
 
 fn test_context() -> ParseContext {
-    ParseContext::new(test_kb())
-}
-
-fn test_kb() -> KnowledgeBase {
-    static BASE_KB: OnceLock<KnowledgeBase> = OnceLock::new();
-    BASE_KB
+    static BASE_CTX: OnceLock<ParseContext> = OnceLock::new();
+    BASE_CTX
         .get_or_init(|| {
-            let mut kb = KnowledgeBase::core_only();
+            let mut builder = ParseContextBuilder::new().core_only();
             for item in shared_test_items() {
-                kb.insert_item(item.clone())
-                    .expect("shared test items should be valid");
+                builder = builder.insert_item(item.clone());
             }
-            kb
+            builder.build().expect("shared test items should be valid")
         })
         .clone()
 }
@@ -51,12 +46,16 @@ where
     I: IntoIterator<Item = T>,
     T: Into<ContextItem>,
 {
-    let mut kb = test_kb();
-    for item in items {
-        kb.insert_item(item)
-            .expect("test items should have valid xparse specs");
+    let mut builder = ParseContextBuilder::new().core_only();
+    for item in shared_test_items() {
+        builder = builder.insert_item(item.clone());
     }
-    ParseContext::new(kb)
+    for item in items {
+        builder = builder.insert_item(item);
+    }
+    builder
+        .build()
+        .expect("test items should have valid xparse specs")
 }
 
 fn shared_test_items() -> &'static [ContextItem] {

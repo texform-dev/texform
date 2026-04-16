@@ -181,7 +181,7 @@ macro_rules! define_rule {
 
             fn apply(
                 &self,
-                cx: &mut $crate::transform::TransformContext<'_>,
+                cx: &mut $crate::transform::rule_context::RuleContext<'_>,
                 node_id: $crate::ast::NodeId,
             ) -> Result<$crate::transform::RuleEffect, $crate::transform::TransformError> {
                 let $rule = self;
@@ -232,7 +232,7 @@ macro_rules! define_rule {
 
             fn apply(
                 &self,
-                cx: &mut $crate::transform::TransformContext<'_>,
+                cx: &mut $crate::transform::rule_context::RuleContext<'_>,
                 node_id: $crate::ast::NodeId,
             ) -> Result<$crate::transform::RuleEffect, $crate::transform::TransformError> {
                 $apply_fn(self, cx, node_id)
