@@ -26,7 +26,6 @@ docs/                         # Documentation & design (Chinese)
 ├── archived-design-docs/     #   Historical designs
 ├── plans/                    #   Implementation plans
 └── notes/, reports/, …       #   Notes and reports
-demo-wasm/                    # Deprecated WASM demo app
 references/                   # External reference docs (chumsky, mathjax, …)
 ```
 
