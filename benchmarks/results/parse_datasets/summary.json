@@ -1,0 +1,50 @@
+{
+  "commit_hash": "511e13ba",
+  "commit_full": "511e13ba07d4832557063a2184d9ff4fd7592122",
+  "sources": [
+    {
+      "name": "latex-formulas-80m",
+      "column": "latex_formula",
+      "files": [
+        "cache/latex-formulas-80m-benchmark.parquet"
+      ],
+      "max_rows": null
+    }
+  ],
+  "preprocessing_stats": {
+    "raw_counts": {
+      "latex-formulas-80m": 18367
+    },
+    "filtered_counts": {
+      "latex-formulas-80m": 34249
+    },
+    "unique_formula_count": 34104,
+    "planned_task_count": 34104
+  },
+  "total_tasks": 34104,
+  "completed": 34104,
+  "strict": {
+    "ok": 21766,
+    "failed": 12338,
+    "failure_rate_pct": 36.18,
+    "timing_ms": {
+      "mean": 0.164,
+      "p50": 0.113,
+      "p95": 0.559,
+      "p99": 0.998,
+      "max": 15.051
+    }
+  },
+  "nonstrict": {
+    "ok": 33989,
+    "failed": 115,
+    "failure_rate_pct": 0.34,
+    "timing_ms": {
+      "mean": 0.271,
+      "p50": 0.184,
+      "p95": 0.834,
+      "p99": 1.56,
+      "max": 18.397
+    }
+  }
+}

@@ -1,0 +1,23 @@
+# Benchmark input sources.
+#
+# Each entry points to one or more local Parquet files. The parse loop loads,
+# normalizes, and globally deduplicates (SHA-256 of the normalized formula)
+# across all configured sources. Per-source occurrence counts and a
+# representative sample id survive into the result Parquet.
+#
+# To consume a dataset from the Hugging Face Hub (or any other binary-heavy
+# source), first run `benchmarks/extract_formulas.py` to produce a text-only
+# Parquet under `benchmarks/cache/`, then reference that file here.
+#
+# Schema per source:
+#   name:     stable identifier; used as a column prefix in results.parquet
+#   files:    list of Parquet paths (absolute, or relative to this YAML file).
+#             Entries support shell-style globs, e.g. "cache/*.parquet".
+#   column:   name of the text column inside the Parquet files.
+#   max_rows: optional upper bound applied while loading.
+
+sources:
+  - name: latex-formulas-80m
+    files:
+      - cache/latex-formulas-80m-benchmark.parquet
+    column: latex_formula
