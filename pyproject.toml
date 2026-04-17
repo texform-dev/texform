@@ -1,0 +1,53 @@
+[build-system]
+requires = ["maturin>=1.9.4,<2"]
+build-backend = "maturin"
+
+[project]
+name = "pytexform"
+description = "Python bindings for the TeXForm LaTeX parser"
+readme = "README.md"
+requires-python = ">=3.10"
+dynamic = ["version"]
+license = { text = "MIT OR Apache-2.0" }
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: Markup :: LaTeX",
+]
+
+[tool.maturin]
+manifest-path = "crates/texform-python/Cargo.toml"
+python-source = "python"
+module-name = "pytexform._native"
+features = ["pyo3/extension-module"]
+include = [
+    { path = "python/pytexform/py.typed", format = "sdist" },
+    { path = "python/pytexform/*.pyi", format = "sdist" },
+]
+
+[dependency-groups]
+dev = [
+    "datasets>=4.8.4",
+    "hf-transfer>=0.1.9",
+    "huggingface-hub>=1.11.0",
+    "maturin>=1.9.4,<2",
+    "polars>=1.39.3",
+    "pyarrow>=23.0.1",
+    "pyyaml>=6.0.3",
+    "rich>=15.0.0",
+    "tqdm>=4.67.3",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]

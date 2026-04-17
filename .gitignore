@@ -6,3 +6,16 @@
 .superpowers
 .playwright-mcp
 .codex
+
+# Python / uv
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+/dist/
+/wheels/
+
+# Maturin artifacts (mixed layout)
+python/pytexform/_native*.so
+python/pytexform/_native*.pyd
+python/pytexform/_native*.dylib

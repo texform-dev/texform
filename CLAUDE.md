@@ -9,8 +9,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Please see @README.md and @AGENTS.md in this same directory for the main project documentation and guidance.
 
-Also see @docs/purpose.md for the design purpose and features of the project.
-
 ## Updating AGENTS.md Files
 
 When you discover new information that would be helpful for future development work, please:

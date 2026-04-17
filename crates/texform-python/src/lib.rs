@@ -39,9 +39,10 @@ fn parse(py: Python<'_>, src: &str, strict: bool) -> PyResult<Py<PyAny>> {
     }
 }
 
-/// Python module: pytexform
+/// Native extension module loaded as `pytexform._native`.
+/// Symbols are re-exported from the Python package's `__init__.py`.
 #[pymodule]
-fn pytexform(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse, m)?)?;
     m.add("ParseError", m.py().get_type::<ParseError>())?;
     Ok(())
