@@ -23,7 +23,8 @@ fn main() {
     let args = Args::parse();
     let bench_root = config::resolve_bench_root();
     let results_root = bench_root.join("results");
-    let latest_baseline = match output::latest_commit_baseline(&results_root) {
+    let history_root = bench_root.join("history");
+    let latest_baseline = match output::latest_commit_baseline(&history_root) {
         Ok(baseline) => baseline,
         Err(error) => {
             eprintln!("Failed to load latest benchmark baseline: {error}");
@@ -52,7 +53,7 @@ fn main() {
         return;
     }
 
-    let (commit_hash, commit_full) = output::git_hash();
+    let (commit_hash, commit_full, commit_date) = output::git_commit_info();
     let mut summaries = Vec::new();
     let mut total_tasks = 0_usize;
     let mut total_strict_failed = 0_usize;
@@ -116,13 +117,14 @@ fn main() {
             eprintln!("[{}] Failed to write summary: {error}", entry.slug);
         }
         if let Err(error) = output::write_commit_results(
-            &results_root,
+            &history_root,
             &entry.slug,
             &summary,
             &records,
             &results,
             &commit_hash,
             &commit_full,
+            &commit_date,
         ) {
             eprintln!("[{}] Failed to write commit results: {error}", entry.slug);
         }

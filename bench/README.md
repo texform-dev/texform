@@ -6,7 +6,8 @@ This directory contains the corpus bench inputs and outputs for `texform-bench`.
 
 - `data/` — tracked Parquet datasets used by the bench
 - `datasets.yaml` — slug-to-file mapping consumed by `texform-bench`
-- `results/` — `overall.json`, per-dataset summaries, and commit snapshots
+- `results/` — `overall.json` and per-dataset summaries for the latest run
+- `history/` — per-commit snapshots named `yyyy-mm-dd-<hash>/`
 
 Each dataset parquet stores `formula_id` and `formula`.
 `formula_id` is the first 12 hex chars of the normalized formula SHA-256, while dedup still uses the full hash.
@@ -48,5 +49,5 @@ cargo bench -p texform-bench --bench parse_corpus -- --dataset lf80m-benchmarks
 
 - `results/overall.json` — aggregated counts, failure rates, and timing percentiles across the current bench run
 - `results/<slug>/summary.json` — per-dataset counts, failure rates, timing percentiles, and `timing_ms.max_formula_id`
-- `results/commits/<hash>/<slug>/summary.json` — per-dataset snapshot for that commit
-- `results/commits/<hash>/<slug>/errors.jsonl` — strict and nonstrict failures with full diagnostics
+- `history/<yyyy-mm-dd>-<hash>/<slug>/summary.json` — per-dataset snapshot for that commit
+- `history/<yyyy-mm-dd>-<hash>/<slug>/errors.jsonl` — strict and nonstrict failures with full diagnostics

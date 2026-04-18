@@ -301,15 +301,18 @@ pub fn write_overall(
 }
 
 pub fn write_commit_results(
-    results_root: &Path,
+    history_root: &Path,
     slug: &str,
     summary: &Summary,
     records: &[FormulaRecord],
     results: &[FormulaResults],
     commit_hash: &str,
     commit_full: &str,
+    commit_date: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = results_root.join("commits").join(commit_hash).join(slug);
+    let dir = history_root
+        .join(format!("{commit_date}-{commit_hash}"))
+        .join(slug);
     std::fs::create_dir_all(&dir)?;
     write_json_file(&dir.join("summary.json"), summary)?;
 
@@ -331,11 +334,14 @@ pub fn write_commit_results(
     Ok(())
 }
 
-pub fn git_hash() -> (String, String) {
+/// Returns `(short_hash, full_hash, commit_date)` for HEAD.
+/// `commit_date` is formatted as `yyyy-mm-dd`.
+pub fn git_commit_info() -> (String, String, String) {
     let bench_root = crate::config::resolve_bench_root();
     let repo_root = bench_root
         .parent()
         .expect("bench root should live inside the texform repo");
+
     let full = std::process::Command::new("git")
         .arg("-C")
         .arg(repo_root)
@@ -353,14 +359,24 @@ pub fn git_hash() -> (String, String) {
         full.clone()
     };
 
-    (short, full)
+    let date = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["log", "-1", "--format=%ci", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|stdout| stdout.trim().to_string())
+        .and_then(|ci| ci.split_whitespace().next().map(|s| s.to_string()))
+        .unwrap_or_else(|| "0000-00-00".to_string());
+
+    (short, full, date)
 }
 
 pub fn latest_commit_baseline(
-    results_root: &Path,
+    history_root: &Path,
 ) -> Result<Option<CommitBaseline>, Box<dyn std::error::Error>> {
-    let commits_root = results_root.join("commits");
-    let Some((commit_hash, commit_dir)) = latest_commit_dir(&commits_root)? else {
+    let Some((commit_hash, commit_dir)) = latest_commit_dir(history_root)? else {
         return Ok(None);
     };
 
@@ -440,14 +456,14 @@ fn now_timestamp() -> String {
 }
 
 fn latest_commit_dir(
-    commits_root: &Path,
+    history_root: &Path,
 ) -> Result<Option<(String, std::path::PathBuf)>, Box<dyn std::error::Error>> {
-    if !commits_root.exists() {
+    if !history_root.exists() {
         return Ok(None);
     }
 
     let mut latest: Option<(u128, String, std::path::PathBuf)> = None;
-    for entry in std::fs::read_dir(commits_root)? {
+    for entry in std::fs::read_dir(history_root)? {
         let entry = entry?;
         if !entry.file_type()?.is_dir() {
             continue;
@@ -455,7 +471,9 @@ fn latest_commit_dir(
 
         let path = entry.path();
         let timestamp = latest_snapshot_marker(&path)?;
-        let commit_hash = entry.file_name().to_string_lossy().into_owned();
+        // Directory name is `yyyy-mm-dd-<hash>` (11-char date prefix).
+        let dir_name = entry.file_name().to_string_lossy().into_owned();
+        let commit_hash = dir_name.get(11..).unwrap_or(&dir_name).to_string();
 
         if latest
             .as_ref()
@@ -831,10 +849,11 @@ mod tests {
             &results,
             "abc12345",
             "abc12345full",
+            "2024-01-01",
         )
         .unwrap();
 
-        let commit_dir = dir.join("commits").join("abc12345").join("demo");
+        let commit_dir = dir.join("2024-01-01-abc12345").join("demo");
         assert!(commit_dir.join("summary.json").exists());
         assert!(commit_dir.join("manifest.json").exists());
         assert!(commit_dir.join("results.parquet").exists());
@@ -858,14 +877,13 @@ mod tests {
     #[test]
     fn latest_commit_baseline_prefers_most_recent_commit_directory() {
         let dir = make_temp_dir("latest-baseline");
-        let commits_root = dir.join("commits");
         write_test_commit_summary(
-            &commits_root,
+            &dir,
             "older",
             sample_summary_with_means("demo", 10, 0.10, 0.20),
         );
         write_test_commit_summary(
-            &commits_root,
+            &dir,
             "newer",
             sample_summary_with_means("demo", 10, 0.11, 0.21),
         );
@@ -882,14 +900,13 @@ mod tests {
     #[test]
     fn latest_commit_baseline_tracks_refreshed_existing_commit_directory() {
         let dir = make_temp_dir("refreshed-baseline");
-        let commits_root = dir.join("commits");
         write_test_commit_summary(
-            &commits_root,
+            &dir,
             "older",
             sample_summary_with_means("demo", 10, 0.10, 0.20),
         );
         write_test_commit_summary(
-            &commits_root,
+            &dir,
             "newer",
             sample_summary_with_means("demo", 10, 0.11, 0.21),
         );
@@ -898,7 +915,7 @@ mod tests {
         assert_eq!(baseline.commit_hash, "newer");
 
         write_test_commit_summary(
-            &commits_root,
+            &dir,
             "older",
             sample_summary_with_means("demo", 10, 0.12, 0.22),
         );
@@ -1022,11 +1039,11 @@ mod tests {
         }
     }
 
-    fn write_test_commit_summary(commits_root: &Path, commit_hash: &str, summary: Summary) {
+    fn write_test_commit_summary(history_root: &Path, commit_hash: &str, summary: Summary) {
         static NEXT_TEST_MARKER: AtomicU64 = AtomicU64::new(1);
 
-        let dataset_dir = commits_root
-            .join(commit_hash)
+        let dataset_dir = history_root
+            .join(format!("2024-01-01-{commit_hash}"))
             .join(summary.dataset.as_str());
         std::fs::create_dir_all(&dataset_dir).unwrap();
         write_json_file(&dataset_dir.join("summary.json"), &summary).unwrap();

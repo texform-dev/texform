@@ -27,7 +27,8 @@ resources/specs/              # Knowledge base YAML (base, ams, physics, …)
 bench/                        # Corpus benchmark data & results
 ├── data/                     #   Git LFS Parquet datasets
 ├── datasets.yaml             #   Dataset configuration
-└── results/                  #   Benchmark output (overall.json, per-commit snapshots)
+├── results/                  #   Benchmark output (overall.json, per-dataset summaries)
+└── history/                  #   Per-commit snapshots (yyyy-mm-dd-<hash>/)
 data/spec-tests/              # Spec test data & results
 docs/                         # Documentation & design (Chinese)
 ```
