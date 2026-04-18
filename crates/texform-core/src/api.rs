@@ -108,15 +108,15 @@ pub fn parse_with_context_items(
 
 /// Serialize a [`SyntaxNode`] back to canonical LaTeX text using default options.
 pub fn serialize_latex(node: &SyntaxNode) -> String {
-    assert_serializable_syntax_node(node);
-    let ast = Ast::from_syntax_node(node);
+    assert_serializable_syntax_root(node);
+    let ast = Ast::from_syntax_root(node);
     serialize::serialize(&ast)
 }
 
 /// Serialize a [`SyntaxNode`] back to LaTeX text with explicit style options.
 pub fn serialize_latex_with(node: &SyntaxNode, options: &SerializeOptions) -> String {
-    assert_serializable_syntax_node(node);
-    let ast = Ast::from_syntax_node(node);
+    assert_serializable_syntax_root(node);
+    let ast = Ast::from_syntax_root(node);
     serialize::serialize_with(&ast, options)
 }
 
@@ -147,11 +147,24 @@ fn invalid_input_output(message: String) -> ParseOutput {
     }
 }
 
-fn assert_serializable_syntax_node(node: &SyntaxNode) {
+fn assert_serializable_syntax_root(node: &SyntaxNode) {
+    let SyntaxNode::Root { children, .. } = node else {
+        panic!("serialize_latex expects SyntaxNode::Root");
+    };
+
+    for child in children {
+        assert_serializable_syntax_subtree(child);
+    }
+}
+
+fn assert_serializable_syntax_subtree(node: &SyntaxNode) {
     match node {
+        SyntaxNode::Root { .. } => {
+            panic!("serialize_latex does not accept nested SyntaxNode::Root")
+        }
         SyntaxNode::Group { children, .. } => {
             for child in children {
-                assert_serializable_syntax_node(child);
+                assert_serializable_syntax_subtree(child);
             }
         }
         SyntaxNode::Command { args, .. } | SyntaxNode::Environment { args, .. } => {
@@ -159,7 +172,7 @@ fn assert_serializable_syntax_node(node: &SyntaxNode) {
                 assert_serializable_argument_value(&arg.value);
             }
             if let SyntaxNode::Environment { body, .. } = node {
-                assert_serializable_syntax_node(body);
+                assert_serializable_syntax_subtree(body);
             }
         }
         SyntaxNode::Infix {
@@ -168,26 +181,26 @@ fn assert_serializable_syntax_node(node: &SyntaxNode) {
             for arg in args.iter().flatten() {
                 assert_serializable_argument_value(&arg.value);
             }
-            assert_serializable_syntax_node(left);
-            assert_serializable_syntax_node(right);
+            assert_serializable_syntax_subtree(left);
+            assert_serializable_syntax_subtree(right);
         }
         SyntaxNode::Declarative { args, scope, .. } => {
             for arg in args.iter().flatten() {
                 assert_serializable_argument_value(&arg.value);
             }
-            assert_serializable_syntax_node(scope);
+            assert_serializable_syntax_subtree(scope);
         }
         SyntaxNode::Scripted {
             base,
             subscript,
             superscript,
         } => {
-            assert_serializable_syntax_node(base);
+            assert_serializable_syntax_subtree(base);
             if let Some(subscript) = subscript {
-                assert_serializable_syntax_node(subscript);
+                assert_serializable_syntax_subtree(subscript);
             }
             if let Some(superscript) = superscript {
-                assert_serializable_syntax_node(superscript);
+                assert_serializable_syntax_subtree(superscript);
             }
         }
         SyntaxNode::Error { .. } => {
@@ -201,7 +214,7 @@ fn assert_serializable_argument_value(value: &texform_interface::syntax_node::Ar
     match value {
         texform_interface::syntax_node::ArgumentValue::MathContent(node)
         | texform_interface::syntax_node::ArgumentValue::TextContent(node) => {
-            assert_serializable_syntax_node(node);
+            assert_serializable_syntax_subtree(node);
         }
         texform_interface::syntax_node::ArgumentValue::Delimiter(_)
         | texform_interface::syntax_node::ArgumentValue::CSName(_)

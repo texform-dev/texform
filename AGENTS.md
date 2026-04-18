@@ -76,6 +76,9 @@ The corpus bench in `crates/texform-bench` runs the parser against large real-wo
 
 **Any significant change to `texform-core` should be benchmarked before and after** to check for regressions in error rate and performance. See [bench/README.md](./bench/README.md) for dataset details and result format.
 
+- A full benchmark run takes ~10 seconds.
+- Historical results are tracked in git (`bench/results/`). There is no need to record baselines manually — just diff the error rates before and after your change.
+
 ## Transform Engine
 
 The transform subsystem (`crates/texform-core/src/transform/`) provides rule-based AST rewriting:

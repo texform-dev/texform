@@ -351,8 +351,8 @@ impl<'a> Serializer<'a> {
     /// root is Explicit or Implicit.
     fn serialize_root(&mut self) {
         let root = self.ast.root();
-        let Node::Group { children, mode, .. } = self.ast.node(root) else {
-            unreachable!("root must be a group")
+        let Node::Root { children, mode } = self.ast.node(root) else {
+            unreachable!("root must be a root node")
         };
 
         for &child in children {
@@ -362,6 +362,7 @@ impl<'a> Serializer<'a> {
 
     fn visit(&mut self, id: NodeId, mode: ContentMode) {
         match self.ast.node(id).clone() {
+            Node::Root { .. } => unreachable!("root node must be handled by serialize_root"),
             Node::Environment {
                 name, args, body, ..
             } => self.visit_environment(&name, &args, body, mode),

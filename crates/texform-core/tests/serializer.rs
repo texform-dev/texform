@@ -21,6 +21,21 @@ fn test_serialize_simple_math_chars() {
 }
 
 #[test]
+fn test_serialize_root_does_not_emit_extra_braces() {
+    let mut ast = Ast::new();
+    let root = ast.root();
+    let left = ast.new_node(Node::Char('a'));
+    let plus = ast.new_node(Node::Char('+'));
+    let right = ast.new_node(Node::Char('b'));
+
+    ast.append_child(root, left);
+    ast.append_child(root, plus);
+    ast.append_child(root, right);
+
+    assert_eq!(serialize(&ast), "a + b");
+}
+
+#[test]
 fn test_serialize_with_minimal_command_spacing() {
     let ast = parse_to_ast(r"\sqrt{a}");
     let mut options = SerializeOptions::default();

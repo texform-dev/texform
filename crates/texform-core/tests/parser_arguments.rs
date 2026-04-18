@@ -60,11 +60,11 @@ fn first_command(output: &ParseOutput) -> (&str, &Vec<Option<Argument>>) {
         .as_ref()
         .unwrap_or_else(|| panic!("expected parse result"));
     match &result.node {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => (name.as_str(), args),
             other => panic!("expected command node, got {:?}", other),
         },
-        other => panic!("expected root group, got {:?}", other),
+        other => panic!("expected root node, got {:?}", other),
     }
 }
 
@@ -96,7 +96,7 @@ fn slot_contains_command_named(slot: &Option<Argument>, expected: &str) -> bool 
 fn contains_command_named(node: &SyntaxNode, expected: &str) -> bool {
     match node {
         SyntaxNode::Command { name, .. } if name == expected => true,
-        SyntaxNode::Group { children, .. } => children
+        SyntaxNode::Root { children, .. } | SyntaxNode::Group { children, .. } => children
             .iter()
             .any(|child| contains_command_named(child, expected)),
         SyntaxNode::Command { args, .. } => args
@@ -136,7 +136,9 @@ fn slot_contains_error(slot: &Option<Argument>) -> bool {
 fn contains_error_node(node: &SyntaxNode) -> bool {
     match node {
         SyntaxNode::Error { .. } => true,
-        SyntaxNode::Group { children, .. } => children.iter().any(contains_error_node),
+        SyntaxNode::Root { children, .. } | SyntaxNode::Group { children, .. } => {
+            children.iter().any(contains_error_node)
+        }
         SyntaxNode::Command { args, .. } => args.iter().any(slot_contains_error),
         SyntaxNode::Declarative { args, scope, .. } => {
             args.iter().any(slot_contains_error) || contains_error_node(scope)

@@ -1,6 +1,6 @@
 use texform_core::ast::{
-    ArgumentKind, ArgumentValue, Ast, ContentMode, Delimiter, GroupKind, Node, NodeId, ParentLink,
-    Slot,
+    ArgumentKind, ArgumentValue, Ast, ContentMode, Delimiter, GroupKind, Node, NodeId, NodeKind,
+    ParentLink, Slot,
 };
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
@@ -59,8 +59,17 @@ fn first_root_child(ast: &Ast) -> NodeId {
 #[test]
 fn test_conversion_preserves_unknown_command_and_active_space() {
     let syntax = parse_with_items(r"a~\mystery", false, vec![]);
-    let ast = Ast::from_syntax_node(&syntax);
+    let ast = Ast::from_syntax_root(&syntax);
     ast.assert_invariants();
+
+    assert_eq!(ast.kind(ast.root()), NodeKind::Root);
+    match ast.node(ast.root()) {
+        Node::Root { children, mode } => {
+            assert_eq!(*mode, ContentMode::Math);
+            assert_eq!(children.len(), 3);
+        }
+        other => panic!("Expected root node, got {:?}", other),
+    }
 
     let children = ast.children(ast.root());
     assert_eq!(children.len(), 3);
@@ -79,7 +88,7 @@ fn test_conversion_preserves_unknown_command_and_active_space() {
 #[test]
 fn test_ast_conversion_preserves_unknown_environment_known_flag() {
     let syntax = parse_with_items(r"\begin{foo}a\end{foo}", false, vec![]);
-    let ast = Ast::from_syntax_node(&syntax);
+    let ast = Ast::from_syntax_root(&syntax);
     ast.assert_invariants();
 
     let children = ast.children(ast.root());
@@ -106,7 +115,7 @@ fn test_ast_conversion_copies_text_content_variant() {
         .clone();
 
     match &syntax {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { args, .. } => {
                 let arg = args[0].as_ref().expect("expected text argument");
                 assert_eq!(
@@ -116,10 +125,10 @@ fn test_ast_conversion_copies_text_content_variant() {
             }
             other => panic!("expected text command, got {:?}", other),
         },
-        other => panic!("expected root group, got {:?}", other),
+        other => panic!("expected root node, got {:?}", other),
     }
 
-    let ast = Ast::from_syntax_node(&syntax);
+    let ast = Ast::from_syntax_root(&syntax);
     let root = ast.root();
     let command = ast.children(root)[0];
 
@@ -162,7 +171,7 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
             command_item("pqty", CommandKind::Prefix, AllowedMode::Math, "s r{}"),
         ],
     );
-    let ast = Ast::from_syntax_node(&syntax);
+    let ast = Ast::from_syntax_root(&syntax);
     ast.assert_invariants();
 
     let children = ast.children(ast.root());
@@ -304,7 +313,7 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
 #[test]
 fn test_conversion_preserves_scripted_structure() {
     let syntax = parse_with_items("x_i", true, vec![]);
-    let ast = Ast::from_syntax_node(&syntax);
+    let ast = Ast::from_syntax_root(&syntax);
     ast.assert_invariants();
 
     let scripted = first_root_child(&ast);
@@ -350,7 +359,7 @@ fn test_conversion_preserves_infix_structure() {
             "",
         )],
     );
-    let ast = Ast::from_syntax_node(&syntax);
+    let ast = Ast::from_syntax_root(&syntax);
     ast.assert_invariants();
 
     let infix = first_root_child(&ast);
@@ -396,7 +405,7 @@ fn test_conversion_preserves_declarative_and_environment_structure() {
             "",
         )],
     );
-    let declarative_ast = Ast::from_syntax_node(&declarative);
+    let declarative_ast = Ast::from_syntax_root(&declarative);
     declarative_ast.assert_invariants();
 
     let decl = first_root_child(&declarative_ast);
@@ -440,7 +449,7 @@ fn test_conversion_preserves_declarative_and_environment_structure() {
             "",
         )],
     );
-    let environment_ast = Ast::from_syntax_node(&environment);
+    let environment_ast = Ast::from_syntax_root(&environment);
     environment_ast.assert_invariants();
 
     let env = first_root_child(&environment_ast);
@@ -483,7 +492,7 @@ fn test_conversion_preserves_control_delimited_groups() {
         true,
         vec![delimiter_item("langle"), delimiter_item("rangle")],
     );
-    let ast = Ast::from_syntax_node(&syntax);
+    let ast = Ast::from_syntax_root(&syntax);
     ast.assert_invariants();
 
     let group = first_root_child(&ast);
@@ -506,4 +515,25 @@ fn test_conversion_preserves_control_delimited_groups() {
         }
         other => panic!("Expected converted group node, got {:?}", other),
     }
+}
+
+#[test]
+#[should_panic(expected = "Ast::from_syntax_root expects SyntaxNode::Root")]
+fn test_from_syntax_root_rejects_non_root_node() {
+    let node = SyntaxNode::implicit_group(ContentMode::Math, vec![SyntaxNode::Char('x')]);
+    let _ = Ast::from_syntax_root(&node);
+}
+
+#[test]
+#[should_panic(expected = "Ast::from_syntax_root does not accept nested SyntaxNode::Root")]
+fn test_from_syntax_root_rejects_nested_root_node() {
+    let node = SyntaxNode::root(
+        ContentMode::Math,
+        vec![SyntaxNode::root(
+            ContentMode::Math,
+            vec![SyntaxNode::Char('x')],
+        )],
+    );
+
+    let _ = Ast::from_syntax_root(&node);
 }

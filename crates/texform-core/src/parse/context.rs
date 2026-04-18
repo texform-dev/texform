@@ -615,7 +615,7 @@ impl ParseContext {
         let output = self.parse(src, strict);
         match (output.result, output.diagnostics) {
             (Some(result), diagnostics) if diagnostics.is_empty() => Ok(ParseAstOutput {
-                ast: Ast::from_syntax_node(&result.node),
+                ast: Ast::from_syntax_root(&result.node),
             }),
             (Some(_), diagnostics) => Err(ParseAstError::DiagnosticsPresent { diagnostics }),
             (None, diagnostics) => Err(ParseAstError::NoParseResult { diagnostics }),

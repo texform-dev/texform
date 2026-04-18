@@ -8,12 +8,12 @@
     "failed": 15883,
     "failure_rate_pct": 16.97,
     "timing_ms": {
-      "mean": 0.14,
+      "mean": 0.13,
       "p50": 0.11,
-      "p95": 0.28,
+      "p95": 0.29,
       "p99": 0.39,
-      "max": 10.18,
-      "max_formula_id": "073fd83c209b"
+      "max": 10.55,
+      "max_formula_id": "daa63be90220"
     }
   },
   "nonstrict": {
@@ -24,9 +24,9 @@
       "mean": 0.17,
       "p50": 0.14,
       "p95": 0.33,
-      "p99": 0.45,
-      "max": 22.32,
-      "max_formula_id": "1184874edcb7"
+      "p99": 0.44,
+      "max": 9.78,
+      "max_formula_id": "3ca84a4dcdb2"
     }
   }
 }

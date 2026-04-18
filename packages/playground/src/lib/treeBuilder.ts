@@ -69,6 +69,25 @@ export function buildSyntaxTree(
     }
   }
 
+  if ('Root' in node) {
+    const root = node.Root
+    const rawChildren = root.children.map((child: SyntaxNode, index: number) =>
+      buildSyntaxTree(
+        child,
+        `${id}.child.${index}`,
+        root.mode.toLowerCase() as ContentMode,
+        lookup,
+      ),
+    )
+    return {
+      id,
+      type: 'Root',
+      subtitle: root.mode,
+      spanIds: [id],
+      children: mergeConsecutiveChars(rawChildren, id),
+    }
+  }
+
   if ('Group' in node) {
     const group = node.Group
     const rawChildren = group.children.map((child: SyntaxNode, index: number) =>

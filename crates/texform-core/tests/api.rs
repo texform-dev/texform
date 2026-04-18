@@ -1,8 +1,11 @@
-use texform_core::api::{parse_latex, parse_with_context_items, serialize_latex};
+use texform_core::api::{
+    parse_latex, parse_with_context_items, serialize_latex, serialize_latex_with,
+};
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
     ParseContextBuilder, ParseOutput,
 };
+use texform_core::serialize::SerializeOptions;
 use texform_interface::syntax_node::{ArgumentValue, ContentMode, Delimiter, SyntaxNode};
 
 fn command_item(
@@ -101,7 +104,9 @@ fn collect_messages(output: &ParseOutput) -> Vec<&str> {
 fn contains_error_node(node: &SyntaxNode) -> bool {
     match node {
         SyntaxNode::Error { .. } => true,
-        SyntaxNode::Group { children, .. } => children.iter().any(contains_error_node),
+        SyntaxNode::Root { children, .. } | SyntaxNode::Group { children, .. } => {
+            children.iter().any(contains_error_node)
+        }
         SyntaxNode::Command { args, .. } => args.iter().any(slot_contains_error),
         SyntaxNode::Declarative { args, scope, .. } => {
             args.iter().any(slot_contains_error) || contains_error_node(scope)
@@ -125,7 +130,7 @@ fn contains_command_named(node: &SyntaxNode, name: &str) -> bool {
         SyntaxNode::Command {
             name: node_name, ..
         } if node_name == name => true,
-        SyntaxNode::Group { children, .. } => children
+        SyntaxNode::Root { children, .. } | SyntaxNode::Group { children, .. } => children
             .iter()
             .any(|child| contains_command_named(child, name)),
         SyntaxNode::Command { args, .. } => args
@@ -213,8 +218,8 @@ fn content_argument_partial_result_keeps_outer_text_command() {
         .expect("should produce a partial result");
 
     let root_children = match &result.node {
-        SyntaxNode::Group { children, .. } => children,
-        other => panic!("expected root group, got {:?}", other),
+        SyntaxNode::Root { children, .. } => children,
+        other => panic!("expected root node, got {:?}", other),
     };
 
     let text_args = match root_children.first() {
@@ -277,8 +282,8 @@ fn text_scripted_content_reports_only_direct_error() {
         .expect("scripted text should still keep a partial result");
 
     let root_children = match &result.node {
-        SyntaxNode::Group { children, .. } => children,
-        other => panic!("expected root group, got {:?}", other),
+        SyntaxNode::Root { children, .. } => children,
+        other => panic!("expected root node, got {:?}", other),
     };
 
     let text_args = match root_children.first() {
@@ -357,8 +362,8 @@ fn nonstrict_command_direct_error_survives_trailing_outer_generic() {
     assert!(contains_command_named(&result.node, "text"));
 
     let root_children = match &result.node {
-        SyntaxNode::Group { children, .. } => children,
-        other => panic!("expected root group, got {:?}", other),
+        SyntaxNode::Root { children, .. } => children,
+        other => panic!("expected root node, got {:?}", other),
     };
     let text_args = match root_children.first() {
         Some(SyntaxNode::Command { name, args, .. }) => {
@@ -395,8 +400,8 @@ fn generic_only_content_error_is_not_filtered_out() {
         .as_ref()
         .expect("generic-only content error should keep a partial result");
     let root_children = match &result.node {
-        SyntaxNode::Group { children, .. } => children,
-        other => panic!("expected root group, got {:?}", other),
+        SyntaxNode::Root { children, .. } => children,
+        other => panic!("expected root node, got {:?}", other),
     };
     let text_args = match root_children.first() {
         Some(SyntaxNode::Command { name, args, .. }) => {
@@ -463,8 +468,8 @@ fn empty_text_content_argument_stays_on_success_path() {
         .expect("empty text content should stay on the success path");
 
     let root_children = match &result.node {
-        SyntaxNode::Group { children, .. } => children,
-        other => panic!("expected root group, got {:?}", other),
+        SyntaxNode::Root { children, .. } => children,
+        other => panic!("expected root node, got {:?}", other),
     };
     let text_args = match root_children.first() {
         Some(SyntaxNode::Command { name, args, .. }) => {
@@ -623,8 +628,8 @@ fn partial_result_keeps_outer_delimited_group_and_following_siblings() {
         .expect("should produce a partial result");
 
     let root_children = match &result.node {
-        SyntaxNode::Group { children, .. } => children,
-        other => panic!("expected root group, got {:?}", other),
+        SyntaxNode::Root { children, .. } => children,
+        other => panic!("expected root node, got {:?}", other),
     };
 
     let delimited_children = match root_children.first() {
@@ -702,8 +707,8 @@ fn partial_result_keeps_outer_environment_on_inner_environment_error() {
         .expect("should produce a partial result");
 
     let root_children = match &result.node {
-        SyntaxNode::Group { children, .. } => children,
-        other => panic!("expected root group, got {:?}", other),
+        SyntaxNode::Root { children, .. } => children,
+        other => panic!("expected root node, got {:?}", other),
     };
 
     let body_children = match root_children.first() {
@@ -743,8 +748,8 @@ fn partial_result_keeps_following_siblings_after_environment_mismatch() {
         .expect("should produce a partial result");
 
     let root_children = match &result.node {
-        SyntaxNode::Group { children, .. } => children,
-        other => panic!("expected root group, got {:?}", other),
+        SyntaxNode::Root { children, .. } => children,
+        other => panic!("expected root node, got {:?}", other),
     };
 
     assert!(
@@ -800,18 +805,7 @@ fn environment_mismatch_rewrite_does_not_capture_later_generic_errors() {
 #[test]
 #[should_panic(expected = "cannot serialize syntax tree containing Error node")]
 fn serialize_latex_rejects_error_nodes() {
-    let node = SyntaxNode::Error {
-        message: "invalid \\left delimiter".to_string(),
-        snippet: "\\left\\foo x \\right)".to_string(),
-    };
-
-    let _ = serialize_latex(&node);
-}
-
-#[test]
-#[should_panic(expected = "cannot serialize syntax tree containing Error node")]
-fn serialize_latex_rejects_nested_error_nodes() {
-    let node = SyntaxNode::implicit_group(
+    let node = SyntaxNode::root(
         ContentMode::Math,
         vec![SyntaxNode::Error {
             message: "invalid \\left delimiter".to_string(),
@@ -820,6 +814,79 @@ fn serialize_latex_rejects_nested_error_nodes() {
     );
 
     let _ = serialize_latex(&node);
+}
+
+#[test]
+#[should_panic(expected = "cannot serialize syntax tree containing Error node")]
+fn serialize_latex_rejects_nested_error_nodes() {
+    let node = SyntaxNode::root(
+        ContentMode::Math,
+        vec![SyntaxNode::implicit_group(
+            ContentMode::Math,
+            vec![SyntaxNode::Error {
+                message: "invalid \\left delimiter".to_string(),
+                snippet: "\\left\\foo x \\right)".to_string(),
+            }],
+        )],
+    );
+
+    let _ = serialize_latex(&node);
+}
+
+#[test]
+#[should_panic(expected = "serialize_latex expects SyntaxNode::Root")]
+fn serialize_latex_rejects_non_root_top_level_node() {
+    let node = SyntaxNode::implicit_group(ContentMode::Math, vec![SyntaxNode::Char('x')]);
+    let _ = serialize_latex(&node);
+}
+
+#[test]
+#[should_panic(expected = "serialize_latex expects SyntaxNode::Root")]
+fn serialize_latex_with_rejects_non_root_top_level_node() {
+    let node = SyntaxNode::implicit_group(ContentMode::Math, vec![SyntaxNode::Char('x')]);
+    let _ = serialize_latex_with(&node, &SerializeOptions::default());
+}
+
+#[test]
+#[should_panic(expected = "serialize_latex does not accept nested SyntaxNode::Root")]
+fn serialize_latex_rejects_nested_root_nodes() {
+    let node = SyntaxNode::root(
+        ContentMode::Math,
+        vec![SyntaxNode::root(
+            ContentMode::Math,
+            vec![SyntaxNode::Char('x')],
+        )],
+    );
+
+    let _ = serialize_latex(&node);
+}
+
+#[test]
+#[should_panic(expected = "serialize_latex does not accept nested SyntaxNode::Root")]
+fn serialize_latex_with_rejects_nested_root_nodes() {
+    let node = SyntaxNode::root(
+        ContentMode::Math,
+        vec![SyntaxNode::root(
+            ContentMode::Math,
+            vec![SyntaxNode::Char('x')],
+        )],
+    );
+
+    let _ = serialize_latex_with(&node, &SerializeOptions::default());
+}
+
+#[test]
+fn serialize_latex_accepts_syntax_root() {
+    let node = SyntaxNode::root(
+        ContentMode::Math,
+        vec![
+            SyntaxNode::Char('a'),
+            SyntaxNode::Char('+'),
+            SyntaxNode::Char('b'),
+        ],
+    );
+
+    assert_eq!(serialize_latex(&node), "a + b");
 }
 
 #[test]
@@ -971,7 +1038,7 @@ fn parse_with_context_items_supports_explicit_control_delimiter_args() {
             .unwrap_or_else(|| panic!("expected parse result for {}", item.input));
 
         match &result.node {
-            SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Root { children, .. } => match &children[0] {
                 SyntaxNode::Command { args, .. } => match &args[0]
                     .as_ref()
                     .unwrap_or_else(|| panic!("expected argument for {}", item.input))
@@ -987,7 +1054,7 @@ fn parse_with_context_items_supports_explicit_control_delimiter_args() {
                 },
                 other => panic!("expected command node for {}, got {:?}", item.input, other),
             },
-            other => panic!("expected root group for {}, got {:?}", item.input, other),
+            other => panic!("expected root node for {}, got {:?}", item.input, other),
         }
     }
 }
@@ -1017,7 +1084,7 @@ fn parse_with_context_items_supports_runtime_delimiter_controls() {
         .expect("runtime delimiter controls should parse");
 
     match &result.node {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Group { kind, .. } => match kind {
                 texform_interface::syntax_node::GroupKind::Delimited { left, right } => {
                     assert_eq!(*left, Delimiter::Control("langle"));
@@ -1027,7 +1094,7 @@ fn parse_with_context_items_supports_runtime_delimiter_controls() {
             },
             other => panic!("expected child group, got {:?}", other),
         },
-        other => panic!("expected root group, got {:?}", other),
+        other => panic!("expected root node, got {:?}", other),
     }
 }
 
@@ -1068,7 +1135,7 @@ fn parse_with_context_items_supports_nullable_delimiter_arguments() {
             .unwrap_or_else(|| panic!("expected parse result for {}", item.input));
 
         match &result.node {
-            SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Root { children, .. } => match &children[0] {
                 SyntaxNode::Command { args, .. } => {
                     for (slot, expected_delimiter) in args.iter().take(2).zip(expected_pair) {
                         match &slot
@@ -1088,7 +1155,7 @@ fn parse_with_context_items_supports_nullable_delimiter_arguments() {
                 }
                 other => panic!("expected command node for {}, got {:?}", item.input, other),
             },
-            other => panic!("expected root group for {}, got {:?}", item.input, other),
+            other => panic!("expected root node for {}, got {:?}", item.input, other),
         }
     }
 }
@@ -1154,7 +1221,7 @@ fn parse_with_context_items_uses_public_package_loading_order() {
         .expect("expected parse result for canonicalized package load");
 
     match &result.node {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "div");
                 assert_eq!(
@@ -1165,7 +1232,7 @@ fn parse_with_context_items_uses_public_package_loading_order() {
             }
             other => panic!("expected command node, got {:?}", other),
         },
-        other => panic!("expected root group, got {:?}", other),
+        other => panic!("expected root node, got {:?}", other),
     }
 }
 

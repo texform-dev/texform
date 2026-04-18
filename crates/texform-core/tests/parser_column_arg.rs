@@ -32,7 +32,7 @@ fn parse_column_arg_success() {
         .expect("column argument parse should succeed");
 
     match &result.node {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "colspec");
                 assert_eq!(args.len(), 1);

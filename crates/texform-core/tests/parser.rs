@@ -282,17 +282,17 @@ fn underline_uses_math_and_text_variants_in_matching_modes() {
         .node;
 
     match math {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { args, .. } => {
                 assert_eq!(unwrap_content(&args[0]), &SyntaxNode::Char('x'));
             }
             other => panic!("expected underline command, got {:?}", other),
         },
-        other => panic!("expected root group, got {:?}", other),
+        other => panic!("expected root node, got {:?}", other),
     }
 
     match text {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { args, .. } => match unwrap_content(&args[0]) {
                 SyntaxNode::Group {
                     mode: ContentMode::Text,
@@ -315,7 +315,7 @@ fn underline_uses_math_and_text_variants_in_matching_modes() {
             },
             other => panic!("expected text command, got {:?}", other),
         },
-        other => panic!("expected root group, got {:?}", other),
+        other => panic!("expected root node, got {:?}", other),
     }
 }
 
@@ -397,14 +397,14 @@ fn test_text_argument_uses_text_content_variant_for_single_char_item() {
     let result = output.result.expect("expected parse result");
 
     match result.node {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { args, .. } => {
                 let arg = args[0].as_ref().expect("expected text argument");
                 assert_eq!(arg.value, ArgumentValue::TextContent(SyntaxNode::Char('%')));
             }
             other => panic!("expected text command, got {:?}", other),
         },
-        other => panic!("expected root group, got {:?}", other),
+        other => panic!("expected root node, got {:?}", other),
     }
 }
 
@@ -417,19 +417,14 @@ fn test_parse_simple_chars() {
     let (result, _) = parse("abc", false).unwrap();
 
     match result {
-        SyntaxNode::Group {
-            mode,
-            kind,
-            children,
-        } => {
+        SyntaxNode::Root { mode, children } => {
             assert_eq!(mode, ContentMode::Math);
-            assert_eq!(kind, GroupKind::Implicit);
             assert_eq!(children.len(), 3);
             assert_eq!(children[0], SyntaxNode::Char('a'));
             assert_eq!(children[1], SyntaxNode::Char('b'));
             assert_eq!(children[2], SyntaxNode::Char('c'));
         }
-        _ => panic!("Expected Group node"),
+        _ => panic!("Expected Root node"),
     }
 }
 
@@ -438,16 +433,11 @@ fn test_parse_empty() {
     let (result, _) = parse("", false).unwrap();
 
     match result {
-        SyntaxNode::Group {
-            mode,
-            kind,
-            children,
-        } => {
+        SyntaxNode::Root { mode, children } => {
             assert_eq!(mode, ContentMode::Math);
-            assert_eq!(kind, GroupKind::Implicit);
             assert!(children.is_empty());
         }
-        _ => panic!("Expected Group node"),
+        _ => panic!("Expected Root node"),
     }
 }
 
@@ -456,13 +446,13 @@ fn test_escaped_symbols() {
     let (result, _) = parse(r"\%\$\&", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 3);
             assert_eq!(children[0], SyntaxNode::Char('%'));
             assert_eq!(children[1], SyntaxNode::Char('$'));
             assert_eq!(children[2], SyntaxNode::Char('&'));
         }
-        _ => panic!("Expected Group"),
+        _ => panic!("Expected Root"),
     }
 }
 
@@ -471,13 +461,13 @@ fn test_active_char() {
     let (result, _) = parse("a~b", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 3);
             assert_eq!(children[0], SyntaxNode::Char('a'));
             assert_eq!(children[1], SyntaxNode::ActiveSpace);
             assert_eq!(children[2], SyntaxNode::Char('b'));
         }
-        _ => panic!("Expected Group"),
+        _ => panic!("Expected Root"),
     }
 }
 
@@ -486,13 +476,8 @@ fn test_explicit_group() {
     let (result, _) = parse("{a}", false).unwrap();
 
     match result {
-        SyntaxNode::Group {
-            mode,
-            kind,
-            children,
-        } => {
+        SyntaxNode::Root { mode, children } => {
             assert_eq!(mode, ContentMode::Math);
-            assert_eq!(kind, GroupKind::Implicit);
             assert_eq!(children.len(), 1);
 
             match &children[0] {
@@ -509,7 +494,7 @@ fn test_explicit_group() {
                 _ => panic!("Expected inner Group"),
             }
         }
-        _ => panic!("Expected Group node"),
+        _ => panic!("Expected Root node"),
     }
 }
 
@@ -518,7 +503,7 @@ fn test_nested_groups() {
     let (result, _) = parse("a{b{c}}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 2);
             assert_eq!(children[0], SyntaxNode::Char('a'));
 
@@ -555,7 +540,7 @@ fn test_simple_script() {
     let (result, _) = parse("x^2", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
 
             match &children[0] {
@@ -571,7 +556,7 @@ fn test_simple_script() {
                 _ => panic!("Expected Scripted node"),
             }
         }
-        _ => panic!("Expected Group node"),
+        _ => panic!("Expected Root node"),
     }
 }
 
@@ -597,7 +582,7 @@ fn test_script_with_group() {
     let (result, _) = parse("x^{ab}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Scripted {
                 base,
                 superscript,
@@ -617,7 +602,7 @@ fn test_script_with_group() {
             }
             _ => panic!("Expected Scripted node"),
         },
-        _ => panic!("Expected Group node"),
+        _ => panic!("Expected Root node"),
     }
 }
 
@@ -660,7 +645,7 @@ fn test_frac_command() {
     let (result, _) = parse(r"\frac{a}{b}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
 
             match &children[0] {
@@ -684,7 +669,7 @@ fn test_sqrt_without_optional() {
     let (result, _) = parse(r"\sqrt{x}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
                     assert_eq!(name, "sqrt");
@@ -709,7 +694,7 @@ fn test_sqrt_with_optional() {
     let (result, _) = parse(r"\sqrt[3]{8}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
                     assert_eq!(name, "sqrt");
@@ -742,7 +727,7 @@ fn test_text_command() {
     let (result, _) = parse(r"\text{hello}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "text");
                 assert_eq!(args.len(), 1);
@@ -765,7 +750,7 @@ fn test_delimiter_argument() {
     let (result, _) = parse(r"\delim\langle", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "delim");
                 assert_eq!(args.len(), 1);
@@ -787,7 +772,7 @@ fn test_dimension_argument() {
     let (result, _) = parse(r"\hspace1em", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "hspace");
                 assert_eq!(args.len(), 1);
@@ -808,7 +793,7 @@ fn test_integer_argument() {
     let (result, _) = parse(r"\romannumeral12", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "romannumeral");
                 assert_eq!(args.len(), 1);
@@ -829,7 +814,7 @@ fn test_keyval_argument() {
     let (result, _) = parse(r"\includegraphics[width=1em,height=2pt]{file}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "includegraphics");
                 assert_eq!(args.len(), 2);
@@ -854,7 +839,7 @@ fn test_csname_argument() {
     let (result, _) = parse(r"\label{sec:intro}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "label");
                 assert_eq!(args.len(), 1);
@@ -903,7 +888,7 @@ fn test_delimiter_argument_braced_matches_inline() {
     let (braced, _) = parse(r"\delim{\langle}", false).unwrap();
 
     let inline_value = match inline {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
             _ => panic!("Expected Command node"),
         },
@@ -911,7 +896,7 @@ fn test_delimiter_argument_braced_matches_inline() {
     };
 
     let braced_value = match braced {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
             _ => panic!("Expected Command node"),
         },
@@ -927,7 +912,7 @@ fn test_integer_argument_braced_matches_inline() {
     let (braced, _) = parse(r"\romannumeral{ 12 }", false).unwrap();
 
     let inline_value = match inline {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
             _ => panic!("Expected Command node"),
         },
@@ -935,7 +920,7 @@ fn test_integer_argument_braced_matches_inline() {
     };
 
     let braced_value = match braced {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
             _ => panic!("Expected Command node"),
         },
@@ -951,7 +936,7 @@ fn test_dimension_argument_braced_matches_inline() {
     let (braced, _) = parse(r"\hspace{ 1,5 em }", false).unwrap();
 
     let inline_value = match inline {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
             _ => panic!("Expected Command node"),
         },
@@ -959,7 +944,7 @@ fn test_dimension_argument_braced_matches_inline() {
     };
 
     let braced_value = match braced {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
             _ => panic!("Expected Command node"),
         },
@@ -975,7 +960,7 @@ fn test_optional_bracket_closes_at_top_level() {
     let (result, _) = parse(r"\includegraphics[key={[[},width=1em]{file}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { args, .. } => {
                 assert_eq!(args.len(), 2);
                 assert_eq!(
@@ -1019,7 +1004,7 @@ fn test_nested_commands() {
     let (result, _) = parse(r"\frac{a}{\sqrt{b}}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
                     assert_eq!(name, "frac");
@@ -1048,7 +1033,7 @@ fn test_unknown_command_nonstrict() {
     let (result, _) = parse(r"\unknown{x}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 2);
 
             // First: command node with known=false
@@ -1090,7 +1075,7 @@ fn test_unknown_environment_nonstrict() {
     let (result, _) = parse(r"\begin{foo}a\end{foo}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Environment {
                 name,
                 args,
@@ -1133,7 +1118,7 @@ fn test_infix_over_simple() {
     };
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
 
             match &children[0] {
@@ -1169,7 +1154,7 @@ fn test_infix_over_simple_strict() {
     };
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
 
             match &children[0] {
@@ -1197,7 +1182,7 @@ fn test_infix_choose() {
     let (result, _) = parse(r"n \choose k", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
 
             match &children[0] {
@@ -1221,7 +1206,7 @@ fn test_infix_multiple_items() {
     let (result, _) = parse(r"a+b \over c+d", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
 
             match &children[0] {
@@ -1263,7 +1248,7 @@ fn test_declarative_bfseries() {
     let (result, _) = parse(r"\bfseries text", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
 
             match &children[0] {
@@ -1293,7 +1278,7 @@ fn test_declarative_with_leading() {
     let (result, _) = parse(r"a \bfseries bc", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 2);
 
             // First item: 'a'
@@ -1326,7 +1311,7 @@ fn test_declarative_empty_scope() {
     let (result, _) = parse(r"\bfseries", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
 
             match &children[0] {
@@ -1361,7 +1346,7 @@ fn test_text_in_command() {
 
     // Debug print the result
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
@@ -1393,7 +1378,7 @@ fn test_text_inline_math_segment() {
     let (result, _) = parse(r"\text{foo$a+b$bar}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "text");
                 assert_eq!(args.len(), 1);
@@ -1423,7 +1408,7 @@ fn test_text_inline_math_segment() {
             }
             _ => panic!("Expected text command"),
         },
-        _ => panic!("Expected root group"),
+        _ => panic!("Expected root node"),
     }
 }
 
@@ -1477,7 +1462,7 @@ fn test_delimited_group_simple() {
     eprintln!("Parsed result:\n{:#?}", result);
 
     match result {
-        SyntaxNode::Group { ref children, .. } => {
+        SyntaxNode::Root { ref children, .. } => {
             eprintln!("Root children count: {}", children.len());
             for (i, child) in children.iter().enumerate() {
                 eprintln!("Child {}: {:?}", i, child);
@@ -1516,7 +1501,7 @@ fn test_delimited_group_with_dot() {
     let (result, _) = parse(r"\left.x\right|", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Group { kind, children, .. } => match kind {
@@ -1541,7 +1526,7 @@ fn test_delimited_group_nested() {
     let (result, _) = parse(r"\left(\frac{a}{b}\right)", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Group { kind, children, .. } => match kind {
@@ -1570,7 +1555,7 @@ fn test_delimited_group_accepts_space_after_left_and_right() {
     let (result, _) = parse(r"\left (a+b\right )", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Group { kind, .. } => match kind {
                 GroupKind::Delimited { left, right } => {
                     assert_eq!(*left, Delimiter::Char('('));
@@ -1580,7 +1565,7 @@ fn test_delimited_group_accepts_space_after_left_and_right() {
             },
             other => panic!("Expected inner group, got {:?}", other),
         },
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 }
 
@@ -1589,7 +1574,7 @@ fn test_delimited_group_square_brackets() {
     let (result, _) = parse(r"\left[a+b\right]", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Group { kind, children, .. } => match kind {
                 GroupKind::Delimited { left, right } => {
                     assert_eq!(*left, Delimiter::Char('['));
@@ -1603,7 +1588,7 @@ fn test_delimited_group_square_brackets() {
             },
             other => panic!("Expected inner group, got {:?}", other),
         },
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 }
 
@@ -1612,7 +1597,7 @@ fn test_environment_basic() {
     let (result, _) = parse(r"\begin{matrix}ab\end{matrix}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Environment {
@@ -1641,7 +1626,7 @@ fn test_environment_header_accepts_space_after_begin_and_end() {
     let (result, _) = parse(r"\begin {matrix}a&b\\c&d\end {matrix}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Environment { name, body, .. } => {
                 assert_eq!(name, "matrix");
                 match &**body {
@@ -1653,7 +1638,7 @@ fn test_environment_header_accepts_space_after_begin_and_end() {
             }
             other => panic!("Expected environment node, got {:?}", other),
         },
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 }
 
@@ -1666,7 +1651,7 @@ fn test_environment_nested() {
     .unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Environment { body, .. } => match &**body {
                 SyntaxNode::Group { children, .. } => {
                     assert_eq!(children.len(), 1);
@@ -1724,7 +1709,7 @@ fn test_frac_mixed_shorthand() {
     let (result, _) = parse(r"\frac a{bc}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
@@ -1755,7 +1740,7 @@ fn test_frac_shorthand_with_command() {
     let (result, _) = parse(r"\frac\alpha\beta", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
@@ -1801,7 +1786,7 @@ fn test_optional_content_stops_at_first_closing_bracket() {
     let (result, _) = parse(r"\sqrt[a[b]c]{x}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 3);
 
             match &children[0] {
@@ -1855,7 +1840,7 @@ fn test_prime_single() {
     let (result, _) = parse(r"f'", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Scripted {
@@ -1880,7 +1865,7 @@ fn test_prime_multiple() {
     let (result, _) = parse(r"f'''", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Scripted {
@@ -1908,7 +1893,7 @@ fn test_prime_with_superscript() {
     let (result, _) = parse(r"f'^2", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Scripted {
@@ -1938,7 +1923,7 @@ fn test_prime_with_subscript() {
     let (result, _) = parse(r"f'_n", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Scripted {
@@ -1963,7 +1948,7 @@ fn test_prime_on_sub_grouped() {
     let (result, _) = parse(r"x^{'_{a}}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Scripted { superscript, .. } => match superscript
@@ -2007,7 +1992,7 @@ fn test_empty_base_superscript() {
     let (result, _) = parse("^2", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Scripted {
@@ -2038,7 +2023,7 @@ fn test_empty_base_subscript() {
     let (result, _) = parse("_3", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Scripted {
@@ -2069,7 +2054,7 @@ fn test_preprime() {
     let (result, _) = parse("'x", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 2);
             match &children[0] {
                 SyntaxNode::Scripted {
@@ -2139,7 +2124,7 @@ fn test_prime_on_prime_nested() {
     }
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Scripted { superscript, .. } => {
@@ -2180,7 +2165,7 @@ fn test_prime_on_sup_nested() {
     }
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Scripted { superscript, .. } => {
@@ -2220,7 +2205,7 @@ fn test_sup_on_prime_nested() {
     }
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Scripted { superscript, .. } => {
@@ -2242,7 +2227,7 @@ fn test_prime_then_superscript_merge() {
     let (result, _) = parse(r"x'^a", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Scripted { superscript, .. } => {
@@ -2267,7 +2252,7 @@ fn test_double_prime_then_superscript_merge() {
     let (result, _) = parse(r"x''^a", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Scripted { superscript, .. } => {
@@ -2307,7 +2292,7 @@ fn test_delimited_group_langle_rangle() {
     let (result, _) = parse(r"\left\langle x\right\rangle", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Group { kind, children, .. } => match kind {
@@ -2330,7 +2315,7 @@ fn test_delimited_group_langle_rangle() {
 fn test_delimiter_controls_are_interned() {
     fn extract_controls(node: SyntaxNode) -> (&'static str, &'static str) {
         match node {
-            SyntaxNode::Group { children, .. } => match &children[0] {
+            SyntaxNode::Root { children, .. } => match &children[0] {
                 SyntaxNode::Group { kind, .. } => match kind {
                     GroupKind::Delimited { left, right } => {
                         let left = match left {
@@ -2364,7 +2349,7 @@ fn test_delimited_group_lfloor_rfloor() {
     let (result, _) = parse(r"\left\lfloor x\right\rfloor", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Group { kind, .. } => match kind {
@@ -2391,7 +2376,7 @@ fn test_starred_environment() {
     let (result, _) = parse(r"\begin{align*}a+b\end{align*}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Environment { name, body, .. } => {
@@ -2444,7 +2429,7 @@ fn test_whitespace_ignored_between_items() {
     let (result, _) = parse(r"a  b  c", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 3);
             assert_eq!(children[0], SyntaxNode::Char('a'));
             assert_eq!(children[1], SyntaxNode::Char('b'));
@@ -2464,7 +2449,7 @@ fn test_empty_group() {
     let (result, _) = parse(r"{}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Group {
@@ -2487,7 +2472,7 @@ fn test_consecutive_groups() {
     let (result, _) = parse(r"{a}{b}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 2);
             match &children[0] {
                 SyntaxNode::Group {
@@ -2522,7 +2507,7 @@ fn test_script_in_argument() {
     let (result, _) = parse(r"\frac{x^2}{y}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
@@ -2553,7 +2538,7 @@ fn test_consecutive_commands() {
     let (result, _) = parse(r"\alpha\beta\gamma", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 3);
             for (i, expected) in ["alpha", "beta", "gamma"].iter().enumerate() {
                 match &children[i] {
@@ -2574,7 +2559,7 @@ fn test_infix_then_declarative() {
     let (result, _) = parse(r"a \over b \bfseries c", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             // Should have infix node and declarative node
             assert_eq!(children.len(), 2);
             match &children[0] {
@@ -2608,7 +2593,7 @@ fn test_alignment_char() {
     let (result, _) = parse(r"a & b", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 3);
             assert_eq!(children[0], SyntaxNode::Char('a'));
             assert_eq!(children[1], SyntaxNode::Char('&'));
@@ -2624,7 +2609,7 @@ fn test_text_escaped_symbols() {
     let (result, _) = parse(r"\text{\%\$\&}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "text");
                 match unwrap_content(&args[0]) {
@@ -2649,7 +2634,7 @@ fn test_text_explicit_group() {
     let (result, _) = parse(r"\text{{a}}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "text");
                 match unwrap_content(&args[0]) {
@@ -2682,7 +2667,7 @@ fn test_dimension_with_spaces() {
     let (result, _) = parse(r"\hspace{1.5 cm}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "hspace");
                 assert_eq!(args.len(), 1);
@@ -2740,11 +2725,11 @@ fn test_keyval_empty_brackets() {
 
 fn extract_first_command(node: SyntaxNode) -> (String, Vec<Option<Argument>>) {
     match node {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => (name.clone(), args.clone()),
             other => panic!("Expected command node, got {:?}", other),
         },
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 }
 
@@ -2902,7 +2887,7 @@ fn test_braket_optional_group_slot() {
 fn test_exp_does_not_consume_star_without_s_slot() {
     let (result, _) = parse(r"\exp*", false).unwrap();
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 2);
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
@@ -2921,7 +2906,7 @@ fn test_exp_does_not_consume_star_without_s_slot() {
 fn test_exp_does_not_consume_brackets_without_optional_slot() {
     let (result, _) = parse(r"\exp[x]", false).unwrap();
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 4);
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
@@ -2942,13 +2927,13 @@ fn test_exp_does_not_consume_brackets_without_optional_slot() {
 fn test_bare_brackets_parse_as_regular_characters() {
     let (result, _) = parse("[a]", false).unwrap();
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 3);
             assert_eq!(children[0], SyntaxNode::Char('['));
             assert_eq!(children[1], SyntaxNode::Char('a'));
             assert_eq!(children[2], SyntaxNode::Char(']'));
         }
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 }
 
@@ -2966,7 +2951,7 @@ fn test_no_leading_space_prefix_for_linebreak_command() {
 
     let (spaced_star, _) = parse(r"\\ *", false).unwrap();
     match spaced_star {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert!(!children.is_empty());
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
@@ -2979,12 +2964,12 @@ fn test_no_leading_space_prefix_for_linebreak_command() {
             }
             assert_eq!(children[1], SyntaxNode::Char('*'));
         }
-        _ => panic!("Expected root group"),
+        _ => panic!("Expected root node"),
     }
 
     let (spaced_dimension, _) = parse(r"\\ [1cm]", false).unwrap();
     match spaced_dimension {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert!(!children.is_empty());
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
@@ -3000,7 +2985,7 @@ fn test_no_leading_space_prefix_for_linebreak_command() {
             assert_eq!(children[4], SyntaxNode::Char('m'));
             assert_eq!(children[5], SyntaxNode::Char(']'));
         }
-        _ => panic!("Expected root group"),
+        _ => panic!("Expected root node"),
     }
 }
 
@@ -3027,7 +3012,7 @@ fn test_no_leading_space_after_single_token_m_for_optional_brackets() {
         .clone();
 
     match spaced_node {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 4);
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
@@ -3045,7 +3030,7 @@ fn test_no_leading_space_after_single_token_m_for_optional_brackets() {
             assert_eq!(children[2], SyntaxNode::Char('b'));
             assert_eq!(children[3], SyntaxNode::Char(']'));
         }
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 
     let tight = ctx.parse(r"\probe a[b]", true);
@@ -3062,7 +3047,7 @@ fn test_no_leading_space_after_single_token_m_for_optional_brackets() {
         .clone();
 
     match tight_node {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
@@ -3080,7 +3065,7 @@ fn test_no_leading_space_after_single_token_m_for_optional_brackets() {
                 other => panic!("Expected probe command, got {:?}", other),
             }
         }
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 }
 
@@ -3107,7 +3092,7 @@ fn test_no_leading_space_after_single_token_m_for_group_slot() {
         .clone();
 
     match spaced_node {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 2);
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
@@ -3138,7 +3123,7 @@ fn test_no_leading_space_after_single_token_m_for_group_slot() {
                 other => panic!("Expected trailing explicit group, got {:?}", other),
             }
         }
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 
     let tight = ctx.parse(r"\probe*[n]f{x}", true);
@@ -3155,7 +3140,7 @@ fn test_no_leading_space_after_single_token_m_for_group_slot() {
         .clone();
 
     match tight_node {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
@@ -3179,7 +3164,7 @@ fn test_no_leading_space_after_single_token_m_for_group_slot() {
                 other => panic!("Expected probe command, got {:?}", other),
             }
         }
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 }
 
@@ -3205,7 +3190,7 @@ fn test_required_group_form_enforces_braces() {
         .node
         .clone();
     match present_node {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "reqgrp");
                 assert_eq!(args.len(), 1);
@@ -3217,7 +3202,7 @@ fn test_required_group_form_enforces_braces() {
             }
             other => panic!("Expected reqgrp command, got {:?}", other),
         },
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 
     let missing = ctx.parse(r"\reqgrp x", true);
@@ -3265,7 +3250,7 @@ fn test_group_form_supports_dimension_kind() {
         .node
         .clone();
     match missing_node {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "gdim");
                 assert_eq!(args.len(), 1);
@@ -3273,7 +3258,7 @@ fn test_group_form_supports_dimension_kind() {
             }
             other => panic!("Expected gdim command, got {:?}", other),
         },
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 
     let present = ctx.parse(r"\gdim{1.5em}", true);
@@ -3289,7 +3274,7 @@ fn test_group_form_supports_dimension_kind() {
         .node
         .clone();
     match present_node {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "gdim");
                 assert_eq!(args.len(), 1);
@@ -3301,7 +3286,7 @@ fn test_group_form_supports_dimension_kind() {
             }
             other => panic!("Expected gdim command, got {:?}", other),
         },
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 }
 
@@ -3398,7 +3383,7 @@ fn test_group_form_supports_delimiter_kind() {
         .node
         .clone();
     match node {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "gdelim");
                 assert_eq!(args.len(), 1);
@@ -3410,7 +3395,7 @@ fn test_group_form_supports_delimiter_kind() {
             }
             other => panic!("Expected gdelim command, got {:?}", other),
         },
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 }
 
@@ -3618,7 +3603,7 @@ fn test_dd_supports_optional_then_paired_slots() {
 
     let (unmatched, _) = parse(r"\dd[y]|x|", false).unwrap();
     match unmatched {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 4);
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
@@ -3635,7 +3620,7 @@ fn test_dd_supports_optional_then_paired_slots() {
             assert_eq!(children[2], SyntaxNode::Char('x'));
             assert_eq!(children[3], SyntaxNode::Char('|'));
         }
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 }
 
@@ -3686,7 +3671,7 @@ fn test_paired_form_required_vs_optional_semantics() {
         .node
         .clone();
     match node {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 4);
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
@@ -3700,7 +3685,7 @@ fn test_paired_form_required_vs_optional_semantics() {
             assert_eq!(children[2], SyntaxNode::Char('x'));
             assert_eq!(children[3], SyntaxNode::Char(']'));
         }
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 }
 
@@ -3726,7 +3711,7 @@ fn test_newline_command_preserves_no_leading_space_behavior() {
         .node
         .clone();
     match immediate_node {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "newline");
                 assert_eq!(args.len(), 2);
@@ -3738,7 +3723,7 @@ fn test_newline_command_preserves_no_leading_space_behavior() {
             }
             other => panic!("Expected newline command, got {:?}", other),
         },
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 
     let spaced = ctx.parse(r"\newline * [1cm]", true);
@@ -3754,7 +3739,7 @@ fn test_newline_command_preserves_no_leading_space_behavior() {
         .node
         .clone();
     match spaced_node {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 7);
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
@@ -3775,7 +3760,7 @@ fn test_newline_command_preserves_no_leading_space_behavior() {
             assert_eq!(children[5], SyntaxNode::Char('m'));
             assert_eq!(children[6], SyntaxNode::Char(']'));
         }
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 }
 
@@ -3799,11 +3784,11 @@ fn test_environment_star_in_name_is_independent_from_s_arg_slot() {
         .node
         .clone();
     assert!(
-        matches!(starred_name_node, SyntaxNode::Group { .. }),
-        "expected root group"
+        matches!(starred_name_node, SyntaxNode::Root { .. }),
+        "expected root node"
     );
     match starred_name_node {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Environment { name, args, .. } => {
                 assert_eq!(name, "probenv*");
                 assert_eq!(args.len(), 1);
@@ -3811,7 +3796,7 @@ fn test_environment_star_in_name_is_independent_from_s_arg_slot() {
             }
             other => panic!("Expected environment node, got {:?}", other),
         },
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 
     let star_arg = ctx.parse(r"\begin{probenv}*x\end{probenv}", true);
@@ -3827,7 +3812,7 @@ fn test_environment_star_in_name_is_independent_from_s_arg_slot() {
         .node
         .clone();
     match node {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Environment {
                 name, args, body, ..
             } => {
@@ -3845,7 +3830,7 @@ fn test_environment_star_in_name_is_independent_from_s_arg_slot() {
             }
             other => panic!("Expected environment node, got {:?}", other),
         },
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 }
 
@@ -3853,7 +3838,7 @@ fn test_environment_star_in_name_is_independent_from_s_arg_slot() {
 fn test_sqrt_accepts_command_token_as_best_fit_argument() {
     let (result, _) = parse(r"\sqrt\frac{1}{2}", false).unwrap();
     match result {
-        SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Command { name, args, .. } => {
@@ -3875,7 +3860,7 @@ fn test_sqrt_accepts_command_token_as_best_fit_argument() {
                 other => panic!("Expected sqrt command, got {:?}", other),
             }
         }
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 }
 
@@ -3940,7 +3925,7 @@ fn test_span_scripted() {
 fn test_optional_argument_reparse_keeps_known_command() {
     let (result, _) = parse(r"\sqrt[\frac{1}{2}]{x}", false).unwrap();
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "sqrt");
                 match unwrap_content(&args[0]) {
@@ -3952,7 +3937,7 @@ fn test_optional_argument_reparse_keeps_known_command() {
             }
             other => panic!("Expected sqrt command, got {:?}", other),
         },
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 }
 
@@ -3978,7 +3963,7 @@ fn test_delimited_content_argument_reparse_keeps_known_command() {
         .clone();
 
     match node {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "probe");
                 match unwrap_content(&args[0]) {
@@ -3990,7 +3975,7 @@ fn test_delimited_content_argument_reparse_keeps_known_command() {
             }
             other => panic!("Expected probe command, got {:?}", other),
         },
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 }
 
@@ -4032,7 +4017,7 @@ fn test_text_mode_inline_math_reparse_keeps_known_command() {
     let (result, _) = parse(r"\text{$\frac{a}{b}$}", false).unwrap();
 
     match result {
-        SyntaxNode::Group { children, .. } => match &children[0] {
+        SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "text");
                 match unwrap_content(&args[0]) {
@@ -4054,6 +4039,6 @@ fn test_text_mode_inline_math_reparse_keeps_known_command() {
             }
             other => panic!("Expected text command, got {:?}", other),
         },
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 }

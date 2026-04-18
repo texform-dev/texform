@@ -50,7 +50,7 @@ pub struct ParentLink {
 /// The direct attachment site a child occupies in its parent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Slot {
-    /// Child at an index inside [`Node::Group::children`]
+    /// Child at an index inside [`Node::Root::children`] / [`Node::Group::children`]
     GroupChild(usize),
     /// Content argument stored in an argument list slot
     Argument(usize),
@@ -73,6 +73,7 @@ pub enum Slot {
 /// Cheap node discriminant for queries that do not need full pattern matching.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeKind {
+    Root,
     Group,
     Command,
     Infix,
@@ -173,6 +174,13 @@ pub type ArgumentSlot = Option<Argument>;
 /// Mutable AST node stored inside [`Ast`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Node {
+    /// Main document root containing top-level children and parse mode.
+    Root {
+        /// Ordered direct children of the root
+        children: Vec<NodeId>,
+        /// Content mode used to parse the formula
+        mode: ContentMode,
+    },
     /// Group node containing ordered children and mode metadata.
     Group {
         /// Ordered direct children of the group
@@ -243,6 +251,7 @@ impl Node {
     /// Return the lightweight discriminant for this node.
     pub const fn kind(&self) -> NodeKind {
         match self {
+            Node::Root { .. } => NodeKind::Root,
             Node::Group { .. } => NodeKind::Group,
             Node::Command { .. } => NodeKind::Command,
             Node::Infix { .. } => NodeKind::Infix,
@@ -272,12 +281,11 @@ pub struct Ast {
 }
 
 impl Ast {
-    /// Create an empty AST with an implicit math-mode root group.
+    /// Create an empty AST with a math-mode root node.
     pub fn new() -> Self {
         let mut nodes = HopSlotMap::with_key();
-        let root = nodes.insert(Node::Group {
+        let root = nodes.insert(Node::Root {
             children: Vec::new(),
-            kind: GroupKind::Implicit,
             mode: ContentMode::Math,
         });
 
@@ -302,10 +310,25 @@ impl Ast {
     ///
     /// Panics if the converted tree violates AST invariants, such as an
     /// environment body that is not a group.
-    pub fn from_syntax_node(node: &SyntaxNode) -> Self {
+    pub fn from_syntax_root(node: &SyntaxNode) -> Self {
+        let SyntaxNode::Root { mode, children } = node else {
+            panic!("Ast::from_syntax_root expects SyntaxNode::Root");
+        };
+
         let mut nodes = HopSlotMap::with_key();
         let mut parent = SecondaryMap::new();
-        let root = Self::convert_syntax_node(node, &mut nodes, &mut parent);
+        let converted_children: Vec<NodeId> = children
+            .iter()
+            .map(|child| Self::convert_syntax_node(child, &mut nodes, &mut parent))
+            .collect();
+        let root = nodes.insert(Node::Root {
+            children: converted_children,
+            mode: *mode,
+        });
+
+        for (child, slot) in Self::node_edges(nodes.get(root).expect("Converted node must exist")) {
+            parent.insert(child, ParentLink { parent: root, slot });
+        }
 
         let ast = Ast {
             nodes,
@@ -362,16 +385,16 @@ impl Ast {
         self.parent(id).map(|link| link.slot)
     }
 
-    /// Return the direct children of a group node.
+    /// Return the direct children of a root/group node.
     ///
-    /// Non-group nodes return an empty slice.
+    /// Other node kinds return an empty slice.
     ///
     /// # Panics
     ///
     /// Panics if `id` is invalid.
     pub fn children(&self, id: NodeId) -> &[NodeId] {
         match self.node(id) {
-            Node::Group { children, .. } => children,
+            Node::Root { children, .. } | Node::Group { children, .. } => children,
             _ => &[],
         }
     }
@@ -477,6 +500,10 @@ impl Ast {
     /// - adopting a child would introduce a cycle
     /// - an environment body is not a group
     pub fn new_node(&mut self, node: Node) -> NodeId {
+        if matches!(node, Node::Root { .. }) {
+            panic!("Cannot create detached root node");
+        }
+
         Self::assert_unique_direct_children(&node);
         let direct_children = Self::node_edges(&node);
         let id = self.nodes.insert(node);
@@ -511,7 +538,7 @@ impl Ast {
         self.assert_no_cycle(child, parent);
 
         let index = match self.node_mut(parent) {
-            Node::Group { children, .. } => {
+            Node::Root { children, .. } | Node::Group { children, .. } => {
                 let index = children.len();
                 children.push(child);
                 index
@@ -548,7 +575,7 @@ impl Ast {
         self.assert_no_cycle(child, parent);
 
         match self.node_mut(parent) {
-            Node::Group { children, .. } => {
+            Node::Root { children, .. } | Node::Group { children, .. } => {
                 children.insert(index, child);
             }
             _ => panic!("Parent is not a Group node"),
@@ -584,7 +611,7 @@ impl Ast {
         };
 
         match self.node_mut(parent_link.parent) {
-            Node::Group { children, .. } => {
+            Node::Root { children, .. } | Node::Group { children, .. } => {
                 let removed = children.remove(index);
                 assert_eq!(removed, id, "Group child index must match detached node");
             }
@@ -627,6 +654,7 @@ impl Ast {
     ///
     /// - `id` is the main root or invalid
     /// - the new node references the same child more than once
+    /// - the new node is a root variant
     /// - a reused child is not a direct child of `id`
     /// - a newly introduced child is not a detached root
     /// - adopting a child would introduce a cycle
@@ -637,6 +665,9 @@ impl Ast {
         }
         if !self.contains(id) {
             panic!("Invalid NodeId");
+        }
+        if matches!(new_node, Node::Root { .. }) {
+            panic!("Cannot replace node with root variant");
         }
 
         Self::assert_unique_direct_children(&new_node);
@@ -752,6 +783,10 @@ impl Ast {
     pub fn assert_invariants(&self) {
         assert!(self.contains(self.root), "Root node must exist");
         assert!(
+            matches!(self.node(self.root), Node::Root { .. }),
+            "ast.root() must be Node::Root"
+        );
+        assert!(
             self.parent(self.root).is_none(),
             "Root node must not have a parent"
         );
@@ -759,6 +794,12 @@ impl Ast {
             !self.detached_roots.contains(&self.root),
             "Root node cannot be a detached root"
         );
+
+        for (id, node) in self.nodes.iter() {
+            if matches!(node, Node::Root { .. }) {
+                assert_eq!(id, self.root, "Only ast.root() may be Node::Root");
+            }
+        }
 
         for (id, link) in self.parent.iter() {
             assert!(self.contains(id), "Parent map contains non-existent child");
@@ -832,7 +873,7 @@ impl Ast {
 
     fn reindex_group_children(&mut self, parent: NodeId, start: usize) {
         let children = match self.node(parent) {
-            Node::Group { children, .. } => children.clone(),
+            Node::Root { children, .. } | Node::Group { children, .. } => children.clone(),
             _ => panic!("Parent is not a Group node"),
         };
 
@@ -932,7 +973,7 @@ impl Ast {
         // order. Public `edges()` and internal mutation helpers both rely on it
         // so read and write paths stay aligned.
         match node {
-            Node::Group { children, .. } => {
+            Node::Root { children, .. } | Node::Group { children, .. } => {
                 for (index, child) in children.iter().copied().enumerate() {
                     edges.push((child, Slot::GroupChild(index)));
                 }
@@ -1000,6 +1041,9 @@ impl Ast {
         // transformation local and avoids a second global rebuild pass over the
         // finished tree.
         let converted_node = match node {
+            SyntaxNode::Root { .. } => {
+                panic!("Ast::from_syntax_root does not accept nested SyntaxNode::Root")
+            }
             SyntaxNode::Group {
                 mode,
                 kind,
@@ -1173,5 +1217,23 @@ impl Ast {
 impl Default for Ast {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Ast, ContentMode, Node};
+
+    #[test]
+    #[should_panic(expected = "Only ast.root() may be Node::Root")]
+    fn assert_invariants_rejects_additional_root_nodes() {
+        let mut ast = Ast::new();
+        let extra_root = ast.nodes.insert(Node::Root {
+            children: Vec::new(),
+            mode: ContentMode::Math,
+        });
+        ast.detached_roots.insert(extra_root);
+
+        ast.assert_invariants();
     }
 }

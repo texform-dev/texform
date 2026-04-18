@@ -6,6 +6,7 @@
 .superpowers
 .playwright-mcp
 .codex
+.worktrees/
 
 # Python / uv
 __pycache__/

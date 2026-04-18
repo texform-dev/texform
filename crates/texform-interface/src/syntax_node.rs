@@ -131,6 +131,15 @@ pub enum GroupKind {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub enum SyntaxNode {
+    /// Parse-tree root node produced by the top-level parser.
+    ///
+    /// A `Root` never nests inside another `SyntaxNode`; it marks the entry
+    /// point of a parsed formula and carries the top-level content mode.
+    Root {
+        mode: ContentMode,
+        children: Vec<SyntaxNode>,
+    },
+
     /// Group: explicit {...}, implicit, delimited \left...\right, or inline math $...$
     Group {
         mode: ContentMode,
@@ -220,9 +229,9 @@ pub enum SyntaxNode {
 // ============ Helper Methods ============
 
 impl SyntaxNode {
-    /// Check if this node is a Group
+    /// Check if this node is a content container (`Group` or parse-tree `Root`).
     pub fn is_group(&self) -> bool {
-        matches!(self, SyntaxNode::Group { .. })
+        matches!(self, SyntaxNode::Root { .. } | SyntaxNode::Group { .. })
     }
 
     /// Check if this node is a leaf (has no children)
@@ -243,12 +252,17 @@ impl SyntaxNode {
         }))
     }
 
-    /// Get the mode if this is a Group node
+    /// Get the content mode if this is a content container (`Group` or `Root`).
     pub fn group_mode(&self) -> Option<ContentMode> {
         match self {
-            SyntaxNode::Group { mode, .. } => Some(*mode),
+            SyntaxNode::Root { mode, .. } | SyntaxNode::Group { mode, .. } => Some(*mode),
             _ => None,
         }
+    }
+
+    /// Create a parse-tree root node wrapping a sequence of top-level children.
+    pub fn root(mode: ContentMode, children: Vec<SyntaxNode>) -> Self {
+        SyntaxNode::Root { mode, children }
     }
 
     /// Create an implicit group wrapping a sequence of nodes
@@ -337,7 +351,7 @@ impl std::fmt::Display for ContentMode {
 
 impl std::fmt::Display for SyntaxNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.fmt_tree_root_with_indent(f, 0)
+        self.fmt_with_indent(f, 0)
     }
 }
 
@@ -346,6 +360,11 @@ impl SyntaxNode {
     fn fmt_with_indent(&self, f: &mut std::fmt::Formatter<'_>, indent: usize) -> std::fmt::Result {
         let prefix = "  ".repeat(indent);
         match self {
+            SyntaxNode::Root { mode, children } => {
+                writeln!(f, "{}Root({:?}) [", prefix, mode)?;
+                Self::fmt_group_children_with_indent(f, children, indent + 1)?;
+                writeln!(f, "{}]", prefix)
+            }
             SyntaxNode::Group {
                 mode,
                 kind,
@@ -475,26 +494,6 @@ impl SyntaxNode {
         }
 
         Ok(())
-    }
-
-    fn fmt_tree_root_with_indent(
-        &self,
-        f: &mut std::fmt::Formatter<'_>,
-        indent: usize,
-    ) -> std::fmt::Result {
-        let prefix = "  ".repeat(indent);
-        match self {
-            SyntaxNode::Group {
-                mode,
-                kind: GroupKind::Implicit,
-                children,
-            } => {
-                writeln!(f, "{}Group({:?}, root) [", prefix, mode)?;
-                Self::fmt_group_children_with_indent(f, children, indent + 1)?;
-                writeln!(f, "{}]", prefix)
-            }
-            _ => self.fmt_with_indent(f, indent),
-        }
     }
 }
 

@@ -10,10 +10,10 @@
     "timing_ms": {
       "mean": 0.24,
       "p50": 0.16,
-      "p95": 0.78,
-      "p99": 1.56,
-      "max": 12.50,
-      "max_formula_id": "f079aa9e210a"
+      "p95": 0.80,
+      "p99": 1.66,
+      "max": 7.62,
+      "max_formula_id": "e419c0c34b9c"
     }
   },
   "nonstrict": {
@@ -21,12 +21,12 @@
     "failed": 115,
     "failure_rate_pct": 0.34,
     "timing_ms": {
-      "mean": 0.38,
+      "mean": 0.40,
       "p50": 0.26,
-      "p95": 1.19,
-      "p99": 2.40,
-      "max": 16.83,
-      "max_formula_id": "31ece10e36ed"
+      "p95": 1.22,
+      "p99": 2.71,
+      "max": 11.12,
+      "max_formula_id": "85b1d85fa85e"
     }
   }
 }

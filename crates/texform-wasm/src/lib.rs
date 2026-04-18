@@ -26,6 +26,7 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen(typescript_custom_section)]
 const SYNTAX_NODE_TYPES: &str = r#"
 export type SyntaxNode =
+    | { Root: { mode: ContentMode; children: SyntaxNode[] } }
     | { Group: { mode: ContentMode; kind: GroupKind; children: SyntaxNode[] } }
     | { Command: { name: string; args: ArgumentSlot[]; known: boolean } }
     | { Infix: { name: string; args: ArgumentSlot[]; left: SyntaxNode; right: SyntaxNode } }

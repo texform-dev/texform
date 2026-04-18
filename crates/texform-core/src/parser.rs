@@ -117,6 +117,11 @@ impl TrackedNode {
     }
 
     /// Finalize into the root-prefixed record list consumed by `ParseResult`.
+    ///
+    /// Promotes the tracked top-level implicit group into a real
+    /// `SyntaxNode::Root` so downstream consumers never see the root as a
+    /// regular group. `node_spans` paths continue to start with `root` and
+    /// `root.child.N` so span consumers are unaffected.
     pub(crate) fn finish_root(
         self,
     ) -> (
@@ -125,6 +130,19 @@ impl TrackedNode {
         Vec<RelativeSpanEntry>,
         Vec<Rich<'static, Token>>,
     ) {
+        let root_node = match self.node {
+            node @ SyntaxNode::Root { .. } => node,
+            SyntaxNode::Group {
+                mode,
+                kind: GroupKind::Implicit,
+                children,
+            } => SyntaxNode::Root { mode, children },
+            other => panic!(
+                "top-level parser must finish as implicit group or root, got {:?}",
+                other
+            ),
+        };
+
         let mut records = vec![RelativeSpanEntry {
             path: "root".to_string(),
             span: self.span,
@@ -135,7 +153,7 @@ impl TrackedNode {
                 span: entry.span,
             });
         }
-        (self.node, self.span, records, self.diagnostics)
+        (root_node, self.span, records, self.diagnostics)
     }
 
     /// Extract syntax nodes and `child.N` records from tracked children.
@@ -989,10 +1007,27 @@ where
 pub fn parse(src: &str, strict: bool) -> Result<Spanned<SyntaxNode>, Vec<Rich<'_, Token>>> {
     let token_stream = build_token_stream(src);
     math_block_parser(ParseContext::all_packages_shared(), strict)
-        .map_with(|tracked, e| (tracked.node, e.span()))
+        .map_with(|tracked, e| (promote_to_root(tracked.node), e.span()))
         .then_ignore(end())
         .parse(token_stream)
         .into_result()
+}
+
+/// Promote the top-level implicit group produced by `math_block_parser` /
+/// `text_block_parser` into a proper `SyntaxNode::Root`.
+fn promote_to_root(node: SyntaxNode) -> SyntaxNode {
+    match node {
+        node @ SyntaxNode::Root { .. } => node,
+        SyntaxNode::Group {
+            mode,
+            kind: GroupKind::Implicit,
+            children,
+        } => SyntaxNode::Root { mode, children },
+        other => panic!(
+            "top-level parser must finish as implicit group or root, got {:?}",
+            other
+        ),
+    }
 }
 
 // ============================================================================

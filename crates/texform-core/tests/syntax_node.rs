@@ -21,6 +21,14 @@ fn test_syntax_node_creation() {
 }
 
 #[test]
+fn test_root_preserves_group_helper_semantics() {
+    let root = SyntaxNode::root(ContentMode::Text, vec![SyntaxNode::Text("x".to_string())]);
+
+    assert!(root.is_group());
+    assert_eq!(root.group_mode(), Some(ContentMode::Text));
+}
+
+#[test]
 fn test_implicit_group_helpers() {
     let children = vec![SyntaxNode::Char('a'), SyntaxNode::Char('b')];
     let group = SyntaxNode::implicit_group(ContentMode::Math, children.clone());
@@ -241,12 +249,23 @@ fn test_display_char_merging_boundaries() {
 }
 
 #[test]
-fn test_default_display_marks_root_group() {
+fn test_default_display_marks_root_node() {
+    let root = SyntaxNode::root(ContentMode::Math, vec![SyntaxNode::Char('x')]);
+    let display = format!("{}", root);
+
+    assert!(display.contains("Root(Math)"));
+    assert!(!display.contains("Group(Math, root)"));
+}
+
+#[test]
+fn test_display_standalone_implicit_group() {
+    // An implicit group that is not the top-level root must still display as
+    // a regular group, not as the root marker.
     let group = SyntaxNode::implicit_group(ContentMode::Math, vec![SyntaxNode::Char('x')]);
     let display = format!("{}", group);
 
-    assert!(display.contains("Group(Math, root)"));
-    assert!(!display.contains("Group(Math, Implicit)"));
+    assert!(display.contains("Group(Math, Implicit)"));
+    assert!(!display.contains("Root("));
 }
 
 #[test]

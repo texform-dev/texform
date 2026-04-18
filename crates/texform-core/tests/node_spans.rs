@@ -2,7 +2,7 @@ use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
     ParseContext, ParseContextBuilder, ParseResult, Span,
 };
-use texform_interface::syntax_node::ContentMode;
+use texform_interface::syntax_node::{ContentMode, SyntaxNode};
 
 fn parse_ok(src: &str) -> ParseResult {
     let output = ParseContext::all_packages_shared().parse(src, false);
@@ -51,6 +51,24 @@ fn parse_result_exposes_root_node_span() {
         result.span_for("root.child.0"),
         Some(&Span { start: 0, end: 1 })
     );
+}
+
+#[test]
+fn parse_result_top_level_node_is_root() {
+    // The root path is backed by a real `SyntaxNode::Root`, not a synthetic
+    // prefix over an implicit group.
+    let result = parse_ok("x");
+
+    match result.node {
+        SyntaxNode::Root { mode, children } => {
+            assert_eq!(mode, ContentMode::Math);
+            assert_eq!(children.len(), 1);
+        }
+        other => panic!(
+            "expected parse root to be SyntaxNode::Root, got {:?}",
+            other
+        ),
+    }
 }
 
 #[test]

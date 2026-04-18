@@ -21,27 +21,52 @@ fn content_arg(kind: ArgumentKind, child: NodeId) -> ArgumentSlot {
 }
 
 #[test]
-fn test_new_ast_starts_with_implicit_math_root() {
+fn test_new_ast_starts_with_math_root() {
     let ast = Ast::new();
     let root = ast.root();
 
-    assert_eq!(ast.kind(root), NodeKind::Group);
+    assert_eq!(ast.kind(root), NodeKind::Root);
     assert!(ast.parent(root).is_none());
 
     match ast.node(root) {
-        Node::Group {
-            children,
-            kind,
-            mode,
-        } => {
+        Node::Root { children, mode } => {
             assert!(children.is_empty());
-            assert_eq!(*kind, GroupKind::Implicit);
             assert_eq!(*mode, ContentMode::Math);
         }
-        other => panic!("Expected root group, got {:?}", other),
+        other => panic!("Expected root node, got {:?}", other),
     }
 
     ast.assert_invariants();
+}
+
+#[test]
+#[should_panic(expected = "Cannot create detached root node")]
+fn test_new_node_rejects_root_variant() {
+    let mut ast = Ast::new();
+    let _ = ast.new_node(Node::Root {
+        children: Vec::new(),
+        mode: ContentMode::Math,
+    });
+}
+
+#[test]
+#[should_panic(expected = "Cannot replace node with root variant")]
+fn test_replace_node_rejects_root_variant() {
+    let mut ast = Ast::new();
+    let root = ast.root();
+
+    let child = ast.new_node(Node::Char('x'));
+    ast.assert_invariants();
+    ast.append_child(root, child);
+    ast.assert_invariants();
+
+    let _ = ast.replace_node(
+        child,
+        Node::Root {
+            children: Vec::new(),
+            mode: ContentMode::Math,
+        },
+    );
 }
 
 #[test]
