@@ -1,0 +1,20 @@
+[package]
+name = "texform-bench"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[[bench]]
+name = "parse_corpus"
+harness = false
+
+[dependencies]
+texform-core.workspace = true
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+parquet = { version = "58.1.0", features = ["arrow", "zstd"] }
+arrow-array = "58.1.0"
+arrow-schema = "58.1.0"
+rayon = "1.12.0"
+clap = { version = "4.6.1", features = ["derive"] }

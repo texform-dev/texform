@@ -1,0 +1,12 @@
+datasets:
+  - slug: linxy
+    file: data/linxy.parquet
+
+  - slug: unimer
+    file: data/unimer.parquet
+
+  - slug: wikipedia
+    file: data/wikipedia.parquet
+
+  - slug: lf80m-benchmarks
+    file: data/lf80m-benchmarks.parquet

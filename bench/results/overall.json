@@ -1,0 +1,28 @@
+{
+  "dataset_count": 4,
+  "total_tasks": 1226621,
+  "strict": {
+    "ok": 953294,
+    "failed": 273327,
+    "failure_rate_pct": 22.28,
+    "timing_ms": {
+      "mean": 0.12,
+      "p50": 0.06,
+      "p95": 0.39,
+      "p99": 0.92,
+      "max": 24.59
+    }
+  },
+  "nonstrict": {
+    "ok": 1222854,
+    "failed": 3767,
+    "failure_rate_pct": 0.31,
+    "timing_ms": {
+      "mean": 0.17,
+      "p50": 0.09,
+      "p95": 0.56,
+      "p99": 1.28,
+      "max": 22.32
+    }
+  }
+}

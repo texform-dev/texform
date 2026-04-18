@@ -1,0 +1,32 @@
+{
+  "dataset": "lf80m-benchmarks",
+  "dataset_row_count": 34104,
+  "total_tasks": 34104,
+  "completed": 34104,
+  "strict": {
+    "ok": 21766,
+    "failed": 12338,
+    "failure_rate_pct": 36.18,
+    "timing_ms": {
+      "mean": 0.24,
+      "p50": 0.16,
+      "p95": 0.78,
+      "p99": 1.56,
+      "max": 12.50,
+      "max_formula_id": "f079aa9e210a"
+    }
+  },
+  "nonstrict": {
+    "ok": 33989,
+    "failed": 115,
+    "failure_rate_pct": 0.34,
+    "timing_ms": {
+      "mean": 0.38,
+      "p50": 0.26,
+      "p95": 1.19,
+      "p99": 2.40,
+      "max": 16.83,
+      "max_formula_id": "31ece10e36ed"
+    }
+  }
+}

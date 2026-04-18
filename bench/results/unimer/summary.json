@@ -1,0 +1,32 @@
+{
+  "dataset": "unimer",
+  "dataset_row_count": 606802,
+  "total_tasks": 606802,
+  "completed": 606802,
+  "strict": {
+    "ok": 459158,
+    "failed": 147644,
+    "failure_rate_pct": 24.33,
+    "timing_ms": {
+      "mean": 0.14,
+      "p50": 0.07,
+      "p95": 0.51,
+      "p99": 1.09,
+      "max": 24.59,
+      "max_formula_id": "202479fb1a29"
+    }
+  },
+  "nonstrict": {
+    "ok": 604882,
+    "failed": 1920,
+    "failure_rate_pct": 0.32,
+    "timing_ms": {
+      "mean": 0.21,
+      "p50": 0.10,
+      "p95": 0.72,
+      "p99": 1.50,
+      "max": 18.33,
+      "max_formula_id": "8b41599e9fcf"
+    }
+  }
+}

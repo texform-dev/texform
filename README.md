@@ -157,4 +157,23 @@ const result = parse("\\frac{a}{b}"); // returns object with node + span
 
 Both bindings raise/throw structured errors with `diagnostics` and `partial_result` when parsing fails.
 
+## Corpus Bench
+
+The corpus bench lives in `crates/texform-bench` and reads Parquet datasets from `bench/data/`.
+
+```bash
+cd lib/texform
+git lfs install && git lfs pull
+
+# run all datasets
+cargo bench -p texform-bench --bench parse_corpus
+
+# run one dataset
+cargo bench -p texform-bench --bench parse_corpus -- --dataset lf80m-benchmarks
+```
+
+The aggregated snapshot is written to `bench/results/overall.json`.
+
+See [`bench/README.md`](bench/README.md) for dataset provenance and result locations.
+
 See [DEVELOP.md](DEVELOP.md) for full build instructions and maintenance notes.

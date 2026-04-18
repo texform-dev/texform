@@ -1,0 +1,32 @@
+{
+  "dataset": "wikipedia",
+  "dataset_row_count": 492136,
+  "total_tasks": 492136,
+  "completed": 492136,
+  "strict": {
+    "ok": 394674,
+    "failed": 97462,
+    "failure_rate_pct": 19.80,
+    "timing_ms": {
+      "mean": 0.08,
+      "p50": 0.05,
+      "p95": 0.23,
+      "p99": 0.51,
+      "max": 20.35,
+      "max_formula_id": "e88ca9e5a062"
+    }
+  },
+  "nonstrict": {
+    "ok": 490871,
+    "failed": 1265,
+    "failure_rate_pct": 0.26,
+    "timing_ms": {
+      "mean": 0.11,
+      "p50": 0.06,
+      "p95": 0.30,
+      "p99": 0.69,
+      "max": 21.37,
+      "max_formula_id": "610bf8428dea"
+    }
+  }
+}
