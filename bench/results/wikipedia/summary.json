@@ -4,9 +4,9 @@
   "total_tasks": 492136,
   "completed": 492136,
   "strict": {
-    "ok": 394674,
-    "failed": 97462,
-    "failure_rate_pct": 19.80
+    "ok": 410821,
+    "failed": 81315,
+    "failure_rate_pct": 16.52
   },
   "nonstrict": {
     "ok": 490871,

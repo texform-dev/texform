@@ -608,6 +608,23 @@ fn escaped_symbol<'a>() -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserE
     .tracked()
 }
 
+/// Parse delimiter controls as visible math commands outside delimiter positions.
+fn delimiter_control_command_parser<'a>(
+    ctx: &'a ParseContext,
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
+    select! {
+        Token::ControlSeq(name) if ctx.lookup_delimiter_control(name.as_str()).is_some() => {
+            SyntaxNode::Command {
+                name,
+                args: vec![],
+                known: true,
+            }
+        }
+    }
+    .labelled("bare delimiter control")
+    .tracked()
+}
+
 /// Parse the active character `~` into `ActiveSpace`.
 fn active_char<'a>() -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     just(Token::ActiveChar)
@@ -2015,12 +2032,14 @@ where
     );
     let prefix_command =
         prefix_command_parser(ctx, math_content, text_content, ContentMode::Math, strict);
+    let delimiter_control_command = delimiter_control_command_parser(ctx);
     let unknown_command = unknown_command_parser(ctx, strict);
     let fallback = choice((
         explicit_group,
         environment.clone(),
         escaped_symbol(),
         prefix_command.clone(),
+        delimiter_control_command,
         unknown_command,
         active_char(),
         math_char(),

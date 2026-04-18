@@ -181,6 +181,36 @@ fn pure_failure_strict() {
 }
 
 #[test]
+fn strict_parse_accepts_bare_delimiter_control() {
+    let output = parse_latex(r"\langle", true);
+    assert!(
+        output.diagnostics.is_empty(),
+        "bare delimiter control should parse"
+    );
+
+    let result = output
+        .result
+        .as_ref()
+        .expect("strict parse should produce a result");
+
+    let children = match &result.node {
+        SyntaxNode::Root { children, .. } => children,
+        other => panic!("expected root node, got {:?}", other),
+    };
+
+    match &children[0] {
+        SyntaxNode::Command {
+            name, args, known, ..
+        } => {
+            assert_eq!(name, "langle");
+            assert!(args.is_empty());
+            assert!(*known);
+        }
+        other => panic!("expected command node, got {:?}", other),
+    }
+}
+
+#[test]
 fn partial_success_or_failure() {
     let output = parse_with_items(&[frac_command_item()], r"\frac{a}{", false);
     assert!(!output.diagnostics.is_empty(), "should have diagnostics");

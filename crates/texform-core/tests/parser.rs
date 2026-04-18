@@ -767,6 +767,64 @@ fn test_delimiter_argument() {
 }
 
 #[test]
+fn test_bare_delimiter_control_in_math_item() {
+    let (result, _) = parse(r"\langle", true).unwrap();
+
+    match result {
+        SyntaxNode::Root { children, .. } => match &children[0] {
+            SyntaxNode::Command {
+                name, args, known, ..
+            } => {
+                assert_eq!(name, "langle");
+                assert!(args.is_empty());
+                assert!(*known);
+            }
+            other => panic!("Expected Command node, got {:?}", other),
+        },
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_bare_delimiter_controls_inside_math_expression() {
+    let (result, _) = parse(r"a \langle b \rangle", true).unwrap();
+
+    let children = match result {
+        SyntaxNode::Root { children, .. } => children,
+        _ => panic!("Expected root Group"),
+    };
+
+    assert!(matches!(children[0], SyntaxNode::Char('a')));
+    match &children[1] {
+        SyntaxNode::Command {
+            name, args, known, ..
+        } => {
+            assert_eq!(name, "langle");
+            assert!(args.is_empty());
+            assert!(*known);
+        }
+        other => panic!("Expected \\langle command, got {:?}", other),
+    }
+    assert!(matches!(children[2], SyntaxNode::Char('b')));
+    match &children[3] {
+        SyntaxNode::Command {
+            name, args, known, ..
+        } => {
+            assert_eq!(name, "rangle");
+            assert!(args.is_empty());
+            assert!(*known);
+        }
+        other => panic!("Expected \\rangle command, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_bare_delimiter_control_remains_unknown_in_text_content() {
+    let errors = parse(r"\text{\langle}", true).unwrap_err();
+    assert_eq!(errors, vec![r"Unknown command: \langle".to_string()]);
+}
+
+#[test]
 fn test_dimension_argument() {
     // "\hspace1em"
     let (result, _) = parse(r"\hspace1em", false).unwrap();
