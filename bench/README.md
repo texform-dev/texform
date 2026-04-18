@@ -14,7 +14,7 @@ Each dataset parquet stores `formula_id` and `formula`.
 Before running the bench, materialize the dataset files with Git LFS:
 
 ```bash
-cd lib/texform
+# from texform repo root
 git lfs install && git lfs pull
 ```
 
@@ -35,7 +35,7 @@ git lfs install && git lfs pull
 ## Run
 
 ```bash
-cd lib/texform
+# from texform repo root
 
 # run all datasets
 cargo bench -p texform-bench --bench parse_corpus

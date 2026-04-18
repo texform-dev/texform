@@ -1,57 +1,57 @@
-# AI Agent Development Guide
+# Agent Development Guide
 
 ## Project Overview
 
-TeXForm is a **rapid-prototype project** for internal data processing.
+TeXForm is a LaTeX formula parser, formatter, and transform engine — an evolving open-source project.
+
+See [README.md](./README.md) for usage examples, serialization API, and language bindings.
 
 ## Repository Structure
 
 ```
-crates/                       # Rust workspace (7 crates)
+crates/                       # Rust workspace (8 crates)
 ├── texform-core/             #   Parser, AST, serializer, transform engine
 ├── texform-specs/            #   Knowledge base & command specifications
 ├── texform-argspec/          #   xparse-style argument spec parser
 ├── texform-argspec-macros/   #   Procedural macros for argspec
-├── texform-interface/        #   Public C/FFI interface layer
+├── texform-interface/        #   Public types (SyntaxNode, etc.)
+├── texform-bench/            #   Corpus benchmark harness
 ├── texform-python/           #   Python bindings (PyO3 → pytexform)
 └── texform-wasm/             #   WebAssembly bindings
-packages/                     # NPM/TypeScript packages
-├── playground/               #   Interactive WASM playground (Vite + React)
-├── argspecs-validator/       #   Argument spec validator
-└── tex-renderers/            #   LaTeX rendering utilities
+packages/                     # NPM/TypeScript packages (bun workspace)
+├── playground/               #   Interactive WASM playground (Vite + React + Monaco)
+├── argspecs-validator/       #   Argument spec validation & spec-test runner
+└── tex-renderers/            #   MathJax / KaTeX / XeTeX rendering adapters
+python/pytexform/             # Python package source (maturin build)
 resources/specs/              # Knowledge base YAML (base, ams, physics, …)
-data/spec-tests/              # Specification test data
+bench/                        # Corpus benchmark data & results
+├── data/                     #   Git LFS Parquet datasets
+├── datasets.yaml             #   Dataset configuration
+└── results/                  #   Benchmark output (overall.json, per-commit snapshots)
+data/spec-tests/              # Spec test data & results
 docs/                         # Documentation & design (Chinese)
-├── design/                   #   Active design documents
-├── archived-design-docs/     #   Historical designs
-├── plans/                    #   Implementation plans
-└── notes/, reports/, …       #   Notes and reports
-references/                   # External reference docs (chumsky, mathjax, …)
 ```
 
 ### Language Conventions
 
-**Important**: This project follows these language rules:
-
-- **Source code** (`src/`): comments and identifiers MUST be in English
-- **Documentation** (`docs/`): written in Chinese
+- **Source code** (`crates/`, `packages/`): comments and identifiers in English
+- **Documentation** (`docs/`): Chinese
 
 ## Core Principles
 
-1. **Quick Fail**
+1. **Fail Fast, Handle Appropriately**
 
-- Fail fast on invalid input — no complex recovery
-- Use `panic!` or `unwrap()` freely for programming errors
-- Reserve `Result<T>` for expected user-facing errors only
-- No large-scale fault tolerance or boundary fallbacks
+- Use `panic!` or `unwrap()` for programming errors and states that should be impossible
+- Use `Result<T>` for user-facing errors that callers need to handle
+- Don't over-engineer error recovery for internal code paths, but design public APIs with clear error contracts
 
-2. **Rapid Iteration**
+2. **Pragmatic Engineering**
 
-- Deliver core functionality first
-- Minimize abstractions — prefer concrete implementations
-- Prefer single-file modules
-- No premature optimization
-- No external users yet — backward compatibility not required
+- Deliver core functionality first, iterate based on real usage
+- Minimize unnecessary abstractions — prefer concrete implementations over premature generalization
+- Don't repeat yourself — extract shared logic when duplication is real, not hypothetical
+- No premature optimization; profile before optimizing
+- Prefer single-file modules until complexity demands splitting
 
 3. **Code Quality**
 
@@ -59,30 +59,63 @@ references/                   # External reference docs (chumsky, mathjax, …)
 - **Comment policy**:
   - Code itself should express *what* through naming — do NOT restate the code in comments
   - Comments exist to explain **why**: design decisions, non-obvious constraints, rejected alternatives, correctness arguments
-  - Worth a comment: why `debug_assert!` instead of returning an error? Why is this field ignored? Why does ordering matter here? What invariant is being maintained?
-  - Doc comments should describe the function's responsibility and key semantics (e.g. any-match vs all-match) — do not repeat what the signature already says
-  - Do not explain the same concept multiple times within one function — say it once, in the best place
-  - `unreachable!()` and `debug_assert!()` messages should help a debugger understand *why it should never fire*, not restate the surrounding code
-  - **Writing no comments is just as harmful as writing bad comments** — rapid prototyping does not mean unreadable code
+  - Doc comments describe function responsibility and key semantics — do not repeat what the signature already says
+  - **Writing no comments is just as harmful as writing bad comments**
 - **English only in source**: all code comments, identifiers, and inline documentation must be in English
 
 4. **Testing Strategy**
 
-- Place public-API tests in `tests/` (e.g. `tests/ast.rs`); place internal-implementation tests inline in modules
+- Place public-API tests in `tests/`; place internal-implementation tests inline
 - Tests should serve as executable documentation
-- Cover the happy path + 2–3 key edge cases
+- Cover the happy path + key edge cases
 - No exhaustive testing — prioritize fast validation
 
-## Code Style
+## Corpus Benchmarks & Regression Testing
 
-- Comments and identifiers under `crates/` are always in English
-- Prefer `unwrap()` in internal code — avoid verbose error handling
-- Use `todo!()` liberally for unimplemented branches, with a brief English note
+The corpus bench in `crates/texform-bench` runs the parser against large real-world datasets (1.2M+ formulas). Benchmark data is tracked via Git LFS in `bench/data/`.
+
+**Any significant change to `texform-core` should be benchmarked before and after** to check for regressions in error rate and performance. See [bench/README.md](./bench/README.md) for dataset details and result format.
+
+## Transform Engine
+
+The transform subsystem (`crates/texform-core/src/transform/`) provides rule-based AST rewriting:
+
+- **Rule registry**: build script auto-discovers rule files under `transform/rules/` — no manual registration needed
+- **Authoring macros**: `define_rule!` for general rules, `alias_rule!` for simple command renaming
+- **Builtin rule sets**: `Normalize` and `Mer`, selectable at runtime via `TransformContext`
+
+See [crates/texform-core/src/transform/rules/README.md](./crates/texform-core/src/transform/rules/README.md) for rule authoring conventions.
 
 ## Tooling Conventions
 
-- Use `bun` as the package manager for JavaScript/TypeScript packages in this repository
+- **Rust**: `cargo test`, `cargo check`, `cargo clippy`; pre-commit hooks run `cargo fmt` and `cargo clippy`
+- **TypeScript**: `bun` as package manager; `bun run dev` starts the playground
+- **Python**: `uv` for dependency management; `maturin` for building native extensions
+
+### WASM Binding
+
+```bash
+wasm-pack build crates/texform-wasm --target nodejs    # Node.js
+wasm-pack build crates/texform-wasm --target bundler   # webpack etc.
+```
+
+### Embedded Resources
+
+Command specs (`resources/specs/*.yaml`) are embedded into the binary at compile time via `include_str!()`. The `.so` and `.wasm` artifacts are fully self-contained. Changes to spec files require recompilation.
+
+## Maintenance Notes
+
+### TypeScript Type Declaration Sync
+
+`crates/texform-wasm/src/lib.rs` contains a manual `typescript_custom_section` for `SyntaxNode` types. **When modifying types in `texform-interface/src/syntax_node.rs`, you must update this section to match.** This is a tsify-next limitation across crate boundaries — see the comment in that file for details.
+
+Verify after changes:
+
+```bash
+wasm-pack build crates/texform-wasm --target nodejs
+cat crates/texform-wasm/pkg/texform_wasm.d.ts
+```
 
 ## Available CLI Examples
 
-Two CLI examples (`parse` and `validate_spec`) are available for quick inspection and debugging. 
+Two CLI examples (`parse` and `validate_spec`) are available for quick inspection and debugging. See [README.md](./README.md) for usage.

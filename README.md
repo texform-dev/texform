@@ -16,16 +16,6 @@ cargo run --example parse -p texform-core -- '<input>' --environment <name> <mod
 cargo run --example parse -p texform-core -- '<input>' --delimiter <name>
 ```
 
-**Arguments:**
-
-- `<input>` — LaTeX formula to parse (required)
-- `--strict true|false` — Enable strict mode (default: `false`). In strict mode, unknown commands are rejected as errors.
-- `--verbose` — Print the syntax tree as pretty JSON.
-- `--packages <csv>` — Load an explicit comma-separated package list. Without this flag, the example loads all registered packages.
-- `--command <name> <kind> <mode> <spec>` — Inject a temporary command item. Repeat to inject multiple commands.
-- `--environment <name> <mode> <body_mode> <spec>` — Inject a temporary environment item. Repeat as needed.
-- `--delimiter <name>` — Inject a temporary delimiter control. Repeat as needed.
-
 **Examples:**
 
 ```bash
@@ -44,27 +34,13 @@ cargo run --example parse -p texform-core -- \
   --environment probeenv math math ''
 ```
 
-On success, the CLI prints the syntax tree with the root node's byte span. On error, it renders
-diagnostics with line/column numbers and underline indicators (powered by
-[ariadne](https://crates.io/crates/ariadne)). If parsing produces diagnostics but still yields a
-partial result, the CLI also prints that partial tree.
-
 ### validate_spec Example
 
-Validate an xparse-style argument spec string:
+Validate an argparse string:
 
 ```bash
 cargo run --example validate_spec -p texform-core -- '<spec>'
 ```
-
-**Examples:**
-
-```bash
-cargo run --example validate_spec -p texform-core -- 'm o'
-cargo run --example validate_spec -p texform-core -- 's m'
-```
-
-On success, the CLI prints `valid: true`, `arg_count`, and the structured `parsed` detail.
 
 ## Serialization
 
@@ -114,14 +90,6 @@ Key axes include:
 | `syntax.arguments.grouping` | `AlwaysExplicit` | Always brace command args: `\frac { 1 } { 2 }` |
 | `syntax.environments.name_spacing` | `Spaced` | `\begin {matrix}` vs `\begin{matrix}` |
 
-### API
-
-```rust
-use texform_core::serialize::{serialize, serialize_with, SerializeOptions};
-
-let canonical = serialize(&ast);                          // default canonical style
-let custom = serialize_with(&ast, &SerializeOptions { .. }); // explicit options
-```
 
 ## Language Bindings
 
@@ -135,8 +103,8 @@ TeXForm exposes two Rust-side entry layers:
 ### Python
 
 ```bash
-cd crates/texform-python
-maturin develop
+uv sync --dev          # set up .venv and install deps
+maturin develop        # build from repo root
 ```
 
 ```python
@@ -162,7 +130,6 @@ Both bindings raise/throw structured errors with `diagnostics` and `partial_resu
 The corpus bench lives in `crates/texform-bench` and reads Parquet datasets from `bench/data/`.
 
 ```bash
-cd lib/texform
 git lfs install && git lfs pull
 
 # run all datasets
@@ -172,8 +139,4 @@ cargo bench -p texform-bench --bench parse_corpus
 cargo bench -p texform-bench --bench parse_corpus -- --dataset lf80m-benchmarks
 ```
 
-The aggregated snapshot is written to `bench/results/overall.json`.
-
 See [`bench/README.md`](bench/README.md) for dataset provenance and result locations.
-
-See [DEVELOP.md](DEVELOP.md) for full build instructions and maintenance notes.
