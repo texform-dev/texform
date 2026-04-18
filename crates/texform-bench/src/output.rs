@@ -6,11 +6,11 @@ use arrow_schema::{DataType, Field, Schema};
 use parquet::arrow::ArrowWriter;
 use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use texform_core::parse::ParseDiagnostic;
 
 struct FixedPrecisionPrettyFormatter<'a> {
@@ -104,7 +104,7 @@ impl serde_json::ser::Formatter for FixedPrecisionPrettyFormatter<'_> {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Summary {
     pub dataset: String,
     pub dataset_row_count: usize,
@@ -112,17 +112,17 @@ pub struct Summary {
     pub completed: usize,
     pub strict: ModeStats,
     pub nonstrict: ModeStats,
-    #[serde(skip)]
+    #[serde(skip, default)]
     strict_durations: Vec<Duration>,
-    #[serde(skip)]
+    #[serde(skip, default)]
     strict_oks: Vec<bool>,
-    #[serde(skip)]
+    #[serde(skip, default)]
     nonstrict_durations: Vec<Duration>,
-    #[serde(skip)]
+    #[serde(skip, default)]
     nonstrict_oks: Vec<bool>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OverallSummary {
     pub dataset_count: usize,
     pub total_tasks: usize,
@@ -131,6 +131,31 @@ pub struct OverallSummary {
 }
 
 #[derive(Serialize)]
+struct StableModeStats {
+    ok: usize,
+    failed: usize,
+    failure_rate_pct: f64,
+}
+
+#[derive(Serialize)]
+struct StableSummary<'a> {
+    dataset: &'a str,
+    dataset_row_count: usize,
+    total_tasks: usize,
+    completed: usize,
+    strict: StableModeStats,
+    nonstrict: StableModeStats,
+}
+
+#[derive(Serialize)]
+struct StableOverallSummary {
+    dataset_count: usize,
+    total_tasks: usize,
+    strict: StableModeStats,
+    nonstrict: StableModeStats,
+}
+
+#[derive(Serialize, Deserialize)]
 struct Manifest {
     commit_hash: String,
     commit_full: String,
@@ -145,6 +170,60 @@ struct ErrorEntry {
     strict: bool,
     diagnostic_count: usize,
     diagnostics: Vec<ParseDiagnostic>,
+}
+
+#[derive(Debug)]
+pub struct CommitBaseline {
+    pub commit_hash: String,
+    summaries: Vec<Summary>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MeanRegressionWarning {
+    pub baseline_commit_hash: String,
+    pub mode: &'static str,
+    pub baseline_mean_ms: f64,
+    pub current_mean_ms: f64,
+}
+
+impl MeanRegressionWarning {
+    pub fn ratio_pct(&self) -> f64 {
+        self.current_mean_ms / self.baseline_mean_ms * 100.0
+    }
+}
+
+impl From<&ModeStats> for StableModeStats {
+    fn from(stats: &ModeStats) -> Self {
+        Self {
+            ok: stats.ok,
+            failed: stats.failed,
+            failure_rate_pct: stats.failure_rate_pct,
+        }
+    }
+}
+
+impl<'a> From<&'a Summary> for StableSummary<'a> {
+    fn from(summary: &'a Summary) -> Self {
+        Self {
+            dataset: summary.dataset.as_str(),
+            dataset_row_count: summary.dataset_row_count,
+            total_tasks: summary.total_tasks,
+            completed: summary.completed,
+            strict: StableModeStats::from(&summary.strict),
+            nonstrict: StableModeStats::from(&summary.nonstrict),
+        }
+    }
+}
+
+impl From<&OverallSummary> for StableOverallSummary {
+    fn from(overall: &OverallSummary) -> Self {
+        Self {
+            dataset_count: overall.dataset_count,
+            total_tasks: overall.total_tasks,
+            strict: StableModeStats::from(&overall.strict),
+            nonstrict: StableModeStats::from(&overall.nonstrict),
+        }
+    }
 }
 
 pub fn build_summary(slug: &str, records: &[FormulaRecord], results: &[FormulaResults]) -> Summary {
@@ -207,16 +286,18 @@ pub fn write_summary(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = results_root.join(slug);
     std::fs::create_dir_all(&dir)?;
-    write_summary_file(&dir.join("summary.json"), summary)?;
+    write_json_file(&dir.join("summary.json"), &StableSummary::from(summary))?;
     Ok(())
 }
 
 pub fn write_overall(
     results_root: &Path,
-    summaries: &[Summary],
+    overall: &OverallSummary,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let overall = build_overall(summaries);
-    write_overall_file(&results_root.join("overall.json"), &overall)
+    write_json_file(
+        &results_root.join("overall.json"),
+        &StableOverallSummary::from(overall),
+    )
 }
 
 pub fn write_commit_results(
@@ -230,7 +311,7 @@ pub fn write_commit_results(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = results_root.join("commits").join(commit_hash).join(slug);
     std::fs::create_dir_all(&dir)?;
-    write_summary_file(&dir.join("summary.json"), summary)?;
+    write_json_file(&dir.join("summary.json"), summary)?;
 
     let manifest = Manifest {
         commit_hash: commit_hash.to_string(),
@@ -275,31 +356,232 @@ pub fn git_hash() -> (String, String) {
     (short, full)
 }
 
+pub fn latest_commit_baseline(
+    results_root: &Path,
+) -> Result<Option<CommitBaseline>, Box<dyn std::error::Error>> {
+    let commits_root = results_root.join("commits");
+    let Some((commit_hash, commit_dir)) = latest_commit_dir(&commits_root)? else {
+        return Ok(None);
+    };
+
+    let summaries = load_commit_summaries(&commit_dir)?;
+    if summaries.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(CommitBaseline {
+        commit_hash,
+        summaries,
+    }))
+}
+
+pub fn detect_mean_regressions(
+    current_summaries: &[Summary],
+    baseline: &CommitBaseline,
+) -> Vec<MeanRegressionWarning> {
+    let current_by_dataset: std::collections::HashMap<&str, &Summary> = current_summaries
+        .iter()
+        .map(|summary| (summary.dataset.as_str(), summary))
+        .collect();
+
+    let mut matched_current = Vec::new();
+    let mut matched_baseline = Vec::new();
+    for baseline_summary in &baseline.summaries {
+        let Some(current_summary) = current_by_dataset.get(baseline_summary.dataset.as_str())
+        else {
+            continue;
+        };
+
+        if current_summary.total_tasks != baseline_summary.total_tasks {
+            continue;
+        }
+
+        matched_current.push(*current_summary);
+        matched_baseline.push(baseline_summary);
+    }
+
+    if matched_current.is_empty() {
+        return Vec::new();
+    }
+
+    let current_strict_mean =
+        weighted_mean_ms(&matched_current, |summary| summary.strict.timing_ms.mean);
+    let baseline_strict_mean =
+        weighted_mean_ms(&matched_baseline, |summary| summary.strict.timing_ms.mean);
+    let current_nonstrict_mean =
+        weighted_mean_ms(&matched_current, |summary| summary.nonstrict.timing_ms.mean);
+    let baseline_nonstrict_mean = weighted_mean_ms(&matched_baseline, |summary| {
+        summary.nonstrict.timing_ms.mean
+    });
+
+    let mut warnings = Vec::new();
+    maybe_push_regression(
+        &mut warnings,
+        &baseline.commit_hash,
+        "strict",
+        baseline_strict_mean,
+        current_strict_mean,
+    );
+    maybe_push_regression(
+        &mut warnings,
+        &baseline.commit_hash,
+        "nonstrict",
+        baseline_nonstrict_mean,
+        current_nonstrict_mean,
+    );
+    warnings
+}
+
 fn now_timestamp() -> String {
     let duration = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap();
-    format!("{}s-since-epoch", duration.as_secs())
+    format!("{}ns-since-epoch", duration.as_nanos())
 }
 
-fn write_summary_file(path: &Path, summary: &Summary) -> Result<(), Box<dyn std::error::Error>> {
+fn latest_commit_dir(
+    commits_root: &Path,
+) -> Result<Option<(String, std::path::PathBuf)>, Box<dyn std::error::Error>> {
+    if !commits_root.exists() {
+        return Ok(None);
+    }
+
+    let mut latest: Option<(u128, String, std::path::PathBuf)> = None;
+    for entry in std::fs::read_dir(commits_root)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+
+        let path = entry.path();
+        let timestamp = latest_snapshot_marker(&path)?;
+        let commit_hash = entry.file_name().to_string_lossy().into_owned();
+
+        if latest
+            .as_ref()
+            .is_none_or(|(latest_ts, _, _)| timestamp > *latest_ts)
+        {
+            latest = Some((timestamp, commit_hash, path));
+        }
+    }
+
+    Ok(latest.map(|(_, commit_hash, path)| (commit_hash, path)))
+}
+
+fn latest_snapshot_marker(path: &Path) -> Result<u128, Box<dyn std::error::Error>> {
+    let metadata = std::fs::metadata(path)?;
+    let mut latest = system_time_to_marker(metadata.created().or_else(|_| metadata.modified())?);
+
+    if metadata.is_file() {
+        if path.file_name().and_then(|name| name.to_str()) == Some("manifest.json")
+            && let Some(marker) = read_manifest_marker(path)?
+            && marker > latest
+        {
+            latest = marker;
+        }
+
+        return Ok(latest);
+    }
+
+    for entry in std::fs::read_dir(path)? {
+        let entry = entry?;
+        let candidate = latest_snapshot_marker(&entry.path())?;
+        if candidate > latest {
+            latest = candidate;
+        }
+    }
+
+    Ok(latest)
+}
+
+fn read_manifest_marker(path: &Path) -> Result<Option<u128>, Box<dyn std::error::Error>> {
+    let file = std::fs::File::open(path)?;
+    let reader = std::io::BufReader::new(file);
+    let manifest: Manifest = serde_json::from_reader(reader)?;
+    Ok(parse_timestamp_marker(&manifest.timestamp))
+}
+
+fn parse_timestamp_marker(timestamp: &str) -> Option<u128> {
+    if let Some(raw) = timestamp.strip_suffix("ns-since-epoch") {
+        return raw.parse().ok();
+    }
+
+    if let Some(raw) = timestamp.strip_suffix("s-since-epoch") {
+        return raw
+            .parse::<u128>()
+            .ok()
+            .map(|seconds| seconds * 1_000_000_000);
+    }
+
+    None
+}
+
+fn system_time_to_marker(timestamp: SystemTime) -> u128 {
+    timestamp
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+}
+
+fn load_commit_summaries(commit_dir: &Path) -> Result<Vec<Summary>, Box<dyn std::error::Error>> {
+    let mut summaries = Vec::new();
+    for entry in std::fs::read_dir(commit_dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+
+        let summary_path = entry.path().join("summary.json");
+        if !summary_path.exists() {
+            continue;
+        }
+
+        let file = std::fs::File::open(summary_path)?;
+        let reader = std::io::BufReader::new(file);
+        summaries.push(serde_json::from_reader(reader)?);
+    }
+    Ok(summaries)
+}
+
+fn weighted_mean_ms<F>(summaries: &[&Summary], select_mean: F) -> f64
+where
+    F: Fn(&Summary) -> f64,
+{
+    let total_tasks: usize = summaries.iter().map(|summary| summary.total_tasks).sum();
+    if total_tasks == 0 {
+        return 0.0;
+    }
+
+    summaries
+        .iter()
+        .map(|summary| select_mean(summary) * summary.total_tasks as f64)
+        .sum::<f64>()
+        / total_tasks as f64
+}
+
+fn maybe_push_regression(
+    warnings: &mut Vec<MeanRegressionWarning>,
+    baseline_commit_hash: &str,
+    mode: &'static str,
+    baseline_mean_ms: f64,
+    current_mean_ms: f64,
+) {
+    if baseline_mean_ms > 0.0 && current_mean_ms > baseline_mean_ms * 1.2 {
+        warnings.push(MeanRegressionWarning {
+            baseline_commit_hash: baseline_commit_hash.to_string(),
+            mode,
+            baseline_mean_ms,
+            current_mean_ms,
+        });
+    }
+}
+
+fn write_json_file<T: Serialize>(path: &Path, value: &T) -> Result<(), Box<dyn std::error::Error>> {
     let file = std::fs::File::create(path)?;
     let writer = std::io::BufWriter::new(file);
     let formatter = FixedPrecisionPrettyFormatter::new();
     let mut serializer = serde_json::Serializer::with_formatter(writer, formatter);
-    summary.serialize(&mut serializer)?;
-    Ok(())
-}
-
-fn write_overall_file(
-    path: &Path,
-    overall: &OverallSummary,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let file = std::fs::File::create(path)?;
-    let writer = std::io::BufWriter::new(file);
-    let formatter = FixedPrecisionPrettyFormatter::new();
-    let mut serializer = serde_json::Serializer::with_formatter(writer, formatter);
-    overall.serialize(&mut serializer)?;
+    value.serialize(&mut serializer)?;
     Ok(())
 }
 
@@ -446,6 +728,7 @@ mod tests {
     use super::*;
     use crate::data::FormulaRecord;
     use crate::runner::{FormulaResults, ParseResult};
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use texform_core::parse::Span;
 
@@ -461,6 +744,35 @@ mod tests {
             summary.nonstrict.timing_ms.max_formula_id.as_deref(),
             Some("beta")
         );
+    }
+
+    #[test]
+    fn write_summary_omits_unstable_timing_fields() {
+        let dir = make_temp_dir("stable-summary");
+        let summary = build_summary("demo", &sample_records(), &sample_results());
+
+        write_summary(&dir, "demo", &summary).unwrap();
+
+        let summary_json = std::fs::read_to_string(dir.join("demo").join("summary.json")).unwrap();
+        assert!(!summary_json.contains("timing_ms"));
+        assert!(!summary_json.contains("max_formula_id"));
+
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn write_overall_omits_unstable_timing_fields() {
+        let dir = make_temp_dir("stable-overall");
+        let summary = build_summary("demo", &sample_records(), &sample_results());
+        let overall = build_overall(&[summary]);
+
+        write_overall(&dir, &overall).unwrap();
+
+        let overall_json = std::fs::read_to_string(dir.join("overall.json")).unwrap();
+        assert!(!overall_json.contains("timing_ms"));
+        assert!(!overall_json.contains("max_formula_id"));
+
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
@@ -529,6 +841,7 @@ mod tests {
         assert!(commit_dir.join("errors.jsonl").exists());
 
         let summary_json = std::fs::read_to_string(commit_dir.join("summary.json")).unwrap();
+        assert!(summary_json.contains("\"timing_ms\""));
         assert!(summary_json.contains("\"max_formula_id\": \"beta\""));
 
         let errors = std::fs::read_to_string(commit_dir.join("errors.jsonl")).unwrap();
@@ -540,6 +853,77 @@ mod tests {
         assert!(errors.contains("nonstrict failed"));
 
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn latest_commit_baseline_prefers_most_recent_commit_directory() {
+        let dir = make_temp_dir("latest-baseline");
+        let commits_root = dir.join("commits");
+        write_test_commit_summary(
+            &commits_root,
+            "older",
+            sample_summary_with_means("demo", 10, 0.10, 0.20),
+        );
+        write_test_commit_summary(
+            &commits_root,
+            "newer",
+            sample_summary_with_means("demo", 10, 0.11, 0.21),
+        );
+
+        let baseline = latest_commit_baseline(&dir).unwrap().unwrap();
+
+        assert_eq!(baseline.commit_hash, "newer");
+        assert_eq!(baseline.summaries.len(), 1);
+        assert_eq!(baseline.summaries[0].dataset, "demo");
+
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn latest_commit_baseline_tracks_refreshed_existing_commit_directory() {
+        let dir = make_temp_dir("refreshed-baseline");
+        let commits_root = dir.join("commits");
+        write_test_commit_summary(
+            &commits_root,
+            "older",
+            sample_summary_with_means("demo", 10, 0.10, 0.20),
+        );
+        write_test_commit_summary(
+            &commits_root,
+            "newer",
+            sample_summary_with_means("demo", 10, 0.11, 0.21),
+        );
+
+        let baseline = latest_commit_baseline(&dir).unwrap().unwrap();
+        assert_eq!(baseline.commit_hash, "newer");
+
+        write_test_commit_summary(
+            &commits_root,
+            "older",
+            sample_summary_with_means("demo", 10, 0.12, 0.22),
+        );
+
+        let refreshed = latest_commit_baseline(&dir).unwrap().unwrap();
+        assert_eq!(refreshed.commit_hash, "older");
+
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn detect_mean_regressions_warns_only_for_modes_over_threshold() {
+        let current = vec![sample_summary_with_means("demo", 10, 0.13, 0.23)];
+        let baseline = CommitBaseline {
+            commit_hash: "prev12345".to_string(),
+            summaries: vec![sample_summary_with_means("demo", 10, 0.10, 0.20)],
+        };
+
+        let warnings = detect_mean_regressions(&current, &baseline);
+
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].mode, "strict");
+        assert_eq!(warnings[0].baseline_commit_hash, "prev12345");
+        assert!((warnings[0].baseline_mean_ms - 0.10).abs() < 1e-9);
+        assert!((warnings[0].current_mean_ms - 0.13).abs() < 1e-9);
     }
 
     fn sample_records() -> Vec<FormulaRecord> {
@@ -592,6 +976,74 @@ mod tests {
                 },
             },
         ]
+    }
+
+    fn sample_summary_with_means(
+        dataset: &str,
+        total_tasks: usize,
+        strict_mean_ms: f64,
+        nonstrict_mean_ms: f64,
+    ) -> Summary {
+        Summary {
+            dataset: dataset.to_string(),
+            dataset_row_count: total_tasks,
+            total_tasks,
+            completed: total_tasks,
+            strict: ModeStats {
+                ok: total_tasks,
+                failed: 0,
+                failure_rate_pct: 0.0,
+                timing_ms: stats::TimingStats {
+                    mean: strict_mean_ms,
+                    p50: strict_mean_ms,
+                    p95: strict_mean_ms,
+                    p99: strict_mean_ms,
+                    max: strict_mean_ms,
+                    max_formula_id: Some("alpha".to_string()),
+                },
+            },
+            nonstrict: ModeStats {
+                ok: total_tasks,
+                failed: 0,
+                failure_rate_pct: 0.0,
+                timing_ms: stats::TimingStats {
+                    mean: nonstrict_mean_ms,
+                    p50: nonstrict_mean_ms,
+                    p95: nonstrict_mean_ms,
+                    p99: nonstrict_mean_ms,
+                    max: nonstrict_mean_ms,
+                    max_formula_id: Some("beta".to_string()),
+                },
+            },
+            strict_durations: Vec::new(),
+            strict_oks: Vec::new(),
+            nonstrict_durations: Vec::new(),
+            nonstrict_oks: Vec::new(),
+        }
+    }
+
+    fn write_test_commit_summary(commits_root: &Path, commit_hash: &str, summary: Summary) {
+        static NEXT_TEST_MARKER: AtomicU64 = AtomicU64::new(1);
+
+        let dataset_dir = commits_root
+            .join(commit_hash)
+            .join(summary.dataset.as_str());
+        std::fs::create_dir_all(&dataset_dir).unwrap();
+        write_json_file(&dataset_dir.join("summary.json"), &summary).unwrap();
+        let marker = system_time_to_marker(SystemTime::now())
+            + u128::from(NEXT_TEST_MARKER.fetch_add(1, Ordering::Relaxed));
+        let manifest = Manifest {
+            commit_hash: commit_hash.to_string(),
+            commit_full: format!("{commit_hash}-full"),
+            dataset: summary.dataset.clone(),
+            dataset_row_count: summary.dataset_row_count,
+            timestamp: format!("{marker}ns-since-epoch"),
+        };
+        std::fs::write(
+            dataset_dir.join("manifest.json"),
+            serde_json::to_string_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
     }
 
     fn make_temp_dir(name: &str) -> std::path::PathBuf {

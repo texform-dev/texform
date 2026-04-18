@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-#[derive(serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TimingStats {
     pub mean: f64,
     pub p50: f64,
@@ -11,7 +11,7 @@ pub struct TimingStats {
     pub max_formula_id: Option<String>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ModeStats {
     pub ok: usize,
     pub failed: usize,

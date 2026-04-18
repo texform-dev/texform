@@ -1,5 +1,6 @@
 use clap::Parser;
 use std::time::Instant;
+use texform_bench::stats::ModeStats;
 use texform_bench::{config, data, output, runner};
 
 #[derive(Parser)]
@@ -22,6 +23,13 @@ fn main() {
     let args = Args::parse();
     let bench_root = config::resolve_bench_root();
     let results_root = bench_root.join("results");
+    let latest_baseline = match output::latest_commit_baseline(&results_root) {
+        Ok(baseline) => baseline,
+        Err(error) => {
+            eprintln!("Failed to load latest benchmark baseline: {error}");
+            None
+        }
+    };
 
     let config = match config::DatasetsConfig::load(&bench_root) {
         Ok(config) => config,
@@ -119,34 +127,81 @@ fn main() {
             eprintln!("[{}] Failed to write commit results: {error}", entry.slug);
         }
 
-        eprintln!(
-            "[{}] {} formulas in {:.1}s | strict: {:.2}% fail | nonstrict: {:.2}% fail",
+        println!(
+            "[{}] {} formulas in {:.1}s\n  {}\n  {}",
             entry.slug,
             records.len(),
             elapsed.as_secs_f64(),
-            summary.strict.failure_rate_pct,
-            summary.nonstrict.failure_rate_pct,
+            format_mode_stats("strict", &summary.strict),
+            format_mode_stats("nonstrict", &summary.nonstrict),
         );
     }
 
-    if !summaries.is_empty()
-        && let Err(error) = output::write_overall(&results_root, &summaries)
-    {
-        eprintln!("Failed to write overall summary: {error}");
-    }
+    if !summaries.is_empty() {
+        let overall = output::build_overall(&summaries);
+        if let Err(error) = output::write_overall(&results_root, &overall) {
+            eprintln!("Failed to write overall summary: {error}");
+        }
 
-    if ran_datasets > 1 && total_tasks > 0 {
-        let strict_fail_pct = total_strict_failed as f64 / total_tasks as f64 * 100.0;
-        let nonstrict_fail_pct = total_nonstrict_failed as f64 / total_tasks as f64 * 100.0;
-        eprintln!(
-            "\nTotal: {} tasks | strict: {:.2}% fail ({}/{}) | nonstrict: {:.2}% fail ({}/{})",
-            total_tasks,
-            strict_fail_pct,
-            total_strict_failed,
-            total_tasks,
-            nonstrict_fail_pct,
-            total_nonstrict_failed,
-            total_tasks,
-        );
+        if total_tasks > 0 {
+            let strict_fail_pct = total_strict_failed as f64 / total_tasks as f64 * 100.0;
+            let nonstrict_fail_pct = total_nonstrict_failed as f64 / total_tasks as f64 * 100.0;
+            println!(
+                "\nTotal: {} tasks across {} dataset(s)\n  {} ({}/{})\n  {} ({}/{})",
+                total_tasks,
+                ran_datasets,
+                format_mode_stats_with_failures("strict", &overall.strict, strict_fail_pct),
+                total_strict_failed,
+                total_tasks,
+                format_mode_stats_with_failures(
+                    "nonstrict",
+                    &overall.nonstrict,
+                    nonstrict_fail_pct,
+                ),
+                total_nonstrict_failed,
+                total_tasks,
+            );
+
+            if let Some(baseline) = &latest_baseline {
+                for warning in output::detect_mean_regressions(&summaries, baseline) {
+                    println!(
+                        "WARNING: {} mean latency regressed vs latest snapshot {}: current {:.2}ms, baseline {:.2}ms ({:.1}% of baseline)",
+                        warning.mode,
+                        warning.baseline_commit_hash,
+                        warning.current_mean_ms,
+                        warning.baseline_mean_ms,
+                        warning.ratio_pct(),
+                    );
+                }
+            }
+        }
     }
+}
+
+fn format_mode_stats(label: &str, stats: &ModeStats) -> String {
+    format!(
+        "{label}: {:.2}% fail | mean {:.2}ms | p50 {:.2} | p95 {:.2} | p99 {:.2} | max {:.2}",
+        stats.failure_rate_pct,
+        stats.timing_ms.mean,
+        stats.timing_ms.p50,
+        stats.timing_ms.p95,
+        stats.timing_ms.p99,
+        stats.timing_ms.max,
+    )
+}
+
+fn format_mode_stats_with_failures(
+    label: &str,
+    stats: &ModeStats,
+    failure_rate_pct: f64,
+) -> String {
+    format!(
+        "{label}: {:.2}% fail | mean {:.2}ms | p50 {:.2} | p95 {:.2} | p99 {:.2} | max {:.2}",
+        failure_rate_pct,
+        stats.timing_ms.mean,
+        stats.timing_ms.p50,
+        stats.timing_ms.p95,
+        stats.timing_ms.p99,
+        stats.timing_ms.max,
+    )
 }

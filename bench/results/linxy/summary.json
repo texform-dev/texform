@@ -6,27 +6,11 @@
   "strict": {
     "ok": 77696,
     "failed": 15883,
-    "failure_rate_pct": 16.97,
-    "timing_ms": {
-      "mean": 0.13,
-      "p50": 0.11,
-      "p95": 0.29,
-      "p99": 0.39,
-      "max": 10.55,
-      "max_formula_id": "daa63be90220"
-    }
+    "failure_rate_pct": 16.97
   },
   "nonstrict": {
     "ok": 93112,
     "failed": 467,
-    "failure_rate_pct": 0.50,
-    "timing_ms": {
-      "mean": 0.17,
-      "p50": 0.14,
-      "p95": 0.33,
-      "p99": 0.44,
-      "max": 9.78,
-      "max_formula_id": "3ca84a4dcdb2"
-    }
+    "failure_rate_pct": 0.50
   }
 }
