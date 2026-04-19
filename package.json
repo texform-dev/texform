@@ -4,5 +4,8 @@
   "scripts": {
     "dev": "bun run --cwd packages/playground dev"
   },
-  "dependencies": {}
+  "dependencies": {},
+  "devDependencies": {
+    "@types/bun": "^1.3.12"
+  }
 }

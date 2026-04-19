@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { PACKAGE_MAP } from "../package-map.js";
 import type { CompileOptions, CompileResult, TexCompiler } from "../types.js";
 
+const INVALID_CMD_RE = /^LaTeX Warning: Command .+ invalid/;
+
 function buildTexFile(tex: string, options: CompileOptions): string {
   const usepackages = options.packages
     .flatMap((p) => PACKAGE_MAP[p]?.xetex ?? [])
@@ -69,6 +71,13 @@ export function createXeTeXCompiler(): TexCompiler {
           const errorLine = await extractError(stderr, logPath);
           return { success: false, error: errorLine };
         }
+
+        try {
+          const log = await readFile(logPath, "utf8");
+          const warning = log.split("\n").find((l) => INVALID_CMD_RE.test(l));
+          if (warning) return { success: false, error: warning };
+        } catch {}
+
         return { success: true };
       } finally {
         await rm(dir, { recursive: true, force: true });

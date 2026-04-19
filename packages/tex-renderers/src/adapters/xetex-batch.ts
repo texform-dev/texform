@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { PACKAGE_MAP } from "../package-map.js";
 import type { CompileOptions, CompileResult } from "../types.js";
 
+const INVALID_CMD_RE = /^LaTeX Warning: Command .+ invalid/;
+
 export interface BatchItem {
   tex: string;
   options: CompileOptions;
@@ -43,6 +45,20 @@ ${usepackages}
 ${bodies.join("\n\\clearpage\n")}
 \\end{document}
 `;
+}
+
+// Scan a successful batch log for per-case "Command invalid" warnings.
+function findWarnedCases(log: string): Map<number, string> {
+  const result = new Map<number, string>();
+  let currentCase = -1;
+  for (const line of log.split("\n")) {
+    const m = line.match(/===CASE_(\d+)===/);
+    if (m) currentCase = parseInt(m[1], 10);
+    if (currentCase >= 0 && INVALID_CMD_RE.test(line)) {
+      result.set(currentCase, line);
+    }
+  }
+  return result;
 }
 
 // Parse the log to find the index of the first case that caused an error.
@@ -114,6 +130,13 @@ ${body}
       const error = await extractErrorFromLog(logPath, stderr);
       return { success: false, error };
     }
+
+    try {
+      const log = await readFile(logPath, "utf8");
+      const warning = log.split("\n").find((l) => INVALID_CMD_RE.test(l));
+      if (warning) return { success: false, error: warning };
+    } catch {}
+
     return { success: true };
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -147,7 +170,20 @@ async function compileBatchGroup(items: BatchItem[]): Promise<CompileResult[]> {
     const exitCode = await proc.exited;
 
     if (exitCode === 0) {
-      // All cases in the batch compiled successfully.
+      // Check for "invalid command" warnings that don't cause a non-zero exit.
+      let log = "";
+      try { log = await readFile(logPath, "utf8"); } catch {}
+
+      if (log) {
+        const warned = findWarnedCases(log);
+        if (warned.size > 0) {
+          return items.map((_, i) =>
+            warned.has(i)
+              ? { success: false, error: warned.get(i)! }
+              : { success: true },
+          );
+        }
+      }
       return items.map(() => ({ success: true }));
     }
 
