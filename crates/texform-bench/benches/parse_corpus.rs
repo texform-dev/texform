@@ -15,6 +15,15 @@ struct Args {
     #[arg(long)]
     limit: Option<usize>,
 
+    #[arg(long, help = "Run without writing any result files")]
+    dry_run: bool,
+
+    #[arg(
+        long,
+        help = "Compare results against saved summaries; exit non-zero on mismatch"
+    )]
+    check: bool,
+
     #[arg(long, hide = true)]
     bench: bool,
 }
@@ -24,12 +33,17 @@ fn main() {
     let bench_root = config::resolve_bench_root();
     let results_root = bench_root.join("results");
     let history_root = bench_root.join("history");
-    let latest_baseline = match output::latest_commit_baseline(&history_root) {
-        Ok(baseline) => baseline,
-        Err(error) => {
-            eprintln!("Failed to load latest benchmark baseline: {error}");
-            None
+    let write = !args.dry_run && !args.check;
+    let latest_baseline = if write {
+        match output::latest_commit_baseline(&history_root) {
+            Ok(baseline) => baseline,
+            Err(error) => {
+                eprintln!("Failed to load latest benchmark baseline: {error}");
+                None
+            }
         }
+    } else {
+        None
     };
 
     let config = match config::DatasetsConfig::load(&bench_root) {
@@ -53,8 +67,13 @@ fn main() {
         return;
     }
 
-    let (commit_hash, commit_full, commit_date) = output::git_commit_info();
+    let commit_info = if write {
+        Some(output::git_commit_info())
+    } else {
+        None
+    };
     let mut summaries = Vec::new();
+    let mut check_failures = Vec::new();
     let mut total_tasks = 0_usize;
     let mut total_strict_failed = 0_usize;
     let mut total_nonstrict_failed = 0_usize;
@@ -113,20 +132,32 @@ fn main() {
             .last()
             .expect("summary was just pushed and must exist");
 
-        if let Err(error) = output::write_summary(&results_root, &entry.slug, &summary) {
-            eprintln!("[{}] Failed to write summary: {error}", entry.slug);
+        if args.check {
+            match output::check_summary(&results_root, &entry.slug, summary) {
+                Ok(Some(diff)) => check_failures.push(diff),
+                Ok(None) => {}
+                Err(error) => eprintln!("[{}] Failed to check summary: {error}", entry.slug),
+            }
         }
-        if let Err(error) = output::write_commit_results(
-            &history_root,
-            &entry.slug,
-            &summary,
-            &records,
-            &results,
-            &commit_hash,
-            &commit_full,
-            &commit_date,
-        ) {
-            eprintln!("[{}] Failed to write commit results: {error}", entry.slug);
+
+        if write {
+            if let Err(error) = output::write_summary(&results_root, &entry.slug, summary) {
+                eprintln!("[{}] Failed to write summary: {error}", entry.slug);
+            }
+            if let Some((ref commit_hash, ref commit_full, ref commit_date)) = commit_info {
+                if let Err(error) = output::write_commit_results(
+                    &history_root,
+                    &entry.slug,
+                    summary,
+                    &records,
+                    &results,
+                    commit_hash,
+                    commit_full,
+                    commit_date,
+                ) {
+                    eprintln!("[{}] Failed to write commit results: {error}", entry.slug);
+                }
+            }
         }
 
         println!(
@@ -141,8 +172,10 @@ fn main() {
 
     if !summaries.is_empty() {
         let overall = output::build_overall(&summaries);
-        if let Err(error) = output::write_overall(&results_root, &overall) {
-            eprintln!("Failed to write overall summary: {error}");
+        if write {
+            if let Err(error) = output::write_overall(&results_root, &overall) {
+                eprintln!("Failed to write overall summary: {error}");
+            }
         }
 
         if total_tasks > 0 {
@@ -177,6 +210,16 @@ fn main() {
                 }
             }
         }
+    }
+
+    if args.check && !check_failures.is_empty() {
+        eprintln!("\nBench results have changed:");
+        for failure in &check_failures {
+            eprintln!("  {failure}");
+        }
+        eprintln!("\nRun the following command and commit the updated results:");
+        eprintln!("  cargo bench -p texform-bench --bench parse_corpus");
+        std::process::exit(1);
     }
 }
 

@@ -279,6 +279,38 @@ pub fn build_overall(summaries: &[Summary]) -> OverallSummary {
     }
 }
 
+pub fn check_summary(
+    results_root: &Path,
+    slug: &str,
+    summary: &Summary,
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    let path = results_root.join(slug).join("summary.json");
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let existing = std::fs::read_to_string(&path)?;
+    let current = serialize_stable_summary(summary)?;
+
+    if existing.trim() == current.trim() {
+        Ok(None)
+    } else {
+        Ok(Some(format!(
+            "[{slug}] bench results differ from {}",
+            path.display()
+        )))
+    }
+}
+
+fn serialize_stable_summary(summary: &Summary) -> Result<String, Box<dyn std::error::Error>> {
+    let stable = StableSummary::from(summary);
+    let mut buf = Vec::new();
+    let formatter = FixedPrecisionPrettyFormatter::new();
+    let mut serializer = serde_json::Serializer::with_formatter(&mut buf, formatter);
+    stable.serialize(&mut serializer)?;
+    Ok(String::from_utf8(buf)?)
+}
+
 pub fn write_summary(
     results_root: &Path,
     slug: &str,

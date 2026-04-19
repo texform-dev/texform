@@ -21,3 +21,10 @@ repos:
         types: [rust]
         pass_filenames: false
         entry: cargo clippy --all-targets --all-features
+
+      - id: bench-regression-check
+        name: bench regression check
+        language: system
+        types: [rust]
+        pass_filenames: false
+        entry: cargo bench -p texform-bench --bench parse_corpus -- --dataset lf80m-benchmarks --check
