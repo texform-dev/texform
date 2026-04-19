@@ -59,9 +59,8 @@ pub fn parse_latex(src: &str, strict: bool) -> ParseOutput {
 /// delimiter definitions and a batch of LaTeX inputs. Each input is parsed
 /// independently against the same augmented context.
 ///
-/// When `packages` is `Some`, only the listed packages are loaded (an empty
-/// slice gives a core-only context). When `None`, a core-only context is
-/// used as the default base.
+/// When `packages` is `Some`, only the listed packages are loaded. When `None`,
+/// an empty base context is used as the default.
 ///
 /// Validation errors (duplicate names, invalid specs, unknown packages) are
 /// reported as diagnostics on every input rather than panicking.

@@ -8,15 +8,12 @@ fn assert_from_packages(actual: &[&str], expected: &[&str]) {
 
 #[test]
 fn test_lookup_command() {
-    let kb = KnowledgeBase::core_only();
+    let kb = KnowledgeBase::build_from_packages(&["base", "textmacros"]);
     let linebreak = kb.lookup_command("\\").unwrap();
     assert_eq!(linebreak.name, "\\");
     assert_eq!(linebreak.kind, CommandKind::Prefix);
     assert_eq!(linebreak.allowed_mode, AllowedMode::Both);
-    assert_from_packages(
-        linebreak.from_packages,
-        &[texform_specs::core_knowledge::CORE_PACKAGE_NAME],
-    );
+    assert_from_packages(linebreak.from_packages, &["base", "textmacros"]);
     assert_eq!(linebreak.argspec.len(), 2);
     assert_eq!(linebreak.argspec[0].kind, ValueKind::Star);
     assert_eq!(linebreak.argspec[1].kind, ValueKind::Dimension);
@@ -63,7 +60,7 @@ fn test_delimiter_controls() {
     assert!(kb.lookup_delimiter_control("langle").is_none());
     assert!(kb.lookup_delimiter_control("notadelim").is_none());
 
-    let mut kb = new_with_core();
+    let mut kb = KnowledgeBase::new();
     kb.import_package_with_name(
         "inline-delims",
         PackageSpecs {
@@ -409,21 +406,24 @@ fn test_exact_order_path_preserves_override_order_for_non_mergeable_conflicts() 
 }
 
 #[test]
-fn test_exact_empty_packages_still_include_core_entries() {
-    let kb = try_build_kb_from_exact_packages(&[]).expect("core-only build should succeed");
-    let linebreak = kb
-        .lookup_command("\\")
-        .expect("expected core linebreak command");
-    assert_from_packages(
-        linebreak.from_packages,
-        &[texform_specs::core_knowledge::CORE_PACKAGE_NAME],
-    );
+fn test_exact_empty_packages_still_build_empty_kb() {
+    let kb = try_build_kb_from_exact_packages(&[]).expect("empty build should succeed");
+    assert!(kb.lookup_command("\\").is_none());
     assert!(kb.lookup_delimiter_control("langle").is_none());
 }
 
 #[test]
-fn test_explicit_package_can_override_core_command() {
-    let mut kb = new_with_core();
+fn test_canonical_package_import_order_includes_braket() {
+    assert_eq!(
+        canonical_package_import_order(&["physics", "braket", "base", "custom"]),
+        vec!["base", "braket", "physics", "custom"]
+    );
+}
+
+#[test]
+fn test_explicit_package_can_override_package_linebreak_command() {
+    let mut kb = try_build_kb_from_exact_packages(&["base", "textmacros"])
+        .expect("package build should succeed");
     kb.import_package_with_name(
         "override",
         PackageSpecs {

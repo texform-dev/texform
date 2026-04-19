@@ -48,9 +48,10 @@ use texform_specs::specs::{
 const RUNTIME_PACKAGE_NAME: &str = "runtime";
 #[cfg(test)]
 const UNKNOWN_PACKAGE_NAME: &str = "unknown";
-const MANAGED_PACKAGE_IMPORT_ORDER: [&str; 6] = [
+const MANAGED_PACKAGE_IMPORT_ORDER: [&str; 7] = [
     "base",
     "ams",
+    "braket",
     "physics",
     "textmacros",
     "bboldx",
@@ -135,11 +136,11 @@ impl KnowledgeBase {
     }
 
     pub fn core_only() -> Self {
-        new_with_core()
+        Self::new()
     }
 
-    pub fn core_only_for_mode(target_mode: ContentMode) -> Self {
-        new_with_core_for_mode(target_mode)
+    pub fn core_only_for_mode(_target_mode: ContentMode) -> Self {
+        Self::new()
     }
 
     pub fn build_from_packages(packages: &[&str]) -> Self {
@@ -147,7 +148,7 @@ impl KnowledgeBase {
     }
 
     pub fn try_build_from_packages(packages: &[&str]) -> Result<Self, PackageLoadError> {
-        let mut kb = new_with_core();
+        let mut kb = KnowledgeBase::new();
         let to_load = canonical_package_import_order(packages);
         import_package_names(&mut kb, to_load.as_slice())?;
         Ok(kb)
@@ -157,7 +158,7 @@ impl KnowledgeBase {
         packages: &[&str],
         target_mode: ContentMode,
     ) -> Result<Self, PackageLoadError> {
-        let mut kb = new_with_core_for_mode(target_mode);
+        let mut kb = KnowledgeBase::new();
         let to_load = canonical_package_import_order(packages);
         import_package_names_for_mode(&mut kb, to_load.as_slice(), target_mode)?;
         Ok(kb)
@@ -867,18 +868,6 @@ fn import_package_names_for_mode(
     Ok(())
 }
 
-fn new_with_core() -> KnowledgeBase {
-    let mut kb = KnowledgeBase::new();
-    kb.import_builtin_package(&texform_specs::core_knowledge::CORE_PACKAGE);
-    kb
-}
-
-fn new_with_core_for_mode(target_mode: ContentMode) -> KnowledgeBase {
-    let mut kb = KnowledgeBase::new();
-    kb.import_builtin_package_for_mode(&texform_specs::core_knowledge::CORE_PACKAGE, target_mode);
-    kb
-}
-
 /// Same as [`try_build_kb_from_packages`] but preserves the caller's exact
 /// import order instead of canonicalizing it. Useful for tests that need to
 /// verify order-dependent behavior.
@@ -886,7 +875,7 @@ fn new_with_core_for_mode(target_mode: ContentMode) -> KnowledgeBase {
 pub(crate) fn try_build_kb_from_exact_packages(
     requested: &[&str],
 ) -> Result<KnowledgeBase, PackageLoadError> {
-    let mut kb = new_with_core();
+    let mut kb = KnowledgeBase::new();
     import_package_names(&mut kb, requested)?;
     Ok(kb)
 }

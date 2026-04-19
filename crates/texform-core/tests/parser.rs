@@ -28,6 +28,13 @@ fn parse(src: &str, strict: bool) -> Result<(SyntaxNode, chumsky::span::SimpleSp
     }
 }
 
+fn linebreak_test_items() -> [ContextItem; 2] {
+    [
+        command_item("\\", CommandKind::Prefix, AllowedMode::Both, "!s !o:L").into(),
+        command_item("newline", CommandKind::Prefix, AllowedMode::Both, "!s !o:L").into(),
+    ]
+}
+
 fn test_context() -> ParseContext {
     static BASE_CTX: OnceLock<ParseContext> = OnceLock::new();
     BASE_CTX
@@ -35,6 +42,9 @@ fn test_context() -> ParseContext {
             let mut builder = ParseContextBuilder::new().core_only();
             for item in shared_test_items() {
                 builder = builder.insert_item(item.clone());
+            }
+            for item in linebreak_test_items() {
+                builder = builder.insert_item(item);
             }
             builder.build().expect("shared test items should be valid")
         })
@@ -49,6 +59,9 @@ where
     let mut builder = ParseContextBuilder::new().core_only();
     for item in shared_test_items() {
         builder = builder.insert_item(item.clone());
+    }
+    for item in linebreak_test_items() {
+        builder = builder.insert_item(item);
     }
     for item in items {
         builder = builder.insert_item(item);
@@ -2687,6 +2700,30 @@ fn test_text_escaped_symbols() {
 }
 
 #[test]
+fn test_text_escaped_braces_non_regression() {
+    let (result, _) = parse(r"\text{\{a\}}", false).unwrap();
+
+    match result {
+        SyntaxNode::Root { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "text");
+                match unwrap_content(&args[0]) {
+                    SyntaxNode::Group { children, .. } => {
+                        assert_eq!(children.len(), 3);
+                        assert_eq!(children[0], SyntaxNode::Char('{'));
+                        assert_eq!(children[1], SyntaxNode::Text("a".to_string()));
+                        assert_eq!(children[2], SyntaxNode::Char('}'));
+                    }
+                    _ => panic!("Expected Group in text arg"),
+                }
+            }
+            _ => panic!("Expected text Command"),
+        },
+        _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
 fn test_text_explicit_group() {
     // "\text{{a}}" - explicit group inside text
     let (result, _) = parse(r"\text{{a}}", false).unwrap();
@@ -2788,6 +2825,64 @@ fn extract_first_command(node: SyntaxNode) -> (String, Vec<Option<Argument>>) {
             other => panic!("Expected command node, got {:?}", other),
         },
         other => panic!("Expected root node, got {:?}", other),
+    }
+}
+
+fn extract_command_args<'a>(node: &'a SyntaxNode, name: &str) -> Option<&'a [Option<Argument>]> {
+    match node {
+        SyntaxNode::Command {
+            name: command_name,
+            args,
+            ..
+        } if command_name == name => Some(args.as_slice()),
+        SyntaxNode::Root { children, .. } | SyntaxNode::Group { children, .. } => children
+            .iter()
+            .find_map(|child| extract_command_args(child, name)),
+        SyntaxNode::Command { args, .. } => args.iter().find_map(|slot| {
+            slot.as_ref().and_then(|arg| match &arg.value {
+                ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
+                    extract_command_args(node, name)
+                }
+                _ => None,
+            })
+        }),
+        SyntaxNode::Declarative { args, scope, .. } => args
+            .iter()
+            .find_map(|slot| {
+                slot.as_ref().and_then(|arg| match &arg.value {
+                    ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
+                        extract_command_args(node, name)
+                    }
+                    _ => None,
+                })
+            })
+            .or_else(|| extract_command_args(scope, name)),
+        SyntaxNode::Environment { args, body, .. } => args
+            .iter()
+            .find_map(|slot| {
+                slot.as_ref().and_then(|arg| match &arg.value {
+                    ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
+                        extract_command_args(node, name)
+                    }
+                    _ => None,
+                })
+            })
+            .or_else(|| extract_command_args(body, name)),
+        SyntaxNode::Infix {
+            args, left, right, ..
+        } => args
+            .iter()
+            .find_map(|slot| {
+                slot.as_ref().and_then(|arg| match &arg.value {
+                    ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
+                        extract_command_args(node, name)
+                    }
+                    _ => None,
+                })
+            })
+            .or_else(|| extract_command_args(left, name))
+            .or_else(|| extract_command_args(right, name)),
+        _ => None,
     }
 }
 
@@ -3044,6 +3139,148 @@ fn test_no_leading_space_prefix_for_linebreak_command() {
             assert_eq!(children[5], SyntaxNode::Char(']'));
         }
         _ => panic!("Expected root node"),
+    }
+}
+
+#[test]
+fn test_package_loaded_math_linebreak_supports_representative_forms() {
+    let ctx = ParseContext::from_packages(&["ams", "base"]);
+
+    for (src, expected_star, expected_dimension) in [
+        (r"\begin{matrix}a\\b\end{matrix}", false, None),
+        (r"\begin{matrix}a\\*b\end{matrix}", true, None),
+        (r"\begin{matrix}a\\[5pt]b\end{matrix}", false, Some("5pt")),
+    ] {
+        let output = ctx.parse(src, true);
+        assert!(
+            output.diagnostics.is_empty(),
+            "unexpected diagnostics for {src}: {:?}",
+            output.diagnostics
+        );
+        let result = output
+            .result
+            .as_ref()
+            .unwrap_or_else(|| panic!("expected parse result for {src}"));
+        let args = extract_command_args(&result.node, "\\")
+            .unwrap_or_else(|| panic!("expected linebreak command in {src}"));
+
+        assert_eq!(args.len(), 2, "expected star + optional length slots");
+        assert_eq!(
+            expect_arg(&args[0]).value,
+            ArgumentValue::Boolean(expected_star)
+        );
+        match expected_dimension {
+            Some(length) => assert_eq!(
+                expect_arg(&args[1]).value,
+                ArgumentValue::Dimension(length.to_string())
+            ),
+            None => assert!(args[1].is_none(), "unexpected optional length for {src}"),
+        }
+    }
+}
+
+#[test]
+fn test_package_loaded_text_linebreak_supports_representative_forms() {
+    let ctx = ParseContext::from_packages(&["base", "textmacros"]);
+
+    for (src, expected_star, expected_dimension) in [
+        (r"\text{a\\b}", false, None),
+        (r"\text{a\\*b}", true, None),
+        (r"\text{a\\[5pt]b}", false, Some("5pt")),
+    ] {
+        let output = ctx.parse(src, true);
+        assert!(
+            output.diagnostics.is_empty(),
+            "unexpected diagnostics for {src}: {:?}",
+            output.diagnostics
+        );
+        let result = output
+            .result
+            .as_ref()
+            .unwrap_or_else(|| panic!("expected parse result for {src}"));
+        let args = extract_command_args(&result.node, "\\")
+            .unwrap_or_else(|| panic!("expected linebreak command in {src}"));
+
+        assert_eq!(args.len(), 2, "expected star + optional length slots");
+        assert_eq!(
+            expect_arg(&args[0]).value,
+            ArgumentValue::Boolean(expected_star)
+        );
+        match expected_dimension {
+            Some(length) => assert_eq!(
+                expect_arg(&args[1]).value,
+                ArgumentValue::Dimension(length.to_string())
+            ),
+            None => assert!(args[1].is_none(), "unexpected optional length for {src}"),
+        }
+    }
+}
+
+#[test]
+fn test_package_loaded_non_alpha_math_commands_support_representative_forms() {
+    let ctx = ParseContext::from_packages(&["ams", "base", "braket", "physics"]);
+
+    for src in [
+        r"a\,b", r"a\!b", r"a\;b", r"a\:b", r"a\>b", r"a\*b", r"a\ b",
+    ] {
+        let output = ctx.parse(src, true);
+        assert!(
+            output.diagnostics.is_empty(),
+            "unexpected diagnostics for {src}: {:?}",
+            output.diagnostics
+        );
+        assert!(output.result.is_some(), "expected parse result for {src}");
+    }
+
+    let output = ctx.parse(r"\bra{x}\|\ket{y}", true);
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics for braket sample: {:?}",
+        output.diagnostics
+    );
+    let result = output
+        .result
+        .as_ref()
+        .expect("expected parse result for braket sample");
+    assert!(
+        extract_command_args(&result.node, "|").is_some(),
+        "expected package-backed \\| command"
+    );
+}
+
+#[test]
+fn test_package_loaded_non_alpha_text_commands_support_representative_forms() {
+    let ctx = ParseContext::from_packages(&["base", "textmacros"]);
+
+    for src in [r"\text{a\,b}", r"\text{a\ b}"] {
+        let output = ctx.parse(src, true);
+        assert!(
+            output.diagnostics.is_empty(),
+            "unexpected diagnostics for {src}: {:?}",
+            output.diagnostics
+        );
+        assert!(output.result.is_some(), "expected parse result for {src}");
+    }
+
+    for (src, command_name) in [
+        (r"\text{\'e}", "'"),
+        (r"\text{\~n}", "~"),
+        (r#"\text{\"o}"#, "\""),
+    ] {
+        let output = ctx.parse(src, true);
+        assert!(
+            output.diagnostics.is_empty(),
+            "unexpected diagnostics for {src}: {:?}",
+            output.diagnostics
+        );
+        let result = output
+            .result
+            .as_ref()
+            .unwrap_or_else(|| panic!("expected parse result for {src}"));
+        assert!(
+            extract_command_args(&result.node, command_name).is_some(),
+            "expected package-backed command {command_name:?} in {src}"
+        );
     }
 }
 
@@ -3749,12 +3986,7 @@ fn test_paired_form_required_vs_optional_semantics() {
 
 #[test]
 fn test_newline_command_preserves_no_leading_space_behavior() {
-    let ctx = test_context_with_items([command_item(
-        "newline",
-        CommandKind::Prefix,
-        AllowedMode::Both,
-        "!s !o:L",
-    )]);
+    let ctx = test_context();
 
     let immediate = ctx.parse(r"\newline*[1cm]", true);
     assert!(

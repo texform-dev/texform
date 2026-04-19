@@ -24,6 +24,7 @@ mod tests {
                 "base",
                 "bboldx",
                 "boldsymbol",
+                "braket",
                 "physics",
                 "textmacros"
             ]

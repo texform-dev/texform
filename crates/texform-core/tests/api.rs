@@ -1235,6 +1235,38 @@ fn parse_with_context_items_can_load_explicit_packages() {
 }
 
 #[test]
+fn parse_with_context_items_can_load_package_linebreaks() {
+    let output = parse_with_context_items(
+        &[],
+        &[
+            r"\begin{matrix}a\\b\end{matrix}",
+            r"\begin{matrix}a\\*b\end{matrix}",
+            r"\begin{matrix}a\\[5pt]b\end{matrix}",
+            r"\text{a\\b}",
+            r"\text{a\\*b}",
+            r"\text{a\\[5pt]b}",
+        ],
+        Some(&["ams", "base", "textmacros"]),
+        true,
+    );
+
+    assert_eq!(output.len(), 6);
+    for item in &output {
+        assert!(
+            item.output.diagnostics.is_empty(),
+            "unexpected diagnostics for {}: {:?}",
+            item.input,
+            item.output.diagnostics
+        );
+        assert!(
+            item.output.result.is_some(),
+            "expected parse result for {}",
+            item.input
+        );
+    }
+}
+
+#[test]
 fn parse_with_context_items_uses_public_package_loading_order() {
     let output = parse_with_context_items(&[], &[r"\div{a}"], Some(&["physics", "base"]), true);
     assert_eq!(output.len(), 1);

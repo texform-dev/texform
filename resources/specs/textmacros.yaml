@@ -1,4 +1,99 @@
 commands:
+  - name: ' '
+    kind: prefix
+    argspec: ''
+    allowed_mode: text
+    tags:
+      - spacing
+  - name: ','
+    kind: prefix
+    argspec: ''
+    allowed_mode: text
+    tags:
+      - spacing
+  - name: ;
+    kind: prefix
+    argspec: ''
+    allowed_mode: text
+    tags:
+      - spacing
+  - name: ':'
+    kind: prefix
+    argspec: ''
+    allowed_mode: text
+    tags:
+      - spacing
+  - name: '!'
+    kind: prefix
+    argspec: ''
+    allowed_mode: text
+    tags:
+      - spacing
+  - name: .
+    kind: prefix
+    argspec: m:T
+    allowed_mode: text
+    tags:
+      - decoration
+  - name: ''''
+    kind: prefix
+    argspec: m:T
+    allowed_mode: text
+    tags:
+      - decoration
+  - name: ‘
+    kind: prefix
+    argspec: m:T
+    allowed_mode: text
+    tags:
+      - decoration
+  - name: ’
+    kind: prefix
+    argspec: m:T
+    allowed_mode: text
+    tags:
+      - decoration
+  - name: '"'
+    kind: prefix
+    argspec: m:T
+    allowed_mode: text
+    tags:
+      - decoration
+  - name: \
+    kind: prefix
+    argspec: '!s !o:L'
+    allowed_mode: text
+    tags: []
+  - name: '`'
+    kind: prefix
+    argspec: m:T
+    allowed_mode: text
+    tags:
+      - decoration
+  - name: ^
+    kind: prefix
+    argspec: m:T
+    allowed_mode: text
+    tags:
+      - decoration
+  - name: '='
+    kind: prefix
+    argspec: m:T
+    allowed_mode: text
+    tags:
+      - decoration
+  - name: '>'
+    kind: prefix
+    argspec: ''
+    allowed_mode: text
+    tags:
+      - spacing
+  - name: '~'
+    kind: prefix
+    argspec: m:T
+    allowed_mode: text
+    tags:
+      - decoration
   - name: AA
     kind: prefix
     argspec: ''

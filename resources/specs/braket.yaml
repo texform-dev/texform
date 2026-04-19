@@ -1,0 +1,9 @@
+commands:
+  - name: '|'
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+    tags: []
+environments: []
+delimiter_controls: []
+characters: []

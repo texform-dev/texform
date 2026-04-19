@@ -1,4 +1,51 @@
 commands:
+  - name: ' '
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: ','
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: ;
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: ':'
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: '!'
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: '*'
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: \
+    kind: prefix
+    argspec: '!s !o:L'
+    allowed_mode: math
+    tags: []
+  - name: '>'
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+    tags:
+      - spacing
   - name: above
     kind: infix
     argspec: m:L

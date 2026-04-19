@@ -487,10 +487,10 @@ impl std::error::Error for ParseAstError {}
 ///
 /// | Constructor | Loaded knowledge |
 /// |---|---|
-/// | [`empty()`](Self::empty) | Nothing — not even core |
-/// | [`core_only()`](Self::core_only) | Core package only |
-/// | [`from_packages()`](Self::from_packages) | Core + named packages |
-/// | [`all_packages()`](Self::all_packages) | Core + every registered package |
+/// | [`empty()`](Self::empty) | Nothing |
+/// | [`core_only()`](Self::core_only) | No builtin packages |
+/// | [`from_packages()`](Self::from_packages) | Named packages only |
+/// | [`all_packages()`](Self::all_packages) | Every registered package |
 /// | [`all_packages_shared()`](Self::all_packages_shared) | Same as above, lazily cached `&'static` ref |
 ///
 #[derive(Clone)]
@@ -536,7 +536,7 @@ impl ParseContext {
             .expect("empty parse context should build")
     }
 
-    /// Build a context containing only core knowledge (line breaks, etc.)
+    /// Build a context containing no builtin package knowledge.
     pub fn core_only() -> Self {
         ParseContextBuilder::new()
             .core_only()
@@ -545,9 +545,7 @@ impl ParseContext {
     }
 
     /// Build a context from an explicit list of package names.
-    ///
-    /// Core knowledge is always loaded first; the listed packages are imported
-    /// in canonical order on top.
+    /// The listed packages are imported in canonical order.
     ///
     /// # Panics
     ///
