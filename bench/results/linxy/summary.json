@@ -4,13 +4,13 @@
   "total_tasks": 93579,
   "completed": 93579,
   "strict": {
-    "ok": 91625,
-    "failed": 1954,
-    "failure_rate_pct": 2.09
+    "ok": 91806,
+    "failed": 1773,
+    "failure_rate_pct": 1.89
   },
   "nonstrict": {
-    "ok": 93108,
-    "failed": 471,
-    "failure_rate_pct": 0.50
+    "ok": 93292,
+    "failed": 287,
+    "failure_rate_pct": 0.31
   }
 }

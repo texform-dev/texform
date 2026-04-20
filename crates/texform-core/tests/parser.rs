@@ -1403,6 +1403,71 @@ fn test_declarative_empty_scope() {
     }
 }
 
+#[test]
+fn test_declarative_nested_textstyle() {
+    let ctx = test_context_with_items([
+        command_item("textstyle", CommandKind::Declarative, AllowedMode::Math, ""),
+        command_item("sum", CommandKind::Prefix, AllowedMode::Math, ""),
+    ]);
+    let output = ctx.parse(r"\textstyle f(x) = \textstyle \sum_{i=0}^{n}", false);
+    assert!(
+        output.diagnostics.is_empty(),
+        "Expected nested textstyle parse without diagnostics, got {:?}",
+        output.diagnostics
+    );
+    let result = output
+        .result
+        .expect("parse without diagnostics should produce a result")
+        .node;
+
+    match result {
+        SyntaxNode::Root { children, .. } => {
+            assert_eq!(children.len(), 1);
+
+            match &children[0] {
+                SyntaxNode::Declarative { name, scope, .. } => {
+                    assert_eq!(name, "textstyle");
+
+                    match &**scope {
+                        SyntaxNode::Group { children, kind, .. } => {
+                            assert_eq!(*kind, GroupKind::Implicit);
+                            assert_eq!(children.len(), 6);
+                            assert_eq!(children[0], SyntaxNode::Char('f'));
+                            assert_eq!(children[1], SyntaxNode::Char('('));
+                            assert_eq!(children[2], SyntaxNode::Char('x'));
+                            assert_eq!(children[3], SyntaxNode::Char(')'));
+                            assert_eq!(children[4], SyntaxNode::Char('='));
+
+                            match &children[5] {
+                                SyntaxNode::Declarative { name, args, scope } => {
+                                    assert_eq!(name, "textstyle");
+                                    assert!(args.is_empty());
+                                    match &**scope {
+                                        SyntaxNode::Scripted { .. } => {}
+                                        other => panic!(
+                                            "Expected scripted sum in nested textstyle scope, got {:?}",
+                                            other
+                                        ),
+                                    }
+                                }
+                                other => {
+                                    panic!("Expected nested Declarative node, got {:?}", other)
+                                }
+                            }
+                        }
+                        other => panic!(
+                            "Expected implicit group for textstyle scope, got {:?}",
+                            other
+                        ),
+                    }
+                }
+                other => panic!("Expected Declarative node, got {:?}", other),
+            }
+        }
+        other => panic!("Expected root Group, got {:?}", other),
+    }
+}
+
 // ========================================================================
 // Stage 5 Tests (Text mode, inline math, delimited groups, environments)
 // ========================================================================
@@ -2626,35 +2691,95 @@ fn test_consecutive_commands() {
 
 #[test]
 fn test_infix_then_declarative() {
-    // "a \over b \bfseries c" - infix followed by declarative
+    // "a \over b \bfseries c" - declarative remains part of the denominator
     let (result, _) = parse(r"a \over b \bfseries c", false).unwrap();
 
     match result {
         SyntaxNode::Root { children, .. } => {
-            // Should have infix node and declarative node
-            assert_eq!(children.len(), 2);
+            assert_eq!(children.len(), 1);
             match &children[0] {
                 SyntaxNode::Infix {
                     name, left, right, ..
                 } => {
                     assert_eq!(name, "over");
                     assert_eq!(**left, SyntaxNode::Char('a'));
-                    assert_eq!(**right, SyntaxNode::Char('b'));
-                }
-                _ => panic!("Expected Infix node"),
-            }
-            match &children[1] {
-                SyntaxNode::Declarative { name, scope, .. } => {
-                    assert_eq!(name, "bfseries");
-                    match &**scope {
-                        SyntaxNode::Char('c') => {}
-                        _ => panic!("Expected Char('c') in scope"),
+
+                    match &**right {
+                        SyntaxNode::Group { children, kind, .. } => {
+                            assert_eq!(*kind, GroupKind::Implicit);
+                            assert_eq!(children.len(), 2);
+                            assert_eq!(children[0], SyntaxNode::Char('b'));
+                            match &children[1] {
+                                SyntaxNode::Declarative { name, scope, .. } => {
+                                    assert_eq!(name, "bfseries");
+                                    assert_eq!(**scope, SyntaxNode::Char('c'));
+                                }
+                                other => panic!(
+                                    "Expected declarative node in denominator, got {:?}",
+                                    other
+                                ),
+                            }
+                        }
+                        other => panic!("Expected grouped denominator, got {:?}", other),
                     }
                 }
-                _ => panic!("Expected Declarative node"),
+                other => panic!("Expected Infix node, got {:?}", other),
             }
         }
         _ => panic!("Expected root Group"),
+    }
+}
+
+#[test]
+fn test_infix_over_with_declarative_right_operand() {
+    let ctx = test_context_with_items([command_item(
+        "displaystyle",
+        CommandKind::Declarative,
+        AllowedMode::Math,
+        "",
+    )]);
+    let output = ctx.parse(r"a \over \displaystyle b", false);
+    assert!(
+        output.diagnostics.is_empty(),
+        "Expected declarative denominator parse without diagnostics, got {:?}",
+        output.diagnostics
+    );
+    let result = output
+        .result
+        .expect("parse without diagnostics should produce a result")
+        .node;
+
+    match result {
+        SyntaxNode::Root { children, .. } => {
+            assert_eq!(children.len(), 1);
+
+            match &children[0] {
+                SyntaxNode::Infix {
+                    name,
+                    args,
+                    left,
+                    right,
+                } => {
+                    assert_eq!(name, "over");
+                    assert!(args.is_empty());
+                    assert_eq!(**left, SyntaxNode::Char('a'));
+
+                    match &**right {
+                        SyntaxNode::Declarative { name, args, scope } => {
+                            assert_eq!(name, "displaystyle");
+                            assert!(args.is_empty());
+                            assert_eq!(**scope, SyntaxNode::Char('b'));
+                        }
+                        other => panic!(
+                            "Expected declarative denominator for infix over, got {:?}",
+                            other
+                        ),
+                    }
+                }
+                other => panic!("Expected Infix node, got {:?}", other),
+            }
+        }
+        other => panic!("Expected root Group, got {:?}", other),
     }
 }
 

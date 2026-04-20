@@ -2187,16 +2187,14 @@ where
 }
 
 /// Parse the tail after an infix command: the command head plus right operand items.
-fn infix_tail_parser<'a, P>(
+fn infix_tail_parser<'a>(
     ctx: &'a ParseContext,
-    normal_item: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     strict: bool,
-) -> impl Parser<'a, TokenStream<'a>, TailParseOutput, ParserError<'a>> + Clone
-where
-    P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
-{
+) -> impl Parser<'a, TokenStream<'a>, TailParseOutput, ParserError<'a>> + Clone {
+    let infix_math_content = math_content.clone();
+    let infix_text_content = text_content.clone();
     let infix_cmd = custom(move |input| {
         let cmd_start = input.cursor();
         let cmd_start_byte = input.span_from_cursor(&cmd_start).start;
@@ -2215,8 +2213,8 @@ where
             let arg_start = input.cursor();
             let parser = argument_parser(
                 ctx,
-                math_content.clone(),
-                text_content.clone(),
+                infix_math_content.clone(),
+                infix_text_content.clone(),
                 spec,
                 strict,
             );
@@ -2246,16 +2244,18 @@ where
         Ok((name, args, cmd_start_byte))
     });
 
-    let stop_declarative = declarative_guard(ctx, ContentMode::Math);
-
-    let guarded_item = stop_declarative
-        .not()
-        .then(normal_item)
-        .map(|(_, item)| item);
-    let right_items = guarded_item
-        .repeated()
-        .at_least(1)
-        .collect::<Vec<_>>()
+    let right_items = math_content
+        .clone()
+        .try_map(|items, span| {
+            if items.is_empty() {
+                Err(Rich::custom(
+                    span,
+                    "Infix command requires non-empty right operand",
+                ))
+            } else {
+                Ok(items)
+            }
+        })
         .labelled("infix right operand")
         .as_context();
 
@@ -2263,17 +2263,15 @@ where
 }
 
 /// Parse the tail of a declarative command: command head plus scoped items.
-fn declarative_tail_parser<'a, P>(
+fn declarative_tail_parser<'a>(
     ctx: &'a ParseContext,
-    normal_item: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     current_mode: ContentMode,
     strict: bool,
-) -> impl Parser<'a, TokenStream<'a>, TailParseOutput, ParserError<'a>> + Clone
-where
-    P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
-{
+) -> impl Parser<'a, TokenStream<'a>, TailParseOutput, ParserError<'a>> + Clone {
+    let decl_math_content = math_content.clone();
+    let decl_text_content = text_content.clone();
     let decl_cmd = custom(move |input| {
         let cmd_start = input.cursor();
         let cmd_start_byte = input.span_from_cursor(&cmd_start).start;
@@ -2292,8 +2290,8 @@ where
             let arg_start = input.cursor();
             let parser = argument_parser(
                 ctx,
-                math_content.clone(),
-                text_content.clone(),
+                decl_math_content.clone(),
+                decl_text_content.clone(),
                 spec,
                 strict,
             );
@@ -2323,11 +2321,12 @@ where
         Ok((name, args, cmd_start_byte))
     });
 
-    let scope_items = normal_item
-        .repeated()
-        .collect::<Vec<_>>()
-        .labelled("declarative scope")
-        .as_context();
+    let scope_items = match current_mode {
+        ContentMode::Math => math_content.clone(),
+        ContentMode::Text => text_content.clone(),
+    }
+    .labelled("declarative scope")
+    .as_context();
     decl_cmd.then(scope_items)
 }
 
@@ -2390,21 +2389,14 @@ where
 
     let infix_tail = infix_guard(ctx, ContentMode::Math).ignore_then(infix_tail_parser(
         ctx,
-        normal_item.clone(),
         math_content.clone(),
         text_content.clone(),
         strict,
     ));
 
-    let declarative_tail =
-        declarative_guard(ctx, ContentMode::Math).ignore_then(declarative_tail_parser(
-            ctx,
-            normal_item,
-            math_content,
-            text_content,
-            ContentMode::Math,
-            strict,
-        ));
+    let declarative_tail = declarative_guard(ctx, ContentMode::Math).ignore_then(
+        declarative_tail_parser(ctx, math_content, text_content, ContentMode::Math, strict),
+    );
 
     leading
         .then(infix_tail.or_not())
@@ -2539,15 +2531,9 @@ where
         Ok(items)
     });
 
-    let declarative_tail =
-        declarative_guard(ctx, ContentMode::Text).ignore_then(declarative_tail_parser(
-            ctx,
-            normal_item,
-            math_content,
-            text_content,
-            ContentMode::Text,
-            strict,
-        ));
+    let declarative_tail = declarative_guard(ctx, ContentMode::Text).ignore_then(
+        declarative_tail_parser(ctx, math_content, text_content, ContentMode::Text, strict),
+    );
 
     leading
         .then(declarative_tail.or_not())
