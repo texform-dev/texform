@@ -387,31 +387,24 @@ fn infix_records_left_and_right_descendant_paths() {
 }
 
 #[test]
-fn text_declarative_records_scope_descendant_paths() {
+fn text_declarative_records_flat_child_paths() {
     let result = parse_ok(r"\text{\bf ab$x$cd}");
 
-    // Single child: fold unwraps, so content points directly to the Declarative node.
-    // \text{\bf ab$x$cd}
-    //       ^^^         -> \bf command (Declarative)
-    //           ^^^^^^^^ -> scope
+    assert_eq!(result.span_for("root.child.0.arg.0.content.scope"), None);
     assert_eq!(
-        result.span_for("root.child.0.arg.0.content.scope"),
-        Some(&Span { start: 9, end: 17 })
+        result.span_for("root.child.0.arg.0.content.child.0"),
+        Some(&Span { start: 6, end: 9 })
     );
     assert_eq!(
-        result.span_for("root.child.0.arg.0.content.scope.child.0"),
-        Some(&Span { start: 9, end: 12 })
+        result.span_for("root.child.0.arg.0.content.child.1"),
+        Some(&Span { start: 10, end: 12 })
     );
     assert_eq!(
-        result.span_for("root.child.0.arg.0.content.scope.child.1"),
+        result.span_for("root.child.0.arg.0.content.child.2"),
         Some(&Span { start: 12, end: 15 })
     );
     assert_eq!(
-        result.span_for("root.child.0.arg.0.content.scope.child.1.child.0"),
-        Some(&Span { start: 13, end: 14 })
-    );
-    assert_eq!(
-        result.span_for("root.child.0.arg.0.content.scope.child.2"),
+        result.span_for("root.child.0.arg.0.content.child.3"),
         Some(&Span { start: 15, end: 17 })
     );
 }

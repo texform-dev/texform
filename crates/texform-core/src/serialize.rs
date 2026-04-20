@@ -59,6 +59,14 @@ pub struct SerializeOptions {
 pub struct MathSerializeOptions {
     pub spacing: MathSpacingOptions,
     pub scripts: MathScriptOptions,
+    pub infix: MathInfixOptions,
+}
+
+/// Infix serialization options for math mode.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MathInfixOptions {
+    pub grouping: InfixGrouping,
 }
 
 /// Spacing controls within math mode.
@@ -177,6 +185,15 @@ pub enum ScriptOrder {
     #[default]
     SubFirst,
     SupFirst,
+}
+
+/// Whether math infix operands are always braced or only when needed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InfixGrouping {
+    AlwaysExplicit,
+    #[default]
+    WhenRequired,
 }
 
 /// Whether command arguments always get explicit delimiters.
@@ -372,9 +389,7 @@ impl<'a> Serializer<'a> {
                 left,
                 right,
             } => self.visit_infix(&name, &args, left, right),
-            Node::Declarative { name, args, scope } => {
-                self.visit_declarative(&name, &args, scope, mode)
-            }
+            Node::Declarative { name, args } => self.visit_declarative(&name, &args, mode),
             Node::Group {
                 children,
                 kind,
@@ -455,7 +470,7 @@ impl<'a> Serializer<'a> {
     /// The serializer does not assume the infix has been desugared by a
     /// transform rule; an un-rewritten `\over` still round-trips correctly.
     fn visit_infix(&mut self, name: &str, args: &[ArgumentSlot], left: NodeId, right: NodeId) {
-        self.visit(left, ContentMode::Math);
+        self.emit_infix_operand(left);
         self.writer.emit(
             ContentMode::Math,
             AtomKind::ControlSequence,
@@ -465,19 +480,11 @@ impl<'a> Serializer<'a> {
         for slot in args {
             self.visit_argument_slot(slot, ContentMode::Math);
         }
-        self.visit(right, ContentMode::Math);
+        self.emit_infix_operand(right);
     }
 
-    /// Emit a declarative command followed by its scope content.
-    ///
-    /// Like `visit_infix`, no assumption is made about prior transform.
-    fn visit_declarative(
-        &mut self,
-        name: &str,
-        args: &[ArgumentSlot],
-        scope: NodeId,
-        mode: ContentMode,
-    ) {
+    /// Emit a declarative command with its explicit arguments.
+    fn visit_declarative(&mut self, name: &str, args: &[ArgumentSlot], mode: ContentMode) {
         self.writer.emit(
             mode,
             AtomKind::ControlSequence,
@@ -487,7 +494,6 @@ impl<'a> Serializer<'a> {
         for slot in args {
             self.visit_argument_slot(slot, mode);
         }
-        self.visit(scope, mode);
     }
 
     fn visit_environment(
@@ -786,6 +792,69 @@ impl<'a> Serializer<'a> {
         };
         self.writer
             .emit(close_mode, AtomKind::Brace, close, self.options);
+    }
+
+    fn emit_infix_operand(&mut self, node: NodeId) {
+        if self.is_empty_infix_operand(node) {
+            return;
+        }
+
+        match self.options.math.infix.grouping {
+            InfixGrouping::AlwaysExplicit => {
+                self.emit_wrapped_content(node, ContentMode::Math, ContentMode::Math, "{", "}")
+            }
+            InfixGrouping::WhenRequired => {
+                if self.infix_operand_requires_braces(node) {
+                    self.emit_wrapped_content(node, ContentMode::Math, ContentMode::Math, "{", "}");
+                } else {
+                    self.emit_unwrapped_infix_operand(node);
+                }
+            }
+        }
+    }
+
+    fn emit_unwrapped_infix_operand(&mut self, node: NodeId) {
+        match self.ast.node(node) {
+            Node::Group {
+                children,
+                kind: GroupKind::Explicit | GroupKind::Implicit,
+                mode,
+            } => {
+                for &child in children {
+                    self.visit(child, *mode);
+                }
+            }
+            _ => self.visit(node, ContentMode::Math),
+        }
+    }
+
+    fn is_empty_infix_operand(&self, node: NodeId) -> bool {
+        matches!(
+            self.ast.node(node),
+            Node::Group {
+                children,
+                kind: GroupKind::Implicit,
+                mode: ContentMode::Math,
+            } if children.is_empty()
+        )
+    }
+
+    fn infix_operand_requires_braces(&self, node: NodeId) -> bool {
+        match self.ast.node(node) {
+            Node::Infix { .. } => true,
+            Node::Group {
+                kind: GroupKind::Explicit,
+                ..
+            } => true,
+            Node::Group {
+                children,
+                kind: GroupKind::Implicit,
+                ..
+            } => children
+                .iter()
+                .any(|&child| matches!(self.ast.node(child), Node::Infix { .. })),
+            _ => false,
+        }
     }
 
     /// Emit a scalar argument value inside delimiters as a single opaque chunk.

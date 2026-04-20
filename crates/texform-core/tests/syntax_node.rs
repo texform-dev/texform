@@ -328,21 +328,26 @@ fn test_environment_structure() {
 }
 
 #[test]
-fn test_declarative_structure() {
+fn test_declarative_node_without_scope() {
     let decl = SyntaxNode::Declarative {
         name: "color".to_string(),
         args: vec![Some(Argument::mandatory(
             ContentMode::Text,
             SyntaxNode::Text("red".to_string()),
         ))],
-        scope: Box::new(SyntaxNode::Text("text".to_string())),
     };
 
     match decl {
-        SyntaxNode::Declarative { name, args, scope } => {
+        SyntaxNode::Declarative { name, args } => {
             assert_eq!(name, "color");
             assert_eq!(args.len(), 1);
-            assert!(matches!(*scope, SyntaxNode::Text(_)));
+            assert!(matches!(
+                &args[0],
+                Some(Argument {
+                    value: ArgumentValue::TextContent(SyntaxNode::Text(text)),
+                    ..
+                }) if text == "red"
+            ));
         }
         _ => panic!("Expected Declarative"),
     }

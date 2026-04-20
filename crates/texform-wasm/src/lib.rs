@@ -30,7 +30,7 @@ export type SyntaxNode =
     | { Group: { mode: ContentMode; kind: GroupKind; children: SyntaxNode[] } }
     | { Command: { name: string; args: ArgumentSlot[]; known: boolean } }
     | { Infix: { name: string; args: ArgumentSlot[]; left: SyntaxNode; right: SyntaxNode } }
-    | { Declarative: { name: string; args: ArgumentSlot[]; scope: SyntaxNode } }
+    | { Declarative: { name: string; args: ArgumentSlot[] } }
     | { Environment: { name: string; args: ArgumentSlot[]; known: boolean; body: SyntaxNode } }
     | { Scripted: { base: SyntaxNode; subscript?: SyntaxNode; superscript?: SyntaxNode } }
     | { Error: { message: string; snippet: string } }

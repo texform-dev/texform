@@ -222,18 +222,7 @@ export function buildSyntaxTree(
       characterUnicodeValue: character?.unicode_value,
       characterPackage: character?.package,
       characterMathvariant: character?.attributes.mathvariant,
-      children: [
-        ...args,
-        withRole(
-          buildSyntaxTree(
-            declarative.scope,
-            `${id}.scope`,
-            currentMode,
-            lookup,
-          ),
-          'scope',
-        ),
-      ],
+      children: [...args],
     }
   }
 

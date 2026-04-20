@@ -110,7 +110,7 @@ pub enum GroupKind {
 
     /// Implicit group: wrapper for sequences that need to be treated as a single node
     ///
-    /// Used when folding multiple items into one (e.g., infix operands, declarative scope).
+    /// Used when folding multiple items into one (e.g., infix operands).
     Implicit,
 
     /// Delimited group: \left delim ... \right delim
@@ -167,13 +167,10 @@ pub enum SyntaxNode {
         right: Box<SyntaxNode>,
     },
 
-    /// Declarative command: \color{red} text, \bfseries text
-    ///
-    /// The scope extends from the command to the end of the current group.
+    /// Declarative command: \color{red}, \bfseries
     Declarative {
         name: String,
         args: Vec<ArgumentSlot>,
-        scope: Box<SyntaxNode>, // Content from command to end of group
     },
 
     /// Environment: \begin{env}...\end{env}
@@ -243,6 +240,13 @@ impl SyntaxNode {
                 | SyntaxNode::ActiveSpace
                 | SyntaxNode::Error { .. }
         ) || matches!(self, SyntaxNode::Command { args, .. } if args.iter().all(|slot| {
+            slot.as_ref().is_none_or(|arg| {
+                !matches!(
+                    arg.value,
+                    ArgumentValue::MathContent(_) | ArgumentValue::TextContent(_)
+                )
+            })
+        })) || matches!(self, SyntaxNode::Declarative { args, .. } if args.iter().all(|slot| {
             slot.as_ref().is_none_or(|arg| {
                 !matches!(
                     arg.value,
@@ -400,7 +404,7 @@ impl SyntaxNode {
                 }
                 writeln!(f, "{}]", prefix)
             }
-            SyntaxNode::Declarative { name, args, scope } => {
+            SyntaxNode::Declarative { name, args } => {
                 writeln!(f, "{}Declarative(\\{}) [", prefix, name)?;
                 if !args.is_empty() {
                     writeln!(f, "{}  args:", prefix)?;
@@ -408,8 +412,6 @@ impl SyntaxNode {
                         fmt_argument_slot(f, arg, indent + 2)?;
                     }
                 }
-                writeln!(f, "{}  scope:", prefix)?;
-                scope.fmt_with_indent(f, indent + 2)?;
                 writeln!(f, "{}]", prefix)
             }
             SyntaxNode::Environment {

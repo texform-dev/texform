@@ -51,8 +51,6 @@ pub struct DeclarativeView<'a> {
     pub name: &'a str,
     /// The explicit argument slots parsed for this command.
     pub args: &'a [ArgumentSlot],
-    /// The scope subtree that this declaration affects (up to the enclosing group boundary).
-    pub scope: NodeId,
 }
 
 /// A read-only view of an environment node for use in rule matching.
@@ -308,13 +306,10 @@ impl<'a> RuleContext<'a> {
         record: &'static BuiltinCommandRecord,
     ) -> Option<DeclarativeView<'_>> {
         match self.ast.node(node_id) {
-            Node::Declarative { name, args, scope } if name == record.name => {
-                Some(DeclarativeView {
-                    name: name.as_str(),
-                    args: args.as_slice(),
-                    scope: *scope,
-                })
-            }
+            Node::Declarative { name, args } if name == record.name => Some(DeclarativeView {
+                name: name.as_str(),
+                args: args.as_slice(),
+            }),
             _ => None,
         }
     }

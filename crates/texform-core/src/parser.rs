@@ -53,7 +53,6 @@ const ARG: &str = "arg";
 const CONTENT: &str = "content";
 const LEFT: &str = "left";
 const RIGHT: &str = "right";
-const SCOPE: &str = "scope";
 const BODY: &str = "body";
 const BASE: &str = "base";
 const SUB: &str = "sub";
@@ -491,14 +490,6 @@ type ContentParser<'a> = Boxed<'a, 'a, TokenStream<'a>, Vec<TrackedNode>, Parser
 type NodeParser<'a> = Boxed<'a, 'a, TokenStream<'a>, TrackedNode, ParserError<'a>>;
 /// Boxed parser producing a tracked argument slot.
 type ArgumentParser<'a> = Boxed<'a, 'a, TokenStream<'a>, TrackedArgumentSlot, ParserError<'a>>;
-/// Return type of infix/declarative tail parsers.
-///
-/// The tuple is `((name, args, cmd_start_byte), right_or_scope_items)`.
-/// `cmd_start_byte` is the byte offset where the command control sequence
-/// begins, so callers can compute the full span from the command head
-/// through the end of the right/scope items.
-type TailParseOutput = ((String, Vec<TrackedArgumentSlot>, usize), Vec<TrackedNode>);
-
 /// Consume insignificant whitespace tokens and produce no output.
 fn insignificant_whitespace<'a>() -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
     select! { Token::Whitespaces => () }.repeated().ignored()
@@ -1609,34 +1600,18 @@ fn command_head_parser<'src, 'parse>(
 // Content and Argument Parsers
 // ============================================================================
 
-/// Lookahead guard that succeeds when the next token is an infix or
-/// declarative command. Used as a stop condition for leading-item collection.
-fn math_infix_or_decl_guard<'a>(
+/// Lookahead guard that succeeds when the next token is an infix command.
+/// Used as a stop condition for leading-item collection.
+fn math_infix_guard<'a>(
     ctx: &'a ParseContext,
     current_mode: ContentMode,
 ) -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
     select! {
         Token::ControlSeq(name)
             if matches!(lookup_command_for_parse(ctx, name.as_str(), current_mode),
-                LookupResult::Active(meta) if matches!(meta.kind, CommandKind::Infix | CommandKind::Declarative))
+                LookupResult::Active(meta) if meta.kind == CommandKind::Infix)
                 || ctx.lookup_command(name.as_str(), other_mode(current_mode))
-                    .map(|meta| matches!(meta.kind, CommandKind::Infix | CommandKind::Declarative))
-                    .unwrap_or(false) => ()
-    }
-    .rewind()
-}
-
-/// Guard used to stop content parsing before declarative commands.
-fn declarative_guard<'a>(
-    ctx: &'a ParseContext,
-    current_mode: ContentMode,
-) -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
-    select! {
-        Token::ControlSeq(name)
-            if matches!(lookup_command_for_parse(ctx, name.as_str(), current_mode),
-                LookupResult::Active(meta) if meta.kind == CommandKind::Declarative)
-                || ctx.lookup_command(name.as_str(), other_mode(current_mode))
-                    .map(|meta| meta.kind == CommandKind::Declarative)
+                    .map(|meta| meta.kind == CommandKind::Infix)
                     .unwrap_or(false) => ()
     }
     .rewind()
@@ -1692,7 +1667,7 @@ fn math_item_parser<'a>(
         strict,
     );
 
-    math_infix_or_decl_guard(ctx, ContentMode::Math)
+    math_infix_guard(ctx, ContentMode::Math)
         .or(control_seq("right"))
         .or(control_seq("end"))
         .not()
@@ -1714,10 +1689,7 @@ fn text_item_parser<'a>(
         strict,
     );
 
-    declarative_guard(ctx, ContentMode::Text)
-        .or(control_seq("end"))
-        .not()
-        .ignore_then(normal_item)
+    control_seq("end").not().ignore_then(normal_item)
 }
 
 // ============================================================================
@@ -1782,6 +1754,69 @@ fn prefix_command_parser<'a>(
                 args,
                 known: true,
             },
+            span,
+            records,
+            diagnostics,
+        })
+    })
+}
+
+fn declarative_command_parser<'a>(
+    ctx: &'a ParseContext,
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
+    current_mode: ContentMode,
+    strict: bool,
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
+    custom(move |input| {
+        let cmd_start = input.cursor();
+        let (name, meta) =
+            match command_head_parser(input, ctx, CommandKind::Declarative, current_mode, strict) {
+                Ok(data) => data,
+                Err(err) => return Err(err),
+            };
+
+        let mut cmd_args: Vec<TrackedArgumentSlot> = Vec::with_capacity(meta.argspec.args.len());
+        for spec in meta.argspec.args {
+            if !spec.no_leading_space {
+                let _ = input.parse(insignificant_whitespace());
+            }
+
+            let arg_start = input.cursor();
+            let parser = argument_parser(
+                ctx,
+                math_content.clone(),
+                text_content.clone(),
+                spec,
+                strict,
+            );
+            let arg = match input.parse(parser) {
+                Ok(arg) => arg,
+                Err(err) => {
+                    let arg_span = err
+                        .contexts()
+                        .next()
+                        .map(|(_, span)| *span)
+                        .unwrap_or_else(|| input.span_from_cursor(&arg_start));
+                    return match err.reason() {
+                        chumsky::error::RichReason::Custom(_) => Err(with_argument_context(
+                            err,
+                            "declarative command argument",
+                            arg_span,
+                        )),
+                        chumsky::error::RichReason::ExpectedFound { .. } => Err(
+                            with_argument_context(err, "declarative command argument", arg_span),
+                        ),
+                    };
+                }
+            };
+            cmd_args.push(arg);
+        }
+
+        let span = input.span_from_cursor(&cmd_start);
+        let (args, records, diagnostics) = TrackedNode::decompose_args(cmd_args);
+        Ok(TrackedNode {
+            node: SyntaxNode::Declarative { name, args },
             span,
             records,
             diagnostics,
@@ -2030,14 +2065,22 @@ where
         ContentMode::Math,
         strict,
     );
-    let prefix_command =
-        prefix_command_parser(ctx, math_content, text_content, ContentMode::Math, strict);
+    let prefix_command = prefix_command_parser(
+        ctx,
+        math_content.clone(),
+        text_content.clone(),
+        ContentMode::Math,
+        strict,
+    );
+    let declarative_command =
+        declarative_command_parser(ctx, math_content, text_content, ContentMode::Math, strict);
     let delimiter_control_command = delimiter_control_command_parser(ctx);
     let unknown_command = unknown_command_parser(ctx, strict);
     let fallback = choice((
         explicit_group,
         environment.clone(),
         escaped_symbol(),
+        declarative_command.clone(),
         prefix_command.clone(),
         delimiter_control_command,
         unknown_command,
@@ -2048,6 +2091,15 @@ where
     custom(move |input| match input.peek() {
         Some(Token::ControlSeq(name)) if name == "left" => input.parse(delimited_group.clone()),
         Some(Token::ControlSeq(name)) if name == "begin" => input.parse(environment.clone()),
+        Some(Token::ControlSeq(name))
+            if matches!(
+                ctx.lookup_command(name.as_str(), ContentMode::Math),
+                Some(meta)
+                    if meta.kind == CommandKind::Declarative
+            ) =>
+        {
+            input.parse(declarative_command.clone())
+        }
         Some(Token::ControlSeq(name))
             if matches!(
                 ctx.lookup_command(name.as_str(), ContentMode::Math),
@@ -2161,13 +2213,21 @@ where
         ContentMode::Text,
         strict,
     );
-    let prefix_command =
-        prefix_command_parser(ctx, math_content, text_content, ContentMode::Text, strict);
+    let prefix_command = prefix_command_parser(
+        ctx,
+        math_content.clone(),
+        text_content.clone(),
+        ContentMode::Text,
+        strict,
+    );
+    let declarative_command =
+        declarative_command_parser(ctx, math_content, text_content, ContentMode::Text, strict);
     let unknown_command = unknown_command_parser(ctx, strict);
 
     let control_seq_fallback = choice((
         environment.clone(),
         escaped_symbol(),
+        declarative_command.clone(),
         prefix_command.clone(),
         unknown_command,
     ));
@@ -2186,151 +2246,7 @@ where
     })
 }
 
-/// Parse the tail after an infix command: the command head plus right operand items.
-fn infix_tail_parser<'a>(
-    ctx: &'a ParseContext,
-    math_content: ContentParser<'a>,
-    text_content: ContentParser<'a>,
-    strict: bool,
-) -> impl Parser<'a, TokenStream<'a>, TailParseOutput, ParserError<'a>> + Clone {
-    let infix_math_content = math_content.clone();
-    let infix_text_content = text_content.clone();
-    let infix_cmd = custom(move |input| {
-        let cmd_start = input.cursor();
-        let cmd_start_byte = input.span_from_cursor(&cmd_start).start;
-        let (name, meta) =
-            match command_head_parser(input, ctx, CommandKind::Infix, ContentMode::Math, strict) {
-                Ok(data) => data,
-                Err(err) => return Err(err),
-            };
-
-        let mut args: Vec<TrackedArgumentSlot> = Vec::with_capacity(meta.argspec.args.len());
-        for spec in meta.argspec.args {
-            if !spec.no_leading_space {
-                let _ = input.parse(insignificant_whitespace());
-            }
-
-            let arg_start = input.cursor();
-            let parser = argument_parser(
-                ctx,
-                infix_math_content.clone(),
-                infix_text_content.clone(),
-                spec,
-                strict,
-            );
-            let arg = match input.parse(parser) {
-                Ok(arg) => arg,
-                Err(err) => {
-                    let arg_span = err
-                        .contexts()
-                        .next()
-                        .map(|(_, span)| *span)
-                        .unwrap_or_else(|| input.span_from_cursor(&arg_start));
-                    return match err.reason() {
-                        chumsky::error::RichReason::Custom(_) => Err(with_argument_context(
-                            err,
-                            "infix command argument",
-                            arg_span,
-                        )),
-                        chumsky::error::RichReason::ExpectedFound { .. } => Err(
-                            with_argument_context(err, "infix command argument", arg_span),
-                        ),
-                    };
-                }
-            };
-            args.push(arg);
-        }
-
-        Ok((name, args, cmd_start_byte))
-    });
-
-    let right_items = math_content
-        .clone()
-        .try_map(|items, span| {
-            if items.is_empty() {
-                Err(Rich::custom(
-                    span,
-                    "Infix command requires non-empty right operand",
-                ))
-            } else {
-                Ok(items)
-            }
-        })
-        .labelled("infix right operand")
-        .as_context();
-
-    infix_cmd.then(right_items)
-}
-
-/// Parse the tail of a declarative command: command head plus scoped items.
-fn declarative_tail_parser<'a>(
-    ctx: &'a ParseContext,
-    math_content: ContentParser<'a>,
-    text_content: ContentParser<'a>,
-    current_mode: ContentMode,
-    strict: bool,
-) -> impl Parser<'a, TokenStream<'a>, TailParseOutput, ParserError<'a>> + Clone {
-    let decl_math_content = math_content.clone();
-    let decl_text_content = text_content.clone();
-    let decl_cmd = custom(move |input| {
-        let cmd_start = input.cursor();
-        let cmd_start_byte = input.span_from_cursor(&cmd_start).start;
-        let (name, meta) =
-            match command_head_parser(input, ctx, CommandKind::Declarative, current_mode, strict) {
-                Ok(data) => data,
-                Err(err) => return Err(err),
-            };
-
-        let mut args: Vec<TrackedArgumentSlot> = Vec::with_capacity(meta.argspec.args.len());
-        for spec in meta.argspec.args {
-            if !spec.no_leading_space {
-                let _ = input.parse(insignificant_whitespace());
-            }
-
-            let arg_start = input.cursor();
-            let parser = argument_parser(
-                ctx,
-                decl_math_content.clone(),
-                decl_text_content.clone(),
-                spec,
-                strict,
-            );
-            let arg = match input.parse(parser) {
-                Ok(arg) => arg,
-                Err(err) => {
-                    let arg_span = err
-                        .contexts()
-                        .next()
-                        .map(|(_, span)| *span)
-                        .unwrap_or_else(|| input.span_from_cursor(&arg_start));
-                    return match err.reason() {
-                        chumsky::error::RichReason::Custom(_) => Err(with_argument_context(
-                            err,
-                            "declarative command argument",
-                            arg_span,
-                        )),
-                        chumsky::error::RichReason::ExpectedFound { .. } => Err(
-                            with_argument_context(err, "declarative command argument", arg_span),
-                        ),
-                    };
-                }
-            };
-            args.push(arg);
-        }
-
-        Ok((name, args, cmd_start_byte))
-    });
-
-    let scope_items = match current_mode {
-        ContentMode::Math => math_content.clone(),
-        ContentMode::Text => text_content.clone(),
-    }
-    .labelled("declarative scope")
-    .as_context();
-    decl_cmd.then(scope_items)
-}
-
-/// Build math-mode group content (leading items + optional infix/declarative tails).
+/// Build math-mode group content (leading items + optional infix tail).
 fn math_group_content_parser<'a, P>(
     ctx: &'a ParseContext,
     normal_item: P,
@@ -2342,20 +2258,21 @@ where
     P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
 {
     let ws = insignificant_whitespace();
-    let stop_infix_or_decl = math_infix_or_decl_guard(ctx, ContentMode::Math);
+    let stop_infix = math_infix_guard(ctx, ContentMode::Math);
     let stop_boundary = ws
         .clone()
-        .ignore_then(stop_infix_or_decl)
+        .ignore_then(stop_infix)
         .or(ws.clone().ignore_then(control_seq("right")))
         .or(ws.clone().ignore_then(control_seq("end")))
         .rewind();
     let guarded_item = stop_boundary.clone().not().ignore_then(normal_item.clone());
+    let ws_for_leading = ws.clone();
     let leading = custom(move |input| {
         let mut items = Vec::new();
 
         loop {
             let first_item_metadata = input.save();
-            let _ = input.parse(ws.clone());
+            let _ = input.parse(ws_for_leading.clone());
             let preserve_first_item_error = matches!(
                 input.peek(),
                 Some(Token::ControlSeq(name)) if name == "left"
@@ -2387,29 +2304,133 @@ where
         Ok(items)
     });
 
-    let infix_tail = infix_guard(ctx, ContentMode::Math).ignore_then(infix_tail_parser(
-        ctx,
-        math_content.clone(),
-        text_content.clone(),
-        strict,
-    ));
+    let ws_for_optional_infix = ws.clone();
+    let math_content_for_infix = math_content.clone();
+    let text_content_for_infix = text_content.clone();
+    let optional_infix_tail = custom(move |input| {
+        let checkpoint = input.save();
+        let _ = input.parse(ws_for_optional_infix.clone());
+        let has_infix = matches!(input.peek(),
+        Some(Token::ControlSeq(name))
+            if matches!(
+                lookup_command_for_parse(ctx, name.as_str(), ContentMode::Math),
+                LookupResult::Active(meta) if meta.kind == CommandKind::Infix
+            ));
+        input.rewind(checkpoint);
 
-    let declarative_tail = declarative_guard(ctx, ContentMode::Math).ignore_then(
-        declarative_tail_parser(ctx, math_content, text_content, ContentMode::Math, strict),
-    );
+        if has_infix {
+            let ws = insignificant_whitespace();
+            let cmd_start = input.cursor();
+            let cmd_start_byte = input.span_from_cursor(&cmd_start).start;
+            let (name, meta) =
+                command_head_parser(input, ctx, CommandKind::Infix, ContentMode::Math, strict)?;
 
-    leading
-        .then(infix_tail.or_not())
-        .then(declarative_tail.or_not())
-        .try_map(|((leading, infix_tail), declarative_tail), content_span| {
-            if let Some((infix_info, right_items)) = infix_tail {
-                if leading.is_empty() {
+            let mut args: Vec<TrackedArgumentSlot> = Vec::with_capacity(meta.argspec.args.len());
+            for spec in meta.argspec.args {
+                if !spec.no_leading_space {
+                    let _ = input.parse(ws.clone());
+                }
+
+                let arg_start = input.cursor();
+                let parser = argument_parser(
+                    ctx,
+                    math_content_for_infix.clone(),
+                    text_content_for_infix.clone(),
+                    spec,
+                    strict,
+                );
+                let arg =
+                    match input.parse(parser) {
+                        Ok(arg) => arg,
+                        Err(err) => {
+                            let arg_span = err
+                                .contexts()
+                                .next()
+                                .map(|(_, span)| *span)
+                                .unwrap_or_else(|| input.span_from_cursor(&arg_start));
+                            return match err.reason() {
+                                chumsky::error::RichReason::Custom(_) => Err(
+                                    with_argument_context(err, "infix command argument", arg_span),
+                                ),
+                                chumsky::error::RichReason::ExpectedFound { .. } => Err(
+                                    with_argument_context(err, "infix command argument", arg_span),
+                                ),
+                            };
+                        }
+                    };
+                args.push(arg);
+            }
+
+            let normal_item = math_item_parser(
+                ctx,
+                math_content_for_infix.clone(),
+                text_content_for_infix.clone(),
+                strict,
+            )
+            .padded_by(ws.clone())
+            .boxed();
+            let stop_boundary = ws
+                .clone()
+                .ignore_then(control_seq("right"))
+                .or(ws.clone().ignore_then(control_seq("end")))
+                .rewind();
+            let guarded_item = stop_boundary.clone().not().ignore_then(normal_item.clone());
+            let mut right_items = Vec::new();
+
+            loop {
+                let checkpoint = input.save();
+                let _ = input.parse(ws.clone());
+                let token_start = input.cursor();
+                let natural_end = matches!(
+                    input.peek().as_ref(),
+                    None | Some(Token::RBrace) | Some(Token::MathShift)
+                );
+                if natural_end {
+                    input.rewind(checkpoint);
+                    break;
+                }
+
+                if input.parse(stop_boundary.clone()).is_ok() {
+                    break;
+                }
+
+                let ambiguous_infix = match input.peek() {
+                    Some(Token::ControlSeq(name))
+                        if input.parse(infix_guard(ctx, ContentMode::Math)).is_ok() =>
+                    {
+                        Some(name.clone())
+                    }
+                    _ => None,
+                };
+
+                if let Some(name) = ambiguous_infix {
                     return Err(Rich::custom(
-                        content_span,
-                        "Infix command requires non-empty left operand",
+                        input.span_from_cursor(&token_start),
+                        format!("Ambiguous use of \\{}", name),
                     ));
                 }
 
+                input.rewind(checkpoint.clone());
+
+                match input.parse(guarded_item.clone()) {
+                    Ok(item) => right_items.push(item),
+                    Err(err) => {
+                        input.rewind(checkpoint);
+                        return Err(err);
+                    }
+                }
+            }
+
+            Ok(Some(((name, args, cmd_start_byte), right_items)))
+        } else {
+            Ok(None)
+        }
+    });
+
+    leading
+        .then(optional_infix_tail)
+        .try_map(|(leading, infix_tail), content_span| {
+            if let Some((infix_info, right_items)) = infix_tail {
                 let (name, args, _cmd_start) = infix_info;
 
                 let left_span = items_span(&leading, content_span.start);
@@ -2437,74 +2458,27 @@ where
                     diagnostics,
                 };
 
-                let mut nodes = vec![infix_node];
-                if let Some((decl_info, scope_items)) = declarative_tail {
-                    let (decl_name, decl_args, decl_cmd_start) = decl_info;
-                    let scope_span = items_span(&scope_items, content_span.end);
-                    let scope = TrackedNode::fold(ContentMode::Math, scope_items, scope_span);
-                    let decl_span = SimpleSpan::new((), decl_cmd_start..scope.span.end);
-                    let (decl_args, mut decl_records, mut decl_diagnostics) =
-                        TrackedNode::decompose_args(decl_args);
-                    decl_records.extend(prefix_records(SCOPE, &scope));
-                    decl_diagnostics.extend(scope.diagnostics.clone());
-                    nodes.push(TrackedNode {
-                        node: SyntaxNode::Declarative {
-                            name: decl_name,
-                            args: decl_args,
-                            scope: Box::new(scope.node),
-                        },
-                        span: decl_span,
-                        records: decl_records,
-                        diagnostics: decl_diagnostics,
-                    });
-                }
-                Ok(nodes)
+                Ok(vec![infix_node])
             } else {
-                let mut items = leading;
-                if let Some((decl_info, scope_items)) = declarative_tail {
-                    let (decl_name, decl_args, decl_cmd_start) = decl_info;
-                    let scope_span = items_span(&scope_items, content_span.end);
-                    let scope = TrackedNode::fold(ContentMode::Math, scope_items, scope_span);
-                    let decl_span = SimpleSpan::new((), decl_cmd_start..scope.span.end);
-                    let (decl_args, mut decl_records, mut decl_diagnostics) =
-                        TrackedNode::decompose_args(decl_args);
-                    decl_records.extend(prefix_records(SCOPE, &scope));
-                    decl_diagnostics.extend(scope.diagnostics.clone());
-                    items.push(TrackedNode {
-                        node: SyntaxNode::Declarative {
-                            name: decl_name,
-                            args: decl_args,
-                            scope: Box::new(scope.node),
-                        },
-                        span: decl_span,
-                        records: decl_records,
-                        diagnostics: decl_diagnostics,
-                    });
-                }
-                Ok(items)
+                Ok(leading)
             }
         })
 }
 
-/// Build text-mode group content (leading items + optional declarative tail).
+/// Build text-mode group content as an ordinary item sequence.
 fn text_group_content_parser<'a, P>(
-    ctx: &'a ParseContext,
+    _ctx: &'a ParseContext,
     normal_item: P,
-    math_content: ContentParser<'a>,
-    text_content: ContentParser<'a>,
-    strict: bool,
+    _math_content: ContentParser<'a>,
+    _text_content: ContentParser<'a>,
+    _strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone
 where
     P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
 {
-    let stop_declarative = declarative_guard(ctx, ContentMode::Text);
     let ws = insignificant_whitespace();
 
-    let stop_boundary = ws
-        .clone()
-        .ignore_then(stop_declarative)
-        .or(ws.clone().ignore_then(control_seq("end")))
-        .rewind();
+    let stop_boundary = ws.clone().ignore_then(control_seq("end")).rewind();
 
     let guarded_item = stop_boundary.clone().not().ignore_then(normal_item.clone());
     let leading = custom(move |input| {
@@ -2531,36 +2505,7 @@ where
         Ok(items)
     });
 
-    let declarative_tail = declarative_guard(ctx, ContentMode::Text).ignore_then(
-        declarative_tail_parser(ctx, math_content, text_content, ContentMode::Text, strict),
-    );
-
     leading
-        .then(declarative_tail.or_not())
-        .map_with(|(mut leading, declarative_tail), e| {
-            if let Some((decl_info, scope_items)) = declarative_tail {
-                let (decl_name, decl_args, decl_cmd_start) = decl_info;
-                let content_span = e.span();
-                let scope_span = items_span(&scope_items, content_span.end);
-                let scope = TrackedNode::fold(ContentMode::Text, scope_items, scope_span);
-                let decl_span = SimpleSpan::new((), decl_cmd_start..scope.span.end);
-                let (decl_args, mut decl_records, mut decl_diagnostics) =
-                    TrackedNode::decompose_args(decl_args);
-                decl_records.extend(prefix_records(SCOPE, &scope));
-                decl_diagnostics.extend(scope.diagnostics.clone());
-                leading.push(TrackedNode {
-                    node: SyntaxNode::Declarative {
-                        name: decl_name,
-                        args: decl_args,
-                        scope: Box::new(scope.node),
-                    },
-                    span: decl_span,
-                    records: decl_records,
-                    diagnostics: decl_diagnostics,
-                });
-            }
-            leading
-        })
 }
 
 /// Construct mutually recursive math/text content parsers.

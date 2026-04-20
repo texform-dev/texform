@@ -64,8 +64,6 @@ pub enum Slot {
     InfixLeft,
     /// Right operand of [`Node::Infix`]
     InfixRight,
-    /// Scope child of [`Node::Declarative`]
-    DeclarativeScope,
     /// Body child of [`Node::Environment`]
     EnvBody,
 }
@@ -210,14 +208,12 @@ pub enum Node {
         /// Right operand subtree
         right: NodeId,
     },
-    /// Declarative command whose scope runs to the end of the current group.
+    /// Declarative command with explicit argument slots.
     Declarative {
         /// Command name without leading backslash
         name: String,
         /// Additional argument slots owned by the declarative node
         args: Vec<ArgumentSlot>,
-        /// Scope subtree affected by the declaration
-        scope: NodeId,
     },
     /// Environment node whose body must always be a group.
     Environment {
@@ -988,9 +984,8 @@ impl Ast {
                 Self::push_argument_edges(args, &mut edges);
                 edges.push((*right, Slot::InfixRight));
             }
-            Node::Declarative { args, scope, .. } => {
+            Node::Declarative { args, .. } => {
                 Self::push_argument_edges(args, &mut edges);
-                edges.push((*scope, Slot::DeclarativeScope));
             }
             Node::Environment { args, body, .. } => {
                 Self::push_argument_edges(args, &mut edges);
@@ -1081,13 +1076,12 @@ impl Ast {
                 left: Self::convert_syntax_node(left, nodes, parent),
                 right: Self::convert_syntax_node(right, nodes, parent),
             },
-            SyntaxNode::Declarative { name, args, scope } => Node::Declarative {
+            SyntaxNode::Declarative { name, args } => Node::Declarative {
                 name: name.clone(),
                 args: args
                     .iter()
                     .map(|slot| Self::convert_argument_slot(slot, nodes, parent))
                     .collect(),
-                scope: Self::convert_syntax_node(scope, nodes, parent),
             },
             SyntaxNode::Environment {
                 name,

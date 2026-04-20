@@ -183,11 +183,10 @@ fn assert_serializable_syntax_subtree(node: &SyntaxNode) {
             assert_serializable_syntax_subtree(left);
             assert_serializable_syntax_subtree(right);
         }
-        SyntaxNode::Declarative { args, scope, .. } => {
+        SyntaxNode::Declarative { args, .. } => {
             for arg in args.iter().flatten() {
                 assert_serializable_argument_value(&arg.value);
             }
-            assert_serializable_syntax_subtree(scope);
         }
         SyntaxNode::Scripted {
             base,

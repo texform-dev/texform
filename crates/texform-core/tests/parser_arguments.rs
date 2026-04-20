@@ -102,11 +102,9 @@ fn contains_command_named(node: &SyntaxNode, expected: &str) -> bool {
         SyntaxNode::Command { args, .. } => args
             .iter()
             .any(|slot| slot_contains_command_named(slot, expected)),
-        SyntaxNode::Declarative { args, scope, .. } => {
-            args.iter()
-                .any(|slot| slot_contains_command_named(slot, expected))
-                || contains_command_named(scope, expected)
-        }
+        SyntaxNode::Declarative { args, .. } => args
+            .iter()
+            .any(|slot| slot_contains_command_named(slot, expected)),
         SyntaxNode::Environment { args, body, .. } => {
             args.iter()
                 .any(|slot| slot_contains_command_named(slot, expected))
@@ -140,9 +138,7 @@ fn contains_error_node(node: &SyntaxNode) -> bool {
             children.iter().any(contains_error_node)
         }
         SyntaxNode::Command { args, .. } => args.iter().any(slot_contains_error),
-        SyntaxNode::Declarative { args, scope, .. } => {
-            args.iter().any(slot_contains_error) || contains_error_node(scope)
-        }
+        SyntaxNode::Declarative { args, .. } => args.iter().any(slot_contains_error),
         SyntaxNode::Environment { args, body, .. } => {
             args.iter().any(slot_contains_error) || contains_error_node(body)
         }

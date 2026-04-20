@@ -394,7 +394,7 @@ fn test_conversion_preserves_infix_structure() {
 }
 
 #[test]
-fn test_conversion_preserves_declarative_and_environment_structure() {
+fn test_conversion_preserves_flat_declarative_and_environment_structure() {
     let declarative = parse_with_items(
         r"\bfseries bc",
         true,
@@ -410,31 +410,10 @@ fn test_conversion_preserves_declarative_and_environment_structure() {
 
     let decl = first_root_child(&declarative_ast);
     match declarative_ast.node(decl) {
-        Node::Declarative { name, args, scope } => {
+        Node::Declarative { name, args } => {
             assert_eq!(name, "bfseries");
             assert!(args.is_empty());
-            assert_eq!(
-                declarative_ast.parent(*scope),
-                Some(ParentLink {
-                    parent: decl,
-                    slot: Slot::DeclarativeScope,
-                })
-            );
-
-            match declarative_ast.node(*scope) {
-                Node::Group {
-                    children,
-                    kind,
-                    mode,
-                } => {
-                    assert_eq!(kind, &GroupKind::Implicit);
-                    assert_eq!(mode, &ContentMode::Math);
-                    assert_eq!(children.len(), 2);
-                    assert_eq!(declarative_ast.node(children[0]), &Node::Char('b'));
-                    assert_eq!(declarative_ast.node(children[1]), &Node::Char('c'));
-                }
-                other => panic!("Expected scope group, got {:?}", other),
-            }
+            assert!(declarative_ast.edges(decl).is_empty());
         }
         other => panic!("Expected declarative node, got {:?}", other),
     }

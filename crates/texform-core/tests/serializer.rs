@@ -2,8 +2,9 @@ use texform_core::{
     ast::{Argument, ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node},
     parse::ParseContext,
     serialize::{
-        AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, MathGroupInnerSpacing,
-        ScriptOrder, ScriptSpacing, SerializeOptions, serialize, serialize_with,
+        AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, InfixGrouping,
+        MathGroupInnerSpacing, ScriptOrder, ScriptSpacing, SerializeOptions, serialize,
+        serialize_with,
     },
 };
 
@@ -422,24 +423,65 @@ fn test_serialize_control_sequence_keeps_boundary_before_math_char() {
 }
 
 #[test]
-fn test_serialize_declarative_scope_without_expansion() {
+fn test_serialize_flat_declarative_without_scope_wrapper() {
     let mut ast = Ast::new();
     let root = ast.root();
-    let scope = ast.new_node(Node::Group {
-        children: Vec::new(),
-        kind: GroupKind::Implicit,
-        mode: ContentMode::Math,
-    });
-    let x = ast.new_node(Node::Char('x'));
-    ast.append_child(scope, x);
     let decl = ast.new_node(Node::Declarative {
         name: "bfseries".to_string(),
         args: Vec::new(),
-        scope,
     });
+    let x = ast.new_node(Node::Char('x'));
     ast.append_child(root, decl);
+    ast.append_child(root, x);
 
-    assert_eq!(serialize(&ast), r"\bfseries { x }");
+    assert_eq!(serialize(&ast), r"\bfseries x");
+}
+
+#[test]
+fn test_serialize_infix_always_explicit_groups_operands() {
+    let ast = parse_to_ast(r"a \over b");
+    let mut options = SerializeOptions::default();
+    options.math.infix.grouping = InfixGrouping::AlwaysExplicit;
+
+    assert_eq!(serialize_with(&ast, &options), r"{ a } \over { b }");
+}
+
+#[test]
+fn test_serialize_infix_when_required_keeps_nested_braces() {
+    let ast = parse_to_ast(r"{a \over b} \over c");
+    let mut options = SerializeOptions::default();
+    options.math.infix.grouping = InfixGrouping::WhenRequired;
+
+    assert_eq!(serialize_with(&ast, &options), r"{ a \over b } \over c");
+}
+
+#[test]
+fn test_serialize_infix_when_required_keeps_flat_declarative_unbraced() {
+    let ast = parse_to_ast(r"a \displaystyle b \over c");
+    let mut options = SerializeOptions::default();
+    options.math.infix.grouping = InfixGrouping::WhenRequired;
+
+    assert_eq!(serialize_with(&ast, &options), r"a \displaystyle b \over c");
+}
+
+#[test]
+fn test_serialize_infix_empty_left_operand_stays_unbraced() {
+    let ast = parse_to_ast(r"\over x");
+    let mut explicit = SerializeOptions::default();
+    explicit.math.infix.grouping = InfixGrouping::AlwaysExplicit;
+
+    assert_eq!(serialize(&ast), r"\over x");
+    assert_eq!(serialize_with(&ast, &explicit), r"\over { x }");
+}
+
+#[test]
+fn test_serialize_infix_empty_right_operand_stays_unbraced() {
+    let ast = parse_to_ast(r"x \over");
+    let mut explicit = SerializeOptions::default();
+    explicit.math.infix.grouping = InfixGrouping::AlwaysExplicit;
+
+    assert_eq!(serialize(&ast), r"x \over");
+    assert_eq!(serialize_with(&ast, &explicit), r"{ x } \over");
 }
 
 #[test]

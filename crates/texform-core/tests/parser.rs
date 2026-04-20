@@ -1,5 +1,6 @@
 use std::sync::OnceLock;
 
+use chumsky::error::RichReason;
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
     ParseContext, ParseContextBuilder,
@@ -1314,63 +1315,196 @@ fn test_infix_multiple_items() {
 }
 
 #[test]
-fn test_declarative_bfseries() {
-    // "\bfseries text" -> Declarative with scope containing "text"
+fn test_infix_over_allows_empty_left_operand() {
+    let (result, _) = parse(r"\over x", false).unwrap();
+
+    match result {
+        SyntaxNode::Root { children, .. } => match &children[0] {
+            SyntaxNode::Infix { left, right, .. } => {
+                assert_eq!(
+                    **left,
+                    SyntaxNode::Group {
+                        mode: ContentMode::Math,
+                        kind: GroupKind::Implicit,
+                        children: vec![],
+                    }
+                );
+                assert_eq!(**right, SyntaxNode::Char('x'));
+            }
+            other => panic!("Expected infix node, got {:?}", other),
+        },
+        other => panic!("Expected root node, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_infix_over_allows_empty_right_operand() {
+    let (result, _) = parse(r"x \over", false).unwrap();
+
+    match result {
+        SyntaxNode::Root { children, .. } => match &children[0] {
+            SyntaxNode::Infix { left, right, .. } => {
+                assert_eq!(**left, SyntaxNode::Char('x'));
+                assert_eq!(
+                    **right,
+                    SyntaxNode::Group {
+                        mode: ContentMode::Math,
+                        kind: GroupKind::Implicit,
+                        children: vec![],
+                    }
+                );
+            }
+            other => panic!("Expected infix node, got {:?}", other),
+        },
+        other => panic!("Expected root node, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_ambiguous_over_reports_diagnostic() {
+    let errors = texform_core::parser::parse(r"a \over b + 1 \over c", true)
+        .expect_err("ambiguous repeated top-level infix should fail");
+    let messages: Vec<_> = errors
+        .iter()
+        .map(|error| match error.reason() {
+            RichReason::Custom(message) => message.clone(),
+            RichReason::ExpectedFound { .. } => format!("{error}"),
+        })
+        .collect();
+
+    assert!(
+        messages
+            .iter()
+            .any(|message| message == "Ambiguous use of \\over"),
+        "{:?}",
+        messages
+    );
+}
+
+#[test]
+fn test_infix_over_allows_declarative_before_command() {
+    let output = test_context_with_items([command_item(
+        "displaystyle",
+        CommandKind::Declarative,
+        AllowedMode::Math,
+        "",
+    )])
+    .parse(r"\displaystyle \over x", false);
+
+    assert!(
+        output.diagnostics.is_empty(),
+        "expected declarative-before-infix parse without diagnostics, got {:?}",
+        output.diagnostics
+    );
+    let result = output
+        .result
+        .expect("parse without diagnostics should produce a result")
+        .node;
+
+    match result {
+        SyntaxNode::Root { children, .. } => match &children[0] {
+            SyntaxNode::Infix { left, right, .. } => {
+                assert_eq!(
+                    **left,
+                    SyntaxNode::Declarative {
+                        name: "displaystyle".to_string(),
+                        args: vec![],
+                    }
+                );
+                assert_eq!(**right, SyntaxNode::Char('x'));
+            }
+            other => panic!("Expected infix node, got {:?}", other),
+        },
+        other => panic!("Expected root node, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_grouped_nested_over_is_not_ambiguous() {
+    let (result, _) = parse(r"{a \over b} \over c", true).unwrap();
+
+    match result {
+        SyntaxNode::Root { children, .. } => match &children[0] {
+            SyntaxNode::Infix { left, right, .. } => {
+                assert!(matches!(**right, SyntaxNode::Char('c')));
+                match &**left {
+                    SyntaxNode::Group { kind, children, .. } => {
+                        assert_eq!(*kind, GroupKind::Explicit);
+                        assert_eq!(children.len(), 1);
+                        assert!(matches!(children[0], SyntaxNode::Infix { .. }));
+                    }
+                    other => panic!("Expected explicit left group, got {:?}", other),
+                }
+            }
+            other => panic!("Expected outer infix node, got {:?}", other),
+        },
+        other => panic!("Expected root node, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_right_grouped_nested_over_is_not_ambiguous() {
+    let (result, _) = parse(r"a \over {b + 1 \over c}", true).unwrap();
+
+    match result {
+        SyntaxNode::Root { children, .. } => match &children[0] {
+            SyntaxNode::Infix { left, right, .. } => {
+                assert!(matches!(**left, SyntaxNode::Char('a')));
+                match &**right {
+                    SyntaxNode::Group { kind, children, .. } => {
+                        assert_eq!(*kind, GroupKind::Explicit);
+                        assert_eq!(children.len(), 1);
+                        assert!(matches!(children[0], SyntaxNode::Infix { .. }));
+                    }
+                    other => panic!("Expected explicit right group, got {:?}", other),
+                }
+            }
+            other => panic!("Expected outer infix node, got {:?}", other),
+        },
+        other => panic!("Expected root node, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_declarative_bfseries_is_flat() {
     let (result, _) = parse(r"\bfseries text", false).unwrap();
 
     match result {
         SyntaxNode::Root { children, .. } => {
-            assert_eq!(children.len(), 1);
-
-            match &children[0] {
-                SyntaxNode::Declarative { name, args, scope } => {
-                    assert_eq!(name, "bfseries");
-                    assert!(args.is_empty());
-
-                    // Scope should contain 4 chars
-                    match &**scope {
-                        SyntaxNode::Group { children, kind, .. } => {
-                            assert_eq!(*kind, GroupKind::Implicit);
-                            assert_eq!(children.len(), 4);
-                        }
-                        _ => panic!("Expected Group for scope"),
-                    }
+            assert_eq!(children.len(), 5);
+            assert_eq!(
+                children[0],
+                SyntaxNode::Declarative {
+                    name: "bfseries".to_string(),
+                    args: vec![],
                 }
-                _ => panic!("Expected Declarative node"),
-            }
+            );
+            assert_eq!(children[1], SyntaxNode::Char('t'));
+            assert_eq!(children[2], SyntaxNode::Char('e'));
+            assert_eq!(children[3], SyntaxNode::Char('x'));
+            assert_eq!(children[4], SyntaxNode::Char('t'));
         }
         _ => panic!("Expected root Group"),
     }
 }
 
 #[test]
-fn test_declarative_with_leading() {
-    // "a \bfseries b c"
+fn test_declarative_with_leading_is_flat() {
     let (result, _) = parse(r"a \bfseries bc", false).unwrap();
 
     match result {
         SyntaxNode::Root { children, .. } => {
-            assert_eq!(children.len(), 2);
-
-            // First item: 'a'
+            assert_eq!(children.len(), 4);
             assert_eq!(children[0], SyntaxNode::Char('a'));
-
-            // Second item: Declarative
-            match &children[1] {
-                SyntaxNode::Declarative { name, scope, .. } => {
-                    assert_eq!(name, "bfseries");
-
-                    match &**scope {
-                        SyntaxNode::Group { children, .. } => {
-                            assert_eq!(children.len(), 2);
-                            assert_eq!(children[0], SyntaxNode::Char('b'));
-                            assert_eq!(children[1], SyntaxNode::Char('c'));
-                        }
-                        _ => panic!("Expected Group for scope"),
-                    }
+            assert_eq!(
+                children[1],
+                SyntaxNode::Declarative {
+                    name: "bfseries".to_string(),
+                    args: vec![],
                 }
-                _ => panic!("Expected Declarative node"),
-            }
+            );
+            assert_eq!(children[2], SyntaxNode::Char('b'));
+            assert_eq!(children[3], SyntaxNode::Char('c'));
         }
         _ => panic!("Expected root Group"),
     }
@@ -1378,26 +1512,18 @@ fn test_declarative_with_leading() {
 
 #[test]
 fn test_declarative_empty_scope() {
-    // "\bfseries" with nothing after it
     let (result, _) = parse(r"\bfseries", false).unwrap();
 
     match result {
         SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
-
-            match &children[0] {
-                SyntaxNode::Declarative { scope, .. } => {
-                    // Scope should be empty implicit group
-                    match &**scope {
-                        SyntaxNode::Group { children, kind, .. } => {
-                            assert_eq!(*kind, GroupKind::Implicit);
-                            assert!(children.is_empty());
-                        }
-                        _ => panic!("Expected empty Group for scope"),
-                    }
+            assert_eq!(
+                children[0],
+                SyntaxNode::Declarative {
+                    name: "bfseries".to_string(),
+                    args: vec![],
                 }
-                _ => panic!("Expected Declarative node"),
-            }
+            );
         }
         _ => panic!("Expected root Group"),
     }
@@ -1422,47 +1548,27 @@ fn test_declarative_nested_textstyle() {
 
     match result {
         SyntaxNode::Root { children, .. } => {
-            assert_eq!(children.len(), 1);
-
-            match &children[0] {
-                SyntaxNode::Declarative { name, scope, .. } => {
-                    assert_eq!(name, "textstyle");
-
-                    match &**scope {
-                        SyntaxNode::Group { children, kind, .. } => {
-                            assert_eq!(*kind, GroupKind::Implicit);
-                            assert_eq!(children.len(), 6);
-                            assert_eq!(children[0], SyntaxNode::Char('f'));
-                            assert_eq!(children[1], SyntaxNode::Char('('));
-                            assert_eq!(children[2], SyntaxNode::Char('x'));
-                            assert_eq!(children[3], SyntaxNode::Char(')'));
-                            assert_eq!(children[4], SyntaxNode::Char('='));
-
-                            match &children[5] {
-                                SyntaxNode::Declarative { name, args, scope } => {
-                                    assert_eq!(name, "textstyle");
-                                    assert!(args.is_empty());
-                                    match &**scope {
-                                        SyntaxNode::Scripted { .. } => {}
-                                        other => panic!(
-                                            "Expected scripted sum in nested textstyle scope, got {:?}",
-                                            other
-                                        ),
-                                    }
-                                }
-                                other => {
-                                    panic!("Expected nested Declarative node, got {:?}", other)
-                                }
-                            }
-                        }
-                        other => panic!(
-                            "Expected implicit group for textstyle scope, got {:?}",
-                            other
-                        ),
-                    }
+            assert_eq!(children.len(), 8);
+            assert_eq!(
+                children[0],
+                SyntaxNode::Declarative {
+                    name: "textstyle".to_string(),
+                    args: vec![],
                 }
-                other => panic!("Expected Declarative node, got {:?}", other),
-            }
+            );
+            assert_eq!(children[1], SyntaxNode::Char('f'));
+            assert_eq!(children[2], SyntaxNode::Char('('));
+            assert_eq!(children[3], SyntaxNode::Char('x'));
+            assert_eq!(children[4], SyntaxNode::Char(')'));
+            assert_eq!(children[5], SyntaxNode::Char('='));
+            assert_eq!(
+                children[6],
+                SyntaxNode::Declarative {
+                    name: "textstyle".to_string(),
+                    args: vec![],
+                }
+            );
+            assert!(matches!(children[7], SyntaxNode::Scripted { .. }));
         }
         other => panic!("Expected root Group, got {:?}", other),
     }
@@ -1588,6 +1694,67 @@ fn test_text_mode_scripted_syntax_reports_explicit_error() {
         "scripted syntax should fail in text mode"
     );
     assert_eq!(errors, vec!["Scripted syntax is not allowed in Text mode"]);
+}
+
+#[test]
+fn test_text_mode_declarative_is_flat() {
+    let ctx = test_context_with_items([command_item(
+        "tiny",
+        CommandKind::Declarative,
+        AllowedMode::Text,
+        "",
+    )]);
+
+    let output = ctx.parse(r"\text{\tiny{FP}}", false);
+    assert!(
+        output.diagnostics.is_empty(),
+        "expected flat text declarative parse without diagnostics, got {:?}",
+        output.diagnostics
+    );
+    let result = output
+        .result
+        .expect("parse without diagnostics should produce a result")
+        .node;
+
+    match result {
+        SyntaxNode::Root { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "text");
+                match unwrap_content(&args[0]) {
+                    SyntaxNode::Group { mode, children, .. } => {
+                        assert_eq!(*mode, ContentMode::Text);
+                        assert_eq!(children.len(), 2);
+                        assert_eq!(
+                            children[0],
+                            SyntaxNode::Declarative {
+                                name: "tiny".to_string(),
+                                args: vec![],
+                            }
+                        );
+                        match &children[1] {
+                            SyntaxNode::Group {
+                                mode,
+                                kind,
+                                children,
+                            } => {
+                                assert_eq!(*mode, ContentMode::Text);
+                                assert_eq!(*kind, GroupKind::Explicit);
+                                assert_eq!(children.len(), 1);
+                                assert_eq!(children[0], SyntaxNode::Text("FP".to_string()));
+                            }
+                            other => panic!(
+                                "Expected explicit text group after declarative, got {:?}",
+                                other
+                            ),
+                        }
+                    }
+                    other => panic!("Expected text group argument, got {:?}", other),
+                }
+            }
+            other => panic!("Expected text command, got {:?}", other),
+        },
+        other => panic!("Expected root node, got {:?}", other),
+    }
 }
 
 #[test]
@@ -2707,18 +2874,16 @@ fn test_infix_then_declarative() {
                     match &**right {
                         SyntaxNode::Group { children, kind, .. } => {
                             assert_eq!(*kind, GroupKind::Implicit);
-                            assert_eq!(children.len(), 2);
+                            assert_eq!(children.len(), 3);
                             assert_eq!(children[0], SyntaxNode::Char('b'));
-                            match &children[1] {
-                                SyntaxNode::Declarative { name, scope, .. } => {
-                                    assert_eq!(name, "bfseries");
-                                    assert_eq!(**scope, SyntaxNode::Char('c'));
+                            assert_eq!(
+                                children[1],
+                                SyntaxNode::Declarative {
+                                    name: "bfseries".to_string(),
+                                    args: vec![],
                                 }
-                                other => panic!(
-                                    "Expected declarative node in denominator, got {:?}",
-                                    other
-                                ),
-                            }
+                            );
+                            assert_eq!(children[2], SyntaxNode::Char('c'));
                         }
                         other => panic!("Expected grouped denominator, got {:?}", other),
                     }
@@ -2765,13 +2930,20 @@ fn test_infix_over_with_declarative_right_operand() {
                     assert_eq!(**left, SyntaxNode::Char('a'));
 
                     match &**right {
-                        SyntaxNode::Declarative { name, args, scope } => {
-                            assert_eq!(name, "displaystyle");
-                            assert!(args.is_empty());
-                            assert_eq!(**scope, SyntaxNode::Char('b'));
+                        SyntaxNode::Group { children, kind, .. } => {
+                            assert_eq!(*kind, GroupKind::Implicit);
+                            assert_eq!(children.len(), 2);
+                            assert_eq!(
+                                children[0],
+                                SyntaxNode::Declarative {
+                                    name: "displaystyle".to_string(),
+                                    args: vec![],
+                                }
+                            );
+                            assert_eq!(children[1], SyntaxNode::Char('b'));
                         }
                         other => panic!(
-                            "Expected declarative denominator for infix over, got {:?}",
+                            "Expected grouped declarative denominator for infix over, got {:?}",
                             other
                         ),
                     }
@@ -2780,6 +2952,53 @@ fn test_infix_over_with_declarative_right_operand() {
             }
         }
         other => panic!("Expected root Group, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_infix_left_collects_flat_declarative_items() {
+    let output = test_context_with_items([command_item(
+        "displaystyle",
+        CommandKind::Declarative,
+        AllowedMode::Math,
+        "",
+    )])
+    .parse(r"a \displaystyle b \over c", false);
+
+    assert!(
+        output.diagnostics.is_empty(),
+        "expected flat declarative infix parse without diagnostics, got {:?}",
+        output.diagnostics
+    );
+    let result = output
+        .result
+        .expect("parse without diagnostics should produce a result")
+        .node;
+
+    match result {
+        SyntaxNode::Root { children, .. } => match &children[0] {
+            SyntaxNode::Infix { left, right, .. } => {
+                assert!(matches!(**right, SyntaxNode::Char('c')));
+                match &**left {
+                    SyntaxNode::Group { children, kind, .. } => {
+                        assert_eq!(*kind, GroupKind::Implicit);
+                        assert_eq!(children.len(), 3);
+                        assert_eq!(children[0], SyntaxNode::Char('a'));
+                        assert_eq!(
+                            children[1],
+                            SyntaxNode::Declarative {
+                                name: "displaystyle".to_string(),
+                                args: vec![],
+                            }
+                        );
+                        assert_eq!(children[2], SyntaxNode::Char('b'));
+                    }
+                    other => panic!("Expected implicit left group, got {:?}", other),
+                }
+            }
+            other => panic!("Expected infix node, got {:?}", other),
+        },
+        other => panic!("Expected root node, got {:?}", other),
     }
 }
 
@@ -2971,17 +3190,14 @@ fn extract_command_args<'a>(node: &'a SyntaxNode, name: &str) -> Option<&'a [Opt
                 _ => None,
             })
         }),
-        SyntaxNode::Declarative { args, scope, .. } => args
-            .iter()
-            .find_map(|slot| {
-                slot.as_ref().and_then(|arg| match &arg.value {
-                    ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
-                        extract_command_args(node, name)
-                    }
-                    _ => None,
-                })
+        SyntaxNode::Declarative { args, .. } => args.iter().find_map(|slot| {
+            slot.as_ref().and_then(|arg| match &arg.value {
+                ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
+                    extract_command_args(node, name)
+                }
+                _ => None,
             })
-            .or_else(|| extract_command_args(scope, name)),
+        }),
         SyntaxNode::Environment { args, body, .. } => args
             .iter()
             .find_map(|slot| {
