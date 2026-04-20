@@ -43,6 +43,9 @@ cargo bench -p texform-bench --bench parse_corpus
 
 # run one dataset
 cargo bench -p texform-bench --bench parse_corpus -- --dataset lf80m-benchmarks
+
+# pre-commit probe: check one dataset first, then refresh all results if it changed or is missing
+cargo bench -p texform-bench --bench parse_corpus -- --dataset lf80m-benchmarks --check
 ```
 
 ## Results

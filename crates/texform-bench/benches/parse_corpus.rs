@@ -1,4 +1,5 @@
 use clap::Parser;
+use std::process::ExitCode;
 use std::time::Instant;
 use texform_bench::stats::ModeStats;
 use texform_bench::{config, data, output, runner};
@@ -20,7 +21,7 @@ struct Args {
 
     #[arg(
         long,
-        help = "Compare results against saved summaries; exit non-zero on mismatch"
+        help = "Pre-commit probe for selected datasets; refresh all bench results if any summary changed"
     )]
     check: bool,
 
@@ -28,31 +29,40 @@ struct Args {
     bench: bool,
 }
 
-fn main() {
-    let args = Args::parse();
+struct RunOptions {
+    write: bool,
+    strict_errors: bool,
+}
+
+struct RunResult {
+    summaries: Vec<output::Summary>,
+}
+
+fn main() -> ExitCode {
+    match run(Args::parse()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run(args: Args) -> Result<(), String> {
     let bench_root = config::resolve_bench_root();
     let results_root = bench_root.join("results");
     let history_root = bench_root.join("history");
-    let write = !args.dry_run && !args.check;
-    let latest_baseline = if write {
-        match output::latest_commit_baseline(&history_root) {
-            Ok(baseline) => baseline,
-            Err(error) => {
-                eprintln!("Failed to load latest benchmark baseline: {error}");
-                None
-            }
-        }
-    } else {
-        None
-    };
 
     let config = match config::DatasetsConfig::load(&bench_root) {
         Ok(config) => config,
         Err(error) => {
-            eprintln!("Failed to load datasets.yaml: {error}");
-            return;
+            return Err(format!("Failed to load datasets.yaml: {error}"));
         }
     };
+
+    if args.check {
+        return run_check(&args, &config, &bench_root, &results_root, &history_root);
+    }
 
     let selected = config.filter_by_slugs(&args.datasets);
     if selected.is_empty() {
@@ -64,36 +74,138 @@ fn main() {
                 .map(|dataset| &dataset.slug)
                 .collect::<Vec<_>>()
         );
-        return;
+        return Ok(());
     }
 
-    let commit_info = if write {
+    run_datasets(
+        &args,
+        &selected,
+        &bench_root,
+        &results_root,
+        &history_root,
+        RunOptions {
+            write: !args.dry_run,
+            strict_errors: false,
+        },
+    )?;
+
+    Ok(())
+}
+
+fn run_check(
+    args: &Args,
+    config: &config::DatasetsConfig,
+    bench_root: &std::path::Path,
+    results_root: &std::path::Path,
+    history_root: &std::path::Path,
+) -> Result<(), String> {
+    if args.dry_run {
+        return Err("--check cannot be combined with --dry-run".to_string());
+    }
+    if args.limit.is_some() {
+        return Err("--check cannot be combined with --limit".to_string());
+    }
+
+    let selected = config.filter_by_slugs(&args.datasets);
+    if selected.is_empty() {
+        return Err(format!(
+            "No datasets selected. Available: {:?}",
+            config
+                .datasets
+                .iter()
+                .map(|dataset| &dataset.slug)
+                .collect::<Vec<_>>()
+        ));
+    }
+
+    let probe = run_datasets(
+        args,
+        &selected,
+        bench_root,
+        results_root,
+        history_root,
+        RunOptions {
+            write: false,
+            strict_errors: true,
+        },
+    )?;
+
+    let needs_refresh = output::summaries_need_refresh(results_root, &probe.summaries)
+        .map_err(|error| format!("Failed to check stored summaries: {error}"))?;
+
+    if !needs_refresh {
+        return Ok(());
+    }
+
+    run_datasets(
+        args,
+        &config.datasets,
+        bench_root,
+        results_root,
+        history_root,
+        RunOptions {
+            write: true,
+            strict_errors: true,
+        },
+    )?;
+
+    Ok(())
+}
+
+fn run_datasets(
+    args: &Args,
+    selected: &[config::DatasetEntry],
+    bench_root: &std::path::Path,
+    results_root: &std::path::Path,
+    history_root: &std::path::Path,
+    options: RunOptions,
+) -> Result<RunResult, String> {
+    let latest_baseline = if options.write {
+        match output::latest_commit_baseline(&history_root) {
+            Ok(baseline) => baseline,
+            Err(error) => {
+                eprintln!("Failed to load latest benchmark baseline: {error}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let commit_info = if options.write {
         Some(output::git_commit_info())
     } else {
         None
     };
     let mut summaries = Vec::new();
-    let mut check_failures = Vec::new();
     let mut total_tasks = 0_usize;
     let mut total_strict_failed = 0_usize;
     let mut total_nonstrict_failed = 0_usize;
     let mut ran_datasets = 0_usize;
 
-    for entry in &selected {
+    for entry in selected {
         let data_path = bench_root.join(&entry.file);
         match data::check_data_file(&data_path) {
             data::DataFileStatus::Missing => {
-                eprintln!(
-                    "[{}] data file missing, skipping (run `git lfs pull` to fetch)",
+                let message = format!(
+                    "[{}] data file missing (run `git lfs pull` to fetch)",
                     entry.slug
                 );
+                if options.strict_errors {
+                    return Err(message);
+                }
+                eprintln!("{message}, skipping");
                 continue;
             }
             data::DataFileStatus::LfsPointer => {
-                eprintln!(
-                    "[{}] LFS pointer not resolved, skipping (run `git lfs pull` to fetch)",
+                let message = format!(
+                    "[{}] LFS pointer not resolved (run `git lfs pull` to fetch)",
                     entry.slug
                 );
+                if options.strict_errors {
+                    return Err(message);
+                }
+                eprintln!("{message}, skipping");
                 continue;
             }
             data::DataFileStatus::Ready => {}
@@ -107,7 +219,11 @@ fn main() {
         let records = match data::read_formula_records(&data_path, args.limit) {
             Ok(records) => records,
             Err(error) => {
-                eprintln!("[{}] Failed to read parquet: {error}", entry.slug);
+                let message = format!("[{}] Failed to read parquet: {error}", entry.slug);
+                if options.strict_errors {
+                    return Err(message);
+                }
+                eprintln!("{message}");
                 continue;
             }
         };
@@ -132,17 +248,13 @@ fn main() {
             .last()
             .expect("summary was just pushed and must exist");
 
-        if args.check {
-            match output::check_summary(&results_root, &entry.slug, summary) {
-                Ok(Some(diff)) => check_failures.push(diff),
-                Ok(None) => {}
-                Err(error) => eprintln!("[{}] Failed to check summary: {error}", entry.slug),
-            }
-        }
-
-        if write {
+        if options.write {
             if let Err(error) = output::write_summary(&results_root, &entry.slug, summary) {
-                eprintln!("[{}] Failed to write summary: {error}", entry.slug);
+                let message = format!("[{}] Failed to write summary: {error}", entry.slug);
+                if options.strict_errors {
+                    return Err(message);
+                }
+                eprintln!("{message}");
             }
             if let Some((ref commit_hash, ref commit_full, ref commit_date)) = commit_info {
                 if let Err(error) = output::write_commit_results(
@@ -155,7 +267,12 @@ fn main() {
                     commit_full,
                     commit_date,
                 ) {
-                    eprintln!("[{}] Failed to write commit results: {error}", entry.slug);
+                    let message =
+                        format!("[{}] Failed to write commit results: {error}", entry.slug);
+                    if options.strict_errors {
+                        return Err(message);
+                    }
+                    eprintln!("{message}");
                 }
             }
         }
@@ -172,9 +289,13 @@ fn main() {
 
     if !summaries.is_empty() {
         let overall = output::build_overall(&summaries);
-        if write {
+        if options.write {
             if let Err(error) = output::write_overall(&results_root, &overall) {
-                eprintln!("Failed to write overall summary: {error}");
+                let message = format!("Failed to write overall summary: {error}");
+                if options.strict_errors {
+                    return Err(message);
+                }
+                eprintln!("{message}");
             }
         }
 
@@ -212,15 +333,7 @@ fn main() {
         }
     }
 
-    if args.check && !check_failures.is_empty() {
-        eprintln!("\nBench results have changed:");
-        for failure in &check_failures {
-            eprintln!("  {failure}");
-        }
-        eprintln!("\nRun the following command and commit the updated results:");
-        eprintln!("  cargo bench -p texform-bench --bench parse_corpus");
-        std::process::exit(1);
-    }
+    Ok(RunResult { summaries })
 }
 
 fn format_mode_stats(label: &str, stats: &ModeStats) -> String {

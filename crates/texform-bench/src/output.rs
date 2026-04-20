@@ -130,6 +130,13 @@ pub struct OverallSummary {
     pub nonstrict: ModeStats,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoredSummaryStatus {
+    Missing,
+    Match,
+    Different,
+}
+
 #[derive(Serialize)]
 struct StableModeStats {
     ok: usize,
@@ -279,27 +286,39 @@ pub fn build_overall(summaries: &[Summary]) -> OverallSummary {
     }
 }
 
-pub fn check_summary(
+pub fn stored_summary_status(
     results_root: &Path,
     slug: &str,
     summary: &Summary,
-) -> Result<Option<String>, Box<dyn std::error::Error>> {
+) -> Result<StoredSummaryStatus, Box<dyn std::error::Error>> {
     let path = results_root.join(slug).join("summary.json");
     if !path.exists() {
-        return Ok(None);
+        return Ok(StoredSummaryStatus::Missing);
     }
 
     let existing = std::fs::read_to_string(&path)?;
     let current = serialize_stable_summary(summary)?;
 
     if existing.trim() == current.trim() {
-        Ok(None)
+        Ok(StoredSummaryStatus::Match)
     } else {
-        Ok(Some(format!(
-            "[{slug}] bench results differ from {}",
-            path.display()
-        )))
+        Ok(StoredSummaryStatus::Different)
     }
+}
+
+pub fn summaries_need_refresh(
+    results_root: &Path,
+    summaries: &[Summary],
+) -> Result<bool, Box<dyn std::error::Error>> {
+    for summary in summaries {
+        if stored_summary_status(results_root, &summary.dataset, summary)?
+            != StoredSummaryStatus::Match
+        {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
 }
 
 fn serialize_stable_summary(summary: &Summary) -> Result<String, Box<dyn std::error::Error>> {
@@ -821,6 +840,84 @@ mod tests {
         let overall_json = std::fs::read_to_string(dir.join("overall.json")).unwrap();
         assert!(!overall_json.contains("timing_ms"));
         assert!(!overall_json.contains("max_formula_id"));
+
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn stored_summary_status_reports_missing_when_file_absent() {
+        let dir = make_temp_dir("summary-status-missing");
+        let summary = build_summary("demo", &sample_records(), &sample_results());
+
+        let status = stored_summary_status(&dir, "demo", &summary).unwrap();
+
+        assert_eq!(status, StoredSummaryStatus::Missing);
+
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn stored_summary_status_reports_match_for_identical_summary() {
+        let dir = make_temp_dir("summary-status-match");
+        let summary = build_summary("demo", &sample_records(), &sample_results());
+
+        write_summary(&dir, "demo", &summary).unwrap();
+
+        let status = stored_summary_status(&dir, "demo", &summary).unwrap();
+
+        assert_eq!(status, StoredSummaryStatus::Match);
+
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn stored_summary_status_reports_different_for_changed_summary() {
+        let dir = make_temp_dir("summary-status-different");
+        let original = build_summary("demo", &sample_records(), &sample_results());
+        write_summary(&dir, "demo", &original).unwrap();
+
+        let mut changed = original.clone();
+        changed.strict.ok = 2;
+        changed.strict.failed = 0;
+        changed.strict.failure_rate_pct = 0.0;
+
+        let status = stored_summary_status(&dir, "demo", &changed).unwrap();
+
+        assert_eq!(status, StoredSummaryStatus::Different);
+
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn summaries_need_refresh_returns_false_when_all_match() {
+        let dir = make_temp_dir("summaries-refresh-all-match");
+        let first = build_summary("demo-a", &sample_records(), &sample_results());
+        let second = build_summary("demo-b", &sample_records(), &sample_results());
+
+        write_summary(&dir, "demo-a", &first).unwrap();
+        write_summary(&dir, "demo-b", &second).unwrap();
+
+        let needs_refresh = summaries_need_refresh(&dir, &[first, second]).unwrap();
+
+        assert!(!needs_refresh);
+
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn summaries_need_refresh_returns_true_when_any_summary_is_missing_or_different() {
+        let dir = make_temp_dir("summaries-refresh-needed");
+        let matching = build_summary("demo-a", &sample_records(), &sample_results());
+        let mut different = build_summary("demo-b", &sample_records(), &sample_results());
+
+        write_summary(&dir, "demo-a", &matching).unwrap();
+        different.nonstrict.ok = 1;
+        different.nonstrict.failed = 1;
+        different.nonstrict.failure_rate_pct = 50.0;
+
+        let needs_refresh = summaries_need_refresh(&dir, &[matching, different]).unwrap();
+
+        assert!(needs_refresh);
 
         std::fs::remove_dir_all(dir).unwrap();
     }
