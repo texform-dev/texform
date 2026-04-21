@@ -52,4 +52,34 @@ describe("generateCases", () => {
     expect(cases[0].tex).toContain("\\begin{Bmatrix}");
     expect(cases[0].tex).toContain("a & b");
   });
+
+  test("drops later case when two optional branches generate the same tex", () => {
+    const record: TestRecord = {
+      package: "physics", name: "ev", type: "command",
+      argspec: "s s m", kind: "prefix", allowed_mode: "math", tags: [],
+    };
+    const cases = generateCases(record);
+
+    expect(cases.map((c) => c.branch)).toEqual([
+      "baseline",
+      "vary:s[0]",
+      "maximal",
+      "bare[2]",
+    ]);
+    expect(cases.filter((c) => c.tex === "\\ev*{a}")).toHaveLength(1);
+  });
+
+  test("drops later case when a bare branch duplicates baseline tex", () => {
+    const record: TestRecord = {
+      package: "base", name: "above", type: "command",
+      argspec: "m:L", kind: "infix", allowed_mode: "math", tags: [],
+    };
+    const cases = generateCases(record);
+
+    expect(cases.map((c) => c.branch)).toEqual([
+      "baseline",
+      "neg:L[0]",
+    ]);
+    expect(cases.filter((c) => c.tex === "a \\above 1pt b")).toHaveLength(1);
+  });
 });

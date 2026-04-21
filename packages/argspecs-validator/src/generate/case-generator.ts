@@ -46,7 +46,16 @@ export function generateCases(record: TestRecord): TestCase[] {
     if (slots[i].nullable) cases.push(makeNullableCase(record, slots, i));
   }
 
-  return cases;
+  return dedupeCasesByTex(cases);
+}
+
+function dedupeCasesByTex(cases: TestCase[]): TestCase[] {
+  const seen = new Set<string>();
+  return cases.filter((testCase) => {
+    if (seen.has(testCase.tex)) return false;
+    seen.add(testCase.tex);
+    return true;
+  });
 }
 
 function slotLabel(slot: ParsedSlot): string {
