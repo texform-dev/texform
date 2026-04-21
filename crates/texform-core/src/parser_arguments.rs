@@ -907,7 +907,10 @@ pub(super) fn argument_parser<'a>(
                 }
                 let arg_span = input.span_from_cursor(&arg_start);
                 Ok(TrackedArgumentSlot::with_span(
-                    Some(Argument::star(present)),
+                    Some(Argument {
+                        kind: ArgumentKind::Star,
+                        value: ArgumentValue::Boolean(present),
+                    }),
                     arg_span,
                 ))
             }

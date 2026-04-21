@@ -86,8 +86,6 @@ Key axes include:
 | `math.spacing.adjacent_chars` | `Spaced` | Space between math chars: `a b c` vs `abc` |
 | `math.scripts.spacing` | `Spaced` | Space around `_`/`^`: `x _ { i }` vs `x_{i}` |
 | `math.scripts.order` | `SubFirst` | Fixed output order: `_` before `^` |
-| `math.scripts.grouping` | `AlwaysExplicit` | Always brace script args: `x ^ { 2 }` |
-| `syntax.arguments.grouping` | `AlwaysExplicit` | Always brace command args: `\frac { 1 } { 2 }` |
 | `syntax.environments.name_spacing` | `Spaced` | `\begin {matrix}` vs `\begin{matrix}` |
 
 

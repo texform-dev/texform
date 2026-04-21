@@ -20,18 +20,6 @@ pub fn mandatory_content(node_id: NodeId, mode: ContentMode) -> ArgumentSlot {
     })
 }
 
-/// Creates an optional content argument slot wrapping the subtree rooted at `node_id`.
-pub fn optional_content(node_id: NodeId, mode: ContentMode) -> ArgumentSlot {
-    let value = match mode {
-        ContentMode::Math => ArgumentValue::MathContent(node_id),
-        ContentMode::Text => ArgumentValue::TextContent(node_id),
-    };
-    Some(Argument {
-        kind: ArgumentKind::Optional,
-        value,
-    })
-}
-
 /// Creates a star (boolean) argument slot, representing a `*` modifier on a command.
 pub fn star(value: bool) -> ArgumentSlot {
     Some(Argument {

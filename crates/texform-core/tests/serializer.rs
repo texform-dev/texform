@@ -3,8 +3,8 @@ use texform_core::{
     parse::ParseContext,
     serialize::{
         AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, InfixGrouping,
-        MathGroupInnerSpacing, ScriptOrder, ScriptSpacing, SerializeOptions, serialize,
-        serialize_with,
+        MathGroupInnerSpacing, MathScriptOptions, ScriptOrder, ScriptSpacing, SerializeOptions,
+        SyntaxSerializeOptions, serialize, serialize_with,
     },
 };
 
@@ -144,6 +144,15 @@ fn test_serialize_scripted_nodes_use_sub_first_and_explicit_grouping() {
     let ast = parse_to_ast("x^2_i");
 
     assert_eq!(serialize(&ast), "x _ { i } ^ { 2 }");
+}
+
+#[test]
+fn test_serializer_option_surfaces_only_expose_live_fields() {
+    let MathScriptOptions {
+        spacing: _,
+        order: _,
+    } = MathScriptOptions::default();
+    let SyntaxSerializeOptions { environments: _ } = SyntaxSerializeOptions::default();
 }
 
 #[test]

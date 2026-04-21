@@ -14,7 +14,6 @@
 use crate::ast::{ArgumentSlot, Ast, Node, NodeId};
 use crate::knowledge::{KnowledgeBase, lookup_command_node_name, lookup_environment_node_name};
 use crate::parse::ContentMode;
-use crate::transform::context::TransformContext;
 use crate::transform::engine::{TransformError, TransformReport};
 use crate::transform::rule::RuleKey;
 use texform_specs::specs::{
@@ -86,7 +85,6 @@ pub struct RuleContext<'a> {
     pub ast: &'a mut Ast,
     math_kb: &'a KnowledgeBase,
     text_kb: &'a KnowledgeBase,
-    transform_ctx: &'a TransformContext,
     report: &'a mut TransformReport,
 }
 
@@ -95,14 +93,12 @@ impl<'a> RuleContext<'a> {
         ast: &'a mut Ast,
         math_kb: &'a KnowledgeBase,
         text_kb: &'a KnowledgeBase,
-        transform_ctx: &'a TransformContext,
         report: &'a mut TransformReport,
     ) -> Self {
         Self {
             ast,
             math_kb,
             text_kb,
-            transform_ctx,
             report,
         }
     }
@@ -147,13 +143,6 @@ impl<'a> RuleContext<'a> {
             .or_else(|| self.lookup_command(name, ContentMode::Text))
     }
 
-    /// Looks up the active character record for the node at `node_id` by extracting its name from the AST.
-    pub fn active_character(&self, node_id: NodeId) -> Option<&ActiveCharacterRecord> {
-        let name = lookup_command_node_name(self.ast.node(node_id))?;
-        self.lookup_character(name, ContentMode::Math)
-            .or_else(|| self.lookup_character(name, ContentMode::Text))
-    }
-
     /// Looks up the active environment record for the node at `node_id` by extracting its name from the AST.
     pub fn active_env(&self, node_id: NodeId) -> Option<&ActiveEnvironmentRecord> {
         let name = lookup_environment_node_name(self.ast.node(node_id))?;
@@ -178,10 +167,6 @@ impl<'a> RuleContext<'a> {
     /// Looks up an environment record by name directly in the selected knowledge-base lane.
     pub fn lookup_env(&self, name: &str, mode: ContentMode) -> Option<&ActiveEnvironmentRecord> {
         self.kb_for(mode).lookup_env(name)
-    }
-
-    pub fn transform_context(&self) -> &TransformContext {
-        self.transform_ctx
     }
 
     /// Records that a rule was successfully applied, incrementing its count in the report.

@@ -139,13 +139,8 @@ pub fn transform_ast(
         let snapshot = preorder_snapshot(ast);
 
         {
-            let mut cx = RuleContext::new(
-                ast,
-                parse_ctx.math_kb(),
-                parse_ctx.text_kb(),
-                transform_ctx,
-                &mut report,
-            );
+            let mut cx =
+                RuleContext::new(ast, parse_ctx.math_kb(), parse_ctx.text_kb(), &mut report);
             for node_id in snapshot {
                 if !cx.ast.contains(node_id) {
                     continue;
@@ -187,13 +182,7 @@ pub fn transform_ast(
 
     if !transform_ctx.cleanup_rules().is_empty() {
         let snapshot = preorder_snapshot(ast);
-        let mut cx = RuleContext::new(
-            ast,
-            parse_ctx.math_kb(),
-            parse_ctx.text_kb(),
-            transform_ctx,
-            &mut report,
-        );
+        let mut cx = RuleContext::new(ast, parse_ctx.math_kb(), parse_ctx.text_kb(), &mut report);
         for node_id in snapshot {
             if !cx.ast.contains(node_id) {
                 continue;
@@ -533,8 +522,6 @@ mod tests {
         );
         assert!(parse_ctx.knows_command_name("textonly-target"));
 
-        let transform_ctx =
-            TransformContext::from_parts_for_test(Vec::new(), Vec::new(), Vec::new(), 4);
         let mut report = TransformReport {
             applied: Vec::new(),
             iterations: 0,
@@ -545,7 +532,6 @@ mod tests {
             &mut scratch_ast,
             parse_ctx.math_kb(),
             parse_ctx.text_kb(),
-            &transform_ctx,
             &mut report,
         );
         assert!(cx.knows_command_name("textonly-target"));

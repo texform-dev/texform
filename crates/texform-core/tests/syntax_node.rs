@@ -64,14 +64,17 @@ fn test_implicit_group_helpers() {
 #[test]
 fn test_argument_creation() {
     let node = SyntaxNode::Char('x');
-    let mandatory = Argument::mandatory(ContentMode::Math, node.clone());
+    let mandatory = Argument::from_value(
+        ArgumentKind::Mandatory,
+        ArgumentValue::MathContent(node.clone()),
+    );
     assert_eq!(mandatory.kind, ArgumentKind::Mandatory);
     assert_eq!(
         mandatory.value,
         ArgumentValue::MathContent(SyntaxNode::Char('x'))
     );
 
-    let optional = Argument::optional(ContentMode::Math, node);
+    let optional = Argument::from_value(ArgumentKind::Optional, ArgumentValue::MathContent(node));
     assert_eq!(optional.kind, ArgumentKind::Optional);
     assert_eq!(
         optional.value,
@@ -81,7 +84,10 @@ fn test_argument_creation() {
 
 #[test]
 fn test_text_argument_uses_text_content_variant_for_single_char_item() {
-    let arg = Argument::mandatory(ContentMode::Text, SyntaxNode::Char('x'));
+    let arg = Argument::from_value(
+        ArgumentKind::Mandatory,
+        ArgumentValue::TextContent(SyntaxNode::Char('x')),
+    );
 
     assert_eq!(arg.kind, ArgumentKind::Mandatory);
     assert_eq!(arg.value, ArgumentValue::TextContent(SyntaxNode::Char('x')));
@@ -89,10 +95,8 @@ fn test_text_argument_uses_text_content_variant_for_single_char_item() {
 
 #[test]
 fn test_content_mode_helpers() {
-    assert!(ContentMode::Math.is_math());
-    assert!(!ContentMode::Math.is_text());
-    assert!(ContentMode::Text.is_text());
-    assert!(!ContentMode::Text.is_math());
+    assert_eq!(ContentMode::Math.as_str(), "math");
+    assert_eq!(ContentMode::Text.as_str(), "text");
     assert_eq!(ContentMode::Math.to_string(), "math");
     assert_eq!(ContentMode::Text.to_string(), "text");
 }
@@ -102,13 +106,13 @@ fn test_command_node() {
     let cmd = SyntaxNode::Command {
         name: "frac".to_string(),
         args: vec![
-            Some(Argument::mandatory(
-                ContentMode::Math,
-                SyntaxNode::Char('a'),
+            Some(Argument::from_value(
+                ArgumentKind::Mandatory,
+                ArgumentValue::MathContent(SyntaxNode::Char('a')),
             )),
-            Some(Argument::mandatory(
-                ContentMode::Math,
-                SyntaxNode::Char('b'),
+            Some(Argument::from_value(
+                ArgumentKind::Mandatory,
+                ArgumentValue::MathContent(SyntaxNode::Char('b')),
             )),
         ],
         known: true,
@@ -331,9 +335,9 @@ fn test_environment_structure() {
 fn test_declarative_node_without_scope() {
     let decl = SyntaxNode::Declarative {
         name: "color".to_string(),
-        args: vec![Some(Argument::mandatory(
-            ContentMode::Text,
-            SyntaxNode::Text("red".to_string()),
+        args: vec![Some(Argument::from_value(
+            ArgumentKind::Mandatory,
+            ArgumentValue::TextContent(SyntaxNode::Text("red".to_string())),
         ))],
     };
 

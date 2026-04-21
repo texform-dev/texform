@@ -829,7 +829,7 @@ fn environment_mismatch_rewrite_does_not_capture_later_generic_errors() {
 }
 
 #[test]
-#[should_panic(expected = "cannot serialize syntax tree containing Error node")]
+#[should_panic(expected = "cannot convert SyntaxNode::Error into AST")]
 fn serialize_latex_rejects_error_nodes() {
     let node = SyntaxNode::root(
         ContentMode::Math,
@@ -843,7 +843,7 @@ fn serialize_latex_rejects_error_nodes() {
 }
 
 #[test]
-#[should_panic(expected = "cannot serialize syntax tree containing Error node")]
+#[should_panic(expected = "cannot convert SyntaxNode::Error into AST")]
 fn serialize_latex_rejects_nested_error_nodes() {
     let node = SyntaxNode::root(
         ContentMode::Math,
@@ -874,7 +874,7 @@ fn serialize_latex_with_rejects_non_root_top_level_node() {
 }
 
 #[test]
-#[should_panic(expected = "serialize_latex does not accept nested SyntaxNode::Root")]
+#[should_panic(expected = "Ast::from_syntax_root does not accept nested SyntaxNode::Root")]
 fn serialize_latex_rejects_nested_root_nodes() {
     let node = SyntaxNode::root(
         ContentMode::Math,
@@ -888,7 +888,7 @@ fn serialize_latex_rejects_nested_root_nodes() {
 }
 
 #[test]
-#[should_panic(expected = "serialize_latex does not accept nested SyntaxNode::Root")]
+#[should_panic(expected = "Ast::from_syntax_root does not accept nested SyntaxNode::Root")]
 fn serialize_latex_with_rejects_nested_root_nodes() {
     let node = SyntaxNode::root(
         ContentMode::Math,

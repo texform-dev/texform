@@ -145,10 +145,8 @@ const SERIALIZE_OPTION_TYPES: &str = r#"
 export type CommandSpacing = "spaced" | "minimal";
 export type MathGroupInnerSpacing = "padded" | "compact";
 export type AdjacentCharSpacing = "spaced" | "compact";
-export type ScriptGrouping = "always_explicit";
 export type ScriptSpacing = "spaced" | "compact";
 export type ScriptOrder = "sub_first" | "sup_first";
-export type ArgumentGrouping = "always_explicit";
 export type EnvironmentNameSpacing = "spaced" | "compact";
 
 export interface MathSpacingOptions {
@@ -158,7 +156,6 @@ export interface MathSpacingOptions {
 }
 
 export interface MathScriptOptions {
-    grouping?: ScriptGrouping;
     spacing?: ScriptSpacing;
     order?: ScriptOrder;
 }
@@ -168,16 +165,11 @@ export interface MathSerializeOptions {
     scripts?: MathScriptOptions;
 }
 
-export interface ArgumentSerializeOptions {
-    grouping?: ArgumentGrouping;
-}
-
 export interface EnvironmentSerializeOptions {
     name_spacing?: EnvironmentNameSpacing;
 }
 
 export interface SyntaxSerializeOptions {
-    arguments?: ArgumentSerializeOptions;
     environments?: EnvironmentSerializeOptions;
 }
 

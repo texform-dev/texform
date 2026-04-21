@@ -81,14 +81,6 @@ pub struct BuiltinCommandRecord {
     pub tags: &'static [&'static str],
 }
 
-impl BuiltinCommandRecord {
-    pub fn structurally_compatible_with(&self, active: &ActiveCommandRecord) -> bool {
-        self.name == active.name
-            && self.kind == active.kind
-            && self.argspec.source == active.argspec.source
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuiltinEnvironmentRecord {
     pub name: &'static str,
@@ -96,14 +88,6 @@ pub struct BuiltinEnvironmentRecord {
     pub argspec: ParsedArgSpec,
     pub body_mode: ContentMode,
     pub tags: &'static [&'static str],
-}
-
-impl BuiltinEnvironmentRecord {
-    pub fn structurally_compatible_with(&self, active: &ActiveEnvironmentRecord) -> bool {
-        self.name == active.name
-            && self.argspec.source == active.argspec.source
-            && self.body_mode == active.body_mode
-    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]

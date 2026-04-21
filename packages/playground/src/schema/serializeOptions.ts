@@ -91,14 +91,6 @@ export const SERIALIZE_OPTION_DESCRIPTORS: OptionDescriptor[] = [
     defaultValue: 'spaced',
   },
   {
-    path: 'math.scripts.grouping',
-    title: 'Script Grouping',
-    description: 'Grouping mode for subscript/superscript arguments',
-    values: ['always_explicit'],
-    defaultValue: 'always_explicit',
-    disabled: true,
-  },
-  {
     ...parseFieldMeta(scriptSpacingSchema.description!),
     path: 'math.scripts.spacing',
     values: scriptSpacingSchema.options,
@@ -109,14 +101,6 @@ export const SERIALIZE_OPTION_DESCRIPTORS: OptionDescriptor[] = [
     path: 'math.scripts.order',
     values: scriptOrderSchema.options,
     defaultValue: 'sub_first',
-  },
-  {
-    path: 'syntax.arguments.grouping',
-    title: 'Argument Grouping',
-    description: 'Grouping mode for command arguments',
-    values: ['always_explicit'],
-    defaultValue: 'always_explicit',
-    disabled: true,
   },
   {
     ...parseFieldMeta(environmentNameSpacingSchema.description!),

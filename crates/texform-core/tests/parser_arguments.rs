@@ -369,6 +369,46 @@ fn mandatory_argument_normalizes_single_explicit_group() {
 }
 
 #[test]
+fn star_argument_uses_boolean_value() {
+    let items = [command_item(
+        "sqrt",
+        CommandKind::Prefix,
+        AllowedMode::Math,
+        "s m",
+    )];
+
+    let with_star = parse_single(&items, r"\sqrt*{x}", true);
+    assert!(
+        with_star.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        with_star.diagnostics
+    );
+    let (_, args) = first_command(&with_star);
+    assert_eq!(
+        expect_arg(&args[0]),
+        &Argument {
+            kind: ArgumentKind::Star,
+            value: ArgumentValue::Boolean(true),
+        }
+    );
+
+    let without_star = parse_single(&items, r"\sqrt{x}", true);
+    assert!(
+        without_star.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        without_star.diagnostics
+    );
+    let (_, args) = first_command(&without_star);
+    assert_eq!(
+        expect_arg(&args[0]),
+        &Argument {
+            kind: ArgumentKind::Star,
+            value: ArgumentValue::Boolean(false),
+        }
+    );
+}
+
+#[test]
 fn text_content_generic_only_error_keeps_expected_found_diagnostic() {
     let items = [text_command_item()];
 

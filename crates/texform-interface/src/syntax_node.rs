@@ -293,37 +293,6 @@ impl Argument {
     pub fn from_value(kind: ArgumentKind, value: ArgumentValue) -> Self {
         Argument { kind, value }
     }
-
-    fn content_value(mode: ContentMode, value: SyntaxNode) -> ArgumentValue {
-        match mode {
-            ContentMode::Math => ArgumentValue::MathContent(value),
-            ContentMode::Text => ArgumentValue::TextContent(value),
-        }
-    }
-
-    /// Create a mandatory argument
-    pub fn mandatory(mode: ContentMode, value: SyntaxNode) -> Self {
-        Argument {
-            kind: ArgumentKind::Mandatory,
-            value: Self::content_value(mode, value),
-        }
-    }
-
-    /// Create an optional argument
-    pub fn optional(mode: ContentMode, value: SyntaxNode) -> Self {
-        Argument {
-            kind: ArgumentKind::Optional,
-            value: Self::content_value(mode, value),
-        }
-    }
-
-    /// Create a star argument with boolean presence.
-    pub fn star(present: bool) -> Self {
-        Argument {
-            kind: ArgumentKind::Star,
-            value: ArgumentValue::Boolean(present),
-        }
-    }
 }
 
 impl ContentMode {
@@ -332,16 +301,6 @@ impl ContentMode {
             ContentMode::Math => "math",
             ContentMode::Text => "text",
         }
-    }
-
-    /// Check if this is Math mode
-    pub fn is_math(&self) -> bool {
-        matches!(self, ContentMode::Math)
-    }
-
-    /// Check if this is Text mode
-    pub fn is_text(&self) -> bool {
-        matches!(self, ContentMode::Text)
     }
 }
 

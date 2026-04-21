@@ -627,20 +627,67 @@ fn test_bare_left_reports_invalid_left_delimiter() {
 }
 
 #[test]
-fn test_environment_does_not_mask_inner_left_error() {
-    let output = test_context_with_items([environment_item(
-        "aligned",
-        AllowedMode::Math,
-        ContentMode::Math,
-        "",
-    )])
-    .parse(r"\begin{aligned}\left\foo x \right)\end{aligned}", false);
-    let diagnostics: Vec<String> = output
+fn invalid_left_delimiter_reports_root_cause_and_contexts() {
+    let src = r"\begin{aligned}\probe[\left\foo x]\end{aligned}";
+    let output = test_context_with_items([
+        ContextItem::from(environment_item(
+            "aligned",
+            AllowedMode::Math,
+            ContentMode::Math,
+            "",
+        )),
+        ContextItem::from(command_item(
+            "probe",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "o",
+        )),
+    ])
+    .parse(src, false);
+
+    assert!(
+        output.result.is_some(),
+        "recoverable subparse should keep a partial result"
+    );
+
+    let diagnostic = output
         .diagnostics
-        .into_iter()
-        .map(|diag| diag.message)
-        .collect();
-    assert_eq!(diagnostics[0], "invalid \\left delimiter");
+        .iter()
+        .find(|diagnostic| diagnostic.message == "invalid \\left delimiter")
+        .unwrap_or_else(|| panic!("diagnostics: {:?}", output.diagnostics));
+    assert_eq!(diagnostic.contexts.len(), 3);
+
+    let environment_context = diagnostic
+        .contexts
+        .iter()
+        .find(|context| context.label == "environment body")
+        .expect("missing environment body context");
+
+    let argument_context = diagnostic
+        .contexts
+        .iter()
+        .find(|context| context.label == "command argument")
+        .expect("missing command argument context");
+
+    let left_context = diagnostic
+        .contexts
+        .iter()
+        .find(|context| context.label == "left-delimited group")
+        .expect("missing left-delimited group context");
+
+    assert_eq!(
+        &src[argument_context.span.start..argument_context.span.end],
+        r"[\left\foo x]"
+    );
+    assert_eq!(
+        &src[environment_context.span.start..environment_context.span.end],
+        r"\probe[\left\foo"
+    );
+
+    assert_eq!(
+        &src[left_context.span.start..left_context.span.end],
+        r"\left\foo"
+    );
 }
 
 #[test]

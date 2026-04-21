@@ -82,7 +82,6 @@ pub struct MathSpacingOptions {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MathScriptOptions {
-    pub grouping: ScriptGrouping,
     pub spacing: ScriptSpacing,
     pub order: ScriptOrder,
 }
@@ -91,15 +90,7 @@ pub struct MathScriptOptions {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SyntaxSerializeOptions {
-    pub arguments: ArgumentSerializeOptions,
     pub environments: EnvironmentSerializeOptions,
-}
-
-/// Argument delimiter grouping options.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct ArgumentSerializeOptions {
-    pub grouping: ArgumentGrouping,
 }
 
 /// Environment header formatting options.
@@ -153,16 +144,6 @@ pub enum AdjacentCharSpacing {
     Compact,
 }
 
-/// Whether script arguments are always wrapped in explicit braces.
-///
-/// `AlwaysExplicit`: `x ^ { 2 }` even when the argument is a single token.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ScriptGrouping {
-    #[default]
-    AlwaysExplicit,
-}
-
 /// Whether to insert spaces immediately around `_` and `^` markers.
 ///
 /// `Spaced`: `x _ { i }` — `Compact`: `x_{ i }`.
@@ -194,16 +175,6 @@ pub enum InfixGrouping {
     AlwaysExplicit,
     #[default]
     WhenRequired,
-}
-
-/// Whether command arguments always get explicit delimiters.
-///
-/// `AlwaysExplicit`: `\frac { 1 } { 2 }` even for single-token arguments.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ArgumentGrouping {
-    #[default]
-    AlwaysExplicit,
 }
 
 /// Whether `\begin` / `\end` get a space before the name brace.

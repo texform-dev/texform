@@ -871,7 +871,7 @@ fn import_package_names_for_mode(
 /// Same as [`try_build_kb_from_packages`] but preserves the caller's exact
 /// import order instead of canonicalizing it. Useful for tests that need to
 /// verify order-dependent behavior.
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn try_build_kb_from_exact_packages(
     requested: &[&str],
 ) -> Result<KnowledgeBase, PackageLoadError> {

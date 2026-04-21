@@ -147,81 +147,9 @@ fn invalid_input_output(message: String) -> ParseOutput {
 }
 
 fn assert_serializable_syntax_root(node: &SyntaxNode) {
-    let SyntaxNode::Root { children, .. } = node else {
+    let SyntaxNode::Root { .. } = node else {
         panic!("serialize_latex expects SyntaxNode::Root");
     };
-
-    for child in children {
-        assert_serializable_syntax_subtree(child);
-    }
-}
-
-fn assert_serializable_syntax_subtree(node: &SyntaxNode) {
-    match node {
-        SyntaxNode::Root { .. } => {
-            panic!("serialize_latex does not accept nested SyntaxNode::Root")
-        }
-        SyntaxNode::Group { children, .. } => {
-            for child in children {
-                assert_serializable_syntax_subtree(child);
-            }
-        }
-        SyntaxNode::Command { args, .. } | SyntaxNode::Environment { args, .. } => {
-            for arg in args.iter().flatten() {
-                assert_serializable_argument_value(&arg.value);
-            }
-            if let SyntaxNode::Environment { body, .. } = node {
-                assert_serializable_syntax_subtree(body);
-            }
-        }
-        SyntaxNode::Infix {
-            args, left, right, ..
-        } => {
-            for arg in args.iter().flatten() {
-                assert_serializable_argument_value(&arg.value);
-            }
-            assert_serializable_syntax_subtree(left);
-            assert_serializable_syntax_subtree(right);
-        }
-        SyntaxNode::Declarative { args, .. } => {
-            for arg in args.iter().flatten() {
-                assert_serializable_argument_value(&arg.value);
-            }
-        }
-        SyntaxNode::Scripted {
-            base,
-            subscript,
-            superscript,
-        } => {
-            assert_serializable_syntax_subtree(base);
-            if let Some(subscript) = subscript {
-                assert_serializable_syntax_subtree(subscript);
-            }
-            if let Some(superscript) = superscript {
-                assert_serializable_syntax_subtree(superscript);
-            }
-        }
-        SyntaxNode::Error { .. } => {
-            panic!("cannot serialize syntax tree containing Error node")
-        }
-        SyntaxNode::Text(_) | SyntaxNode::Char(_) | SyntaxNode::ActiveSpace => {}
-    }
-}
-
-fn assert_serializable_argument_value(value: &texform_interface::syntax_node::ArgumentValue) {
-    match value {
-        texform_interface::syntax_node::ArgumentValue::MathContent(node)
-        | texform_interface::syntax_node::ArgumentValue::TextContent(node) => {
-            assert_serializable_syntax_subtree(node);
-        }
-        texform_interface::syntax_node::ArgumentValue::Delimiter(_)
-        | texform_interface::syntax_node::ArgumentValue::CSName(_)
-        | texform_interface::syntax_node::ArgumentValue::Dimension(_)
-        | texform_interface::syntax_node::ArgumentValue::Integer(_)
-        | texform_interface::syntax_node::ArgumentValue::KeyVal(_)
-        | texform_interface::syntax_node::ArgumentValue::Column(_)
-        | texform_interface::syntax_node::ArgumentValue::Boolean(_) => {}
-    }
 }
 
 fn invalid_inputs_output(inputs: &[&str], message: String) -> ParseWithContextOutput {

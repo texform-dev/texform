@@ -24,6 +24,20 @@ pub use crate::knowledge::PackageLoadError;
 use crate::lexer::Token;
 use crate::parser::{self, RelativeSpanEntry, TokenStream, TrackedNode, build_token_stream};
 
+type LexedSource = Vec<(Token, std::ops::Range<usize>)>;
+
+fn lex_source(src: &str) -> LexedSource {
+    Token::lexer(src)
+        .spanned()
+        .map(|(token, span)| {
+            let token = token.unwrap_or_else(|()| {
+                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
+            });
+            (token, span)
+        })
+        .collect()
+}
+
 /// A runtime-injectable definition that augments the knowledge base.
 ///
 /// Context items let callers add temporary commands, environments, or
@@ -788,12 +802,14 @@ fn convert_diagnostic(ctx: &ParseContext, src: &str, err: Rich<'static, Token>) 
 }
 
 fn supplement_diagnostic_contexts(ctx: &ParseContext, src: &str, diagnostic: &mut ParseDiagnostic) {
-    supplement_environment_mode_error_message(ctx, src, diagnostic);
-    supplement_environment_mismatch_message(src, diagnostic);
-    supplement_unknown_environment_message(ctx, src, diagnostic);
+    let mut lexed = None;
+
+    supplement_environment_mode_error_message(ctx, src, &mut lexed, diagnostic);
+    supplement_environment_mismatch_message(src, &mut lexed, diagnostic);
+    supplement_unknown_environment_message(ctx, src, &mut lexed, diagnostic);
     supplement_unclosed_inline_math_message(src, diagnostic);
-    supplement_inner_content_error_span(src, diagnostic);
-    supplement_argument_validation_span(src, diagnostic);
+    supplement_inner_content_error_span(src, &mut lexed, diagnostic);
+    supplement_argument_validation_span(src, &mut lexed, diagnostic);
 
     let needs_left_context = matches!(
         diagnostic.message.as_str(),
@@ -805,7 +821,9 @@ fn supplement_diagnostic_contexts(ctx: &ParseContext, src: &str, diagnostic: &mu
         return;
     }
 
-    let Some((left_span, env_span)) = find_invalid_left_context(ctx, src) else {
+    let Some((left_span, env_span)) =
+        find_invalid_left_context(ctx, lexed.get_or_insert_with(|| lex_source(src)))
+    else {
         return;
     };
 
@@ -876,6 +894,7 @@ fn find_inline_math_shift_after_command(src: &str, command_span: Span) -> Option
 fn supplement_environment_mode_error_message(
     ctx: &ParseContext,
     src: &str,
+    lexed: &mut Option<LexedSource>,
     diagnostic: &mut ParseDiagnostic,
 ) {
     let is_generic_parse_error = diagnostic.message.starts_with("found '")
@@ -884,15 +903,21 @@ fn supplement_environment_mode_error_message(
         return;
     }
 
-    let Some((name, disallowed_mode, span)) =
-        find_environment_mode_error_at_span(ctx, src, diagnostic.span.clone()).or_else(|| {
-            if diagnostic.span.start == 0 {
-                find_first_known_but_disallowed_environment(ctx, src)
-            } else {
-                None
-            }
-        })
-    else {
+    let Some((name, disallowed_mode, span)) = find_environment_mode_error_at_span(
+        ctx,
+        lexed.get_or_insert_with(|| lex_source(src)),
+        diagnostic.span.clone(),
+    )
+    .or_else(|| {
+        if diagnostic.span.start == 0 {
+            find_first_known_but_disallowed_environment(
+                ctx,
+                lexed.get_or_insert_with(|| lex_source(src)),
+            )
+        } else {
+            None
+        }
+    }) else {
         return;
     };
 
@@ -905,7 +930,11 @@ fn supplement_environment_mode_error_message(
     diagnostic.found = None;
 }
 
-fn supplement_environment_mismatch_message(src: &str, diagnostic: &mut ParseDiagnostic) {
+fn supplement_environment_mismatch_message(
+    src: &str,
+    lexed: &mut Option<LexedSource>,
+    diagnostic: &mut ParseDiagnostic,
+) {
     let is_generic_parse_error = matches!(
         diagnostic.message.as_str(),
         "found '}' expected something else" | "found '}' expected something else, or end of input"
@@ -914,9 +943,10 @@ fn supplement_environment_mismatch_message(src: &str, diagnostic: &mut ParseDiag
         return;
     }
 
-    let Some((expected, found, span)) =
-        find_environment_name_mismatch(src, diagnostic.span.clone())
-    else {
+    let Some((expected, found, span)) = find_environment_name_mismatch(
+        lexed.get_or_insert_with(|| lex_source(src)),
+        diagnostic.span.clone(),
+    ) else {
         return;
     };
 
@@ -932,6 +962,7 @@ fn supplement_environment_mismatch_message(src: &str, diagnostic: &mut ParseDiag
 fn supplement_unknown_environment_message(
     ctx: &ParseContext,
     src: &str,
+    lexed: &mut Option<LexedSource>,
     diagnostic: &mut ParseDiagnostic,
 ) {
     let is_generic_begin_error = matches!(
@@ -943,8 +974,11 @@ fn supplement_unknown_environment_message(
         return;
     }
 
-    let Some((name, span)) = find_unknown_environment_at_span(ctx, src, diagnostic.span.clone())
-    else {
+    let Some((name, span)) = find_unknown_environment_at_span(
+        ctx,
+        lexed.get_or_insert_with(|| lex_source(src)),
+        diagnostic.span.clone(),
+    ) else {
         return;
     };
 
@@ -954,7 +988,11 @@ fn supplement_unknown_environment_message(
     diagnostic.found = None;
 }
 
-fn supplement_argument_validation_span(src: &str, diagnostic: &mut ParseDiagnostic) {
+fn supplement_argument_validation_span(
+    src: &str,
+    lexed: &mut Option<LexedSource>,
+    diagnostic: &mut ParseDiagnostic,
+) {
     if !looks_like_argument_validation_message(diagnostic.message.as_str()) {
         return;
     }
@@ -966,13 +1004,20 @@ fn supplement_argument_validation_span(src: &str, diagnostic: &mut ParseDiagnost
         return;
     }
 
-    let Some(argument_span) = find_argument_surface_span(src, diagnostic.span.end) else {
+    let Some(argument_span) = find_argument_surface_span(
+        lexed.get_or_insert_with(|| lex_source(src)),
+        diagnostic.span.end,
+    ) else {
         return;
     };
     diagnostic.span = argument_span;
 }
 
-fn supplement_inner_content_error_span(src: &str, diagnostic: &mut ParseDiagnostic) {
+fn supplement_inner_content_error_span(
+    src: &str,
+    lexed: &mut Option<LexedSource>,
+    diagnostic: &mut ParseDiagnostic,
+) {
     let Some(span_text) = src.get(diagnostic.span.start..diagnostic.span.end) else {
         return;
     };
@@ -980,7 +1025,10 @@ fn supplement_inner_content_error_span(src: &str, diagnostic: &mut ParseDiagnost
         return;
     }
 
-    let Some(argument_span) = find_argument_surface_span(src, diagnostic.span.end) else {
+    let Some(argument_span) = find_argument_surface_span(
+        lexed.get_or_insert_with(|| lex_source(src)),
+        diagnostic.span.end,
+    ) else {
         return;
     };
 
@@ -1045,17 +1093,7 @@ fn looks_like_argument_validation_message(message: &str) -> bool {
         || message.starts_with("Missing argument for ")
 }
 
-fn find_argument_surface_span(src: &str, after: usize) -> Option<Span> {
-    let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
-        .spanned()
-        .map(|(token, span)| {
-            let token = token.unwrap_or_else(|()| {
-                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
-            });
-            (token, span)
-        })
-        .collect();
-
+fn find_argument_surface_span(tokens: &LexedSource, after: usize) -> Option<Span> {
     let mut index = 0;
     while index < tokens.len() && tokens[index].1.end <= after {
         index += 1;
@@ -1116,17 +1154,10 @@ fn find_argument_surface_span(src: &str, after: usize) -> Option<Span> {
     }
 }
 
-fn find_invalid_left_context(ctx: &ParseContext, src: &str) -> Option<(Span, Option<Span>)> {
-    let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
-        .spanned()
-        .map(|(token, span)| {
-            let token = token.unwrap_or_else(|()| {
-                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
-            });
-            (token, span)
-        })
-        .collect();
-
+fn find_invalid_left_context(
+    ctx: &ParseContext,
+    tokens: &LexedSource,
+) -> Option<(Span, Option<Span>)> {
     let mut environment_stack = Vec::new();
     let mut index = 0;
 
@@ -1191,17 +1222,10 @@ fn find_invalid_left_context(ctx: &ParseContext, src: &str) -> Option<(Span, Opt
     None
 }
 
-fn find_environment_name_mismatch(src: &str, target_span: Span) -> Option<(String, String, Span)> {
-    let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
-        .spanned()
-        .map(|(token, span)| {
-            let token = token.unwrap_or_else(|()| {
-                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
-            });
-            (token, span)
-        })
-        .collect();
-
+fn find_environment_name_mismatch(
+    tokens: &LexedSource,
+    target_span: Span,
+) -> Option<(String, String, Span)> {
     let mut stack = Vec::new();
     let mut index = 0;
 
@@ -1281,19 +1305,9 @@ fn find_environment_name_mismatch(src: &str, target_span: Span) -> Option<(Strin
 
 fn find_unknown_environment_at_span(
     ctx: &ParseContext,
-    src: &str,
+    tokens: &LexedSource,
     target_span: Span,
 ) -> Option<(String, Span)> {
-    let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
-        .spanned()
-        .map(|(token, span)| {
-            let token = token.unwrap_or_else(|()| {
-                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
-            });
-            (token, span)
-        })
-        .collect();
-
     let mut index = 0;
     while index < tokens.len() {
         let Some((Token::ControlSeq(name), begin_span)) = tokens.get(index) else {
@@ -1357,18 +1371,8 @@ fn find_unknown_environment_at_span(
 
 fn find_first_known_but_disallowed_environment(
     ctx: &ParseContext,
-    src: &str,
+    tokens: &LexedSource,
 ) -> Option<(String, ContentMode, Span)> {
-    let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
-        .spanned()
-        .map(|(token, span)| {
-            let token = token.unwrap_or_else(|()| {
-                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
-            });
-            (token, span)
-        })
-        .collect();
-
     let mut index = 0;
     while index < tokens.len() {
         let Some((Token::ControlSeq(name), head_span)) = tokens.get(index) else {
@@ -1444,19 +1448,9 @@ fn find_first_known_but_disallowed_environment(
 
 fn find_environment_mode_error_at_span(
     ctx: &ParseContext,
-    src: &str,
+    tokens: &LexedSource,
     target_span: Span,
 ) -> Option<(String, ContentMode, Span)> {
-    let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
-        .spanned()
-        .map(|(token, span)| {
-            let token = token.unwrap_or_else(|()| {
-                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
-            });
-            (token, span)
-        })
-        .collect();
-
     let mut index = 0;
     while index < tokens.len() {
         let Some((Token::ControlSeq(name), _)) = tokens.get(index) else {
