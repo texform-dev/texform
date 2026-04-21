@@ -40,7 +40,7 @@ fn underline_text_item() -> ContextItem {
 
 fn content_test_context() -> ParseContext {
     ParseContextBuilder::new()
-        .core_only()
+        .empty()
         .insert_item(text_command_item())
         .insert_item(frac_command_item())
         .insert_item(underline_math_item())
@@ -461,12 +461,14 @@ fn strict_text_content_command_error_has_no_partial_result() {
 #[test]
 fn nonstrict_text_content_direct_error_survives_trailing_generic() {
     let ctx = content_test_context();
-    let output = ctx.parse(r"\text{\underline{a^2}$}", false);
+    let src = r"\text{\underline{a^2}$}";
+    let output = ctx.parse(src, false);
 
     assert_eq!(
         collect_messages(&output),
         vec!["Scripted syntax is not allowed in Text mode"]
     );
+    assert_first_diagnostic_span_eq(&output, src, "^");
 
     let result = output
         .result

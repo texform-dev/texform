@@ -1,6 +1,6 @@
 use texform_core::{
     ast::{Argument, ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node},
-    parse::ParseContext,
+    parse::{ParseAstError, ParseContext},
     serialize::{
         AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, InfixGrouping,
         MathGroupInnerSpacing, MathScriptOptions, ScriptOrder, ScriptSpacing, SerializeOptions,
@@ -12,7 +12,34 @@ fn parse_to_ast(src: &str) -> texform_core::ast::Ast {
     ParseContext::all_packages_shared()
         .parse_to_ast(src, true)
         .unwrap()
-        .ast
+}
+
+#[test]
+fn parse_to_ast_returns_diagnostics_present_when_partial_tree_has_errors() {
+    let error = ParseContext::all_packages_shared()
+        .parse_to_ast(r"\text{\frac{a}{b}}", false)
+        .expect_err("partial parses with diagnostics should not produce an AST");
+
+    match error {
+        ParseAstError::DiagnosticsPresent { diagnostics } => {
+            assert!(!diagnostics.is_empty(), "expected parse diagnostics");
+        }
+        other => panic!("expected DiagnosticsPresent, got {other:?}"),
+    }
+}
+
+#[test]
+fn parse_to_ast_returns_no_parse_result_when_strict_parse_fails() {
+    let error = ParseContext::all_packages_shared()
+        .parse_to_ast(r"\unknowncmd", true)
+        .expect_err("strict parse failures should not produce an AST");
+
+    match error {
+        ParseAstError::NoParseResult { diagnostics } => {
+            assert!(!diagnostics.is_empty(), "expected parse diagnostics");
+        }
+        other => panic!("expected NoParseResult, got {other:?}"),
+    }
 }
 
 #[test]

@@ -5,7 +5,7 @@ use texform_interface::syntax_node::{ArgumentValue, SyntaxNode};
 
 fn parse_inline_column_command(src: &str) -> ParseOutput {
     let ctx = ParseContextBuilder::new()
-        .core_only()
+        .empty()
         .insert_item(CommandItem::new(
             "colspec",
             CommandKind::Prefix,

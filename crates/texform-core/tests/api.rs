@@ -43,7 +43,7 @@ fn matrix_environment_item() -> ContextItem {
 }
 
 fn parse_with_items(items: &[ContextItem], src: &str, strict: bool) -> ParseOutput {
-    let mut builder = ParseContextBuilder::new().core_only();
+    let mut builder = ParseContextBuilder::new().empty();
     for item in items {
         builder = builder.insert_item(item.clone());
     }
@@ -607,6 +607,7 @@ fn diagnostics_serialize_includes_contexts_field() {
     assert!(diagnostic.get("span").is_some());
     assert!(diagnostic.get("expected").is_some());
     assert!(diagnostic.get("contexts").is_some());
+    assert!(diagnostic.get("kind").is_none());
 }
 
 #[test]
@@ -987,7 +988,7 @@ fn parse_with_context_items_reports_invalid_spec() {
 }
 
 #[test]
-fn parse_with_context_items_defaults_to_core_only_context() {
+fn parse_with_context_items_defaults_to_empty_context() {
     let output = parse_with_context_items(
         &[command_item(
             "probe",

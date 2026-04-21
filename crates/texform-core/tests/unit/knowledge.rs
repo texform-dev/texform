@@ -56,7 +56,7 @@ fn test_arg_spec_helpers() {
 
 #[test]
 fn test_delimiter_controls() {
-    let kb = KnowledgeBase::core_only();
+    let kb = KnowledgeBase::empty();
     assert!(kb.lookup_delimiter_control("langle").is_none());
     assert!(kb.lookup_delimiter_control("notadelim").is_none());
 

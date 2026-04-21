@@ -135,14 +135,6 @@ impl KnowledgeBase {
         Self::new()
     }
 
-    pub fn core_only() -> Self {
-        Self::new()
-    }
-
-    pub fn core_only_for_mode(_target_mode: ContentMode) -> Self {
-        Self::new()
-    }
-
     pub fn build_from_packages(packages: &[&str]) -> Self {
         Self::try_build_from_packages(packages).unwrap_or_else(|error| panic!("{error}"))
     }

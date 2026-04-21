@@ -76,7 +76,7 @@ pub fn parse_with_context_items(
 
     let mut builder = match packages {
         Some(package_names) => ParseContextBuilder::new().packages(package_names),
-        None => ParseContextBuilder::new().core_only(),
+        None => ParseContextBuilder::new().empty(),
     };
 
     for item in items {

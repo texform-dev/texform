@@ -15,7 +15,7 @@ fn parse_ok(src: &str) -> ParseResult {
 }
 
 fn parse_ok_with_items(items: &[ContextItem], src: &str) -> ParseResult {
-    let mut builder = ParseContextBuilder::new().core_only();
+    let mut builder = ParseContextBuilder::new().empty();
     for item in items {
         builder = builder.insert_item(item.clone());
     }

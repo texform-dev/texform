@@ -5,8 +5,8 @@ fn assert_from_packages(actual: &[&str], expected: &[&str]) {
 }
 
 #[test]
-fn core_only_context_starts_empty() {
-    let ctx = ParseContext::core_only();
+fn empty_context_starts_empty() {
+    let ctx = ParseContext::empty();
     assert!(ctx.lookup_command("\\", ContentMode::Math).is_none());
     assert!(ctx.lookup_command("text", ContentMode::Math).is_none());
 }

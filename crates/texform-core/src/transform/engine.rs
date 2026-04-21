@@ -389,7 +389,7 @@ mod tests {
 
     #[test]
     fn contract_ignores_unloaded_unknown_command_forms() {
-        let parse_ctx = ParseContext::core_only();
+        let parse_ctx = ParseContext::empty();
         assert!(
             parse_ctx
                 .lookup_command("quantity", ContentMode::Math)
@@ -398,8 +398,7 @@ mod tests {
 
         let mut ast = parse_ctx
             .parse_to_ast(r"\quantity{a}", false)
-            .expect("non-strict parse should preserve unknown package command")
-            .ast;
+            .expect("non-strict parse should preserve unknown package command");
 
         let root_children = ast.children(ast.root());
         match ast.node(root_children[0]) {

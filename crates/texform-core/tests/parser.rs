@@ -40,7 +40,7 @@ fn test_context() -> ParseContext {
     static BASE_CTX: OnceLock<ParseContext> = OnceLock::new();
     BASE_CTX
         .get_or_init(|| {
-            let mut builder = ParseContextBuilder::new().core_only();
+            let mut builder = ParseContextBuilder::new().empty();
             for item in shared_test_items() {
                 builder = builder.insert_item(item.clone());
             }
@@ -57,7 +57,7 @@ where
     I: IntoIterator<Item = T>,
     T: Into<ContextItem>,
 {
-    let mut builder = ParseContextBuilder::new().core_only();
+    let mut builder = ParseContextBuilder::new().empty();
     for item in shared_test_items() {
         builder = builder.insert_item(item.clone());
     }

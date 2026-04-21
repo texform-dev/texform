@@ -35,8 +35,7 @@ mod tests {
         for input in [r"\Tr", r"\trace", r"\Trace"] {
             let mut ast = parse_ctx
                 .parse_to_ast(input, true)
-                .expect("parse should succeed")
-                .ast;
+                .expect("parse should succeed");
             let output = transform_ast(&mut ast, &parse_ctx, &transform_ctx)
                 .unwrap_or_else(|error| panic!("trace-to-tr transform should succeed: {error:?}"));
 

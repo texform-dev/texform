@@ -9,7 +9,7 @@ use texform_core::parse::{
 use texform_interface::syntax_node::{ArgumentValue as SyntaxArgumentValue, SyntaxNode};
 
 fn parse_with_items(src: &str, strict: bool, items: Vec<ContextItem>) -> SyntaxNode {
-    let mut builder = ParseContextBuilder::new().core_only();
+    let mut builder = ParseContextBuilder::new().empty();
     for item in items {
         builder = builder.insert_item(item);
     }

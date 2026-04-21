@@ -233,44 +233,37 @@ pub enum ParseContextBuildError {
     },
 }
 
+enum KnowledgeBaseMode {
+    Packages(Vec<String>),
+    Empty,
+}
+
 pub struct ParseContextBuilder {
-    packages: Vec<String>,
-    use_core_only: bool,
-    use_empty: bool,
+    mode: KnowledgeBaseMode,
     ops: Vec<BuilderOp>,
 }
 
 impl ParseContextBuilder {
     pub fn new() -> Self {
         Self {
-            packages: texform_specs::builtin::all_package_names()
-                .into_iter()
-                .map(ToString::to_string)
-                .collect(),
-            use_core_only: false,
-            use_empty: false,
+            mode: KnowledgeBaseMode::Packages(
+                texform_specs::builtin::all_package_names()
+                    .into_iter()
+                    .map(ToString::to_string)
+                    .collect(),
+            ),
             ops: Vec::new(),
         }
     }
 
     pub fn packages(mut self, packages: &[&str]) -> Self {
-        self.packages = packages.iter().map(|name| (*name).to_string()).collect();
-        self.use_core_only = false;
-        self.use_empty = false;
-        self
-    }
-
-    pub fn core_only(mut self) -> Self {
-        self.use_core_only = true;
-        self.use_empty = false;
-        self.packages.clear();
+        self.mode =
+            KnowledgeBaseMode::Packages(packages.iter().map(|name| (*name).to_string()).collect());
         self
     }
 
     pub fn empty(mut self) -> Self {
-        self.use_empty = true;
-        self.use_core_only = false;
-        self.packages.clear();
+        self.mode = KnowledgeBaseMode::Empty;
         self
     }
 
@@ -296,21 +289,23 @@ impl ParseContextBuilder {
     }
 
     pub fn build(self) -> Result<ParseContext, ParseContextBuildError> {
-        let (mut math_kb, mut text_kb) = if self.use_empty {
-            (KnowledgeBase::empty(), KnowledgeBase::empty())
-        } else if self.use_core_only {
-            (
-                KnowledgeBase::core_only_for_mode(ContentMode::Math),
-                KnowledgeBase::core_only_for_mode(ContentMode::Text),
-            )
-        } else {
-            let refs = self.packages.iter().map(String::as_str).collect::<Vec<_>>();
-            (
-                KnowledgeBase::try_build_from_packages_for_mode(refs.as_slice(), ContentMode::Math)
+        let (mut math_kb, mut text_kb) = match self.mode {
+            KnowledgeBaseMode::Empty => (KnowledgeBase::empty(), KnowledgeBase::empty()),
+            KnowledgeBaseMode::Packages(packages) => {
+                let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
+                (
+                    KnowledgeBase::try_build_from_packages_for_mode(
+                        refs.as_slice(),
+                        ContentMode::Math,
+                    )
                     .map_err(ParseContextBuildError::PackageLoad)?,
-                KnowledgeBase::try_build_from_packages_for_mode(refs.as_slice(), ContentMode::Text)
+                    KnowledgeBase::try_build_from_packages_for_mode(
+                        refs.as_slice(),
+                        ContentMode::Text,
+                    )
                     .map_err(ParseContextBuildError::PackageLoad)?,
-            )
+                )
+            }
         };
 
         let mut mutation_summary = MutationSummary::default();
@@ -470,11 +465,6 @@ pub struct ParseOutput {
 }
 
 #[derive(Debug, Clone)]
-pub struct ParseAstOutput {
-    pub ast: Ast,
-}
-
-#[derive(Debug, Clone)]
 pub enum ParseAstError {
     NoParseResult { diagnostics: Vec<ParseDiagnostic> },
     DiagnosticsPresent { diagnostics: Vec<ParseDiagnostic> },
@@ -502,7 +492,6 @@ impl std::error::Error for ParseAstError {}
 /// | Constructor | Loaded knowledge |
 /// |---|---|
 /// | [`empty()`](Self::empty) | Nothing |
-/// | [`core_only()`](Self::core_only) | No builtin packages |
 /// | [`from_packages()`](Self::from_packages) | Named packages only |
 /// | [`all_packages()`](Self::all_packages) | Every registered package |
 /// | [`all_packages_shared()`](Self::all_packages_shared) | Same as above, lazily cached `&'static` ref |
@@ -548,14 +537,6 @@ impl ParseContext {
             .empty()
             .build()
             .expect("empty parse context should build")
-    }
-
-    /// Build a context containing no builtin package knowledge.
-    pub fn core_only() -> Self {
-        ParseContextBuilder::new()
-            .core_only()
-            .build()
-            .expect("core-only parse context should build")
     }
 
     /// Build a context from an explicit list of package names.
@@ -623,12 +604,12 @@ impl ParseContext {
         parse_with_context(self, src, strict)
     }
 
-    pub fn parse_to_ast(&self, src: &str, strict: bool) -> Result<ParseAstOutput, ParseAstError> {
+    pub fn parse_to_ast(&self, src: &str, strict: bool) -> Result<Ast, ParseAstError> {
         let output = self.parse(src, strict);
         match (output.result, output.diagnostics) {
-            (Some(result), diagnostics) if diagnostics.is_empty() => Ok(ParseAstOutput {
-                ast: Ast::from_syntax_root(&result.node),
-            }),
+            (Some(result), diagnostics) if diagnostics.is_empty() => {
+                Ok(Ast::from_syntax_root(&result.node))
+            }
             (Some(_), diagnostics) => Err(ParseAstError::DiagnosticsPresent { diagnostics }),
             (None, diagnostics) => Err(ParseAstError::NoParseResult { diagnostics }),
         }
@@ -754,6 +735,129 @@ fn node_span_entry(entry: RelativeSpanEntry) -> NodeSpanEntry {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiagnosticKind {
+    GenericParse,
+    InvalidLeftDelimiter,
+    GenericBeginError,
+    GenericRightBraceError,
+    ArgumentValidation,
+    ScriptedTextMode,
+    Custom,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GenericParseDetail {
+    Other,
+    UnclosedInlineMath,
+    UnclosedInlineMathAfterCommand,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CustomDiagnosticDetail {
+    None,
+    CommandModeError(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DiagnosticClassification {
+    kind: DiagnosticKind,
+    generic_parse: Option<GenericParseDetail>,
+    custom: CustomDiagnosticDetail,
+}
+
+fn classify_diagnostic(
+    message: &str,
+    expected: &[String],
+    found: Option<&str>,
+) -> DiagnosticClassification {
+    let generic_parse = match message {
+        "found '$' expected something else, or '$'"
+        | "found end of input expected something else, or '$'" => {
+            Some(GenericParseDetail::UnclosedInlineMath)
+        }
+        "found '\\text' expected something else, or '$'" => {
+            Some(GenericParseDetail::UnclosedInlineMathAfterCommand)
+        }
+        _ => None,
+    };
+
+    let custom = message
+        .strip_prefix("Command ")
+        .and_then(|rest| rest.split(" is not allowed in ").next())
+        .filter(|name| name.starts_with('\\'))
+        .map(|name| CustomDiagnosticDetail::CommandModeError(name.to_string()))
+        .unwrap_or(CustomDiagnosticDetail::None);
+
+    if matches!(
+        message,
+        "invalid \\left delimiter"
+            | "missing \\right for \\left-delimited group"
+            | "invalid \\right delimiter"
+    ) {
+        return DiagnosticClassification {
+            kind: DiagnosticKind::InvalidLeftDelimiter,
+            generic_parse: None,
+            custom,
+        };
+    }
+
+    if matches!(
+        message,
+        "found '\\begin' expected something else"
+            | "found '\\begin' expected something else, or end of input"
+    ) {
+        return DiagnosticClassification {
+            kind: DiagnosticKind::GenericBeginError,
+            generic_parse: None,
+            custom,
+        };
+    }
+
+    if matches!(
+        message,
+        "found '}' expected something else" | "found '}' expected something else, or end of input"
+    ) {
+        return DiagnosticClassification {
+            kind: DiagnosticKind::GenericRightBraceError,
+            generic_parse: None,
+            custom,
+        };
+    }
+
+    if looks_like_argument_validation_message(message) {
+        return DiagnosticClassification {
+            kind: DiagnosticKind::ArgumentValidation,
+            generic_parse: None,
+            custom,
+        };
+    }
+
+    if message == "Scripted syntax is not allowed in Text mode" {
+        return DiagnosticClassification {
+            kind: DiagnosticKind::ScriptedTextMode,
+            generic_parse: None,
+            custom,
+        };
+    }
+
+    if (message.starts_with("found '") || generic_parse.is_some())
+        && (!expected.is_empty() || found.is_some() || generic_parse.is_some())
+    {
+        return DiagnosticClassification {
+            kind: DiagnosticKind::GenericParse,
+            generic_parse: Some(generic_parse.unwrap_or(GenericParseDetail::Other)),
+            custom,
+        };
+    }
+
+    DiagnosticClassification {
+        kind: DiagnosticKind::Custom,
+        generic_parse: None,
+        custom,
+    }
+}
+
 fn convert_diagnostic(ctx: &ParseContext, src: &str, err: Rich<'static, Token>) -> ParseDiagnostic {
     let span = {
         let s = err.span();
@@ -788,6 +892,7 @@ fn convert_diagnostic(ctx: &ParseContext, src: &str, err: Rich<'static, Token>) 
         }
         chumsky::error::RichReason::Custom(msg) => (msg.clone(), Vec::new(), None),
     };
+    let classification = classify_diagnostic(&message, &expected, found.as_deref());
 
     let mut diagnostic = ParseDiagnostic {
         message,
@@ -797,69 +902,61 @@ fn convert_diagnostic(ctx: &ParseContext, src: &str, err: Rich<'static, Token>) 
         contexts,
     };
 
-    supplement_diagnostic_contexts(ctx, src, &mut diagnostic);
+    supplement_diagnostic_contexts(ctx, src, &classification, &mut diagnostic);
     diagnostic
 }
 
-fn supplement_diagnostic_contexts(ctx: &ParseContext, src: &str, diagnostic: &mut ParseDiagnostic) {
+fn supplement_diagnostic_contexts(
+    ctx: &ParseContext,
+    src: &str,
+    classification: &DiagnosticClassification,
+    diagnostic: &mut ParseDiagnostic,
+) {
     let mut lexed = None;
-
-    supplement_environment_mode_error_message(ctx, src, &mut lexed, diagnostic);
-    supplement_environment_mismatch_message(src, &mut lexed, diagnostic);
-    supplement_unknown_environment_message(ctx, src, &mut lexed, diagnostic);
-    supplement_unclosed_inline_math_message(src, diagnostic);
-    supplement_inner_content_error_span(src, &mut lexed, diagnostic);
-    supplement_argument_validation_span(src, &mut lexed, diagnostic);
-
-    let needs_left_context = matches!(
-        diagnostic.message.as_str(),
-        "invalid \\left delimiter"
-            | "missing \\right for \\left-delimited group"
-            | "invalid \\right delimiter"
-    );
-    if !needs_left_context {
-        return;
-    }
-
-    let Some((left_span, env_span)) =
-        find_invalid_left_context(ctx, lexed.get_or_insert_with(|| lex_source(src)))
-    else {
-        return;
-    };
-
-    if !diagnostic
-        .contexts
-        .iter()
-        .any(|context| context.label == "left-delimited group")
-    {
-        diagnostic.contexts.push(ParseDiagnosticContext {
-            label: "left-delimited group".to_string(),
-            span: left_span,
-        });
-    }
-
-    if let Some(env_span) = env_span
-        && !diagnostic
-            .contexts
-            .iter()
-            .any(|context| context.label == "environment body")
-    {
-        diagnostic.contexts.push(ParseDiagnosticContext {
-            label: "environment body".to_string(),
-            span: env_span,
-        });
+    match classification.kind {
+        DiagnosticKind::GenericParse => {
+            supplement_unclosed_inline_math_message(src, classification.generic_parse, diagnostic);
+            supplement_environment_mode_error_message(ctx, src, &mut lexed, diagnostic);
+        }
+        DiagnosticKind::InvalidLeftDelimiter => {
+            supplement_invalid_left_context(ctx, src, &mut lexed, diagnostic);
+        }
+        DiagnosticKind::GenericBeginError => {
+            supplement_unknown_environment_message(ctx, src, &mut lexed, diagnostic);
+        }
+        DiagnosticKind::GenericRightBraceError => {
+            if !supplement_environment_mode_error_message(ctx, src, &mut lexed, diagnostic) {
+                supplement_environment_mismatch_message(src, &mut lexed, diagnostic);
+            }
+        }
+        DiagnosticKind::ArgumentValidation => {
+            supplement_argument_validation_span(src, &mut lexed, diagnostic);
+        }
+        DiagnosticKind::ScriptedTextMode => {
+            supplement_scripted_text_mode_span(src, &mut lexed, diagnostic);
+        }
+        DiagnosticKind::Custom => {
+            supplement_custom_command_content_span(
+                src,
+                &mut lexed,
+                &classification.custom,
+                diagnostic,
+            );
+        }
     }
 }
 
 /// Normalize the lone inline-math opener message so recoverable content
 /// subparses report the same generic tail error shape as the top-level parser.
-fn supplement_unclosed_inline_math_message(src: &str, diagnostic: &mut ParseDiagnostic) {
-    if !matches!(
-        diagnostic.message.as_str(),
-        "found '$' expected something else, or '$'"
-            | "found end of input expected something else, or '$'"
-            | "found '\\text' expected something else, or '$'"
-    ) {
+fn supplement_unclosed_inline_math_message(
+    src: &str,
+    detail: Option<GenericParseDetail>,
+    diagnostic: &mut ParseDiagnostic,
+) {
+    let Some(detail) = detail else {
+        return;
+    };
+    if detail == GenericParseDetail::Other {
         return;
     }
 
@@ -867,7 +964,7 @@ fn supplement_unclosed_inline_math_message(src: &str, diagnostic: &mut ParseDiag
     if diagnostic.expected == ["something else", "'$'"] {
         diagnostic.expected = vec!["something else".to_string(), "end of input".to_string()];
     }
-    if diagnostic.found.as_deref() == Some("\\text")
+    if detail == GenericParseDetail::UnclosedInlineMathAfterCommand
         && let Some(span) = find_inline_math_shift_after_command(src, diagnostic.span.clone())
     {
         diagnostic.span = span;
@@ -896,13 +993,7 @@ fn supplement_environment_mode_error_message(
     src: &str,
     lexed: &mut Option<LexedSource>,
     diagnostic: &mut ParseDiagnostic,
-) {
-    let is_generic_parse_error = diagnostic.message.starts_with("found '")
-        && diagnostic.message.contains(" expected something else");
-    if !is_generic_parse_error {
-        return;
-    }
-
+) -> bool {
     let Some((name, disallowed_mode, span)) = find_environment_mode_error_at_span(
         ctx,
         lexed.get_or_insert_with(|| lex_source(src)),
@@ -918,7 +1009,7 @@ fn supplement_environment_mode_error_message(
             None
         }
     }) else {
-        return;
+        return false;
     };
 
     diagnostic.message = format!(
@@ -928,6 +1019,7 @@ fn supplement_environment_mode_error_message(
     diagnostic.span = span;
     diagnostic.expected.clear();
     diagnostic.found = None;
+    true
 }
 
 fn supplement_environment_mismatch_message(
@@ -935,14 +1027,6 @@ fn supplement_environment_mismatch_message(
     lexed: &mut Option<LexedSource>,
     diagnostic: &mut ParseDiagnostic,
 ) {
-    let is_generic_parse_error = matches!(
-        diagnostic.message.as_str(),
-        "found '}' expected something else" | "found '}' expected something else, or end of input"
-    );
-    if !is_generic_parse_error {
-        return;
-    }
-
     let Some((expected, found, span)) = find_environment_name_mismatch(
         lexed.get_or_insert_with(|| lex_source(src)),
         diagnostic.span.clone(),
@@ -965,15 +1049,6 @@ fn supplement_unknown_environment_message(
     lexed: &mut Option<LexedSource>,
     diagnostic: &mut ParseDiagnostic,
 ) {
-    let is_generic_begin_error = matches!(
-        diagnostic.message.as_str(),
-        "found '\\begin' expected something else"
-            | "found '\\begin' expected something else, or end of input"
-    );
-    if !is_generic_begin_error {
-        return;
-    }
-
     let Some((name, span)) = find_unknown_environment_at_span(
         ctx,
         lexed.get_or_insert_with(|| lex_source(src)),
@@ -993,10 +1068,6 @@ fn supplement_argument_validation_span(
     lexed: &mut Option<LexedSource>,
     diagnostic: &mut ParseDiagnostic,
 ) {
-    if !looks_like_argument_validation_message(diagnostic.message.as_str()) {
-        return;
-    }
-
     let Some(span_text) = src.get(diagnostic.span.start..diagnostic.span.end) else {
         return;
     };
@@ -1013,7 +1084,7 @@ fn supplement_argument_validation_span(
     diagnostic.span = argument_span;
 }
 
-fn supplement_inner_content_error_span(
+fn supplement_scripted_text_mode_span(
     src: &str,
     lexed: &mut Option<LexedSource>,
     diagnostic: &mut ParseDiagnostic,
@@ -1032,18 +1103,32 @@ fn supplement_inner_content_error_span(
         return;
     };
 
-    if diagnostic.message == "Scripted syntax is not allowed in Text mode"
-        && let Some(span) = find_first_script_marker_in_span(src, argument_span.clone())
-    {
+    if let Some(span) = find_first_script_marker_in_span(src, argument_span) {
         diagnostic.span = span;
+    }
+}
+
+fn supplement_custom_command_content_span(
+    src: &str,
+    lexed: &mut Option<LexedSource>,
+    detail: &CustomDiagnosticDetail,
+    diagnostic: &mut ParseDiagnostic,
+) {
+    let Some(span_text) = src.get(diagnostic.span.start..diagnostic.span.end) else {
+        return;
+    };
+    if !span_text.starts_with('\\') {
         return;
     }
 
-    let Some(command_name) = diagnostic
-        .message
-        .strip_prefix("Command ")
-        .and_then(|rest| rest.split(" is not allowed in ").next())
-    else {
+    let Some(argument_span) = find_argument_surface_span(
+        lexed.get_or_insert_with(|| lex_source(src)),
+        diagnostic.span.end,
+    ) else {
+        return;
+    };
+
+    let CustomDiagnosticDetail::CommandModeError(command_name) = detail else {
         return;
     };
 
@@ -1053,6 +1138,42 @@ fn supplement_inner_content_error_span(
 
     if let Some(span) = find_command_name_in_span(src, argument_span, command_name) {
         diagnostic.span = span;
+    }
+}
+
+fn supplement_invalid_left_context(
+    ctx: &ParseContext,
+    src: &str,
+    lexed: &mut Option<LexedSource>,
+    diagnostic: &mut ParseDiagnostic,
+) {
+    let Some((left_span, env_span)) =
+        find_invalid_left_context(ctx, lexed.get_or_insert_with(|| lex_source(src)))
+    else {
+        return;
+    };
+
+    if !diagnostic
+        .contexts
+        .iter()
+        .any(|context| context.label == "left-delimited group")
+    {
+        diagnostic.contexts.push(ParseDiagnosticContext {
+            label: "left-delimited group".to_string(),
+            span: left_span,
+        });
+    }
+
+    if let Some(env_span) = env_span
+        && !diagnostic
+            .contexts
+            .iter()
+            .any(|context| context.label == "environment body")
+    {
+        diagnostic.contexts.push(ParseDiagnosticContext {
+            label: "environment body".to_string(),
+            span: env_span,
+        });
     }
 }
 
@@ -1551,9 +1672,67 @@ mod tests {
 
     #[test]
     fn parse_context_debug_omits_mutation_summary() {
-        let debug = format!("{:?}", ParseContext::core_only());
+        let debug = format!("{:?}", ParseContext::empty());
         assert!(debug.contains("ParseContext"));
         assert!(debug.contains("kb"));
         assert!(!debug.contains("mutation_summary"));
+    }
+
+    #[test]
+    fn classify_diagnostic_captures_inline_math_detail() {
+        let classification = classify_diagnostic(
+            "found '\\text' expected something else, or '$'",
+            &["something else".to_string(), "'$'".to_string()],
+            Some("\\text"),
+        );
+
+        assert_eq!(classification.kind, DiagnosticKind::GenericParse);
+        assert_eq!(
+            classification.generic_parse,
+            Some(GenericParseDetail::UnclosedInlineMathAfterCommand)
+        );
+    }
+
+    #[test]
+    fn classify_diagnostic_captures_command_mode_error_detail() {
+        let classification =
+            classify_diagnostic(r"Command \frac is not allowed in text mode", &[], None);
+
+        assert_eq!(classification.kind, DiagnosticKind::Custom);
+        assert_eq!(
+            classification.custom,
+            CustomDiagnosticDetail::CommandModeError("\\frac".to_string())
+        );
+    }
+
+    #[test]
+    fn eof_unclosed_inline_math_is_normalized() {
+        let expected = vec!["something else".to_string(), "'$'".to_string()];
+        let classification = classify_diagnostic(
+            "found end of input expected something else, or '$'",
+            &expected,
+            None,
+        );
+        let mut diagnostic = ParseDiagnostic {
+            message: "found end of input expected something else, or '$'".to_string(),
+            span: Span { start: 0, end: 2 },
+            expected,
+            found: None,
+            contexts: Vec::new(),
+        };
+
+        supplement_diagnostic_contexts(
+            &ParseContext::empty(),
+            "$x",
+            &classification,
+            &mut diagnostic,
+        );
+
+        assert_eq!(
+            diagnostic.message,
+            "found '$' expected something else, or end of input"
+        );
+        assert_eq!(diagnostic.expected, ["something else", "end of input"]);
+        assert_eq!(diagnostic.found, None);
     }
 }

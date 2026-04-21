@@ -63,8 +63,7 @@ mod tests {
             .expect("transform context should build");
         let mut ast = parse_ctx
             .parse_to_ast(r"a \over b", true)
-            .expect("parse should succeed")
-            .ast;
+            .expect("parse should succeed");
 
         let output = transform_ast(&mut ast, &parse_ctx, &transform_ctx)
             .expect("over-to-frac transform should succeed");
