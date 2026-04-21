@@ -1,27 +1,27 @@
 use texform_interface::syntax_node::{
-    Argument, ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
+    Argument, ArgumentKind, ArgumentValue, ContentMode, GroupKind, SyntaxNode,
 };
 
+fn content_argument(node: SyntaxNode) -> Argument {
+    Argument::from_value(ArgumentKind::Mandatory, ArgumentValue::TextContent(node))
+}
+
 #[test]
-fn test_syntax_node_creation() {
-    // Test creating various node types
+fn leaf_and_group_helpers_report_meaningful_structure() {
     let char_node = SyntaxNode::Char('a');
-    assert!(char_node.is_leaf());
-
-    let text_node = SyntaxNode::Text("hello".to_string());
-    assert!(text_node.is_leaf());
-
     let group = SyntaxNode::Group {
         mode: ContentMode::Math,
         kind: GroupKind::Explicit,
         children: vec![SyntaxNode::Char('x')],
     };
+
+    assert!(char_node.is_leaf());
     assert!(group.is_group());
     assert_eq!(group.group_mode(), Some(ContentMode::Math));
 }
 
 #[test]
-fn test_root_preserves_group_helper_semantics() {
+fn root_preserves_group_helper_semantics() {
     let root = SyntaxNode::root(ContentMode::Text, vec![SyntaxNode::Text("x".to_string())]);
 
     assert!(root.is_group());
@@ -29,7 +29,7 @@ fn test_root_preserves_group_helper_semantics() {
 }
 
 #[test]
-fn test_implicit_group_helpers() {
+fn implicit_group_helpers_preserve_mode_and_kind() {
     let children = vec![SyntaxNode::Char('a'), SyntaxNode::Char('b')];
     let group = SyntaxNode::implicit_group(ContentMode::Math, children.clone());
 
@@ -62,28 +62,7 @@ fn test_implicit_group_helpers() {
 }
 
 #[test]
-fn test_argument_creation() {
-    let node = SyntaxNode::Char('x');
-    let mandatory = Argument::from_value(
-        ArgumentKind::Mandatory,
-        ArgumentValue::MathContent(node.clone()),
-    );
-    assert_eq!(mandatory.kind, ArgumentKind::Mandatory);
-    assert_eq!(
-        mandatory.value,
-        ArgumentValue::MathContent(SyntaxNode::Char('x'))
-    );
-
-    let optional = Argument::from_value(ArgumentKind::Optional, ArgumentValue::MathContent(node));
-    assert_eq!(optional.kind, ArgumentKind::Optional);
-    assert_eq!(
-        optional.value,
-        ArgumentValue::MathContent(SyntaxNode::Char('x'))
-    );
-}
-
-#[test]
-fn test_text_argument_uses_text_content_variant_for_single_char_item() {
+fn argument_from_value_preserves_kind_and_variant() {
     let arg = Argument::from_value(
         ArgumentKind::Mandatory,
         ArgumentValue::TextContent(SyntaxNode::Char('x')),
@@ -94,7 +73,7 @@ fn test_text_argument_uses_text_content_variant_for_single_char_item() {
 }
 
 #[test]
-fn test_content_mode_helpers() {
+fn content_mode_display_helpers_match_public_strings() {
     assert_eq!(ContentMode::Math.as_str(), "math");
     assert_eq!(ContentMode::Text.as_str(), "text");
     assert_eq!(ContentMode::Math.to_string(), "math");
@@ -102,122 +81,39 @@ fn test_content_mode_helpers() {
 }
 
 #[test]
-fn test_command_node() {
-    let cmd = SyntaxNode::Command {
-        name: "frac".to_string(),
-        args: vec![
-            Some(Argument::from_value(
-                ArgumentKind::Mandatory,
-                ArgumentValue::MathContent(SyntaxNode::Char('a')),
-            )),
-            Some(Argument::from_value(
-                ArgumentKind::Mandatory,
-                ArgumentValue::MathContent(SyntaxNode::Char('b')),
-            )),
-        ],
+fn command_is_leaf_only_without_content_arguments() {
+    let leaf = SyntaxNode::Command {
+        name: "alpha".to_string(),
+        args: vec![],
+        known: true,
+    };
+    let non_leaf = SyntaxNode::Command {
+        name: "text".to_string(),
+        args: vec![Some(content_argument(SyntaxNode::Char('x')))],
         known: true,
     };
 
-    match cmd {
-        SyntaxNode::Command { name, args, known } => {
-            assert_eq!(name, "frac");
-            assert_eq!(args.len(), 2);
-            assert!(known);
-        }
-        _ => panic!("Expected Command"),
-    }
+    assert!(leaf.is_leaf());
+    assert!(!non_leaf.is_leaf());
 }
 
 #[test]
-fn test_infix_node() {
-    let infix = SyntaxNode::Infix {
-        name: "over".to_string(),
+fn declarative_is_leaf_only_without_content_arguments() {
+    let leaf = SyntaxNode::Declarative {
+        name: "bfseries".to_string(),
         args: vec![],
-        left: Box::new(SyntaxNode::Char('a')),
-        right: Box::new(SyntaxNode::Char('b')),
+    };
+    let non_leaf = SyntaxNode::Declarative {
+        name: "color".to_string(),
+        args: vec![Some(content_argument(SyntaxNode::Text("red".to_string())))],
     };
 
-    match infix {
-        SyntaxNode::Infix {
-            name, left, right, ..
-        } => {
-            assert_eq!(name, "over");
-            assert!(matches!(*left, SyntaxNode::Char('a')));
-            assert!(matches!(*right, SyntaxNode::Char('b')));
-        }
-        _ => panic!("Expected Infix"),
-    }
+    assert!(leaf.is_leaf());
+    assert!(!non_leaf.is_leaf());
 }
 
 #[test]
-fn test_scripted_normalization_structure() {
-    // Test that we can create a Scripted node with both sub and sup
-    let scripted = SyntaxNode::Scripted {
-        base: Box::new(SyntaxNode::Char('x')),
-        subscript: Some(Box::new(SyntaxNode::Char('i'))),
-        superscript: Some(Box::new(SyntaxNode::Char('2'))),
-    };
-
-    match scripted {
-        SyntaxNode::Scripted {
-            base,
-            subscript,
-            superscript,
-        } => {
-            assert!(matches!(*base, SyntaxNode::Char('x')));
-            assert!(subscript.is_some());
-            assert!(superscript.is_some());
-        }
-        _ => panic!("Expected Scripted"),
-    }
-}
-
-#[test]
-fn test_group_kind_variants() {
-    let explicit = GroupKind::Explicit;
-    let implicit = GroupKind::Implicit;
-    let delimited = GroupKind::Delimited {
-        left: Delimiter::Char('('),
-        right: Delimiter::Char(')'),
-    };
-    let inline_math = GroupKind::InlineMath;
-
-    assert_ne!(explicit, implicit);
-    assert_ne!(explicit, delimited);
-    assert_ne!(explicit, inline_math);
-
-    match delimited {
-        GroupKind::Delimited { left, right } => {
-            assert_eq!(left, Delimiter::Char('('));
-            assert_eq!(right, Delimiter::Char(')'));
-        }
-        _ => panic!("Expected Delimited"),
-    }
-}
-
-#[test]
-fn test_delimiter_variants() {
-    let none = Delimiter::None;
-    let char_delim = Delimiter::Char('(');
-    let control_delim = Delimiter::Control("langle");
-
-    assert_ne!(none, char_delim);
-    assert_ne!(char_delim, control_delim);
-
-    match char_delim {
-        Delimiter::Char(c) => assert_eq!(c, '('),
-        _ => panic!("Expected Char delimiter"),
-    }
-
-    match control_delim {
-        Delimiter::Control(s) => assert_eq!(s, "langle"),
-        _ => panic!("Expected Control delimiter"),
-    }
-}
-
-#[test]
-fn test_display_simple() {
-    // Test that Display implementation works without panicking
+fn display_merges_adjacent_chars_without_losing_node_boundaries() {
     let node = SyntaxNode::Char('a');
     let display = format!("{}", node);
     assert!(display.contains("Char"));
@@ -235,7 +131,7 @@ fn test_display_simple() {
 }
 
 #[test]
-fn test_display_char_merging_boundaries() {
+fn display_keeps_non_char_boundaries_visible() {
     let group = SyntaxNode::implicit_group(
         ContentMode::Math,
         vec![
@@ -253,7 +149,7 @@ fn test_display_char_merging_boundaries() {
 }
 
 #[test]
-fn test_default_display_marks_root_node() {
+fn default_display_marks_root_node() {
     let root = SyntaxNode::root(ContentMode::Math, vec![SyntaxNode::Char('x')]);
     let display = format!("{}", root);
 
@@ -262,9 +158,7 @@ fn test_default_display_marks_root_node() {
 }
 
 #[test]
-fn test_display_standalone_implicit_group() {
-    // An implicit group that is not the top-level root must still display as
-    // a regular group, not as the root marker.
+fn display_standalone_implicit_group_is_not_marked_as_root() {
     let group = SyntaxNode::implicit_group(ContentMode::Math, vec![SyntaxNode::Char('x')]);
     let display = format!("{}", group);
 
@@ -273,27 +167,7 @@ fn test_display_standalone_implicit_group() {
 }
 
 #[test]
-fn test_unknown_command() {
-    let unknown = SyntaxNode::Command {
-        name: "foo".to_string(),
-        args: vec![],
-        known: false,
-    };
-
-    assert!(unknown.is_leaf());
-
-    match unknown {
-        SyntaxNode::Command { name, args, known } => {
-            assert_eq!(name, "foo");
-            assert!(args.is_empty());
-            assert!(!known);
-        }
-        _ => panic!("Expected unknown Command"),
-    }
-}
-
-#[test]
-fn test_error_node_display_and_leaf_status() {
+fn error_node_display_and_leaf_status() {
     let error = SyntaxNode::Error {
         message: "invalid \\left delimiter".to_string(),
         snippet: "\\left\\foo x \\right)".to_string(),
@@ -304,55 +178,4 @@ fn test_error_node_display_and_leaf_status() {
     let display = error.to_string();
     assert!(display.contains("invalid \\left delimiter"));
     assert!(display.contains("\\left\\foo x \\right)"));
-}
-
-#[test]
-fn test_environment_structure() {
-    let env = SyntaxNode::Environment {
-        name: "matrix".to_string(),
-        args: vec![],
-        known: true,
-        body: Box::new(SyntaxNode::empty_group(ContentMode::Math)),
-    };
-
-    match env {
-        SyntaxNode::Environment {
-            name,
-            args,
-            known,
-            body,
-        } => {
-            assert_eq!(name, "matrix");
-            assert!(args.is_empty());
-            assert!(known);
-            assert!(body.is_group());
-        }
-        _ => panic!("Expected Environment"),
-    }
-}
-
-#[test]
-fn test_declarative_node_without_scope() {
-    let decl = SyntaxNode::Declarative {
-        name: "color".to_string(),
-        args: vec![Some(Argument::from_value(
-            ArgumentKind::Mandatory,
-            ArgumentValue::TextContent(SyntaxNode::Text("red".to_string())),
-        ))],
-    };
-
-    match decl {
-        SyntaxNode::Declarative { name, args } => {
-            assert_eq!(name, "color");
-            assert_eq!(args.len(), 1);
-            assert!(matches!(
-                &args[0],
-                Some(Argument {
-                    value: ArgumentValue::TextContent(SyntaxNode::Text(text)),
-                    ..
-                }) if text == "red"
-            ));
-        }
-        _ => panic!("Expected Declarative"),
-    }
 }

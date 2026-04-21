@@ -40,6 +40,38 @@ fn span_ids(result: &ParseResult) -> Vec<&str> {
         .collect()
 }
 
+fn assert_root_span_covers_source(result: &ParseResult, src: &str) {
+    assert_eq!(
+        result.span,
+        Span {
+            start: 0,
+            end: src.len()
+        }
+    );
+    assert_eq!(
+        result.span_for("root"),
+        Some(&Span {
+            start: 0,
+            end: src.len(),
+        })
+    );
+}
+
+#[test]
+fn parse_result_root_span_covers_smoke_cases() {
+    for src in [
+        "",
+        "abc",
+        r"\frac{a}{b}",
+        r"\sqrt[3]{x}",
+        r" a + b ",
+        r"\begin{matrix}x\end{matrix}",
+        "x^{2}_{i}",
+    ] {
+        assert_root_span_covers_source(&parse_ok(src), src);
+    }
+}
+
 #[test]
 fn parse_result_exposes_root_node_span() {
     let result = parse_ok("x");

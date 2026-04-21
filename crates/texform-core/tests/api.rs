@@ -1,33 +1,32 @@
+mod support;
+
+use support::{
+    assert_first_diagnostic_span_eq, collect_messages, command_item, contains_command_named,
+    contains_error_node, delimiter_control_item, environment_item, parse_with_items,
+};
 use texform_core::api::{
     parse_latex, parse_with_context_items, serialize_latex, serialize_latex_with,
 };
-use texform_core::parse::{
-    AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
-    ParseContextBuilder, ParseOutput,
-};
+use texform_core::parse::{AllowedMode, CommandKind, ContextItem, ParseOutput};
 use texform_core::serialize::SerializeOptions;
 use texform_interface::syntax_node::{ArgumentValue, ContentMode, Delimiter, SyntaxNode};
 
-fn command_item(
-    name: &str,
-    kind: CommandKind,
-    allowed_mode: AllowedMode,
-    spec: &str,
-) -> ContextItem {
-    CommandItem::new(name, kind, allowed_mode, spec).into()
+fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        format!("{payload:?}")
+    }
 }
 
-fn environment_item(
-    name: &str,
-    allowed_mode: AllowedMode,
-    body_mode: ContentMode,
-    spec: &str,
-) -> ContextItem {
-    EnvironmentItem::new(name, allowed_mode, body_mode, spec).into()
-}
-
-fn delimiter_control_item(name: &str) -> ContextItem {
-    DelimiterControlItem::new(name).into()
+fn assert_serialize_error_panics(
+    node: &SyntaxNode,
+    serialize: impl Fn(&SyntaxNode) -> String + std::panic::UnwindSafe + std::panic::RefUnwindSafe,
+) {
+    let panic = std::panic::catch_unwind(|| serialize(node)).unwrap_err();
+    assert!(panic_message(panic).contains("cannot convert SyntaxNode::Error into AST"));
 }
 
 fn text_command_item() -> ContextItem {
@@ -42,23 +41,6 @@ fn matrix_environment_item() -> ContextItem {
     environment_item("matrix", AllowedMode::Math, ContentMode::Math, "")
 }
 
-fn parse_with_items(items: &[ContextItem], src: &str, strict: bool) -> ParseOutput {
-    let mut builder = ParseContextBuilder::new().empty();
-    for item in items {
-        builder = builder.insert_item(item.clone());
-    }
-    let ctx = builder.build().expect("context items should be valid");
-    ctx.parse(src, strict)
-}
-
-fn assert_first_diagnostic_span_eq(output: &ParseOutput, src: &str, expected: &str) {
-    let diagnostic = output
-        .diagnostics
-        .first()
-        .expect("expected at least one diagnostic");
-    assert_eq!(&src[diagnostic.span.start..diagnostic.span.end], expected);
-}
-
 fn assert_first_diagnostic_expected_found(
     output: &ParseOutput,
     expected: &[&str],
@@ -70,88 +52,6 @@ fn assert_first_diagnostic_expected_found(
         .expect("expected at least one diagnostic");
     assert_eq!(diagnostic.expected, expected);
     assert_eq!(diagnostic.found.as_deref(), found);
-}
-
-fn slot_contains_error(slot: &Option<texform_interface::syntax_node::Argument>) -> bool {
-    slot.as_ref().is_some_and(|arg| match &arg.value {
-        ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
-            contains_error_node(node)
-        }
-        _ => false,
-    })
-}
-
-fn slot_contains_command_named(
-    slot: &Option<texform_interface::syntax_node::Argument>,
-    name: &str,
-) -> bool {
-    slot.as_ref().is_some_and(|arg| match &arg.value {
-        ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
-            contains_command_named(node, name)
-        }
-        _ => false,
-    })
-}
-
-fn collect_messages(output: &ParseOutput) -> Vec<&str> {
-    output
-        .diagnostics
-        .iter()
-        .map(|diagnostic| diagnostic.message.as_str())
-        .collect()
-}
-
-fn contains_error_node(node: &SyntaxNode) -> bool {
-    match node {
-        SyntaxNode::Error { .. } => true,
-        SyntaxNode::Root { children, .. } | SyntaxNode::Group { children, .. } => {
-            children.iter().any(contains_error_node)
-        }
-        SyntaxNode::Command { args, .. } => args.iter().any(slot_contains_error),
-        SyntaxNode::Declarative { args, .. } => args.iter().any(slot_contains_error),
-        SyntaxNode::Environment { args, body, .. } => {
-            args.iter().any(slot_contains_error) || contains_error_node(body)
-        }
-        SyntaxNode::Infix {
-            args, left, right, ..
-        } => {
-            args.iter().any(slot_contains_error)
-                || contains_error_node(left)
-                || contains_error_node(right)
-        }
-        _ => false,
-    }
-}
-
-fn contains_command_named(node: &SyntaxNode, name: &str) -> bool {
-    match node {
-        SyntaxNode::Command {
-            name: node_name, ..
-        } if node_name == name => true,
-        SyntaxNode::Root { children, .. } | SyntaxNode::Group { children, .. } => children
-            .iter()
-            .any(|child| contains_command_named(child, name)),
-        SyntaxNode::Command { args, .. } => args
-            .iter()
-            .any(|slot| slot_contains_command_named(slot, name)),
-        SyntaxNode::Declarative { args, .. } => args
-            .iter()
-            .any(|slot| slot_contains_command_named(slot, name)),
-        SyntaxNode::Environment { args, body, .. } => {
-            args.iter()
-                .any(|slot| slot_contains_command_named(slot, name))
-                || contains_command_named(body, name)
-        }
-        SyntaxNode::Infix {
-            args, left, right, ..
-        } => {
-            args.iter()
-                .any(|slot| slot_contains_command_named(slot, name))
-                || contains_command_named(left, name)
-                || contains_command_named(right, name)
-        }
-        _ => false,
-    }
 }
 
 #[test]
@@ -585,18 +485,6 @@ fn mode_error_for_math_only_environment_in_text() {
 }
 
 #[test]
-fn diagnostics_serialize() {
-    let output = parse_latex(r"\unknowncmd", true);
-    let json = serde_json::to_value(&output).unwrap();
-    let diagnostics = json.get("diagnostics").unwrap().as_array().unwrap();
-    assert!(!diagnostics.is_empty());
-    let diagnostic = &diagnostics[0];
-    assert!(diagnostic.get("message").is_some());
-    assert!(diagnostic.get("span").is_some());
-    assert!(diagnostic.get("expected").is_some());
-}
-
-#[test]
 fn diagnostics_serialize_includes_contexts_field() {
     let output = parse_latex(r"\unknowncmd", true);
     let json = serde_json::to_value(&output).unwrap();
@@ -829,54 +717,29 @@ fn environment_mismatch_rewrite_does_not_capture_later_generic_errors() {
     assert_eq!(trailing_brace.found.as_deref(), Some("}"));
 }
 
-#[test]
-#[should_panic(expected = "cannot convert SyntaxNode::Error into AST")]
-fn serialize_latex_rejects_error_nodes() {
-    let node = SyntaxNode::root(
-        ContentMode::Math,
-        vec![SyntaxNode::Error {
-            message: "invalid \\left delimiter".to_string(),
-            snippet: "\\left\\foo x \\right)".to_string(),
-        }],
-    );
-
-    let _ = serialize_latex(&node);
+fn error_node() -> SyntaxNode {
+    SyntaxNode::Error {
+        message: "invalid \\left delimiter".to_string(),
+        snippet: "\\left\\foo x \\right)".to_string(),
+    }
 }
 
 #[test]
-#[should_panic(expected = "cannot convert SyntaxNode::Error into AST")]
-fn serialize_latex_rejects_nested_error_nodes() {
-    let node = SyntaxNode::root(
-        ContentMode::Math,
-        vec![SyntaxNode::implicit_group(
-            ContentMode::Math,
-            vec![SyntaxNode::Error {
-                message: "invalid \\left delimiter".to_string(),
-                snippet: "\\left\\foo x \\right)".to_string(),
-            }],
-        )],
-    );
-
-    let _ = serialize_latex(&node);
-}
-
-#[test]
-#[should_panic(expected = "serialize_latex expects SyntaxNode::Root")]
-fn serialize_latex_rejects_non_root_top_level_node() {
+fn serialize_latex_variants_reject_non_root_top_level_node() {
     let node = SyntaxNode::implicit_group(ContentMode::Math, vec![SyntaxNode::Char('x')]);
-    let _ = serialize_latex(&node);
+
+    let serialize = std::panic::catch_unwind(|| serialize_latex(&node));
+    let serialize_with =
+        std::panic::catch_unwind(|| serialize_latex_with(&node, &SerializeOptions::default()));
+
+    let serialize_message = panic_message(serialize.unwrap_err());
+    let serialize_with_message = panic_message(serialize_with.unwrap_err());
+    assert!(serialize_message.contains("serialize_latex expects SyntaxNode::Root"));
+    assert!(serialize_with_message.contains("serialize_latex expects SyntaxNode::Root"));
 }
 
 #[test]
-#[should_panic(expected = "serialize_latex expects SyntaxNode::Root")]
-fn serialize_latex_with_rejects_non_root_top_level_node() {
-    let node = SyntaxNode::implicit_group(ContentMode::Math, vec![SyntaxNode::Char('x')]);
-    let _ = serialize_latex_with(&node, &SerializeOptions::default());
-}
-
-#[test]
-#[should_panic(expected = "Ast::from_syntax_root does not accept nested SyntaxNode::Root")]
-fn serialize_latex_rejects_nested_root_nodes() {
+fn serialize_latex_variants_reject_nested_root_nodes() {
     let node = SyntaxNode::root(
         ContentMode::Math,
         vec![SyntaxNode::root(
@@ -885,21 +748,38 @@ fn serialize_latex_rejects_nested_root_nodes() {
         )],
     );
 
-    let _ = serialize_latex(&node);
+    let serialize = std::panic::catch_unwind(|| serialize_latex(&node));
+    let serialize_with =
+        std::panic::catch_unwind(|| serialize_latex_with(&node, &SerializeOptions::default()));
+
+    let serialize_message = panic_message(serialize.unwrap_err());
+    let serialize_with_message = panic_message(serialize_with.unwrap_err());
+    assert!(
+        serialize_message.contains("Ast::from_syntax_root does not accept nested SyntaxNode::Root")
+    );
+    assert!(
+        serialize_with_message
+            .contains("Ast::from_syntax_root does not accept nested SyntaxNode::Root")
+    );
 }
 
 #[test]
-#[should_panic(expected = "Ast::from_syntax_root does not accept nested SyntaxNode::Root")]
-fn serialize_latex_with_rejects_nested_root_nodes() {
-    let node = SyntaxNode::root(
-        ContentMode::Math,
-        vec![SyntaxNode::root(
+fn serialize_latex_rejects_error_nodes_anywhere_in_tree() {
+    for node in [
+        SyntaxNode::root(ContentMode::Math, vec![error_node()]),
+        SyntaxNode::root(
             ContentMode::Math,
-            vec![SyntaxNode::Char('x')],
-        )],
-    );
-
-    let _ = serialize_latex_with(&node, &SerializeOptions::default());
+            vec![SyntaxNode::implicit_group(
+                ContentMode::Math,
+                vec![error_node()],
+            )],
+        ),
+    ] {
+        assert_serialize_error_panics(&node, serialize_latex);
+        assert_serialize_error_panics(&node, |node| {
+            serialize_latex_with(node, &SerializeOptions::default())
+        });
+    }
 }
 
 #[test]

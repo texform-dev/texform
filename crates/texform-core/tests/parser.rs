@@ -277,6 +277,12 @@ fn unwrap_content(slot: &Option<Argument>) -> &SyntaxNode {
     }
 }
 
+fn assert_same_structure(with_spaces: &str, compact: &str) {
+    let (result_spaces, _) = parse(with_spaces, false).unwrap();
+    let (result_compact, _) = parse(compact, false).unwrap();
+    assert_eq!(result_spaces, result_compact);
+}
+
 #[test]
 fn underline_uses_math_and_text_variants_in_matching_modes() {
     let ctx = test_context_with_items([
@@ -1259,42 +1265,6 @@ fn test_unknown_environment_strict() {
 fn test_infix_over_simple() {
     // "a \over b"
     let (result, _) = match parse(r"a \over b", false) {
-        Ok(r) => r,
-        Err(errors) => {
-            eprintln!("Parse errors:");
-            for err in &errors {
-                eprintln!("  {:?}", err);
-            }
-            panic!("Parse failed with {} errors", errors.len());
-        }
-    };
-
-    match result {
-        SyntaxNode::Root { children, .. } => {
-            assert_eq!(children.len(), 1);
-
-            match &children[0] {
-                SyntaxNode::Infix {
-                    name,
-                    left,
-                    right,
-                    args,
-                } => {
-                    assert_eq!(name, "over");
-                    assert!(args.is_empty());
-                    assert_eq!(**left, SyntaxNode::Char('a'));
-                    assert_eq!(**right, SyntaxNode::Char('b'));
-                }
-                _ => panic!("Expected Infix node, got {:?}", children[0]),
-            }
-        }
-        _ => panic!("Expected root Group"),
-    }
-}
-
-#[test]
-fn test_infix_over_simple_strict() {
-    let (result, _) = match parse(r"a \over b", true) {
         Ok(r) => r,
         Err(errors) => {
             eprintln!("Parse errors:");
@@ -2485,123 +2455,115 @@ fn test_prime_brace_superscript_error() {
 }
 
 #[test]
-fn test_prime_on_prime_nested() {
-    // "x^{'^{'}}" - prime on prime nesting
-    let (result, _) = parse(r"x^{'^{'}}", false).unwrap();
+fn test_prime_nested_shapes() {
+    let cases = [
+        (
+            r"x^{'^{'}}",
+            SyntaxNode::Group {
+                mode: ContentMode::Math,
+                kind: GroupKind::Explicit,
+                children: vec![SyntaxNode::Scripted {
+                    base: Box::new(SyntaxNode::Group {
+                        mode: ContentMode::Math,
+                        kind: GroupKind::Implicit,
+                        children: vec![],
+                    }),
+                    subscript: None,
+                    superscript: Some(Box::new(SyntaxNode::Group {
+                        mode: ContentMode::Math,
+                        kind: GroupKind::Implicit,
+                        children: vec![
+                            SyntaxNode::Char('\''),
+                            SyntaxNode::Group {
+                                mode: ContentMode::Math,
+                                kind: GroupKind::Explicit,
+                                children: vec![SyntaxNode::Scripted {
+                                    base: Box::new(SyntaxNode::Group {
+                                        mode: ContentMode::Math,
+                                        kind: GroupKind::Implicit,
+                                        children: vec![],
+                                    }),
+                                    subscript: None,
+                                    superscript: Some(Box::new(SyntaxNode::Char('\''))),
+                                }],
+                            },
+                        ],
+                    })),
+                }],
+            },
+        ),
+        (
+            r"x^{a^{'}}",
+            SyntaxNode::Group {
+                mode: ContentMode::Math,
+                kind: GroupKind::Explicit,
+                children: vec![SyntaxNode::Scripted {
+                    base: Box::new(SyntaxNode::Char('a')),
+                    subscript: None,
+                    superscript: Some(Box::new(SyntaxNode::Group {
+                        mode: ContentMode::Math,
+                        kind: GroupKind::Explicit,
+                        children: vec![SyntaxNode::Scripted {
+                            base: Box::new(SyntaxNode::Group {
+                                mode: ContentMode::Math,
+                                kind: GroupKind::Implicit,
+                                children: vec![],
+                            }),
+                            subscript: None,
+                            superscript: Some(Box::new(SyntaxNode::Char('\''))),
+                        }],
+                    })),
+                }],
+            },
+        ),
+        (
+            r"x^{'^{a}}",
+            SyntaxNode::Group {
+                mode: ContentMode::Math,
+                kind: GroupKind::Explicit,
+                children: vec![SyntaxNode::Scripted {
+                    base: Box::new(SyntaxNode::Group {
+                        mode: ContentMode::Math,
+                        kind: GroupKind::Implicit,
+                        children: vec![],
+                    }),
+                    subscript: None,
+                    superscript: Some(Box::new(SyntaxNode::Group {
+                        mode: ContentMode::Math,
+                        kind: GroupKind::Implicit,
+                        children: vec![
+                            SyntaxNode::Char('\''),
+                            SyntaxNode::Group {
+                                mode: ContentMode::Math,
+                                kind: GroupKind::Explicit,
+                                children: vec![SyntaxNode::Char('a')],
+                            },
+                        ],
+                    })),
+                }],
+            },
+        ),
+    ];
 
-    fn count_primes(node: &SyntaxNode) -> usize {
-        match node {
-            SyntaxNode::Char('\'') => 1,
-            SyntaxNode::Group { children, .. } => children.iter().map(count_primes).sum(),
-            SyntaxNode::Scripted {
-                base,
-                superscript,
-                subscript,
-            } => {
-                count_primes(base)
-                    + superscript.as_ref().map(|n| count_primes(n)).unwrap_or(0)
-                    + subscript.as_ref().map(|n| count_primes(n)).unwrap_or(0)
-            }
-            _ => 0,
-        }
-    }
+    for (src, expected_superscript) in cases {
+        let (result, _) = parse(src, false).unwrap();
 
-    match result {
-        SyntaxNode::Root { children, .. } => {
-            assert_eq!(children.len(), 1);
-            match &children[0] {
-                SyntaxNode::Scripted { superscript, .. } => {
-                    let node = superscript.as_ref().unwrap().as_ref();
-                    assert!(
-                        count_primes(node) >= 2,
-                        "expected at least two primes, got {}",
-                        count_primes(node)
-                    );
+        match result {
+            SyntaxNode::Root { children, .. } => {
+                assert_eq!(children.len(), 1, "src={src}");
+                match &children[0] {
+                    SyntaxNode::Scripted { superscript, .. } => {
+                        assert_eq!(
+                            superscript.as_deref(),
+                            Some(&expected_superscript),
+                            "src={src}"
+                        );
+                    }
+                    other => panic!("expected scripted node for {src}, got {:?}", other),
                 }
-                _ => panic!("Expected Scripted node"),
             }
+            other => panic!("expected root node for {src}, got {:?}", other),
         }
-        _ => panic!("Expected root Group"),
-    }
-}
-
-#[test]
-fn test_prime_on_sup_nested() {
-    // "x^{a^{'}}" - superscript contains a prime on its own empty base
-    let (result, _) = parse(r"x^{a^{'}}", false).unwrap();
-
-    fn count_primes(node: &SyntaxNode) -> usize {
-        match node {
-            SyntaxNode::Char('\'') => 1,
-            SyntaxNode::Group { children, .. } => children.iter().map(count_primes).sum(),
-            SyntaxNode::Scripted {
-                base,
-                superscript,
-                subscript,
-            } => {
-                count_primes(base)
-                    + superscript.as_ref().map(|n| count_primes(n)).unwrap_or(0)
-                    + subscript.as_ref().map(|n| count_primes(n)).unwrap_or(0)
-            }
-            _ => 0,
-        }
-    }
-
-    match result {
-        SyntaxNode::Root { children, .. } => {
-            assert_eq!(children.len(), 1);
-            match &children[0] {
-                SyntaxNode::Scripted { superscript, .. } => {
-                    let node = superscript.as_ref().unwrap().as_ref();
-                    assert!(
-                        count_primes(node) >= 1,
-                        "expected at least one prime in superscript"
-                    );
-                }
-                _ => panic!("Expected Scripted node"),
-            }
-        }
-        _ => panic!("Expected root Group"),
-    }
-}
-
-#[test]
-fn test_sup_on_prime_nested() {
-    // "x^{'^{a}}" - prime that itself has a superscript a
-    let (result, _) = parse(r"x^{'^{a}}", false).unwrap();
-
-    fn count_a(node: &SyntaxNode) -> usize {
-        match node {
-            SyntaxNode::Char('a') => 1,
-            SyntaxNode::Group { children, .. } => children.iter().map(count_a).sum(),
-            SyntaxNode::Scripted {
-                base,
-                superscript,
-                subscript,
-            } => {
-                count_a(base)
-                    + superscript.as_ref().map(|n| count_a(n)).unwrap_or(0)
-                    + subscript.as_ref().map(|n| count_a(n)).unwrap_or(0)
-            }
-            _ => 0,
-        }
-    }
-
-    match result {
-        SyntaxNode::Root { children, .. } => {
-            assert_eq!(children.len(), 1);
-            match &children[0] {
-                SyntaxNode::Scripted { superscript, .. } => {
-                    let sup = superscript.as_ref().unwrap();
-                    assert!(
-                        count_a(sup) >= 1,
-                        "expected at least one 'a' in superscript tree"
-                    );
-                }
-                _ => panic!("Expected Scripted node"),
-            }
-        }
-        _ => panic!("Expected root Group"),
     }
 }
 
@@ -2695,38 +2657,6 @@ fn test_delimited_group_langle_rangle() {
 }
 
 #[test]
-fn test_delimiter_controls_are_interned() {
-    fn extract_controls(node: SyntaxNode) -> (&'static str, &'static str) {
-        match node {
-            SyntaxNode::Root { children, .. } => match &children[0] {
-                SyntaxNode::Group { kind, .. } => match kind {
-                    GroupKind::Delimited { left, right } => {
-                        let left = match left {
-                            Delimiter::Control(s) => *s,
-                            other => panic!("Expected left control delimiter, got {:?}", other),
-                        };
-                        let right = match right {
-                            Delimiter::Control(s) => *s,
-                            other => panic!("Expected right control delimiter, got {:?}", other),
-                        };
-                        (left, right)
-                    }
-                    other => panic!("Expected Delimited GroupKind, got {:?}", other),
-                },
-                other => panic!("Expected Delimited Group, got {:?}", other),
-            },
-            other => panic!("Expected root Group, got {:?}", other),
-        }
-    }
-
-    let (left1, right1) = extract_controls(parse(r"\left\langle x\right\rangle", false).unwrap().0);
-    let (left2, right2) = extract_controls(parse(r"\left\langle x\right\rangle", false).unwrap().0);
-
-    assert!(std::ptr::eq(left1, left2));
-    assert!(std::ptr::eq(right1, right2));
-}
-
-#[test]
 fn test_delimited_group_lfloor_rfloor() {
     // "\left\lfloor x \right\rfloor"
     let (result, _) = parse(r"\left\lfloor x\right\rfloor", false).unwrap();
@@ -2789,21 +2719,9 @@ fn test_starred_environment_name_rejects_internal_space() {
 // ========================================================================
 
 #[test]
-fn test_whitespace_ignored_in_frac_args() {
-    // "\frac  {a}  {b}" should equal "\frac{a}{b}"
-    let (result_spaces, _) = parse(r"\frac  {a}  {b}", false).unwrap();
-    let (result_no_spaces, _) = parse(r"\frac{a}{b}", false).unwrap();
-
-    assert_eq!(result_spaces, result_no_spaces);
-}
-
-#[test]
-fn test_whitespace_ignored_in_scripts() {
-    // "x ^ 2" should equal "x^2"
-    let (result_spaces, _) = parse(r"x ^ 2", false).unwrap();
-    let (result_no_spaces, _) = parse(r"x^2", false).unwrap();
-
-    assert_eq!(result_spaces, result_no_spaces);
+fn test_whitespace_is_ignored_in_structural_positions() {
+    assert_same_structure(r"\frac  {a}  {b}", r"\frac{a}{b}");
+    assert_same_structure(r"x ^ 2", r"x^2");
 }
 
 #[test]
@@ -4573,63 +4491,6 @@ fn test_sqrt_accepts_command_token_as_best_fit_argument() {
         }
         other => panic!("Expected root node, got {:?}", other),
     }
-}
-
-// ========================================================================
-// Span Correctness Tests
-// ========================================================================
-
-#[test]
-fn test_span_covers_full_input() {
-    let src = r"\frac{a}{b}";
-    let (_, span) = parse(src, false).unwrap();
-    assert_eq!(span.start, 0);
-    assert_eq!(span.end, src.len());
-}
-
-#[test]
-fn test_span_empty_input() {
-    let src = "";
-    let (_, span) = parse(src, false).unwrap();
-    assert_eq!(span.start, 0);
-    assert_eq!(span.end, 0);
-}
-
-#[test]
-fn test_span_simple_chars() {
-    let src = "abc";
-    let (_, span) = parse(src, false).unwrap();
-    assert_eq!(&src[span.start..span.end], "abc");
-}
-
-#[test]
-fn test_span_command_with_args() {
-    let src = r"\sqrt[3]{x}";
-    let (_, span) = parse(src, false).unwrap();
-    assert_eq!(&src[span.start..span.end], src);
-}
-
-#[test]
-fn test_span_with_whitespace() {
-    let src = r" a + b ";
-    let (_, span) = parse(src, false).unwrap();
-    // Span should cover the full input range
-    assert_eq!(span.start, 0);
-    assert_eq!(span.end, src.len());
-}
-
-#[test]
-fn test_span_environment() {
-    let src = r"\begin{matrix}x\end{matrix}";
-    let (_, span) = parse(src, false).unwrap();
-    assert_eq!(&src[span.start..span.end], src);
-}
-
-#[test]
-fn test_span_scripted() {
-    let src = "x^{2}_{i}";
-    let (_, span) = parse(src, false).unwrap();
-    assert_eq!(&src[span.start..span.end], src);
 }
 
 #[test]

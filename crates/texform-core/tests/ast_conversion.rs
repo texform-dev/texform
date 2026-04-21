@@ -56,6 +56,33 @@ fn first_root_child(ast: &Ast) -> NodeId {
     ast.children(ast.root())[0]
 }
 
+fn argument_conversion_items() -> Vec<ContextItem> {
+    vec![
+        command_item("delim", CommandKind::Prefix, AllowedMode::Math, "m:D"),
+        command_item("hspace", CommandKind::Prefix, AllowedMode::Both, "m:L"),
+        command_item(
+            "romannumeral",
+            CommandKind::Prefix,
+            AllowedMode::Both,
+            "m:I",
+        ),
+        command_item(
+            "includegraphics",
+            CommandKind::Prefix,
+            AllowedMode::Both,
+            "o:K m:T",
+        ),
+        command_item("label", CommandKind::Prefix, AllowedMode::Both, "m:N"),
+        command_item(
+            "qty",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "d<(,)><[,]><{,}><|,|>",
+        ),
+        command_item("pqty", CommandKind::Prefix, AllowedMode::Math, "s r{}"),
+    ]
+}
+
 #[test]
 fn test_conversion_preserves_unknown_command_and_active_space() {
     let syntax = parse_with_items(r"a~\mystery", false, vec![]);
@@ -142,40 +169,17 @@ fn test_ast_conversion_copies_text_content_variant() {
 }
 
 #[test]
-fn test_conversion_preserves_argument_slots_and_non_content_values() {
+fn test_conversion_preserves_scalar_argument_values() {
     let syntax = parse_with_items(
-        r"\delim( \hspace1em \romannumeral12 \includegraphics[width=1em]{file} \label{sec:intro} \qty|x| \pqty*{y}",
+        r"\delim( \hspace1em \romannumeral12 \label{sec:intro}",
         true,
-        vec![
-            command_item("delim", CommandKind::Prefix, AllowedMode::Math, "m:D"),
-            command_item("hspace", CommandKind::Prefix, AllowedMode::Both, "m:L"),
-            command_item(
-                "romannumeral",
-                CommandKind::Prefix,
-                AllowedMode::Both,
-                "m:I",
-            ),
-            command_item(
-                "includegraphics",
-                CommandKind::Prefix,
-                AllowedMode::Both,
-                "o:K m:T",
-            ),
-            command_item("label", CommandKind::Prefix, AllowedMode::Both, "m:N"),
-            command_item(
-                "qty",
-                CommandKind::Prefix,
-                AllowedMode::Math,
-                "d<(,)><[,]><{,}><|,|>",
-            ),
-            command_item("pqty", CommandKind::Prefix, AllowedMode::Math, "s r{}"),
-        ],
+        argument_conversion_items(),
     );
     let ast = Ast::from_syntax_root(&syntax);
     ast.assert_invariants();
 
     let children = ast.children(ast.root());
-    assert_eq!(children.len(), 7);
+    assert_eq!(children.len(), 4);
 
     match ast.node(children[0]) {
         Node::Command { name, args, .. } => {
@@ -212,6 +216,30 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
 
     match ast.node(children[3]) {
         Node::Command { name, args, .. } => {
+            assert_eq!(name, "label");
+            let arg = args[0].as_ref().unwrap();
+            assert_eq!(arg.value, ArgumentValue::CSName("sec:intro".to_string()));
+            assert!(ast.edges(children[3]).is_empty());
+        }
+        other => panic!("Expected label command, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_conversion_preserves_content_argument_edges() {
+    let syntax = parse_with_items(
+        r"\includegraphics[width=1em]{file} \qty|x| \pqty*{y}",
+        true,
+        argument_conversion_items(),
+    );
+    let ast = Ast::from_syntax_root(&syntax);
+    ast.assert_invariants();
+
+    let children = ast.children(ast.root());
+    assert_eq!(children.len(), 3);
+
+    match ast.node(children[0]) {
+        Node::Command { name, args, .. } => {
             assert_eq!(name, "includegraphics");
             assert_eq!(args.len(), 2);
             assert_eq!(
@@ -223,11 +251,11 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
                 ArgumentValue::TextContent(id) => *id,
                 other => panic!("Expected content argument, got {:?}", other),
             };
-            assert_eq!(ast.edges(children[3]), vec![(text, Slot::Argument(1))]);
+            assert_eq!(ast.edges(children[0]), vec![(text, Slot::Argument(1))]);
             assert_eq!(
                 ast.parent(text),
                 Some(ParentLink {
-                    parent: children[3],
+                    parent: children[0],
                     slot: Slot::Argument(1),
                 })
             );
@@ -236,17 +264,7 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
         other => panic!("Expected includegraphics command, got {:?}", other),
     }
 
-    match ast.node(children[4]) {
-        Node::Command { name, args, .. } => {
-            assert_eq!(name, "label");
-            let arg = args[0].as_ref().unwrap();
-            assert_eq!(arg.value, ArgumentValue::CSName("sec:intro".to_string()));
-            assert!(ast.edges(children[4]).is_empty());
-        }
-        other => panic!("Expected label command, got {:?}", other),
-    }
-
-    match ast.node(children[5]) {
+    match ast.node(children[1]) {
         Node::Command { name, args, .. } => {
             assert_eq!(name, "qty");
             let arg = args[0].as_ref().unwrap();
@@ -267,7 +285,7 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
             assert_eq!(
                 ast.parent(content),
                 Some(ParentLink {
-                    parent: children[5],
+                    parent: children[1],
                     slot: Slot::Argument(0),
                 })
             );
@@ -275,7 +293,7 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
         other => panic!("Expected qty command, got {:?}", other),
     }
 
-    match ast.node(children[6]) {
+    match ast.node(children[2]) {
         Node::Command { name, args, .. } => {
             assert_eq!(name, "pqty");
             assert_eq!(args.len(), 2);
@@ -301,7 +319,7 @@ fn test_conversion_preserves_argument_slots_and_non_content_values() {
             assert_eq!(
                 ast.parent(content),
                 Some(ParentLink {
-                    parent: children[6],
+                    parent: children[2],
                     slot: Slot::Argument(1),
                 })
             );

@@ -1,26 +1,16 @@
+mod support;
+
+use support::{
+    assert_first_diagnostic_span_eq, collect_messages, command_item, contains_command_named,
+    contains_error_node, parse_single_via_public_api, parse_with_items,
+};
 use texform_core::api::parse_with_context_items;
 use texform_core::parse::{
-    AllowedMode, CommandItem, CommandKind, ContextItem, ParseContext, ParseContextBuilder,
-    ParseOutput,
+    AllowedMode, CommandKind, ContextItem, ParseContext, ParseContextBuilder, ParseOutput,
 };
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentValue, Delimiter, SyntaxNode,
 };
-
-fn command_item(
-    name: &str,
-    kind: CommandKind,
-    allowed_mode: AllowedMode,
-    spec: &str,
-) -> ContextItem {
-    CommandItem::new(name, kind, allowed_mode, spec).into()
-}
-
-fn parse_single(items: &[ContextItem], src: &str, strict: bool) -> ParseOutput {
-    let mut outputs = parse_with_context_items(items, &[src], None, strict);
-    assert_eq!(outputs.len(), 1);
-    outputs.remove(0).output
-}
 
 fn text_command_item() -> ContextItem {
     command_item("text", CommandKind::Prefix, AllowedMode::Math, "m:T")
@@ -68,91 +58,6 @@ fn first_command(output: &ParseOutput) -> (&str, &Vec<Option<Argument>>) {
     }
 }
 
-fn collect_messages(output: &ParseOutput) -> Vec<&str> {
-    output
-        .diagnostics
-        .iter()
-        .map(|diagnostic| diagnostic.message.as_str())
-        .collect()
-}
-
-fn assert_first_diagnostic_span_eq(output: &ParseOutput, src: &str, expected: &str) {
-    let diagnostic = output
-        .diagnostics
-        .first()
-        .expect("expected at least one diagnostic");
-    assert_eq!(&src[diagnostic.span.start..diagnostic.span.end], expected);
-}
-
-fn slot_contains_command_named(slot: &Option<Argument>, expected: &str) -> bool {
-    slot.as_ref().is_some_and(|arg| match &arg.value {
-        ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
-            contains_command_named(node, expected)
-        }
-        _ => false,
-    })
-}
-
-fn contains_command_named(node: &SyntaxNode, expected: &str) -> bool {
-    match node {
-        SyntaxNode::Command { name, .. } if name == expected => true,
-        SyntaxNode::Root { children, .. } | SyntaxNode::Group { children, .. } => children
-            .iter()
-            .any(|child| contains_command_named(child, expected)),
-        SyntaxNode::Command { args, .. } => args
-            .iter()
-            .any(|slot| slot_contains_command_named(slot, expected)),
-        SyntaxNode::Declarative { args, .. } => args
-            .iter()
-            .any(|slot| slot_contains_command_named(slot, expected)),
-        SyntaxNode::Environment { args, body, .. } => {
-            args.iter()
-                .any(|slot| slot_contains_command_named(slot, expected))
-                || contains_command_named(body, expected)
-        }
-        SyntaxNode::Infix {
-            args, left, right, ..
-        } => {
-            args.iter()
-                .any(|slot| slot_contains_command_named(slot, expected))
-                || contains_command_named(left, expected)
-                || contains_command_named(right, expected)
-        }
-        _ => false,
-    }
-}
-
-fn slot_contains_error(slot: &Option<Argument>) -> bool {
-    slot.as_ref().is_some_and(|arg| match &arg.value {
-        ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
-            contains_error_node(node)
-        }
-        _ => false,
-    })
-}
-
-fn contains_error_node(node: &SyntaxNode) -> bool {
-    match node {
-        SyntaxNode::Error { .. } => true,
-        SyntaxNode::Root { children, .. } | SyntaxNode::Group { children, .. } => {
-            children.iter().any(contains_error_node)
-        }
-        SyntaxNode::Command { args, .. } => args.iter().any(slot_contains_error),
-        SyntaxNode::Declarative { args, .. } => args.iter().any(slot_contains_error),
-        SyntaxNode::Environment { args, body, .. } => {
-            args.iter().any(slot_contains_error) || contains_error_node(body)
-        }
-        SyntaxNode::Infix {
-            args, left, right, ..
-        } => {
-            args.iter().any(slot_contains_error)
-                || contains_error_node(left)
-                || contains_error_node(right)
-        }
-        _ => false,
-    }
-}
-
 #[test]
 fn integer_argument_is_verified_via_public_parser() {
     let items = [command_item(
@@ -162,7 +67,7 @@ fn integer_argument_is_verified_via_public_parser() {
         "m:I",
     )];
 
-    let valid = parse_single(&items, r"\romannumeral+42", true);
+    let valid = parse_single_via_public_api(&items, r"\romannumeral+42", true);
     assert!(
         valid.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -175,7 +80,7 @@ fn integer_argument_is_verified_via_public_parser() {
         ArgumentValue::Integer("+42".to_string())
     );
 
-    let invalid = parse_single(&items, r"\romannumeral+", true);
+    let invalid = parse_single_via_public_api(&items, r"\romannumeral+", true);
     assert!(invalid.result.is_none(), "invalid integer should fail");
     assert!(
         !invalid.diagnostics.is_empty(),
@@ -192,7 +97,7 @@ fn dimension_argument_is_verified_via_public_parser() {
         "m:L",
     )];
 
-    let valid = parse_single(&items, r"\hspace{1,5 em}", true);
+    let valid = parse_single_via_public_api(&items, r"\hspace{1,5 em}", true);
     assert!(
         valid.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -205,7 +110,7 @@ fn dimension_argument_is_verified_via_public_parser() {
         ArgumentValue::Dimension("1.5em".to_string())
     );
 
-    let invalid = parse_single(&items, r"\hspaceabc", true);
+    let invalid = parse_single_via_public_api(&items, r"\hspaceabc", true);
     assert!(invalid.result.is_none(), "invalid dimension should fail");
     assert!(
         !invalid.diagnostics.is_empty(),
@@ -288,7 +193,7 @@ fn keyval_argument_diagnostic_span_covers_bracket_argument() {
     )];
     let src = r"\includegraphics[key=]{file}";
 
-    let output = parse_single(&items, src, true);
+    let output = parse_with_items(&items, src, true);
     assert!(output.result.is_none(), "invalid keyval should fail");
 
     let diagnostic = output
@@ -308,7 +213,7 @@ fn optional_bracket_content_stops_at_top_level_closer() {
         "o:K m:T",
     )];
 
-    let output = parse_single(&items, r"\includegraphics[key={[[},width=1em]{file}", true);
+    let output = parse_with_items(&items, r"\includegraphics[key={[[},width=1em]{file}", true);
     assert!(
         output.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -330,7 +235,7 @@ fn delimited_argument_collects_nested_content() {
         "r{}",
     )];
 
-    let output = parse_single(&items, r"\reqdelim{a{b}c}", true);
+    let output = parse_with_items(&items, r"\reqdelim{a{b}c}", true);
     assert!(
         output.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -355,7 +260,7 @@ fn mandatory_argument_normalizes_single_explicit_group() {
         "m",
     )];
 
-    let output = parse_single(&items, r"\probe{x}", true);
+    let output = parse_with_items(&items, r"\probe{x}", true);
     assert!(
         output.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -377,7 +282,7 @@ fn star_argument_uses_boolean_value() {
         "s m",
     )];
 
-    let with_star = parse_single(&items, r"\sqrt*{x}", true);
+    let with_star = parse_with_items(&items, r"\sqrt*{x}", true);
     assert!(
         with_star.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -392,7 +297,7 @@ fn star_argument_uses_boolean_value() {
         }
     );
 
-    let without_star = parse_single(&items, r"\sqrt{x}", true);
+    let without_star = parse_with_items(&items, r"\sqrt{x}", true);
     assert!(
         without_star.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -412,7 +317,7 @@ fn star_argument_uses_boolean_value() {
 fn text_content_generic_only_error_keeps_expected_found_diagnostic() {
     let items = [text_command_item()];
 
-    let output = parse_single(&items, r"\text{$x}", true);
+    let output = parse_with_items(&items, r"\text{$x}", true);
 
     assert!(
         output.result.is_none(),
@@ -433,7 +338,7 @@ fn strict_text_content_command_error_points_to_inner_command() {
     let src = r"\text{\frac{a}{b}}";
     let items = [text_command_item(), frac_command_item()];
 
-    let output = parse_single(&items, src, true);
+    let output = parse_with_items(&items, src, true);
 
     assert_eq!(
         collect_messages(&output),
@@ -446,7 +351,7 @@ fn strict_text_content_command_error_points_to_inner_command() {
 fn strict_text_content_command_error_has_no_partial_result() {
     let items = [text_command_item(), frac_command_item()];
 
-    let output = parse_single(&items, r"\text{\frac{a}{b}}", true);
+    let output = parse_with_items(&items, r"\text{\frac{a}{b}}", true);
 
     assert!(
         output.result.is_none(),
