@@ -34,12 +34,15 @@ commands:
     argspec: ''
     allowed_mode: math
     tags:
+      - invisible
       - spacing
   - name: \
     kind: prefix
     argspec: '!s !o:L'
     allowed_mode: math
-    tags: []
+    tags:
+      - invisible
+      - spacing
   - name: '>'
     kind: prefix
     argspec: ''

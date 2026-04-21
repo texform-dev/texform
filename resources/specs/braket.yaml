@@ -4,6 +4,56 @@ commands:
     argspec: ''
     allowed_mode: math
     tags: []
+  - name: bra
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags: []
+  - name: Bra
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags: []
+  - name: braket
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags: []
+  - name: Braket
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags: []
+  - name: ket
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags: []
+  - name: Ket
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags: []
+  - name: ketbra
+    kind: prefix
+    argspec: m m
+    allowed_mode: math
+    tags: []
+  - name: Ketbra
+    kind: prefix
+    argspec: m m
+    allowed_mode: math
+    tags: []
+  - name: set
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags: []
+  - name: Set
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags: []
 environments: []
 delimiter_controls: []
 characters: []

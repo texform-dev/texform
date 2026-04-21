@@ -10,24 +10,28 @@ commands:
     argspec: ''
     allowed_mode: text
     tags:
+      - invisible
       - spacing
   - name: ;
     kind: prefix
     argspec: ''
     allowed_mode: text
     tags:
+      - invisible
       - spacing
   - name: ':'
     kind: prefix
     argspec: ''
     allowed_mode: text
     tags:
+      - invisible
       - spacing
   - name: '!'
     kind: prefix
     argspec: ''
     allowed_mode: text
     tags:
+      - invisible
       - spacing
   - name: .
     kind: prefix
@@ -63,7 +67,8 @@ commands:
     kind: prefix
     argspec: '!s !o:L'
     allowed_mode: text
-    tags: []
+    tags:
+      - spacing
   - name: '`'
     kind: prefix
     argspec: m:T
@@ -87,6 +92,7 @@ commands:
     argspec: ''
     allowed_mode: text
     tags:
+      - invisible
       - spacing
   - name: '~'
     kind: prefix
