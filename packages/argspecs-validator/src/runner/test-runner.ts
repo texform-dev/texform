@@ -1,6 +1,7 @@
 import type { TexCompiler, CompileOptions } from "@texform/tex-renderers";
 import type { TestRecord, TestCase, CaseResult, ErrorLogEntry } from "../types.js";
 import { classifyError } from "./result-collector.js";
+import { resolveMode } from "./orchestrator.js";
 
 type RendererName = "mathjax" | "katex" | "xetex";
 
@@ -36,22 +37,9 @@ export async function runRecord(
 
     for (const compiler of compilers) {
       const rendererName = compiler.name as RendererName;
-
-      // Non-nestable math environments need mode="text" for XeTeX
-      // (they provide their own math mode, no $...$ wrapping)
-      let mode: "math" | "text" = record.allowed_mode === "text" ? "text" : "math";
-      if (
-        compiler.name === "xetex" &&
-        record.type === "environment" &&
-        record.allowed_mode === "math" &&
-        !record.tags.includes("nestable")
-      ) {
-        mode = "text";
-      }
-
       const compileOptions: CompileOptions = {
         packages: [record.package],
-        mode,
+        mode: resolveMode(record, rendererName),
       };
       const result = await compiler.compile(tc.tex, compileOptions);
       (caseResult as any)[compiler.name] = result.success;
