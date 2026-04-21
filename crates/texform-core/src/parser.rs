@@ -2517,21 +2517,6 @@ where
     leading
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use texform_specs::specs::ActiveCommandRecord;
-
-    #[test]
-    fn parser_local_enums_use_mode_lookup_and_script_marker_names() {
-        let lookup: ModeLookup<'_, ActiveCommandRecord> = ModeLookup::WrongMode;
-        assert!(matches!(lookup, ModeLookup::WrongMode));
-        assert!(matches!(ScriptMarker::Sub, ScriptMarker::Sub));
-        assert!(matches!(ScriptMarker::Sup, ScriptMarker::Sup));
-        assert!(matches!(ScriptMarker::Prime, ScriptMarker::Prime));
-    }
-}
-
 /// Construct mutually recursive math/text content parsers.
 ///
 /// Math content may embed text content (via `\text`-family commands) and
