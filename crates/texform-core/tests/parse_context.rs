@@ -22,6 +22,23 @@ fn builder_applies_insert_and_remove_before_freezing() {
 }
 
 #[test]
+fn builder_applies_insert_and_remove_environment_before_freezing() {
+    let ctx = ParseContextBuilder::new()
+        .empty()
+        .insert_item(EnvironmentItem::new(
+            "tempenv",
+            AllowedMode::Math,
+            ContentMode::Math,
+            "m",
+        ))
+        .remove_environment("tempenv")
+        .build()
+        .expect("builder should build parse context");
+
+    assert!(ctx.lookup_env("tempenv", ContentMode::Math).is_none());
+}
+
+#[test]
 fn convenience_factories_still_work_after_module_move() {
     let all = ParseContext::all_packages();
     assert!(all.lookup_command("frac", ContentMode::Math).is_some());

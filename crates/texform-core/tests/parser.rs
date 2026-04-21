@@ -381,6 +381,39 @@ fn known_but_disallowed_environment_is_mode_error_in_both_strictness_modes() {
 }
 
 #[test]
+fn prime_then_explicit_superscript_stays_in_single_superscript_slot() {
+    let parsed = parse("x'^2", false).expect("expected parse success").0;
+
+    match parsed {
+        SyntaxNode::Root { children, .. } => match &children[0] {
+            SyntaxNode::Scripted {
+                base,
+                subscript,
+                superscript,
+            } => {
+                assert_eq!(**base, SyntaxNode::Char('x'));
+                assert!(subscript.is_none());
+                match superscript.as_deref().expect("expected superscript") {
+                    SyntaxNode::Group {
+                        kind: GroupKind::Implicit,
+                        children,
+                        ..
+                    } => {
+                        assert_eq!(
+                            children,
+                            &vec![SyntaxNode::Char('\''), SyntaxNode::Char('2')]
+                        );
+                    }
+                    other => panic!("expected implicit superscript group, got {:?}", other),
+                }
+            }
+            other => panic!("expected scripted node, got {:?}", other),
+        },
+        other => panic!("expected root node, got {:?}", other),
+    }
+}
+
+#[test]
 fn disallowed_environment_does_not_rewrite_unrelated_generic_error() {
     let ctx = test_context_with_items([environment_item(
         "textenv",

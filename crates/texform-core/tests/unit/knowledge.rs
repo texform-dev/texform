@@ -303,6 +303,33 @@ fn test_remove_command_does_not_fallback_to_shadowed_character() {
 }
 
 #[test]
+fn test_remove_command_by_name_suppresses_active_name_without_touching_character_record() {
+    let mut kb = KnowledgeBase::new();
+    kb.import_package(PackageSpecs {
+        characters: vec![CharacterSpec {
+            name: "alpha".to_string(),
+            allowed_mode: AllowedMode::Math,
+            unicode_value: "α".to_string(),
+            attributes: CharacterAttributes::default(),
+        }],
+        commands: vec![],
+        environments: vec![],
+        delimiter_controls: vec![],
+    });
+
+    assert!(kb.remove_command_by_name("alpha"));
+    assert!(!kb.remove_command_by_name("alpha"));
+    assert!(kb.lookup_command("alpha").is_none());
+    assert!(kb.lookup_explicit_command("alpha").is_none());
+    assert_eq!(
+        kb.lookup_character("alpha")
+            .expect("expected raw alpha character to remain")
+            .unicode_value,
+        "α"
+    );
+}
+
+#[test]
 fn test_insert_command_clears_suppression_and_reactivates_name() {
     let mut kb = KnowledgeBase::new();
     kb.import_package(PackageSpecs {
@@ -367,6 +394,22 @@ fn test_insert_env_accepts_text_body_mode() {
     let env = kb.lookup_env("textenv").unwrap();
     assert_eq!(env.body_mode, ContentMode::Text);
     assert_eq!(env.allowed_mode, AllowedMode::Text);
+}
+
+#[test]
+fn test_remove_environment_by_name_reports_presence() {
+    let mut kb = KnowledgeBase::new();
+    kb.insert_or_override_environment(EnvironmentSpec {
+        name: "textenv".to_string(),
+        allowed_mode: AllowedMode::Text,
+        argspec: argspec!("").into(),
+        body_mode: ContentMode::Text,
+        tags: vec![],
+    });
+
+    assert!(kb.remove_environment_by_name("textenv"));
+    assert!(!kb.remove_environment_by_name("textenv"));
+    assert!(kb.lookup_env("textenv").is_none());
 }
 
 #[test]

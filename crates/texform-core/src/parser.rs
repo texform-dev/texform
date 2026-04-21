@@ -31,7 +31,7 @@ use chumsky::{
 };
 use logos::Logos;
 
-use crate::knowledge::{CommandKind, CommandMeta};
+use crate::knowledge::{ActiveCommandRecord, ActiveEnvironmentRecord, CommandKind};
 use crate::lexer::Token;
 use crate::parse::ParseContext;
 use texform_interface::syntax_node::{ArgumentSlot, ContentMode, Delimiter, GroupKind, SyntaxNode};
@@ -833,6 +833,13 @@ struct ScriptComponents {
     superscript: Option<TrackedNode>,
 }
 
+#[derive(Clone, Copy)]
+enum ScriptMarker {
+    Sub,
+    Sup,
+    Prime,
+}
+
 /// Imperative parser that greedily collects `^`, `_`, and prime tokens after
 /// an atom, producing [`ScriptComponents`].
 ///
@@ -895,13 +902,13 @@ where
                 input.next();
                 let tracked = input.parse(atom_for_scripts.clone())?;
                 let span = input.span_from_cursor(&marker_start);
-                Some(("sup", TrackedNode { span, ..tracked }))
+                Some((ScriptMarker::Sup, TrackedNode { span, ..tracked }))
             }
             Some(Token::Subscript) => {
                 input.next();
                 let tracked = input.parse(atom_for_scripts.clone())?;
                 let span = input.span_from_cursor(&marker_start);
-                Some(("sub", TrackedNode { span, ..tracked }))
+                Some((ScriptMarker::Sub, TrackedNode { span, ..tracked }))
             }
             Some(Token::Prime(_)) => {
                 let count = match input.next() {
@@ -918,7 +925,10 @@ where
                         children: (0..count).map(|_| SyntaxNode::Char('\'')).collect(),
                     }
                 };
-                Some(("prime", TrackedNode::leaf(prime_node, prime_span)))
+                Some((
+                    ScriptMarker::Prime,
+                    TrackedNode::leaf(prime_node, prime_span),
+                ))
             }
             _ => None,
         };
@@ -929,7 +939,7 @@ where
         };
 
         match kind {
-            "sub" => {
+            ScriptMarker::Sub => {
                 if subscript.is_some() {
                     return Err(
                         input.err_since(&marker_start, "Double subscripts: use braces to clarify")
@@ -937,7 +947,7 @@ where
                 }
                 subscript = Some(tracked);
             }
-            "sup" => {
+            ScriptMarker::Sup => {
                 let current = sup_state.take();
                 sup_state = match current {
                     None => Some(SupState::Explicit(tracked)),
@@ -961,7 +971,7 @@ where
                     }
                 };
             }
-            "prime" => {
+            ScriptMarker::Prime => {
                 let current = sup_state.take();
                 sup_state = match current {
                     None => Some(SupState::Prime(tracked)),
@@ -987,7 +997,6 @@ where
                     }
                 };
             }
-            _ => unreachable!("unsupported script kind"),
         }
     }
 
@@ -1077,10 +1086,10 @@ fn mode_item_parser<'a>(
     }
 }
 
-enum LookupResult<'a, T> {
-    Active(&'a T),
-    KnownButDisallowed,
-    Unknown,
+enum ModeLookup<'a, T> {
+    Found(&'a T),
+    WrongMode,
+    NotFound,
 }
 
 fn other_mode(mode: ContentMode) -> ContentMode {
@@ -1094,13 +1103,13 @@ fn lookup_command_for_parse<'a>(
     ctx: &'a ParseContext,
     name: &str,
     mode: ContentMode,
-) -> LookupResult<'a, CommandMeta> {
+) -> ModeLookup<'a, ActiveCommandRecord> {
     if let Some(meta) = ctx.lookup_command(name, mode) {
-        LookupResult::Active(meta)
+        ModeLookup::Found(meta)
     } else if ctx.lookup_command(name, other_mode(mode)).is_some() {
-        LookupResult::KnownButDisallowed
+        ModeLookup::WrongMode
     } else {
-        LookupResult::Unknown
+        ModeLookup::NotFound
     }
 }
 
@@ -1108,13 +1117,13 @@ fn lookup_env_for_parse<'a>(
     ctx: &'a ParseContext,
     name: &str,
     mode: ContentMode,
-) -> LookupResult<'a, texform_specs::specs::EnvMeta> {
+) -> ModeLookup<'a, ActiveEnvironmentRecord> {
     if let Some(meta) = ctx.lookup_env(name, mode) {
-        LookupResult::Active(meta)
+        ModeLookup::Found(meta)
     } else if ctx.lookup_env(name, other_mode(mode)).is_some() {
-        LookupResult::KnownButDisallowed
+        ModeLookup::WrongMode
     } else {
-        LookupResult::Unknown
+        ModeLookup::NotFound
     }
 }
 
@@ -1556,7 +1565,7 @@ fn command_head_parser<'src, 'parse>(
     expected_kind: CommandKind,
     current_mode: ContentMode,
     strict: bool,
-) -> Result<(String, &'parse CommandMeta), Rich<'src, Token>> {
+) -> Result<(String, &'parse ActiveCommandRecord), Rich<'src, Token>> {
     let cmd_start = input.cursor();
     let token = input.next();
     let name = match token {
@@ -1568,20 +1577,20 @@ fn command_head_parser<'src, 'parse>(
     let cmd_span = input.span_from_cursor(&cmd_start);
 
     let meta = match lookup_command_for_parse(ctx, &name, current_mode) {
-        LookupResult::Active(meta) if meta.kind == expected_kind => meta,
-        LookupResult::Active(_) => {
+        ModeLookup::Found(meta) if meta.kind == expected_kind => meta,
+        ModeLookup::Found(_) => {
             return Err(Rich::custom(
                 cmd_span,
                 format!("not {}", expected_kind.label()),
             ));
         }
-        LookupResult::KnownButDisallowed => {
+        ModeLookup::WrongMode => {
             return Err(Rich::custom(
                 cmd_span,
                 format!("Command \\{} is not allowed in {} mode", name, current_mode),
             ));
         }
-        LookupResult::Unknown => {
+        ModeLookup::NotFound => {
             if strict {
                 return Err(Rich::custom(
                     cmd_span,
@@ -1609,7 +1618,7 @@ fn math_infix_guard<'a>(
     select! {
         Token::ControlSeq(name)
             if matches!(lookup_command_for_parse(ctx, name.as_str(), current_mode),
-                LookupResult::Active(meta) if meta.kind == CommandKind::Infix)
+                ModeLookup::Found(meta) if meta.kind == CommandKind::Infix)
                 || ctx.lookup_command(name.as_str(), other_mode(current_mode))
                     .map(|meta| meta.kind == CommandKind::Infix)
                     .unwrap_or(false) => ()
@@ -1624,7 +1633,7 @@ fn infix_guard<'a>(
     select! {
         Token::ControlSeq(name)
             if matches!(lookup_command_for_parse(ctx, name.as_str(), current_mode),
-                LookupResult::Active(meta) if meta.kind == CommandKind::Infix)
+                ModeLookup::Found(meta) if meta.kind == CommandKind::Infix)
                 || ctx.lookup_command(name.as_str(), other_mode(current_mode))
                     .map(|meta| meta.kind == CommandKind::Infix)
                     .unwrap_or(false) => ()
@@ -1893,7 +1902,7 @@ fn environment_parser<'a>(
 
         let (cmd_args, known, body_mode) =
             match lookup_env_for_parse(ctx, name.as_str(), current_mode) {
-                LookupResult::Active(meta) => {
+                ModeLookup::Found(meta) => {
                     let mut cmd_args: Vec<TrackedArgumentSlot> =
                         Vec::with_capacity(meta.argspec.args.len());
                     for spec in meta.argspec.args {
@@ -1940,7 +1949,7 @@ fn environment_parser<'a>(
 
                     (cmd_args, true, meta.body_mode)
                 }
-                LookupResult::KnownButDisallowed => {
+                ModeLookup::WrongMode => {
                     return Err(Rich::custom(
                         name_span,
                         format!(
@@ -1949,7 +1958,7 @@ fn environment_parser<'a>(
                         ),
                     ));
                 }
-                LookupResult::Unknown => {
+                ModeLookup::NotFound => {
                     if strict {
                         return Err(Rich::custom(
                             name_span,
@@ -2314,7 +2323,7 @@ where
         Some(Token::ControlSeq(name))
             if matches!(
                 lookup_command_for_parse(ctx, name.as_str(), ContentMode::Math),
-                LookupResult::Active(meta) if meta.kind == CommandKind::Infix
+                ModeLookup::Found(meta) if meta.kind == CommandKind::Infix
             ));
         input.rewind(checkpoint);
 
@@ -2506,6 +2515,21 @@ where
     });
 
     leading
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use texform_specs::specs::ActiveCommandRecord;
+
+    #[test]
+    fn parser_local_enums_use_mode_lookup_and_script_marker_names() {
+        let lookup: ModeLookup<'_, ActiveCommandRecord> = ModeLookup::WrongMode;
+        assert!(matches!(lookup, ModeLookup::WrongMode));
+        assert!(matches!(ScriptMarker::Sub, ScriptMarker::Sub));
+        assert!(matches!(ScriptMarker::Sup, ScriptMarker::Sup));
+        assert!(matches!(ScriptMarker::Prime, ScriptMarker::Prime));
+    }
 }
 
 /// Construct mutually recursive math/text content parsers.

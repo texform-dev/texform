@@ -145,10 +145,6 @@ pub struct ActiveCharacterRecord {
     pub package: String,
 }
 
-pub type CommandMeta = ActiveCommandRecord;
-pub type EnvMeta = ActiveEnvironmentRecord;
-pub type CharacterMeta = ActiveCharacterRecord;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandSpec {
     pub name: String,

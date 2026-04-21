@@ -83,3 +83,13 @@ fn too_many_columns_guard() {
     let err = parse_column_template("*{10001}{c}").unwrap_err();
     assert_eq!(err, ColumnParseError::MaxColumns);
 }
+
+#[test]
+fn at_and_bang_columns_preserve_spacing_metadata() {
+    let spec = parse_column_template("c@{x}!{y}c").unwrap();
+
+    assert_eq!(spec.column_align.len(), 4);
+    assert_eq!(spec.column_spacing, vec!["0", "0", ".5em"]);
+    assert_eq!(spec.column_start, vec!["", "x", "y", ""]);
+    assert_eq!(spec.column_extra, vec![false, true, true, false]);
+}

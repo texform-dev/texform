@@ -2,9 +2,9 @@ use serde::Deserialize;
 use texform_argspec::{ArgForm, ArgSpec, DelimiterToken, ValueKind, parse_arg_specs};
 use texform_core::api;
 use texform_core::parse::{
-    AllowedMode, CharacterMeta, CommandItem, CommandKind, CommandMeta, ContentMode, ContextItem,
-    DelimiterControlItem, EnvMeta, EnvironmentItem, ParseContextBuildError, ParseOutput,
-    ParseResult,
+    ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, AllowedMode, CommandItem,
+    CommandKind, ContentMode, ContextItem, DelimiterControlItem, EnvironmentItem,
+    ParseContextBuildError, ParseOutput, ParseResult,
 };
 use texform_core::serialize::SerializeOptions;
 use wasm_bindgen::prelude::*;
@@ -299,7 +299,11 @@ impl ParseContext {
 }
 
 impl ParseContext {
-    fn lookup_command_meta(&self, name: &str, mode: &str) -> Result<Option<&CommandMeta>, JsValue> {
+    fn lookup_command_meta(
+        &self,
+        name: &str,
+        mode: &str,
+    ) -> Result<Option<&ActiveCommandRecord>, JsValue> {
         let mode = parse_content_mode(mode)?;
         Ok(self.inner.lookup_command(name, mode))
     }
@@ -308,7 +312,7 @@ impl ParseContext {
         &self,
         name: &str,
         mode: &str,
-    ) -> Result<Option<&CommandMeta>, JsValue> {
+    ) -> Result<Option<&ActiveCommandRecord>, JsValue> {
         let mode = parse_content_mode(mode)?;
         Ok(self.inner.lookup_explicit_command(name, mode))
     }
@@ -317,12 +321,16 @@ impl ParseContext {
         &self,
         name: &str,
         mode: &str,
-    ) -> Result<Option<&CharacterMeta>, JsValue> {
+    ) -> Result<Option<&ActiveCharacterRecord>, JsValue> {
         let mode = parse_content_mode(mode)?;
         Ok(self.inner.lookup_character(name, mode))
     }
 
-    fn lookup_env_meta(&self, name: &str, mode: &str) -> Result<Option<&EnvMeta>, JsValue> {
+    fn lookup_env_meta(
+        &self,
+        name: &str,
+        mode: &str,
+    ) -> Result<Option<&ActiveEnvironmentRecord>, JsValue> {
         let mode = parse_content_mode(mode)?;
         Ok(self.inner.lookup_env(name, mode))
     }
@@ -773,7 +781,7 @@ mod tests {
     }
 }
 
-fn command_meta_to_js(meta: &CommandMeta) -> JsValue {
+fn command_meta_to_js(meta: &ActiveCommandRecord) -> JsValue {
     let value = js_sys::Object::new();
     js_sys::Reflect::set(&value, &"name".into(), &meta.name.into()).unwrap();
     js_sys::Reflect::set(
@@ -811,7 +819,7 @@ fn command_meta_to_js(meta: &CommandMeta) -> JsValue {
     value.into()
 }
 
-fn env_meta_to_js(meta: &EnvMeta) -> JsValue {
+fn env_meta_to_js(meta: &ActiveEnvironmentRecord) -> JsValue {
     let value = js_sys::Object::new();
     js_sys::Reflect::set(&value, &"name".into(), &meta.name.into()).unwrap();
     js_sys::Reflect::set(
@@ -849,7 +857,7 @@ fn env_meta_to_js(meta: &EnvMeta) -> JsValue {
     value.into()
 }
 
-fn character_meta_to_js(meta: &CharacterMeta) -> JsValue {
+fn character_meta_to_js(meta: &ActiveCharacterRecord) -> JsValue {
     let value = js_sys::Object::new();
     js_sys::Reflect::set(&value, &"name".into(), &meta.name.as_str().into()).unwrap();
     js_sys::Reflect::set(
@@ -874,7 +882,7 @@ fn character_meta_to_js(meta: &CharacterMeta) -> JsValue {
     value.into()
 }
 
-fn character_attributes_to_js(meta: &CharacterMeta) -> js_sys::Object {
+fn character_attributes_to_js(meta: &ActiveCharacterRecord) -> js_sys::Object {
     let value = js_sys::Object::new();
     match meta.attributes.mathvariant.as_deref() {
         Some(mathvariant) => {

@@ -16,7 +16,9 @@ pub use texform_argspec::ArgSpecParseError;
 use texform_interface::syntax_node::SyntaxNode;
 
 pub use texform_interface::syntax_node::ContentMode;
-pub use texform_specs::specs::{AllowedMode, CharacterMeta, CommandKind, CommandMeta, EnvMeta};
+pub use texform_specs::specs::{
+    ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, AllowedMode, CommandKind,
+};
 
 use crate::ast::Ast;
 pub use crate::knowledge::KnowledgeBase;
@@ -329,15 +331,13 @@ impl ParseContextBuilder {
                 }
                 BuilderOp::RemoveCommand(name) => {
                     mutation_summary.touched_commands.insert(name.clone());
-                    let item = CommandItem::new(name, CommandKind::Prefix, AllowedMode::Math, "");
-                    math_kb.remove_item(item.clone());
-                    text_kb.remove_item(item);
+                    math_kb.remove_command_by_name(name.as_str());
+                    text_kb.remove_command_by_name(name.as_str());
                 }
                 BuilderOp::RemoveEnvironment(name) => {
                     mutation_summary.touched_environments.insert(name.clone());
-                    let item = EnvironmentItem::new(name, AllowedMode::Math, ContentMode::Math, "");
-                    math_kb.remove_item(item.clone());
-                    text_kb.remove_item(item);
+                    math_kb.remove_environment_by_name(name.as_str());
+                    text_kb.remove_environment_by_name(name.as_str());
                 }
                 BuilderOp::RemoveDelimiterControl(name) => {
                     let item = DelimiterControlItem::new(name);
@@ -636,22 +636,30 @@ impl ParseContext {
     }
 
     /// Look up the active command metadata for `name` in the selected lane.
-    pub fn lookup_command(&self, name: &str, mode: ContentMode) -> Option<&CommandMeta> {
+    pub fn lookup_command(&self, name: &str, mode: ContentMode) -> Option<&ActiveCommandRecord> {
         self.kb_for(mode).lookup_command(name)
     }
 
     /// Look up only the explicit (non-character-derived) command for `name`.
-    pub fn lookup_explicit_command(&self, name: &str, mode: ContentMode) -> Option<&CommandMeta> {
+    pub fn lookup_explicit_command(
+        &self,
+        name: &str,
+        mode: ContentMode,
+    ) -> Option<&ActiveCommandRecord> {
         self.kb_for(mode).lookup_explicit_command(name)
     }
 
     /// Look up character metadata for a control sequence name.
-    pub fn lookup_character(&self, name: &str, mode: ContentMode) -> Option<&CharacterMeta> {
+    pub fn lookup_character(
+        &self,
+        name: &str,
+        mode: ContentMode,
+    ) -> Option<&ActiveCharacterRecord> {
         self.kb_for(mode).lookup_character(name)
     }
 
     /// Look up environment metadata by name.
-    pub fn lookup_env(&self, name: &str, mode: ContentMode) -> Option<&EnvMeta> {
+    pub fn lookup_env(&self, name: &str, mode: ContentMode) -> Option<&ActiveEnvironmentRecord> {
         self.kb_for(mode).lookup_env(name)
     }
 

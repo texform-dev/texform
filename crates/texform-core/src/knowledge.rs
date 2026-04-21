@@ -37,8 +37,8 @@ pub use texform_argspec::{
     ArgForm, ArgSpec, ArgSpecParseError, DelimiterToken, ParsedArgSpec, ValueKind,
 };
 pub use texform_specs::specs::{
-    AllowedMode, BuiltinCharacterRecord, BuiltinCommandRecord, BuiltinEnvironmentRecord,
-    CharacterMeta, CommandKind, CommandMeta, EnvMeta,
+    ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, AllowedMode,
+    BuiltinCharacterRecord, BuiltinCommandRecord, BuiltinEnvironmentRecord, CommandKind,
 };
 #[cfg(test)]
 use texform_specs::specs::{
@@ -91,14 +91,14 @@ impl std::error::Error for PackageLoadError {}
 ///   Prevents a deleted name from "reviving" through a character fallback.
 #[derive(Debug, Clone)]
 pub struct KnowledgeBase {
-    commands: Vec<CommandMeta>,
+    commands: Vec<ActiveCommandRecord>,
     command_idx_by_name: HashMap<&'static str, usize>,
-    characters: Vec<CharacterMeta>,
+    characters: Vec<ActiveCharacterRecord>,
     character_idx_by_name: HashMap<String, usize>,
-    character_command_views: Vec<CommandMeta>,
+    character_command_views: Vec<ActiveCommandRecord>,
     active_command_idx_by_name: HashMap<String, ActiveCommandSource>,
     suppressed_command_names: HashSet<String>,
-    envs: Vec<EnvMeta>,
+    envs: Vec<ActiveEnvironmentRecord>,
     env_idx_by_name: HashMap<&'static str, usize>,
     delimiter_controls: HashSet<&'static str>,
 }
@@ -161,7 +161,7 @@ impl KnowledgeBase {
         Self::build_from_packages(package_names.as_slice())
     }
 
-    pub fn lookup_command(&self, name: &str) -> Option<&CommandMeta> {
+    pub fn lookup_command(&self, name: &str) -> Option<&ActiveCommandRecord> {
         if self.suppressed_command_names.contains(name) {
             return None;
         }
@@ -173,7 +173,7 @@ impl KnowledgeBase {
     }
 
     /// Look up only the explicit (non-character-derived) command for `name`.
-    pub fn lookup_explicit_command(&self, name: &str) -> Option<&CommandMeta> {
+    pub fn lookup_explicit_command(&self, name: &str) -> Option<&ActiveCommandRecord> {
         self.command_idx_by_name
             .get(name)
             .copied()
@@ -181,7 +181,7 @@ impl KnowledgeBase {
     }
 
     /// Look up raw character metadata by control-sequence name.
-    pub fn lookup_character(&self, name: &str) -> Option<&CharacterMeta> {
+    pub fn lookup_character(&self, name: &str) -> Option<&ActiveCharacterRecord> {
         self.character_idx_by_name
             .get(name)
             .copied()
@@ -189,7 +189,7 @@ impl KnowledgeBase {
     }
 
     /// Look up environment metadata by name.
-    pub fn lookup_env(&self, name: &str) -> Option<&EnvMeta> {
+    pub fn lookup_env(&self, name: &str) -> Option<&ActiveEnvironmentRecord> {
         self.env_idx_by_name
             .get(name)
             .copied()
@@ -223,7 +223,7 @@ impl KnowledgeBase {
     pub(crate) fn insert_command(&mut self, item: CommandItem) -> Result<(), ArgSpecParseError> {
         let meta = command_item_into_meta(item, vec![RUNTIME_PACKAGE_NAME.to_string()])?;
         let name = meta.name;
-        let idx = self.upsert_command_meta(meta);
+        let idx = self.append_command_meta(meta);
         self.suppressed_command_names.remove(name);
         self.set_active_command_source(name, ActiveCommandSource::Explicit(idx));
         Ok(())
@@ -232,10 +232,8 @@ impl KnowledgeBase {
     /// Remove a previously inserted item. Returns `true` if found.
     pub fn remove_item(&mut self, item: impl Into<ContextItem>) -> bool {
         match item.into() {
-            ContextItem::Command(item) => self.remove_command(item.name.as_str()),
-            ContextItem::Environment(item) => {
-                self.env_idx_by_name.remove(item.name.as_str()).is_some()
-            }
+            ContextItem::Command(item) => self.remove_command_by_name(item.name.as_str()),
+            ContextItem::Environment(item) => self.remove_environment_by_name(item.name.as_str()),
             ContextItem::DelimiterControl(item) => {
                 self.delimiter_controls.remove(item.name.as_str())
             }
@@ -244,7 +242,7 @@ impl KnowledgeBase {
 
     pub fn insert_environment(&mut self, item: EnvironmentItem) -> Result<(), ArgSpecParseError> {
         let meta = environment_item_into_meta(item, vec![RUNTIME_PACKAGE_NAME.to_string()])?;
-        self.upsert_env_meta(meta);
+        self.append_env_meta(meta);
         Ok(())
     }
 
@@ -260,7 +258,7 @@ impl KnowledgeBase {
     /// Removes a command name from both raw and active indices, then adds it
     /// to the suppression set. This prevents `lookup_command()` from falling
     /// back to a character-derived view after the name is explicitly removed.
-    fn remove_command(&mut self, name: &str) -> bool {
+    pub(crate) fn remove_command_by_name(&mut self, name: &str) -> bool {
         let explicit_removed = self.command_idx_by_name.remove(name).is_some();
         let active_removed = self.active_command_idx_by_name.remove(name).is_some();
 
@@ -272,11 +270,15 @@ impl KnowledgeBase {
         false
     }
 
+    pub(crate) fn remove_environment_by_name(&mut self, name: &str) -> bool {
+        self.env_idx_by_name.remove(name).is_some()
+    }
+
     fn set_active_command_source(&mut self, name: impl Into<String>, source: ActiveCommandSource) {
         self.active_command_idx_by_name.insert(name.into(), source);
     }
 
-    fn upsert_command_meta(&mut self, meta: CommandMeta) -> usize {
+    fn append_command_meta(&mut self, meta: ActiveCommandRecord) -> usize {
         let idx = self.commands.len();
         let name = meta.name;
         self.commands.push(meta);
@@ -284,14 +286,14 @@ impl KnowledgeBase {
         idx
     }
 
-    fn upsert_env_meta(&mut self, meta: EnvMeta) {
+    fn append_env_meta(&mut self, meta: ActiveEnvironmentRecord) {
         let idx = self.envs.len();
         let name = meta.name;
         self.envs.push(meta);
         self.env_idx_by_name.insert(name, idx);
     }
 
-    fn upsert_character_meta(&mut self, meta: CharacterMeta) -> usize {
+    fn upsert_character_meta(&mut self, meta: ActiveCharacterRecord) -> usize {
         let idx = self.characters.len();
         let name = meta.name.clone();
         self.characters.push(meta);
@@ -299,7 +301,7 @@ impl KnowledgeBase {
         idx
     }
 
-    fn upsert_character_command_view(&mut self, meta: CommandMeta) -> usize {
+    fn upsert_character_command_view(&mut self, meta: ActiveCommandRecord) -> usize {
         let idx = self.character_command_views.len();
         self.character_command_views.push(meta);
         idx
@@ -317,7 +319,7 @@ impl KnowledgeBase {
             attributes,
         } = character;
 
-        self.upsert_character_meta(CharacterMeta {
+        self.upsert_character_meta(ActiveCharacterRecord {
             name: name.clone(),
             allowed_mode,
             unicode_value,
@@ -342,7 +344,7 @@ impl KnowledgeBase {
         character: &'static BuiltinCharacterRecord,
         package: &str,
     ) {
-        self.upsert_character_meta(CharacterMeta {
+        self.upsert_character_meta(ActiveCharacterRecord {
             name: character.name.to_string(),
             allowed_mode: character.allowed_mode,
             unicode_value: character.unicode_value.to_string(),
@@ -350,7 +352,7 @@ impl KnowledgeBase {
             package: package.to_string(),
         });
 
-        let view_idx = self.upsert_character_command_view(CommandMeta {
+        let view_idx = self.upsert_character_command_view(ActiveCommandRecord {
             name: character.name,
             kind: CommandKind::Prefix,
             allowed_mode: character.allowed_mode,
@@ -369,7 +371,7 @@ impl KnowledgeBase {
     #[cfg(test)]
     fn insert_or_override_command_with_package(&mut self, spec: CommandSpec, package: &str) {
         let meta = command_spec_into_meta(spec, vec![package.to_string()]);
-        let idx = self.upsert_command_meta(meta);
+        let idx = self.append_command_meta(meta);
         let name = self.commands[idx].name;
         self.set_active_command_source(name, ActiveCommandSource::Explicit(idx));
     }
@@ -384,14 +386,14 @@ impl KnowledgeBase {
             let existing = &self.commands[existing_idx];
             if should_merge_command(existing, &incoming) {
                 let merged = merge_command_meta(existing, &incoming);
-                let idx = self.upsert_command_meta(merged);
+                let idx = self.append_command_meta(merged);
                 let name = self.commands[idx].name;
                 self.set_active_command_source(name, ActiveCommandSource::Explicit(idx));
                 return;
             }
         }
 
-        let idx = self.upsert_command_meta(incoming);
+        let idx = self.append_command_meta(incoming);
         let name = self.commands[idx].name;
         self.set_active_command_source(name, ActiveCommandSource::Explicit(idx));
     }
@@ -406,14 +408,14 @@ impl KnowledgeBase {
             let existing = &self.commands[existing_idx];
             if should_merge_command(existing, &incoming) {
                 let merged = merge_command_meta(existing, &incoming);
-                let idx = self.upsert_command_meta(merged);
+                let idx = self.append_command_meta(merged);
                 let name = self.commands[idx].name;
                 self.set_active_command_source(name, ActiveCommandSource::Explicit(idx));
                 return;
             }
         }
 
-        let idx = self.upsert_command_meta(incoming);
+        let idx = self.append_command_meta(incoming);
         let name = self.commands[idx].name;
         self.set_active_command_source(name, ActiveCommandSource::Explicit(idx));
     }
@@ -430,7 +432,7 @@ impl KnowledgeBase {
         package: &str,
     ) {
         let meta = environment_spec_into_meta(spec, vec![package.to_string()]);
-        self.upsert_env_meta(meta);
+        self.append_env_meta(meta);
     }
 
     /// Same merge-or-override logic as commands, but for environments.
@@ -441,12 +443,12 @@ impl KnowledgeBase {
         if let Some(existing_idx) = self.env_idx_by_name.get(incoming.name).copied() {
             let existing = &self.envs[existing_idx];
             if should_merge_environment(existing, &incoming) {
-                self.upsert_env_meta(merge_environment_meta(existing, &incoming));
+                self.append_env_meta(merge_environment_meta(existing, &incoming));
                 return;
             }
         }
 
-        self.upsert_env_meta(incoming);
+        self.append_env_meta(incoming);
     }
 
     fn import_or_merge_builtin_environment_with_package(
@@ -458,12 +460,12 @@ impl KnowledgeBase {
         if let Some(existing_idx) = self.env_idx_by_name.get(incoming.name).copied() {
             let existing = &self.envs[existing_idx];
             if should_merge_environment(existing, &incoming) {
-                self.upsert_env_meta(merge_environment_meta(existing, &incoming));
+                self.append_env_meta(merge_environment_meta(existing, &incoming));
                 return;
             }
         }
 
-        self.upsert_env_meta(incoming);
+        self.append_env_meta(incoming);
     }
 
     #[cfg(test)]
@@ -536,8 +538,8 @@ fn make_command_meta(
     tags: Vec<String>,
     source: String,
     from_packages: Vec<String>,
-) -> CommandMeta {
-    CommandMeta {
+) -> ActiveCommandRecord {
+    ActiveCommandRecord {
         name: leak_string(name),
         kind,
         allowed_mode,
@@ -553,7 +555,7 @@ fn make_command_meta(
 fn command_item_into_meta(
     item: CommandItem,
     from_packages: Vec<String>,
-) -> Result<CommandMeta, ArgSpecParseError> {
+) -> Result<ActiveCommandRecord, ArgSpecParseError> {
     let context = format!("command {}", item.name);
     let args = parse_arg_specs(item.spec.as_str(), context.as_str())?;
     Ok(make_command_meta(
@@ -575,8 +577,8 @@ fn make_env_meta(
     tags: Vec<String>,
     source: String,
     from_packages: Vec<String>,
-) -> EnvMeta {
-    EnvMeta {
+) -> ActiveEnvironmentRecord {
+    ActiveEnvironmentRecord {
         name: leak_string(name),
         allowed_mode,
         argspec: ParsedArgSpec {
@@ -592,7 +594,7 @@ fn make_env_meta(
 fn environment_item_into_meta(
     item: EnvironmentItem,
     from_packages: Vec<String>,
-) -> Result<EnvMeta, ArgSpecParseError> {
+) -> Result<ActiveEnvironmentRecord, ArgSpecParseError> {
     let context = format!("environment {}", item.name);
     let args = parse_arg_specs(item.spec.as_str(), context.as_str())?;
     Ok(make_env_meta(
@@ -607,7 +609,7 @@ fn environment_item_into_meta(
 }
 
 #[cfg(test)]
-fn command_spec_into_meta(spec: CommandSpec, from_packages: Vec<String>) -> CommandMeta {
+fn command_spec_into_meta(spec: CommandSpec, from_packages: Vec<String>) -> ActiveCommandRecord {
     make_command_meta(
         spec.name,
         spec.kind,
@@ -622,8 +624,8 @@ fn command_spec_into_meta(spec: CommandSpec, from_packages: Vec<String>) -> Comm
 fn builtin_command_into_meta(
     record: &'static BuiltinCommandRecord,
     from_packages: Vec<String>,
-) -> CommandMeta {
-    CommandMeta {
+) -> ActiveCommandRecord {
+    ActiveCommandRecord {
         name: record.name,
         kind: record.kind,
         allowed_mode: record.allowed_mode,
@@ -634,7 +636,10 @@ fn builtin_command_into_meta(
 }
 
 #[cfg(test)]
-fn environment_spec_into_meta(spec: EnvironmentSpec, from_packages: Vec<String>) -> EnvMeta {
+fn environment_spec_into_meta(
+    spec: EnvironmentSpec,
+    from_packages: Vec<String>,
+) -> ActiveEnvironmentRecord {
     make_env_meta(
         spec.name,
         spec.allowed_mode,
@@ -649,8 +654,8 @@ fn environment_spec_into_meta(spec: EnvironmentSpec, from_packages: Vec<String>)
 fn builtin_environment_into_meta(
     record: &'static BuiltinEnvironmentRecord,
     from_packages: Vec<String>,
-) -> EnvMeta {
-    EnvMeta {
+) -> ActiveEnvironmentRecord {
+    ActiveEnvironmentRecord {
         name: record.name,
         allowed_mode: record.allowed_mode,
         argspec: record.argspec,
@@ -662,7 +667,7 @@ fn builtin_environment_into_meta(
 
 /// Leak a `String` into a `&'static str` for arena-style storage.
 ///
-/// Metadata structs (`CommandMeta`, `EnvMeta`, …) use `&'static` references
+/// Active record structs use `&'static` references
 /// so they can be cheaply shared. The leaked memory lives for the process
 /// lifetime, which is acceptable for a knowledge base that is built once.
 fn leak_string(value: impl Into<String>) -> &'static str {
@@ -762,7 +767,7 @@ fn merge_from_packages(existing: &[&str], incoming: &[&str]) -> Vec<String> {
 /// Two commands are mergeable iff they share name, kind, and argspec source,
 /// both come from managed packages, and neither side is a physics-denylisted
 /// command (Pr, det, exp — these intentionally override base definitions).
-fn should_merge_command(existing: &CommandMeta, incoming: &CommandMeta) -> bool {
+fn should_merge_command(existing: &ActiveCommandRecord, incoming: &ActiveCommandRecord) -> bool {
     existing.name == incoming.name
         && existing.kind == incoming.kind
         && existing.argspec.source == incoming.argspec.source
@@ -773,7 +778,10 @@ fn should_merge_command(existing: &CommandMeta, incoming: &CommandMeta) -> bool 
                 || incoming.from_packages.contains(&"physics")))
 }
 
-fn should_merge_environment(existing: &EnvMeta, incoming: &EnvMeta) -> bool {
+fn should_merge_environment(
+    existing: &ActiveEnvironmentRecord,
+    incoming: &ActiveEnvironmentRecord,
+) -> bool {
     existing.name == incoming.name
         && existing.argspec.source == incoming.argspec.source
         && existing.body_mode == incoming.body_mode
@@ -783,7 +791,10 @@ fn should_merge_environment(existing: &EnvMeta, incoming: &EnvMeta) -> bool {
 
 /// Produces a merged command: allowed_mode and tags are unioned,
 /// from_packages collects both sources in canonical order.
-fn merge_command_meta(existing: &CommandMeta, incoming: &CommandMeta) -> CommandMeta {
+fn merge_command_meta(
+    existing: &ActiveCommandRecord,
+    incoming: &ActiveCommandRecord,
+) -> ActiveCommandRecord {
     debug_assert!(should_merge_command(existing, incoming));
     debug_assert_eq!(existing.argspec.args, incoming.argspec.args);
 
@@ -798,7 +809,10 @@ fn merge_command_meta(existing: &CommandMeta, incoming: &CommandMeta) -> Command
     )
 }
 
-fn merge_environment_meta(existing: &EnvMeta, incoming: &EnvMeta) -> EnvMeta {
+fn merge_environment_meta(
+    existing: &ActiveEnvironmentRecord,
+    incoming: &ActiveEnvironmentRecord,
+) -> ActiveEnvironmentRecord {
     debug_assert!(should_merge_environment(existing, incoming));
     debug_assert_eq!(existing.argspec.args, incoming.argspec.args);
 
