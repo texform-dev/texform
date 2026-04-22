@@ -37,4 +37,49 @@ describe("MathJax adapter", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  test("isolates package-specific commands across compiles", async () => {
+    const physics = await compiler.compile("\\ketbra{a}", {
+      packages: ["physics"],
+      mode: "math",
+    });
+    expect(physics.success).toBe(true);
+
+    const braket = await compiler.compile("\\ketbra{a}", {
+      packages: ["braket"],
+      mode: "math",
+    });
+    expect(braket.success).toBe(false);
+    expect(braket.error).toContain("Missing argument");
+
+    const physicsAgain = await compiler.compile("\\ketbra{a}", {
+      packages: ["physics"],
+      mode: "math",
+    });
+    expect(physicsAgain.success).toBe(true);
+  });
+
+  test("does not leak state across compiles in the same package", async () => {
+    const first = await compiler.compile("\\label{a}", {
+      packages: ["base"],
+      mode: "math",
+    });
+    expect(first.success).toBe(true);
+
+    const second = await compiler.compile("\\label a", {
+      packages: ["base"],
+      mode: "math",
+    });
+    expect(second.success).toBe(true);
+  });
+
+  test("returns a compile error for unknown packages", async () => {
+    const result = await compiler.compile("\\frac{a}{b}", {
+      packages: ["does-not-exist"],
+      mode: "math",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Unknown TeX package");
+  });
 });

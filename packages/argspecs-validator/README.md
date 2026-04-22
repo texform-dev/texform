@@ -1,6 +1,16 @@
 # argspecs-validator
 
-Validates TeXForm argument specs against live TeX renderers. Reads `resources/specs/*.yaml`, generates representative test cases for each command and environment, runs them through MathJax, KaTeX, and XeTeX, and writes structured results to `data/spec-tests/`.
+Validates TeXForm argument specs against live TeX renderers. Reads `resources/specs/*.yaml`, generates representative test cases for each command and environment, runs them through MathJax, KaTeX, and XeTeX, and writes structured results to `out/spec-tests/` by default.
+
+## Validation Scope
+
+Validation is **package-scoped**: each record is checked independently against the behavior of its own package, not against a "load every package at once" runtime.
+
+- MathJax compiles each record with a package-scoped TeX configuration: `base + ams + <current record package>`.
+- XeTeX compiles each record with only the mapped `\usepackage{...}` entries for that record's package.
+- KaTeX has no package isolation API, so its built-in command set is always active; package filtering there is informational only.
+
+This means a `physics/ketbra` result answers "does this record match the `physics` package behavior?", not "what happens after every texform package is enabled together?".
 
 ## Prerequisites
 
@@ -67,7 +77,7 @@ Each spec entry produces a set of cases via an **OFAT (One-Factor-At-a-Time)** s
 | `neg:D[N]` | Negative: delimiter slot injected with `a` | → **fail** |
 | `neg:L[N]` | Negative: dimension slot injected with `a` | → **fail** |
 | `neg:I[N]` | Negative: integer slot injected with `a` | → **fail** |
-| `neg:N[N]` | Negative: csname slot injected with `\alpha` | xetex **fail**, mathjax/katex pass |
+| `neg:N[N]` | Negative: csname slot injected with `\alpha` | usually xetex **fail**, mathjax/katex pass |
 | `nullable[N]` | `:D?` (nullable delimiter) slot tested with `{}` | → **pass** |
 
 ### Positive placeholders

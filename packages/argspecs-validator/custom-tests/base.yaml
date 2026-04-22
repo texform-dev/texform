@@ -132,13 +132,3 @@ commands:
       - branch: "ctx:align-c"
         tex: "\\parbox[c]{1pt}{x}"
         expect: pass
-
-  label:
-    skip_generated: true
-    cases:
-      - branch: "ctx:braced"
-        tex: "\\label{a}"
-        expect: pass
-      - branch: "ctx:bare"
-        tex: "\\label b"
-        expect: pass
