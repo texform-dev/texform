@@ -111,8 +111,34 @@ commands:
 
   mmlToken:
     skip_generated: true
-    cases: []
+    cases:
+      - branch: "ctx:mathml-token"
+        tex: "\\mmlToken{mi}{x}"
+        expect: pass
 
   breakAlign:
     skip_generated: true
-    cases: []
+    cases:
+      - branch: "ctx:in-array"
+        tex: "\\begin{array}{cc} \\breakAlign{c}{t} a & b \\end{array}"
+        expect: pass
+
+  parbox:
+    skip_generated: true
+    cases:
+      - branch: "ctx:basic"
+        tex: "\\parbox{1pt}{x}"
+        expect: pass
+      - branch: "ctx:align-c"
+        tex: "\\parbox[c]{1pt}{x}"
+        expect: pass
+
+  label:
+    skip_generated: true
+    cases:
+      - branch: "ctx:braced"
+        tex: "\\label{a}"
+        expect: pass
+      - branch: "ctx:bare"
+        tex: "\\label b"
+        expect: pass

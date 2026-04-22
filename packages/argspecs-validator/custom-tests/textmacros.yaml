@@ -3,4 +3,7 @@
 commands:
   mmlToken:
     skip_generated: true
-    cases: []
+    cases:
+      - branch: "ctx:text-mathml-token"
+        tex: "\\mmlToken{mi}{x}"
+        expect: pass

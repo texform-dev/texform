@@ -47,6 +47,44 @@ commands:
           katex: fail
           xetex: fail
 
+  cfrac:
+    skip_generated: true
+    cases:
+      - branch: "ctx:basic"
+        tex: "\\cfrac{a}{b}"
+        expect: pass
+      - branch: "ctx:align-left"
+        tex: "\\cfrac[l]{a}{b}"
+        expect: pass
+      - branch: "ctx:align-right"
+        tex: "\\cfrac[r]{a}{b}"
+        expect: pass
+
+  genfrac:
+    skip_generated: true
+    cases:
+      - branch: "ctx:basic"
+        tex: "\\genfrac (({1pt}{1}{e}{f}"
+        expect: pass
+      - branch: "ctx:bare-style"
+        tex: "\\genfrac (({1pt}1{e}{f}"
+        expect: pass
+      - branch: "ctx:bare-numerator"
+        tex: "\\genfrac (({1pt}{1}e{f}"
+        expect: pass
+      - branch: "ctx:bare-denominator"
+        tex: "\\genfrac (({1pt}{1}{e}f"
+        expect: pass
+      - branch: "ctx:null-left"
+        tex: "\\genfrac{}({1pt}{1}{d}{e}"
+        expect: pass
+      - branch: "ctx:null-right"
+        tex: "\\genfrac ({}{1pt}{1}{d}{e}"
+        expect: pass
+      - branch: "ctx:null-thick"
+        tex: "\\genfrac (({}{1}{d}{e}"
+        expect: pass
+
 environments:
   gather:
     skip_generated: true

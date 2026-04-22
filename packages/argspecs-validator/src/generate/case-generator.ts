@@ -30,7 +30,12 @@ export function generateCases(record: TestRecord): TestCase[] {
   // Bare token — skip delimiter kind (D params don't accept {}-wrapped form)
   for (let i = 0; i < slots.length; i++) {
     const s = slots[i];
-    if (s.required && s.form.type === "standard" && s.kind.type !== "star" && s.kind.type !== "delimiter") {
+    if (
+      s.required &&
+      s.form.type === "standard" &&
+      s.kind.type !== "star" &&
+      s.kind.type !== "delimiter"
+    ) {
       cases.push(makeBareCase(record, slots, i));
     }
   }

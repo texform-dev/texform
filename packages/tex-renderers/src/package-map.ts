@@ -11,4 +11,5 @@ export const PACKAGE_MAP: Record<string, PackageMapping> = {
   boldsymbol: { mathjax: ["boldsymbol"], xetex: ["bm"],      katex: true  },
   textmacros: { mathjax: ["textmacros"], xetex: [],          katex: true  },
   bboldx:     { mathjax: ["bboldx"],     xetex: ["bboldx"],  katex: false },
+  braket:     { mathjax: ["braket"],     xetex: [],           katex: false },
 };
