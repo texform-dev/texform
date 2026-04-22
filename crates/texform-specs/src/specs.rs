@@ -93,11 +93,24 @@ pub struct BuiltinEnvironmentRecord {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct BuiltinCharacterAttributes {
     pub mathvariant: Option<&'static str>,
+    pub tex_class: Option<&'static str>,
+    pub stretchy: Option<bool>,
+    pub move_sup_sub: Option<bool>,
+    pub large_op: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuiltinCharacterRecord {
     pub name: &'static str,
+    pub allowed_mode: AllowedMode,
+    pub unicode_value: &'static str,
+    pub attributes: BuiltinCharacterAttributes,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuiltinDelimiterRecord {
+    pub name: &'static str,
+    pub is_control_sequence: bool,
     pub allowed_mode: AllowedMode,
     pub unicode_value: &'static str,
     pub attributes: BuiltinCharacterAttributes,
@@ -126,12 +139,20 @@ pub struct ActiveEnvironmentRecord {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct CharacterAttributes {
     pub mathvariant: Option<String>,
+    pub tex_class: Option<String>,
+    pub stretchy: Option<bool>,
+    pub move_sup_sub: Option<bool>,
+    pub large_op: Option<bool>,
 }
 
 impl From<BuiltinCharacterAttributes> for CharacterAttributes {
     fn from(value: BuiltinCharacterAttributes) -> Self {
         CharacterAttributes {
             mathvariant: value.mathvariant.map(ToString::to_string),
+            tex_class: value.tex_class.map(ToString::to_string),
+            stretchy: value.stretchy,
+            move_sup_sub: value.move_sup_sub,
+            large_op: value.large_op,
         }
     }
 }
@@ -139,6 +160,16 @@ impl From<BuiltinCharacterAttributes> for CharacterAttributes {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveCharacterRecord {
     pub name: String,
+    pub allowed_mode: AllowedMode,
+    pub unicode_value: String,
+    pub attributes: CharacterAttributes,
+    pub package: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActiveDelimiterRecord {
+    pub name: &'static str,
+    pub is_control_sequence: bool,
     pub allowed_mode: AllowedMode,
     pub unicode_value: String,
     pub attributes: CharacterAttributes,
@@ -171,12 +202,21 @@ pub struct CharacterSpec {
     pub attributes: CharacterAttributes,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DelimiterSpec {
+    pub name: String,
+    pub is_control_sequence: bool,
+    pub allowed_mode: AllowedMode,
+    pub unicode_value: String,
+    pub attributes: CharacterAttributes,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct PackageSpecs {
     pub characters: Vec<CharacterSpec>,
+    pub delimiters: Vec<DelimiterSpec>,
     pub commands: Vec<CommandSpec>,
     pub environments: Vec<EnvironmentSpec>,
-    pub delimiter_controls: Vec<String>,
 }
 
 pub fn load_package_specs_from_str(yaml: &str, context: &str) -> PackageSpecs {
@@ -190,20 +230,20 @@ struct PackageSpecsYaml {
     #[serde(default)]
     characters: Vec<CharacterSpecYaml>,
     #[serde(default)]
+    delimiters: Vec<DelimiterSpecYaml>,
+    #[serde(default)]
     commands: Vec<CommandSpecYaml>,
     #[serde(default)]
     environments: Vec<EnvironmentSpecYaml>,
-    #[serde(default)]
-    delimiter_controls: Vec<String>,
 }
 
 impl PackageSpecsYaml {
     fn into_specs(self) -> PackageSpecs {
         PackageSpecs {
             characters: self.characters.into_iter().map(Into::into).collect(),
+            delimiters: self.delimiters.into_iter().map(Into::into).collect(),
             commands: self.commands.into_iter().map(Into::into).collect(),
             environments: self.environments.into_iter().map(Into::into).collect(),
-            delimiter_controls: self.delimiter_controls,
         }
     }
 }
@@ -231,12 +271,45 @@ impl From<CharacterSpecYaml> for CharacterSpec {
 struct CharacterAttributesYaml {
     #[serde(default)]
     mathvariant: Option<String>,
+    #[serde(default)]
+    tex_class: Option<String>,
+    #[serde(default)]
+    stretchy: Option<bool>,
+    #[serde(default)]
+    move_sup_sub: Option<bool>,
+    #[serde(default)]
+    large_op: Option<bool>,
 }
 
 impl From<CharacterAttributesYaml> for CharacterAttributes {
     fn from(value: CharacterAttributesYaml) -> Self {
         CharacterAttributes {
             mathvariant: value.mathvariant,
+            tex_class: value.tex_class,
+            stretchy: value.stretchy,
+            move_sup_sub: value.move_sup_sub,
+            large_op: value.large_op,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct DelimiterSpecYaml {
+    name: String,
+    is_control_sequence: bool,
+    allowed_mode: AllowedModeYaml,
+    unicode_value: String,
+    attributes: CharacterAttributesYaml,
+}
+
+impl From<DelimiterSpecYaml> for DelimiterSpec {
+    fn from(value: DelimiterSpecYaml) -> Self {
+        DelimiterSpec {
+            name: value.name,
+            is_control_sequence: value.is_control_sequence,
+            allowed_mode: value.allowed_mode.into(),
+            unicode_value: value.unicode_value,
+            attributes: value.attributes.into(),
         }
     }
 }

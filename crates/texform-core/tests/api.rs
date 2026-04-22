@@ -1018,7 +1018,7 @@ fn parse_with_context_items_supports_nullable_delimiter_arguments() {
             r"\genfracprobe{}{}{0}{1}{a}{b}",
             r"\genfracprobe{(}{)}{0}{1}{a}{b}",
         ],
-        None,
+        Some(&["base"]),
         true,
     );
     assert_eq!(output.len(), 2);

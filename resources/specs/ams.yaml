@@ -368,7 +368,6 @@ environments:
     allowed_mode: math
     tags:
       - math-alignment
-delimiter_controls: [lVert, llcorner, lrcorner, lvert, rVert, rvert, ulcorner, urcorner]
 characters:
   - name: approxeq
     allowed_mode: math
@@ -1375,3 +1374,44 @@ characters:
     unicode_value: ¥
     attributes:
       mathvariant: italic
+delimiters:
+  - name: llcorner
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⌞
+    attributes: {}
+  - name: lrcorner
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⌟
+    attributes: {}
+  - name: lvert
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: '|'
+    attributes: {}
+  - name: lVert
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ‖
+    attributes: {}
+  - name: rvert
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: '|'
+    attributes: {}
+  - name: rVert
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ‖
+    attributes: {}
+  - name: ulcorner
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⌜
+    attributes: {}
+  - name: urcorner
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⌝
+    attributes: {}

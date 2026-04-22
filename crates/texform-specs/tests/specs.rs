@@ -494,7 +494,18 @@ environments:
     body_mode: math
     tags: [matrix]
     argspec: "m:C"
-delimiter_controls: [langle]
+delimiters:
+  - name: langle
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⟨
+    attributes:
+      tex_class: OPEN
+  - name: "|"
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: "|"
+    attributes: {}
 "#;
 
     let specs = load_package_specs_from_str(yaml, "test");
@@ -541,7 +552,18 @@ delimiter_controls: [langle]
     assert_eq!(specs.environments[0].allowed_mode, AllowedMode::Math);
     assert_eq!(specs.environments[0].argspec.args.len(), 1);
     assert_eq!(specs.environments[0].tags, vec!["matrix"]);
-    assert_eq!(specs.delimiter_controls, vec!["langle"]);
+    assert_eq!(specs.delimiters.len(), 2);
+    assert_eq!(specs.delimiters[0].name, "langle");
+    assert!(specs.delimiters[0].is_control_sequence);
+    assert_eq!(specs.delimiters[0].allowed_mode, AllowedMode::Math);
+    assert_eq!(specs.delimiters[0].unicode_value, "⟨");
+    assert_eq!(
+        specs.delimiters[0].attributes.tex_class.as_deref(),
+        Some("OPEN")
+    );
+    assert_eq!(specs.delimiters[1].name, "|");
+    assert!(!specs.delimiters[1].is_control_sequence);
+    assert_eq!(specs.delimiters[1].unicode_value, "|");
 }
 
 #[test]

@@ -67,11 +67,41 @@ fn test_delimiter_controls() {
             characters: vec![],
             commands: vec![],
             environments: vec![],
-            delimiter_controls: vec!["langle".to_string(), "rvert".to_string()],
+            delimiters: vec![
+                DelimiterSpec {
+                    name: "langle".to_string(),
+                    is_control_sequence: true,
+                    allowed_mode: AllowedMode::Math,
+                    unicode_value: "⟨".to_string(),
+                    attributes: CharacterAttributes {
+                        mathvariant: None,
+                        ..CharacterAttributes::default()
+                    },
+                },
+                DelimiterSpec {
+                    name: "|".to_string(),
+                    is_control_sequence: false,
+                    allowed_mode: AllowedMode::Math,
+                    unicode_value: "|".to_string(),
+                    attributes: CharacterAttributes {
+                        mathvariant: None,
+                        ..CharacterAttributes::default()
+                    },
+                },
+            ],
         },
     );
     assert_eq!(kb.lookup_delimiter_control("langle"), Some("langle"));
-    assert_eq!(kb.lookup_delimiter_control("rvert"), Some("rvert"));
+    assert_eq!(
+        kb.lookup_delimiter("langle", true)
+            .map(|item| item.unicode_value.as_str()),
+        Some("⟨")
+    );
+    assert_eq!(
+        kb.lookup_delimiter("|", false)
+            .map(|item| item.unicode_value.as_str()),
+        Some("|")
+    );
 }
 
 #[test]
@@ -95,7 +125,7 @@ fn test_builder_import_overrides_by_order() {
             tags: vec![],
         }],
         environments: vec![],
-        delimiter_controls: vec![],
+        delimiters: vec![],
     });
 
     let foo = kb.lookup_command("foo").unwrap();
@@ -114,11 +144,12 @@ fn test_character_import_preserves_allowed_mode() {
             unicode_value: "α".to_string(),
             attributes: CharacterAttributes {
                 mathvariant: Some("italic".to_string()),
+                ..CharacterAttributes::default()
             },
         }],
         commands: vec![],
         environments: vec![],
-        delimiter_controls: vec![],
+        delimiters: vec![],
     });
 
     let alpha = kb.lookup_command("alpha").unwrap();
@@ -157,7 +188,7 @@ fn test_later_character_can_override_active_explicit_command_without_removing_ra
         }],
         commands: vec![],
         environments: vec![],
-        delimiter_controls: vec![],
+        delimiters: vec![],
     });
 
     let active = kb
@@ -194,7 +225,7 @@ fn test_later_explicit_command_overrides_active_character() {
         }],
         commands: vec![],
         environments: vec![],
-        delimiter_controls: vec![],
+        delimiters: vec![],
     });
     kb.insert_or_override_command(CommandSpec {
         name: "foo".to_string(),
@@ -237,7 +268,7 @@ fn test_remove_command_suppresses_character_only_active_name() {
         }],
         commands: vec![],
         environments: vec![],
-        delimiter_controls: vec![],
+        delimiters: vec![],
     });
 
     // kb already mutable
@@ -269,7 +300,7 @@ fn test_remove_command_does_not_fallback_to_shadowed_character() {
         }],
         commands: vec![],
         environments: vec![],
-        delimiter_controls: vec![],
+        delimiters: vec![],
     });
     kb.insert_or_override_command(CommandSpec {
         name: "alpha".to_string(),
@@ -314,7 +345,7 @@ fn test_remove_command_by_name_suppresses_active_name_without_touching_character
         }],
         commands: vec![],
         environments: vec![],
-        delimiter_controls: vec![],
+        delimiters: vec![],
     });
 
     assert!(kb.remove_command_by_name("alpha"));
@@ -341,7 +372,7 @@ fn test_insert_command_clears_suppression_and_reactivates_name() {
         }],
         commands: vec![],
         environments: vec![],
-        delimiter_controls: vec![],
+        delimiters: vec![],
     });
 
     // kb already mutable
@@ -479,7 +510,7 @@ fn test_explicit_package_can_override_package_linebreak_command() {
                 tags: vec![],
             }],
             environments: vec![],
-            delimiter_controls: vec![],
+            delimiters: vec![],
         },
     );
 

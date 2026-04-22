@@ -1601,7 +1601,6 @@ environments:
     allowed_mode: math
     tags:
       - discouraged
-delimiter_controls: [Arrowvert, Downarrow, Uparrow, Updownarrow, Vert, arrowvert, backslash, bracevert, downarrow, gt, langle, lbrace, lbrack, lceil, lfloor, lgroup, lmoustache, lt, rangle, rbrace, rbrack, rceil, rfloor, rgroup, rmoustache, uparrow, updownarrow, vert, '{', '|', '}']
 characters:
   - name: AA
     allowed_mode: math
@@ -2520,3 +2519,204 @@ characters:
     unicode_value: ζ
     attributes:
       mathvariant: italic
+delimiters:
+  - name: .
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: ''
+    attributes: {}
+  - name: (
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: (
+    attributes: {}
+  - name: )
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: )
+    attributes: {}
+  - name: '['
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: '['
+    attributes: {}
+  - name: ']'
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: ']'
+    attributes: {}
+  - name: '{'
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: '{'
+    attributes: {}
+  - name: '}'
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: '}'
+    attributes: {}
+  - name: /
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: /
+    attributes: {}
+  - name: <
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: ⟨
+    attributes: {}
+  - name: '>'
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: ⟩
+    attributes: {}
+  - name: '|'
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: '|'
+    attributes: {}
+  - name: '|'
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ‖
+    attributes: {}
+  - name: arrowvert
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⏐
+    attributes: {}
+  - name: Arrowvert
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ‖
+    attributes: {}
+  - name: backslash
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: \
+    attributes: {}
+  - name: bracevert
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⎪
+    attributes: {}
+  - name: downarrow
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ↓
+    attributes: {}
+  - name: Downarrow
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⇓
+    attributes: {}
+  - name: gt
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⟩
+    attributes: {}
+  - name: langle
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⟨
+    attributes: {}
+  - name: lbrace
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: '{'
+    attributes: {}
+  - name: lbrack
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: '['
+    attributes: {}
+  - name: lceil
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⌈
+    attributes: {}
+  - name: lfloor
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⌊
+    attributes: {}
+  - name: lgroup
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⟮
+    attributes: {}
+  - name: lmoustache
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⎰
+    attributes: {}
+  - name: lt
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⟨
+    attributes: {}
+  - name: rangle
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⟩
+    attributes: {}
+  - name: rbrace
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: '}'
+    attributes: {}
+  - name: rbrack
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ']'
+    attributes: {}
+  - name: rceil
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⌉
+    attributes: {}
+  - name: rfloor
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⌋
+    attributes: {}
+  - name: rgroup
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⟯
+    attributes: {}
+  - name: rmoustache
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⎱
+    attributes: {}
+  - name: uparrow
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ↑
+    attributes: {}
+  - name: Uparrow
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⇑
+    attributes: {}
+  - name: updownarrow
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ↕
+    attributes: {}
+  - name: Updownarrow
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⇕
+    attributes: {}
+  - name: vert
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: '|'
+    attributes: {}
+  - name: Vert
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ‖
+    attributes: {}

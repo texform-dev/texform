@@ -17,7 +17,8 @@ use texform_interface::syntax_node::SyntaxNode;
 
 pub use texform_interface::syntax_node::ContentMode;
 pub use texform_specs::specs::{
-    ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, AllowedMode, CommandKind,
+    ActiveCharacterRecord, ActiveCommandRecord, ActiveDelimiterRecord, ActiveEnvironmentRecord,
+    AllowedMode, CommandKind,
 };
 
 use crate::ast::Ast;
@@ -594,6 +595,16 @@ impl ParseContext {
         self.math_kb
             .lookup_delimiter_control(name)
             .or_else(|| self.text_kb.lookup_delimiter_control(name))
+    }
+
+    pub fn lookup_delimiter(
+        &self,
+        name: &str,
+        is_control_sequence: bool,
+        mode: ContentMode,
+    ) -> Option<&ActiveDelimiterRecord> {
+        self.kb_for(mode)
+            .lookup_delimiter(name, is_control_sequence)
     }
 
     /// Parse a LaTeX formula and return a unified output.
@@ -1177,16 +1188,18 @@ fn find_invalid_left_context(
                 };
 
                 let is_valid_delimiter = match token {
-                    Token::Char('.') => true,
-                    Token::Char(c)
-                        if matches!(c, '(' | ')' | '[' | ']' | '|' | '<' | '>' | '/' | '\\') =>
-                    {
-                        true
-                    }
-                    Token::LBracket | Token::RBracket => true,
-                    Token::ControlSeq(name) => {
-                        ctx.lookup_delimiter_control(name.as_str()).is_some()
-                    }
+                    Token::Char(c) => ctx
+                        .lookup_delimiter(c.to_string().as_str(), false, ContentMode::Math)
+                        .is_some(),
+                    Token::LBracket => ctx
+                        .lookup_delimiter("[", false, ContentMode::Math)
+                        .is_some(),
+                    Token::RBracket => ctx
+                        .lookup_delimiter("]", false, ContentMode::Math)
+                        .is_some(),
+                    Token::ControlSeq(name) => ctx
+                        .lookup_delimiter(name.as_str(), true, ContentMode::Math)
+                        .is_some(),
                     _ => false,
                 };
 

@@ -465,5 +465,5 @@ commands:
       - invisible
       - spacing
 environments: []
-delimiter_controls: []
 characters: []
+delimiters: []

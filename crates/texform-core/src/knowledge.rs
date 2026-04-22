@@ -36,13 +36,15 @@ use crate::parse::{CommandItem, ContextItem, DelimiterControlItem, EnvironmentIt
 pub use texform_argspec::{
     ArgForm, ArgSpec, ArgSpecParseError, DelimiterToken, ParsedArgSpec, ValueKind,
 };
+use texform_specs::specs::CharacterAttributes;
 pub use texform_specs::specs::{
-    ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, AllowedMode,
-    BuiltinCharacterRecord, BuiltinCommandRecord, BuiltinEnvironmentRecord, CommandKind,
+    ActiveCharacterRecord, ActiveCommandRecord, ActiveDelimiterRecord, ActiveEnvironmentRecord,
+    AllowedMode, BuiltinCharacterRecord, BuiltinCommandRecord, BuiltinDelimiterRecord,
+    BuiltinEnvironmentRecord, CommandKind,
 };
 #[cfg(test)]
 use texform_specs::specs::{
-    CharacterAttributes, CharacterSpec, CommandSpec, EnvironmentSpec, PackageSpecs,
+    CharacterSpec, CommandSpec, DelimiterSpec, EnvironmentSpec, PackageSpecs,
 };
 
 const RUNTIME_PACKAGE_NAME: &str = "runtime";
@@ -95,12 +97,13 @@ pub struct KnowledgeBase {
     command_idx_by_name: HashMap<&'static str, usize>,
     characters: Vec<ActiveCharacterRecord>,
     character_idx_by_name: HashMap<String, usize>,
+    delimiters: Vec<ActiveDelimiterRecord>,
+    delimiter_idx_by_key: HashMap<(String, bool), usize>,
     character_command_views: Vec<ActiveCommandRecord>,
     active_command_idx_by_name: HashMap<String, ActiveCommandSource>,
     suppressed_command_names: HashSet<String>,
     envs: Vec<ActiveEnvironmentRecord>,
     env_idx_by_name: HashMap<&'static str, usize>,
-    delimiter_controls: HashSet<&'static str>,
 }
 
 /// Tracks whether the parser-facing active command for a name points to
@@ -118,12 +121,13 @@ impl KnowledgeBase {
             command_idx_by_name: HashMap::new(),
             characters: Vec::new(),
             character_idx_by_name: HashMap::new(),
+            delimiters: Vec::new(),
+            delimiter_idx_by_key: HashMap::new(),
             character_command_views: Vec::new(),
             active_command_idx_by_name: HashMap::new(),
             suppressed_command_names: HashSet::new(),
             envs: Vec::new(),
             env_idx_by_name: HashMap::new(),
-            delimiter_controls: HashSet::new(),
         }
     }
 
@@ -196,14 +200,25 @@ impl KnowledgeBase {
             .map(|idx| &self.envs[idx])
     }
 
+    pub fn lookup_delimiter(
+        &self,
+        name: &str,
+        is_control_sequence: bool,
+    ) -> Option<&ActiveDelimiterRecord> {
+        self.delimiter_idx_by_key
+            .get(&(name.to_string(), is_control_sequence))
+            .copied()
+            .map(|idx| &self.delimiters[idx])
+    }
+
     /// Check whether `name` is registered as a delimiter control sequence.
     pub fn is_delimiter_control(&self, name: &str) -> bool {
-        self.delimiter_controls.contains(name)
+        self.lookup_delimiter(name, true).is_some()
     }
 
     /// Look up a delimiter control, returning the interned `&'static str` name.
     pub fn lookup_delimiter_control(&self, name: &str) -> Option<&'static str> {
-        self.delimiter_controls.get(name).copied()
+        self.lookup_delimiter(name, true).map(|record| record.name)
     }
 
     /// Insert a context item, dispatching to the appropriate typed inserter.
@@ -235,7 +250,7 @@ impl KnowledgeBase {
             ContextItem::Command(item) => self.remove_command_by_name(item.name.as_str()),
             ContextItem::Environment(item) => self.remove_environment_by_name(item.name.as_str()),
             ContextItem::DelimiterControl(item) => {
-                self.delimiter_controls.remove(item.name.as_str())
+                self.remove_delimiter_by_key(item.name.as_str(), true)
             }
         }
     }
@@ -247,12 +262,19 @@ impl KnowledgeBase {
     }
 
     pub fn insert_delimiter_control(&mut self, item: DelimiterControlItem) {
-        let name = item.name;
-        if self.delimiter_controls.contains(name.as_str()) {
+        if self.lookup_delimiter(item.name.as_str(), true).is_some() {
             return;
         }
-        let name: &'static str = Box::leak(name.into_boxed_str());
-        self.delimiter_controls.insert(name);
+
+        let name: &'static str = Box::leak(item.name.into_boxed_str());
+        self.upsert_delimiter_meta(ActiveDelimiterRecord {
+            name,
+            is_control_sequence: true,
+            allowed_mode: AllowedMode::Both,
+            unicode_value: String::new(),
+            attributes: CharacterAttributes::default(),
+            package: RUNTIME_PACKAGE_NAME.to_string(),
+        });
     }
 
     /// Removes a command name from both raw and active indices, then adds it
@@ -272,6 +294,12 @@ impl KnowledgeBase {
 
     pub(crate) fn remove_environment_by_name(&mut self, name: &str) -> bool {
         self.env_idx_by_name.remove(name).is_some()
+    }
+
+    fn remove_delimiter_by_key(&mut self, name: &str, is_control_sequence: bool) -> bool {
+        self.delimiter_idx_by_key
+            .remove(&(name.to_string(), is_control_sequence))
+            .is_some()
     }
 
     fn set_active_command_source(&mut self, name: impl Into<String>, source: ActiveCommandSource) {
@@ -304,6 +332,14 @@ impl KnowledgeBase {
     fn upsert_character_command_view(&mut self, meta: ActiveCommandRecord) -> usize {
         let idx = self.character_command_views.len();
         self.character_command_views.push(meta);
+        idx
+    }
+
+    fn upsert_delimiter_meta(&mut self, meta: ActiveDelimiterRecord) -> usize {
+        let idx = self.delimiters.len();
+        let key = (meta.name.to_string(), meta.is_control_sequence);
+        self.delimiters.push(meta);
+        self.delimiter_idx_by_key.insert(key, idx);
         idx
     }
 
@@ -361,6 +397,34 @@ impl KnowledgeBase {
             from_packages: leak_string_array(vec![package.to_string()]),
         });
         self.set_active_command_source(character.name, ActiveCommandSource::Character(view_idx));
+    }
+
+    fn insert_builtin_delimiter_with_package(
+        &mut self,
+        delimiter: &'static BuiltinDelimiterRecord,
+        package: &str,
+    ) {
+        self.upsert_delimiter_meta(ActiveDelimiterRecord {
+            name: delimiter.name,
+            is_control_sequence: delimiter.is_control_sequence,
+            allowed_mode: delimiter.allowed_mode,
+            unicode_value: delimiter.unicode_value.to_string(),
+            attributes: delimiter.attributes.into(),
+            package: package.to_string(),
+        });
+    }
+
+    #[cfg(test)]
+    fn insert_delimiter_with_package(&mut self, delimiter: DelimiterSpec, package: &str) {
+        let name = leak_string(delimiter.name);
+        self.upsert_delimiter_meta(ActiveDelimiterRecord {
+            name,
+            is_control_sequence: delimiter.is_control_sequence,
+            allowed_mode: delimiter.allowed_mode,
+            unicode_value: delimiter.unicode_value,
+            attributes: delimiter.attributes,
+            package: package.to_string(),
+        });
     }
 
     #[cfg(test)]
@@ -478,14 +542,14 @@ impl KnowledgeBase {
         for character in specs.characters {
             self.insert_character_with_package(character, package);
         }
+        for delimiter in specs.delimiters {
+            self.insert_delimiter_with_package(delimiter, package);
+        }
         for cmd in specs.commands {
             self.import_or_merge_command_with_package(cmd, package);
         }
         for env in specs.environments {
             self.import_or_merge_environment_with_package(env, package);
-        }
-        for name in specs.delimiter_controls {
-            self.insert_delimiter_control(DelimiterControlItem::new(name));
         }
     }
 
@@ -493,14 +557,14 @@ impl KnowledgeBase {
         for character in package.characters {
             self.insert_builtin_character_with_package(character, package.name);
         }
+        for delimiter in package.delimiters {
+            self.insert_builtin_delimiter_with_package(delimiter, package.name);
+        }
         for command in package.commands {
             self.import_or_merge_builtin_command_with_package(command, package.name);
         }
         for environment in package.environments {
             self.import_or_merge_builtin_environment_with_package(environment, package.name);
-        }
-        for &name in package.delimiter_controls {
-            self.delimiter_controls.insert(name);
         }
     }
 
@@ -514,6 +578,11 @@ impl KnowledgeBase {
                 self.insert_builtin_character_with_package(character, package.name);
             }
         }
+        for delimiter in package.delimiters {
+            if delimiter.allowed_mode.allows(target_mode) {
+                self.insert_builtin_delimiter_with_package(delimiter, package.name);
+            }
+        }
         for command in package.commands {
             if command.allowed_mode.allows(target_mode) {
                 self.import_or_merge_builtin_command_with_package(command, package.name);
@@ -523,9 +592,6 @@ impl KnowledgeBase {
             if environment.allowed_mode.allows(target_mode) {
                 self.import_or_merge_builtin_environment_with_package(environment, package.name);
             }
-        }
-        for &name in package.delimiter_controls {
-            self.delimiter_controls.insert(name);
         }
     }
 }

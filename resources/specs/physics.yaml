@@ -918,7 +918,6 @@ environments:
     tags:
       - matrix
       - nestable
-delimiter_controls: []
 characters:
   - name: cp
     allowed_mode: math
@@ -965,3 +964,4 @@ characters:
     unicode_value: ⋅
     attributes:
       mathvariant: bold
+delimiters: []

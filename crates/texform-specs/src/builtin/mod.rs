@@ -1,4 +1,6 @@
-use crate::specs::{BuiltinCharacterRecord, BuiltinCommandRecord, BuiltinEnvironmentRecord};
+use crate::specs::{
+    BuiltinCharacterRecord, BuiltinCommandRecord, BuiltinDelimiterRecord, BuiltinEnvironmentRecord,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuiltinPackage {
@@ -6,24 +8,13 @@ pub struct BuiltinPackage {
     pub commands: &'static [&'static BuiltinCommandRecord],
     pub environments: &'static [&'static BuiltinEnvironmentRecord],
     pub characters: &'static [&'static BuiltinCharacterRecord],
-    pub delimiter_controls: &'static [&'static str],
-}
-
-macro_rules! char_attrs {
-    () => {
-        BuiltinCharacterAttributes { mathvariant: None }
-    };
-    ($mathvariant:literal) => {
-        BuiltinCharacterAttributes {
-            mathvariant: Some($mathvariant),
-        }
-    };
+    pub delimiters: &'static [&'static BuiltinDelimiterRecord],
 }
 
 mod generated_prelude {
     pub use crate::specs::{
         AllowedMode, BuiltinCharacterAttributes, BuiltinCharacterRecord, BuiltinCommandRecord,
-        BuiltinEnvironmentRecord, CommandKind, ContentMode,
+        BuiltinDelimiterRecord, BuiltinEnvironmentRecord, CommandKind, ContentMode,
     };
 }
 

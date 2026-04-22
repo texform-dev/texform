@@ -40,7 +40,7 @@ fn test_context() -> ParseContext {
     static BASE_CTX: OnceLock<ParseContext> = OnceLock::new();
     BASE_CTX
         .get_or_init(|| {
-            let mut builder = ParseContextBuilder::new().empty();
+            let mut builder = ParseContextBuilder::new().packages(&["base"]);
             for item in shared_test_items() {
                 builder = builder.insert_item(item.clone());
             }
@@ -57,7 +57,7 @@ where
     I: IntoIterator<Item = T>,
     T: Into<ContextItem>,
 {
-    let mut builder = ParseContextBuilder::new().empty();
+    let mut builder = ParseContextBuilder::new().packages(&["base"]);
     for item in shared_test_items() {
         builder = builder.insert_item(item.clone());
     }
@@ -189,24 +189,137 @@ environments:
     argspec: ''
     body_mode: math
 
-delimiter_controls:
-  - langle
-  - rangle
-  - "{"
-  - "}"
-  - lfloor
-  - rfloor
-  - lceil
-  - rceil
-  - lvert
-  - rvert
-  - lVert
-  - rVert
-  - lgroup
-  - rgroup
-  - lmoustache
-  - rmoustache
-  - "|"
+delimiters:
+  - name: "."
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: ""
+    attributes: {}
+  - name: "("
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: "("
+    attributes: {}
+  - name: ")"
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: ")"
+    attributes: {}
+  - name: "["
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: "["
+    attributes: {}
+  - name: "]"
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: "]"
+    attributes: {}
+  - name: "|"
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: "|"
+    attributes: {}
+  - name: "<"
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: "<"
+    attributes: {}
+  - name: ">"
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: ">"
+    attributes: {}
+  - name: "/"
+    is_control_sequence: false
+    allowed_mode: math
+    unicode_value: "/"
+    attributes: {}
+  - name: langle
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: "⟨"
+    attributes: {}
+  - name: rangle
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: "⟩"
+    attributes: {}
+  - name: "{"
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: "{"
+    attributes: {}
+  - name: "}"
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: "}"
+    attributes: {}
+  - name: lfloor
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: "⌊"
+    attributes: {}
+  - name: rfloor
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: "⌋"
+    attributes: {}
+  - name: lceil
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: "⌈"
+    attributes: {}
+  - name: rceil
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: "⌉"
+    attributes: {}
+  - name: lvert
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: "|"
+    attributes: {}
+  - name: rvert
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: "|"
+    attributes: {}
+  - name: lVert
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: "‖"
+    attributes: {}
+  - name: rVert
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: "‖"
+    attributes: {}
+  - name: lgroup
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: "⟮"
+    attributes: {}
+  - name: rgroup
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: "⟯"
+    attributes: {}
+  - name: lmoustache
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: "⎰"
+    attributes: {}
+  - name: rmoustache
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: "⎱"
+    attributes: {}
+  - name: "|"
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: "‖"
+    attributes: {}
 "#,
             "inline-test",
         );
@@ -236,8 +349,10 @@ delimiter_controls:
                 .into(),
             );
         }
-        for delimiter in specs.delimiter_controls {
-            items.push(DelimiterControlItem::new(delimiter).into());
+        for delimiter in specs.delimiters {
+            if delimiter.is_control_sequence {
+                items.push(DelimiterControlItem::new(delimiter.name).into());
+            }
         }
         items
     })
@@ -4554,32 +4669,32 @@ fn test_delimited_content_argument_reparse_keeps_known_command() {
 #[test]
 fn test_parse_context_isolation_for_custom_commands() {
     let ctx1 = test_context_with_items([command_item(
-        "foo",
+        "fooisolated",
         CommandKind::Prefix,
         AllowedMode::Math,
         "m",
     )]);
 
-    let out1_foo = ctx1.parse(r"\foo{a}", true);
+    let out1_foo = ctx1.parse(r"\fooisolated{a}", true);
     assert!(out1_foo.diagnostics.is_empty());
     assert!(out1_foo.result.is_some());
 
-    let out1_bar = ctx1.parse(r"\bar{a}", true);
+    let out1_bar = ctx1.parse(r"\barisolated{a}", true);
     assert!(!out1_bar.diagnostics.is_empty());
     assert!(out1_bar.result.is_none());
 
     let ctx2 = test_context_with_items([command_item(
-        "bar",
+        "barisolated",
         CommandKind::Prefix,
         AllowedMode::Math,
         "m",
     )]);
 
-    let out2_bar = ctx2.parse(r"\bar{a}", true);
+    let out2_bar = ctx2.parse(r"\barisolated{a}", true);
     assert!(out2_bar.diagnostics.is_empty());
     assert!(out2_bar.result.is_some());
 
-    let out2_foo = ctx2.parse(r"\foo{a}", true);
+    let out2_foo = ctx2.parse(r"\fooisolated{a}", true);
     assert!(!out2_foo.diagnostics.is_empty());
     assert!(out2_foo.result.is_none());
 }

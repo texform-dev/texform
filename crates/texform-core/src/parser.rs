@@ -573,15 +573,20 @@ fn delimiter<'a>(
     ctx: &'a ParseContext,
 ) -> impl Parser<'a, TokenStream<'a>, Delimiter, ParserError<'a>> + Clone {
     select! {
-        Token::Char('.') => Delimiter::None,
-        Token::Char(c) if matches!(c, '(' | ')' | '[' | ']' | '|' | '<' | '>' | '/' | '\\')
-            => Delimiter::Char(c),
+        Token::Char(c) if ctx.lookup_delimiter(c.to_string().as_str(), false, ContentMode::Math).is_some() => {
+            let delimiter = ctx.lookup_delimiter(c.to_string().as_str(), false, ContentMode::Math).unwrap();
+            if delimiter.name == "." && delimiter.unicode_value.is_empty() {
+                Delimiter::None
+            } else {
+                Delimiter::Char(c)
+            }
+        },
         // Raw square brackets are tokenized separately so optional arguments
         // can be recognized without backtracking, but they still need to work
         // as plain delimiters after \left / \right.
-        Token::LBracket => Delimiter::Char('['),
-        Token::RBracket => Delimiter::Char(']'),
-        Token::ControlSeq(name) if ctx.lookup_delimiter_control(name.as_str()).is_some() => {
+        Token::LBracket if ctx.lookup_delimiter("[", false, ContentMode::Math).is_some() => Delimiter::Char('['),
+        Token::RBracket if ctx.lookup_delimiter("]", false, ContentMode::Math).is_some() => Delimiter::Char(']'),
+        Token::ControlSeq(name) if ctx.lookup_delimiter(name.as_str(), true, ContentMode::Math).is_some() => {
             Delimiter::Control(ctx.lookup_delimiter_control(name.as_str()).unwrap())
         }
     }
@@ -604,7 +609,7 @@ fn delimiter_control_command_parser<'a>(
     ctx: &'a ParseContext,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     select! {
-        Token::ControlSeq(name) if ctx.lookup_delimiter_control(name.as_str()).is_some() => {
+        Token::ControlSeq(name) if ctx.lookup_delimiter(name.as_str(), true, ContentMode::Math).is_some() => {
             SyntaxNode::Command {
                 name,
                 args: vec![],

@@ -35,9 +35,9 @@ mod tests {
     fn registered_packages_expose_builtin_records() {
         for package in ALL_PACKAGES {
             let is_empty = package.characters.is_empty()
+                && package.delimiters.is_empty()
                 && package.commands.is_empty()
-                && package.environments.is_empty()
-                && package.delimiter_controls.is_empty();
+                && package.environments.is_empty();
             assert!(!is_empty, "package {} should not be empty", package.name);
         }
     }

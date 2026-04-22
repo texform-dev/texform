@@ -55,5 +55,5 @@ commands:
     allowed_mode: math
     tags: []
 environments: []
-delimiter_controls: []
 characters: []
+delimiters: []

@@ -72,7 +72,6 @@ commands:
     tags:
       - presentation
 environments: []
-delimiter_controls: []
 characters:
   - name: bbalpha
     allowed_mode: math
@@ -914,3 +913,4 @@ characters:
     unicode_value: ζ
     attributes:
       mathvariant: '-bboldx-bold'
+delimiters: []
