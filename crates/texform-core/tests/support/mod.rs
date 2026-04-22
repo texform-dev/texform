@@ -30,7 +30,7 @@ pub(crate) fn delimiter_control_item(name: &str) -> ContextItem {
 }
 
 pub(crate) fn parse_with_items(items: &[ContextItem], src: &str, strict: bool) -> ParseOutput {
-    let mut builder = ParseContextBuilder::new().empty();
+    let mut builder = ParseContextBuilder::empty();
     for item in items {
         builder = builder.insert_item(item.clone());
     }

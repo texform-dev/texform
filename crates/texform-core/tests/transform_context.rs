@@ -3,7 +3,7 @@ use texform_core::transform::{BuiltinRuleSetId, TransformContextBuilder};
 
 #[test]
 fn only_many_keeps_the_requested_rules() {
-    let parse_ctx = ParseContextBuilder::new()
+    let parse_ctx = ParseContextBuilder::default()
         .packages(&["physics"])
         .build()
         .expect("parse context should build");
@@ -31,7 +31,7 @@ fn only_many_keeps_the_requested_rules() {
 
 #[test]
 fn build_with_disables_rules_touching_mutated_command_names() {
-    let parse_ctx = ParseContextBuilder::new()
+    let parse_ctx = ParseContextBuilder::default()
         .packages(&["physics"])
         .insert_item(CommandItem::new(
             "quantity",

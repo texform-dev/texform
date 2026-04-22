@@ -216,9 +216,9 @@ impl ParseContext {
         let mut builder = match packages {
             Some(pkgs) => {
                 let refs: Vec<&str> = pkgs.iter().map(String::as_str).collect();
-                texform_core::parse::ParseContextBuilder::new().packages(refs.as_slice())
+                texform_core::parse::ParseContextBuilder::empty().packages(refs.as_slice())
             }
-            _ => texform_core::parse::ParseContextBuilder::new(),
+            _ => texform_core::parse::ParseContextBuilder::default(),
         };
         if let Some(items) = items {
             let items: Vec<ContextItemInput> = serde_wasm_bindgen::from_value(items)
@@ -675,7 +675,7 @@ mod tests {
 
     fn custom_command_context() -> ParseContext {
         ParseContext {
-            inner: texform_core::parse::ParseContextBuilder::new()
+            inner: texform_core::parse::ParseContextBuilder::default()
                 .insert_item(CommandItem::new(
                     "probe",
                     CommandKind::Prefix,
@@ -725,11 +725,13 @@ mod tests {
     }
 
     #[test]
-    fn empty_package_list_is_not_treated_like_default_all_packages() {
+    fn empty_package_list_is_not_treated_like_default_packages() {
         let default_ctx =
             ParseContext::new(None, None).expect("default parse context should build");
         let empty_packages_ctx = ParseContext::new(Some(vec![]), None)
             .expect("empty package list parse context should build");
+        let explicit_braket_ctx = ParseContext::new(Some(vec!["braket".into()]), None)
+            .expect("explicit braket parse context should build");
 
         assert!(
             default_ctx
@@ -738,10 +740,22 @@ mod tests {
                 .is_some()
         );
         assert!(
+            default_ctx
+                .inner
+                .lookup_command("braket", ContentMode::Math)
+                .is_none()
+        );
+        assert!(
             empty_packages_ctx
                 .inner
                 .lookup_command("frac", ContentMode::Math)
                 .is_none()
+        );
+        assert!(
+            explicit_braket_ctx
+                .inner
+                .lookup_command("braket", ContentMode::Math)
+                .is_some()
         );
     }
 

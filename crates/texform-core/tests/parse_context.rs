@@ -5,7 +5,7 @@ use texform_core::parse::{
 
 #[test]
 fn builder_applies_insert_and_remove_before_freezing() {
-    let ctx = ParseContextBuilder::new()
+    let ctx = ParseContextBuilder::default()
         .packages(&["base"])
         .insert_item(CommandItem::new(
             "foo",
@@ -23,8 +23,7 @@ fn builder_applies_insert_and_remove_before_freezing() {
 
 #[test]
 fn builder_applies_insert_and_remove_environment_before_freezing() {
-    let ctx = ParseContextBuilder::new()
-        .empty()
+    let ctx = ParseContextBuilder::empty()
         .insert_item(EnvironmentItem::new(
             "tempenv",
             AllowedMode::Math,
@@ -39,17 +38,41 @@ fn builder_applies_insert_and_remove_environment_before_freezing() {
 }
 
 #[test]
-fn convenience_factories_still_work_after_module_move() {
-    let all = ParseContext::all_packages();
-    assert!(all.lookup_command("frac", ContentMode::Math).is_some());
+fn convenience_factories_use_default_runtime_packages() {
+    let default_ctx = ParseContext::default();
+    let shared = ParseContext::shared();
 
-    let shared = ParseContext::all_packages_shared();
+    assert!(
+        default_ctx
+            .lookup_command("frac", ContentMode::Math)
+            .is_some()
+    );
     assert!(shared.lookup_command("sqrt", ContentMode::Math).is_some());
+    assert!(
+        default_ctx
+            .lookup_command("braket", ContentMode::Math)
+            .is_none()
+    );
+    assert!(shared.lookup_command("braket", ContentMode::Math).is_none());
+}
+
+#[test]
+fn shared_returns_the_same_default_context_instance() {
+    let left = ParseContext::shared() as *const ParseContext;
+    let right = ParseContext::shared() as *const ParseContext;
+    assert_eq!(left, right);
+}
+
+#[test]
+fn explicit_all_packages_still_require_manual_opt_in() {
+    let package_names = texform_specs::builtin::all_package_names();
+    let ctx = ParseContext::from_packages(package_names.as_slice());
+    assert!(ctx.lookup_command("braket", ContentMode::Math).is_some());
 }
 
 #[test]
 fn builder_compiles_distinct_math_and_text_kbs() {
-    let ctx = ParseContextBuilder::new()
+    let ctx = ParseContextBuilder::default()
         .packages(&["base", "textmacros"])
         .build()
         .expect("builder should build parse context");
@@ -71,8 +94,7 @@ fn builder_compiles_distinct_math_and_text_kbs() {
 
 #[test]
 fn runtime_text_only_command_only_enters_text_lane() {
-    let ctx = ParseContextBuilder::new()
-        .empty()
+    let ctx = ParseContextBuilder::empty()
         .insert_item(CommandItem::new(
             "textonly",
             CommandKind::Prefix,
@@ -94,8 +116,7 @@ fn runtime_text_only_command_only_enters_text_lane() {
 
 #[test]
 fn parser_uses_text_lane_for_nested_text_only_command() {
-    let ctx = ParseContextBuilder::new()
-        .empty()
+    let ctx = ParseContextBuilder::empty()
         .insert_item(CommandItem::new(
             "text",
             CommandKind::Prefix,

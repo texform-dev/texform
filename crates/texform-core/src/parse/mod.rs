@@ -1,5 +1,6 @@
 mod context;
 
+pub use crate::knowledge::default_package_names;
 pub use context::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveDelimiterRecord, ActiveEnvironmentRecord,
     AllowedMode, ArgSpecParseError, CommandItem, CommandKind, ContentMode, ContextItem,

@@ -117,9 +117,9 @@ fn parse_with_options(options: &CliOptions) -> Result<ParseOutput, String> {
     let base_ctx = match options.packages.as_ref() {
         Some(packages) => {
             let refs: Vec<&str> = packages.iter().map(String::as_str).collect();
-            ParseContextBuilder::new().packages(refs.as_slice())
+            ParseContextBuilder::empty().packages(refs.as_slice())
         }
-        None => ParseContextBuilder::new(),
+        None => ParseContextBuilder::default(),
     };
     let mut builder = base_ctx;
     for item in &options.items {
@@ -148,7 +148,7 @@ fn print_summary(options: &CliOptions) {
                     values.join(",")
                 }
             })
-            .unwrap_or_else(|| "all packages".to_string())
+            .unwrap_or_else(|| "default packages".to_string())
     );
     println!("Custom items: {}", options.items.len());
     println!();
@@ -294,6 +294,6 @@ fn print_usage(program: &str) {
     eprintln!();
     eprintln!("Notes:");
     eprintln!("  - Without custom items, this behaves like the normal parse CLI.");
-    eprintln!("  - Without --packages, this example loads all registered packages.");
+    eprintln!("  - Without --packages, this example loads default packages.");
     eprintln!("  - Repeat --command / --environment / --delimiter to inject multiple items.");
 }

@@ -495,6 +495,21 @@ fn test_canonical_package_import_order_includes_braket() {
 }
 
 #[test]
+fn test_default_package_names_exclude_braket() {
+    assert_eq!(
+        crate::parse::default_package_names(),
+        &[
+            "base",
+            "ams",
+            "physics",
+            "textmacros",
+            "bboldx",
+            "boldsymbol"
+        ]
+    );
+}
+
+#[test]
 fn test_explicit_package_can_override_package_linebreak_command() {
     let mut kb = try_build_kb_from_exact_packages(&["base", "textmacros"])
         .expect("package build should succeed");

@@ -59,7 +59,21 @@ const MANAGED_PACKAGE_IMPORT_ORDER: [&str; 7] = [
     "bboldx",
     "boldsymbol",
 ];
+// Runtime defaults intentionally differ from the full builtin registry:
+// `braket` stays opt-in to avoid conflicting default semantics with `physics`.
+const DEFAULT_PACKAGE_NAMES: [&str; 6] = [
+    "base",
+    "ams",
+    "physics",
+    "textmacros",
+    "bboldx",
+    "boldsymbol",
+];
 const PHYSICS_COMMAND_MERGE_DENYLIST: [&str; 3] = ["Pr", "det", "exp"];
+
+pub fn default_package_names() -> &'static [&'static str] {
+    &DEFAULT_PACKAGE_NAMES
+}
 
 /// Error returned when a requested package name is not found in the registry.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,11 +172,6 @@ impl KnowledgeBase {
         let to_load = canonical_package_import_order(packages);
         import_package_names_for_mode(&mut kb, to_load.as_slice(), target_mode)?;
         Ok(kb)
-    }
-
-    pub fn all_packages() -> Self {
-        let package_names = texform_specs::builtin::all_package_names();
-        Self::build_from_packages(package_names.as_slice())
     }
 
     pub fn lookup_command(&self, name: &str) -> Option<&ActiveCommandRecord> {

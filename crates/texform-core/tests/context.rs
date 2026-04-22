@@ -41,8 +41,7 @@ fn package_context_loads_linebreak_from_base_and_textmacros() {
 
 #[test]
 fn context_can_insert_and_remove_delimiter_controls() {
-    let ctx = ParseContextBuilder::new()
-        .empty()
+    let ctx = ParseContextBuilder::empty()
         .insert_item(DelimiterControlItem::new("langle"))
         .remove_delimiter_control("langle")
         .build()
@@ -52,8 +51,7 @@ fn context_can_insert_and_remove_delimiter_controls() {
 
 #[test]
 fn context_builder_insert_then_remove_runtime_items_keeps_final_view_clean() {
-    let ctx = ParseContextBuilder::new()
-        .empty()
+    let ctx = ParseContextBuilder::empty()
         .insert_item(CommandItem::new(
             "tempcmd",
             CommandKind::Prefix,

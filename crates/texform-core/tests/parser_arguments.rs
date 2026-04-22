@@ -29,8 +29,7 @@ fn underline_text_item() -> ContextItem {
 }
 
 fn content_test_context() -> ParseContext {
-    ParseContextBuilder::new()
-        .empty()
+    ParseContextBuilder::empty()
         .insert_item(text_command_item())
         .insert_item(frac_command_item())
         .insert_item(underline_math_item())

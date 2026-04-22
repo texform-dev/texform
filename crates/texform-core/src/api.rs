@@ -3,7 +3,7 @@
 //!
 //! This module sits on top of [`ParseContext`] and provides main entry points:
 //!
-//! - [`parse_latex`] — one-shot parse using the default all-packages context.
+//! - [`parse_latex`] — one-shot parse using the default package context.
 //! - [`parse_with_context_items`] — batch parse with caller-supplied context
 //!   items (commands, environments, delimiter controls) injected into a fresh
 //!   context.
@@ -40,7 +40,7 @@ pub struct ParseWithContextItem {
 /// Batch output from [`parse_with_context_items`]: one entry per input string.
 pub type ParseWithContextOutput = Vec<ParseWithContextItem>;
 
-/// Parse a LaTeX formula using the default all-packages context.
+/// Parse a LaTeX formula using the default package context.
 ///
 /// This is the simplest entry point for one-shot parsing. It shares a
 /// lazily-initialized [`ParseContext`] across calls so the knowledge base
@@ -50,7 +50,7 @@ pub type ParseWithContextOutput = Vec<ParseWithContextItem>;
 /// errors; when `false`, they are preserved as ordinary command/environment
 /// nodes with `known: false`.
 pub fn parse_latex(src: &str, strict: bool) -> ParseOutput {
-    ParseContext::all_packages_shared().parse(src, strict)
+    ParseContext::shared().parse(src, strict)
 }
 
 /// Inject context items into a fresh parse context and parse multiple inputs.
@@ -75,8 +75,8 @@ pub fn parse_with_context_items(
     }
 
     let mut builder = match packages {
-        Some(package_names) => ParseContextBuilder::new().packages(package_names),
-        None => ParseContextBuilder::new().empty(),
+        Some(package_names) => ParseContextBuilder::empty().packages(package_names),
+        None => ParseContextBuilder::empty(),
     };
 
     for item in items {

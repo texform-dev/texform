@@ -354,8 +354,7 @@ mod tests {
 
     #[test]
     fn report_tracks_skipped_rule_attempts_after_trigger_match() {
-        let parse_ctx = ParseContextBuilder::new()
-            .empty()
+        let parse_ctx = ParseContextBuilder::empty()
             .insert_item(crate::parse::CommandItem::new(
                 "skip-me",
                 CommandKind::Prefix,
@@ -422,8 +421,7 @@ mod tests {
 
     #[test]
     fn command_tag_trigger_checks_both_lanes() {
-        let parse_ctx = ParseContextBuilder::new()
-            .empty()
+        let parse_ctx = ParseContextBuilder::empty()
             .insert_item(
                 crate::parse::CommandItem::new(
                     "dual-tagged",
@@ -503,8 +501,7 @@ mod tests {
 
     #[test]
     fn contract_uses_name_known_union_across_both_lanes() {
-        let parse_ctx = ParseContextBuilder::new()
-            .empty()
+        let parse_ctx = ParseContextBuilder::empty()
             .insert_item(crate::parse::CommandItem::new(
                 "textonly-target",
                 CommandKind::Prefix,

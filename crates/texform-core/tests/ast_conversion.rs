@@ -9,7 +9,7 @@ use texform_core::parse::{
 use texform_interface::syntax_node::{ArgumentValue as SyntaxArgumentValue, SyntaxNode};
 
 fn parse_with_items(src: &str, strict: bool, items: Vec<ContextItem>) -> SyntaxNode {
-    let mut builder = ParseContextBuilder::new().packages(&["base"]);
+    let mut builder = ParseContextBuilder::empty().packages(&["base"]);
     for item in items {
         builder = builder.insert_item(item);
     }
@@ -133,7 +133,7 @@ fn test_ast_conversion_preserves_unknown_environment_known_flag() {
 
 #[test]
 fn test_ast_conversion_copies_text_content_variant() {
-    let output = ParseContext::all_packages_shared().parse(r"\text{\%}", true);
+    let output = ParseContext::shared().parse(r"\text{\%}", true);
     let syntax = output
         .result
         .as_ref()

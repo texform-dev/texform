@@ -1020,7 +1020,7 @@ where
 // Public Interface
 // ============================================================================
 
-/// Parse a LaTeX math formula using the default all-packages knowledge base.
+/// Parse a LaTeX math formula using the default package knowledge base.
 ///
 /// Returns the root [`SyntaxNode`] together with its byte span on success,
 /// or a list of rich diagnostics on failure. For partial-parse semantics
@@ -1028,7 +1028,7 @@ where
 /// instead.
 pub fn parse(src: &str, strict: bool) -> Result<Spanned<SyntaxNode>, Vec<Rich<'_, Token>>> {
     let token_stream = build_token_stream(src);
-    math_block_parser(ParseContext::all_packages_shared(), strict)
+    math_block_parser(ParseContext::shared(), strict)
         .map_with(|tracked, e| (promote_to_root(tracked.node), e.span()))
         .then_ignore(end())
         .parse(token_stream)

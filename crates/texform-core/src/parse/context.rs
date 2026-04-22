@@ -24,6 +24,7 @@ pub use texform_specs::specs::{
 use crate::ast::Ast;
 pub use crate::knowledge::KnowledgeBase;
 pub use crate::knowledge::PackageLoadError;
+use crate::knowledge::default_package_names;
 use crate::lexer::Token;
 use crate::parser::{self, RelativeSpanEntry, TokenStream, TrackedNode, build_token_stream};
 
@@ -237,6 +238,7 @@ pub enum ParseContextBuildError {
 }
 
 enum KnowledgeBaseMode {
+    DefaultPackages,
     Packages(Vec<String>),
     Empty,
 }
@@ -247,14 +249,9 @@ pub struct ParseContextBuilder {
 }
 
 impl ParseContextBuilder {
-    pub fn new() -> Self {
+    pub fn empty() -> Self {
         Self {
-            mode: KnowledgeBaseMode::Packages(
-                texform_specs::builtin::all_package_names()
-                    .into_iter()
-                    .map(ToString::to_string)
-                    .collect(),
-            ),
+            mode: KnowledgeBaseMode::Empty,
             ops: Vec::new(),
         }
     }
@@ -262,11 +259,6 @@ impl ParseContextBuilder {
     pub fn packages(mut self, packages: &[&str]) -> Self {
         self.mode =
             KnowledgeBaseMode::Packages(packages.iter().map(|name| (*name).to_string()).collect());
-        self
-    }
-
-    pub fn empty(mut self) -> Self {
-        self.mode = KnowledgeBaseMode::Empty;
         self
     }
 
@@ -294,6 +286,25 @@ impl ParseContextBuilder {
     pub fn build(self) -> Result<ParseContext, ParseContextBuildError> {
         let (mut math_kb, mut text_kb) = match self.mode {
             KnowledgeBaseMode::Empty => (KnowledgeBase::empty(), KnowledgeBase::empty()),
+            KnowledgeBaseMode::DefaultPackages => {
+                let refs = default_package_names().to_vec();
+                let mut math_kb = KnowledgeBase::try_build_from_packages_for_mode(
+                    refs.as_slice(),
+                    ContentMode::Math,
+                )
+                .map_err(ParseContextBuildError::PackageLoad)?;
+                let mut text_kb = KnowledgeBase::try_build_from_packages_for_mode(
+                    refs.as_slice(),
+                    ContentMode::Text,
+                )
+                .map_err(ParseContextBuildError::PackageLoad)?;
+
+                // `physics` remains part of the default package set, but the
+                // conflicting `\braket` command stays opt-in for runtime defaults.
+                math_kb.remove_command_by_name("braket");
+                text_kb.remove_command_by_name("braket");
+                (math_kb, text_kb)
+            }
             KnowledgeBaseMode::Packages(packages) => {
                 let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
                 (
@@ -376,7 +387,10 @@ fn insert_item_into_lane(
 
 impl Default for ParseContextBuilder {
     fn default() -> Self {
-        Self::new()
+        Self {
+            mode: KnowledgeBaseMode::DefaultPackages,
+            ops: Vec::new(),
+        }
     }
 }
 
@@ -494,8 +508,8 @@ impl std::error::Error for ParseAstError {}
 /// |---|---|
 /// | [`empty()`](Self::empty) | Nothing |
 /// | [`from_packages()`](Self::from_packages) | Named packages only |
-/// | [`all_packages()`](Self::all_packages) | Every registered package |
-/// | [`all_packages_shared()`](Self::all_packages_shared) | Same as above, lazily cached `&'static` ref |
+/// | `Default::default()` | Default runtime packages |
+/// | [`shared()`](Self::shared) | Same as above, lazily cached `&'static` ref |
 ///
 #[derive(Clone)]
 pub struct ParseContext {
@@ -510,6 +524,14 @@ impl std::fmt::Debug for ParseContext {
             .field("math_kb", &self.math_kb)
             .field("text_kb", &self.text_kb)
             .finish_non_exhaustive()
+    }
+}
+
+impl Default for ParseContext {
+    fn default() -> Self {
+        ParseContextBuilder::default()
+            .build()
+            .expect("default parse context should build")
     }
 }
 
@@ -534,8 +556,7 @@ impl ParseContext {
     ///
     /// Useful as a blank slate when every definition will be injected manually.
     pub fn empty() -> Self {
-        ParseContextBuilder::new()
-            .empty()
+        ParseContextBuilder::empty()
             .build()
             .expect("empty parse context should build")
     }
@@ -548,7 +569,7 @@ impl ParseContext {
     /// Panics if any package name is unrecognized. Use [`try_from_packages`](Self::try_from_packages)
     /// for fallible loading.
     pub fn from_packages(packages: &[&str]) -> Self {
-        ParseContextBuilder::new()
+        ParseContextBuilder::empty()
             .packages(packages)
             .build()
             .expect("package parse context should build")
@@ -559,7 +580,7 @@ impl ParseContext {
     /// Returns [`PackageLoadError`] instead of panicking when a package name
     /// is unrecognized.
     pub fn try_from_packages(packages: &[&str]) -> Result<Self, PackageLoadError> {
-        ParseContextBuilder::new()
+        ParseContextBuilder::empty()
             .packages(packages)
             .build()
             .map_err(|error| match error {
@@ -570,19 +591,12 @@ impl ParseContext {
             })
     }
 
-    /// Build a context containing all registered packages.
-    pub fn all_packages() -> Self {
-        ParseContextBuilder::new()
-            .build()
-            .expect("all-packages parse context should build")
-    }
-
-    /// Borrow the lazily-initialized all-packages context.
+    /// Borrow the lazily-initialized default-package context.
     ///
-    /// This is the cheapest way to parse with the full knowledge base: the
+    /// This is the cheapest way to parse with the default knowledge base: the
     /// context is built once on first call and shared for the process lifetime.
-    pub fn all_packages_shared() -> &'static ParseContext {
-        all_packages_ctx()
+    pub fn shared() -> &'static ParseContext {
+        shared_ctx()
     }
 
     /// Check whether `name` is a registered delimiter control sequence.
@@ -693,9 +707,9 @@ impl ParseContext {
     }
 }
 
-fn all_packages_ctx() -> &'static ParseContext {
+fn shared_ctx() -> &'static ParseContext {
     static DEFAULT: OnceLock<ParseContext> = OnceLock::new();
-    DEFAULT.get_or_init(ParseContext::all_packages)
+    DEFAULT.get_or_init(ParseContext::default)
 }
 
 pub(crate) fn parse_with_context(ctx: &ParseContext, src: &str, strict: bool) -> ParseOutput {

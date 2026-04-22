@@ -40,7 +40,7 @@ fn test_context() -> ParseContext {
     static BASE_CTX: OnceLock<ParseContext> = OnceLock::new();
     BASE_CTX
         .get_or_init(|| {
-            let mut builder = ParseContextBuilder::new().packages(&["base"]);
+            let mut builder = ParseContextBuilder::empty().packages(&["base"]);
             for item in shared_test_items() {
                 builder = builder.insert_item(item.clone());
             }
@@ -57,7 +57,7 @@ where
     I: IntoIterator<Item = T>,
     T: Into<ContextItem>,
 {
-    let mut builder = ParseContextBuilder::new().packages(&["base"]);
+    let mut builder = ParseContextBuilder::empty().packages(&["base"]);
     for item in shared_test_items() {
         builder = builder.insert_item(item.clone());
     }
@@ -561,7 +561,7 @@ fn disallowed_environment_does_not_rewrite_unrelated_generic_error() {
 
 #[test]
 fn test_text_argument_uses_text_content_variant_for_single_char_item() {
-    let output = ParseContext::all_packages_shared().parse(r"\text{\%}", true);
+    let output = ParseContext::shared().parse(r"\text{\%}", true);
     let result = output.result.expect("expected parse result");
 
     match result.node {
