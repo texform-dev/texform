@@ -94,7 +94,6 @@ export interface ErrorLogEntry {
 }
 
 export interface TestSummary {
-  generated_at: string;
   total_records: number;
   total_cases: number;
   by_renderer: Record<string, { full: number; partial: number; none: number }>;

@@ -1,0 +1,546 @@
+{"package":"base","name":"\\","branch":"neg:L[1]","renderer":"mathjax","tex":"\\\\[a]","error":"Bracket argument to \\\\ must be a dimension"}
+{"package":"base","name":"above","branch":"neg:L[0]","renderer":"mathjax","tex":"a \\above {a} b","error":"Missing dimension or its units for \\above"}
+{"package":"base","name":"abovewithdelims","branch":"neg:D[0]","renderer":"mathjax","tex":"a \\abovewithdelims a ( {1pt} b","error":"Missing or unrecognized delimiter for \\abovewithdelims"}
+{"package":"base","name":"abovewithdelims","branch":"neg:D[1]","renderer":"mathjax","tex":"a \\abovewithdelims ( a {1pt} b","error":"Missing or unrecognized delimiter for \\abovewithdelims"}
+{"package":"base","name":"abovewithdelims","branch":"neg:L[2]","renderer":"mathjax","tex":"a \\abovewithdelims ( ( {a} b","error":"Missing dimension or its units for \\abovewithdelims"}
+{"package":"base","name":"atopwithdelims","branch":"neg:D[0]","renderer":"mathjax","tex":"a \\atopwithdelims a ( b","error":"Missing or unrecognized delimiter for \\atopwithdelims"}
+{"package":"base","name":"atopwithdelims","branch":"neg:D[1]","renderer":"mathjax","tex":"a \\atopwithdelims ( a b","error":"Missing or unrecognized delimiter for \\atopwithdelims"}
+{"package":"base","name":"big","branch":"neg:D[0]","renderer":"mathjax","tex":"\\big a","error":"Missing or unrecognized delimiter for \\big"}
+{"package":"base","name":"Big","branch":"neg:D[0]","renderer":"mathjax","tex":"\\Big a","error":"Missing or unrecognized delimiter for \\Big"}
+{"package":"base","name":"bigg","branch":"neg:D[0]","renderer":"mathjax","tex":"\\bigg a","error":"Missing or unrecognized delimiter for \\bigg"}
+{"package":"base","name":"Bigg","branch":"neg:D[0]","renderer":"mathjax","tex":"\\Bigg a","error":"Missing or unrecognized delimiter for \\Bigg"}
+{"package":"base","name":"biggl","branch":"neg:D[0]","renderer":"mathjax","tex":"\\biggl a","error":"Missing or unrecognized delimiter for \\biggl"}
+{"package":"base","name":"Biggl","branch":"neg:D[0]","renderer":"mathjax","tex":"\\Biggl a","error":"Missing or unrecognized delimiter for \\Biggl"}
+{"package":"base","name":"biggm","branch":"neg:D[0]","renderer":"mathjax","tex":"\\biggm a","error":"Missing or unrecognized delimiter for \\biggm"}
+{"package":"base","name":"Biggm","branch":"neg:D[0]","renderer":"mathjax","tex":"\\Biggm a","error":"Missing or unrecognized delimiter for \\Biggm"}
+{"package":"base","name":"biggr","branch":"neg:D[0]","renderer":"mathjax","tex":"\\biggr a","error":"Missing or unrecognized delimiter for \\biggr"}
+{"package":"base","name":"Biggr","branch":"neg:D[0]","renderer":"mathjax","tex":"\\Biggr a","error":"Missing or unrecognized delimiter for \\Biggr"}
+{"package":"base","name":"bigl","branch":"neg:D[0]","renderer":"mathjax","tex":"\\bigl a","error":"Missing or unrecognized delimiter for \\bigl"}
+{"package":"base","name":"Bigl","branch":"neg:D[0]","renderer":"mathjax","tex":"\\Bigl a","error":"Missing or unrecognized delimiter for \\Bigl"}
+{"package":"base","name":"bigm","branch":"neg:D[0]","renderer":"mathjax","tex":"\\bigm a","error":"Missing or unrecognized delimiter for \\bigm"}
+{"package":"base","name":"Bigm","branch":"neg:D[0]","renderer":"mathjax","tex":"\\Bigm a","error":"Missing or unrecognized delimiter for \\Bigm"}
+{"package":"base","name":"bigr","branch":"neg:D[0]","renderer":"mathjax","tex":"\\bigr a","error":"Missing or unrecognized delimiter for \\bigr"}
+{"package":"base","name":"Bigr","branch":"neg:D[0]","renderer":"mathjax","tex":"\\Bigr a","error":"Missing or unrecognized delimiter for \\Bigr"}
+{"package":"base","name":"hsize","branch":"neg:L[0]","renderer":"mathjax","tex":"\\hsize{a}","error":"Missing dimension or its units for \\hsize"}
+{"package":"base","name":"hskip","branch":"neg:L[0]","renderer":"mathjax","tex":"\\hskip{a}","error":"Missing dimension or its units for \\hskip"}
+{"package":"base","name":"hspace","branch":"neg:L[0]","renderer":"mathjax","tex":"\\hspace{a}","error":"Missing dimension or its units for \\hspace"}
+{"package":"base","name":"kern","branch":"neg:L[0]","renderer":"mathjax","tex":"\\kern{a}","error":"Missing dimension or its units for \\kern"}
+{"package":"base","name":"lower","branch":"neg:L[0]","renderer":"mathjax","tex":"\\lower{a}{a}","error":"Missing dimension or its units for \\lower"}
+{"package":"base","name":"mkern","branch":"neg:L[0]","renderer":"mathjax","tex":"\\mkern{a}","error":"Missing dimension or its units for \\mkern"}
+{"package":"base","name":"moveleft","branch":"neg:L[0]","renderer":"mathjax","tex":"\\moveleft{a}{a}","error":"Missing dimension or its units for \\moveleft"}
+{"package":"base","name":"moveright","branch":"neg:L[0]","renderer":"mathjax","tex":"\\moveright{a}{a}","error":"Missing dimension or its units for \\moveright"}
+{"package":"base","name":"mskip","branch":"neg:L[0]","renderer":"mathjax","tex":"\\mskip{a}","error":"Missing dimension or its units for \\mskip"}
+{"package":"base","name":"mspace","branch":"neg:L[0]","renderer":"mathjax","tex":"\\mspace{a}","error":"Missing dimension or its units for \\mspace"}
+{"package":"base","name":"newcolumntype","branch":"neg:I[1]","renderer":"mathjax","tex":"\\newcolumntype{a}[a]{b}","error":"Argument to a must be a positive integer"}
+{"package":"base","name":"overwithdelims","branch":"neg:D[0]","renderer":"mathjax","tex":"a \\overwithdelims a ( b","error":"Missing or unrecognized delimiter for \\overwithdelims"}
+{"package":"base","name":"overwithdelims","branch":"neg:D[1]","renderer":"mathjax","tex":"a \\overwithdelims ( a b","error":"Missing or unrecognized delimiter for \\overwithdelims"}
+{"package":"base","name":"raise","branch":"neg:L[0]","renderer":"mathjax","tex":"\\raise{a}{a}","error":"Missing dimension or its units for \\raise"}
+{"package":"base","name":"rule","branch":"neg:L[1]","renderer":"mathjax","tex":"\\rule{a}{1pt}","error":"Missing dimension or its units for \\rule"}
+{"package":"base","name":"rule","branch":"neg:L[2]","renderer":"mathjax","tex":"\\rule{1pt}{a}","error":"Missing dimension or its units for \\rule"}
+{"package":"base","name":"Rule","branch":"neg:L[0]","renderer":"mathjax","tex":"\\Rule{a}{1pt}{1pt}","error":"Missing dimension or its units for \\Rule"}
+{"package":"base","name":"Rule","branch":"neg:L[1]","renderer":"mathjax","tex":"\\Rule{1pt}{a}{1pt}","error":"Missing dimension or its units for \\Rule"}
+{"package":"base","name":"Rule","branch":"neg:L[2]","renderer":"mathjax","tex":"\\Rule{1pt}{1pt}{a}","error":"Missing dimension or its units for \\Rule"}
+{"package":"base","name":"skew","branch":"neg:I[0]","renderer":"mathjax","tex":"\\skew{a}{a}{b}","error":"Missing dimension or its units for \\mkern"}
+{"package":"base","name":"Space","branch":"neg:L[0]","renderer":"mathjax","tex":"\\Space{a}{1pt}{1pt}","error":"Missing dimension or its units for \\Space"}
+{"package":"base","name":"Space","branch":"neg:L[1]","renderer":"mathjax","tex":"\\Space{1pt}{a}{1pt}","error":"Missing dimension or its units for \\Space"}
+{"package":"base","name":"Space","branch":"neg:L[2]","renderer":"mathjax","tex":"\\Space{1pt}{1pt}{a}","error":"Missing dimension or its units for \\Space"}
+{"package":"base","name":"indentalign","branch":"neg:L[0]","renderer":"mathjax","tex":"\\begin{indentalign}[a]{cc}\na\n\\end{indentalign}","error":"Bracket argument to \\begin{indentalign} must be a dimension"}
+{"package":"base","name":"*","branch":"baseline","renderer":"katex","tex":"\\*","error":"KaTeX parse error: Undefined control sequence: \\* at position 1: \\̲*̲"}
+{"package":"base","name":"\\","branch":"neg:L[1]","renderer":"katex","tex":"\\\\[a]","error":"KaTeX parse error: Invalid size: 'a' at position 3: \\\\[̲a̲]̲"}
+{"package":"base","name":"above","branch":"neg:L[0]","renderer":"katex","tex":"a \\above {a} b","error":"KaTeX parse error: Invalid size: 'a' at position 10: a \\above {̲a̲}̲ b"}
+{"package":"base","name":"abovewithdelims","branch":"baseline","renderer":"katex","tex":"a \\abovewithdelims ( ( 1pt b","error":"KaTeX parse error: Undefined control sequence: \\abovewithdelims at position 3: a \\̲a̲b̲o̲v̲e̲w̲i̲t̲h̲d̲e̲l̲i̲m̲s̲ ̲( ( 1pt b"}
+{"package":"base","name":"abovewithdelims","branch":"neg:D[0]","renderer":"katex","tex":"a \\abovewithdelims a ( {1pt} b","error":"KaTeX parse error: Undefined control sequence: \\abovewithdelims at position 3: a \\̲a̲b̲o̲v̲e̲w̲i̲t̲h̲d̲e̲l̲i̲m̲s̲ ̲a ( {1pt} b"}
+{"package":"base","name":"abovewithdelims","branch":"neg:D[1]","renderer":"katex","tex":"a \\abovewithdelims ( a {1pt} b","error":"KaTeX parse error: Undefined control sequence: \\abovewithdelims at position 3: a \\̲a̲b̲o̲v̲e̲w̲i̲t̲h̲d̲e̲l̲i̲m̲s̲ ̲( a {1pt} b"}
+{"package":"base","name":"abovewithdelims","branch":"neg:L[2]","renderer":"katex","tex":"a \\abovewithdelims ( ( {a} b","error":"KaTeX parse error: Undefined control sequence: \\abovewithdelims at position 3: a \\̲a̲b̲o̲v̲e̲w̲i̲t̲h̲d̲e̲l̲i̲m̲s̲ ̲( ( {a} b"}
+{"package":"base","name":"array","branch":"baseline","renderer":"katex","tex":"\\array{a}","error":"KaTeX parse error: Undefined control sequence: \\array at position 1: \\̲a̲r̲r̲a̲y̲{a}"}
+{"package":"base","name":"array","branch":"bare[0]","renderer":"katex","tex":"\\array a","error":"KaTeX parse error: Undefined control sequence: \\array at position 1: \\̲a̲r̲r̲a̲y̲ ̲a"}
+{"package":"base","name":"atopwithdelims","branch":"baseline","renderer":"katex","tex":"a \\atopwithdelims ( ( b","error":"KaTeX parse error: Undefined control sequence: \\atopwithdelims at position 3: a \\̲a̲t̲o̲p̲w̲i̲t̲h̲d̲e̲l̲i̲m̲s̲ ̲( ( b"}
+{"package":"base","name":"atopwithdelims","branch":"neg:D[0]","renderer":"katex","tex":"a \\atopwithdelims a ( b","error":"KaTeX parse error: Undefined control sequence: \\atopwithdelims at position 3: a \\̲a̲t̲o̲p̲w̲i̲t̲h̲d̲e̲l̲i̲m̲s̲ ̲a ( b"}
+{"package":"base","name":"atopwithdelims","branch":"neg:D[1]","renderer":"katex","tex":"a \\atopwithdelims ( a b","error":"KaTeX parse error: Undefined control sequence: \\atopwithdelims at position 3: a \\̲a̲t̲o̲p̲w̲i̲t̲h̲d̲e̲l̲i̲m̲s̲ ̲( a b"}
+{"package":"base","name":"badbreak","branch":"baseline","renderer":"katex","tex":"\\badbreak","error":"KaTeX parse error: Undefined control sequence: \\badbreak at position 1: \\̲b̲a̲d̲b̲r̲e̲a̲k̲"}
+{"package":"base","name":"big","branch":"neg:D[0]","renderer":"katex","tex":"\\big a","error":"KaTeX parse error: Invalid delimiter 'a' after '\\big' at position 6: \\big a̲"}
+{"package":"base","name":"Big","branch":"neg:D[0]","renderer":"katex","tex":"\\Big a","error":"KaTeX parse error: Invalid delimiter 'a' after '\\Big' at position 6: \\Big a̲"}
+{"package":"base","name":"bigg","branch":"neg:D[0]","renderer":"katex","tex":"\\bigg a","error":"KaTeX parse error: Invalid delimiter 'a' after '\\bigg' at position 7: \\bigg a̲"}
+{"package":"base","name":"Bigg","branch":"neg:D[0]","renderer":"katex","tex":"\\Bigg a","error":"KaTeX parse error: Invalid delimiter 'a' after '\\Bigg' at position 7: \\Bigg a̲"}
+{"package":"base","name":"biggl","branch":"neg:D[0]","renderer":"katex","tex":"\\biggl a","error":"KaTeX parse error: Invalid delimiter 'a' after '\\biggl' at position 8: \\biggl a̲"}
+{"package":"base","name":"Biggl","branch":"neg:D[0]","renderer":"katex","tex":"\\Biggl a","error":"KaTeX parse error: Invalid delimiter 'a' after '\\Biggl' at position 8: \\Biggl a̲"}
+{"package":"base","name":"biggm","branch":"neg:D[0]","renderer":"katex","tex":"\\biggm a","error":"KaTeX parse error: Invalid delimiter 'a' after '\\biggm' at position 8: \\biggm a̲"}
+{"package":"base","name":"Biggm","branch":"neg:D[0]","renderer":"katex","tex":"\\Biggm a","error":"KaTeX parse error: Invalid delimiter 'a' after '\\Biggm' at position 8: \\Biggm a̲"}
+{"package":"base","name":"biggr","branch":"neg:D[0]","renderer":"katex","tex":"\\biggr a","error":"KaTeX parse error: Invalid delimiter 'a' after '\\biggr' at position 8: \\biggr a̲"}
+{"package":"base","name":"Biggr","branch":"neg:D[0]","renderer":"katex","tex":"\\Biggr a","error":"KaTeX parse error: Invalid delimiter 'a' after '\\Biggr' at position 8: \\Biggr a̲"}
+{"package":"base","name":"bigl","branch":"neg:D[0]","renderer":"katex","tex":"\\bigl a","error":"KaTeX parse error: Invalid delimiter 'a' after '\\bigl' at position 7: \\bigl a̲"}
+{"package":"base","name":"Bigl","branch":"neg:D[0]","renderer":"katex","tex":"\\Bigl a","error":"KaTeX parse error: Invalid delimiter 'a' after '\\Bigl' at position 7: \\Bigl a̲"}
+{"package":"base","name":"bigm","branch":"neg:D[0]","renderer":"katex","tex":"\\bigm a","error":"KaTeX parse error: Invalid delimiter 'a' after '\\bigm' at position 7: \\bigm a̲"}
+{"package":"base","name":"Bigm","branch":"neg:D[0]","renderer":"katex","tex":"\\Bigm a","error":"KaTeX parse error: Invalid delimiter 'a' after '\\Bigm' at position 7: \\Bigm a̲"}
+{"package":"base","name":"bigr","branch":"neg:D[0]","renderer":"katex","tex":"\\bigr a","error":"KaTeX parse error: Invalid delimiter 'a' after '\\bigr' at position 7: \\bigr a̲"}
+{"package":"base","name":"Bigr","branch":"neg:D[0]","renderer":"katex","tex":"\\Bigr a","error":"KaTeX parse error: Invalid delimiter 'a' after '\\Bigr' at position 7: \\Bigr a̲"}
+{"package":"base","name":"break","branch":"baseline","renderer":"katex","tex":"\\break","error":"KaTeX parse error: Undefined control sequence: \\break at position 1: \\̲b̲r̲e̲a̲k̲"}
+{"package":"base","name":"breakAlign","branch":"ctx:in-array","renderer":"katex","tex":"\\begin{array}{cc} \\breakAlign{c}{t} a & b \\end{array}","error":"KaTeX parse error: Undefined control sequence: \\breakAlign at position 19: …gin{array}{cc} \\̲b̲r̲e̲a̲k̲A̲l̲i̲g̲n̲{c}{t} a & b \\e…"}
+{"package":"base","name":"buildrel","branch":"ctx:basic","renderer":"katex","tex":"a \\buildrel \\rm def \\over = b","error":"KaTeX parse error: Undefined control sequence: \\buildrel at position 3: a \\̲b̲u̲i̲l̲d̲r̲e̲l̲ ̲\\rm def \\over =…"}
+{"package":"base","name":"cases","branch":"baseline","renderer":"katex","tex":"\\cases{a}","error":"KaTeX parse error: Undefined control sequence: \\cases at position 1: \\̲c̲a̲s̲e̲s̲{a}"}
+{"package":"base","name":"cases","branch":"bare[0]","renderer":"katex","tex":"\\cases a","error":"KaTeX parse error: Undefined control sequence: \\cases at position 1: \\̲c̲a̲s̲e̲s̲ ̲a"}
+{"package":"base","name":"displaylines","branch":"baseline","renderer":"katex","tex":"\\displaylines{a}","error":"KaTeX parse error: Undefined control sequence: \\displaylines at position 1: \\̲d̲i̲s̲p̲l̲a̲y̲l̲i̲n̲e̲s̲{a}"}
+{"package":"base","name":"displaylines","branch":"bare[0]","renderer":"katex","tex":"\\displaylines a","error":"KaTeX parse error: Undefined control sequence: \\displaylines at position 1: \\̲d̲i̲s̲p̲l̲a̲y̲l̲i̲n̲e̲s̲ ̲a"}
+{"package":"base","name":"eqalign","branch":"baseline","renderer":"katex","tex":"\\eqalign{a}","error":"KaTeX parse error: Undefined control sequence: \\eqalign at position 1: \\̲e̲q̲a̲l̲i̲g̲n̲{a}"}
+{"package":"base","name":"eqalign","branch":"bare[0]","renderer":"katex","tex":"\\eqalign a","error":"KaTeX parse error: Undefined control sequence: \\eqalign at position 1: \\̲e̲q̲a̲l̲i̲g̲n̲ ̲a"}
+{"package":"base","name":"eqalignno","branch":"baseline","renderer":"katex","tex":"\\eqalignno{a}","error":"KaTeX parse error: Undefined control sequence: \\eqalignno at position 1: \\̲e̲q̲a̲l̲i̲g̲n̲n̲o̲{a}"}
+{"package":"base","name":"eqalignno","branch":"bare[0]","renderer":"katex","tex":"\\eqalignno a","error":"KaTeX parse error: Undefined control sequence: \\eqalignno at position 1: \\̲e̲q̲a̲l̲i̲g̲n̲n̲o̲ ̲a"}
+{"package":"base","name":"fbox","branch":"neg:T[0]","renderer":"katex","tex":"\\fbox{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 8: \\fbox{a^̲2}"}
+{"package":"base","name":"framebox","branch":"baseline","renderer":"katex","tex":"\\framebox{a}","error":"KaTeX parse error: Undefined control sequence: \\framebox at position 1: \\̲f̲r̲a̲m̲e̲b̲o̲x̲{a}"}
+{"package":"base","name":"framebox","branch":"vary:o[0]","renderer":"katex","tex":"\\framebox[1pt]{b}","error":"KaTeX parse error: Undefined control sequence: \\framebox at position 1: \\̲f̲r̲a̲m̲e̲b̲o̲x̲[1pt]{b}"}
+{"package":"base","name":"framebox","branch":"vary:o[1]","renderer":"katex","tex":"\\framebox[a]{b}","error":"KaTeX parse error: Undefined control sequence: \\framebox at position 1: \\̲f̲r̲a̲m̲e̲b̲o̲x̲[a]{b}"}
+{"package":"base","name":"framebox","branch":"maximal","renderer":"katex","tex":"\\framebox[1pt][b]{c}","error":"KaTeX parse error: Undefined control sequence: \\framebox at position 1: \\̲f̲r̲a̲m̲e̲b̲o̲x̲[1pt][b]{c}"}
+{"package":"base","name":"framebox","branch":"bare[2]","renderer":"katex","tex":"\\framebox a","error":"KaTeX parse error: Undefined control sequence: \\framebox at position 1: \\̲f̲r̲a̲m̲e̲b̲o̲x̲ ̲a"}
+{"package":"base","name":"framebox","branch":"neg:L[0]","renderer":"katex","tex":"\\framebox[a]{a}","error":"KaTeX parse error: Undefined control sequence: \\framebox at position 1: \\̲f̲r̲a̲m̲e̲b̲o̲x̲[a]{a}"}
+{"package":"base","name":"framebox","branch":"neg:N[1]","renderer":"katex","tex":"\\framebox[\\alpha]{a}","error":"KaTeX parse error: Undefined control sequence: \\framebox at position 1: \\̲f̲r̲a̲m̲e̲b̲o̲x̲[\\alpha]{a}"}
+{"package":"base","name":"framebox","branch":"neg:T[2]","renderer":"katex","tex":"\\framebox{a^2}","error":"KaTeX parse error: Undefined control sequence: \\framebox at position 1: \\̲f̲r̲a̲m̲e̲b̲o̲x̲{a^2}"}
+{"package":"base","name":"goodbreak","branch":"baseline","renderer":"katex","tex":"\\goodbreak","error":"KaTeX parse error: Undefined control sequence: \\goodbreak at position 1: \\̲g̲o̲o̲d̲b̲r̲e̲a̲k̲"}
+{"package":"base","name":"hbox","branch":"neg:T[0]","renderer":"katex","tex":"\\hbox{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 8: \\hbox{a^̲2}"}
+{"package":"base","name":"hfil","branch":"ctx:in-array","renderer":"katex","tex":"\\begin{array}{cc} a \\hfil & b \\end{array}","error":"KaTeX parse error: Undefined control sequence: \\hfil at position 21: …n{array}{cc} a \\̲h̲f̲i̲l̲ ̲& b \\end{array}"}
+{"package":"base","name":"hfill","branch":"ctx:in-array","renderer":"katex","tex":"\\begin{array}{cc} a \\hfill & b \\end{array}","error":"KaTeX parse error: Undefined control sequence: \\hfill at position 21: …n{array}{cc} a \\̲h̲f̲i̲l̲l̲ ̲& b \\end{array}"}
+{"package":"base","name":"hfilll","branch":"ctx:in-array","renderer":"katex","tex":"\\begin{array}{cc} a \\hfilll & b \\end{array}","error":"KaTeX parse error: Undefined control sequence: \\hfilll at position 21: …n{array}{cc} a \\̲h̲f̲i̲l̲l̲l̲ ̲& b \\end{array}"}
+{"package":"base","name":"hsize","branch":"baseline","renderer":"katex","tex":"\\hsize{1pt}","error":"KaTeX parse error: Undefined control sequence: \\hsize at position 1: \\̲h̲s̲i̲z̲e̲{1pt}"}
+{"package":"base","name":"hsize","branch":"bare[0]","renderer":"katex","tex":"\\hsize 1pt","error":"KaTeX parse error: Undefined control sequence: \\hsize at position 1: \\̲h̲s̲i̲z̲e̲ ̲1pt"}
+{"package":"base","name":"hsize","branch":"neg:L[0]","renderer":"katex","tex":"\\hsize{a}","error":"KaTeX parse error: Undefined control sequence: \\hsize at position 1: \\̲h̲s̲i̲z̲e̲{a}"}
+{"package":"base","name":"hskip","branch":"neg:L[0]","renderer":"katex","tex":"\\hskip{a}","error":"KaTeX parse error: Invalid size: 'a' at position 7: \\hskip{̲a̲}̲"}
+{"package":"base","name":"hspace","branch":"bare[0]","renderer":"katex","tex":"\\hspace 1pt","error":"KaTeX parse error: Invalid size: '1' at position 9: \\hspace 1̲pt"}
+{"package":"base","name":"hspace","branch":"neg:L[0]","renderer":"katex","tex":"\\hspace{a}","error":"KaTeX parse error: Invalid size: 'a' at position 9: \\hspace{a̲}"}
+{"package":"base","name":"kern","branch":"neg:L[0]","renderer":"katex","tex":"\\kern{a}","error":"KaTeX parse error: Invalid size: 'a' at position 6: \\kern{̲a̲}̲"}
+{"package":"base","name":"label","branch":"baseline","renderer":"katex","tex":"\\label{a}","error":"KaTeX parse error: Undefined control sequence: \\label at position 1: \\̲l̲a̲b̲e̲l̲{a}"}
+{"package":"base","name":"label","branch":"bare[0]","renderer":"katex","tex":"\\label a","error":"KaTeX parse error: Undefined control sequence: \\label at position 1: \\̲l̲a̲b̲e̲l̲ ̲a"}
+{"package":"base","name":"label","branch":"neg:N[0]","renderer":"katex","tex":"\\label{\\alpha}","error":"KaTeX parse error: Undefined control sequence: \\label at position 1: \\̲l̲a̲b̲e̲l̲{\\alpha}"}
+{"package":"base","name":"leftroot","branch":"ctx:in-root","renderer":"katex","tex":"\\sqrt[\\leftroot{2} 3]{a}","error":"KaTeX parse error: Undefined control sequence: \\leftroot at position 7: \\sqrt[\\̲l̲e̲f̲t̲r̲o̲o̲t̲{2} 3]{a}"}
+{"package":"base","name":"leqalignno","branch":"baseline","renderer":"katex","tex":"\\leqalignno{a}","error":"KaTeX parse error: Undefined control sequence: \\leqalignno at position 1: \\̲l̲e̲q̲a̲l̲i̲g̲n̲n̲o̲{a}"}
+{"package":"base","name":"leqalignno","branch":"bare[0]","renderer":"katex","tex":"\\leqalignno a","error":"KaTeX parse error: Undefined control sequence: \\leqalignno at position 1: \\̲l̲e̲q̲a̲l̲i̲g̲n̲n̲o̲ ̲a"}
+{"package":"base","name":"lower","branch":"baseline","renderer":"katex","tex":"\\lower{1pt}{b}","error":"KaTeX parse error: Undefined control sequence: \\lower at position 1: \\̲l̲o̲w̲e̲r̲{1pt}{b}"}
+{"package":"base","name":"lower","branch":"bare[0]","renderer":"katex","tex":"\\lower 1pt{b}","error":"KaTeX parse error: Undefined control sequence: \\lower at position 1: \\̲l̲o̲w̲e̲r̲ ̲1pt{b}"}
+{"package":"base","name":"lower","branch":"bare[1]","renderer":"katex","tex":"\\lower{1pt}b","error":"KaTeX parse error: Undefined control sequence: \\lower at position 1: \\̲l̲o̲w̲e̲r̲{1pt}b"}
+{"package":"base","name":"lower","branch":"neg:L[0]","renderer":"katex","tex":"\\lower{a}{a}","error":"KaTeX parse error: Undefined control sequence: \\lower at position 1: \\̲l̲o̲w̲e̲r̲{a}{a}"}
+{"package":"base","name":"makebox","branch":"baseline","renderer":"katex","tex":"\\makebox{a}","error":"KaTeX parse error: Undefined control sequence: \\makebox at position 1: \\̲m̲a̲k̲e̲b̲o̲x̲{a}"}
+{"package":"base","name":"makebox","branch":"vary:o[0]","renderer":"katex","tex":"\\makebox[1pt]{b}","error":"KaTeX parse error: Undefined control sequence: \\makebox at position 1: \\̲m̲a̲k̲e̲b̲o̲x̲[1pt]{b}"}
+{"package":"base","name":"makebox","branch":"vary:o[1]","renderer":"katex","tex":"\\makebox[a]{b}","error":"KaTeX parse error: Undefined control sequence: \\makebox at position 1: \\̲m̲a̲k̲e̲b̲o̲x̲[a]{b}"}
+{"package":"base","name":"makebox","branch":"maximal","renderer":"katex","tex":"\\makebox[1pt][b]{c}","error":"KaTeX parse error: Undefined control sequence: \\makebox at position 1: \\̲m̲a̲k̲e̲b̲o̲x̲[1pt][b]{c}"}
+{"package":"base","name":"makebox","branch":"bare[2]","renderer":"katex","tex":"\\makebox a","error":"KaTeX parse error: Undefined control sequence: \\makebox at position 1: \\̲m̲a̲k̲e̲b̲o̲x̲ ̲a"}
+{"package":"base","name":"makebox","branch":"neg:L[0]","renderer":"katex","tex":"\\makebox[a]{a}","error":"KaTeX parse error: Undefined control sequence: \\makebox at position 1: \\̲m̲a̲k̲e̲b̲o̲x̲[a]{a}"}
+{"package":"base","name":"makebox","branch":"neg:N[1]","renderer":"katex","tex":"\\makebox[\\alpha]{a}","error":"KaTeX parse error: Undefined control sequence: \\makebox at position 1: \\̲m̲a̲k̲e̲b̲o̲x̲[\\alpha]{a}"}
+{"package":"base","name":"makebox","branch":"neg:T[2]","renderer":"katex","tex":"\\makebox{a^2}","error":"KaTeX parse error: Undefined control sequence: \\makebox at position 1: \\̲m̲a̲k̲e̲b̲o̲x̲{a^2}"}
+{"package":"base","name":"mathbfcal","branch":"baseline","renderer":"katex","tex":"\\mathbfcal{a}","error":"KaTeX parse error: Undefined control sequence: \\mathbfcal at position 1: \\̲m̲a̲t̲h̲b̲f̲c̲a̲l̲{a}"}
+{"package":"base","name":"mathbfcal","branch":"bare[0]","renderer":"katex","tex":"\\mathbfcal a","error":"KaTeX parse error: Undefined control sequence: \\mathbfcal at position 1: \\̲m̲a̲t̲h̲b̲f̲c̲a̲l̲ ̲a"}
+{"package":"base","name":"mathbffrak","branch":"baseline","renderer":"katex","tex":"\\mathbffrak{a}","error":"KaTeX parse error: Undefined control sequence: \\mathbffrak at position 1: \\̲m̲a̲t̲h̲b̲f̲f̲r̲a̲k̲{a}"}
+{"package":"base","name":"mathbffrak","branch":"bare[0]","renderer":"katex","tex":"\\mathbffrak a","error":"KaTeX parse error: Undefined control sequence: \\mathbffrak at position 1: \\̲m̲a̲t̲h̲b̲f̲f̲r̲a̲k̲ ̲a"}
+{"package":"base","name":"mathbfit","branch":"baseline","renderer":"katex","tex":"\\mathbfit{a}","error":"KaTeX parse error: Undefined control sequence: \\mathbfit at position 1: \\̲m̲a̲t̲h̲b̲f̲i̲t̲{a}"}
+{"package":"base","name":"mathbfit","branch":"bare[0]","renderer":"katex","tex":"\\mathbfit a","error":"KaTeX parse error: Undefined control sequence: \\mathbfit at position 1: \\̲m̲a̲t̲h̲b̲f̲i̲t̲ ̲a"}
+{"package":"base","name":"mathbfscr","branch":"baseline","renderer":"katex","tex":"\\mathbfscr{a}","error":"KaTeX parse error: Undefined control sequence: \\mathbfscr at position 1: \\̲m̲a̲t̲h̲b̲f̲s̲c̲r̲{a}"}
+{"package":"base","name":"mathbfscr","branch":"bare[0]","renderer":"katex","tex":"\\mathbfscr a","error":"KaTeX parse error: Undefined control sequence: \\mathbfscr at position 1: \\̲m̲a̲t̲h̲b̲f̲s̲c̲r̲ ̲a"}
+{"package":"base","name":"mathbfsf","branch":"baseline","renderer":"katex","tex":"\\mathbfsf{a}","error":"KaTeX parse error: Undefined control sequence: \\mathbfsf at position 1: \\̲m̲a̲t̲h̲b̲f̲s̲f̲{a}"}
+{"package":"base","name":"mathbfsf","branch":"bare[0]","renderer":"katex","tex":"\\mathbfsf a","error":"KaTeX parse error: Undefined control sequence: \\mathbfsf at position 1: \\̲m̲a̲t̲h̲b̲f̲s̲f̲ ̲a"}
+{"package":"base","name":"mathbfsfit","branch":"baseline","renderer":"katex","tex":"\\mathbfsfit{a}","error":"KaTeX parse error: Undefined control sequence: \\mathbfsfit at position 1: \\̲m̲a̲t̲h̲b̲f̲s̲f̲i̲t̲{a}"}
+{"package":"base","name":"mathbfsfit","branch":"bare[0]","renderer":"katex","tex":"\\mathbfsfit a","error":"KaTeX parse error: Undefined control sequence: \\mathbfsfit at position 1: \\̲m̲a̲t̲h̲b̲f̲s̲f̲i̲t̲ ̲a"}
+{"package":"base","name":"mathbfsfup","branch":"baseline","renderer":"katex","tex":"\\mathbfsfup{a}","error":"KaTeX parse error: Undefined control sequence: \\mathbfsfup at position 1: \\̲m̲a̲t̲h̲b̲f̲s̲f̲u̲p̲{a}"}
+{"package":"base","name":"mathbfsfup","branch":"bare[0]","renderer":"katex","tex":"\\mathbfsfup a","error":"KaTeX parse error: Undefined control sequence: \\mathbfsfup at position 1: \\̲m̲a̲t̲h̲b̲f̲s̲f̲u̲p̲ ̲a"}
+{"package":"base","name":"mathbfup","branch":"baseline","renderer":"katex","tex":"\\mathbfup{a}","error":"KaTeX parse error: Undefined control sequence: \\mathbfup at position 1: \\̲m̲a̲t̲h̲b̲f̲u̲p̲{a}"}
+{"package":"base","name":"mathbfup","branch":"bare[0]","renderer":"katex","tex":"\\mathbfup a","error":"KaTeX parse error: Undefined control sequence: \\mathbfup at position 1: \\̲m̲a̲t̲h̲b̲f̲u̲p̲ ̲a"}
+{"package":"base","name":"mathsfup","branch":"baseline","renderer":"katex","tex":"\\mathsfup{a}","error":"KaTeX parse error: Undefined control sequence: \\mathsfup at position 1: \\̲m̲a̲t̲h̲s̲f̲u̲p̲{a}"}
+{"package":"base","name":"mathsfup","branch":"bare[0]","renderer":"katex","tex":"\\mathsfup a","error":"KaTeX parse error: Undefined control sequence: \\mathsfup at position 1: \\̲m̲a̲t̲h̲s̲f̲u̲p̲ ̲a"}
+{"package":"base","name":"mathup","branch":"baseline","renderer":"katex","tex":"\\mathup{a}","error":"KaTeX parse error: Undefined control sequence: \\mathup at position 1: \\̲m̲a̲t̲h̲u̲p̲{a}"}
+{"package":"base","name":"mathup","branch":"bare[0]","renderer":"katex","tex":"\\mathup a","error":"KaTeX parse error: Undefined control sequence: \\mathup at position 1: \\̲m̲a̲t̲h̲u̲p̲ ̲a"}
+{"package":"base","name":"matrix","branch":"baseline","renderer":"katex","tex":"\\matrix{a}","error":"KaTeX parse error: Undefined control sequence: \\matrix at position 1: \\̲m̲a̲t̲r̲i̲x̲{a}"}
+{"package":"base","name":"matrix","branch":"bare[0]","renderer":"katex","tex":"\\matrix a","error":"KaTeX parse error: Undefined control sequence: \\matrix at position 1: \\̲m̲a̲t̲r̲i̲x̲ ̲a"}
+{"package":"base","name":"mbox","branch":"baseline","renderer":"katex","tex":"\\mbox{a}","error":"KaTeX parse error: Undefined control sequence: \\mbox at position 1: \\̲m̲b̲o̲x̲{a}"}
+{"package":"base","name":"mbox","branch":"bare[0]","renderer":"katex","tex":"\\mbox a","error":"KaTeX parse error: Undefined control sequence: \\mbox at position 1: \\̲m̲b̲o̲x̲ ̲a"}
+{"package":"base","name":"mbox","branch":"neg:T[0]","renderer":"katex","tex":"\\mbox{a^2}","error":"KaTeX parse error: Undefined control sequence: \\mbox at position 1: \\̲m̲b̲o̲x̲{a^2}"}
+{"package":"base","name":"mit","branch":"baseline","renderer":"katex","tex":"{\\mit a}","error":"KaTeX parse error: Undefined control sequence: \\mit at position 2: {\\̲m̲i̲t̲ ̲a}"}
+{"package":"base","name":"mkern","branch":"neg:L[0]","renderer":"katex","tex":"\\mkern{a}","error":"KaTeX parse error: Invalid size: 'a' at position 7: \\mkern{̲a̲}̲"}
+{"package":"base","name":"mmlToken","branch":"ctx:mathml-token","renderer":"katex","tex":"\\mmlToken{mi}{x}","error":"KaTeX parse error: Undefined control sequence: \\mmlToken at position 1: \\̲m̲m̲l̲T̲o̲k̲e̲n̲{mi}{x}"}
+{"package":"base","name":"moveleft","branch":"baseline","renderer":"katex","tex":"\\moveleft{1pt}{b}","error":"KaTeX parse error: Undefined control sequence: \\moveleft at position 1: \\̲m̲o̲v̲e̲l̲e̲f̲t̲{1pt}{b}"}
+{"package":"base","name":"moveleft","branch":"bare[0]","renderer":"katex","tex":"\\moveleft 1pt{b}","error":"KaTeX parse error: Undefined control sequence: \\moveleft at position 1: \\̲m̲o̲v̲e̲l̲e̲f̲t̲ ̲1pt{b}"}
+{"package":"base","name":"moveleft","branch":"bare[1]","renderer":"katex","tex":"\\moveleft{1pt}b","error":"KaTeX parse error: Undefined control sequence: \\moveleft at position 1: \\̲m̲o̲v̲e̲l̲e̲f̲t̲{1pt}b"}
+{"package":"base","name":"moveleft","branch":"neg:L[0]","renderer":"katex","tex":"\\moveleft{a}{a}","error":"KaTeX parse error: Undefined control sequence: \\moveleft at position 1: \\̲m̲o̲v̲e̲l̲e̲f̲t̲{a}{a}"}
+{"package":"base","name":"moveright","branch":"baseline","renderer":"katex","tex":"\\moveright{1pt}{b}","error":"KaTeX parse error: Undefined control sequence: \\moveright at position 1: \\̲m̲o̲v̲e̲r̲i̲g̲h̲t̲{1pt}{b}"}
+{"package":"base","name":"moveright","branch":"bare[0]","renderer":"katex","tex":"\\moveright 1pt{b}","error":"KaTeX parse error: Undefined control sequence: \\moveright at position 1: \\̲m̲o̲v̲e̲r̲i̲g̲h̲t̲ ̲1pt{b}"}
+{"package":"base","name":"moveright","branch":"bare[1]","renderer":"katex","tex":"\\moveright{1pt}b","error":"KaTeX parse error: Undefined control sequence: \\moveright at position 1: \\̲m̲o̲v̲e̲r̲i̲g̲h̲t̲{1pt}b"}
+{"package":"base","name":"moveright","branch":"neg:L[0]","renderer":"katex","tex":"\\moveright{a}{a}","error":"KaTeX parse error: Undefined control sequence: \\moveright at position 1: \\̲m̲o̲v̲e̲r̲i̲g̲h̲t̲{a}{a}"}
+{"package":"base","name":"mskip","branch":"neg:L[0]","renderer":"katex","tex":"\\mskip{a}","error":"KaTeX parse error: Invalid size: 'a' at position 7: \\mskip{̲a̲}̲"}
+{"package":"base","name":"mspace","branch":"baseline","renderer":"katex","tex":"\\mspace{1pt}","error":"KaTeX parse error: Undefined control sequence: \\mspace at position 1: \\̲m̲s̲p̲a̲c̲e̲{1pt}"}
+{"package":"base","name":"mspace","branch":"bare[0]","renderer":"katex","tex":"\\mspace 1pt","error":"KaTeX parse error: Undefined control sequence: \\mspace at position 1: \\̲m̲s̲p̲a̲c̲e̲ ̲1pt"}
+{"package":"base","name":"mspace","branch":"neg:L[0]","renderer":"katex","tex":"\\mspace{a}","error":"KaTeX parse error: Undefined control sequence: \\mspace at position 1: \\̲m̲s̲p̲a̲c̲e̲{a}"}
+{"package":"base","name":"newcolumntype","branch":"baseline","renderer":"katex","tex":"\\newcolumntype{a}{b}","error":"KaTeX parse error: Undefined control sequence: \\newcolumntype at position 1: \\̲n̲e̲w̲c̲o̲l̲u̲m̲n̲t̲y̲p̲e̲{a}{b}"}
+{"package":"base","name":"newcolumntype","branch":"vary:o[1]","renderer":"katex","tex":"\\newcolumntype{a}[1]{c}","error":"KaTeX parse error: Undefined control sequence: \\newcolumntype at position 1: \\̲n̲e̲w̲c̲o̲l̲u̲m̲n̲t̲y̲p̲e̲{a}[1]{c}"}
+{"package":"base","name":"newcolumntype","branch":"bare[0]","renderer":"katex","tex":"\\newcolumntype a{b}","error":"KaTeX parse error: Undefined control sequence: \\newcolumntype at position 1: \\̲n̲e̲w̲c̲o̲l̲u̲m̲n̲t̲y̲p̲e̲ ̲a{b}"}
+{"package":"base","name":"newcolumntype","branch":"bare[2]","renderer":"katex","tex":"\\newcolumntype{a}b","error":"KaTeX parse error: Undefined control sequence: \\newcolumntype at position 1: \\̲n̲e̲w̲c̲o̲l̲u̲m̲n̲t̲y̲p̲e̲{a}b"}
+{"package":"base","name":"newcolumntype","branch":"neg:I[1]","renderer":"katex","tex":"\\newcolumntype{a}[a]{b}","error":"KaTeX parse error: Undefined control sequence: \\newcolumntype at position 1: \\̲n̲e̲w̲c̲o̲l̲u̲m̲n̲t̲y̲p̲e̲{a}[a]{b}"}
+{"package":"base","name":"nonscript","branch":"baseline","renderer":"katex","tex":"{\\nonscript a}","error":"KaTeX parse error: Undefined control sequence: \\nonscript at position 2: {\\̲n̲o̲n̲s̲c̲r̲i̲p̲t̲ ̲a}"}
+{"package":"base","name":"oldstyle","branch":"baseline","renderer":"katex","tex":"{\\oldstyle a}","error":"KaTeX parse error: Undefined control sequence: \\oldstyle at position 2: {\\̲o̲l̲d̲s̲t̲y̲l̲e̲ ̲a}"}
+{"package":"base","name":"overparen","branch":"baseline","renderer":"katex","tex":"\\overparen{a}","error":"KaTeX parse error: Undefined control sequence: \\overparen at position 1: \\̲o̲v̲e̲r̲p̲a̲r̲e̲n̲{a}"}
+{"package":"base","name":"overparen","branch":"bare[0]","renderer":"katex","tex":"\\overparen a","error":"KaTeX parse error: Undefined control sequence: \\overparen at position 1: \\̲o̲v̲e̲r̲p̲a̲r̲e̲n̲ ̲a"}
+{"package":"base","name":"overunderset","branch":"baseline","renderer":"katex","tex":"\\overunderset{a}{b}{c}","error":"KaTeX parse error: Undefined control sequence: \\overunderset at position 1: \\̲o̲v̲e̲r̲u̲n̲d̲e̲r̲s̲e̲t̲{a}{b}{c}"}
+{"package":"base","name":"overunderset","branch":"bare[0]","renderer":"katex","tex":"\\overunderset a{b}{c}","error":"KaTeX parse error: Undefined control sequence: \\overunderset at position 1: \\̲o̲v̲e̲r̲u̲n̲d̲e̲r̲s̲e̲t̲ ̲a{b}{c}"}
+{"package":"base","name":"overunderset","branch":"bare[1]","renderer":"katex","tex":"\\overunderset{a}b{c}","error":"KaTeX parse error: Undefined control sequence: \\overunderset at position 1: \\̲o̲v̲e̲r̲u̲n̲d̲e̲r̲s̲e̲t̲{a}b{c}"}
+{"package":"base","name":"overunderset","branch":"bare[2]","renderer":"katex","tex":"\\overunderset{a}{b}c","error":"KaTeX parse error: Undefined control sequence: \\overunderset at position 1: \\̲o̲v̲e̲r̲u̲n̲d̲e̲r̲s̲e̲t̲{a}{b}c"}
+{"package":"base","name":"overwithdelims","branch":"baseline","renderer":"katex","tex":"a \\overwithdelims ( ( b","error":"KaTeX parse error: Undefined control sequence: \\overwithdelims at position 3: a \\̲o̲v̲e̲r̲w̲i̲t̲h̲d̲e̲l̲i̲m̲s̲ ̲( ( b"}
+{"package":"base","name":"overwithdelims","branch":"neg:D[0]","renderer":"katex","tex":"a \\overwithdelims a ( b","error":"KaTeX parse error: Undefined control sequence: \\overwithdelims at position 3: a \\̲o̲v̲e̲r̲w̲i̲t̲h̲d̲e̲l̲i̲m̲s̲ ̲a ( b"}
+{"package":"base","name":"overwithdelims","branch":"neg:D[1]","renderer":"katex","tex":"a \\overwithdelims ( a b","error":"KaTeX parse error: Undefined control sequence: \\overwithdelims at position 3: a \\̲o̲v̲e̲r̲w̲i̲t̲h̲d̲e̲l̲i̲m̲s̲ ̲( a b"}
+{"package":"base","name":"parbox","branch":"ctx:basic","renderer":"katex","tex":"\\parbox{1pt}{x}","error":"KaTeX parse error: Undefined control sequence: \\parbox at position 1: \\̲p̲a̲r̲b̲o̲x̲{1pt}{x}"}
+{"package":"base","name":"parbox","branch":"ctx:align-c","renderer":"katex","tex":"\\parbox[c]{1pt}{x}","error":"KaTeX parse error: Undefined control sequence: \\parbox at position 1: \\̲p̲a̲r̲b̲o̲x̲[c]{1pt}{x}"}
+{"package":"base","name":"pmatrix","branch":"baseline","renderer":"katex","tex":"\\pmatrix{a}","error":"KaTeX parse error: Undefined control sequence: \\pmatrix at position 1: \\̲p̲m̲a̲t̲r̲i̲x̲{a}"}
+{"package":"base","name":"pmatrix","branch":"bare[0]","renderer":"katex","tex":"\\pmatrix a","error":"KaTeX parse error: Undefined control sequence: \\pmatrix at position 1: \\̲p̲m̲a̲t̲r̲i̲x̲ ̲a"}
+{"package":"base","name":"raise","branch":"baseline","renderer":"katex","tex":"\\raise{1pt}{b}","error":"KaTeX parse error: Undefined control sequence: \\raise at position 1: \\̲r̲a̲i̲s̲e̲{1pt}{b}"}
+{"package":"base","name":"raise","branch":"bare[0]","renderer":"katex","tex":"\\raise 1pt{b}","error":"KaTeX parse error: Undefined control sequence: \\raise at position 1: \\̲r̲a̲i̲s̲e̲ ̲1pt{b}"}
+{"package":"base","name":"raise","branch":"bare[1]","renderer":"katex","tex":"\\raise{1pt}b","error":"KaTeX parse error: Undefined control sequence: \\raise at position 1: \\̲r̲a̲i̲s̲e̲{1pt}b"}
+{"package":"base","name":"raise","branch":"neg:L[0]","renderer":"katex","tex":"\\raise{a}{a}","error":"KaTeX parse error: Undefined control sequence: \\raise at position 1: \\̲r̲a̲i̲s̲e̲{a}{a}"}
+{"package":"base","name":"ref","branch":"baseline","renderer":"katex","tex":"\\ref{a}","error":"KaTeX parse error: Undefined control sequence: \\ref at position 1: \\̲r̲e̲f̲{a}"}
+{"package":"base","name":"ref","branch":"bare[0]","renderer":"katex","tex":"\\ref a","error":"KaTeX parse error: Undefined control sequence: \\ref at position 1: \\̲r̲e̲f̲ ̲a"}
+{"package":"base","name":"ref","branch":"neg:N[0]","renderer":"katex","tex":"\\ref{\\alpha}","error":"KaTeX parse error: Undefined control sequence: \\ref at position 1: \\̲r̲e̲f̲{\\alpha}"}
+{"package":"base","name":"root","branch":"ctx:basic","renderer":"katex","tex":"a \\root 3 \\of x","error":"KaTeX parse error: Undefined control sequence: \\root at position 3: a \\̲r̲o̲o̲t̲ ̲3 \\of x"}
+{"package":"base","name":"rule","branch":"bare[1]","renderer":"katex","tex":"\\rule 1pt{1pt}","error":"KaTeX parse error: Invalid size: '{' at position 10: \\rule 1pt{̲1pt}"}
+{"package":"base","name":"rule","branch":"neg:L[0]","renderer":"katex","tex":"\\rule[a]{1pt}{1pt}","error":"KaTeX parse error: Invalid size: 'a' at position 6: \\rule[̲a̲]̲{1pt}{1pt}"}
+{"package":"base","name":"rule","branch":"neg:L[1]","renderer":"katex","tex":"\\rule{a}{1pt}","error":"KaTeX parse error: Invalid size: 'a' at position 6: \\rule{̲a̲}̲{1pt}"}
+{"package":"base","name":"rule","branch":"neg:L[2]","renderer":"katex","tex":"\\rule{1pt}{a}","error":"KaTeX parse error: Invalid size: 'a' at position 11: \\rule{1pt}{̲a̲}̲"}
+{"package":"base","name":"Rule","branch":"baseline","renderer":"katex","tex":"\\Rule{1pt}{1pt}{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Rule at position 1: \\̲R̲u̲l̲e̲{1pt}{1pt}{1pt}"}
+{"package":"base","name":"Rule","branch":"bare[0]","renderer":"katex","tex":"\\Rule 1pt{1pt}{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Rule at position 1: \\̲R̲u̲l̲e̲ ̲1pt{1pt}{1pt}"}
+{"package":"base","name":"Rule","branch":"bare[1]","renderer":"katex","tex":"\\Rule{1pt}1pt{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Rule at position 1: \\̲R̲u̲l̲e̲{1pt}1pt{1pt}"}
+{"package":"base","name":"Rule","branch":"bare[2]","renderer":"katex","tex":"\\Rule{1pt}{1pt}1pt","error":"KaTeX parse error: Undefined control sequence: \\Rule at position 1: \\̲R̲u̲l̲e̲{1pt}{1pt}1pt"}
+{"package":"base","name":"Rule","branch":"neg:L[0]","renderer":"katex","tex":"\\Rule{a}{1pt}{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Rule at position 1: \\̲R̲u̲l̲e̲{a}{1pt}{1pt}"}
+{"package":"base","name":"Rule","branch":"neg:L[1]","renderer":"katex","tex":"\\Rule{1pt}{a}{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Rule at position 1: \\̲R̲u̲l̲e̲{1pt}{a}{1pt}"}
+{"package":"base","name":"Rule","branch":"neg:L[2]","renderer":"katex","tex":"\\Rule{1pt}{1pt}{a}","error":"KaTeX parse error: Undefined control sequence: \\Rule at position 1: \\̲R̲u̲l̲e̲{1pt}{1pt}{a}"}
+{"package":"base","name":"skew","branch":"baseline","renderer":"katex","tex":"\\skew{1}{b}{c}","error":"KaTeX parse error: Undefined control sequence: \\skew at position 1: \\̲s̲k̲e̲w̲{1}{b}{c}"}
+{"package":"base","name":"skew","branch":"bare[0]","renderer":"katex","tex":"\\skew 1{b}{c}","error":"KaTeX parse error: Undefined control sequence: \\skew at position 1: \\̲s̲k̲e̲w̲ ̲1{b}{c}"}
+{"package":"base","name":"skew","branch":"bare[1]","renderer":"katex","tex":"\\skew{1}b{c}","error":"KaTeX parse error: Undefined control sequence: \\skew at position 1: \\̲s̲k̲e̲w̲{1}b{c}"}
+{"package":"base","name":"skew","branch":"bare[2]","renderer":"katex","tex":"\\skew{1}{b}c","error":"KaTeX parse error: Undefined control sequence: \\skew at position 1: \\̲s̲k̲e̲w̲{1}{b}c"}
+{"package":"base","name":"skew","branch":"neg:I[0]","renderer":"katex","tex":"\\skew{a}{a}{b}","error":"KaTeX parse error: Undefined control sequence: \\skew at position 1: \\̲s̲k̲e̲w̲{a}{a}{b}"}
+{"package":"base","name":"Space","branch":"baseline","renderer":"katex","tex":"\\Space{1pt}{1pt}{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Space at position 1: \\̲S̲p̲a̲c̲e̲{1pt}{1pt}{1pt}"}
+{"package":"base","name":"Space","branch":"bare[0]","renderer":"katex","tex":"\\Space 1pt{1pt}{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Space at position 1: \\̲S̲p̲a̲c̲e̲ ̲1pt{1pt}{1pt}"}
+{"package":"base","name":"Space","branch":"bare[1]","renderer":"katex","tex":"\\Space{1pt}1pt{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Space at position 1: \\̲S̲p̲a̲c̲e̲{1pt}1pt{1pt}"}
+{"package":"base","name":"Space","branch":"bare[2]","renderer":"katex","tex":"\\Space{1pt}{1pt}1pt","error":"KaTeX parse error: Undefined control sequence: \\Space at position 1: \\̲S̲p̲a̲c̲e̲{1pt}{1pt}1pt"}
+{"package":"base","name":"Space","branch":"neg:L[0]","renderer":"katex","tex":"\\Space{a}{1pt}{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Space at position 1: \\̲S̲p̲a̲c̲e̲{a}{1pt}{1pt}"}
+{"package":"base","name":"Space","branch":"neg:L[1]","renderer":"katex","tex":"\\Space{1pt}{a}{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Space at position 1: \\̲S̲p̲a̲c̲e̲{1pt}{a}{1pt}"}
+{"package":"base","name":"Space","branch":"neg:L[2]","renderer":"katex","tex":"\\Space{1pt}{1pt}{a}","error":"KaTeX parse error: Undefined control sequence: \\Space at position 1: \\̲S̲p̲a̲c̲e̲{1pt}{1pt}{a}"}
+{"package":"base","name":"stackbin","branch":"baseline","renderer":"katex","tex":"\\stackbin{a}{b}","error":"KaTeX parse error: Undefined control sequence: \\stackbin at position 1: \\̲s̲t̲a̲c̲k̲b̲i̲n̲{a}{b}"}
+{"package":"base","name":"stackbin","branch":"bare[0]","renderer":"katex","tex":"\\stackbin a{b}","error":"KaTeX parse error: Undefined control sequence: \\stackbin at position 1: \\̲s̲t̲a̲c̲k̲b̲i̲n̲ ̲a{b}"}
+{"package":"base","name":"stackbin","branch":"bare[1]","renderer":"katex","tex":"\\stackbin{a}b","error":"KaTeX parse error: Undefined control sequence: \\stackbin at position 1: \\̲s̲t̲a̲c̲k̲b̲i̲n̲{a}b"}
+{"package":"base","name":"strut","branch":"baseline","renderer":"katex","tex":"\\strut","error":"KaTeX parse error: Undefined control sequence: \\strut at position 1: \\̲s̲t̲r̲u̲t̲"}
+{"package":"base","name":"symbb","branch":"baseline","renderer":"katex","tex":"\\symbb{a}","error":"KaTeX parse error: Undefined control sequence: \\symbb at position 1: \\̲s̲y̲m̲b̲b̲{a}"}
+{"package":"base","name":"symbb","branch":"bare[0]","renderer":"katex","tex":"\\symbb a","error":"KaTeX parse error: Undefined control sequence: \\symbb at position 1: \\̲s̲y̲m̲b̲b̲ ̲a"}
+{"package":"base","name":"symbf","branch":"baseline","renderer":"katex","tex":"\\symbf{a}","error":"KaTeX parse error: Undefined control sequence: \\symbf at position 1: \\̲s̲y̲m̲b̲f̲{a}"}
+{"package":"base","name":"symbf","branch":"bare[0]","renderer":"katex","tex":"\\symbf a","error":"KaTeX parse error: Undefined control sequence: \\symbf at position 1: \\̲s̲y̲m̲b̲f̲ ̲a"}
+{"package":"base","name":"symbfcal","branch":"baseline","renderer":"katex","tex":"\\symbfcal{a}","error":"KaTeX parse error: Undefined control sequence: \\symbfcal at position 1: \\̲s̲y̲m̲b̲f̲c̲a̲l̲{a}"}
+{"package":"base","name":"symbfcal","branch":"bare[0]","renderer":"katex","tex":"\\symbfcal a","error":"KaTeX parse error: Undefined control sequence: \\symbfcal at position 1: \\̲s̲y̲m̲b̲f̲c̲a̲l̲ ̲a"}
+{"package":"base","name":"symbffrak","branch":"baseline","renderer":"katex","tex":"\\symbffrak{a}","error":"KaTeX parse error: Undefined control sequence: \\symbffrak at position 1: \\̲s̲y̲m̲b̲f̲f̲r̲a̲k̲{a}"}
+{"package":"base","name":"symbffrak","branch":"bare[0]","renderer":"katex","tex":"\\symbffrak a","error":"KaTeX parse error: Undefined control sequence: \\symbffrak at position 1: \\̲s̲y̲m̲b̲f̲f̲r̲a̲k̲ ̲a"}
+{"package":"base","name":"symbfit","branch":"baseline","renderer":"katex","tex":"\\symbfit{a}","error":"KaTeX parse error: Undefined control sequence: \\symbfit at position 1: \\̲s̲y̲m̲b̲f̲i̲t̲{a}"}
+{"package":"base","name":"symbfit","branch":"bare[0]","renderer":"katex","tex":"\\symbfit a","error":"KaTeX parse error: Undefined control sequence: \\symbfit at position 1: \\̲s̲y̲m̲b̲f̲i̲t̲ ̲a"}
+{"package":"base","name":"symbfscr","branch":"baseline","renderer":"katex","tex":"\\symbfscr{a}","error":"KaTeX parse error: Undefined control sequence: \\symbfscr at position 1: \\̲s̲y̲m̲b̲f̲s̲c̲r̲{a}"}
+{"package":"base","name":"symbfscr","branch":"bare[0]","renderer":"katex","tex":"\\symbfscr a","error":"KaTeX parse error: Undefined control sequence: \\symbfscr at position 1: \\̲s̲y̲m̲b̲f̲s̲c̲r̲ ̲a"}
+{"package":"base","name":"symbfsf","branch":"baseline","renderer":"katex","tex":"\\symbfsf{a}","error":"KaTeX parse error: Undefined control sequence: \\symbfsf at position 1: \\̲s̲y̲m̲b̲f̲s̲f̲{a}"}
+{"package":"base","name":"symbfsf","branch":"bare[0]","renderer":"katex","tex":"\\symbfsf a","error":"KaTeX parse error: Undefined control sequence: \\symbfsf at position 1: \\̲s̲y̲m̲b̲f̲s̲f̲ ̲a"}
+{"package":"base","name":"symbfsfit","branch":"baseline","renderer":"katex","tex":"\\symbfsfit{a}","error":"KaTeX parse error: Undefined control sequence: \\symbfsfit at position 1: \\̲s̲y̲m̲b̲f̲s̲f̲i̲t̲{a}"}
+{"package":"base","name":"symbfsfit","branch":"bare[0]","renderer":"katex","tex":"\\symbfsfit a","error":"KaTeX parse error: Undefined control sequence: \\symbfsfit at position 1: \\̲s̲y̲m̲b̲f̲s̲f̲i̲t̲ ̲a"}
+{"package":"base","name":"symbfsfup","branch":"baseline","renderer":"katex","tex":"\\symbfsfup{a}","error":"KaTeX parse error: Undefined control sequence: \\symbfsfup at position 1: \\̲s̲y̲m̲b̲f̲s̲f̲u̲p̲{a}"}
+{"package":"base","name":"symbfsfup","branch":"bare[0]","renderer":"katex","tex":"\\symbfsfup a","error":"KaTeX parse error: Undefined control sequence: \\symbfsfup at position 1: \\̲s̲y̲m̲b̲f̲s̲f̲u̲p̲ ̲a"}
+{"package":"base","name":"symbfup","branch":"baseline","renderer":"katex","tex":"\\symbfup{a}","error":"KaTeX parse error: Undefined control sequence: \\symbfup at position 1: \\̲s̲y̲m̲b̲f̲u̲p̲{a}"}
+{"package":"base","name":"symbfup","branch":"bare[0]","renderer":"katex","tex":"\\symbfup a","error":"KaTeX parse error: Undefined control sequence: \\symbfup at position 1: \\̲s̲y̲m̲b̲f̲u̲p̲ ̲a"}
+{"package":"base","name":"symcal","branch":"baseline","renderer":"katex","tex":"\\symcal{a}","error":"KaTeX parse error: Undefined control sequence: \\symcal at position 1: \\̲s̲y̲m̲c̲a̲l̲{a}"}
+{"package":"base","name":"symcal","branch":"bare[0]","renderer":"katex","tex":"\\symcal a","error":"KaTeX parse error: Undefined control sequence: \\symcal at position 1: \\̲s̲y̲m̲c̲a̲l̲ ̲a"}
+{"package":"base","name":"symfrak","branch":"baseline","renderer":"katex","tex":"\\symfrak{a}","error":"KaTeX parse error: Undefined control sequence: \\symfrak at position 1: \\̲s̲y̲m̲f̲r̲a̲k̲{a}"}
+{"package":"base","name":"symfrak","branch":"bare[0]","renderer":"katex","tex":"\\symfrak a","error":"KaTeX parse error: Undefined control sequence: \\symfrak at position 1: \\̲s̲y̲m̲f̲r̲a̲k̲ ̲a"}
+{"package":"base","name":"symit","branch":"baseline","renderer":"katex","tex":"\\symit{a}","error":"KaTeX parse error: Undefined control sequence: \\symit at position 1: \\̲s̲y̲m̲i̲t̲{a}"}
+{"package":"base","name":"symit","branch":"bare[0]","renderer":"katex","tex":"\\symit a","error":"KaTeX parse error: Undefined control sequence: \\symit at position 1: \\̲s̲y̲m̲i̲t̲ ̲a"}
+{"package":"base","name":"symnormal","branch":"baseline","renderer":"katex","tex":"\\symnormal{a}","error":"KaTeX parse error: Undefined control sequence: \\symnormal at position 1: \\̲s̲y̲m̲n̲o̲r̲m̲a̲l̲{a}"}
+{"package":"base","name":"symnormal","branch":"bare[0]","renderer":"katex","tex":"\\symnormal a","error":"KaTeX parse error: Undefined control sequence: \\symnormal at position 1: \\̲s̲y̲m̲n̲o̲r̲m̲a̲l̲ ̲a"}
+{"package":"base","name":"symrm","branch":"baseline","renderer":"katex","tex":"\\symrm{a}","error":"KaTeX parse error: Undefined control sequence: \\symrm at position 1: \\̲s̲y̲m̲r̲m̲{a}"}
+{"package":"base","name":"symrm","branch":"bare[0]","renderer":"katex","tex":"\\symrm a","error":"KaTeX parse error: Undefined control sequence: \\symrm at position 1: \\̲s̲y̲m̲r̲m̲ ̲a"}
+{"package":"base","name":"symscr","branch":"baseline","renderer":"katex","tex":"\\symscr{a}","error":"KaTeX parse error: Undefined control sequence: \\symscr at position 1: \\̲s̲y̲m̲s̲c̲r̲{a}"}
+{"package":"base","name":"symscr","branch":"bare[0]","renderer":"katex","tex":"\\symscr a","error":"KaTeX parse error: Undefined control sequence: \\symscr at position 1: \\̲s̲y̲m̲s̲c̲r̲ ̲a"}
+{"package":"base","name":"symsf","branch":"baseline","renderer":"katex","tex":"\\symsf{a}","error":"KaTeX parse error: Undefined control sequence: \\symsf at position 1: \\̲s̲y̲m̲s̲f̲{a}"}
+{"package":"base","name":"symsf","branch":"bare[0]","renderer":"katex","tex":"\\symsf a","error":"KaTeX parse error: Undefined control sequence: \\symsf at position 1: \\̲s̲y̲m̲s̲f̲ ̲a"}
+{"package":"base","name":"symsfit","branch":"baseline","renderer":"katex","tex":"\\symsfit{a}","error":"KaTeX parse error: Undefined control sequence: \\symsfit at position 1: \\̲s̲y̲m̲s̲f̲i̲t̲{a}"}
+{"package":"base","name":"symsfit","branch":"bare[0]","renderer":"katex","tex":"\\symsfit a","error":"KaTeX parse error: Undefined control sequence: \\symsfit at position 1: \\̲s̲y̲m̲s̲f̲i̲t̲ ̲a"}
+{"package":"base","name":"symsfup","branch":"baseline","renderer":"katex","tex":"\\symsfup{a}","error":"KaTeX parse error: Undefined control sequence: \\symsfup at position 1: \\̲s̲y̲m̲s̲f̲u̲p̲{a}"}
+{"package":"base","name":"symsfup","branch":"bare[0]","renderer":"katex","tex":"\\symsfup a","error":"KaTeX parse error: Undefined control sequence: \\symsfup at position 1: \\̲s̲y̲m̲s̲f̲u̲p̲ ̲a"}
+{"package":"base","name":"symtt","branch":"baseline","renderer":"katex","tex":"\\symtt{a}","error":"KaTeX parse error: Undefined control sequence: \\symtt at position 1: \\̲s̲y̲m̲t̲t̲{a}"}
+{"package":"base","name":"symtt","branch":"bare[0]","renderer":"katex","tex":"\\symtt a","error":"KaTeX parse error: Undefined control sequence: \\symtt at position 1: \\̲s̲y̲m̲t̲t̲ ̲a"}
+{"package":"base","name":"symup","branch":"baseline","renderer":"katex","tex":"\\symup{a}","error":"KaTeX parse error: Undefined control sequence: \\symup at position 1: \\̲s̲y̲m̲u̲p̲{a}"}
+{"package":"base","name":"symup","branch":"bare[0]","renderer":"katex","tex":"\\symup a","error":"KaTeX parse error: Undefined control sequence: \\symup at position 1: \\̲s̲y̲m̲u̲p̲ ̲a"}
+{"package":"base","name":"text","branch":"neg:T[0]","renderer":"katex","tex":"\\text{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 8: \\text{a^̲2}"}
+{"package":"base","name":"textbf","branch":"neg:T[0]","renderer":"katex","tex":"\\textbf{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 10: \\textbf{a^̲2}"}
+{"package":"base","name":"textit","branch":"neg:T[0]","renderer":"katex","tex":"\\textit{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 10: \\textit{a^̲2}"}
+{"package":"base","name":"textnormal","branch":"neg:T[0]","renderer":"katex","tex":"\\textnormal{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 14: \\textnormal{a^̲2}"}
+{"package":"base","name":"textrm","branch":"neg:T[0]","renderer":"katex","tex":"\\textrm{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 10: \\textrm{a^̲2}"}
+{"package":"base","name":"textsf","branch":"neg:T[0]","renderer":"katex","tex":"\\textsf{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 10: \\textsf{a^̲2}"}
+{"package":"base","name":"texttt","branch":"neg:T[0]","renderer":"katex","tex":"\\texttt{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 10: \\texttt{a^̲2}"}
+{"package":"base","name":"textup","branch":"neg:T[0]","renderer":"katex","tex":"\\textup{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 10: \\textup{a^̲2}"}
+{"package":"base","name":"Tiny","branch":"baseline","renderer":"katex","tex":"{\\Tiny a}","error":"KaTeX parse error: Undefined control sequence: \\Tiny at position 2: {\\̲T̲i̲n̲y̲ ̲a}"}
+{"package":"base","name":"underparen","branch":"baseline","renderer":"katex","tex":"\\underparen{a}","error":"KaTeX parse error: Undefined control sequence: \\underparen at position 1: \\̲u̲n̲d̲e̲r̲p̲a̲r̲e̲n̲{a}"}
+{"package":"base","name":"underparen","branch":"bare[0]","renderer":"katex","tex":"\\underparen a","error":"KaTeX parse error: Undefined control sequence: \\underparen at position 1: \\̲u̲n̲d̲e̲r̲p̲a̲r̲e̲n̲ ̲a"}
+{"package":"base","name":"uproot","branch":"ctx:in-root","renderer":"katex","tex":"\\sqrt[\\uproot{2} 3]{a}","error":"KaTeX parse error: Undefined control sequence: \\uproot at position 7: \\sqrt[\\̲u̲p̲r̲o̲o̲t̲{2} 3]{a}"}
+{"package":"base","name":"vbox","branch":"baseline","renderer":"katex","tex":"\\vbox{a}","error":"KaTeX parse error: Undefined control sequence: \\vbox at position 1: \\̲v̲b̲o̲x̲{a}"}
+{"package":"base","name":"vbox","branch":"bare[0]","renderer":"katex","tex":"\\vbox a","error":"KaTeX parse error: Undefined control sequence: \\vbox at position 1: \\̲v̲b̲o̲x̲ ̲a"}
+{"package":"base","name":"vtop","branch":"baseline","renderer":"katex","tex":"\\vtop{a}","error":"KaTeX parse error: Undefined control sequence: \\vtop at position 1: \\̲v̲t̲o̲p̲{a}"}
+{"package":"base","name":"vtop","branch":"bare[0]","renderer":"katex","tex":"\\vtop a","error":"KaTeX parse error: Undefined control sequence: \\vtop at position 1: \\̲v̲t̲o̲p̲ ̲a"}
+{"package":"base","name":"array","branch":"vary:o[0]","renderer":"katex","tex":"\\begin{array}[a]{cc}\na & b\n\\end{array}","error":"KaTeX parse error: Unknown column alignment: [ at position 14: \\begin{array}[̲a]{cc}\na & b\n\\e…"}
+{"package":"base","name":"darray","branch":"vary:o[0]","renderer":"katex","tex":"\\begin{darray}[a]{cc}\na & b\n\\end{darray}","error":"KaTeX parse error: Unknown column alignment: [ at position 15: \\begin{darray}[̲a]{cc}\na & b\n\\e…"}
+{"package":"base","name":"displaymath","branch":"baseline","renderer":"katex","tex":"\\begin{displaymath}\na\n\\end{displaymath}","error":"KaTeX parse error: No such environment: displaymath at position 7: \\begin{̲d̲i̲s̲p̲l̲a̲y̲m̲a̲t̲h̲}̲\na\n\\end{display…"}
+{"package":"base","name":"eqnarray","branch":"baseline","renderer":"katex","tex":"\\begin{eqnarray}\na & b\n\\end{eqnarray}","error":"KaTeX parse error: No such environment: eqnarray at position 7: \\begin{̲e̲q̲n̲a̲r̲r̲a̲y̲}̲\na & b\n\\end{eqn…"}
+{"package":"base","name":"equation","branch":"baseline","renderer":"katex","tex":"\\begin{equation}\na\n\\end{equation}","error":"KaTeX parse error: {equation} can be used only in display mode."}
+{"package":"base","name":"indentalign","branch":"baseline","renderer":"katex","tex":"\\begin{indentalign}{cc}\na\n\\end{indentalign}","error":"KaTeX parse error: No such environment: indentalign at position 7: \\begin{̲i̲n̲d̲e̲n̲t̲a̲l̲i̲g̲n̲}̲{cc}\na\n\\end{ind…"}
+{"package":"base","name":"indentalign","branch":"vary:o[0]","renderer":"katex","tex":"\\begin{indentalign}[1pt]{cc}\na\n\\end{indentalign}","error":"KaTeX parse error: No such environment: indentalign at position 7: \\begin{̲i̲n̲d̲e̲n̲t̲a̲l̲i̲g̲n̲}̲[1pt]{cc}\na\n\\en…"}
+{"package":"base","name":"indentalign","branch":"maximal","renderer":"katex","tex":"\\begin{indentalign}[1pt][1pt][1pt]{cc}\na\n\\end{indentalign}","error":"KaTeX parse error: No such environment: indentalign at position 7: \\begin{̲i̲n̲d̲e̲n̲t̲a̲l̲i̲g̲n̲}̲[1pt][1pt][1pt]…"}
+{"package":"base","name":"indentalign","branch":"bare[3]","renderer":"katex","tex":"\\begin{indentalign}cc\na\n\\end{indentalign}","error":"KaTeX parse error: No such environment: indentalign at position 7: \\begin{̲i̲n̲d̲e̲n̲t̲a̲l̲i̲g̲n̲}̲cc\na\n\\end{inden…"}
+{"package":"base","name":"indentalign","branch":"neg:L[0]","renderer":"katex","tex":"\\begin{indentalign}[a]{cc}\na\n\\end{indentalign}","error":"KaTeX parse error: No such environment: indentalign at position 7: \\begin{̲i̲n̲d̲e̲n̲t̲a̲l̲i̲g̲n̲}̲[a]{cc}\na\n\\end{…"}
+{"package":"base","name":"math","branch":"baseline","renderer":"katex","tex":"\\begin{math}\na\n\\end{math}","error":"KaTeX parse error: No such environment: math at position 7: \\begin{̲m̲a̲t̲h̲}̲\na\n\\end{math}"}
+{"package":"base","name":"\\","branch":"neg:L[1]","renderer":"xetex","tex":"\\\\[a]","error":"! Missing number, treated as zero."}
+{"package":"base","name":"above","branch":"neg:L[0]","renderer":"xetex","tex":"a \\above {a} b","error":"! Missing number, treated as zero."}
+{"package":"base","name":"abovewithdelims","branch":"neg:D[0]","renderer":"xetex","tex":"a \\abovewithdelims a ( {1pt} b","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"abovewithdelims","branch":"neg:D[1]","renderer":"xetex","tex":"a \\abovewithdelims ( a {1pt} b","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"abovewithdelims","branch":"neg:L[2]","renderer":"xetex","tex":"a \\abovewithdelims ( ( {a} b","error":"! Missing number, treated as zero."}
+{"package":"base","name":"array","branch":"baseline","renderer":"xetex","tex":"\\array{a}","error":"! LaTeX Error: Illegal character in array arg."}
+{"package":"base","name":"array","branch":"bare[0]","renderer":"xetex","tex":"\\array a","error":"! LaTeX Error: Illegal character in array arg."}
+{"package":"base","name":"atopwithdelims","branch":"neg:D[0]","renderer":"xetex","tex":"a \\atopwithdelims a ( b","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"atopwithdelims","branch":"neg:D[1]","renderer":"xetex","tex":"a \\atopwithdelims ( a b","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"badbreak","branch":"baseline","renderer":"xetex","tex":"\\badbreak","error":"! Undefined control sequence."}
+{"package":"base","name":"Bbb","branch":"baseline","renderer":"xetex","tex":"\\Bbb{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"Bbb","branch":"bare[0]","renderer":"xetex","tex":"\\Bbb a","error":"! Undefined control sequence."}
+{"package":"base","name":"big","branch":"neg:D[0]","renderer":"xetex","tex":"\\big a","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"Big","branch":"neg:D[0]","renderer":"xetex","tex":"\\Big a","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"bigg","branch":"neg:D[0]","renderer":"xetex","tex":"\\bigg a","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"Bigg","branch":"neg:D[0]","renderer":"xetex","tex":"\\Bigg a","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"biggl","branch":"neg:D[0]","renderer":"xetex","tex":"\\biggl a","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"Biggl","branch":"neg:D[0]","renderer":"xetex","tex":"\\Biggl a","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"biggm","branch":"neg:D[0]","renderer":"xetex","tex":"\\biggm a","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"Biggm","branch":"neg:D[0]","renderer":"xetex","tex":"\\Biggm a","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"biggr","branch":"neg:D[0]","renderer":"xetex","tex":"\\biggr a","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"Biggr","branch":"neg:D[0]","renderer":"xetex","tex":"\\Biggr a","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"bigl","branch":"neg:D[0]","renderer":"xetex","tex":"\\bigl a","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"Bigl","branch":"neg:D[0]","renderer":"xetex","tex":"\\Bigl a","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"bigm","branch":"neg:D[0]","renderer":"xetex","tex":"\\bigm a","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"Bigm","branch":"neg:D[0]","renderer":"xetex","tex":"\\Bigm a","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"bigr","branch":"neg:D[0]","renderer":"xetex","tex":"\\bigr a","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"Bigr","branch":"neg:D[0]","renderer":"xetex","tex":"\\Bigr a","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"boxed","branch":"baseline","renderer":"xetex","tex":"\\boxed{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"boxed","branch":"bare[0]","renderer":"xetex","tex":"\\boxed a","error":"! Undefined control sequence."}
+{"package":"base","name":"breakAlign","branch":"ctx:in-array","renderer":"xetex","tex":"\\begin{array}{cc} \\breakAlign{c}{t} a & b \\end{array}","error":"! Undefined control sequence."}
+{"package":"base","name":"cr","branch":"ctx:in-matrix","renderer":"xetex","tex":"\\begin{matrix} a \\cr b \\end{matrix}","error":"! Misplaced \\cr."}
+{"package":"base","name":"ddddot","branch":"baseline","renderer":"xetex","tex":"\\ddddot{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"ddddot","branch":"bare[0]","renderer":"xetex","tex":"\\ddddot a","error":"! Undefined control sequence."}
+{"package":"base","name":"dddot","branch":"baseline","renderer":"xetex","tex":"\\dddot{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"dddot","branch":"bare[0]","renderer":"xetex","tex":"\\dddot a","error":"! Undefined control sequence."}
+{"package":"base","name":"displaylines","branch":"baseline","renderer":"xetex","tex":"\\displaylines{a}","error":"! You can't use `\\halign' in math mode."}
+{"package":"base","name":"displaylines","branch":"bare[0]","renderer":"xetex","tex":"\\displaylines a","error":"! You can't use `\\halign' in math mode."}
+{"package":"base","name":"eqalign","branch":"baseline","renderer":"xetex","tex":"\\eqalign{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"eqalign","branch":"bare[0]","renderer":"xetex","tex":"\\eqalign a","error":"! Undefined control sequence."}
+{"package":"base","name":"eqalignno","branch":"baseline","renderer":"xetex","tex":"\\eqalignno{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"eqalignno","branch":"bare[0]","renderer":"xetex","tex":"\\eqalignno a","error":"! Undefined control sequence."}
+{"package":"base","name":"fbox","branch":"neg:T[0]","renderer":"xetex","tex":"\\fbox{a^2}","error":"! Missing $ inserted."}
+{"package":"base","name":"frak","branch":"baseline","renderer":"xetex","tex":"\\frak{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"frak","branch":"bare[0]","renderer":"xetex","tex":"\\frak a","error":"! Undefined control sequence."}
+{"package":"base","name":"framebox","branch":"vary:o[1]","renderer":"xetex","tex":"\\framebox[a]{b}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"framebox","branch":"neg:L[0]","renderer":"xetex","tex":"\\framebox[a]{a}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"framebox","branch":"neg:N[1]","renderer":"xetex","tex":"\\framebox[\\alpha]{a}","error":"! Illegal unit of measure (pt inserted)."}
+{"package":"base","name":"framebox","branch":"neg:T[2]","renderer":"xetex","tex":"\\framebox{a^2}","error":"! Missing $ inserted."}
+{"package":"base","name":"goodbreak","branch":"baseline","renderer":"xetex","tex":"\\goodbreak","error":"! Missing $ inserted."}
+{"package":"base","name":"hbox","branch":"bare[0]","renderer":"xetex","tex":"\\hbox a","error":"! Missing { inserted."}
+{"package":"base","name":"hbox","branch":"neg:T[0]","renderer":"xetex","tex":"\\hbox{a^2}","error":"! Missing $ inserted."}
+{"package":"base","name":"hdashline","branch":"ctx:in-array","renderer":"xetex","tex":"\\begin{array}{cc} \\hdashline a & b \\\\ c & d \\end{array}","error":"! Undefined control sequence."}
+{"package":"base","name":"hfilll","branch":"ctx:in-array","renderer":"xetex","tex":"\\begin{array}{cc} a \\hfilll & b \\end{array}","error":"! Undefined control sequence."}
+{"package":"base","name":"hsize","branch":"baseline","renderer":"xetex","tex":"\\hsize{1pt}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"hsize","branch":"neg:L[0]","renderer":"xetex","tex":"\\hsize{a}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"hskip","branch":"baseline","renderer":"xetex","tex":"\\hskip{1pt}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"hskip","branch":"neg:L[0]","renderer":"xetex","tex":"\\hskip{a}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"hspace","branch":"bare[0]","renderer":"xetex","tex":"\\hspace 1pt","error":"! Illegal unit of measure (pt inserted)."}
+{"package":"base","name":"hspace","branch":"neg:L[0]","renderer":"xetex","tex":"\\hspace{a}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"kern","branch":"baseline","renderer":"xetex","tex":"\\kern{1pt}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"kern","branch":"neg:L[0]","renderer":"xetex","tex":"\\kern{a}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"LaTeX","branch":"baseline","renderer":"xetex","tex":"\\LaTeX","error":"! You can't use `\\spacefactor' in math mode."}
+{"package":"base","name":"leftroot","branch":"ctx:in-root","renderer":"xetex","tex":"\\sqrt[\\leftroot{2} 3]{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"leqalignno","branch":"baseline","renderer":"xetex","tex":"\\leqalignno{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"leqalignno","branch":"bare[0]","renderer":"xetex","tex":"\\leqalignno a","error":"! Undefined control sequence."}
+{"package":"base","name":"lower","branch":"baseline","renderer":"xetex","tex":"\\lower{1pt}{b}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"lower","branch":"bare[0]","renderer":"xetex","tex":"\\lower 1pt{b}","error":"! A <box> was supposed to be here."}
+{"package":"base","name":"lower","branch":"bare[1]","renderer":"xetex","tex":"\\lower{1pt}b","error":"! Missing number, treated as zero."}
+{"package":"base","name":"lower","branch":"neg:L[0]","renderer":"xetex","tex":"\\lower{a}{a}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"makebox","branch":"vary:o[1]","renderer":"xetex","tex":"\\makebox[a]{b}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"makebox","branch":"neg:L[0]","renderer":"xetex","tex":"\\makebox[a]{a}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"makebox","branch":"neg:N[1]","renderer":"xetex","tex":"\\makebox[\\alpha]{a}","error":"! Illegal unit of measure (pt inserted)."}
+{"package":"base","name":"makebox","branch":"neg:T[2]","renderer":"xetex","tex":"\\makebox{a^2}","error":"! Missing $ inserted."}
+{"package":"base","name":"mathbb","branch":"baseline","renderer":"xetex","tex":"\\mathbb{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"mathbb","branch":"bare[0]","renderer":"xetex","tex":"\\mathbb a","error":"! Undefined control sequence."}
+{"package":"base","name":"mathbfcal","branch":"baseline","renderer":"xetex","tex":"\\mathbfcal{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"mathbfcal","branch":"bare[0]","renderer":"xetex","tex":"\\mathbfcal a","error":"! Undefined control sequence."}
+{"package":"base","name":"mathbffrak","branch":"baseline","renderer":"xetex","tex":"\\mathbffrak{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"mathbffrak","branch":"bare[0]","renderer":"xetex","tex":"\\mathbffrak a","error":"! Undefined control sequence."}
+{"package":"base","name":"mathbfit","branch":"baseline","renderer":"xetex","tex":"\\mathbfit{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"mathbfit","branch":"bare[0]","renderer":"xetex","tex":"\\mathbfit a","error":"! Undefined control sequence."}
+{"package":"base","name":"mathbfscr","branch":"baseline","renderer":"xetex","tex":"\\mathbfscr{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"mathbfscr","branch":"bare[0]","renderer":"xetex","tex":"\\mathbfscr a","error":"! Undefined control sequence."}
+{"package":"base","name":"mathbfsf","branch":"baseline","renderer":"xetex","tex":"\\mathbfsf{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"mathbfsf","branch":"bare[0]","renderer":"xetex","tex":"\\mathbfsf a","error":"! Undefined control sequence."}
+{"package":"base","name":"mathbfsfit","branch":"baseline","renderer":"xetex","tex":"\\mathbfsfit{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"mathbfsfit","branch":"bare[0]","renderer":"xetex","tex":"\\mathbfsfit a","error":"! Undefined control sequence."}
+{"package":"base","name":"mathbfsfup","branch":"baseline","renderer":"xetex","tex":"\\mathbfsfup{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"mathbfsfup","branch":"bare[0]","renderer":"xetex","tex":"\\mathbfsfup a","error":"! Undefined control sequence."}
+{"package":"base","name":"mathbfup","branch":"baseline","renderer":"xetex","tex":"\\mathbfup{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"mathbfup","branch":"bare[0]","renderer":"xetex","tex":"\\mathbfup a","error":"! Undefined control sequence."}
+{"package":"base","name":"mathchoice","branch":"bare[0]","renderer":"xetex","tex":"\\mathchoice a{b}{c}{d}","error":"! Missing { inserted."}
+{"package":"base","name":"mathchoice","branch":"bare[1]","renderer":"xetex","tex":"\\mathchoice{a}b{c}{d}","error":"! Missing { inserted."}
+{"package":"base","name":"mathchoice","branch":"bare[2]","renderer":"xetex","tex":"\\mathchoice{a}{b}c{d}","error":"! Missing { inserted."}
+{"package":"base","name":"mathchoice","branch":"bare[3]","renderer":"xetex","tex":"\\mathchoice{a}{b}{c}d","error":"! Missing { inserted."}
+{"package":"base","name":"mathfrak","branch":"baseline","renderer":"xetex","tex":"\\mathfrak{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"mathfrak","branch":"bare[0]","renderer":"xetex","tex":"\\mathfrak a","error":"! Undefined control sequence."}
+{"package":"base","name":"mathscr","branch":"baseline","renderer":"xetex","tex":"\\mathscr{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"mathscr","branch":"bare[0]","renderer":"xetex","tex":"\\mathscr a","error":"! Undefined control sequence."}
+{"package":"base","name":"mathsfit","branch":"baseline","renderer":"xetex","tex":"\\mathsfit{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"mathsfit","branch":"bare[0]","renderer":"xetex","tex":"\\mathsfit a","error":"! Undefined control sequence."}
+{"package":"base","name":"mathsfup","branch":"baseline","renderer":"xetex","tex":"\\mathsfup{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"mathsfup","branch":"bare[0]","renderer":"xetex","tex":"\\mathsfup a","error":"! Undefined control sequence."}
+{"package":"base","name":"mathup","branch":"baseline","renderer":"xetex","tex":"\\mathup{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"mathup","branch":"bare[0]","renderer":"xetex","tex":"\\mathup a","error":"! Undefined control sequence."}
+{"package":"base","name":"mbox","branch":"neg:T[0]","renderer":"xetex","tex":"\\mbox{a^2}","error":"! Missing $ inserted."}
+{"package":"base","name":"mkern","branch":"baseline","renderer":"xetex","tex":"\\mkern{1pt}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"mkern","branch":"bare[0]","renderer":"xetex","tex":"\\mkern 1pt","error":"! Illegal unit of measure (mu inserted)."}
+{"package":"base","name":"mkern","branch":"neg:L[0]","renderer":"xetex","tex":"\\mkern{a}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"mmlToken","branch":"ctx:mathml-token","renderer":"xetex","tex":"\\mmlToken{mi}{x}","error":"! Undefined control sequence."}
+{"package":"base","name":"mod","branch":"baseline","renderer":"xetex","tex":"\\mod{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"mod","branch":"bare[0]","renderer":"xetex","tex":"\\mod a","error":"! Undefined control sequence."}
+{"package":"base","name":"moveleft","branch":"baseline","renderer":"xetex","tex":"\\moveleft{1pt}{b}","error":"! You can't use `\\moveleft' in math mode."}
+{"package":"base","name":"moveleft","branch":"bare[0]","renderer":"xetex","tex":"\\moveleft 1pt{b}","error":"! You can't use `\\moveleft' in math mode."}
+{"package":"base","name":"moveleft","branch":"bare[1]","renderer":"xetex","tex":"\\moveleft{1pt}b","error":"! You can't use `\\moveleft' in math mode."}
+{"package":"base","name":"moveleft","branch":"neg:L[0]","renderer":"xetex","tex":"\\moveleft{a}{a}","error":"! You can't use `\\moveleft' in math mode."}
+{"package":"base","name":"moveright","branch":"baseline","renderer":"xetex","tex":"\\moveright{1pt}{b}","error":"! You can't use `\\moveright' in math mode."}
+{"package":"base","name":"moveright","branch":"bare[0]","renderer":"xetex","tex":"\\moveright 1pt{b}","error":"! You can't use `\\moveright' in math mode."}
+{"package":"base","name":"moveright","branch":"bare[1]","renderer":"xetex","tex":"\\moveright{1pt}b","error":"! You can't use `\\moveright' in math mode."}
+{"package":"base","name":"moveright","branch":"neg:L[0]","renderer":"xetex","tex":"\\moveright{a}{a}","error":"! You can't use `\\moveright' in math mode."}
+{"package":"base","name":"mskip","branch":"baseline","renderer":"xetex","tex":"\\mskip{1pt}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"mskip","branch":"bare[0]","renderer":"xetex","tex":"\\mskip 1pt","error":"! Illegal unit of measure (mu inserted)."}
+{"package":"base","name":"mskip","branch":"neg:L[0]","renderer":"xetex","tex":"\\mskip{a}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"mspace","branch":"baseline","renderer":"xetex","tex":"\\mspace{1pt}","error":"! Undefined control sequence."}
+{"package":"base","name":"mspace","branch":"bare[0]","renderer":"xetex","tex":"\\mspace 1pt","error":"! Undefined control sequence."}
+{"package":"base","name":"mspace","branch":"neg:L[0]","renderer":"xetex","tex":"\\mspace{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"newcolumntype","branch":"baseline","renderer":"xetex","tex":"\\newcolumntype{a}{b}","error":"! Undefined control sequence."}
+{"package":"base","name":"newcolumntype","branch":"vary:o[1]","renderer":"xetex","tex":"\\newcolumntype{a}[1]{c}","error":"! Undefined control sequence."}
+{"package":"base","name":"newcolumntype","branch":"bare[0]","renderer":"xetex","tex":"\\newcolumntype a{b}","error":"! Undefined control sequence."}
+{"package":"base","name":"newcolumntype","branch":"bare[2]","renderer":"xetex","tex":"\\newcolumntype{a}b","error":"! Undefined control sequence."}
+{"package":"base","name":"newcolumntype","branch":"neg:I[1]","renderer":"xetex","tex":"\\newcolumntype{a}[a]{b}","error":"! Undefined control sequence."}
+{"package":"base","name":"oldstyle","branch":"baseline","renderer":"xetex","tex":"{\\oldstyle a}","error":"! Undefined control sequence."}
+{"package":"base","name":"overleftrightarrow","branch":"baseline","renderer":"xetex","tex":"\\overleftrightarrow{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"overleftrightarrow","branch":"bare[0]","renderer":"xetex","tex":"\\overleftrightarrow a","error":"! Undefined control sequence."}
+{"package":"base","name":"overparen","branch":"baseline","renderer":"xetex","tex":"\\overparen{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"overparen","branch":"bare[0]","renderer":"xetex","tex":"\\overparen a","error":"! Undefined control sequence."}
+{"package":"base","name":"overset","branch":"baseline","renderer":"xetex","tex":"\\overset{a}{b}","error":"! Undefined control sequence."}
+{"package":"base","name":"overset","branch":"bare[0]","renderer":"xetex","tex":"\\overset a{b}","error":"! Undefined control sequence."}
+{"package":"base","name":"overset","branch":"bare[1]","renderer":"xetex","tex":"\\overset{a}b","error":"! Undefined control sequence."}
+{"package":"base","name":"overunderset","branch":"baseline","renderer":"xetex","tex":"\\overunderset{a}{b}{c}","error":"! Undefined control sequence."}
+{"package":"base","name":"overunderset","branch":"bare[0]","renderer":"xetex","tex":"\\overunderset a{b}{c}","error":"! Undefined control sequence."}
+{"package":"base","name":"overunderset","branch":"bare[1]","renderer":"xetex","tex":"\\overunderset{a}b{c}","error":"! Undefined control sequence."}
+{"package":"base","name":"overunderset","branch":"bare[2]","renderer":"xetex","tex":"\\overunderset{a}{b}c","error":"! Undefined control sequence."}
+{"package":"base","name":"overwithdelims","branch":"neg:D[0]","renderer":"xetex","tex":"a \\overwithdelims a ( b","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"overwithdelims","branch":"neg:D[1]","renderer":"xetex","tex":"a \\overwithdelims ( a b","error":"! Missing delimiter (. inserted)."}
+{"package":"base","name":"pmb","branch":"baseline","renderer":"xetex","tex":"\\pmb{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"pmb","branch":"bare[0]","renderer":"xetex","tex":"\\pmb a","error":"! Undefined control sequence."}
+{"package":"base","name":"pod","branch":"baseline","renderer":"xetex","tex":"\\pod{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"pod","branch":"bare[0]","renderer":"xetex","tex":"\\pod a","error":"! Undefined control sequence."}
+{"package":"base","name":"raise","branch":"baseline","renderer":"xetex","tex":"\\raise{1pt}{b}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"raise","branch":"bare[0]","renderer":"xetex","tex":"\\raise 1pt{b}","error":"! A <box> was supposed to be here."}
+{"package":"base","name":"raise","branch":"bare[1]","renderer":"xetex","tex":"\\raise{1pt}b","error":"! Missing number, treated as zero."}
+{"package":"base","name":"raise","branch":"neg:L[0]","renderer":"xetex","tex":"\\raise{a}{a}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"ref","branch":"neg:N[0]","renderer":"xetex","tex":"\\ref{\\alpha}","error":"! Missing \\endcsname inserted."}
+{"package":"base","name":"rule","branch":"bare[1]","renderer":"xetex","tex":"\\rule 1pt{1pt}","error":"! Illegal unit of measure (pt inserted)."}
+{"package":"base","name":"rule","branch":"bare[2]","renderer":"xetex","tex":"\\rule{1pt}1pt","error":"! Illegal unit of measure (pt inserted)."}
+{"package":"base","name":"rule","branch":"neg:L[0]","renderer":"xetex","tex":"\\rule[a]{1pt}{1pt}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"rule","branch":"neg:L[1]","renderer":"xetex","tex":"\\rule{a}{1pt}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"rule","branch":"neg:L[2]","renderer":"xetex","tex":"\\rule{1pt}{a}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"Rule","branch":"baseline","renderer":"xetex","tex":"\\Rule{1pt}{1pt}{1pt}","error":"! Undefined control sequence."}
+{"package":"base","name":"Rule","branch":"bare[0]","renderer":"xetex","tex":"\\Rule 1pt{1pt}{1pt}","error":"! Undefined control sequence."}
+{"package":"base","name":"Rule","branch":"bare[1]","renderer":"xetex","tex":"\\Rule{1pt}1pt{1pt}","error":"! Undefined control sequence."}
+{"package":"base","name":"Rule","branch":"bare[2]","renderer":"xetex","tex":"\\Rule{1pt}{1pt}1pt","error":"! Undefined control sequence."}
+{"package":"base","name":"Rule","branch":"neg:L[0]","renderer":"xetex","tex":"\\Rule{a}{1pt}{1pt}","error":"! Undefined control sequence."}
+{"package":"base","name":"Rule","branch":"neg:L[1]","renderer":"xetex","tex":"\\Rule{1pt}{a}{1pt}","error":"! Undefined control sequence."}
+{"package":"base","name":"Rule","branch":"neg:L[2]","renderer":"xetex","tex":"\\Rule{1pt}{1pt}{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"skew","branch":"neg:I[0]","renderer":"xetex","tex":"\\skew{a}{a}{b}","error":"! Missing number, treated as zero."}
+{"package":"base","name":"Space","branch":"baseline","renderer":"xetex","tex":"\\Space{1pt}{1pt}{1pt}","error":"! Undefined control sequence."}
+{"package":"base","name":"Space","branch":"bare[0]","renderer":"xetex","tex":"\\Space 1pt{1pt}{1pt}","error":"! Undefined control sequence."}
+{"package":"base","name":"Space","branch":"bare[1]","renderer":"xetex","tex":"\\Space{1pt}1pt{1pt}","error":"! Undefined control sequence."}
+{"package":"base","name":"Space","branch":"bare[2]","renderer":"xetex","tex":"\\Space{1pt}{1pt}1pt","error":"! Undefined control sequence."}
+{"package":"base","name":"Space","branch":"neg:L[0]","renderer":"xetex","tex":"\\Space{a}{1pt}{1pt}","error":"! Undefined control sequence."}
+{"package":"base","name":"Space","branch":"neg:L[1]","renderer":"xetex","tex":"\\Space{1pt}{a}{1pt}","error":"! Undefined control sequence."}
+{"package":"base","name":"Space","branch":"neg:L[2]","renderer":"xetex","tex":"\\Space{1pt}{1pt}{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"stackbin","branch":"baseline","renderer":"xetex","tex":"\\stackbin{a}{b}","error":"! Undefined control sequence."}
+{"package":"base","name":"stackbin","branch":"bare[0]","renderer":"xetex","tex":"\\stackbin a{b}","error":"! Undefined control sequence."}
+{"package":"base","name":"stackbin","branch":"bare[1]","renderer":"xetex","tex":"\\stackbin{a}b","error":"! Undefined control sequence."}
+{"package":"base","name":"symbb","branch":"baseline","renderer":"xetex","tex":"\\symbb{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symbb","branch":"bare[0]","renderer":"xetex","tex":"\\symbb a","error":"! Undefined control sequence."}
+{"package":"base","name":"symbf","branch":"baseline","renderer":"xetex","tex":"\\symbf{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symbf","branch":"bare[0]","renderer":"xetex","tex":"\\symbf a","error":"! Undefined control sequence."}
+{"package":"base","name":"symbfcal","branch":"baseline","renderer":"xetex","tex":"\\symbfcal{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symbfcal","branch":"bare[0]","renderer":"xetex","tex":"\\symbfcal a","error":"! Undefined control sequence."}
+{"package":"base","name":"symbffrak","branch":"baseline","renderer":"xetex","tex":"\\symbffrak{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symbffrak","branch":"bare[0]","renderer":"xetex","tex":"\\symbffrak a","error":"! Undefined control sequence."}
+{"package":"base","name":"symbfit","branch":"baseline","renderer":"xetex","tex":"\\symbfit{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symbfit","branch":"bare[0]","renderer":"xetex","tex":"\\symbfit a","error":"! Undefined control sequence."}
+{"package":"base","name":"symbfscr","branch":"baseline","renderer":"xetex","tex":"\\symbfscr{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symbfscr","branch":"bare[0]","renderer":"xetex","tex":"\\symbfscr a","error":"! Undefined control sequence."}
+{"package":"base","name":"symbfsf","branch":"baseline","renderer":"xetex","tex":"\\symbfsf{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symbfsf","branch":"bare[0]","renderer":"xetex","tex":"\\symbfsf a","error":"! Undefined control sequence."}
+{"package":"base","name":"symbfsfit","branch":"baseline","renderer":"xetex","tex":"\\symbfsfit{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symbfsfit","branch":"bare[0]","renderer":"xetex","tex":"\\symbfsfit a","error":"! Undefined control sequence."}
+{"package":"base","name":"symbfsfup","branch":"baseline","renderer":"xetex","tex":"\\symbfsfup{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symbfsfup","branch":"bare[0]","renderer":"xetex","tex":"\\symbfsfup a","error":"! Undefined control sequence."}
+{"package":"base","name":"symbfup","branch":"baseline","renderer":"xetex","tex":"\\symbfup{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symbfup","branch":"bare[0]","renderer":"xetex","tex":"\\symbfup a","error":"! Undefined control sequence."}
+{"package":"base","name":"symcal","branch":"baseline","renderer":"xetex","tex":"\\symcal{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symcal","branch":"bare[0]","renderer":"xetex","tex":"\\symcal a","error":"! Undefined control sequence."}
+{"package":"base","name":"symfrak","branch":"baseline","renderer":"xetex","tex":"\\symfrak{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symfrak","branch":"bare[0]","renderer":"xetex","tex":"\\symfrak a","error":"! Undefined control sequence."}
+{"package":"base","name":"symit","branch":"baseline","renderer":"xetex","tex":"\\symit{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symit","branch":"bare[0]","renderer":"xetex","tex":"\\symit a","error":"! Undefined control sequence."}
+{"package":"base","name":"symnormal","branch":"baseline","renderer":"xetex","tex":"\\symnormal{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symnormal","branch":"bare[0]","renderer":"xetex","tex":"\\symnormal a","error":"! Undefined control sequence."}
+{"package":"base","name":"symrm","branch":"baseline","renderer":"xetex","tex":"\\symrm{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symrm","branch":"bare[0]","renderer":"xetex","tex":"\\symrm a","error":"! Undefined control sequence."}
+{"package":"base","name":"symscr","branch":"baseline","renderer":"xetex","tex":"\\symscr{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symscr","branch":"bare[0]","renderer":"xetex","tex":"\\symscr a","error":"! Undefined control sequence."}
+{"package":"base","name":"symsf","branch":"baseline","renderer":"xetex","tex":"\\symsf{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symsf","branch":"bare[0]","renderer":"xetex","tex":"\\symsf a","error":"! Undefined control sequence."}
+{"package":"base","name":"symsfit","branch":"baseline","renderer":"xetex","tex":"\\symsfit{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symsfit","branch":"bare[0]","renderer":"xetex","tex":"\\symsfit a","error":"! Undefined control sequence."}
+{"package":"base","name":"symsfup","branch":"baseline","renderer":"xetex","tex":"\\symsfup{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symsfup","branch":"bare[0]","renderer":"xetex","tex":"\\symsfup a","error":"! Undefined control sequence."}
+{"package":"base","name":"symtt","branch":"baseline","renderer":"xetex","tex":"\\symtt{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symtt","branch":"bare[0]","renderer":"xetex","tex":"\\symtt a","error":"! Undefined control sequence."}
+{"package":"base","name":"symup","branch":"baseline","renderer":"xetex","tex":"\\symup{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"symup","branch":"bare[0]","renderer":"xetex","tex":"\\symup a","error":"! Undefined control sequence."}
+{"package":"base","name":"TeX","branch":"baseline","renderer":"xetex","tex":"\\TeX","error":"! You can't use `\\spacefactor' in math mode."}
+{"package":"base","name":"text","branch":"baseline","renderer":"xetex","tex":"\\text{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"text","branch":"bare[0]","renderer":"xetex","tex":"\\text a","error":"! Undefined control sequence."}
+{"package":"base","name":"text","branch":"neg:T[0]","renderer":"xetex","tex":"\\text{a^2}","error":"! Undefined control sequence."}
+{"package":"base","name":"textbf","branch":"neg:T[0]","renderer":"xetex","tex":"\\textbf{a^2}","error":"! Missing $ inserted."}
+{"package":"base","name":"textit","branch":"neg:T[0]","renderer":"xetex","tex":"\\textit{a^2}","error":"! Missing $ inserted."}
+{"package":"base","name":"textnormal","branch":"neg:T[0]","renderer":"xetex","tex":"\\textnormal{a^2}","error":"! Missing $ inserted."}
+{"package":"base","name":"textrm","branch":"neg:T[0]","renderer":"xetex","tex":"\\textrm{a^2}","error":"! Missing $ inserted."}
+{"package":"base","name":"textsf","branch":"neg:T[0]","renderer":"xetex","tex":"\\textsf{a^2}","error":"! Missing $ inserted."}
+{"package":"base","name":"texttt","branch":"neg:T[0]","renderer":"xetex","tex":"\\texttt{a^2}","error":"! Missing $ inserted."}
+{"package":"base","name":"textup","branch":"neg:T[0]","renderer":"xetex","tex":"\\textup{a^2}","error":"! Missing $ inserted."}
+{"package":"base","name":"Tiny","branch":"baseline","renderer":"xetex","tex":"{\\Tiny a}","error":"! Undefined control sequence."}
+{"package":"base","name":"underleftarrow","branch":"baseline","renderer":"xetex","tex":"\\underleftarrow{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"underleftarrow","branch":"bare[0]","renderer":"xetex","tex":"\\underleftarrow a","error":"! Undefined control sequence."}
+{"package":"base","name":"underleftrightarrow","branch":"baseline","renderer":"xetex","tex":"\\underleftrightarrow{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"underleftrightarrow","branch":"bare[0]","renderer":"xetex","tex":"\\underleftrightarrow a","error":"! Undefined control sequence."}
+{"package":"base","name":"underparen","branch":"baseline","renderer":"xetex","tex":"\\underparen{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"underparen","branch":"bare[0]","renderer":"xetex","tex":"\\underparen a","error":"! Undefined control sequence."}
+{"package":"base","name":"underrightarrow","branch":"baseline","renderer":"xetex","tex":"\\underrightarrow{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"underrightarrow","branch":"bare[0]","renderer":"xetex","tex":"\\underrightarrow a","error":"! Undefined control sequence."}
+{"package":"base","name":"underset","branch":"baseline","renderer":"xetex","tex":"\\underset{a}{b}","error":"! Undefined control sequence."}
+{"package":"base","name":"underset","branch":"bare[0]","renderer":"xetex","tex":"\\underset a{b}","error":"! Undefined control sequence."}
+{"package":"base","name":"underset","branch":"bare[1]","renderer":"xetex","tex":"\\underset{a}b","error":"! Undefined control sequence."}
+{"package":"base","name":"uproot","branch":"ctx:in-root","renderer":"xetex","tex":"\\sqrt[\\uproot{2} 3]{a}","error":"! Undefined control sequence."}
+{"package":"base","name":"vbox","branch":"bare[0]","renderer":"xetex","tex":"\\vbox a","error":"! Missing { inserted."}
+{"package":"base","name":"vcenter","branch":"bare[0]","renderer":"xetex","tex":"\\vcenter a","error":"! Missing { inserted."}
+{"package":"base","name":"vtop","branch":"bare[0]","renderer":"xetex","tex":"\\vtop a","error":"! Missing { inserted."}
+{"package":"base","name":"array","branch":"bare[1]","renderer":"xetex","tex":"\\begin{array}cc\na & b\n\\end{array}","error":"! Extra alignment tab has been changed to \\cr."}
+{"package":"base","name":"darray","branch":"baseline","renderer":"xetex","tex":"\\begin{darray}{cc}\na & b\n\\end{darray}","error":"! LaTeX Error: Environment darray undefined."}
+{"package":"base","name":"darray","branch":"vary:o[0]","renderer":"xetex","tex":"\\begin{darray}[a]{cc}\na & b\n\\end{darray}","error":"! LaTeX Error: Environment darray undefined."}
+{"package":"base","name":"darray","branch":"bare[1]","renderer":"xetex","tex":"\\begin{darray}cc\na & b\n\\end{darray}","error":"! LaTeX Error: Environment darray undefined."}
+{"package":"base","name":"indentalign","branch":"baseline","renderer":"xetex","tex":"\\begin{indentalign}{cc}\na\n\\end{indentalign}","error":"! LaTeX Error: Environment indentalign undefined."}
+{"package":"base","name":"indentalign","branch":"vary:o[0]","renderer":"xetex","tex":"\\begin{indentalign}[1pt]{cc}\na\n\\end{indentalign}","error":"! LaTeX Error: Environment indentalign undefined."}
+{"package":"base","name":"indentalign","branch":"maximal","renderer":"xetex","tex":"\\begin{indentalign}[1pt][1pt][1pt]{cc}\na\n\\end{indentalign}","error":"! LaTeX Error: Environment indentalign undefined."}
+{"package":"base","name":"indentalign","branch":"bare[3]","renderer":"xetex","tex":"\\begin{indentalign}cc\na\n\\end{indentalign}","error":"! LaTeX Error: Environment indentalign undefined."}
+{"package":"base","name":"indentalign","branch":"neg:L[0]","renderer":"xetex","tex":"\\begin{indentalign}[a]{cc}\na\n\\end{indentalign}","error":"! LaTeX Error: Environment indentalign undefined."}

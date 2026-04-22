@@ -9,6 +9,7 @@ export function createKaTeXCompiler(): TexCompiler {
       try {
         const html = katex.renderToString(wrapped, {
           throwOnError: true,
+          strict: false,
           displayMode: options.display ?? false,
         });
         return { success: true, output: html };

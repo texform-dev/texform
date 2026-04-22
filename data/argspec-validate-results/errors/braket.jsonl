@@ -1,0 +1,28 @@
+{"package":"braket","name":"ketbra","branch":"baseline","renderer":"katex","tex":"\\ketbra{a}{b}","error":"KaTeX parse error: Undefined control sequence: \\ketbra at position 1: \\̲k̲e̲t̲b̲r̲a̲{a}{b}"}
+{"package":"braket","name":"ketbra","branch":"bare[0]","renderer":"katex","tex":"\\ketbra a{b}","error":"KaTeX parse error: Undefined control sequence: \\ketbra at position 1: \\̲k̲e̲t̲b̲r̲a̲ ̲a{b}"}
+{"package":"braket","name":"ketbra","branch":"bare[1]","renderer":"katex","tex":"\\ketbra{a}b","error":"KaTeX parse error: Undefined control sequence: \\ketbra at position 1: \\̲k̲e̲t̲b̲r̲a̲{a}b"}
+{"package":"braket","name":"Ketbra","branch":"baseline","renderer":"katex","tex":"\\Ketbra{a}{b}","error":"KaTeX parse error: Undefined control sequence: \\Ketbra at position 1: \\̲K̲e̲t̲b̲r̲a̲{a}{b}"}
+{"package":"braket","name":"Ketbra","branch":"bare[0]","renderer":"katex","tex":"\\Ketbra a{b}","error":"KaTeX parse error: Undefined control sequence: \\Ketbra at position 1: \\̲K̲e̲t̲b̲r̲a̲ ̲a{b}"}
+{"package":"braket","name":"Ketbra","branch":"bare[1]","renderer":"katex","tex":"\\Ketbra{a}b","error":"KaTeX parse error: Undefined control sequence: \\Ketbra at position 1: \\̲K̲e̲t̲b̲r̲a̲{a}b"}
+{"package":"braket","name":"bra","branch":"baseline","renderer":"xetex","tex":"\\bra{a}","error":"! Undefined control sequence."}
+{"package":"braket","name":"bra","branch":"bare[0]","renderer":"xetex","tex":"\\bra a","error":"! Undefined control sequence."}
+{"package":"braket","name":"Bra","branch":"baseline","renderer":"xetex","tex":"\\Bra{a}","error":"! Undefined control sequence."}
+{"package":"braket","name":"Bra","branch":"bare[0]","renderer":"xetex","tex":"\\Bra a","error":"! Undefined control sequence."}
+{"package":"braket","name":"braket","branch":"baseline","renderer":"xetex","tex":"\\braket{a}","error":"! Undefined control sequence."}
+{"package":"braket","name":"braket","branch":"bare[0]","renderer":"xetex","tex":"\\braket a","error":"! Undefined control sequence."}
+{"package":"braket","name":"Braket","branch":"baseline","renderer":"xetex","tex":"\\Braket{a}","error":"! Undefined control sequence."}
+{"package":"braket","name":"Braket","branch":"bare[0]","renderer":"xetex","tex":"\\Braket a","error":"! Undefined control sequence."}
+{"package":"braket","name":"ket","branch":"baseline","renderer":"xetex","tex":"\\ket{a}","error":"! Undefined control sequence."}
+{"package":"braket","name":"ket","branch":"bare[0]","renderer":"xetex","tex":"\\ket a","error":"! Undefined control sequence."}
+{"package":"braket","name":"Ket","branch":"baseline","renderer":"xetex","tex":"\\Ket{a}","error":"! Undefined control sequence."}
+{"package":"braket","name":"Ket","branch":"bare[0]","renderer":"xetex","tex":"\\Ket a","error":"! Undefined control sequence."}
+{"package":"braket","name":"ketbra","branch":"baseline","renderer":"xetex","tex":"\\ketbra{a}{b}","error":"! Undefined control sequence."}
+{"package":"braket","name":"ketbra","branch":"bare[0]","renderer":"xetex","tex":"\\ketbra a{b}","error":"! Undefined control sequence."}
+{"package":"braket","name":"ketbra","branch":"bare[1]","renderer":"xetex","tex":"\\ketbra{a}b","error":"! Undefined control sequence."}
+{"package":"braket","name":"Ketbra","branch":"baseline","renderer":"xetex","tex":"\\Ketbra{a}{b}","error":"! Undefined control sequence."}
+{"package":"braket","name":"Ketbra","branch":"bare[0]","renderer":"xetex","tex":"\\Ketbra a{b}","error":"! Undefined control sequence."}
+{"package":"braket","name":"Ketbra","branch":"bare[1]","renderer":"xetex","tex":"\\Ketbra{a}b","error":"! Undefined control sequence."}
+{"package":"braket","name":"set","branch":"baseline","renderer":"xetex","tex":"\\set{a}","error":"! Undefined control sequence."}
+{"package":"braket","name":"set","branch":"bare[0]","renderer":"xetex","tex":"\\set a","error":"! Undefined control sequence."}
+{"package":"braket","name":"Set","branch":"baseline","renderer":"xetex","tex":"\\Set{a}","error":"! Undefined control sequence."}
+{"package":"braket","name":"Set","branch":"bare[0]","renderer":"xetex","tex":"\\Set a","error":"! Undefined control sequence."}

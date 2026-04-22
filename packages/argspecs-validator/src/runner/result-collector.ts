@@ -100,7 +100,6 @@ export function buildSummary(results: RecordTestResult[]): TestSummary {
   }
 
   return {
-    generated_at: new Date().toISOString(),
     total_records: results.length,
     total_cases: results.reduce((sum, r) => sum + r.cases.length, 0),
     by_renderer: byRenderer,

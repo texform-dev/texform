@@ -32,7 +32,7 @@ export interface RunAllOptions {
   renderers: RendererName[];
   compilers: Map<RendererName, TexCompiler>;
   xetexBatchCompiler?: XeTeXBatchCompiler;
-  onProgress?: (msg: string) => void;
+  onRendererDone?: (renderer: RendererName, records: number, cases: number, elapsedMs: number) => void;
 }
 
 export async function runAll(
@@ -40,15 +40,18 @@ export async function runAll(
   options: RunAllOptions,
 ): Promise<ErrorLogEntry[]> {
   const allErrors: ErrorLogEntry[] = [];
+  const totalCases = works.reduce((sum, w) => sum + w.cases.length, 0);
 
   for (const renderer of options.renderers) {
+    const start = Date.now();
     if (renderer === "xetex" && options.xetexBatchCompiler) {
-      allErrors.push(...await runXeTexBatch(works, options.xetexBatchCompiler, options.onProgress));
+      allErrors.push(...await runXeTexBatch(works, options.xetexBatchCompiler));
     } else {
       const compiler = options.compilers.get(renderer);
       if (!compiler) continue;
-      allErrors.push(...await runSingleRenderer(works, compiler, renderer, options.onProgress));
+      allErrors.push(...await runSingleRenderer(works, compiler, renderer));
     }
+    options.onRendererDone?.(renderer, works.length, totalCases, Date.now() - start);
   }
 
   return allErrors;
@@ -58,10 +61,8 @@ async function runSingleRenderer(
   works: RecordWork[],
   compiler: TexCompiler,
   renderer: RendererName,
-  onProgress?: (msg: string) => void,
 ): Promise<ErrorLogEntry[]> {
   const errors: ErrorLogEntry[] = [];
-  let completed = 0;
 
   for (const { record, cases, caseResults } of works) {
     const mode = resolveMode(record, renderer);
@@ -88,11 +89,6 @@ async function runSingleRenderer(
         };
       }
     }
-
-    completed++;
-    if (onProgress && completed % 50 === 0) {
-      onProgress(`  ${renderer}: ${completed}/${works.length} records...`);
-    }
   }
 
   return errors;
@@ -101,7 +97,6 @@ async function runSingleRenderer(
 async function runXeTexBatch(
   works: RecordWork[],
   batchCompiler: XeTeXBatchCompiler,
-  onProgress?: (msg: string) => void,
 ): Promise<ErrorLogEntry[]> {
   const errors: ErrorLogEntry[] = [];
 
@@ -119,9 +114,6 @@ async function runXeTexBatch(
   }
 
   if (flatItems.length === 0) return errors;
-
-  onProgress?.("Running XeTeX batch compilation...");
-  const start = Date.now();
 
   const xetexResults = await batchCompiler.compileBatch(flatItems.map((f) => f.batchItem));
 
@@ -153,9 +145,6 @@ async function runXeTexBatch(
       };
     }
   }
-
-  const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-  onProgress?.(`XeTeX batch done in ${elapsed}s (${flatItems.length} cases)`);
 
   return errors;
 }

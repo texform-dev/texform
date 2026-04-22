@@ -1,0 +1,196 @@
+{"package":"textmacros","name":".","branch":"neg:T[0]","renderer":"mathjax","tex":"\\.{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"'","branch":"neg:T[0]","renderer":"mathjax","tex":"\\'{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"‘","branch":"neg:T[0]","renderer":"mathjax","tex":"\\‘{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"’","branch":"neg:T[0]","renderer":"mathjax","tex":"\\’{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"\"","branch":"neg:T[0]","renderer":"mathjax","tex":"\\\"{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"`","branch":"neg:T[0]","renderer":"mathjax","tex":"\\`{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"^","branch":"neg:T[0]","renderer":"mathjax","tex":"\\^{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"=","branch":"neg:T[0]","renderer":"mathjax","tex":"\\={a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"~","branch":"neg:T[0]","renderer":"mathjax","tex":"\\~{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"Bbb","branch":"neg:T[0]","renderer":"mathjax","tex":"\\Bbb{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"emph","branch":"neg:T[0]","renderer":"mathjax","tex":"\\emph{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"frak","branch":"neg:T[0]","renderer":"mathjax","tex":"\\frak{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"hphantom","branch":"neg:T[0]","renderer":"mathjax","tex":"\\hphantom{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"hskip","branch":"neg:L[0]","renderer":"mathjax","tex":"\\hskip{a}","error":"Missing dimension or its units for \\hskip"}
+{"package":"textmacros","name":"hspace","branch":"neg:L[0]","renderer":"mathjax","tex":"\\hspace{a}","error":"Missing dimension or its units for \\hspace"}
+{"package":"textmacros","name":"kern","branch":"neg:L[0]","renderer":"mathjax","tex":"\\kern{a}","error":"Missing dimension or its units for \\kern"}
+{"package":"textmacros","name":"llap","branch":"neg:T[0]","renderer":"mathjax","tex":"\\llap{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"mkern","branch":"neg:L[0]","renderer":"mathjax","tex":"\\mkern{a}","error":"Missing dimension or its units for \\mkern"}
+{"package":"textmacros","name":"mskip","branch":"neg:L[0]","renderer":"mathjax","tex":"\\mskip{a}","error":"Missing dimension or its units for \\mskip"}
+{"package":"textmacros","name":"mspace","branch":"neg:L[0]","renderer":"mathjax","tex":"\\mspace{a}","error":"Missing dimension or its units for \\mspace"}
+{"package":"textmacros","name":"phantom","branch":"neg:T[0]","renderer":"mathjax","tex":"\\phantom{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"rlap","branch":"neg:T[0]","renderer":"mathjax","tex":"\\rlap{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"rule","branch":"neg:L[1]","renderer":"mathjax","tex":"\\rule{a}{1pt}","error":"Missing dimension or its units for \\rule"}
+{"package":"textmacros","name":"rule","branch":"neg:L[2]","renderer":"mathjax","tex":"\\rule{1pt}{a}","error":"Missing dimension or its units for \\rule"}
+{"package":"textmacros","name":"Rule","branch":"neg:L[0]","renderer":"mathjax","tex":"\\Rule{a}{1pt}{1pt}","error":"Missing dimension or its units for \\Rule"}
+{"package":"textmacros","name":"Rule","branch":"neg:L[1]","renderer":"mathjax","tex":"\\Rule{1pt}{a}{1pt}","error":"Missing dimension or its units for \\Rule"}
+{"package":"textmacros","name":"Rule","branch":"neg:L[2]","renderer":"mathjax","tex":"\\Rule{1pt}{1pt}{a}","error":"Missing dimension or its units for \\Rule"}
+{"package":"textmacros","name":"smash","branch":"neg:T[1]","renderer":"mathjax","tex":"\\smash{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"Space","branch":"neg:L[0]","renderer":"mathjax","tex":"\\Space{a}{1pt}{1pt}","error":"Missing dimension or its units for \\Space"}
+{"package":"textmacros","name":"Space","branch":"neg:L[1]","renderer":"mathjax","tex":"\\Space{1pt}{a}{1pt}","error":"Missing dimension or its units for \\Space"}
+{"package":"textmacros","name":"Space","branch":"neg:L[2]","renderer":"mathjax","tex":"\\Space{1pt}{1pt}{a}","error":"Missing dimension or its units for \\Space"}
+{"package":"textmacros","name":"textbf","branch":"neg:T[0]","renderer":"mathjax","tex":"\\textbf{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"textit","branch":"neg:T[0]","renderer":"mathjax","tex":"\\textit{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"textnormal","branch":"neg:T[0]","renderer":"mathjax","tex":"\\textnormal{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"textrm","branch":"neg:T[0]","renderer":"mathjax","tex":"\\textrm{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"textsf","branch":"neg:T[0]","renderer":"mathjax","tex":"\\textsf{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"texttt","branch":"neg:T[0]","renderer":"mathjax","tex":"\\texttt{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"textup","branch":"neg:T[0]","renderer":"mathjax","tex":"\\textup{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"u","branch":"neg:T[0]","renderer":"mathjax","tex":"\\u{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"underline","branch":"neg:T[0]","renderer":"mathjax","tex":"\\underline{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"v","branch":"neg:T[0]","renderer":"mathjax","tex":"\\v{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":"vphantom","branch":"neg:T[0]","renderer":"mathjax","tex":"\\vphantom{a^2}","error":"'^' allowed only in math mode"}
+{"package":"textmacros","name":".","branch":"neg:T[0]","renderer":"katex","tex":"\\.{a^2}","error":"KaTeX parse error: Expected '}', got '^' at position 11: \\text{\\.{a^̲2}}"}
+{"package":"textmacros","name":"'","branch":"neg:T[0]","renderer":"katex","tex":"\\'{a^2}","error":"KaTeX parse error: Expected '}', got '^' at position 11: \\text{\\'{a^̲2}}"}
+{"package":"textmacros","name":"‘","branch":"baseline","renderer":"katex","tex":"\\‘{a}","error":"KaTeX parse error: Undefined control sequence: \\‘ at position 7: \\text{\\̲‘̲{a}}"}
+{"package":"textmacros","name":"‘","branch":"bare[0]","renderer":"katex","tex":"\\‘ a","error":"KaTeX parse error: Undefined control sequence: \\‘ at position 7: \\text{\\̲‘̲ a}"}
+{"package":"textmacros","name":"‘","branch":"neg:T[0]","renderer":"katex","tex":"\\‘{a^2}","error":"KaTeX parse error: Undefined control sequence: \\‘ at position 7: \\text{\\̲‘̲{a^2}}"}
+{"package":"textmacros","name":"’","branch":"baseline","renderer":"katex","tex":"\\’{a}","error":"KaTeX parse error: Undefined control sequence: \\’ at position 7: \\text{\\̲’̲{a}}"}
+{"package":"textmacros","name":"’","branch":"bare[0]","renderer":"katex","tex":"\\’ a","error":"KaTeX parse error: Undefined control sequence: \\’ at position 7: \\text{\\̲’̲ a}"}
+{"package":"textmacros","name":"’","branch":"neg:T[0]","renderer":"katex","tex":"\\’{a^2}","error":"KaTeX parse error: Undefined control sequence: \\’ at position 7: \\text{\\̲’̲{a^2}}"}
+{"package":"textmacros","name":"\"","branch":"neg:T[0]","renderer":"katex","tex":"\\\"{a^2}","error":"KaTeX parse error: Expected '}', got '^' at position 11: \\text{\\\"{a^̲2}}"}
+{"package":"textmacros","name":"\\","branch":"neg:L[1]","renderer":"katex","tex":"\\\\[a]","error":"KaTeX parse error: Invalid size: 'a' at position 9: \\text{\\\\[̲a̲]̲}"}
+{"package":"textmacros","name":"`","branch":"neg:T[0]","renderer":"katex","tex":"\\`{a^2}","error":"KaTeX parse error: Expected '}', got '^' at position 11: \\text{\\`{a^̲2}}"}
+{"package":"textmacros","name":"^","branch":"neg:T[0]","renderer":"katex","tex":"\\^{a^2}","error":"KaTeX parse error: Expected '}', got '^' at position 11: \\text{\\^{a^̲2}}"}
+{"package":"textmacros","name":"=","branch":"neg:T[0]","renderer":"katex","tex":"\\={a^2}","error":"KaTeX parse error: Expected '}', got '^' at position 11: \\text{\\={a^̲2}}"}
+{"package":"textmacros","name":"~","branch":"neg:T[0]","renderer":"katex","tex":"\\~{a^2}","error":"KaTeX parse error: Expected '}', got '^' at position 11: \\text{\\~{a^̲2}}"}
+{"package":"textmacros","name":"Bbb","branch":"baseline","renderer":"katex","tex":"\\Bbb{a}","error":"KaTeX parse error: Can't use function '\\Bbb' in text mode at position 7: \\text{\\̲B̲b̲b̲{a}}"}
+{"package":"textmacros","name":"Bbb","branch":"bare[0]","renderer":"katex","tex":"\\Bbb a","error":"KaTeX parse error: Can't use function '\\Bbb' in text mode at position 7: \\text{\\̲B̲b̲b̲ ̲a}"}
+{"package":"textmacros","name":"Bbb","branch":"neg:T[0]","renderer":"katex","tex":"\\Bbb{a^2}","error":"KaTeX parse error: Can't use function '\\Bbb' in text mode at position 7: \\text{\\̲B̲b̲b̲{a^2}}"}
+{"package":"textmacros","name":"dagger","branch":"baseline","renderer":"katex","tex":"\\dagger","error":"KaTeX parse error: Undefined control sequence: \\dagger at position 7: \\text{\\̲d̲a̲g̲g̲e̲r̲}"}
+{"package":"textmacros","name":"ddagger","branch":"baseline","renderer":"katex","tex":"\\ddagger","error":"KaTeX parse error: Undefined control sequence: \\ddagger at position 7: \\text{\\̲d̲d̲a̲g̲g̲e̲r̲}"}
+{"package":"textmacros","name":"emph","branch":"neg:T[0]","renderer":"katex","tex":"\\emph{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 14: \\text{\\emph{a^̲2}}"}
+{"package":"textmacros","name":"eqref","branch":"baseline","renderer":"katex","tex":"\\eqref{a}","error":"KaTeX parse error: Undefined control sequence: \\eqref at position 7: \\text{\\̲e̲q̲r̲e̲f̲{a}}"}
+{"package":"textmacros","name":"eqref","branch":"bare[0]","renderer":"katex","tex":"\\eqref a","error":"KaTeX parse error: Undefined control sequence: \\eqref at position 7: \\text{\\̲e̲q̲r̲e̲f̲ ̲a}"}
+{"package":"textmacros","name":"eqref","branch":"neg:N[0]","renderer":"katex","tex":"\\eqref{\\alpha}","error":"KaTeX parse error: Undefined control sequence: \\eqref at position 7: \\text{\\̲e̲q̲r̲e̲f̲{\\alpha}}"}
+{"package":"textmacros","name":"frak","branch":"baseline","renderer":"katex","tex":"\\frak{a}","error":"KaTeX parse error: Can't use function '\\frak' in text mode at position 7: \\text{\\̲f̲r̲a̲k̲{a}}"}
+{"package":"textmacros","name":"frak","branch":"bare[0]","renderer":"katex","tex":"\\frak a","error":"KaTeX parse error: Can't use function '\\frak' in text mode at position 7: \\text{\\̲f̲r̲a̲k̲ ̲a}"}
+{"package":"textmacros","name":"frak","branch":"neg:T[0]","renderer":"katex","tex":"\\frak{a^2}","error":"KaTeX parse error: Can't use function '\\frak' in text mode at position 7: \\text{\\̲f̲r̲a̲k̲{a^2}}"}
+{"package":"textmacros","name":"hphantom","branch":"neg:T[0]","renderer":"katex","tex":"\\hphantom{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 18: …ext{\\hphantom{a^̲2}}"}
+{"package":"textmacros","name":"hskip","branch":"neg:L[0]","renderer":"katex","tex":"\\hskip{a}","error":"KaTeX parse error: Invalid size: 'a' at position 13: \\text{\\hskip{̲a̲}̲}"}
+{"package":"textmacros","name":"hspace","branch":"bare[0]","renderer":"katex","tex":"\\hspace 1pt","error":"KaTeX parse error: Invalid size: '1' at position 15: \\text{\\hspace 1̲pt}"}
+{"package":"textmacros","name":"hspace","branch":"neg:L[0]","renderer":"katex","tex":"\\hspace{a}","error":"KaTeX parse error: Invalid size: 'a' at position 15: \\text{\\hspace{a̲}}"}
+{"package":"textmacros","name":"kern","branch":"neg:L[0]","renderer":"katex","tex":"\\kern{a}","error":"KaTeX parse error: Invalid size: 'a' at position 12: \\text{\\kern{̲a̲}̲}"}
+{"package":"textmacros","name":"llap","branch":"neg:T[0]","renderer":"katex","tex":"\\llap{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 14: \\text{\\llap{a^̲2}}"}
+{"package":"textmacros","name":"mit","branch":"baseline","renderer":"katex","tex":"{\\mit a}","error":"KaTeX parse error: Undefined control sequence: \\mit at position 8: \\text{{\\̲m̲i̲t̲ ̲a}}"}
+{"package":"textmacros","name":"mkern","branch":"neg:L[0]","renderer":"katex","tex":"\\mkern{a}","error":"KaTeX parse error: Invalid size: 'a' at position 13: \\text{\\mkern{̲a̲}̲}"}
+{"package":"textmacros","name":"mmlToken","branch":"ctx:text-mathml-token","renderer":"katex","tex":"\\mmlToken{mi}{x}","error":"KaTeX parse error: Undefined control sequence: \\mmlToken at position 7: \\text{\\̲m̲m̲l̲T̲o̲k̲e̲n̲{mi}{x}}"}
+{"package":"textmacros","name":"mskip","branch":"neg:L[0]","renderer":"katex","tex":"\\mskip{a}","error":"KaTeX parse error: Invalid size: 'a' at position 13: \\text{\\mskip{̲a̲}̲}"}
+{"package":"textmacros","name":"mspace","branch":"baseline","renderer":"katex","tex":"\\mspace{1pt}","error":"KaTeX parse error: Undefined control sequence: \\mspace at position 7: \\text{\\̲m̲s̲p̲a̲c̲e̲{1pt}}"}
+{"package":"textmacros","name":"mspace","branch":"bare[0]","renderer":"katex","tex":"\\mspace 1pt","error":"KaTeX parse error: Undefined control sequence: \\mspace at position 7: \\text{\\̲m̲s̲p̲a̲c̲e̲ ̲1pt}"}
+{"package":"textmacros","name":"mspace","branch":"neg:L[0]","renderer":"katex","tex":"\\mspace{a}","error":"KaTeX parse error: Undefined control sequence: \\mspace at position 7: \\text{\\̲m̲s̲p̲a̲c̲e̲{a}}"}
+{"package":"textmacros","name":"oldstyle","branch":"baseline","renderer":"katex","tex":"{\\oldstyle a}","error":"KaTeX parse error: Undefined control sequence: \\oldstyle at position 8: \\text{{\\̲o̲l̲d̲s̲t̲y̲l̲e̲ ̲a}}"}
+{"package":"textmacros","name":"phantom","branch":"neg:T[0]","renderer":"katex","tex":"\\phantom{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 17: …text{\\phantom{a^̲2}}"}
+{"package":"textmacros","name":"ref","branch":"baseline","renderer":"katex","tex":"\\ref{a}","error":"KaTeX parse error: Undefined control sequence: \\ref at position 7: \\text{\\̲r̲e̲f̲{a}}"}
+{"package":"textmacros","name":"ref","branch":"bare[0]","renderer":"katex","tex":"\\ref a","error":"KaTeX parse error: Undefined control sequence: \\ref at position 7: \\text{\\̲r̲e̲f̲ ̲a}"}
+{"package":"textmacros","name":"ref","branch":"neg:N[0]","renderer":"katex","tex":"\\ref{\\alpha}","error":"KaTeX parse error: Undefined control sequence: \\ref at position 7: \\text{\\̲r̲e̲f̲{\\alpha}}"}
+{"package":"textmacros","name":"rlap","branch":"neg:T[0]","renderer":"katex","tex":"\\rlap{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 14: \\text{\\rlap{a^̲2}}"}
+{"package":"textmacros","name":"rule","branch":"bare[1]","renderer":"katex","tex":"\\rule 1pt{1pt}","error":"KaTeX parse error: Invalid size: '{' at position 16: \\text{\\rule 1pt{̲1pt}}"}
+{"package":"textmacros","name":"rule","branch":"neg:L[0]","renderer":"katex","tex":"\\rule[a]{1pt}{1pt}","error":"KaTeX parse error: Invalid size: 'a' at position 12: \\text{\\rule[̲a̲]̲{1pt}{1pt}}"}
+{"package":"textmacros","name":"rule","branch":"neg:L[1]","renderer":"katex","tex":"\\rule{a}{1pt}","error":"KaTeX parse error: Invalid size: 'a' at position 12: \\text{\\rule{̲a̲}̲{1pt}}"}
+{"package":"textmacros","name":"rule","branch":"neg:L[2]","renderer":"katex","tex":"\\rule{1pt}{a}","error":"KaTeX parse error: Invalid size: 'a' at position 17: …text{\\rule{1pt}{̲a̲}̲}"}
+{"package":"textmacros","name":"Rule","branch":"baseline","renderer":"katex","tex":"\\Rule{1pt}{1pt}{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Rule at position 7: \\text{\\̲R̲u̲l̲e̲{1pt}{1pt}{1pt}…"}
+{"package":"textmacros","name":"Rule","branch":"bare[0]","renderer":"katex","tex":"\\Rule 1pt{1pt}{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Rule at position 7: \\text{\\̲R̲u̲l̲e̲ ̲1pt{1pt}{1pt}}"}
+{"package":"textmacros","name":"Rule","branch":"bare[1]","renderer":"katex","tex":"\\Rule{1pt}1pt{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Rule at position 7: \\text{\\̲R̲u̲l̲e̲{1pt}1pt{1pt}}"}
+{"package":"textmacros","name":"Rule","branch":"bare[2]","renderer":"katex","tex":"\\Rule{1pt}{1pt}1pt","error":"KaTeX parse error: Undefined control sequence: \\Rule at position 7: \\text{\\̲R̲u̲l̲e̲{1pt}{1pt}1pt}"}
+{"package":"textmacros","name":"Rule","branch":"neg:L[0]","renderer":"katex","tex":"\\Rule{a}{1pt}{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Rule at position 7: \\text{\\̲R̲u̲l̲e̲{a}{1pt}{1pt}}"}
+{"package":"textmacros","name":"Rule","branch":"neg:L[1]","renderer":"katex","tex":"\\Rule{1pt}{a}{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Rule at position 7: \\text{\\̲R̲u̲l̲e̲{1pt}{a}{1pt}}"}
+{"package":"textmacros","name":"Rule","branch":"neg:L[2]","renderer":"katex","tex":"\\Rule{1pt}{1pt}{a}","error":"KaTeX parse error: Undefined control sequence: \\Rule at position 7: \\text{\\̲R̲u̲l̲e̲{1pt}{1pt}{a}}"}
+{"package":"textmacros","name":"smash","branch":"neg:N[0]","renderer":"katex","tex":"\\smash[\\alpha]{a}","error":"KaTeX parse error: Undefined control sequence: \\alpha at position 14: \\text{\\smash[\\̲a̲l̲p̲h̲a̲]{a}}"}
+{"package":"textmacros","name":"smash","branch":"neg:T[1]","renderer":"katex","tex":"\\smash{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 15: \\text{\\smash{a^̲2}}"}
+{"package":"textmacros","name":"Space","branch":"baseline","renderer":"katex","tex":"\\Space{1pt}{1pt}{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Space at position 7: \\text{\\̲S̲p̲a̲c̲e̲{1pt}{1pt}{1pt}…"}
+{"package":"textmacros","name":"Space","branch":"bare[0]","renderer":"katex","tex":"\\Space 1pt{1pt}{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Space at position 7: \\text{\\̲S̲p̲a̲c̲e̲ ̲1pt{1pt}{1pt}}"}
+{"package":"textmacros","name":"Space","branch":"bare[1]","renderer":"katex","tex":"\\Space{1pt}1pt{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Space at position 7: \\text{\\̲S̲p̲a̲c̲e̲{1pt}1pt{1pt}}"}
+{"package":"textmacros","name":"Space","branch":"bare[2]","renderer":"katex","tex":"\\Space{1pt}{1pt}1pt","error":"KaTeX parse error: Undefined control sequence: \\Space at position 7: \\text{\\̲S̲p̲a̲c̲e̲{1pt}{1pt}1pt}"}
+{"package":"textmacros","name":"Space","branch":"neg:L[0]","renderer":"katex","tex":"\\Space{a}{1pt}{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Space at position 7: \\text{\\̲S̲p̲a̲c̲e̲{a}{1pt}{1pt}}"}
+{"package":"textmacros","name":"Space","branch":"neg:L[1]","renderer":"katex","tex":"\\Space{1pt}{a}{1pt}","error":"KaTeX parse error: Undefined control sequence: \\Space at position 7: \\text{\\̲S̲p̲a̲c̲e̲{1pt}{a}{1pt}}"}
+{"package":"textmacros","name":"Space","branch":"neg:L[2]","renderer":"katex","tex":"\\Space{1pt}{1pt}{a}","error":"KaTeX parse error: Undefined control sequence: \\Space at position 7: \\text{\\̲S̲p̲a̲c̲e̲{1pt}{1pt}{a}}"}
+{"package":"textmacros","name":"textbf","branch":"neg:T[0]","renderer":"katex","tex":"\\textbf{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 16: \\text{\\textbf{a^̲2}}"}
+{"package":"textmacros","name":"textit","branch":"neg:T[0]","renderer":"katex","tex":"\\textit{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 16: \\text{\\textit{a^̲2}}"}
+{"package":"textmacros","name":"textnormal","branch":"neg:T[0]","renderer":"katex","tex":"\\textnormal{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 20: …t{\\textnormal{a^̲2}}"}
+{"package":"textmacros","name":"textrm","branch":"neg:T[0]","renderer":"katex","tex":"\\textrm{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 16: \\text{\\textrm{a^̲2}}"}
+{"package":"textmacros","name":"textsf","branch":"neg:T[0]","renderer":"katex","tex":"\\textsf{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 16: \\text{\\textsf{a^̲2}}"}
+{"package":"textmacros","name":"texttt","branch":"neg:T[0]","renderer":"katex","tex":"\\texttt{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 16: \\text{\\texttt{a^̲2}}"}
+{"package":"textmacros","name":"textup","branch":"neg:T[0]","renderer":"katex","tex":"\\textup{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 16: \\text{\\textup{a^̲2}}"}
+{"package":"textmacros","name":"Tiny","branch":"baseline","renderer":"katex","tex":"{\\Tiny a}","error":"KaTeX parse error: Undefined control sequence: \\Tiny at position 8: \\text{{\\̲T̲i̲n̲y̲ ̲a}}"}
+{"package":"textmacros","name":"u","branch":"neg:T[0]","renderer":"katex","tex":"\\u{a^2}","error":"KaTeX parse error: Expected '}', got '^' at position 11: \\text{\\u{a^̲2}}"}
+{"package":"textmacros","name":"underline","branch":"neg:T[0]","renderer":"katex","tex":"\\underline{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 19: …xt{\\underline{a^̲2}}"}
+{"package":"textmacros","name":"v","branch":"neg:T[0]","renderer":"katex","tex":"\\v{a^2}","error":"KaTeX parse error: Expected '}', got '^' at position 11: \\text{\\v{a^̲2}}"}
+{"package":"textmacros","name":"vphantom","branch":"neg:T[0]","renderer":"katex","tex":"\\vphantom{a^2}","error":"KaTeX parse error: Expected 'EOF', got '^' at position 18: …ext{\\vphantom{a^̲2}}"}
+{"package":"textmacros","name":".","branch":"neg:T[0]","renderer":"xetex","tex":"\\.{a^2}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"‘","branch":"baseline","renderer":"xetex","tex":"\\‘{a}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"‘","branch":"bare[0]","renderer":"xetex","tex":"\\‘ a","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"‘","branch":"neg:T[0]","renderer":"xetex","tex":"\\‘{a^2}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"’","branch":"baseline","renderer":"xetex","tex":"\\’{a}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"’","branch":"bare[0]","renderer":"xetex","tex":"\\’ a","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"’","branch":"neg:T[0]","renderer":"xetex","tex":"\\’{a^2}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"\\","branch":"baseline","renderer":"xetex","tex":"\\\\","error":"! LaTeX Error: There's no line here to end."}
+{"package":"textmacros","name":"\\","branch":"vary:s[0]","renderer":"xetex","tex":"\\\\*","error":"! LaTeX Error: There's no line here to end."}
+{"package":"textmacros","name":"\\","branch":"vary:o[1]","renderer":"xetex","tex":"\\\\[1pt]","error":"! LaTeX Error: There's no line here to end."}
+{"package":"textmacros","name":"\\","branch":"maximal","renderer":"xetex","tex":"\\\\*[1pt]","error":"! LaTeX Error: There's no line here to end."}
+{"package":"textmacros","name":"\\","branch":"neg:L[1]","renderer":"xetex","tex":"\\\\[a]","error":"! LaTeX Error: There's no line here to end."}
+{"package":"textmacros","name":"Bbb","branch":"baseline","renderer":"xetex","tex":"\\Bbb{a}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"Bbb","branch":"bare[0]","renderer":"xetex","tex":"\\Bbb a","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"Bbb","branch":"neg:T[0]","renderer":"xetex","tex":"\\Bbb{a^2}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"dagger","branch":"baseline","renderer":"xetex","tex":"\\dagger","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"ddagger","branch":"baseline","renderer":"xetex","tex":"\\ddagger","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"emph","branch":"neg:T[0]","renderer":"xetex","tex":"\\emph{a^2}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"eqref","branch":"baseline","renderer":"xetex","tex":"\\eqref{a}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"eqref","branch":"bare[0]","renderer":"xetex","tex":"\\eqref a","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"eqref","branch":"neg:N[0]","renderer":"xetex","tex":"\\eqref{\\alpha}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"frak","branch":"baseline","renderer":"xetex","tex":"\\frak{a}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"frak","branch":"bare[0]","renderer":"xetex","tex":"\\frak a","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"frak","branch":"neg:T[0]","renderer":"xetex","tex":"\\frak{a^2}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"hphantom","branch":"neg:T[0]","renderer":"xetex","tex":"\\hphantom{a^2}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"hskip","branch":"baseline","renderer":"xetex","tex":"\\hskip{1pt}","error":"! Missing number, treated as zero."}
+{"package":"textmacros","name":"hskip","branch":"neg:L[0]","renderer":"xetex","tex":"\\hskip{a}","error":"! Missing number, treated as zero."}
+{"package":"textmacros","name":"hspace","branch":"bare[0]","renderer":"xetex","tex":"\\hspace 1pt","error":"! Illegal unit of measure (pt inserted)."}
+{"package":"textmacros","name":"hspace","branch":"neg:L[0]","renderer":"xetex","tex":"\\hspace{a}","error":"! Missing number, treated as zero."}
+{"package":"textmacros","name":"kern","branch":"baseline","renderer":"xetex","tex":"\\kern{1pt}","error":"! Missing number, treated as zero."}
+{"package":"textmacros","name":"kern","branch":"neg:L[0]","renderer":"xetex","tex":"\\kern{a}","error":"! Missing number, treated as zero."}
+{"package":"textmacros","name":"llap","branch":"neg:T[0]","renderer":"xetex","tex":"\\llap{a^2}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"mkern","branch":"baseline","renderer":"xetex","tex":"\\mkern{1pt}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"mkern","branch":"bare[0]","renderer":"xetex","tex":"\\mkern 1pt","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"mkern","branch":"neg:L[0]","renderer":"xetex","tex":"\\mkern{a}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"mmlToken","branch":"ctx:text-mathml-token","renderer":"xetex","tex":"\\mmlToken{mi}{x}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"mskip","branch":"baseline","renderer":"xetex","tex":"\\mskip{1pt}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"mskip","branch":"bare[0]","renderer":"xetex","tex":"\\mskip 1pt","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"mskip","branch":"neg:L[0]","renderer":"xetex","tex":"\\mskip{a}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"mspace","branch":"baseline","renderer":"xetex","tex":"\\mspace{1pt}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"mspace","branch":"bare[0]","renderer":"xetex","tex":"\\mspace 1pt","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"mspace","branch":"neg:L[0]","renderer":"xetex","tex":"\\mspace{a}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"oldstyle","branch":"baseline","renderer":"xetex","tex":"{\\oldstyle a}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"phantom","branch":"neg:T[0]","renderer":"xetex","tex":"\\phantom{a^2}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"ref","branch":"neg:N[0]","renderer":"xetex","tex":"\\ref{\\alpha}","error":"! Missing \\endcsname inserted."}
+{"package":"textmacros","name":"rlap","branch":"neg:T[0]","renderer":"xetex","tex":"\\rlap{a^2}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"rule","branch":"bare[1]","renderer":"xetex","tex":"\\rule 1pt{1pt}","error":"! Illegal unit of measure (pt inserted)."}
+{"package":"textmacros","name":"rule","branch":"bare[2]","renderer":"xetex","tex":"\\rule{1pt}1pt","error":"! Illegal unit of measure (pt inserted)."}
+{"package":"textmacros","name":"rule","branch":"neg:L[0]","renderer":"xetex","tex":"\\rule[a]{1pt}{1pt}","error":"! Missing number, treated as zero."}
+{"package":"textmacros","name":"rule","branch":"neg:L[1]","renderer":"xetex","tex":"\\rule{a}{1pt}","error":"! Missing number, treated as zero."}
+{"package":"textmacros","name":"rule","branch":"neg:L[2]","renderer":"xetex","tex":"\\rule{1pt}{a}","error":"! Missing number, treated as zero."}
+{"package":"textmacros","name":"Rule","branch":"baseline","renderer":"xetex","tex":"\\Rule{1pt}{1pt}{1pt}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"Rule","branch":"bare[0]","renderer":"xetex","tex":"\\Rule 1pt{1pt}{1pt}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"Rule","branch":"bare[1]","renderer":"xetex","tex":"\\Rule{1pt}1pt{1pt}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"Rule","branch":"bare[2]","renderer":"xetex","tex":"\\Rule{1pt}{1pt}1pt","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"Rule","branch":"neg:L[0]","renderer":"xetex","tex":"\\Rule{a}{1pt}{1pt}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"Rule","branch":"neg:L[1]","renderer":"xetex","tex":"\\Rule{1pt}{a}{1pt}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"Rule","branch":"neg:L[2]","renderer":"xetex","tex":"\\Rule{1pt}{1pt}{a}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"smash","branch":"neg:N[0]","renderer":"xetex","tex":"\\smash[\\alpha]{a}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"smash","branch":"neg:T[1]","renderer":"xetex","tex":"\\smash{a^2}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"Space","branch":"baseline","renderer":"xetex","tex":"\\Space{1pt}{1pt}{1pt}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"Space","branch":"bare[0]","renderer":"xetex","tex":"\\Space 1pt{1pt}{1pt}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"Space","branch":"bare[1]","renderer":"xetex","tex":"\\Space{1pt}1pt{1pt}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"Space","branch":"bare[2]","renderer":"xetex","tex":"\\Space{1pt}{1pt}1pt","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"Space","branch":"neg:L[0]","renderer":"xetex","tex":"\\Space{a}{1pt}{1pt}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"Space","branch":"neg:L[1]","renderer":"xetex","tex":"\\Space{1pt}{a}{1pt}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"Space","branch":"neg:L[2]","renderer":"xetex","tex":"\\Space{1pt}{1pt}{a}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"textbf","branch":"neg:T[0]","renderer":"xetex","tex":"\\textbf{a^2}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"textit","branch":"neg:T[0]","renderer":"xetex","tex":"\\textit{a^2}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"textnormal","branch":"neg:T[0]","renderer":"xetex","tex":"\\textnormal{a^2}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"textrm","branch":"neg:T[0]","renderer":"xetex","tex":"\\textrm{a^2}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"textsf","branch":"neg:T[0]","renderer":"xetex","tex":"\\textsf{a^2}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"texttt","branch":"neg:T[0]","renderer":"xetex","tex":"\\texttt{a^2}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"textup","branch":"neg:T[0]","renderer":"xetex","tex":"\\textup{a^2}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"Tiny","branch":"baseline","renderer":"xetex","tex":"{\\Tiny a}","error":"! Undefined control sequence."}
+{"package":"textmacros","name":"underline","branch":"neg:T[0]","renderer":"xetex","tex":"\\underline{a^2}","error":"! Missing $ inserted."}
+{"package":"textmacros","name":"vphantom","branch":"neg:T[0]","renderer":"xetex","tex":"\\vphantom{a^2}","error":"! Missing $ inserted."}
