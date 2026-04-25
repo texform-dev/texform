@@ -2,13 +2,13 @@
   "dataset_count": 4,
   "total_tasks": 1226621,
   "strict": {
-    "ok": 1198202,
-    "failed": 28419,
+    "ok": 1198214,
+    "failed": 28407,
     "failure_rate_pct": 2.32
   },
   "nonstrict": {
-    "ok": 1224601,
-    "failed": 2020,
+    "ok": 1224613,
+    "failed": 2008,
     "failure_rate_pct": 0.16
   }
 }

@@ -88,6 +88,51 @@ fn integer_argument_is_verified_via_public_parser() {
 }
 
 #[test]
+fn non_nullable_integer_argument_rejects_empty_group() {
+    let items = [command_item(
+        "romannumeral",
+        CommandKind::Prefix,
+        AllowedMode::Both,
+        "m:I",
+    )];
+
+    let output = parse_single_via_public_api(&items, r"\romannumeral{}", true);
+    assert!(output.result.is_none(), "empty integer should fail");
+    assert!(
+        !output.diagnostics.is_empty(),
+        "expected integer diagnostics"
+    );
+}
+
+#[test]
+fn genfrac_accepts_empty_and_integer_style_arguments() {
+    let outputs = parse_with_context_items(
+        &[],
+        &[
+            r"\genfrac{}{}{0.0pt}{}{a}{b}",
+            r"\genfrac{}{}{0.0pt}{1}{a}{b}",
+        ],
+        Some(&["base", "ams"]),
+        true,
+    );
+    assert_eq!(outputs.len(), 2);
+
+    for item in outputs {
+        assert!(
+            item.output.diagnostics.is_empty(),
+            "unexpected diagnostics for {}: {:?}",
+            item.input,
+            item.output.diagnostics
+        );
+        assert!(
+            item.output.result.is_some(),
+            "expected parse result for {}",
+            item.input
+        );
+    }
+}
+
+#[test]
 fn dimension_argument_is_verified_via_public_parser() {
     let items = [command_item(
         "hspace",
