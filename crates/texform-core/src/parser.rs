@@ -846,6 +846,48 @@ enum ScriptMarker {
     Prime,
 }
 
+fn braced_prime_group<'src, 'parse>(input: &mut ParserInput<'src, 'parse>) -> Option<TrackedNode> {
+    let checkpoint = input.save();
+    let ws = insignificant_whitespace();
+    let start = input.cursor();
+
+    let _ = input.parse(ws.clone());
+    if !matches!(input.peek(), Some(Token::LBrace)) {
+        input.rewind(checkpoint);
+        return None;
+    }
+    input.next();
+
+    let _ = input.parse(ws.clone());
+    let count = match input.peek() {
+        Some(Token::Prime(n)) => {
+            input.next();
+            n
+        }
+        _ => {
+            input.rewind(checkpoint);
+            return None;
+        }
+    };
+
+    let _ = input.parse(ws.clone());
+    if !matches!(input.peek(), Some(Token::RBrace)) {
+        input.rewind(checkpoint);
+        return None;
+    }
+    input.next();
+
+    let span = input.span_from_cursor(&start);
+    Some(TrackedNode::leaf(
+        SyntaxNode::Group {
+            mode: ContentMode::Math,
+            kind: GroupKind::Explicit,
+            children: (0..count).map(|_| SyntaxNode::Char('\'')).collect(),
+        },
+        span,
+    ))
+}
+
 /// Imperative parser that greedily collects `^`, `_`, and prime tokens after
 /// an atom, producing [`ScriptComponents`].
 ///
@@ -906,7 +948,10 @@ where
         let marker = match input.peek() {
             Some(Token::Superscript) => {
                 input.next();
-                let tracked = input.parse(atom_for_scripts.clone())?;
+                let tracked = match braced_prime_group(input) {
+                    Some(group) => group,
+                    None => input.parse(atom_for_scripts.clone())?,
+                };
                 let span = input.span_from_cursor(&marker_start);
                 Some((ScriptMarker::Sup, TrackedNode { span, ..tracked }))
             }

@@ -2486,6 +2486,69 @@ fn test_prime_on_sub_grouped() {
 }
 
 #[test]
+fn test_braced_prime_superscript_content() {
+    let (result, _) = parse(r"x ^ { ' }", false).unwrap();
+
+    match result {
+        SyntaxNode::Root { children, .. } => {
+            assert_eq!(children.len(), 1);
+            match &children[0] {
+                SyntaxNode::Scripted {
+                    base,
+                    superscript,
+                    subscript,
+                } => {
+                    assert_eq!(**base, SyntaxNode::Char('x'));
+                    assert!(subscript.is_none());
+                    assert_eq!(
+                        superscript.as_deref(),
+                        Some(&SyntaxNode::Group {
+                            mode: ContentMode::Math,
+                            kind: GroupKind::Explicit,
+                            children: vec![SyntaxNode::Char('\'')],
+                        })
+                    );
+                }
+                other => panic!("Expected Scripted node, got {:?}", other),
+            }
+        }
+        other => panic!("Expected root node, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_command_prime_superscript_still_parses() {
+    let (result, _) = parse(r"f^{\prime}", false).unwrap();
+
+    match result {
+        SyntaxNode::Root { children, .. } => {
+            assert_eq!(children.len(), 1);
+            match &children[0] {
+                SyntaxNode::Scripted { superscript, .. } => {
+                    assert!(matches!(
+                        superscript.as_deref(),
+                        Some(SyntaxNode::Group {
+                            mode: ContentMode::Math,
+                            kind: GroupKind::Explicit,
+                            children,
+                        }) if matches!(children.as_slice(), [SyntaxNode::Command { name, .. }] if name == "prime")
+                    ));
+                }
+                other => panic!("Expected Scripted node, got {:?}", other),
+            }
+        }
+        other => panic!("Expected root node, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_bare_prime_superscript_still_errors() {
+    let diagnostics = parse(r"f^'", false).unwrap_err();
+
+    assert_eq!(diagnostics, vec!["not a command"]);
+}
+
+#[test]
 fn test_empty_base_superscript() {
     // "^2" -> empty base with superscript
     let (result, _) = parse("^2", false).unwrap();
@@ -2623,15 +2686,7 @@ fn test_prime_nested_shapes() {
                             SyntaxNode::Group {
                                 mode: ContentMode::Math,
                                 kind: GroupKind::Explicit,
-                                children: vec![SyntaxNode::Scripted {
-                                    base: Box::new(SyntaxNode::Group {
-                                        mode: ContentMode::Math,
-                                        kind: GroupKind::Implicit,
-                                        children: vec![],
-                                    }),
-                                    subscript: None,
-                                    superscript: Some(Box::new(SyntaxNode::Char('\''))),
-                                }],
+                                children: vec![SyntaxNode::Char('\'')],
                             },
                         ],
                     })),
@@ -2649,15 +2704,7 @@ fn test_prime_nested_shapes() {
                     superscript: Some(Box::new(SyntaxNode::Group {
                         mode: ContentMode::Math,
                         kind: GroupKind::Explicit,
-                        children: vec![SyntaxNode::Scripted {
-                            base: Box::new(SyntaxNode::Group {
-                                mode: ContentMode::Math,
-                                kind: GroupKind::Implicit,
-                                children: vec![],
-                            }),
-                            subscript: None,
-                            superscript: Some(Box::new(SyntaxNode::Char('\''))),
-                        }],
+                        children: vec![SyntaxNode::Char('\'')],
                     })),
                 }],
             },
