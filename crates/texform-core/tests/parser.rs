@@ -1,6 +1,7 @@
 use std::sync::OnceLock;
 
 use chumsky::error::RichReason;
+use texform_core::api::serialize_latex;
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
     ParseContext, ParseContextBuilder,
@@ -1816,6 +1817,36 @@ fn test_text_inline_math_segment() {
             _ => panic!("Expected text command"),
         },
         _ => panic!("Expected root node"),
+    }
+}
+
+#[test]
+fn test_text_apostrophes_parse_as_text() {
+    for (src, expected_text, expected_serialized) in [
+        (
+            r"\text{Graham's number}",
+            "Graham's number",
+            r"\text {Graham's number}",
+        ),
+        (r"\text{Z'-factor}", "Z'-factor", r"\text {Z'-factor}"),
+    ] {
+        let (result, _) = parse(src, false).unwrap();
+        assert_eq!(serialize_latex(&result), expected_serialized);
+
+        match result {
+            SyntaxNode::Root { children, .. } => match &children[0] {
+                SyntaxNode::Command { args, .. } => match unwrap_content(&args[0]) {
+                    SyntaxNode::Group { mode, children, .. } => {
+                        assert_eq!(*mode, ContentMode::Text);
+                        assert_eq!(children, &[SyntaxNode::Text(expected_text.to_string())]);
+                    }
+                    SyntaxNode::Text(text) => assert_eq!(text, expected_text),
+                    other => panic!("Expected text content, got {:?}", other),
+                },
+                other => panic!("Expected text command, got {:?}", other),
+            },
+            other => panic!("Expected root node, got {:?}", other),
+        }
     }
 }
 

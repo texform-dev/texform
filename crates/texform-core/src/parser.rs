@@ -644,26 +644,27 @@ fn math_char<'a>() -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<
 /// Parse and coalesce consecutive text characters/whitespace into a single `Text` node.
 fn text_chunk<'a>() -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     select! {
-        Token::Char(c) => c,
-        Token::Whitespaces => ' ',
-        Token::LBracket => '[',
-        Token::RBracket => ']',
+        Token::Char(c) => c.to_string(),
+        Token::Whitespaces => " ".to_string(),
+        Token::LBracket => "[".to_string(),
+        Token::RBracket => "]".to_string(),
+        Token::Prime(n) => "'".repeat(n),
     }
     .repeated()
     .at_least(1)
     .collect::<Vec<_>>()
     .labelled("text")
-    .map(|chars| {
+    .map(|parts| {
         let mut buf = String::new();
         let mut last_was_space = false;
-        for ch in chars {
-            if ch == ' ' {
+        for part in parts {
+            if part == " " {
                 if !last_was_space {
                     buf.push(' ');
                     last_was_space = true;
                 }
             } else {
-                buf.push(ch);
+                buf.push_str(&part);
                 last_was_space = false;
             }
         }
