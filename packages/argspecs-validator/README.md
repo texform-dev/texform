@@ -1,6 +1,6 @@
 # argspecs-validator
 
-Validates TeXForm argument specs against live TeX renderers. Reads `resources/specs/*.yaml`, generates representative test cases for each command and environment, runs them through MathJax, KaTeX, and XeTeX, and writes structured results to `out/spec-tests/` by default.
+Validates TeXForm argument specs against live TeX renderers. Reads `resources/specs/*.yaml`, generates representative test cases for each command and environment, runs them through MathJax, KaTeX, and XeTeX, and writes structured results to `data/argspec-validate-results/` by default.
 
 ## Validation Scope
 
@@ -117,10 +117,10 @@ commands:
 
 ## Output
 
-Results are written to `--out-dir` (default `out/spec-tests/`):
+Results are written to `--out-dir` (default `data/argspec-validate-results/`):
 
 ```
-out/spec-tests/
+data/argspec-validate-results/
 ├── results/<package>.jsonl   # RecordTestResult per line
 ├── errors/<package>.jsonl    # ErrorLogEntry per failing case
 └── summary.json              # Aggregate counts by renderer and package

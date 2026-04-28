@@ -2,116 +2,94 @@
 
 ## Project Overview
 
-TeXForm is a LaTeX formula parser, formatter, and transform engine — an evolving open-source project.
+TeXForm is a LaTeX formula parser, formatter, and transform engine. This repository is intended to be open source, so code, documentation, comments, examples, and user-facing text must be clear, polished, and written in English.
 
-See [README.md](./README.md) for usage examples, serialization API, and language bindings.
+See @README.md for more about this project.
 
 ## Repository Structure
 
 ```
-crates/                       # Rust workspace (8 crates)
-├── texform-core/             #   Parser, AST, serializer, transform engine
-├── texform-specs/            #   Knowledge base & command specifications
-├── texform-argspec/          #   xparse-style argument spec parser
-├── texform-argspec-macros/   #   Procedural macros for argspec
-├── texform-interface/        #   Public types (SyntaxNode, etc.)
-├── texform-bench/            #   Corpus benchmark harness
-├── texform-python/           #   Python bindings (PyO3 → pytexform)
-└── texform-wasm/             #   WebAssembly bindings
-packages/                     # NPM/TypeScript packages (bun workspace)
-├── playground/               #   Interactive WASM playground (Vite + React + Monaco)
-├── argspecs-validator/       #   Argument spec validation & spec-test runner
-└── tex-renderers/            #   MathJax / KaTeX / XeTeX rendering adapters
-python/pytexform/             # Python package source (maturin build)
-resources/specs/              # Knowledge base YAML (base, ams, physics, …)
+crates/                       # Rust workspace
+├── texform-core/             # Parser, AST, serializer, transform engine
+├── texform-specs/            # Knowledge base & command specifications
+├── texform-argspec/          # xparse-style argument spec parser
+├── texform-argspec-macros/   # Procedural macros for argspec
+├── texform-interface/        # Public types (SyntaxNode, etc.)
+├── texform-bench/            # Corpus benchmark harness
+├── texform-python/           # Python bindings (PyO3 -> pytexform)
+└── texform-wasm/             # WebAssembly bindings
+packages/                     # NPM/TypeScript packages
+├── playground/               # Interactive WASM playground
+├── argspecs-validator/       # Argument spec validation & spec-test runner
+└── tex-renderers/            # MathJax / KaTeX / XeTeX rendering adapters
+python/pytexform/             # Python package source
+resources/specs/              # Knowledge base YAML
 bench/                        # Corpus benchmark data & results
-├── data/                     #   Git LFS Parquet datasets
-├── datasets.yaml             #   Dataset configuration
-├── results/                  #   Benchmark output (overall.json, per-dataset summaries)
-└── history/                  #   Per-commit snapshots (yyyy-mm-dd-<hash>/)
-data/spec-tests/              # Spec test data & results
-docs/                         # Documentation & design (Chinese)
+├── data/                     # Git LFS Parquet datasets
+├── datasets.yaml             # Dataset configuration
+├── results/                  # Benchmark output
+└── history/                  # Per-commit snapshots
+data/argspec-validate-results/  # Spec validation results
 ```
 
-### Language Conventions
+Project design notes and internal planning documents live outside this repo in the parent workspace. Do not recreate a `docs/` directory here for private notes, Chinese research records, or internal implementation plans.
 
-- **Source code** (`crates/`, `packages/`): comments and identifiers in English
-- **Documentation** (`docs/`): Chinese
+## Language Conventions
+
+- Use English for all documentation, README content, examples, comments, doc comments, commit-facing messages in scripts, and user-facing text.
+- Keep comments concise and useful: explain why something exists, what invariant matters, or what trade-off is being preserved. Do not restate the code.
 
 ## Core Principles
 
-1. **Fail Fast, Handle Appropriately**
+1. **Rust Error Handling**
 
-- Use `panic!` or `unwrap()` for programming errors and states that should be impossible
-- Use `Result<T>` for user-facing errors that callers need to handle
-- Don't over-engineer error recovery for internal code paths, but design public APIs with clear error contracts
+- Avoid `unwrap()` and `expect()` in library code unless an invariant has already been proven. If `expect()` is appropriate, include a useful message.
+- Reserve `panic!` for violated internal invariants, not normal input validation or caller-facing errors.
 
-2. **Pragmatic Engineering**
+2. **Open-Source API Quality**
 
-- Deliver core functionality first, iterate based on real usage
-- Minimize unnecessary abstractions — prefer concrete implementations over premature generalization
-- Don't repeat yourself — extract shared logic when duplication is real, not hypothetical
-- No premature optimization; profile before optimizing
-- Prefer single-file modules until complexity demands splitting
+- Public APIs should have stable names, predictable behavior, clear error types, and runnable examples.
+- Keep private workspace assumptions, unfinished design notes, and internal workflows out of this repo.
 
-3. **Code Quality**
+3. **Pragmatic Implementation**
 
-- **Concise and precise**: clear expression, minimal boilerplate
-- **Comment policy**:
-  - Code itself should express *what* through naming — do NOT restate the code in comments
-  - Comments exist to explain **why**: design decisions, non-obvious constraints, rejected alternatives, correctness arguments
-  - Doc comments describe function responsibility and key semantics — do not repeat what the signature already says
-  - **Writing no comments is just as harmful as writing bad comments**
-- **English only in source**: all code comments, identifiers, and inline documentation must be in English
+- Prefer simple, concrete code. Add abstractions when they remove real duplication or clarify an established boundary.
+- Profile before optimizing, and keep modules compact until splitting improves readability.
 
-4. **Testing Strategy**
+4. **Testing and Validation**
 
-- Place public-API tests in `tests/`; place internal-implementation tests inline
-- Tests should serve as executable documentation
-- Cover the happy path + key edge cases
-- No exhaustive testing — prioritize fast validation
+- Put public-API tests in `tests/` and focused implementation tests inline.
+- Cover the happy path, important edge cases, and regressions introduced by the change.
 
 ## Corpus Benchmarks & Regression Testing
 
-The corpus bench in `crates/texform-bench` runs the parser against large real-world datasets (1.2M+ formulas). Benchmark data is tracked via Git LFS in `bench/data/`.
-
-**Any significant change to `texform-core` should be benchmarked before and after** to check for regressions in error rate and performance. See [bench/README.md](./bench/README.md) for dataset details and result format.
-
-- A full benchmark run takes ~10 seconds.
-- Historical results are tracked in git (`bench/results/`). There is no need to record baselines manually — just diff the error rates before and after your change.
+- The corpus bench in `crates/texform-bench` runs the parser against large real-world datasets. A full benchmark run takes less than 10 seconds.
+- Any significant change to `texform-core` should be benchmarked before and after to check for regressions in error rate and performance.
+- Historical results are tracked in git under `bench/results/`. There is no need to record baselines manually; diff the error rates before and after your change.
+- See `./bench/README.md` for dataset details and result format.
 
 ## Transform Engine
 
-The transform subsystem (`crates/texform-core/src/transform/`) provides rule-based AST rewriting:
-
-- **Rule registry**: build script auto-discovers rule files under `transform/rules/` — no manual registration needed
-- **Authoring macros**: `define_rule!` for general rules, `alias_rule!` for simple command renaming
-- **Builtin rule sets**: `Normalize` and `Mer`, selectable at runtime via `TransformContext`
-
-See [crates/texform-core/src/transform/rules/README.md](./crates/texform-core/src/transform/rules/README.md) for rule authoring conventions.
+The transform subsystem (`crates/texform-core/src/transform/`) provides rule-based AST rewriting. See `crates/texform-core/src/transform/rules/README.md` for more info.
 
 ## Tooling Conventions
 
-- **Rust**: `cargo test`, `cargo check`, `cargo clippy`; pre-commit hooks run `cargo fmt` and `cargo clippy`
-- **TypeScript**: `bun` as package manager; `bun run dev` starts the playground
-- **Python**: `uv` for dependency management; `maturin` for building native extensions
+- **Rust**: `cargo test`, `cargo check`, `cargo clippy`; pre-commit hooks run `cargo fmt`, `cargo clippy`, spec validation, and the bench regression check.
+- **TypeScript**: use `bun` as package manager.
+- **Python**: use `uv` for dependency management and `maturin` for native extension builds.
 
 ### WASM Binding
 
 ```bash
-wasm-pack build crates/texform-wasm --target nodejs    # Node.js
-wasm-pack build crates/texform-wasm --target bundler   # webpack etc.
+wasm-pack build crates/texform-wasm --target nodejs
+wasm-pack build crates/texform-wasm --target bundler
 ```
-
-### Embedded Resources
-
-Command specs (`resources/specs/*.yaml`) are embedded into the binary at compile time via `include_str!()`. The `.so` and `.wasm` artifacts are fully self-contained. Changes to spec files require recompilation.
 
 ## Maintenance Notes
 
 ### TypeScript Type Declaration Sync
 
-`crates/texform-wasm/src/lib.rs` contains a manual `typescript_custom_section` for `SyntaxNode` types. **When modifying types in `texform-interface/src/syntax_node.rs`, you must update this section to match.** This is a tsify-next limitation across crate boundaries — see the comment in that file for details.
+`crates/texform-wasm/src/lib.rs` contains a manual `typescript_custom_section` for `SyntaxNode` types. When modifying types in `texform-interface/src/syntax_node.rs`, update this section to match.
 
 Verify after changes:
 
@@ -119,7 +97,3 @@ Verify after changes:
 wasm-pack build crates/texform-wasm --target nodejs
 cat crates/texform-wasm/pkg/texform_wasm.d.ts
 ```
-
-## Available CLI Examples
-
-Two CLI examples (`parse` and `validate_spec`) are available for quick inspection and debugging. See [README.md](./README.md) for usage.

@@ -1,6 +1,6 @@
 # TeXForm
 
-A LaTeX formula parser and formatter.
+A LaTeX formula parser, formatter, and transform engine.
 
 ## Quick Start
 

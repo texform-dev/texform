@@ -220,6 +220,7 @@ pub enum SyntaxNode {
     /// This node is produced in both Math and Text modes.
     /// In Text mode, ~ is NOT merged into TextChunk; it remains as a separate node.
     ///
+    /// TODO: Decide whether this needs to remain a distinct node type.
     ActiveSpace,
 }
 
