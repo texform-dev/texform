@@ -1,10 +1,13 @@
-import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { PACKAGE_MAP } from "../package-map.js";
 import type { CompileOptions, CompileResult } from "../types.js";
-
-const INVALID_CMD_RE = /^LaTeX Warning: Command .+ invalid/;
+import {
+  buildUsepackages,
+  compileSingleXeTeX,
+  INVALID_CMD_RE,
+  spawnXeLaTeX,
+} from "./xetex-shared.js";
 
 export interface BatchItem {
   tex: string;
@@ -19,13 +22,6 @@ export interface XeTeXBatchCompiler {
 // Stable key for grouping items with identical compile options.
 function optionsKey(opts: CompileOptions): string {
   return `${opts.mode}|${opts.display ?? false}|${[...opts.packages].sort().join(",")}`;
-}
-
-function buildUsepackages(packages: string[]): string {
-  return packages
-    .flatMap((p) => PACKAGE_MAP[p]?.xetex ?? [])
-    .map((pkg) => `\\usepackage{${pkg}}`)
-    .join("\n");
 }
 
 // Build a single .tex file containing multiple cases separated by markers.
@@ -84,65 +80,6 @@ function findFailedCaseIndex(log: string, batchSize: number): number {
   return -1;
 }
 
-async function extractErrorFromLog(logPath: string, stderr: string): Promise<string> {
-  try {
-    const log = await readFile(logPath, "utf8");
-    const errorLine = log.split("\n").find((l) => l.startsWith("!"));
-    if (errorLine) return errorLine;
-    return log.slice(0, 300);
-  } catch {
-    return stderr.slice(0, 200) || "unknown xelatex error";
-  }
-}
-
-// Compile a single item for exact error recovery after a batch failure.
-async function compileSingle(item: BatchItem): Promise<CompileResult> {
-  const usepackages = buildUsepackages(item.options.packages);
-  const body = item.options.mode === "math" ? `$${item.tex}$` : item.tex;
-  const texContent = `\\documentclass{article}
-${usepackages}
-\\begin{document}
-${body}
-\\end{document}
-`;
-
-  const dir = await mkdtemp(join(tmpdir(), "xetex-single-"));
-  const texPath = join(dir, "input.tex");
-  const logPath = join(dir, "input.log");
-
-  try {
-    await writeFile(texPath, texContent);
-    const proc = Bun.spawn(
-      [
-        "xelatex",
-        "-interaction=nonstopmode",
-        "-halt-on-error",
-        "-no-pdf",
-        `-output-directory=${dir}`,
-        texPath,
-      ],
-      { stdout: "pipe", stderr: "pipe" },
-    );
-    const exitCode = await proc.exited;
-    const stderr = await new Response(proc.stderr).text();
-
-    if (exitCode !== 0) {
-      const error = await extractErrorFromLog(logPath, stderr);
-      return { success: false, error };
-    }
-
-    try {
-      const log = await readFile(logPath, "utf8");
-      const warning = log.split("\n").find((l) => INVALID_CMD_RE.test(l));
-      if (warning) return { success: false, error: warning };
-    } catch {}
-
-    return { success: true };
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-}
-
 // Compile a batch of items in one xelatex invocation.
 // On failure, falls back to individual compilation to get exact per-item results.
 async function compileBatchGroup(items: BatchItem[]): Promise<CompileResult[]> {
@@ -156,23 +93,15 @@ async function compileBatchGroup(items: BatchItem[]): Promise<CompileResult[]> {
   try {
     await writeFile(texPath, buildBatchTexFile(items, usepackages));
 
-    const proc = Bun.spawn(
-      [
-        "xelatex",
-        "-interaction=nonstopmode",
-        "-halt-on-error",
-        "-no-pdf",
-        `-output-directory=${dir}`,
-        texPath,
-      ],
-      { stdout: "pipe", stderr: "pipe" },
-    );
+    const proc = spawnXeLaTeX(texPath, dir);
     const exitCode = await proc.exited;
 
     if (exitCode === 0) {
       // Check for "invalid command" warnings that don't cause a non-zero exit.
       let log = "";
-      try { log = await readFile(logPath, "utf8"); } catch {}
+      try {
+        log = await readFile(logPath, "utf8");
+      } catch {}
 
       if (log) {
         const warned = findWarnedCases(log);
@@ -201,7 +130,11 @@ async function compileBatchGroup(items: BatchItem[]): Promise<CompileResult[]> {
 
     if (failedIndex < 0) {
       // Cannot determine which case failed; run each individually.
-      return Promise.all(items.map(compileSingle));
+      return Promise.all(
+        items.map((item) =>
+          compileSingleXeTeX(item, "xetex-single-", "log-first"),
+        ),
+      );
     }
 
     // Cases before failedIndex definitely passed.
@@ -211,7 +144,11 @@ async function compileBatchGroup(items: BatchItem[]): Promise<CompileResult[]> {
       .slice(0, failedIndex)
       .map(() => ({ success: true }));
 
-    const tail = await Promise.all(items.slice(failedIndex).map(compileSingle));
+    const tail = await Promise.all(
+      items
+        .slice(failedIndex)
+        .map((item) => compileSingleXeTeX(item, "xetex-single-", "log-first")),
+    );
     results.push(...tail);
     return results;
   } finally {

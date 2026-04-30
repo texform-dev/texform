@@ -1,5 +1,8 @@
 import type { SerializeOptions } from '../schema/serializeOptions'
-import { DEFAULT_SERIALIZE_OPTIONS } from '../schema/serializeOptions'
+import {
+  DEFAULT_SERIALIZE_OPTIONS,
+  serializeOptionsSchema,
+} from '../schema/serializeOptions'
 
 interface PlaygroundState {
   source: string
@@ -31,7 +34,10 @@ export function readStateFromUrl(): Partial<PlaygroundState> {
   const opts = params.get('opts')
   if (opts) {
     try {
-      state.serializeOptions = JSON.parse(opts) as SerializeOptions
+      const parsed = serializeOptionsSchema.safeParse(JSON.parse(opts))
+      if (parsed.success) {
+        state.serializeOptions = parsed.data
+      }
     } catch {
       // Ignore malformed opts
     }

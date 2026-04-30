@@ -5,7 +5,9 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "test": "bun run src/cli.ts"
+    "test": "bun test",
+    "validate": "bun run src/cli.ts",
+    "check:argspecs": "bun run src/cli.ts --check"
   },
   "dependencies": {
     "@texform/tex-renderers": "workspace:*",

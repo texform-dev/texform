@@ -1,5 +1,5 @@
 import { resolve, join } from "node:path";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import {
   createMathJaxCompiler, createKaTeXCompiler, createXeTeXCompiler,
@@ -125,9 +125,21 @@ function createBatchCompilerIfNeeded(renderers: RendererName[]) {
   return undefined;
 }
 
+function pruneStaleJsonlFiles(dir: string, keepPackages: Set<string>) {
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith(".jsonl")) continue;
+    const pkg = file.slice(0, -".jsonl".length);
+    if (!keepPackages.has(pkg)) {
+      unlinkSync(join(dir, file));
+    }
+  }
+}
+
 function writeResults(outDir: string, allResults: RecordTestResult[], allErrors: ErrorLogEntry[]) {
-  mkdirSync(join(outDir, "results"), { recursive: true });
-  mkdirSync(join(outDir, "errors"), { recursive: true });
+  const resultsDir = join(outDir, "results");
+  const errorsDir = join(outDir, "errors");
+  mkdirSync(resultsDir, { recursive: true });
+  mkdirSync(errorsDir, { recursive: true });
 
   const byPkg = new Map<string, RecordTestResult[]>();
   const errByPkg = new Map<string, ErrorLogEntry[]>();
@@ -140,12 +152,15 @@ function writeResults(outDir: string, allResults: RecordTestResult[], allErrors:
     errByPkg.get(e.package)!.push(e);
   }
 
+  pruneStaleJsonlFiles(resultsDir, new Set(byPkg.keys()));
+  pruneStaleJsonlFiles(errorsDir, new Set(errByPkg.keys()));
+
   for (const [pkg, results] of byPkg) {
-    writeFileSync(join(outDir, "results", `${pkg}.jsonl`),
+    writeFileSync(join(resultsDir, `${pkg}.jsonl`),
       results.map((r) => JSON.stringify(r)).join("\n") + "\n");
   }
   for (const [pkg, errors] of errByPkg) {
-    writeFileSync(join(outDir, "errors", `${pkg}.jsonl`),
+    writeFileSync(join(errorsDir, `${pkg}.jsonl`),
       errors.map((e) => JSON.stringify(e)).join("\n") + "\n");
   }
 
@@ -228,9 +243,8 @@ async function runCheckMode() {
   for (const c of probeCompilers.values()) await c.dispose?.();
 
   const probeResults = works.map((w) => buildRecordResult(w.record, w.caseResults));
-  const probeSummary = buildSummary(probeResults);
 
-  if (!summaryNeedsRefresh(outDir, probeSummary, probeRenderers)) {
+  if (!summaryNeedsRefresh(outDir, probeResults, probeRenderers)) {
     console.log("[check] Spec validation up to date");
     return;
   }

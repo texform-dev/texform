@@ -1,4 +1,4 @@
-import initWasmModule, {
+import {
   ParseContext as WasmParseContext,
   parse as wasmParse,
   parse_with_context_items as wasmParseWithContextItems,
@@ -13,8 +13,8 @@ import initWasmModule, {
   type Span,
   type SyntaxNode,
 } from 'texform-wasm'
+import type { SerializeOptions } from '../schema/serializeOptions'
 
-let initPromise: Promise<void> | null = null
 let initialized = false
 
 function assertReady(): void {
@@ -24,15 +24,7 @@ function assertReady(): void {
 }
 
 export async function ensureWasmReady(): Promise<void> {
-  if (initialized) {
-    return
-  }
-  if (!initPromise) {
-    initPromise = initWasmModule().then(() => {
-      initialized = true
-    })
-  }
-  await initPromise
+  initialized = true
 }
 
 export type CommandKind = 'prefix' | 'infix' | 'declarative'
@@ -173,34 +165,6 @@ export function parseWithContextItems(
     packages ?? undefined,
     strict,
   ) as ParseWithContextBatchResult
-}
-
-// -- Serialize option types --
-
-export type CommandSpacing = 'spaced' | 'minimal'
-export type MathGroupInnerSpacing = 'padded' | 'compact'
-export type AdjacentCharSpacing = 'spaced' | 'compact'
-export type ScriptSpacing = 'spaced' | 'compact'
-export type ScriptOrder = 'sub_first' | 'sup_first'
-export type EnvironmentNameSpacing = 'spaced' | 'compact'
-
-export interface SerializeOptions {
-  math?: {
-    spacing?: {
-      commands?: CommandSpacing
-      group_inner_spacing?: MathGroupInnerSpacing
-      adjacent_chars?: AdjacentCharSpacing
-    }
-    scripts?: {
-      spacing?: ScriptSpacing
-      order?: ScriptOrder
-    }
-  }
-  syntax?: {
-    environments?: {
-      name_spacing?: EnvironmentNameSpacing
-    }
-  }
 }
 
 export function serializeLatex(

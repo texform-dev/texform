@@ -9,73 +9,11 @@ use texform_core::parse::{
 use texform_core::serialize::SerializeOptions;
 use wasm_bindgen::prelude::*;
 
-// MANUAL TypeScript type declarations for SyntaxNode and related types.
-//
-// These must be kept in sync with the Rust definitions in
-// `texform-interface/src/syntax_node.rs`. They mirror serde's default
-// externally-tagged enum representation.
-//
-// Why manual? tsify-next auto-generates TS declarations via
-// `#[wasm_bindgen(typescript_custom_section)]`, but wasm-lld's dead-code
-// elimination drops those sections from dependency crates (texform-interface)
-// because no exported `#[wasm_bindgen]` function directly references their
-// WasmDescribe impls. Only types from the cdylib crate itself (or types
-// with `into_wasm_abi` used in an exported function signature) survive.
-//
-// If you modify SyntaxNode or its sub-types, update the definitions below.
+// Additional TypeScript declarations for JS-shaped API values that are not
+// generated from exported wasm-bindgen signatures.
 #[wasm_bindgen(typescript_custom_section)]
-const SYNTAX_NODE_TYPES: &str = r#"
-export type SyntaxNode =
-    | { Root: { mode: ContentMode; children: SyntaxNode[] } }
-    | { Group: { mode: ContentMode; kind: GroupKind; children: SyntaxNode[] } }
-    | { Command: { name: string; args: ArgumentSlot[]; known: boolean } }
-    | { Infix: { name: string; args: ArgumentSlot[]; left: SyntaxNode; right: SyntaxNode } }
-    | { Declarative: { name: string; args: ArgumentSlot[] } }
-    | { Environment: { name: string; args: ArgumentSlot[]; known: boolean; body: SyntaxNode } }
-    | { Scripted: { base: SyntaxNode; subscript?: SyntaxNode; superscript?: SyntaxNode } }
-    | { Error: { message: string; snippet: string } }
-    | { Text: string }
-    | { Char: string }
-    | "ActiveSpace";
-
-export type ContentMode = "Math" | "Text";
-
-export type GroupKind =
-    | "Explicit"
-    | "Implicit"
-    | { Delimited: { left: Delimiter; right: Delimiter } }
-    | "InlineMath";
-
-export type Delimiter =
-    | "None"
-    | { Char: string }
-    | { Control: string };
-
-export type Argument = {
-    kind: ArgumentKind;
-    value: ArgumentValue;
-};
-
+const WASM_API_TYPES: &str = r#"
 export type ArgumentSlot = Argument | null | undefined;
-
-export type ArgumentKind =
-    | "Mandatory"
-    | "Optional"
-    | "Star"
-    | "Group"
-    | { Delimited: { open: Delimiter; close: Delimiter } }
-    | { Paired: { open: Delimiter; close: Delimiter } };
-
-export type ArgumentValue =
-    | { MathContent: SyntaxNode }
-    | { TextContent: SyntaxNode }
-    | { Delimiter: Delimiter }
-    | { CSName: string }
-    | { Dimension: string }
-    | { Integer: string }
-    | { KeyVal: string }
-    | { Column: string }
-    | { Boolean: boolean };
 
 export type ArgSpecInfo = {
     required: boolean;

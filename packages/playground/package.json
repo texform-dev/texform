@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test": "bun test",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -22,7 +23,8 @@
     "monaco-editor": "^0.55.1",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.58.1",
-    "vite": "^8.0.8"
+    "vite": "^8.0.8",
+    "vite-plugin-wasm": "^3.6.0"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

@@ -23,7 +23,7 @@ export default function wasmPackWatch(): Plugin {
   function rebuild(server: { ws: { send: (msg: unknown) => void } }) {
     if (building) return
     building = true
-    const cmd = `wasm-pack build crates/texform-wasm --target web --out-dir pkg-web`
+    const cmd = `wasm-pack build crates/texform-wasm --target bundler --out-dir pkg-web`
     console.log('\x1b[36m[wasm-pack]\x1b[0m rebuilding...')
     const start = Date.now()
     exec(cmd, { cwd: projectRoot }, (err) => {

@@ -26,26 +26,29 @@ wasm-pack build crates/texform-wasm --target nodejs
 
 ```bash
 # Run all packages (MathJax + KaTeX + XeTeX)
-bun run src/cli.ts
+bun run validate
 
 # Preview generated cases without running renderers
-bun run src/cli.ts --dry-run
+bun run validate --dry-run
 
 # Filter to a specific package or command
-bun run src/cli.ts --package base
-bun run src/cli.ts --package textmacros --name textbf
+bun run validate --package base
+bun run validate --package textmacros --name textbf
 
 # Use a single renderer
-bun run src/cli.ts --renderer mathjax
+bun run validate --renderer mathjax
 
 # Test a single record from JSON (outputs to stdout)
-bun run src/cli.ts --record '{"package":"base","name":"frac","type":"command","argspec":"m m","kind":"prefix","allowed_mode":"math","tags":[]}'
+bun run validate --record '{"package":"base","name":"frac","type":"command","argspec":"m m","kind":"prefix","allowed_mode":"math","tags":[]}'
 
-# Force re-run, ignoring cached results
-bun run src/cli.ts --force
+# Check whether the stored validation output matches the current generated cases
+bun run check:argspecs
 
 # Custom output directory
-bun run src/cli.ts --out-dir /tmp/spec-test-out
+bun run validate --out-dir /tmp/spec-test-out
+
+# Run unit tests
+bun run test
 ```
 
 All three renderers run by default. If `xelatex` is not found in PATH, XeTeX is skipped automatically with a warning.
@@ -57,11 +60,15 @@ XeTeX tuning options:
 | `--xetex-batch-size` | `5` | Cases per XeTeX subprocess |
 | `--xetex-concurrency` | `16` | Parallel XeTeX workers |
 
-### Result Caching
+### Check Mode
 
-On subsequent runs, cases whose results already exist in the output directory are skipped. A case is considered cached when all active renderers have a result for the same `(package, name, tex)` tuple. Use `--force` to bypass the cache and re-run everything.
+`bun run check:argspecs` probes a representative subset and compares it with
+the existing `results/*.jsonl` files. It exits without rewriting results when
+the stored output still matches the current generated records, cases, renderer
+pass/fail state, and renderer error categories.
 
-If the generator produces different cases than what's cached (e.g. after a spec or generator change), new cases run automatically and stale cached entries are discarded.
+Use `bun run validate` to refresh the full result set. Stale package JSONL files
+are removed when validation writes a new output directory state.
 
 ## Test Case Generation
 

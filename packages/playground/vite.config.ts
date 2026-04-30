@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import wasm from 'vite-plugin-wasm'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import wasmPackWatch from './vite-plugin-wasm-pack-watch'
@@ -20,5 +21,5 @@ export default defineConfig({
       allow: [repoRoot],
     },
   },
-  plugins: [react(), tailwindcss(), wasmPackWatch()],
+  plugins: [wasm(), react(), tailwindcss(), wasmPackWatch()],
 })
