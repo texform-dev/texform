@@ -33,7 +33,7 @@ use logos::Logos;
 
 use crate::knowledge::{ActiveCommandRecord, ActiveEnvironmentRecord, ArgSpec, CommandKind};
 use crate::lexer::Token;
-use crate::parse::ParseContext;
+use crate::parse::{ParseContext, ParseDiagnosticKind};
 use texform_interface::syntax_node::{ArgumentSlot, ContentMode, Delimiter, GroupKind, SyntaxNode};
 
 use self::arguments::{
@@ -292,7 +292,15 @@ fn rich_diagnostics_match(left: &Rich<'static, Token>, right: &Rich<'static, Tok
 
 fn rich_reason_key(err: &Rich<'static, Token>) -> (Option<String>, Vec<String>, Option<String>) {
     match err.reason() {
-        chumsky::error::RichReason::Custom(message) => (Some(message.clone()), Vec::new(), None),
+        chumsky::error::RichReason::Custom(message) => (
+            Some(
+                ParseDiagnosticKind::split_message(message.as_str())
+                    .1
+                    .to_string(),
+            ),
+            Vec::new(),
+            None,
+        ),
         chumsky::error::RichReason::ExpectedFound { expected, found } => (
             None,
             expected.iter().map(|pattern| pattern.to_string()).collect(),
@@ -305,6 +313,92 @@ fn rich_contexts_key(err: &Rich<'static, Token>) -> Vec<(String, SimpleSpan)> {
     err.contexts()
         .map(|(label, span)| (label.to_string(), *span))
         .collect()
+}
+
+pub(crate) fn diagnostic_kind(err: &Rich<'_, Token>) -> Option<ParseDiagnosticKind> {
+    match err.reason() {
+        chumsky::error::RichReason::Custom(message) => {
+            ParseDiagnosticKind::split_message(message.as_str()).0
+        }
+        chumsky::error::RichReason::ExpectedFound { .. } => None,
+    }
+    .or_else(|| {
+        err.contexts()
+            .find_map(|(label, _)| ParseDiagnosticKind::from_context_label(&label.to_string()))
+    })
+}
+
+fn add_contexts_to_error<'a>(
+    mut err: Rich<'a, Token>,
+    contexts: Vec<(String, SimpleSpan)>,
+) -> Rich<'a, Token> {
+    for (label, span) in contexts {
+        <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, String>>::in_context(
+            &mut err, label, span,
+        );
+    }
+    err
+}
+
+fn error_contexts(err: &Rich<'_, Token>) -> Vec<(String, SimpleSpan)> {
+    err.contexts()
+        .map(|(label, span)| (label.to_string(), *span))
+        .collect()
+}
+
+fn has_diagnostic_kind(err: &Rich<'_, Token>, kind: ParseDiagnosticKind) -> bool {
+    diagnostic_kind(err) == Some(kind)
+}
+
+pub(crate) fn custom_error<'a>(
+    span: SimpleSpan,
+    msg: impl ToString,
+    kind: ParseDiagnosticKind,
+) -> Rich<'a, Token> {
+    let mut err = Rich::custom(span, kind.wrap_message(msg.to_string()));
+    attach_diagnostic_kind(&mut err, kind, span);
+    err
+}
+
+pub(crate) fn with_default_diagnostic_kind<'a>(
+    err: Rich<'a, Token>,
+    kind: ParseDiagnosticKind,
+) -> Rich<'a, Token> {
+    if diagnostic_kind(&err).is_some() {
+        err
+    } else {
+        with_diagnostic_kind(err, kind)
+    }
+}
+
+pub(crate) fn with_diagnostic_kind<'a>(
+    err: Rich<'a, Token>,
+    kind: ParseDiagnosticKind,
+) -> Rich<'a, Token> {
+    let span = *err.span();
+    let contexts = error_contexts(&err);
+    if let chumsky::error::RichReason::Custom(message) = err.reason() {
+        let (_, public_message) = ParseDiagnosticKind::split_message(message.as_str());
+        let mut rebuilt = Rich::custom(span, kind.wrap_message(public_message));
+        attach_diagnostic_kind(&mut rebuilt, kind, span);
+        return add_contexts_to_error(rebuilt, contexts);
+    }
+
+    let mut err = err;
+    attach_diagnostic_kind(&mut err, kind, span);
+    err
+}
+
+fn attach_diagnostic_kind<'a>(
+    err: &mut Rich<'a, Token>,
+    kind: ParseDiagnosticKind,
+    span: SimpleSpan,
+) {
+    <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, String>>::in_context(
+        err,
+        kind.context_label(),
+        span,
+    );
 }
 
 pub(crate) fn shift_owned_rich_span(
@@ -379,12 +473,18 @@ fn parse_argument_slots<'src, 'parse>(
             strict,
         );
         let arg = input.parse(parser).map_err(|err| {
+            let original_kind = diagnostic_kind(&err);
             let arg_span = err
                 .contexts()
                 .next()
                 .map(|(_, span)| *span)
                 .unwrap_or_else(|| input.span_from_cursor(&arg_start));
-            with_argument_context(err, context_label, arg_span)
+            let err = with_argument_context(err, context_label, arg_span);
+            if let Some(kind) = original_kind {
+                with_diagnostic_kind(err, kind)
+            } else {
+                with_default_diagnostic_kind(err, ParseDiagnosticKind::ArgumentValidation)
+            }
         })?;
         slots.push(arg);
     }
@@ -803,7 +903,10 @@ where
                     "left-delimited group",
                     input.span_from_cursor(&group_start),
                 );
-                return Err(err);
+                return Err(with_diagnostic_kind(
+                    err,
+                    ParseDiagnosticKind::LeftRightDelimiter,
+                ));
             }
         };
 
@@ -819,7 +922,10 @@ where
                 "left-delimited group",
                 input.span_from_cursor(&group_start),
             );
-            return Err(err);
+            return Err(with_diagnostic_kind(
+                err,
+                ParseDiagnosticKind::LeftRightDelimiter,
+            ));
         }
         let _ = input.parse(ws.clone());
 
@@ -836,7 +942,10 @@ where
                     "left-delimited group",
                     input.span_from_cursor(&group_start),
                 );
-                return Err(err);
+                return Err(with_diagnostic_kind(
+                    err,
+                    ParseDiagnosticKind::LeftRightDelimiter,
+                ));
             }
         };
 
@@ -1239,18 +1348,15 @@ fn is_text_hard_stop(token: &Token) -> bool {
         || matches!(token, Token::ControlSeq(name) if name == "end")
 }
 
-fn is_direct_left_group_error(message: &str) -> bool {
-    matches!(
-        message,
-        "invalid \\left delimiter"
-            | "missing \\right for \\left-delimited group"
-            | "invalid \\right delimiter"
-    )
+fn is_direct_left_group_error(err: &Rich<'_, Token>) -> bool {
+    has_diagnostic_kind(err, ParseDiagnosticKind::LeftRightDelimiter)
 }
 
-fn is_direct_environment_header_error(message: &str) -> bool {
-    message.starts_with("Unknown environment: ")
-        || (message.starts_with("Environment ") && message.contains(" is not allowed in "))
+fn is_direct_environment_header_error(err: &Rich<'_, Token>) -> bool {
+    matches!(
+        diagnostic_kind(err),
+        Some(ParseDiagnosticKind::UnknownEnvironment | ParseDiagnosticKind::EnvironmentModeError)
+    )
 }
 
 fn scan_environment_stack_before(src: &str, limit: usize) -> Vec<String> {
@@ -1378,13 +1484,10 @@ fn normalize_recovery_message(
     current_mode: ContentMode,
     src: &str,
     message: String,
-) -> String {
-    let is_generic_parse_error = matches!(
-        message.as_str(),
-        "found '}' expected something else" | "found '}' expected something else, or end of input"
-    );
-    if !is_generic_parse_error {
-        return message;
+    kind: Option<ParseDiagnosticKind>,
+) -> (String, Option<ParseDiagnosticKind>) {
+    if kind != Some(ParseDiagnosticKind::RawExpectedFound) {
+        return (message, kind);
     }
 
     if let Some(env_name) = leading_begin_environment_name(src)
@@ -1393,9 +1496,12 @@ fn normalize_recovery_message(
             .lookup_env(env_name.as_str(), other_mode(current_mode))
             .is_some()
     {
-        return format!(
-            "Environment {} is not allowed in {} mode",
-            env_name, current_mode
+        return (
+            format!(
+                "Environment {} is not allowed in {} mode",
+                env_name, current_mode
+            ),
+            Some(ParseDiagnosticKind::EnvironmentModeError),
         );
     }
 
@@ -1453,9 +1559,12 @@ fn normalize_recovery_message(
             if expected == &env_name {
                 stack.pop();
             } else {
-                return format!(
-                    "Environment name mismatch: expected \\end{{{}}}, found \\end{{{}}}",
-                    expected, env_name
+                return (
+                    format!(
+                        "Environment name mismatch: expected \\end{{{}}}, found \\end{{{}}}",
+                        expected, env_name
+                    ),
+                    Some(ParseDiagnosticKind::EnvironmentNameMismatch),
                 );
             }
         }
@@ -1463,7 +1572,7 @@ fn normalize_recovery_message(
         index += 1;
     }
 
-    message
+    (message, kind)
 }
 
 fn is_hard_stop_after_whitespace<'src, 'parse>(
@@ -1509,10 +1618,9 @@ where
             Ok(tracked) => return Ok(tracked),
             Err(err) => err,
         };
-        let direct_left_group_error = item_starts_with_left
-            && matches!(err.reason(), chumsky::error::RichReason::Custom(message) if is_direct_left_group_error(message));
-        let direct_environment_header_error = item_starts_with_begin
-            && matches!(err.reason(), chumsky::error::RichReason::Custom(message) if is_direct_environment_header_error(message));
+        let direct_left_group_error = item_starts_with_left && is_direct_left_group_error(&err);
+        let direct_environment_header_error =
+            item_starts_with_begin && is_direct_environment_header_error(&err);
         if direct_left_group_error || direct_environment_header_error {
             return Err(err);
         }
@@ -1523,7 +1631,14 @@ where
             return Err(err);
         }
 
-        let message = opening_environment
+        let err_kind = diagnostic_kind(&err).or_else(|| {
+            matches!(
+                err.reason(),
+                chumsky::error::RichReason::ExpectedFound { .. }
+            )
+            .then_some(ParseDiagnosticKind::RawExpectedFound)
+        });
+        let (message, kind) = opening_environment
             .as_ref()
             .and_then(|env_name| {
                 if ctx.lookup_env(env_name.as_str(), current_mode).is_none()
@@ -1531,23 +1646,33 @@ where
                         .lookup_env(env_name.as_str(), other_mode(current_mode))
                         .is_some()
                 {
-                    Some(format!(
-                        "Environment {} is not allowed in {} mode",
-                        env_name, current_mode
+                    Some((
+                        format!(
+                            "Environment {} is not allowed in {} mode",
+                            env_name, current_mode
+                        ),
+                        Some(ParseDiagnosticKind::EnvironmentModeError),
                     ))
                 } else {
                     None
                 }
             })
             .unwrap_or_else(|| match err.reason() {
-                chumsky::error::RichReason::ExpectedFound { .. } => format!("{err}"),
-                chumsky::error::RichReason::Custom(message) => message.clone(),
+                chumsky::error::RichReason::ExpectedFound { .. } => (format!("{err}"), err_kind),
+                chumsky::error::RichReason::Custom(message) => (
+                    ParseDiagnosticKind::split_message(message.as_str())
+                        .1
+                        .to_string(),
+                    err_kind,
+                ),
             });
         let recovery_src = src.get(item_start_index..).unwrap_or(src);
-        let message = normalize_recovery_message(ctx, current_mode, recovery_src, message);
+        let (message, kind) =
+            normalize_recovery_message(ctx, current_mode, recovery_src, message, kind);
 
         let recovery_parser = custom({
             let message = message.clone();
+            let should_consume_command_args = kind == Some(ParseDiagnosticKind::CommandModeError);
             let opening_environment = opening_environment.clone();
             let outer_environment_stack = outer_environment_stack.clone();
             move |input| {
@@ -1560,8 +1685,7 @@ where
                     let boundary_checkpoint = input.save();
                     let _ = input.parse(ws.clone());
 
-                    if message.starts_with("Command \\") && message.contains(" is not allowed in ")
-                    {
+                    if should_consume_command_args {
                         if matches!(input.peek(), Some(Token::LBracket)) {
                             let _ = collect_optional_bracketed_tokens(input, true);
                             consumed = true;
@@ -1675,9 +1799,10 @@ fn command_head_parser<'src, 'parse>(
             ));
         }
         ModeLookup::WrongMode => {
-            return Err(Rich::custom(
+            return Err(custom_error(
                 cmd_span,
                 format!("Command \\{} is not allowed in {} mode", name, current_mode),
+                ParseDiagnosticKind::CommandModeError,
             ));
         }
         ModeLookup::NotFound => {
@@ -1937,19 +2062,21 @@ fn environment_parser<'a>(
                     (cmd_args, true, meta.body_mode)
                 }
                 ModeLookup::WrongMode => {
-                    return Err(Rich::custom(
+                    return Err(custom_error(
                         name_span,
                         format!(
                             "Environment {} is not allowed in {} mode",
                             name, current_mode
                         ),
+                        ParseDiagnosticKind::EnvironmentModeError,
                     ));
                 }
                 ModeLookup::NotFound => {
                     if strict {
-                        return Err(Rich::custom(
+                        return Err(custom_error(
                             name_span,
                             format!("Unknown environment: {}", name),
+                            ParseDiagnosticKind::UnknownEnvironment,
                         ));
                     }
 
@@ -2010,12 +2137,13 @@ fn environment_parser<'a>(
 
         if end_name != name {
             input.rewind(body_recovery_start);
-            return Err(Rich::custom(
+            return Err(custom_error(
                 end_span,
                 format!(
                     "Environment name mismatch: expected \\end{{{}}}, found \\end{{{}}}",
                     expected_end, end_name
                 ),
+                ParseDiagnosticKind::EnvironmentNameMismatch,
             ));
         }
 
@@ -2195,9 +2323,10 @@ where
         Token::Subscript => (),
     }
     .try_map(|_, span| {
-        Err(Rich::custom(
+        Err(custom_error(
             span,
             "Scripted syntax is not allowed in Text mode",
+            ParseDiagnosticKind::TextScriptError,
         ))
     });
 
@@ -2286,9 +2415,7 @@ where
             match input.parse(guarded_item.clone()) {
                 Ok(item) => items.push(item),
                 Err(err) => {
-                    if preserve_first_item_error
-                        && matches!(err.reason(), chumsky::error::RichReason::Custom(message) if is_direct_left_group_error(message))
-                    {
+                    if preserve_first_item_error && is_direct_left_group_error(&err) {
                         return Err(err);
                     }
                     input.rewind(checkpoint);

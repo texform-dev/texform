@@ -9,4 +9,4 @@ pub use context::{
     ParseOutput, ParseResult, Span,
 };
 
-pub(crate) use context::MutationSummary;
+pub(crate) use context::{MutationSummary, ParseDiagnosticKind};

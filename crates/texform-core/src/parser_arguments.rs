@@ -16,7 +16,7 @@ use crate::column_parser::parse_column_template;
 use crate::dimension::is_valid_dimension_unit;
 use crate::knowledge::{ArgForm, ArgSpec, DelimiterToken, ValueKind};
 use crate::lexer::Token;
-use crate::parse::ParseContext;
+use crate::parse::{ParseContext, ParseDiagnosticKind};
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind,
     SyntaxNode,
@@ -253,10 +253,13 @@ fn filter_outer_errors(
 /// suppress the trailing outer `ExpectedFound` wrapper error.
 fn is_direct_custom_error(err: &Rich<'static, Token>) -> bool {
     match err.reason() {
-        chumsky::error::RichReason::Custom(message) => !matches!(
-            message.as_str(),
-            "not a command" | "unknown" | "content recovery must consume at least one token"
-        ),
+        chumsky::error::RichReason::Custom(message) => {
+            let (_, message) = ParseDiagnosticKind::split_message(message.as_str());
+            !matches!(
+                message,
+                "not a command" | "unknown" | "content recovery must consume at least one token"
+            )
+        }
         chumsky::error::RichReason::ExpectedFound { .. } => false,
     }
 }
