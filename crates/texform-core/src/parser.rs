@@ -31,7 +31,7 @@ use chumsky::{
 };
 use logos::Logos;
 
-use crate::knowledge::{ActiveCommandRecord, ActiveEnvironmentRecord, CommandKind};
+use crate::knowledge::{ActiveCommandRecord, ActiveEnvironmentRecord, ArgSpec, CommandKind};
 use crate::lexer::Token;
 use crate::parse::ParseContext;
 use texform_interface::syntax_node::{ArgumentSlot, ContentMode, Delimiter, GroupKind, SyntaxNode};
@@ -351,6 +351,45 @@ fn with_argument_context<'a>(
     let mut err = clone_rich_error(&err);
     <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(&mut err, label, span);
     err
+}
+
+fn parse_argument_slots<'src, 'parse>(
+    input: &mut ParserInput<'src, 'parse>,
+    ctx: &'src ParseContext,
+    math_content: ContentParser<'src>,
+    text_content: ContentParser<'src>,
+    args: &'static [ArgSpec],
+    strict: bool,
+    context_label: &'static str,
+) -> Result<Vec<TrackedArgumentSlot>, Rich<'src, Token>> {
+    let ws = insignificant_whitespace();
+    let mut slots = Vec::with_capacity(args.len());
+
+    for spec in args {
+        if !spec.no_leading_space {
+            let _ = input.parse(ws.clone());
+        }
+
+        let arg_start = input.cursor();
+        let parser = argument_parser(
+            ctx,
+            math_content.clone(),
+            text_content.clone(),
+            spec,
+            strict,
+        );
+        let arg = input.parse(parser).map_err(|err| {
+            let arg_span = err
+                .contexts()
+                .next()
+                .map(|(_, span)| *span)
+                .unwrap_or_else(|| input.span_from_cursor(&arg_start));
+            with_argument_context(err, context_label, arg_span)
+        })?;
+        slots.push(arg);
+    }
+
+    Ok(slots)
 }
 
 fn clone_rich_error<'a>(err: &Rich<'a, Token>) -> Rich<'a, Token> {
@@ -1660,23 +1699,6 @@ fn command_head_parser<'src, 'parse>(
 // Content and Argument Parsers
 // ============================================================================
 
-/// Lookahead guard that succeeds when the next token is an infix command.
-/// Used as a stop condition for leading-item collection.
-fn math_infix_guard<'a>(
-    ctx: &'a ParseContext,
-    current_mode: ContentMode,
-) -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
-    select! {
-        Token::ControlSeq(name)
-            if matches!(lookup_command_for_parse(ctx, name.as_str(), current_mode),
-                ModeLookup::Found(meta) if meta.kind == CommandKind::Infix)
-                || ctx.lookup_command(name.as_str(), other_mode(current_mode))
-                    .map(|meta| meta.kind == CommandKind::Infix)
-                    .unwrap_or(false) => ()
-    }
-    .rewind()
-}
-
 fn infix_guard<'a>(
     ctx: &'a ParseContext,
     current_mode: ContentMode,
@@ -1727,7 +1749,7 @@ fn math_item_parser<'a>(
         strict,
     );
 
-    math_infix_guard(ctx, ContentMode::Math)
+    infix_guard(ctx, ContentMode::Math)
         .or(control_seq("right"))
         .or(control_seq("end"))
         .not()
@@ -1771,40 +1793,15 @@ fn prefix_command_parser<'a>(
                 Err(err) => return Err(err),
             };
 
-        let mut cmd_args: Vec<TrackedArgumentSlot> = Vec::with_capacity(meta.argspec.args.len());
-        for spec in meta.argspec.args {
-            if !spec.no_leading_space {
-                let _ = input.parse(insignificant_whitespace());
-            }
-
-            let arg_start = input.cursor();
-            let parser = argument_parser(
-                ctx,
-                math_content.clone(),
-                text_content.clone(),
-                spec,
-                strict,
-            );
-            let arg = match input.parse(parser) {
-                Ok(arg) => arg,
-                Err(err) => {
-                    let arg_span = err
-                        .contexts()
-                        .next()
-                        .map(|(_, span)| *span)
-                        .unwrap_or_else(|| input.span_from_cursor(&arg_start));
-                    return match err.reason() {
-                        chumsky::error::RichReason::Custom(_) => {
-                            Err(with_argument_context(err, "command argument", arg_span))
-                        }
-                        chumsky::error::RichReason::ExpectedFound { .. } => {
-                            Err(with_argument_context(err, "command argument", arg_span))
-                        }
-                    };
-                }
-            };
-            cmd_args.push(arg);
-        }
+        let cmd_args = parse_argument_slots(
+            input,
+            ctx,
+            math_content.clone(),
+            text_content.clone(),
+            meta.argspec.args,
+            strict,
+            "command argument",
+        )?;
 
         let span = input.span_from_cursor(&cmd_start);
         let (args, records, diagnostics) = TrackedNode::decompose_args(cmd_args);
@@ -1836,42 +1833,15 @@ fn declarative_command_parser<'a>(
                 Err(err) => return Err(err),
             };
 
-        let mut cmd_args: Vec<TrackedArgumentSlot> = Vec::with_capacity(meta.argspec.args.len());
-        for spec in meta.argspec.args {
-            if !spec.no_leading_space {
-                let _ = input.parse(insignificant_whitespace());
-            }
-
-            let arg_start = input.cursor();
-            let parser = argument_parser(
-                ctx,
-                math_content.clone(),
-                text_content.clone(),
-                spec,
-                strict,
-            );
-            let arg = match input.parse(parser) {
-                Ok(arg) => arg,
-                Err(err) => {
-                    let arg_span = err
-                        .contexts()
-                        .next()
-                        .map(|(_, span)| *span)
-                        .unwrap_or_else(|| input.span_from_cursor(&arg_start));
-                    return match err.reason() {
-                        chumsky::error::RichReason::Custom(_) => Err(with_argument_context(
-                            err,
-                            "declarative command argument",
-                            arg_span,
-                        )),
-                        chumsky::error::RichReason::ExpectedFound { .. } => Err(
-                            with_argument_context(err, "declarative command argument", arg_span),
-                        ),
-                    };
-                }
-            };
-            cmd_args.push(arg);
-        }
+        let cmd_args = parse_argument_slots(
+            input,
+            ctx,
+            math_content.clone(),
+            text_content.clone(),
+            meta.argspec.args,
+            strict,
+            "declarative command argument",
+        )?;
 
         let span = input.span_from_cursor(&cmd_start);
         let (args, records, diagnostics) = TrackedNode::decompose_args(cmd_args);
@@ -1954,49 +1924,15 @@ fn environment_parser<'a>(
         let (cmd_args, known, body_mode) =
             match lookup_env_for_parse(ctx, name.as_str(), current_mode) {
                 ModeLookup::Found(meta) => {
-                    let mut cmd_args: Vec<TrackedArgumentSlot> =
-                        Vec::with_capacity(meta.argspec.args.len());
-                    for spec in meta.argspec.args {
-                        if !spec.no_leading_space {
-                            let _ = input.parse(insignificant_whitespace());
-                        }
-
-                        let arg_start = input.cursor();
-                        let parser = argument_parser(
-                            ctx,
-                            math_content.clone(),
-                            text_content.clone(),
-                            spec,
-                            strict,
-                        );
-                        let arg = match input.parse(parser) {
-                            Ok(arg) => arg,
-                            Err(err) => {
-                                let arg_span = err
-                                    .contexts()
-                                    .next()
-                                    .map(|(_, span)| *span)
-                                    .unwrap_or_else(|| input.span_from_cursor(&arg_start));
-                                return match err.reason() {
-                                    chumsky::error::RichReason::Custom(_) => {
-                                        Err(with_argument_context(
-                                            err,
-                                            "environment argument",
-                                            arg_span,
-                                        ))
-                                    }
-                                    chumsky::error::RichReason::ExpectedFound { .. } => {
-                                        Err(with_argument_context(
-                                            err,
-                                            "environment argument",
-                                            arg_span,
-                                        ))
-                                    }
-                                };
-                            }
-                        };
-                        cmd_args.push(arg);
-                    }
+                    let cmd_args = parse_argument_slots(
+                        input,
+                        ctx,
+                        math_content.clone(),
+                        text_content.clone(),
+                        meta.argspec.args,
+                        strict,
+                        "environment argument",
+                    )?;
 
                     (cmd_args, true, meta.body_mode)
                 }
@@ -2318,7 +2254,7 @@ where
     P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
 {
     let ws = insignificant_whitespace();
-    let stop_infix = math_infix_guard(ctx, ContentMode::Math);
+    let stop_infix = infix_guard(ctx, ContentMode::Math);
     let stop_boundary = ws
         .clone()
         .ignore_then(stop_infix)
@@ -2385,41 +2321,15 @@ where
             let (name, meta) =
                 command_head_parser(input, ctx, CommandKind::Infix, ContentMode::Math, strict)?;
 
-            let mut args: Vec<TrackedArgumentSlot> = Vec::with_capacity(meta.argspec.args.len());
-            for spec in meta.argspec.args {
-                if !spec.no_leading_space {
-                    let _ = input.parse(ws.clone());
-                }
-
-                let arg_start = input.cursor();
-                let parser = argument_parser(
-                    ctx,
-                    math_content_for_infix.clone(),
-                    text_content_for_infix.clone(),
-                    spec,
-                    strict,
-                );
-                let arg =
-                    match input.parse(parser) {
-                        Ok(arg) => arg,
-                        Err(err) => {
-                            let arg_span = err
-                                .contexts()
-                                .next()
-                                .map(|(_, span)| *span)
-                                .unwrap_or_else(|| input.span_from_cursor(&arg_start));
-                            return match err.reason() {
-                                chumsky::error::RichReason::Custom(_) => Err(
-                                    with_argument_context(err, "infix command argument", arg_span),
-                                ),
-                                chumsky::error::RichReason::ExpectedFound { .. } => Err(
-                                    with_argument_context(err, "infix command argument", arg_span),
-                                ),
-                            };
-                        }
-                    };
-                args.push(arg);
-            }
+            let args = parse_argument_slots(
+                input,
+                ctx,
+                math_content_for_infix.clone(),
+                text_content_for_infix.clone(),
+                meta.argspec.args,
+                strict,
+                "infix command argument",
+            )?;
 
             let normal_item = math_item_parser(
                 ctx,

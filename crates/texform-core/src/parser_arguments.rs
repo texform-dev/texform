@@ -13,6 +13,7 @@
 use chumsky::{label::LabelError, prelude::*};
 
 use crate::column_parser::parse_column_template;
+use crate::dimension::is_valid_dimension_unit;
 use crate::knowledge::{ArgForm, ArgSpec, DelimiterToken, ValueKind};
 use crate::lexer::Token;
 use crate::parse::ParseContext;
@@ -1432,13 +1433,6 @@ fn column_spec_value<'a>(
 
         Ok(normalized)
     })
-}
-
-fn is_valid_dimension_unit(unit: &str) -> bool {
-    matches!(
-        unit,
-        "em" | "ex" | "pt" | "pc" | "px" | "in" | "cm" | "mm" | "mu"
-    )
 }
 
 /// Unwrap a single-child group into its inner node.

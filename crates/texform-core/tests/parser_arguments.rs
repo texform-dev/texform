@@ -163,6 +163,39 @@ fn dimension_argument_is_verified_via_public_parser() {
 }
 
 #[test]
+fn dimension_argument_accepts_shared_unit_set_and_rejects_unknown_units() {
+    let items = [command_item(
+        "hspace",
+        CommandKind::Prefix,
+        AllowedMode::Both,
+        "m:L",
+    )];
+
+    for unit in ["em", "ex", "pt", "pc", "px", "in", "cm", "mm", "mu"] {
+        let src = format!(r"\hspace{{1{unit}}}");
+        let output = parse_single_via_public_api(&items, &src, true);
+        assert!(
+            output.diagnostics.is_empty(),
+            "unexpected diagnostics for {src}: {:?}",
+            output.diagnostics
+        );
+        let (_name, args) = first_command(&output);
+        assert_eq!(
+            expect_arg(&args[0]).value,
+            ArgumentValue::Dimension(format!("1{unit}"))
+        );
+    }
+
+    let invalid = parse_single_via_public_api(&items, r"\hspace{1zz}", true);
+    assert!(invalid.result.is_none(), "unsupported unit should fail");
+    assert!(
+        !invalid.diagnostics.is_empty(),
+        "expected diagnostics for unsupported unit, got {:?}",
+        invalid.diagnostics
+    );
+}
+
+#[test]
 fn keyval_argument_accepts_nested_and_escaped_shapes() {
     let items = [command_item(
         "includegraphics",

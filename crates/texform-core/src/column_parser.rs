@@ -9,6 +9,7 @@
 
 use std::fmt;
 
+use crate::dimension::is_valid_dimension_unit;
 use texform_interface::column::{
     ArrayPadding, ColumnAlign, ColumnSpec, FrameLine, FrameSide, LineStyle, RowAlign, VerticalAlign,
 };
@@ -574,10 +575,7 @@ fn is_valid_dimension(raw: &str) -> bool {
         return false;
     }
     let unit: String = chars[unit_start..cursor].iter().collect();
-    if !matches!(
-        unit.as_str(),
-        "em" | "ex" | "pt" | "pc" | "px" | "in" | "cm" | "mm" | "mu"
-    ) {
+    if !is_valid_dimension_unit(&unit) {
         return false;
     }
 

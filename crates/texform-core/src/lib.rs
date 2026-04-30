@@ -20,4 +20,5 @@ pub mod parser;
 pub mod serialize;
 pub mod transform;
 
+mod dimension;
 mod knowledge;

@@ -57,3 +57,23 @@ fn parse_column_arg_invalid_template_errors() {
     let output = parse_inline_column_command(r"\colspec{a}");
     assert!(!output.diagnostics.is_empty());
 }
+
+#[test]
+fn parse_column_arg_uses_shared_dimension_unit_set() {
+    let output = parse_inline_column_command(r"\colspec{p{1mu}}");
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        output.diagnostics
+    );
+
+    let invalid = parse_inline_column_command(r"\colspec{p{1zz}}");
+    assert!(
+        invalid.result.is_none(),
+        "column argument with unknown dimension unit should fail"
+    );
+    assert!(
+        !invalid.diagnostics.is_empty(),
+        "expected diagnostics for invalid column dimension"
+    );
+}

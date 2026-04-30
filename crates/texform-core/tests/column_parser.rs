@@ -49,6 +49,19 @@ fn mjx_ref_bad_dimension() {
 }
 
 #[test]
+fn dimension_columns_accept_shared_unit_set_and_reject_unknown_units() {
+    for unit in ["em", "ex", "pt", "pc", "px", "in", "cm", "mm", "mu"] {
+        let template = format!("p{{1{unit}}}");
+        let spec = parse_column_template(&template).unwrap();
+        let expected = format!("1{unit}");
+        assert_eq!(spec.column_width[0], expected);
+    }
+
+    let err = parse_column_template("p{1zz}").unwrap_err();
+    assert_eq!(err, ColumnParseError::MissingColumnDimOrUnits('p'));
+}
+
+#[test]
 fn mjx_ref_missing_argument() {
     let err = parse_column_template("c@").unwrap_err();
     assert_eq!(err, ColumnParseError::MissingArgForColumn('@'));
