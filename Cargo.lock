@@ -1145,16 +1145,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "texform-argspec-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
- "texform-argspec",
-]
-
-[[package]]
 name = "texform-bench"
 version = "0.1.0"
 dependencies = [
@@ -1213,9 +1203,19 @@ dependencies = [
  "serde",
  "serde_yaml",
  "texform-argspec",
- "texform-argspec-macros",
  "texform-interface",
+ "texform-specs-macros",
  "trybuild",
+]
+
+[[package]]
+name = "texform-specs-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+ "texform-argspec",
 ]
 
 [[package]]

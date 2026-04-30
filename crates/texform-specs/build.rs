@@ -4,7 +4,13 @@ use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+mod specs_yaml {
+    include!("src/specs_yaml.rs");
+}
+
+use specs_yaml::{
+    AllowedModeYaml, CharacterAttributesYaml, CommandKindYaml, ContentModeYaml, PackageSpecsYaml,
+};
 use texform_argspec::parse_arg_specs;
 
 fn main() {
@@ -74,69 +80,6 @@ struct DelimiterRecordSource {
     attributes: CharacterAttributesYaml,
 }
 
-#[derive(Debug, Default, Deserialize)]
-struct PackageSpecsYaml {
-    #[serde(default)]
-    characters: Vec<CharacterSpecYaml>,
-    #[serde(default)]
-    delimiters: Vec<DelimiterSpecYaml>,
-    #[serde(default)]
-    commands: Vec<CommandSpecYaml>,
-    #[serde(default)]
-    environments: Vec<EnvironmentSpecYaml>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CharacterSpecYaml {
-    name: String,
-    allowed_mode: AllowedModeYaml,
-    unicode_value: String,
-    attributes: CharacterAttributesYaml,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct CharacterAttributesYaml {
-    #[serde(default)]
-    mathvariant: Option<String>,
-    #[serde(default)]
-    tex_class: Option<String>,
-    #[serde(default)]
-    stretchy: Option<bool>,
-    #[serde(default)]
-    move_sup_sub: Option<bool>,
-    #[serde(default)]
-    large_op: Option<bool>,
-}
-
-#[derive(Debug, Deserialize)]
-struct DelimiterSpecYaml {
-    name: String,
-    is_control_sequence: bool,
-    allowed_mode: AllowedModeYaml,
-    unicode_value: String,
-    attributes: CharacterAttributesYaml,
-}
-
-#[derive(Debug, Deserialize)]
-struct CommandSpecYaml {
-    name: String,
-    kind: CommandKindYaml,
-    #[serde(default)]
-    allowed_mode: AllowedModeYaml,
-    #[serde(default)]
-    argspec: String,
-    #[serde(default)]
-    tags: Vec<String>,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum CommandKindYaml {
-    Prefix,
-    Infix,
-    Declarative,
-}
-
 impl CommandKindYaml {
     fn code(self) -> &'static str {
         match self {
@@ -147,15 +90,6 @@ impl CommandKindYaml {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-enum AllowedModeYaml {
-    Math,
-    Text,
-    #[default]
-    Both,
-}
-
 impl AllowedModeYaml {
     fn code(self) -> &'static str {
         match self {
@@ -164,24 +98,6 @@ impl AllowedModeYaml {
             AllowedModeYaml::Both => "AllowedMode::Both",
         }
     }
-}
-
-#[derive(Debug, Deserialize)]
-struct EnvironmentSpecYaml {
-    name: String,
-    allowed_mode: AllowedModeYaml,
-    #[serde(default)]
-    argspec: String,
-    body_mode: ContentModeYaml,
-    #[serde(default)]
-    tags: Vec<String>,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum ContentModeYaml {
-    Math,
-    Text,
 }
 
 impl ContentModeYaml {

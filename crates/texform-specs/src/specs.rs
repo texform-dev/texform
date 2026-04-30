@@ -5,7 +5,13 @@
 //! - builtin records generated at compile time
 //! - active records assembled by the knowledge base at runtime
 
-use serde::Deserialize;
+#[path = "specs_yaml.rs"]
+mod specs_yaml;
+
+use specs_yaml::{
+    AllowedModeYaml, CharacterAttributesYaml, CharacterSpecYaml, CommandKindYaml, CommandSpecYaml,
+    ContentModeYaml, DelimiterSpecYaml, EnvironmentSpecYaml, PackageSpecsYaml,
+};
 
 pub use texform_argspec::ContentMode;
 pub use texform_argspec::{
@@ -225,18 +231,6 @@ pub fn load_package_specs_from_str(yaml: &str, context: &str) -> PackageSpecs {
     parsed.into_specs()
 }
 
-#[derive(Debug, Default, Deserialize)]
-struct PackageSpecsYaml {
-    #[serde(default)]
-    characters: Vec<CharacterSpecYaml>,
-    #[serde(default)]
-    delimiters: Vec<DelimiterSpecYaml>,
-    #[serde(default)]
-    commands: Vec<CommandSpecYaml>,
-    #[serde(default)]
-    environments: Vec<EnvironmentSpecYaml>,
-}
-
 impl PackageSpecsYaml {
     fn into_specs(self) -> PackageSpecs {
         PackageSpecs {
@@ -248,14 +242,6 @@ impl PackageSpecsYaml {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct CharacterSpecYaml {
-    name: String,
-    allowed_mode: AllowedModeYaml,
-    unicode_value: String,
-    attributes: CharacterAttributesYaml,
-}
-
 impl From<CharacterSpecYaml> for CharacterSpec {
     fn from(value: CharacterSpecYaml) -> Self {
         CharacterSpec {
@@ -265,20 +251,6 @@ impl From<CharacterSpecYaml> for CharacterSpec {
             attributes: value.attributes.into(),
         }
     }
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct CharacterAttributesYaml {
-    #[serde(default)]
-    mathvariant: Option<String>,
-    #[serde(default)]
-    tex_class: Option<String>,
-    #[serde(default)]
-    stretchy: Option<bool>,
-    #[serde(default)]
-    move_sup_sub: Option<bool>,
-    #[serde(default)]
-    large_op: Option<bool>,
 }
 
 impl From<CharacterAttributesYaml> for CharacterAttributes {
@@ -293,15 +265,6 @@ impl From<CharacterAttributesYaml> for CharacterAttributes {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct DelimiterSpecYaml {
-    name: String,
-    is_control_sequence: bool,
-    allowed_mode: AllowedModeYaml,
-    unicode_value: String,
-    attributes: CharacterAttributesYaml,
-}
-
 impl From<DelimiterSpecYaml> for DelimiterSpec {
     fn from(value: DelimiterSpecYaml) -> Self {
         DelimiterSpec {
@@ -312,18 +275,6 @@ impl From<DelimiterSpecYaml> for DelimiterSpec {
             attributes: value.attributes.into(),
         }
     }
-}
-
-#[derive(Debug, Deserialize)]
-struct CommandSpecYaml {
-    name: String,
-    kind: CommandKindYaml,
-    #[serde(default)]
-    allowed_mode: AllowedModeYaml,
-    #[serde(default)]
-    argspec: String,
-    #[serde(default)]
-    tags: Vec<String>,
 }
 
 impl From<CommandSpecYaml> for CommandSpec {
@@ -347,14 +298,6 @@ impl From<CommandSpecYaml> for CommandSpec {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum CommandKindYaml {
-    Prefix,
-    Infix,
-    Declarative,
-}
-
 impl From<CommandKindYaml> for CommandKind {
     fn from(value: CommandKindYaml) -> Self {
         match value {
@@ -365,15 +308,6 @@ impl From<CommandKindYaml> for CommandKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-enum AllowedModeYaml {
-    Math,
-    Text,
-    #[default]
-    Both,
-}
-
 impl From<AllowedModeYaml> for AllowedMode {
     fn from(value: AllowedModeYaml) -> Self {
         match value {
@@ -382,17 +316,6 @@ impl From<AllowedModeYaml> for AllowedMode {
             AllowedModeYaml::Both => AllowedMode::Both,
         }
     }
-}
-
-#[derive(Debug, Deserialize)]
-struct EnvironmentSpecYaml {
-    name: String,
-    allowed_mode: AllowedModeYaml,
-    #[serde(default)]
-    argspec: String,
-    body_mode: ContentModeYaml,
-    #[serde(default)]
-    tags: Vec<String>,
 }
 
 impl From<EnvironmentSpecYaml> for EnvironmentSpec {
@@ -414,13 +337,6 @@ impl From<EnvironmentSpecYaml> for EnvironmentSpec {
             tags: value.tags,
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum ContentModeYaml {
-    Math,
-    Text,
 }
 
 impl From<ContentModeYaml> for ContentMode {

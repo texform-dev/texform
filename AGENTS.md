@@ -13,7 +13,7 @@ crates/                       # Rust workspace
 ├── texform-core/             # Parser, AST, serializer, transform engine
 ├── texform-specs/            # Knowledge base & command specifications
 ├── texform-argspec/          # xparse-style argument spec parser
-├── texform-argspec-macros/   # Procedural macros for argspec
+├── texform-specs-macros/     # Procedural macros for specs
 ├── texform-interface/        # Public types (SyntaxNode, etc.)
 ├── texform-bench/            # Corpus benchmark harness
 ├── texform-python/           # Python bindings (PyO3 -> pytexform)

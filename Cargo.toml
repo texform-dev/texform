@@ -1,12 +1,12 @@
 [workspace]
 members = [
   "crates/texform-argspec",
-  "crates/texform-argspec-macros",
   "crates/texform-bench",
   "crates/texform-core",
   "crates/texform-interface",
   "crates/texform-python",
   "crates/texform-specs",
+  "crates/texform-specs-macros",
   "crates/texform-wasm",
 ]
 resolver = "3"
@@ -36,7 +36,7 @@ wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6"
 
 texform-argspec = { path = "crates/texform-argspec" }
-texform-argspec-macros = { path = "crates/texform-argspec-macros" }
 texform-core = { path = "crates/texform-core" }
 texform-interface = { path = "crates/texform-interface" }
 texform-specs = { path = "crates/texform-specs" }
+texform-specs-macros = { path = "crates/texform-specs-macros" }

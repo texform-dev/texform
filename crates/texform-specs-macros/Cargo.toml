@@ -1,5 +1,5 @@
 [package]
-name = "texform-argspec-macros"
+name = "texform-specs-macros"
 version.workspace = true
 edition.workspace = true
 
