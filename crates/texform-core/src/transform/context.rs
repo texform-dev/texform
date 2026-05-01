@@ -1,20 +1,45 @@
-//! Build-time transform context assembled from a parse context and rule set.
+//! Build-time transform context assembled from a parse context and profile.
 
 use std::collections::{BTreeSet, VecDeque};
 
 use crate::parse::ParseContext;
-use crate::transform::registry::rules_for_ruleset;
+use crate::transform::registry::all_rules;
 use crate::transform::rule::{
-    RuleKey, RulePhase, RuleTarget, RuleTargetKey, RuleTargetKind, TransformRule,
+    RuleKey, RulePhase, RuleTarget, RuleTargetKey, RuleTargetKind, RuleTier, TransformRule,
 };
 
 pub(crate) type RuleList = Vec<&'static dyn TransformRule>;
 pub(crate) type EliminatedForms = Vec<RuleTargetKey>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BuiltinRuleSetId {
-    Normalize,
-    Mer,
+pub struct TransformProfile {
+    pub name: &'static str,
+    pub tiers: &'static [RuleTier],
+}
+
+impl TransformProfile {
+    pub const AUTHORING: Self = Self {
+        name: "authoring",
+        tiers: &[RuleTier::Base],
+    };
+
+    pub const CORPUS: Self = Self {
+        name: "corpus",
+        tiers: &[RuleTier::Base, RuleTier::Expand],
+    };
+
+    pub const EQUIV: Self = Self {
+        name: "equiv",
+        tiers: &[RuleTier::Base, RuleTier::Expand, RuleTier::Deep],
+    };
+
+    pub fn builder(self) -> TransformContextBuilder {
+        TransformContextBuilder::new(self)
+    }
+
+    fn includes(self, tier: RuleTier) -> bool {
+        self.tiers.contains(&tier)
+    }
 }
 
 #[derive(Clone)]
@@ -62,7 +87,7 @@ impl TransformContext {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TransformBuildError {
     EmptyRuleSet {
-        ruleset: BuiltinRuleSetId,
+        profile: &'static str,
     },
     DependencyCycle {
         chain: Vec<RuleKey>,
@@ -76,8 +101,8 @@ pub enum TransformBuildError {
 impl std::fmt::Display for TransformBuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TransformBuildError::EmptyRuleSet { ruleset } => {
-                write!(f, "transform ruleset {:?} has no active rules", ruleset)
+            TransformBuildError::EmptyRuleSet { profile } => {
+                write!(f, "transform profile `{profile}` has no active rules")
             }
             TransformBuildError::DependencyCycle { chain } => {
                 let chain = chain
@@ -101,16 +126,16 @@ impl std::fmt::Display for TransformBuildError {
 impl std::error::Error for TransformBuildError {}
 
 pub struct TransformContextBuilder {
-    ruleset: BuiltinRuleSetId,
+    profile: TransformProfile,
     only: Option<BTreeSet<RuleKey>>,
     disabled: BTreeSet<RuleKey>,
     max_iterations: usize,
 }
 
 impl TransformContextBuilder {
-    pub fn new(ruleset: BuiltinRuleSetId) -> Self {
+    pub fn new(profile: TransformProfile) -> Self {
         Self {
-            ruleset,
+            profile,
             only: None,
             disabled: BTreeSet::new(),
             max_iterations: 100,
@@ -141,25 +166,22 @@ impl TransformContextBuilder {
         self,
         parse_ctx: &ParseContext,
     ) -> Result<TransformContext, TransformBuildError> {
-        let all_rules = rules_for_ruleset(self.ruleset);
-        let only = self.only.unwrap_or_else(|| {
-            all_rules
-                .iter()
-                .map(|rule| rule.meta().key)
-                .collect::<BTreeSet<_>>()
-        });
-
-        let enabled = all_rules
+        let only = self.only;
+        let enabled = all_rules()
             .iter()
             .copied()
-            .filter(|rule| only.contains(&rule.meta().key))
+            .filter(|rule| self.profile.includes(rule.meta().tier))
+            .filter(|rule| match only.as_ref() {
+                Some(only_keys) => only_keys.contains(&rule.meta().key),
+                None => true,
+            })
             .filter(|rule| !self.disabled.contains(&rule.meta().key))
             .filter(|rule| !rule_touched_by_mutations(rule, parse_ctx.mutation_summary()))
             .collect::<Vec<_>>();
 
         if enabled.is_empty() {
             return Err(TransformBuildError::EmptyRuleSet {
-                ruleset: self.ruleset,
+                profile: self.profile.name,
             });
         }
 
@@ -383,7 +405,8 @@ mod tests {
     use crate::ast::NodeId;
     use crate::transform::engine::TransformError;
     use crate::transform::rule::{
-        RuleConsumes, RuleEffect, RuleGroup, RuleMeta, RuleProduces, RuleSafety, TransformRule,
+        RuleConsumes, RuleEffect, RuleMeta, RulePackage, RuleProduces, RuleSafety, RuleTier,
+        TransformRule,
     };
     use crate::transform::rule_context::RuleContext;
     use texform_specs::argspec;
@@ -454,9 +477,10 @@ mod tests {
 
     static RULE_A_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            group: RuleGroup::Physics,
+            package: RulePackage::Physics,
             name: "a",
         },
+        tier: RuleTier::Base,
         summary: "mock rule a",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
@@ -472,9 +496,10 @@ mod tests {
 
     static RULE_B_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            group: RuleGroup::Physics,
+            package: RulePackage::Physics,
             name: "b",
         },
+        tier: RuleTier::Base,
         summary: "mock rule b",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
@@ -490,9 +515,10 @@ mod tests {
 
     static RULE_C_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            group: RuleGroup::Physics,
+            package: RulePackage::Physics,
             name: "c",
         },
+        tier: RuleTier::Base,
         summary: "mock rule c",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
@@ -508,9 +534,10 @@ mod tests {
 
     static CLEANUP_RULE_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            group: RuleGroup::Cleanup,
+            package: RulePackage::Base,
             name: "cleanup",
         },
+        tier: RuleTier::Base,
         summary: "mock cleanup rule",
         phase: RulePhase::Cleanup,
         safety: RuleSafety::Lossless,
@@ -526,9 +553,10 @@ mod tests {
 
     static DUPLICATE_ELIMINATE_RULE_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            group: RuleGroup::Physics,
+            package: RulePackage::Physics,
             name: "duplicate-eliminate",
         },
+        tier: RuleTier::Base,
         summary: "mock rule with duplicate eliminate variants",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,

@@ -4,10 +4,12 @@
 //! [`RuleMeta`] descriptor that the engine uses for scheduling, dependency
 //! analysis, and convergence checking.
 //!
-//! Rules are organized along three axes:
+//! Rules are organized along four axes:
 //!
-//! - **Group** ([`RuleGroup`]) — the semantic category (physics, desugar,
-//!   cleanup).
+//! - **Package** ([`RulePackage`]) — the owning package namespace (base, ams,
+//!   physics).
+//! - **Tier** ([`RuleTier`]) — how aggressive the rewrite is (base, expand,
+//!   deep).
 //! - **Phase** ([`RulePhase`]) — *when* the rule runs (normalize loop vs.
 //!   one-shot cleanup).
 //! - **Safety** ([`RuleSafety`]) — whether the transformation preserves full
@@ -21,30 +23,39 @@ use crate::transform::rule_context::RuleContext;
 
 // NOTE: `Ord` is derived — variant declaration order determines comparison.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum RuleGroup {
+pub enum RulePackage {
+    Base,
+    Ams,
     Physics,
-    PlainTex,
-    Desugar,
-    FontVariant,
-    SymbolAlias,
-    SpacingLayout,
-    MatrixEnv,
-    PostNorm,
-    Cleanup,
+    Bboldx,
+    Textmacros,
 }
 
-impl RuleGroup {
+impl RulePackage {
     pub const fn as_str(self) -> &'static str {
         match self {
-            RuleGroup::Physics => "physics",
-            RuleGroup::PlainTex => "plain_tex",
-            RuleGroup::Desugar => "desugar",
-            RuleGroup::FontVariant => "font_variant",
-            RuleGroup::SymbolAlias => "symbol_alias",
-            RuleGroup::SpacingLayout => "spacing_layout",
-            RuleGroup::MatrixEnv => "matrix_env",
-            RuleGroup::PostNorm => "post_norm",
-            RuleGroup::Cleanup => "cleanup",
+            RulePackage::Base => "base",
+            RulePackage::Ams => "ams",
+            RulePackage::Physics => "physics",
+            RulePackage::Bboldx => "bboldx",
+            RulePackage::Textmacros => "textmacros",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RuleTier {
+    Base,
+    Expand,
+    Deep,
+}
+
+impl RuleTier {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            RuleTier::Base => "base",
+            RuleTier::Expand => "expand",
+            RuleTier::Deep => "deep",
         }
     }
 }
@@ -78,21 +89,21 @@ pub enum RuleSafety {
     Destructive,
 }
 
-/// Unique identifier for a rule, composed of its group and a human-readable name.
+/// Unique identifier for a rule, composed of its package and a human-readable name.
 ///
-/// The `Display` impl produces the slash-separated form `"group/name"` which is
+/// The `Display` impl produces the slash-separated form `"package/name"` which is
 /// used in diagnostics, builder filters, and rule-selection configuration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RuleKey {
-    /// The group this rule belongs to.
-    pub group: RuleGroup,
-    /// A short, unique name within the group (e.g. `"over_to_frac"`).
+    /// The package this rule belongs to.
+    pub package: RulePackage,
+    /// A short, unique name within the package (e.g. `"over-to-frac"`).
     pub name: &'static str,
 }
 
 impl std::fmt::Display for RuleKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}/{}", self.group.as_str(), self.name)
+        write!(f, "{}/{}", self.package.as_str(), self.name)
     }
 }
 
@@ -221,6 +232,8 @@ pub enum RuleTrigger {
 pub struct RuleMeta {
     /// Unique identifier for this rule.
     pub key: RuleKey,
+    /// Tier classification used by transform profiles.
+    pub tier: RuleTier,
     /// One-line human-readable description of what the rule does.
     pub summary: &'static str,
     /// The phase in which this rule executes.
@@ -270,18 +283,30 @@ pub trait TransformRule: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-    use super::RuleGroup;
+    use super::{RuleKey, RulePackage, RuleTier};
 
     #[test]
-    fn rule_group_strings_match_registry_keys() {
-        assert_eq!(RuleGroup::Physics.as_str(), "physics");
-        assert_eq!(RuleGroup::PlainTex.as_str(), "plain_tex");
-        assert_eq!(RuleGroup::Desugar.as_str(), "desugar");
-        assert_eq!(RuleGroup::FontVariant.as_str(), "font_variant");
-        assert_eq!(RuleGroup::SymbolAlias.as_str(), "symbol_alias");
-        assert_eq!(RuleGroup::SpacingLayout.as_str(), "spacing_layout");
-        assert_eq!(RuleGroup::MatrixEnv.as_str(), "matrix_env");
-        assert_eq!(RuleGroup::PostNorm.as_str(), "post_norm");
-        assert_eq!(RuleGroup::Cleanup.as_str(), "cleanup");
+    fn rule_package_strings_match_registry_keys() {
+        assert_eq!(RulePackage::Base.as_str(), "base");
+        assert_eq!(RulePackage::Ams.as_str(), "ams");
+        assert_eq!(RulePackage::Physics.as_str(), "physics");
+        assert_eq!(RulePackage::Bboldx.as_str(), "bboldx");
+        assert_eq!(RulePackage::Textmacros.as_str(), "textmacros");
+    }
+
+    #[test]
+    fn rule_tier_strings_match_profile_ids() {
+        assert_eq!(RuleTier::Base.as_str(), "base");
+        assert_eq!(RuleTier::Expand.as_str(), "expand");
+        assert_eq!(RuleTier::Deep.as_str(), "deep");
+    }
+
+    #[test]
+    fn rule_key_display_is_package_and_name() {
+        let key = RuleKey {
+            package: RulePackage::Physics,
+            name: "trace-to-tr",
+        };
+        assert_eq!(key.to_string(), "physics/trace-to-tr");
     }
 }

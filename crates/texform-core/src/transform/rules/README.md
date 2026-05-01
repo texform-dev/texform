@@ -4,8 +4,9 @@ This directory stores concrete transform rules.
 
 ## Adding a New Rule
 
-1. Create a new `.rs` file anywhere under this directory tree (e.g., `my_rule.rs`
-   or `desugar/my_rule.rs`).
+1. Create a new `.rs` file under the package/tier/group layout, for example
+   `base/base/over-family/over_to_frac.rs` or
+   `physics/base/trace-alias/trace_to_tr.rs`.
 2. Define and export exactly one `pub static MY_RULE: MyRuleType` where the
    constant name is the UPPER_SNAKE_CASE form of the file stem.
 3. That's it — the build script auto-discovers the file and registers it.
@@ -26,6 +27,19 @@ Keep the following pieces together in that file:
 
 `mod.rs` is generated — it only contains `include!(…)` pointing at the
 build-script output. Do not edit it by hand.
+
+Rules use this directory structure:
+
+```text
+<package>/<tier>/<directory_group>/<rule_file_stem>.rs
+```
+
+- `package` is the owning rule package, such as `base`, `ams`, or `physics`.
+- `tier` is the profile tier: `base`, `expand`, or `deep`.
+- `directory_group` is only a human-readable grouping slug. It is not part of
+  `RuleMeta` and does not affect scheduling.
+
+The rule key remains `<package>/<name>`, independent of the directory group.
 
 Prefer defining metadata as a function-local static inside `meta()`:
 
@@ -128,7 +142,8 @@ still needs ordinary Rust code:
 ```rust
 define_rule! {
     pub static OVER_TO_FRAC: OverToFracRule {
-        key: Structural / "over-to-frac",
+        key: Base / "over-to-frac",
+        tier: Base,
         summary: "Rewrite infix \\over into prefix \\frac",
         phase: Normalize,
         safety: Semantic,
@@ -168,7 +183,8 @@ the rule only renames the command:
 ```rust
 alias_rule! {
     pub static TRACE_TO_TR: TraceToTrRule {
-        key: Canonical / "trace-to-tr",
+        key: Physics / "trace-to-tr",
+        tier: Base,
         summary: "Canonicalize \\Tr, \\trace, and \\Trace into \\tr",
         phase: Normalize,
         safety: Lossless,
@@ -238,3 +254,23 @@ Preferred style:
 1. Keep package prefixes for builtin records, such as `base::cmd::OVER`
 2. Import shared constructor helpers directly, such as `prefix_command` and `mandatory_content`
 3. Prefer `RuleContext` match/shape helpers over open-coded `match` + repeated error construction
+
+## Transform Profiles
+
+Use `TransformProfile` to build contexts in tests and examples:
+
+```rust
+let transform_ctx = TransformProfile::AUTHORING
+    .builder()
+    .only(OVER_TO_FRAC.meta().key)
+    .build_with(&parse_ctx)?;
+```
+
+Profiles select rules by tier before `only` or `disable` is applied:
+
+- `AUTHORING` includes `RuleTier::Base`
+- `CORPUS` includes `RuleTier::Base` and `RuleTier::Expand`
+- `EQUIV` includes all tiers
+
+`only` is an allowlist inside the selected profile; it does not enable an
+`expand` or `deep` rule in a narrower profile.

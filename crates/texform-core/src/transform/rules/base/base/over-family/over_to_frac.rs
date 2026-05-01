@@ -15,7 +15,8 @@ use crate::transform::{cmd_targets, cmd_triggers, define_rule};
 define_rule! {
     /// Rewrites the infix `\over` primitive into the prefix `\frac{…}{…}` form.
     pub static OVER_TO_FRAC: OverToFracRule {
-        key: Desugar / "over-to-frac",
+        key: Base / "over-to-frac",
+        tier: Base,
         summary: "Rewrite infix \\over into prefix \\frac",
         phase: Normalize,
         safety: Semantic,
@@ -53,12 +54,13 @@ define_rule! {
 mod tests {
     use crate::ast::{ArgumentKind, ArgumentValue, Node};
     use crate::parse::ParseContext;
-    use crate::transform::{transform_ast, BuiltinRuleSetId, TransformContextBuilder};
+    use crate::transform::{transform_ast, TransformProfile};
 
     #[test]
     fn rewrites_infix_over_into_frac_command() {
         let parse_ctx = ParseContext::from_packages(&["base"]);
-        let transform_ctx = TransformContextBuilder::new(BuiltinRuleSetId::Normalize)
+        let transform_ctx = TransformProfile::AUTHORING
+            .builder()
             .build_with(&parse_ctx)
             .expect("transform context should build");
         let mut ast = parse_ctx
@@ -71,7 +73,7 @@ mod tests {
         assert_eq!(output.iterations, 2);
         assert_eq!(output.applied.len(), 1);
         assert_eq!(output.applied[0].count, 1);
-        assert_eq!(output.applied[0].key.to_string(), "desugar/over-to-frac");
+        assert_eq!(output.applied[0].key.to_string(), "base/over-to-frac");
 
         let root = ast.root();
         let children = ast.children(root);

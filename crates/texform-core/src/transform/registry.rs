@@ -1,16 +1,13 @@
 //! Static registry of all available transform rules.
 //!
 //! Every rule implementation is registered once in the builtin rule list under
-//! `transform/rules/mod.rs`. The [`rules_for_ruleset()`] function then maps a
-//! [`BuiltinRuleSetId`] to the appropriate subset of that list, which the
+//! `transform/rules/mod.rs`. The [`all_rules()`] accessor returns that list, and
 //! [`TransformContextBuilder`](crate::transform::context::TransformContextBuilder)
-//! consumes when building the active rule list for a transform context.
+//! applies profile and runtime filters on top.
 
 #[cfg(debug_assertions)]
 use std::sync::Once;
 
-use crate::transform::context::BuiltinRuleSetId;
-use crate::transform::context::BuiltinRuleSetId::{Mer, Normalize};
 use crate::transform::rule::TransformRule;
 use crate::transform::rules::ALL_RULES;
 
@@ -27,14 +24,10 @@ fn debug_validate_registered_rules_once() {
     });
 }
 
-/// Returns the subset of registered rules that belong to the given rule set.
-pub fn rules_for_ruleset(ruleset: BuiltinRuleSetId) -> &'static [&'static dyn TransformRule] {
+/// Returns every registered transform rule.
+pub fn all_rules() -> &'static [&'static dyn TransformRule] {
     #[cfg(debug_assertions)]
     debug_validate_registered_rules_once();
 
-    match ruleset {
-        // Both rule sets currently return the full list; they will diverge as
-        // more rules are added and MER-specific filtering is introduced.
-        Normalize | Mer => ALL_RULES,
-    }
+    ALL_RULES
 }

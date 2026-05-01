@@ -5,7 +5,7 @@ use crate::transform::engine::TransformError;
 use crate::transform::rule::RuleEffect;
 use crate::transform::rule_context::RuleContext;
 
-pub(crate) fn debug_assert_prefix_alias_group_compatible(
+pub(crate) fn debug_assert_prefix_alias_package_compatible(
     canonical: &'static BuiltinCommandRecord,
     aliases: &[&'static BuiltinCommandRecord],
 ) {
@@ -115,42 +115,42 @@ mod tests {
 
     #[test]
     fn accepts_structurally_compatible_prefix_aliases() {
-        debug_assert_prefix_alias_group_compatible(&CANONICAL, &VALID_ALIASES);
+        debug_assert_prefix_alias_package_compatible(&CANONICAL, &VALID_ALIASES);
     }
 
     #[test]
     #[should_panic(expected = "at least one alias")]
     fn rejects_empty_alias_lists() {
-        debug_assert_prefix_alias_group_compatible(&CANONICAL, &EMPTY_ALIASES);
+        debug_assert_prefix_alias_package_compatible(&CANONICAL, &EMPTY_ALIASES);
     }
 
     #[test]
     #[should_panic(expected = "must not include the canonical")]
     fn rejects_alias_lists_that_repeat_the_canonical_name() {
-        debug_assert_prefix_alias_group_compatible(&CANONICAL, &SAME_AS_CANONICAL);
+        debug_assert_prefix_alias_package_compatible(&CANONICAL, &SAME_AS_CANONICAL);
     }
 
     #[test]
     #[should_panic(expected = "must be a prefix command")]
     fn rejects_non_prefix_canonical_records() {
-        debug_assert_prefix_alias_group_compatible(&NON_PREFIX_ALIAS, &VALID_ALIASES);
+        debug_assert_prefix_alias_package_compatible(&NON_PREFIX_ALIAS, &VALID_ALIASES);
     }
 
     #[test]
     #[should_panic(expected = "must be prefix commands")]
     fn rejects_non_prefix_alias_records() {
-        debug_assert_prefix_alias_group_compatible(&CANONICAL, &[&NON_PREFIX_ALIAS]);
+        debug_assert_prefix_alias_package_compatible(&CANONICAL, &[&NON_PREFIX_ALIAS]);
     }
 
     #[test]
     #[should_panic(expected = "allowed_mode")]
     fn rejects_allowed_mode_mismatches() {
-        debug_assert_prefix_alias_group_compatible(&CANONICAL, &[&MODE_MISMATCH_ALIAS]);
+        debug_assert_prefix_alias_package_compatible(&CANONICAL, &[&MODE_MISMATCH_ALIAS]);
     }
 
     #[test]
     #[should_panic(expected = "argspec")]
     fn rejects_argspec_mismatches() {
-        debug_assert_prefix_alias_group_compatible(&CANONICAL, &[&ARGSPEC_MISMATCH_ALIAS]);
+        debug_assert_prefix_alias_package_compatible(&CANONICAL, &[&ARGSPEC_MISMATCH_ALIAS]);
     }
 }

@@ -8,6 +8,7 @@ alias_rule! {
     /// Canonicalize `\Tr`, `\trace`, and `\Trace` into `\tr`.
     pub static TRACE_TO_TR: TraceToTrRule {
         key: Physics / "trace-to-tr",
+        tier: Base,
         summary: "Canonicalize \\Tr, \\trace, and \\Trace into \\tr",
         phase: Normalize,
         safety: Lossless,
@@ -24,12 +25,13 @@ alias_rule! {
 mod tests {
     use crate::ast::Node;
     use crate::parse::ParseContext;
-    use crate::transform::{transform_ast, BuiltinRuleSetId, TransformContextBuilder};
+    use crate::transform::{transform_ast, TransformProfile};
 
     #[test]
     fn rewrites_all_trace_aliases_to_tr() {
         let parse_ctx = ParseContext::from_packages(&["physics"]);
-        let transform_ctx = TransformContextBuilder::new(BuiltinRuleSetId::Normalize)
+        let transform_ctx = TransformProfile::AUTHORING
+            .builder()
             .build_with(&parse_ctx)
             .expect("transform context should build");
         for input in [r"\Tr", r"\trace", r"\Trace"] {

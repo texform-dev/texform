@@ -8,6 +8,7 @@ alias_rule! {
     /// Canonicalize `\quantity` into `\qty`.
     pub static QUANTITY_TO_QTY: QuantityToQtyRule {
         key: Physics / "quantity-to-qty",
+        tier: Base,
         summary: "Canonicalize \\quantity into \\qty",
         phase: Normalize,
         safety: Lossless,
@@ -20,7 +21,7 @@ alias_rule! {
 mod tests {
     use crate::ast::{ArgumentValue, Ast, Node, NodeId};
     use crate::parse::ParseContext;
-    use crate::transform::{transform_ast, BuiltinRuleSetId, TransformContextBuilder};
+    use crate::transform::{transform_ast, TransformProfile};
 
     fn assert_subtree_contains_char(ast: &Ast, node_id: NodeId, expected: char) {
         match ast.node(node_id) {
@@ -40,7 +41,8 @@ mod tests {
     #[test]
     fn rewrites_quantity_to_qty_and_preserves_argument_content() {
         let parse_ctx = ParseContext::from_packages(&["physics"]);
-        let transform_ctx = TransformContextBuilder::new(BuiltinRuleSetId::Normalize)
+        let transform_ctx = TransformProfile::AUTHORING
+            .builder()
             .build_with(&parse_ctx)
             .expect("transform context should build");
         let mut ast = parse_ctx

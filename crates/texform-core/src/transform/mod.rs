@@ -21,12 +21,12 @@ pub(crate) use macros::{
 };
 
 pub use context::{
-    BuiltinRuleSetId, TransformBuildError, TransformContext, TransformContextBuilder,
+    TransformBuildError, TransformContext, TransformContextBuilder, TransformProfile,
 };
 pub use engine::{
     AppliedRuleStat, TransformEngineError, TransformError, TransformReport, transform_ast,
 };
 pub use rule::{
-    RuleConsumes, RuleEffect, RuleGroup, RuleKey, RuleMeta, RulePhase, RuleProduces, RuleSafety,
-    RuleTarget, RuleTargetKey, RuleTargetKind, RuleTrigger, TransformRule,
+    RuleConsumes, RuleEffect, RuleKey, RuleMeta, RulePackage, RulePhase, RuleProduces, RuleSafety,
+    RuleTarget, RuleTargetKey, RuleTargetKind, RuleTier, RuleTrigger, TransformRule,
 };

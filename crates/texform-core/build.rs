@@ -30,7 +30,7 @@ fn encode_module_name(relative_path: &Path) -> String {
                     module_name.push(byte as char);
                 }
                 _ => {
-                    write!(module_name, "_x{byte:02X}").unwrap();
+                    write!(module_name, "_x{byte:02x}").unwrap();
                 }
             }
         }

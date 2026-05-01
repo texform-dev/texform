@@ -298,8 +298,8 @@ mod tests {
     use crate::parse::{AllowedMode, ContentMode, ParseContext, ParseContextBuilder};
     use crate::transform::context::TransformContext;
     use crate::transform::rule::{
-        RuleConsumes, RuleEffect, RuleGroup, RuleMeta, RulePhase, RuleProduces, RuleSafety,
-        RuleTarget, RuleTrigger, TransformRule,
+        RuleConsumes, RuleEffect, RuleMeta, RulePackage, RulePhase, RuleProduces, RuleSafety,
+        RuleTarget, RuleTier, RuleTrigger, TransformRule,
     };
     use crate::transform::rule_context::RuleContext;
     use texform_specs::argspec;
@@ -332,9 +332,10 @@ mod tests {
 
     static SKIP_RULE_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            group: RuleGroup::Physics,
+            package: RulePackage::Physics,
             name: "skip-me",
         },
+        tier: RuleTier::Base,
         summary: "mock skip rule",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
@@ -450,9 +451,10 @@ mod tests {
 
         static TAG_RULE_META: RuleMeta = RuleMeta {
             key: RuleKey {
-                group: RuleGroup::Physics,
+                package: RulePackage::Physics,
                 name: "tag-trigger",
             },
+            tier: RuleTier::Base,
             summary: "mock tag trigger rule",
             phase: RulePhase::Normalize,
             safety: RuleSafety::Lossless,
