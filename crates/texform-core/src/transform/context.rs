@@ -142,6 +142,13 @@ impl TransformContextBuilder {
         }
     }
 
+    pub fn from_tiers(tiers: &'static [RuleTier]) -> Self {
+        Self::new(TransformProfile {
+            name: "custom",
+            tiers,
+        })
+    }
+
     pub fn only(mut self, key: RuleKey) -> Self {
         self.only = Some(std::iter::once(key).collect());
         self
