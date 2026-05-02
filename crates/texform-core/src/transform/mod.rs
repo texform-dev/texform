@@ -15,6 +15,9 @@ pub mod rule;
 pub mod rule_context;
 mod rules;
 
+#[cfg(test)]
+#[allow(unused_imports)]
+pub(crate) use macros::transform_examples;
 #[allow(unused_imports)]
 pub(crate) use macros::{
     alias_rule, cmd_targets, cmd_triggers, define_rule, env_targets, env_triggers,

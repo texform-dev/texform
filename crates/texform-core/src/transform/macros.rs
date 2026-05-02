@@ -343,12 +343,60 @@ macro_rules! alias_rule {
     };
 }
 
+#[cfg(test)]
+macro_rules! transform_examples {
+    (
+        rule: $rule:expr,
+        tier: $tier:ident,
+        examples: [
+            $({
+                label: $label:ident,
+                packages: [$($pkg:literal),+ $(,)?],
+                input: $input:expr,
+                expected: $expected:expr $(,)?
+            }),+ $(,)?
+        ]
+    ) => {
+        $(
+            #[test]
+            fn $label() {
+                use $crate::transform::TransformRule as _;
+                let parse_ctx = $crate::parse::ParseContext::from_packages(&[$($pkg),+]);
+                let transform_ctx = $crate::transform::TransformContextBuilder::from_tiers(
+                    &[$crate::transform::RuleTier::$tier],
+                )
+                    .only($rule.meta().key)
+                    .build_with(&parse_ctx)
+                    .expect("transform context should build");
+
+                let mut ast = parse_ctx
+                    .parse_to_ast($input, true)
+                    .expect("parse input should succeed");
+                $crate::transform::transform_ast(&mut ast, &parse_ctx, &transform_ctx)
+                    .expect("transform should succeed");
+                let actual = $crate::serialize::serialize(&ast);
+
+                let expected_ast = parse_ctx
+                    .parse_to_ast($expected, true)
+                    .expect("parse expected should succeed");
+                let canonical_expected = $crate::serialize::serialize(&expected_ast);
+
+                assert_eq!(actual, canonical_expected,
+                    "transform output differs from expected (both serialized)\n  input:    {}\n  actual:   {}\n  expected: {}",
+                    $input, actual, canonical_expected);
+            }
+        )+
+    };
+}
+
 pub(crate) use alias_rule;
 pub(crate) use cmd_targets;
 pub(crate) use cmd_triggers;
 pub(crate) use define_rule;
 pub(crate) use env_targets;
 pub(crate) use env_triggers;
+#[cfg(test)]
+pub(crate) use transform_examples;
 
 #[cfg(test)]
 mod tests {
