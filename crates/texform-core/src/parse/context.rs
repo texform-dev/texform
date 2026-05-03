@@ -367,21 +367,17 @@ impl ParseContextBuilder {
             KnowledgeBaseMode::Empty => (KnowledgeBase::empty(), KnowledgeBase::empty()),
             KnowledgeBaseMode::DefaultPackages => {
                 let refs = default_package_names().to_vec();
-                let mut math_kb = KnowledgeBase::try_build_from_packages_for_mode(
+                let math_kb = KnowledgeBase::try_build_from_packages_for_mode(
                     refs.as_slice(),
                     ContentMode::Math,
                 )
                 .map_err(ParseContextBuildError::PackageLoad)?;
-                let mut text_kb = KnowledgeBase::try_build_from_packages_for_mode(
+                let text_kb = KnowledgeBase::try_build_from_packages_for_mode(
                     refs.as_slice(),
                     ContentMode::Text,
                 )
                 .map_err(ParseContextBuildError::PackageLoad)?;
 
-                // `physics` remains part of the default package set, but the
-                // conflicting `\braket` command stays opt-in for runtime defaults.
-                math_kb.remove_command_by_name("braket");
-                text_kb.remove_command_by_name("braket");
                 (math_kb, text_kb)
             }
             KnowledgeBaseMode::Packages(packages) => {

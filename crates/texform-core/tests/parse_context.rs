@@ -51,9 +51,9 @@ fn convenience_factories_use_default_runtime_packages() {
     assert!(
         default_ctx
             .lookup_command("braket", ContentMode::Math)
-            .is_none()
+            .is_some()
     );
-    assert!(shared.lookup_command("braket", ContentMode::Math).is_none());
+    assert!(shared.lookup_command("braket", ContentMode::Math).is_some());
 }
 
 #[test]
@@ -64,7 +64,7 @@ fn shared_returns_the_same_default_context_instance() {
 }
 
 #[test]
-fn explicit_all_packages_still_require_manual_opt_in() {
+fn explicit_all_packages_include_braket() {
     let package_names = texform_specs::builtin::all_package_names();
     let ctx = ParseContext::from_packages(package_names.as_slice());
     assert!(ctx.lookup_command("braket", ContentMode::Math).is_some());
