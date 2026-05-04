@@ -12,6 +12,7 @@ alias_rule! {
         summary: "Canonicalize \\Tr, \\trace, and \\Trace into \\tr",
         phase: Normalize,
         safety: Lossless,
+        enabled_by_packages: [Physics],
         canonical: &physics::cmd::TR,
         aliases: [
             &physics::cmd::TR_2,

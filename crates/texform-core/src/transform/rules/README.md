@@ -56,7 +56,7 @@ adding another file-level symbol for every rule.
 For repeated rule shells, prefer the crate-private authoring macros:
 
 ```rust
-use crate::transform::{alias_rule, cmd_targets, define_rule};
+use crate::transform::{alias_rule, cmd_targets, define_rule, env_targets};
 ```
 
 These macros are intentionally local to `texform-core`; they are ergonomics
@@ -75,51 +75,48 @@ When referencing builtin records in consumes or produces, always use
 the package-qualified path:
 
 ```rust
-RuleTarget::Command(&base::cmd::OVER)
 RuleTarget::Command(&base::cmd::FRAC)
 RuleTarget::Environment(&ams::env::ALIGN)
 ```
 
-The package name must stay visible at use sites so the origin of the builtin
-record is obvious during authoring and review.
+The target contract is package-insensitive: each target means `kind + name`.
+The package-qualified Rust path exists because `RuleTarget` stores a concrete
+builtin record reference. For each `kind + name`, choose the first package that
+defines that record in texform package import order.
 
 ## Package Variants
 
-Some builtins exist in multiple packages with the same semantic shape. When
-that happens, list every compatible package variant in `consumes` and
-`produces`:
+Do not duplicate same-name package variants in rule metadata. `RuleConsumes`
+and `RuleProduces` are interpreted as `kind + name`, so each target appears once:
 
 ```rust
-use texform_specs::builtin::{ams, base};
+use texform_specs::builtin::base;
 
+consumes: RuleConsumes {
+    eliminates: cmd_targets![&base::cmd::OVER],
+    touches: &[],
+},
 produces: RuleProduces {
-    targets: &[
-        RuleTarget::Command(&base::cmd::FRAC),
-        RuleTarget::Command(&ams::cmd::FRAC),
-    ],
+    targets: cmd_targets![&base::cmd::FRAC],
 },
 ```
 
-Authoring rules with package variants follows three constraints:
+If the same command or environment name exists in multiple packages, choose the
+first builtin record by texform package import order. `enabled_by_packages`
+declares which input packages make the rule loadable; it does not constrain
+which package supplies a produced target.
 
-1. Only group variants that share the same structural shape.
-   For commands this means identical `kind` and `argspec.source`.
-   For environments this means identical `argspec.source` and `body_mode`.
-2. If two packages define the same name with different specs, split them into
-   separate rules instead of mixing incompatible variants in one metadata block.
-3. `apply()` may keep using any one package-qualified record with
-   `match_*` helpers or constructors such as `prefix_command`.
-   Runtime matching is name-based, so the package of the chosen record does not
-   affect behavior.
+Package-specific split decisions are based on structural signatures:
 
-Package variants are collapsed by `RuleTargetKey` (`kind + name`) when the
-transform plan is built and executed:
+1. Commands use `CommandKind + argspec.source`
+2. Environments use `argspec.source + body_mode`
+3. Same signature means one rule with all matching packages in
+   `enabled_by_packages`
+4. Different signatures mean separate rules
 
-1. All same-name package variants inside one target group must stay
-   structurally consistent. Mixing incompatible variants is an authoring bug.
-2. Structurally consistent variants collapse to the same runtime dependency key,
-   so grouping them does not change topo sort, cleanup-boundary checks, or
-   eliminated-form derivation.
+The transform plan collapses every target to `RuleTargetKey` (`kind + name`) for
+topological sort, cleanup-boundary checks, mutation filtering, and
+eliminated-form derivation.
 
 ## define_rule!
 
@@ -134,12 +131,13 @@ define_rule! {
         summary: "Rewrite infix \\over into prefix \\frac",
         phase: Normalize,
         safety: Semantic,
+        enabled_by_packages: [Base],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::OVER],
             touches: &[],
         },
         produces: RuleProduces {
-            targets: cmd_targets![&base::cmd::FRAC, &ams::cmd::FRAC],
+            targets: cmd_targets![&base::cmd::FRAC],
         },
         apply(rule, cx, node_id) {
             // normal Rust body
@@ -174,6 +172,7 @@ alias_rule! {
         summary: "Canonicalize \\Tr, \\trace, and \\Trace into \\tr",
         phase: Normalize,
         safety: Lossless,
+        enabled_by_packages: [Physics],
         canonical: &physics::cmd::TR,
         aliases: [
             &physics::cmd::TR_2,
@@ -207,12 +206,13 @@ Do not use `alias_rule!` for:
 Use the small metadata helpers when they reduce noise:
 
 ```rust
-cmd_targets![&base::cmd::FRAC, &ams::cmd::FRAC]
+cmd_targets![&base::cmd::FRAC]
 env_targets![&ams::env::ALIGN]
 ```
 
 These macros only wrap builtin paths into `RuleTarget::*` arrays. They do not
-infer package variants, canonical forms, or any other rule semantics.
+infer package variants, enabled packages, canonical forms, or any other rule
+semantics.
 
 ## Shared Helper Imports
 

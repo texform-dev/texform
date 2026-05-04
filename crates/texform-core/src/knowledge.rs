@@ -29,7 +29,7 @@ use crate::ast::Node;
 use std::collections::{HashMap, HashSet};
 use texform_argspec::parse_arg_specs;
 use texform_interface::syntax_node::ContentMode;
-use texform_specs::builtin::BuiltinPackage;
+use texform_specs::builtin::{BuiltinPackage, PackageName};
 
 use crate::parse::{CommandItem, ContextItem, DelimiterControlItem, EnvironmentItem};
 
@@ -50,15 +50,6 @@ use texform_specs::specs::{
 const RUNTIME_PACKAGE_NAME: &str = "runtime";
 #[cfg(test)]
 const UNKNOWN_PACKAGE_NAME: &str = "unknown";
-const MANAGED_PACKAGE_IMPORT_ORDER: [&str; 7] = [
-    "base",
-    "ams",
-    "braket",
-    "physics",
-    "textmacros",
-    "bboldx",
-    "boldsymbol",
-];
 // Runtime defaults intentionally differ from the full builtin registry:
 // `braket` stays opt-in to avoid conflicting default semantics with `physics`.
 const DEFAULT_PACKAGE_NAMES: [&str; 6] = [
@@ -776,8 +767,14 @@ fn dedup_names_in_request_order<'a>(requested: &[&'a str]) -> Vec<&'a str> {
     unique
 }
 
+fn managed_package_names() -> impl Iterator<Item = &'static str> {
+    texform_specs::builtin::MANAGED_PACKAGE_IMPORT_ORDER
+        .iter()
+        .map(|package| package.as_str())
+}
+
 fn is_managed_package(name: &str) -> bool {
-    MANAGED_PACKAGE_IMPORT_ORDER.contains(&name)
+    PackageName::from_str(name).is_some()
 }
 
 /// Reorders requested package names so that managed packages always appear in
@@ -789,7 +786,7 @@ fn canonical_package_import_order<'a>(requested: &[&'a str]) -> Vec<&'a str> {
     let mut normalized = Vec::new();
 
     // Managed packages first, in the fixed canonical order.
-    for managed in MANAGED_PACKAGE_IMPORT_ORDER {
+    for managed in managed_package_names() {
         if let Some(&name) = unique.iter().find(|&&candidate| candidate == managed) {
             normalized.push(name);
         }

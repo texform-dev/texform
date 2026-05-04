@@ -6,7 +6,7 @@
 //!
 //! Rules are organized along four axes:
 //!
-//! - **Package** ([`RulePackage`]) — the owning package namespace (base, ams,
+//! - **Package** ([`PackageName`]) — the owning package namespace (base, ams,
 //!   physics).
 //! - **Tier** ([`RuleTier`]) — how aggressive the rewrite is (base, expand,
 //!   deep).
@@ -15,33 +15,12 @@
 //! - **Safety** ([`RuleSafety`]) — whether the transformation preserves full
 //!   information, only semantic meaning, or is destructive.
 
+pub use texform_specs::builtin::PackageName;
 use texform_specs::specs::{BuiltinCommandRecord, BuiltinEnvironmentRecord};
 
 use crate::ast::NodeId;
 use crate::transform::engine::TransformError;
 use crate::transform::rule_context::RuleContext;
-
-// NOTE: `Ord` is derived — variant declaration order determines comparison.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum RulePackage {
-    Base,
-    Ams,
-    Physics,
-    Bboldx,
-    Textmacros,
-}
-
-impl RulePackage {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            RulePackage::Base => "base",
-            RulePackage::Ams => "ams",
-            RulePackage::Physics => "physics",
-            RulePackage::Bboldx => "bboldx",
-            RulePackage::Textmacros => "textmacros",
-        }
-    }
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RuleTier {
@@ -95,9 +74,9 @@ pub enum RuleSafety {
 /// used in diagnostics, builder filters, and rule-selection configuration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RuleKey {
-    /// The package this rule belongs to.
-    pub package: RulePackage,
-    /// A short, unique name within the package (e.g. `"over-to-frac"`).
+    /// The package namespace this rule belongs to.
+    pub package: PackageName,
+    /// A short, unique name within the package.
     pub name: &'static str,
 }
 
@@ -210,6 +189,8 @@ pub struct RuleProduces {
 pub struct RuleMeta {
     /// Unique identifier for this rule.
     pub key: RuleKey,
+    /// Packages that make this rule loadable when any one of them is enabled.
+    pub enabled_by_packages: &'static [PackageName],
     /// Tier classification used by transform profiles.
     pub tier: RuleTier,
     /// One-line human-readable description of what the rule does.
@@ -257,18 +238,17 @@ pub trait TransformRule: Send + Sync {
     ) -> Result<RuleEffect, TransformError>;
 }
 
+impl std::fmt::Debug for dyn TransformRule + '_ {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TransformRule")
+            .field("key", &self.meta().key)
+            .finish_non_exhaustive()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{RuleKey, RulePackage, RuleTier};
-
-    #[test]
-    fn rule_package_strings_match_registry_keys() {
-        assert_eq!(RulePackage::Base.as_str(), "base");
-        assert_eq!(RulePackage::Ams.as_str(), "ams");
-        assert_eq!(RulePackage::Physics.as_str(), "physics");
-        assert_eq!(RulePackage::Bboldx.as_str(), "bboldx");
-        assert_eq!(RulePackage::Textmacros.as_str(), "textmacros");
-    }
+    use super::{PackageName, RuleKey, RuleTier};
 
     #[test]
     fn rule_tier_strings_match_profile_ids() {
@@ -278,9 +258,9 @@ mod tests {
     }
 
     #[test]
-    fn rule_key_display_is_package_and_name() {
+    fn rule_key_display_uses_generated_package_name() {
         let key = RuleKey {
-            package: RulePackage::Physics,
+            package: PackageName::Physics,
             name: "trace-to-tr",
         };
         assert_eq!(key.to_string(), "physics/trace-to-tr");

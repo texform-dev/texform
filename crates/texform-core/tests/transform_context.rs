@@ -1,5 +1,5 @@
 use texform_core::parse::{AllowedMode, CommandItem, CommandKind, ParseContextBuilder};
-use texform_core::transform::{RuleTier, TransformBuildError, TransformProfile};
+use texform_core::transform::{RuleTier, TransformProfile};
 
 #[test]
 fn only_many_keeps_the_requested_rules() {
@@ -55,7 +55,7 @@ fn build_with_disables_rules_touching_mutated_command_names() {
 }
 
 #[test]
-fn empty_rule_set_error_reports_profile_name() {
+fn disabling_all_rules_builds_empty_transform_context() {
     let parse_ctx = ParseContextBuilder::default()
         .packages(&["physics"])
         .build()
@@ -68,21 +68,16 @@ fn empty_rule_set_error_reports_profile_name() {
             builder.disable(rule.meta().key)
         });
 
-    let error = match builder.build_with(&parse_ctx) {
-        Ok(_) => panic!("disabling all authoring rules should fail"),
-        Err(error) => error,
-    };
+    let transform_ctx = builder
+        .build_with(&parse_ctx)
+        .expect("empty transform context should be a valid no-op");
 
-    assert_eq!(
-        error,
-        TransformBuildError::EmptyRuleSet {
-            profile: "authoring",
-        }
-    );
+    assert!(transform_ctx.normalize_rules().is_empty());
+    assert!(transform_ctx.cleanup_rules().is_empty());
 }
 
 #[test]
-fn only_does_not_bypass_profile_tier_filter() {
+fn only_does_not_bypass_profile_tier_filter_and_can_return_empty_context() {
     let parse_ctx = ParseContextBuilder::default()
         .packages(&["physics"])
         .build()
@@ -94,15 +89,12 @@ fn only_does_not_bypass_profile_tier_filter() {
         tiers: &[RuleTier::Deep],
     };
 
-    let error = match deep_only.builder().only(base_rule).build_with(&parse_ctx) {
-        Ok(_) => panic!("only() must still respect the profile tier filter"),
-        Err(error) => error,
-    };
+    let transform_ctx = deep_only
+        .builder()
+        .only(base_rule)
+        .build_with(&parse_ctx)
+        .expect("empty transform context should be a valid no-op");
 
-    assert_eq!(
-        error,
-        TransformBuildError::EmptyRuleSet {
-            profile: "deep-only",
-        }
-    );
+    assert!(transform_ctx.normalize_rules().is_empty());
+    assert!(transform_ctx.cleanup_rules().is_empty());
 }

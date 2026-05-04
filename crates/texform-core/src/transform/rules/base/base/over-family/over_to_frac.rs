@@ -5,7 +5,7 @@
 //! to the prefix form `\frac{a}{b}`, which is the canonical representation
 //! used by the rest of the pipeline.
 
-use texform_specs::builtin::{ams, base};
+use texform_specs::builtin::base;
 
 use crate::ast::ContentMode;
 use crate::transform::helpers::{mandatory_content, prefix_command};
@@ -20,12 +20,13 @@ define_rule! {
         summary: "Rewrite infix \\over into prefix \\frac",
         phase: Normalize,
         safety: Semantic,
+        enabled_by_packages: [Base],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::OVER],
             touches: &[],
         },
         produces: RuleProduces {
-            targets: cmd_targets![&base::cmd::FRAC, &ams::cmd::FRAC],
+            targets: cmd_targets![&base::cmd::FRAC],
         },
         apply(rule, cx, node_id) {
             let Some(infix) = cx.match_infix(node_id, &base::cmd::OVER) else {

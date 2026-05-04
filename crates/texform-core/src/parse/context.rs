@@ -16,6 +16,7 @@ pub use texform_argspec::ArgSpecParseError;
 use texform_interface::syntax_node::SyntaxNode;
 
 pub use texform_interface::syntax_node::ContentMode;
+use texform_specs::builtin::PackageName;
 pub use texform_specs::specs::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveDelimiterRecord, ActiveEnvironmentRecord,
     AllowedMode, CommandKind,
@@ -363,10 +364,13 @@ impl ParseContextBuilder {
     }
 
     pub fn build(self) -> Result<ParseContext, ParseContextBuildError> {
-        let (mut math_kb, mut text_kb) = match self.mode {
-            KnowledgeBaseMode::Empty => (KnowledgeBase::empty(), KnowledgeBase::empty()),
+        let (mut math_kb, mut text_kb, enabled_packages) = match self.mode {
+            KnowledgeBaseMode::Empty => {
+                (KnowledgeBase::empty(), KnowledgeBase::empty(), Vec::new())
+            }
             KnowledgeBaseMode::DefaultPackages => {
                 let refs = default_package_names().to_vec();
+                let enabled_packages = canonical_enabled_package_names(refs.as_slice())?;
                 let math_kb = KnowledgeBase::try_build_from_packages_for_mode(
                     refs.as_slice(),
                     ContentMode::Math,
@@ -378,10 +382,11 @@ impl ParseContextBuilder {
                 )
                 .map_err(ParseContextBuildError::PackageLoad)?;
 
-                (math_kb, text_kb)
+                (math_kb, text_kb, enabled_packages)
             }
             KnowledgeBaseMode::Packages(packages) => {
                 let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
+                let enabled_packages = canonical_enabled_package_names(refs.as_slice())?;
                 (
                     KnowledgeBase::try_build_from_packages_for_mode(
                         refs.as_slice(),
@@ -393,6 +398,7 @@ impl ParseContextBuilder {
                         ContentMode::Text,
                     )
                     .map_err(ParseContextBuildError::PackageLoad)?,
+                    enabled_packages,
                 )
             }
         };
@@ -434,8 +440,36 @@ impl ParseContextBuilder {
             }
         }
 
-        Ok(ParseContext::from_parts(math_kb, text_kb, mutation_summary))
+        Ok(ParseContext::from_parts(
+            math_kb,
+            text_kb,
+            mutation_summary,
+            enabled_packages,
+        ))
     }
+}
+
+fn canonical_enabled_package_names(
+    requested: &[&str],
+) -> Result<Vec<PackageName>, ParseContextBuildError> {
+    let mut packages = Vec::new();
+    for package in texform_specs::builtin::MANAGED_PACKAGE_IMPORT_ORDER {
+        if requested.contains(&package.as_str()) {
+            packages.push(*package);
+        }
+    }
+
+    for requested_name in requested {
+        if PackageName::from_str(requested_name).is_none() {
+            return Err(ParseContextBuildError::PackageLoad(
+                PackageLoadError::UnknownPackage {
+                    name: (*requested_name).to_string(),
+                },
+            ));
+        }
+    }
+
+    Ok(packages)
 }
 
 fn insert_item_into_lane(
@@ -591,6 +625,7 @@ pub struct ParseContext {
     math_kb: KnowledgeBase,
     text_kb: KnowledgeBase,
     mutation_summary: MutationSummary,
+    enabled_packages: Vec<PackageName>,
 }
 
 impl std::fmt::Debug for ParseContext {
@@ -598,6 +633,7 @@ impl std::fmt::Debug for ParseContext {
         f.debug_struct("ParseContext")
             .field("math_kb", &self.math_kb)
             .field("text_kb", &self.text_kb)
+            .field("enabled_packages", &self.enabled_packages)
             .finish_non_exhaustive()
     }
 }
@@ -615,16 +651,26 @@ impl ParseContext {
         math_kb: KnowledgeBase,
         text_kb: KnowledgeBase,
         mutation_summary: MutationSummary,
+        enabled_packages: Vec<PackageName>,
     ) -> Self {
         ParseContext {
             math_kb,
             text_kb,
             mutation_summary,
+            enabled_packages,
         }
     }
 
     pub(crate) fn mutation_summary(&self) -> &MutationSummary {
         &self.mutation_summary
+    }
+
+    pub fn enabled_packages(&self) -> &[PackageName] {
+        self.enabled_packages.as_slice()
+    }
+
+    pub fn has_enabled_package(&self, package: PackageName) -> bool {
+        self.enabled_packages.contains(&package)
     }
 
     /// Build an empty context with no package specs loaded.

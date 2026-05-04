@@ -15,6 +15,7 @@ macro_rules! define_rule {
             summary: $summary:expr,
             phase: $phase:ident,
             safety: $safety:ident,
+            enabled_by_packages: [$($enabled_package:ident),+ $(,)?],
             consumes: $consumes:expr,
             produces: $produces:expr,
             apply($rule:ident, $cx:ident, $node_id:ident) $body:block
@@ -32,6 +33,7 @@ macro_rules! define_rule {
             $summary,
             $phase,
             $safety,
+            [$($enabled_package),+],
             $consumes,
             $produces,
             {},
@@ -48,6 +50,7 @@ macro_rules! define_rule {
             summary: $summary:expr,
             phase: $phase:ident,
             safety: $safety:ident,
+            enabled_by_packages: [$($enabled_package:ident),+ $(,)?],
             consumes: $consumes:expr,
             produces: $produces:expr,
             apply_fn: $apply_fn:path
@@ -64,6 +67,7 @@ macro_rules! define_rule {
             $summary,
             $phase,
             $safety,
+            [$($enabled_package),+],
             $consumes,
             $produces,
             {},
@@ -79,6 +83,7 @@ macro_rules! define_rule {
             summary: $summary:expr,
             phase: $phase:ident,
             safety: $safety:ident,
+            enabled_by_packages: [$($enabled_package:ident),+ $(,)?],
             consumes: $consumes:expr,
             produces: $produces:expr,
             meta_init $meta_init:block,
@@ -97,6 +102,7 @@ macro_rules! define_rule {
             $summary,
             $phase,
             $safety,
+            [$($enabled_package),+],
             $consumes,
             $produces,
             $meta_init,
@@ -114,6 +120,7 @@ macro_rules! define_rule {
             summary: $summary:expr,
             phase: $phase:ident,
             safety: $safety:ident,
+            enabled_by_packages: [$($enabled_package:ident),+ $(,)?],
             consumes: $consumes:expr,
             produces: $produces:expr,
             meta_init $meta_init:block,
@@ -131,6 +138,7 @@ macro_rules! define_rule {
             $summary,
             $phase,
             $safety,
+            [$($enabled_package),+],
             $consumes,
             $produces,
             $meta_init,
@@ -149,6 +157,7 @@ macro_rules! define_rule {
         $summary:expr,
         $phase:ident,
         $safety:ident,
+        [$($enabled_package:ident),+],
         $consumes:expr,
         $produces:expr,
         $meta_init:block,
@@ -166,9 +175,12 @@ macro_rules! define_rule {
                 $meta_init
                 static META: $crate::transform::RuleMeta = $crate::transform::RuleMeta {
                     key: $crate::transform::RuleKey {
-                        package: $crate::transform::RulePackage::$package,
+                        package: $crate::transform::PackageName::$package,
                         name: $name,
                     },
+                    enabled_by_packages: &[
+                        $($crate::transform::PackageName::$enabled_package),+
+                    ],
                     tier: $crate::transform::RuleTier::$tier,
                     summary: $summary,
                     phase: $crate::transform::RulePhase::$phase,
@@ -202,6 +214,7 @@ macro_rules! define_rule {
         $summary:expr,
         $phase:ident,
         $safety:ident,
+        [$($enabled_package:ident),+],
         $consumes:expr,
         $produces:expr,
         $meta_init:block,
@@ -217,9 +230,12 @@ macro_rules! define_rule {
                 $meta_init
                 static META: $crate::transform::RuleMeta = $crate::transform::RuleMeta {
                     key: $crate::transform::RuleKey {
-                        package: $crate::transform::RulePackage::$package,
+                        package: $crate::transform::PackageName::$package,
                         name: $name,
                     },
+                    enabled_by_packages: &[
+                        $($crate::transform::PackageName::$enabled_package),+
+                    ],
                     tier: $crate::transform::RuleTier::$tier,
                     summary: $summary,
                     phase: $crate::transform::RulePhase::$phase,
@@ -269,6 +285,7 @@ macro_rules! alias_rule {
             summary: $summary:expr,
             phase: $phase:ident,
             safety: $safety:ident,
+            enabled_by_packages: [$($enabled_package:ident),+ $(,)?],
             canonical: $canonical:expr,
             aliases: [$($alias:expr),+ $(,)?],
         }
@@ -282,6 +299,7 @@ macro_rules! alias_rule {
                 summary: $summary,
                 phase: $phase,
                 safety: $safety,
+                enabled_by_packages: [$($enabled_package),+],
                 consumes: $crate::transform::RuleConsumes {
                     eliminates: &[$($crate::transform::RuleTarget::Command($alias)),+],
                     touches: &[],
@@ -373,11 +391,8 @@ mod tests {
     #[test]
     fn cmd_targets_expands_to_command_target_slice() {
         assert_eq!(
-            cmd_targets![&base::cmd::FRAC, &ams::cmd::FRAC],
-            &[
-                RuleTarget::Command(&base::cmd::FRAC),
-                RuleTarget::Command(&ams::cmd::FRAC),
-            ]
+            cmd_targets![&base::cmd::FRAC],
+            &[RuleTarget::Command(&base::cmd::FRAC)]
         );
     }
 

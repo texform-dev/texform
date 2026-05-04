@@ -289,7 +289,7 @@ mod tests {
     use crate::parse::{AllowedMode, ContentMode, ParseContext, ParseContextBuilder};
     use crate::transform::context::TransformContext;
     use crate::transform::rule::{
-        RuleConsumes, RuleEffect, RuleMeta, RulePackage, RulePhase, RuleProduces, RuleSafety,
+        PackageName, RuleConsumes, RuleEffect, RuleMeta, RulePhase, RuleProduces, RuleSafety,
         RuleTarget, RuleTier, TransformRule,
     };
     use crate::transform::rule_context::RuleContext;
@@ -323,9 +323,10 @@ mod tests {
 
     static SKIP_RULE_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            package: RulePackage::Physics,
+            package: PackageName::Physics,
             name: "skip-me",
         },
+        enabled_by_packages: &[PackageName::Physics],
         tier: RuleTier::Base,
         summary: "mock skip rule",
         phase: RulePhase::Normalize,
@@ -341,9 +342,10 @@ mod tests {
 
     static TOUCH_RULE_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            package: RulePackage::Physics,
+            package: PackageName::Physics,
             name: "touch-me",
         },
+        enabled_by_packages: &[PackageName::Physics],
         tier: RuleTier::Base,
         summary: "mock touch rule",
         phase: RulePhase::Normalize,

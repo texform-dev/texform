@@ -2,6 +2,7 @@ use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContentMode, EnvironmentItem, ParseContext,
     ParseContextBuilder,
 };
+use texform_specs::builtin::PackageName;
 
 #[test]
 fn builder_applies_insert_and_remove_before_freezing() {
@@ -38,9 +39,38 @@ fn builder_applies_insert_and_remove_environment_before_freezing() {
 }
 
 #[test]
+fn explicit_parse_context_exposes_enabled_packages_in_import_order() {
+    let ctx = ParseContext::from_packages(&["physics", "base", "braket"]);
+    assert_eq!(
+        ctx.enabled_packages(),
+        &[PackageName::Base, PackageName::Braket, PackageName::Physics]
+    );
+    assert!(ctx.has_enabled_package(PackageName::Physics));
+    assert!(!ctx.has_enabled_package(PackageName::Ams));
+}
+
+#[test]
+fn empty_parse_context_exposes_no_enabled_packages() {
+    let ctx = ParseContext::empty();
+    assert!(ctx.enabled_packages().is_empty());
+    assert!(!ctx.has_enabled_package(PackageName::Base));
+}
+
+#[test]
 fn convenience_factories_use_default_runtime_packages() {
     let default_ctx = ParseContext::default();
     let shared = ParseContext::shared();
+
+    let expected_packages = &[
+        PackageName::Base,
+        PackageName::Ams,
+        PackageName::Physics,
+        PackageName::Textmacros,
+        PackageName::Bboldx,
+        PackageName::Boldsymbol,
+    ];
+    assert_eq!(default_ctx.enabled_packages(), expected_packages);
+    assert_eq!(shared.enabled_packages(), expected_packages);
 
     assert!(
         default_ctx

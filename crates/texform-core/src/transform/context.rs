@@ -7,6 +7,7 @@ use crate::transform::registry::all_rules;
 use crate::transform::rule::{
     RuleKey, RulePhase, RuleTarget, RuleTargetKey, RuleTargetKind, RuleTier, TransformRule,
 };
+use texform_specs::builtin::PackageName;
 
 pub(crate) type RuleList = Vec<&'static dyn TransformRule>;
 pub(crate) type EliminatedForms = Vec<RuleTargetKey>;
@@ -85,9 +86,22 @@ impl TransformContext {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RuleAvailabilityFailure {
+    DisabledByPackage {
+        required: Vec<PackageName>,
+        active: Vec<PackageName>,
+    },
+    ProducedTargetUnavailable {
+        target: RuleTargetKey,
+        active: Vec<PackageName>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TransformBuildError {
-    EmptyRuleSet {
-        profile: &'static str,
+    SelectedRuleUnavailable {
+        rule: RuleKey,
+        reason: RuleAvailabilityFailure,
     },
     DependencyCycle {
         chain: Vec<RuleKey>,
@@ -101,8 +115,8 @@ pub enum TransformBuildError {
 impl std::fmt::Display for TransformBuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TransformBuildError::EmptyRuleSet { profile } => {
-                write!(f, "transform profile `{profile}` has no active rules")
+            TransformBuildError::SelectedRuleUnavailable { rule, reason } => {
+                write!(f, "selected transform rule {rule} is unavailable: {reason}")
             }
             TransformBuildError::DependencyCycle { chain } => {
                 let chain = chain
@@ -124,6 +138,30 @@ impl std::fmt::Display for TransformBuildError {
 }
 
 impl std::error::Error for TransformBuildError {}
+
+impl std::fmt::Display for RuleAvailabilityFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RuleAvailabilityFailure::DisabledByPackage { required, active } => write!(
+                f,
+                "enabled_by_packages {:?} does not intersect active packages {:?}",
+                package_names_for_message(required.as_slice()),
+                package_names_for_message(active.as_slice())
+            ),
+            RuleAvailabilityFailure::ProducedTargetUnavailable { target, active } => write!(
+                f,
+                "produced {} `{}` is unavailable in active packages {:?}",
+                target.kind_label(),
+                target.name,
+                package_names_for_message(active.as_slice())
+            ),
+        }
+    }
+}
+
+fn package_names_for_message(packages: &[PackageName]) -> Vec<&'static str> {
+    packages.iter().map(|package| package.as_str()).collect()
+}
 
 pub struct TransformContextBuilder {
     profile: TransformProfile,
@@ -174,23 +212,13 @@ impl TransformContextBuilder {
         parse_ctx: &ParseContext,
     ) -> Result<TransformContext, TransformBuildError> {
         let only = self.only;
-        let enabled = all_rules()
-            .iter()
-            .copied()
-            .filter(|rule| self.profile.includes(rule.meta().tier))
-            .filter(|rule| match only.as_ref() {
-                Some(only_keys) => only_keys.contains(&rule.meta().key),
-                None => true,
-            })
-            .filter(|rule| !self.disabled.contains(&rule.meta().key))
-            .filter(|rule| !rule_touched_by_mutations(rule, parse_ctx.mutation_summary()))
-            .collect::<Vec<_>>();
-
-        if enabled.is_empty() {
-            return Err(TransformBuildError::EmptyRuleSet {
-                profile: self.profile.name,
-            });
-        }
+        let enabled = filter_rules(
+            all_rules(),
+            self.profile,
+            only.as_ref(),
+            &self.disabled,
+            parse_ctx,
+        )?;
 
         let normalize_rules = topological_sort(
             enabled
@@ -217,6 +245,98 @@ impl TransformContextBuilder {
             eliminated_forms: derive_eliminated_forms(enabled.as_slice()),
             max_iterations: self.max_iterations,
         })
+    }
+}
+
+fn filter_rules(
+    rules: &[&'static dyn TransformRule],
+    profile: TransformProfile,
+    only: Option<&BTreeSet<RuleKey>>,
+    disabled: &BTreeSet<RuleKey>,
+    parse_ctx: &ParseContext,
+) -> Result<RuleList, TransformBuildError> {
+    let mut enabled = Vec::new();
+
+    for rule in rules.iter().copied() {
+        let key = rule.meta().key;
+        let explicitly_selected = only.is_some_and(|only_keys| only_keys.contains(&key));
+
+        if !profile.includes(rule.meta().tier) {
+            continue;
+        }
+        if only.is_some_and(|only_keys| !only_keys.contains(&key)) {
+            continue;
+        }
+        if disabled.contains(&key) {
+            continue;
+        }
+        if rule_touched_by_mutations(rule, parse_ctx.mutation_summary()) {
+            continue;
+        }
+
+        if let Some(reason) = package_availability_failure(rule, parse_ctx) {
+            if explicitly_selected {
+                return Err(TransformBuildError::SelectedRuleUnavailable { rule: key, reason });
+            }
+            continue;
+        }
+
+        if let Some(reason) = produced_target_availability_failure(rule, parse_ctx) {
+            if explicitly_selected {
+                return Err(TransformBuildError::SelectedRuleUnavailable { rule: key, reason });
+            }
+            continue;
+        }
+
+        enabled.push(rule);
+    }
+
+    Ok(enabled)
+}
+
+fn package_availability_failure(
+    rule: &'static dyn TransformRule,
+    parse_ctx: &ParseContext,
+) -> Option<RuleAvailabilityFailure> {
+    let active = parse_ctx.enabled_packages();
+    if rule
+        .meta()
+        .enabled_by_packages
+        .iter()
+        .any(|package| active.contains(package))
+    {
+        return None;
+    }
+
+    Some(RuleAvailabilityFailure::DisabledByPackage {
+        required: rule.meta().enabled_by_packages.to_vec(),
+        active: active.to_vec(),
+    })
+}
+
+fn produced_target_availability_failure(
+    rule: &'static dyn TransformRule,
+    parse_ctx: &ParseContext,
+) -> Option<RuleAvailabilityFailure> {
+    rule.meta()
+        .produces
+        .targets
+        .iter()
+        .copied()
+        .map(RuleTarget::key)
+        .find(|target| !parse_context_knows_target(parse_ctx, *target))
+        .map(
+            |target| RuleAvailabilityFailure::ProducedTargetUnavailable {
+                target,
+                active: parse_ctx.enabled_packages().to_vec(),
+            },
+        )
+}
+
+fn parse_context_knows_target(parse_ctx: &ParseContext, target: RuleTargetKey) -> bool {
+    match target.kind {
+        RuleTargetKind::Command => parse_ctx.knows_command_name(target.name),
+        RuleTargetKind::Environment => parse_ctx.knows_env_name(target.name),
     }
 }
 
@@ -389,7 +509,7 @@ fn visit_cycle(
 }
 
 fn rule_touched_by_mutations(
-    rule: &&'static dyn TransformRule,
+    rule: &'static dyn TransformRule,
     summary: &crate::parse::MutationSummary,
 ) -> bool {
     rule.meta()
@@ -412,12 +532,14 @@ mod tests {
     use crate::ast::NodeId;
     use crate::transform::engine::TransformError;
     use crate::transform::rule::{
-        RuleConsumes, RuleEffect, RuleMeta, RulePackage, RuleProduces, RuleSafety, RuleTier,
-        TransformRule,
+        RuleConsumes, RuleEffect, RuleMeta, RuleProduces, RuleSafety, RuleTier, TransformRule,
     };
     use crate::transform::rule_context::RuleContext;
     use texform_specs::argspec;
-    use texform_specs::specs::{AllowedMode, BuiltinCommandRecord, CommandKind};
+    use texform_specs::builtin::{MANAGED_PACKAGE_IMPORT_ORDER, PackageName};
+    use texform_specs::specs::{
+        AllowedMode, BuiltinCommandRecord, BuiltinEnvironmentRecord, CommandKind, ContentMode,
+    };
 
     struct MockRule {
         meta: &'static RuleMeta,
@@ -461,6 +583,14 @@ mod tests {
         tags: &[],
     };
 
+    static PRODUCED_ENV: BuiltinEnvironmentRecord = BuiltinEnvironmentRecord {
+        name: "matrix",
+        allowed_mode: AllowedMode::Math,
+        argspec: argspec!(""),
+        body_mode: ContentMode::Math,
+        tags: &[],
+    };
+
     static SHARED_VARIANT_BASE: BuiltinCommandRecord = BuiltinCommandRecord {
         name: "shared-target",
         kind: CommandKind::Prefix,
@@ -484,9 +614,10 @@ mod tests {
 
     static RULE_A_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            package: RulePackage::Physics,
+            package: PackageName::Physics,
             name: "a",
         },
+        enabled_by_packages: &[PackageName::Physics],
         tier: RuleTier::Base,
         summary: "mock rule a",
         phase: RulePhase::Normalize,
@@ -502,9 +633,10 @@ mod tests {
 
     static RULE_B_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            package: RulePackage::Physics,
+            package: PackageName::Physics,
             name: "b",
         },
+        enabled_by_packages: &[PackageName::Physics],
         tier: RuleTier::Base,
         summary: "mock rule b",
         phase: RulePhase::Normalize,
@@ -520,9 +652,10 @@ mod tests {
 
     static RULE_C_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            package: RulePackage::Physics,
+            package: PackageName::Physics,
             name: "c",
         },
+        enabled_by_packages: &[PackageName::Physics],
         tier: RuleTier::Base,
         summary: "mock rule c",
         phase: RulePhase::Normalize,
@@ -538,9 +671,10 @@ mod tests {
 
     static CLEANUP_RULE_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            package: RulePackage::Base,
+            package: PackageName::Base,
             name: "cleanup",
         },
+        enabled_by_packages: &[PackageName::Base],
         tier: RuleTier::Base,
         summary: "mock cleanup rule",
         phase: RulePhase::Cleanup,
@@ -556,9 +690,10 @@ mod tests {
 
     static DUPLICATE_ELIMINATE_RULE_META: RuleMeta = RuleMeta {
         key: RuleKey {
-            package: RulePackage::Physics,
+            package: PackageName::Physics,
             name: "duplicate-eliminate",
         },
+        enabled_by_packages: &[PackageName::Physics],
         tier: RuleTier::Base,
         summary: "mock rule with duplicate eliminate variants",
         phase: RulePhase::Normalize,
@@ -570,6 +705,59 @@ mod tests {
         produces: RuleProduces { targets: &[] },
     };
 
+    static PACKAGE_BASE_META: RuleMeta = RuleMeta {
+        key: RuleKey {
+            package: PackageName::Base,
+            name: "base-only",
+        },
+        enabled_by_packages: &[PackageName::Base],
+        tier: RuleTier::Base,
+        summary: "mock base package rule",
+        phase: RulePhase::Normalize,
+        safety: RuleSafety::Lossless,
+        consumes: RuleConsumes {
+            eliminates: &[RuleTarget::Command(&COMMAND_A)],
+            touches: &[],
+        },
+        produces: RuleProduces { targets: &[] },
+    };
+
+    static PACKAGE_PHYSICS_META: RuleMeta = RuleMeta {
+        key: RuleKey {
+            package: PackageName::Physics,
+            name: "physics-only",
+        },
+        enabled_by_packages: &[PackageName::Physics],
+        tier: RuleTier::Base,
+        summary: "mock physics package rule",
+        phase: RulePhase::Normalize,
+        safety: RuleSafety::Lossless,
+        consumes: RuleConsumes {
+            eliminates: &[RuleTarget::Command(&COMMAND_B)],
+            touches: &[],
+        },
+        produces: RuleProduces { targets: &[] },
+    };
+
+    static PRODUCES_AMS_ENV_META: RuleMeta = RuleMeta {
+        key: RuleKey {
+            package: PackageName::Base,
+            name: "produces-ams-env",
+        },
+        enabled_by_packages: &[PackageName::Base],
+        tier: RuleTier::Base,
+        summary: "mock rule producing matrix environment",
+        phase: RulePhase::Normalize,
+        safety: RuleSafety::Lossless,
+        consumes: RuleConsumes {
+            eliminates: &[RuleTarget::Command(&COMMAND_A)],
+            touches: &[],
+        },
+        produces: RuleProduces {
+            targets: &[RuleTarget::Environment(&PRODUCED_ENV)],
+        },
+    };
+
     static RULE_A: MockRule = MockRule { meta: &RULE_A_META };
     static RULE_B: MockRule = MockRule { meta: &RULE_B_META };
     static RULE_C: MockRule = MockRule { meta: &RULE_C_META };
@@ -579,6 +767,28 @@ mod tests {
     static DUPLICATE_ELIMINATE_RULE: MockRule = MockRule {
         meta: &DUPLICATE_ELIMINATE_RULE_META,
     };
+    static PACKAGE_BASE_RULE: MockRule = MockRule {
+        meta: &PACKAGE_BASE_META,
+    };
+    static PACKAGE_PHYSICS_RULE: MockRule = MockRule {
+        meta: &PACKAGE_PHYSICS_META,
+    };
+    static PRODUCES_AMS_ENV_RULE: MockRule = MockRule {
+        meta: &PRODUCES_AMS_ENV_META,
+    };
+
+    fn filter_rules_for_test(
+        rules: &[&'static dyn TransformRule],
+        parse_ctx: &ParseContext,
+    ) -> Result<Vec<&'static dyn TransformRule>, TransformBuildError> {
+        filter_rules(
+            rules,
+            TransformProfile::AUTHORING,
+            None,
+            &BTreeSet::new(),
+            parse_ctx,
+        )
+    }
 
     #[test]
     fn topological_sort_reports_concrete_cycle_chain() {
@@ -631,5 +841,201 @@ mod tests {
                 name: "shared-target",
             }
         );
+    }
+
+    #[test]
+    fn filter_rules_keeps_only_rules_enabled_by_parse_context_packages() {
+        let parse_ctx = ParseContext::from_packages(&["base"]);
+        let rules: [&'static dyn TransformRule; 2] = [&PACKAGE_BASE_RULE, &PACKAGE_PHYSICS_RULE];
+
+        let enabled =
+            filter_rules_for_test(rules.as_slice(), &parse_ctx).expect("filter should pass");
+
+        assert_eq!(
+            enabled
+                .iter()
+                .map(|rule| rule.meta().key)
+                .collect::<Vec<_>>(),
+            vec![PACKAGE_BASE_META.key]
+        );
+    }
+
+    #[test]
+    fn build_with_all_rules_filtered_by_packages_returns_empty_context() {
+        let parse_ctx = ParseContext::empty();
+        let context = TransformProfile::AUTHORING
+            .builder()
+            .build_with(&parse_ctx)
+            .expect("empty package context should produce a no-op transform context");
+
+        assert!(context.normalize_rules().is_empty());
+        assert!(context.cleanup_rules().is_empty());
+        assert!(context.eliminated_forms().is_empty());
+    }
+
+    #[test]
+    fn only_rule_reports_error_when_required_package_is_disabled() {
+        let parse_ctx = ParseContext::from_packages(&["base"]);
+
+        let error = match filter_rules(
+            &[&PACKAGE_PHYSICS_RULE],
+            TransformProfile::AUTHORING,
+            Some(&BTreeSet::from([PACKAGE_PHYSICS_META.key])),
+            &BTreeSet::new(),
+            &parse_ctx,
+        ) {
+            Ok(_) => panic!("only physics rule should be unavailable in base-only context"),
+            Err(error) => error,
+        };
+
+        assert_eq!(
+            error,
+            TransformBuildError::SelectedRuleUnavailable {
+                rule: PACKAGE_PHYSICS_META.key,
+                reason: RuleAvailabilityFailure::DisabledByPackage {
+                    required: vec![PackageName::Physics],
+                    active: vec![PackageName::Base],
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn filter_rules_drops_rule_when_produced_target_is_unavailable() {
+        let parse_ctx = ParseContext::from_packages(&["base"]);
+        let rules: [&'static dyn TransformRule; 1] = [&PRODUCES_AMS_ENV_RULE];
+
+        let enabled =
+            filter_rules_for_test(rules.as_slice(), &parse_ctx).expect("filter should pass");
+
+        assert!(enabled.is_empty());
+    }
+
+    #[test]
+    fn only_rule_reports_error_when_produced_target_is_unavailable() {
+        let parse_ctx = ParseContext::from_packages(&["base"]);
+
+        let error = match filter_rules(
+            &[&PRODUCES_AMS_ENV_RULE],
+            TransformProfile::AUTHORING,
+            Some(&BTreeSet::from([PRODUCES_AMS_ENV_META.key])),
+            &BTreeSet::new(),
+            &parse_ctx,
+        ) {
+            Ok(_) => panic!("selected rule should be unavailable because env:matrix is not active"),
+            Err(error) => error,
+        };
+
+        assert_eq!(
+            error,
+            TransformBuildError::SelectedRuleUnavailable {
+                rule: PRODUCES_AMS_ENV_META.key,
+                reason: RuleAvailabilityFailure::ProducedTargetUnavailable {
+                    target: RuleTargetKey {
+                        kind: RuleTargetKind::Environment,
+                        name: "matrix",
+                    },
+                    active: vec![PackageName::Base],
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn rule_metadata_enabled_packages_match_consumed_target_signatures() {
+        for rule in all_rules() {
+            let inferred = inferred_enabled_packages(rule.meta());
+            assert_eq!(
+                inferred,
+                rule.meta().enabled_by_packages,
+                "rule {} enabled_by_packages should match packages inferred from eliminates first, touches fallback",
+                rule.meta().key
+            );
+        }
+    }
+
+    #[test]
+    fn rule_key_package_is_first_enabled_package_by_import_order() {
+        for rule in all_rules() {
+            let mut enabled = rule.meta().enabled_by_packages.to_vec();
+            enabled.sort_by_key(|package| package.import_order());
+            assert_eq!(
+                Some(rule.meta().key.package),
+                enabled.first().copied(),
+                "rule {} key package should be the first enabled package by import order",
+                rule.meta().key
+            );
+        }
+    }
+
+    #[test]
+    fn rule_metadata_targets_do_not_repeat_kind_name_variants() {
+        for rule in all_rules() {
+            assert_unique_target_keys(
+                rule.meta().consumes.eliminates,
+                rule.meta().key,
+                "eliminates",
+            );
+            assert_unique_target_keys(rule.meta().consumes.touches, rule.meta().key, "touches");
+            assert_unique_target_keys(rule.meta().produces.targets, rule.meta().key, "produces");
+        }
+    }
+
+    fn inferred_enabled_packages(meta: &RuleMeta) -> Vec<PackageName> {
+        let source_targets = if !meta.consumes.eliminates.is_empty() {
+            meta.consumes.eliminates
+        } else {
+            meta.consumes.touches
+        };
+
+        let mut packages = Vec::new();
+        for target in source_targets {
+            for package in packages_for_target_signature(*target) {
+                if !packages.contains(&package) {
+                    packages.push(package);
+                }
+            }
+        }
+        packages.sort_by_key(|package| package.import_order());
+        packages
+    }
+
+    fn packages_for_target_signature(target: RuleTarget) -> Vec<PackageName> {
+        MANAGED_PACKAGE_IMPORT_ORDER
+            .iter()
+            .copied()
+            .filter(|package| package_contains_matching_target(*package, target))
+            .collect()
+    }
+
+    fn package_contains_matching_target(package: PackageName, target: RuleTarget) -> bool {
+        let builtin = package.package();
+        match target {
+            RuleTarget::Command(record) => builtin.commands.iter().any(|candidate| {
+                candidate.name == record.name
+                    && candidate.kind == record.kind
+                    && candidate.argspec.source == record.argspec.source
+            }),
+            RuleTarget::Environment(record) => builtin.environments.iter().any(|candidate| {
+                candidate.name == record.name
+                    && candidate.argspec.source == record.argspec.source
+                    && candidate.body_mode == record.body_mode
+            }),
+        }
+    }
+
+    fn assert_unique_target_keys(targets: &[RuleTarget], key: RuleKey, field: &str) {
+        let mut seen = Vec::new();
+        for target in targets {
+            let target_key = target.key();
+            assert!(
+                !seen.contains(&target_key),
+                "rule {key} repeats {} target {} `{}`; keep only the first builtin record by import order",
+                field,
+                target_key.kind_label(),
+                target_key.name
+            );
+            seen.push(target_key);
+        }
     }
 }

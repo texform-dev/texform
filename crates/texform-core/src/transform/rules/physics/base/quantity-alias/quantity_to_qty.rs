@@ -12,6 +12,7 @@ alias_rule! {
         summary: "Canonicalize \\quantity into \\qty",
         phase: Normalize,
         safety: Lossless,
+        enabled_by_packages: [Physics],
         canonical: &physics::cmd::QTY,
         aliases: [&physics::cmd::QUANTITY],
     }
