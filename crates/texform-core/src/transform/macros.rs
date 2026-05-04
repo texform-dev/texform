@@ -15,7 +15,6 @@ macro_rules! define_rule {
             summary: $summary:expr,
             phase: $phase:ident,
             safety: $safety:ident,
-            triggers: $triggers:expr,
             consumes: $consumes:expr,
             produces: $produces:expr,
             apply($rule:ident, $cx:ident, $node_id:ident) $body:block
@@ -33,7 +32,6 @@ macro_rules! define_rule {
             $summary,
             $phase,
             $safety,
-            $triggers,
             $consumes,
             $produces,
             {},
@@ -50,7 +48,6 @@ macro_rules! define_rule {
             summary: $summary:expr,
             phase: $phase:ident,
             safety: $safety:ident,
-            triggers: $triggers:expr,
             consumes: $consumes:expr,
             produces: $produces:expr,
             apply_fn: $apply_fn:path
@@ -67,7 +64,6 @@ macro_rules! define_rule {
             $summary,
             $phase,
             $safety,
-            $triggers,
             $consumes,
             $produces,
             {},
@@ -83,7 +79,6 @@ macro_rules! define_rule {
             summary: $summary:expr,
             phase: $phase:ident,
             safety: $safety:ident,
-            triggers: $triggers:expr,
             consumes: $consumes:expr,
             produces: $produces:expr,
             meta_init $meta_init:block,
@@ -102,7 +97,6 @@ macro_rules! define_rule {
             $summary,
             $phase,
             $safety,
-            $triggers,
             $consumes,
             $produces,
             $meta_init,
@@ -120,7 +114,6 @@ macro_rules! define_rule {
             summary: $summary:expr,
             phase: $phase:ident,
             safety: $safety:ident,
-            triggers: $triggers:expr,
             consumes: $consumes:expr,
             produces: $produces:expr,
             meta_init $meta_init:block,
@@ -138,7 +131,6 @@ macro_rules! define_rule {
             $summary,
             $phase,
             $safety,
-            $triggers,
             $consumes,
             $produces,
             $meta_init,
@@ -157,7 +149,6 @@ macro_rules! define_rule {
         $summary:expr,
         $phase:ident,
         $safety:ident,
-        $triggers:expr,
         $consumes:expr,
         $produces:expr,
         $meta_init:block,
@@ -182,7 +173,6 @@ macro_rules! define_rule {
                     summary: $summary,
                     phase: $crate::transform::RulePhase::$phase,
                     safety: $crate::transform::RuleSafety::$safety,
-                    triggers: $triggers,
                     consumes: $consumes,
                     produces: $produces,
                 };
@@ -212,7 +202,6 @@ macro_rules! define_rule {
         $summary:expr,
         $phase:ident,
         $safety:ident,
-        $triggers:expr,
         $consumes:expr,
         $produces:expr,
         $meta_init:block,
@@ -235,7 +224,6 @@ macro_rules! define_rule {
                     summary: $summary,
                     phase: $crate::transform::RulePhase::$phase,
                     safety: $crate::transform::RuleSafety::$safety,
-                    triggers: $triggers,
                     consumes: $consumes,
                     produces: $produces,
                 };
@@ -272,25 +260,6 @@ macro_rules! env_targets {
     };
 }
 
-macro_rules! cmd_triggers {
-    () => {
-        &[] as &[$crate::transform::RuleTrigger]
-    };
-    ($($record:expr),+ $(,)?) => {
-        &[$($crate::transform::RuleTrigger::Command($record)),+]
-    };
-}
-
-#[allow(unused_macros)]
-macro_rules! env_triggers {
-    () => {
-        &[] as &[$crate::transform::RuleTrigger]
-    };
-    ($($record:expr),+ $(,)?) => {
-        &[$($crate::transform::RuleTrigger::Environment($record)),+]
-    };
-}
-
 macro_rules! alias_rule {
     (
         $(#[$attr:meta])*
@@ -313,10 +282,9 @@ macro_rules! alias_rule {
                 summary: $summary,
                 phase: $phase,
                 safety: $safety,
-                triggers: &[$($crate::transform::RuleTrigger::Command($alias)),+],
                 consumes: $crate::transform::RuleConsumes {
                     eliminates: &[$($crate::transform::RuleTarget::Command($alias)),+],
-                    requires: &[],
+                    touches: &[],
                 },
                 produces: $crate::transform::RuleProduces {
                     targets: &[$crate::transform::RuleTarget::Command($canonical)],
@@ -391,10 +359,8 @@ macro_rules! transform_examples {
 
 pub(crate) use alias_rule;
 pub(crate) use cmd_targets;
-pub(crate) use cmd_triggers;
 pub(crate) use define_rule;
 pub(crate) use env_targets;
-pub(crate) use env_triggers;
 #[cfg(test)]
 pub(crate) use transform_examples;
 
@@ -402,7 +368,7 @@ pub(crate) use transform_examples;
 mod tests {
     use texform_specs::builtin::{ams, base};
 
-    use crate::transform::{RuleTarget, RuleTrigger};
+    use crate::transform::RuleTarget;
 
     #[test]
     fn cmd_targets_expands_to_command_target_slice() {
@@ -420,22 +386,6 @@ mod tests {
         assert_eq!(
             env_targets![&ams::env::ALIGN],
             &[RuleTarget::Environment(&ams::env::ALIGN)]
-        );
-    }
-
-    #[test]
-    fn cmd_triggers_expands_to_command_trigger_slice() {
-        assert_eq!(
-            cmd_triggers![&base::cmd::OVER],
-            &[RuleTrigger::Command(&base::cmd::OVER)]
-        );
-    }
-
-    #[test]
-    fn env_triggers_expands_to_environment_trigger_slice() {
-        assert_eq!(
-            env_triggers![&ams::env::ALIGN],
-            &[RuleTrigger::Environment(&ams::env::ALIGN)]
         );
     }
 }

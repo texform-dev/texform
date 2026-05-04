@@ -56,7 +56,7 @@ adding another file-level symbol for every rule.
 For repeated rule shells, prefer the crate-private authoring macros:
 
 ```rust
-use crate::transform::{alias_rule, cmd_targets, cmd_triggers, define_rule};
+use crate::transform::{alias_rule, cmd_targets, define_rule};
 ```
 
 These macros are intentionally local to `texform-core`; they are ergonomics
@@ -71,11 +71,11 @@ use texform_specs::builtin::base;
 use texform_specs::builtin::ams;
 ```
 
-When referencing builtin records in triggers, consumes, or produces, always use
+When referencing builtin records in consumes or produces, always use
 the package-qualified path:
 
 ```rust
-RuleTrigger::Command(&base::cmd::OVER)
+RuleTarget::Command(&base::cmd::OVER)
 RuleTarget::Command(&base::cmd::FRAC)
 RuleTarget::Environment(&ams::env::ALIGN)
 ```
@@ -86,16 +86,12 @@ record is obvious during authoring and review.
 ## Package Variants
 
 Some builtins exist in multiple packages with the same semantic shape. When
-that happens, list every compatible package variant in `triggers`,
-`consumes`, and `produces`:
+that happens, list every compatible package variant in `consumes` and
+`produces`:
 
 ```rust
 use texform_specs::builtin::{ams, base};
 
-triggers: &[
-    RuleTrigger::Command(&base::cmd::FRAC),
-    RuleTrigger::Command(&ams::cmd::FRAC),
-],
 produces: RuleProduces {
     targets: &[
         RuleTarget::Command(&base::cmd::FRAC),
@@ -125,15 +121,6 @@ transform plan is built and executed:
    so grouping them does not change topo sort, cleanup-boundary checks, or
    eliminated-form derivation.
 
-Trigger availability is intentionally not validated during transform-context
-construction:
-
-1. Triggers are only OR-matched by the engine at runtime.
-2. Triggers do not participate in topo sort or eliminated-form derivation.
-3. A missing trigger therefore degrades to a no-op instead of a build error.
-   If a recognized form still remains after a rule promises to eliminate it,
-   final eliminated-form validation catches the mismatch.
-
 ## define_rule!
 
 Use `define_rule!` when the rule metadata is regular but the AST rewrite logic
@@ -147,10 +134,9 @@ define_rule! {
         summary: "Rewrite infix \\over into prefix \\frac",
         phase: Normalize,
         safety: Semantic,
-        triggers: cmd_triggers![&base::cmd::OVER],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::OVER],
-            requires: &[],
+            touches: &[],
         },
         produces: RuleProduces {
             targets: cmd_targets![&base::cmd::FRAC, &ams::cmd::FRAC],
@@ -205,10 +191,9 @@ alias_rule! {
 3. `argspec.source` must match
 4. The alias list must be non-empty and must not contain the canonical command
 
-`alias_rule!` does not validate tag equality. If aliases and the canonical
-command carry different tags, downstream `CommandTag`-based behavior will follow
-the canonical command after rename. That semantic choice belongs to the rule
-author, not to the macro.
+`alias_rule!` declares aliases as eliminated commands and the canonical command
+as the produced command. The engine attempts the rule when the current node
+matches one of the alias command names.
 
 Do not use `alias_rule!` for:
 
@@ -224,13 +209,10 @@ Use the small metadata helpers when they reduce noise:
 ```rust
 cmd_targets![&base::cmd::FRAC, &ams::cmd::FRAC]
 env_targets![&ams::env::ALIGN]
-cmd_triggers![&base::cmd::OVER]
-env_triggers![&ams::env::ALIGN]
 ```
 
-These macros only wrap builtin paths into `RuleTarget::*` or `RuleTrigger::*`
-arrays. They do not infer package variants, canonical forms, or any other rule
-semantics.
+These macros only wrap builtin paths into `RuleTarget::*` arrays. They do not
+infer package variants, canonical forms, or any other rule semantics.
 
 ## Shared Helper Imports
 

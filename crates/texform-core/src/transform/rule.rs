@@ -17,7 +17,7 @@
 
 use texform_specs::specs::{BuiltinCommandRecord, BuiltinEnvironmentRecord};
 
-use crate::ast::{NodeId, NodeKind};
+use crate::ast::NodeId;
 use crate::transform::engine::TransformError;
 use crate::transform::rule_context::RuleContext;
 
@@ -175,21 +175,20 @@ impl From<RuleTarget> for RuleTargetKey {
     }
 }
 
-/// Declares the commands/environments that a rule needs to exist in the
-/// knowledge base and which ones it will eliminate from the AST.
+/// Declares the commands/environments that a rule removes from, reads, or may
+/// otherwise touch in the AST.
 ///
 /// The distinction matters for convergence analysis:
 /// - **`eliminates`** — forms the rule actively removes or replaces. After the
 ///   rule fires these forms should no longer appear in the output AST.
-/// - **`requires`** — forms that must be present in the knowledge base for the
-///   rule to function (e.g. the rule reads metadata from them) but are *not*
-///   removed from the AST.
+/// - **`touches`** — forms that the rule may read or modify without promising
+///   to eliminate them from the output AST.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RuleConsumes {
     /// Forms that the rule removes or replaces in the AST.
     pub eliminates: &'static [RuleTarget],
-    /// Forms that must exist in the knowledge base but are left untouched in the AST.
-    pub requires: &'static [RuleTarget],
+    /// Forms that the rule may read or modify but does not eliminate.
+    pub touches: &'static [RuleTarget],
 }
 
 /// Declares the new forms that a rule may introduce into the AST.
@@ -202,32 +201,11 @@ pub struct RuleProduces {
     pub targets: &'static [RuleTarget],
 }
 
-/// Condition that determines when the engine should attempt to apply a rule to a node.
-///
-/// During tree traversal the engine checks each node against every active
-/// rule's triggers. A rule fires only when at least one trigger matches. Tag-based
-/// triggers (`CommandTag`, `EnvironmentTag`) allow a single rule to match a broad
-/// set of commands/environments without enumerating them individually.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RuleTrigger {
-    /// Matches any node of the given AST kind.
-    NodeKind(NodeKind),
-    /// Matches a specific builtin command by record identity.
-    Command(&'static BuiltinCommandRecord),
-    /// Matches a specific builtin environment by record identity.
-    Environment(&'static BuiltinEnvironmentRecord),
-    /// Matches any command whose knowledge-base entry carries the given tag.
-    CommandTag(&'static str),
-    /// Matches any environment whose knowledge-base entry carries the given tag.
-    EnvironmentTag(&'static str),
-}
-
 /// Static metadata bundle that fully describes a rule's identity, scheduling,
 /// and dependency contract.
 ///
-/// The engine uses `triggers` to decide *when* to attempt a rule, `consumes` and
-/// `produces` to verify convergence, and `phase`/`safety` to control scheduling
-/// and filtering.
+/// The engine uses `consumes` to decide when to attempt a rule, `produces` to
+/// verify convergence, and `phase`/`safety` to control scheduling and filtering.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RuleMeta {
     /// Unique identifier for this rule.
@@ -240,9 +218,7 @@ pub struct RuleMeta {
     pub phase: RulePhase,
     /// The information-preservation guarantee this rule provides.
     pub safety: RuleSafety,
-    /// Conditions under which the engine will attempt to apply this rule to a node.
-    pub triggers: &'static [RuleTrigger],
-    /// Commands/environments this rule removes from or depends on in the AST.
+    /// Commands/environments this rule removes from, reads, or modifies in the AST.
     pub consumes: RuleConsumes,
     /// Commands/environments this rule may introduce into the AST.
     pub produces: RuleProduces,
@@ -256,7 +232,7 @@ pub struct RuleMeta {
 pub enum RuleEffect {
     /// The rule matched and the AST was modified.
     Applied,
-    /// The rule's trigger matched but the node did not require transformation.
+    /// The rule matched but the node did not require transformation.
     Skipped,
 }
 

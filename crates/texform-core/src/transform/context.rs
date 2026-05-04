@@ -258,7 +258,7 @@ fn assert_cleanup_boundary(
                     .consumes
                     .eliminates
                     .iter()
-                    .chain(normalize_rule.meta().consumes.requires.iter())
+                    .chain(normalize_rule.meta().consumes.touches.iter())
                     .copied()
                     .map(RuleTarget::key);
                 if consumes.into_iter().any(|consumed| consumed == produced) {
@@ -335,7 +335,7 @@ fn rules_intersect(
                 .consumes
                 .eliminates
                 .iter()
-                .chain(to_rule.meta().consumes.requires.iter())
+                .chain(to_rule.meta().consumes.touches.iter())
                 .copied()
                 .map(RuleTarget::key)
                 .any(|consumed| consumed == produced)
@@ -396,7 +396,7 @@ fn rule_touched_by_mutations(
         .consumes
         .eliminates
         .iter()
-        .chain(rule.meta().consumes.requires.iter())
+        .chain(rule.meta().consumes.touches.iter())
         .chain(rule.meta().produces.targets.iter())
         .copied()
         .map(RuleTarget::key)
@@ -491,10 +491,9 @@ mod tests {
         summary: "mock rule a",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
-        triggers: &[],
         consumes: RuleConsumes {
             eliminates: &[RuleTarget::Command(&COMMAND_C)],
-            requires: &[],
+            touches: &[],
         },
         produces: RuleProduces {
             targets: &[RuleTarget::Command(&COMMAND_A)],
@@ -510,10 +509,9 @@ mod tests {
         summary: "mock rule b",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
-        triggers: &[],
         consumes: RuleConsumes {
             eliminates: &[RuleTarget::Command(&COMMAND_A)],
-            requires: &[],
+            touches: &[],
         },
         produces: RuleProduces {
             targets: &[RuleTarget::Command(&COMMAND_B)],
@@ -529,10 +527,9 @@ mod tests {
         summary: "mock rule c",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
-        triggers: &[],
         consumes: RuleConsumes {
             eliminates: &[RuleTarget::Command(&COMMAND_B)],
-            requires: &[],
+            touches: &[],
         },
         produces: RuleProduces {
             targets: &[RuleTarget::Command(&COMMAND_C)],
@@ -548,10 +545,9 @@ mod tests {
         summary: "mock cleanup rule",
         phase: RulePhase::Cleanup,
         safety: RuleSafety::Lossless,
-        triggers: &[],
         consumes: RuleConsumes {
             eliminates: &[],
-            requires: &[],
+            touches: &[],
         },
         produces: RuleProduces {
             targets: &[RuleTarget::Command(&COMMAND_A)],
@@ -567,10 +563,9 @@ mod tests {
         summary: "mock rule with duplicate eliminate variants",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
-        triggers: &[],
         consumes: RuleConsumes {
             eliminates: &SHARED_VARIANT_TARGETS,
-            requires: &[],
+            touches: &[],
         },
         produces: RuleProduces { targets: &[] },
     };

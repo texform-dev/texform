@@ -13,17 +13,17 @@ use crate::ast::{Ast, NodeId, NodeKind};
 use crate::knowledge::{lookup_command_node_name, lookup_environment_node_name};
 use crate::parse::ParseContext;
 use crate::transform::context::TransformContext;
-use crate::transform::rule::{RuleEffect, RuleKey, RuleMeta, RuleTargetKey, RuleTrigger};
+use crate::transform::rule::{RuleEffect, RuleKey, RuleMeta, RuleTarget, RuleTargetKey};
 use crate::transform::rule_context::RuleContext;
 
-/// Tracks how often a specific rule changed the AST or skipped after a trigger match.
+/// Tracks how often a specific rule changed the AST or skipped after a consumed target match.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppliedRuleStat {
     /// The identity of the rule.
     pub key: RuleKey,
     /// The total number of times this rule fired.
     pub count: usize,
-    /// The total number of times this rule's trigger matched but `apply()` returned `Skipped`.
+    /// The total number of times this rule's consumed target matched but `apply()` returned `Skipped`.
     pub skipped_count: usize,
 }
 
@@ -218,31 +218,22 @@ fn preorder_snapshot(ast: &Ast) -> Vec<NodeId> {
 }
 
 fn rule_matches(meta: &RuleMeta, node_id: NodeId, cx: &RuleContext<'_>) -> bool {
-    if meta.triggers.is_empty() {
-        return true;
-    }
-
-    meta.triggers
+    meta.consumes
+        .eliminates
         .iter()
+        .chain(meta.consumes.touches.iter())
         .copied()
-        .any(|trigger| trigger_matches(trigger, node_id, cx))
+        .any(|target| target_matches(target, node_id, cx))
 }
 
-fn trigger_matches(trigger: RuleTrigger, node_id: NodeId, cx: &RuleContext<'_>) -> bool {
-    match trigger {
-        RuleTrigger::NodeKind(kind) => cx.ast.kind(node_id) == kind,
-        // Trigger matching now follows the AST node name on purpose. The parser
-        // never emits `known: false` for builtin names, so existing rules do not widen unexpectedly.
-        RuleTrigger::Command(record) => cx
+fn target_matches(target: RuleTarget, node_id: NodeId, cx: &RuleContext<'_>) -> bool {
+    match target {
+        RuleTarget::Command(record) => cx
             .active_command(node_id)
             .is_some_and(|active| active.name == record.name),
-        RuleTrigger::Environment(record) => cx
+        RuleTarget::Environment(record) => cx
             .active_env(node_id)
             .is_some_and(|active| active.name == record.name),
-        RuleTrigger::CommandTag(tag) => lookup_command_node_name(cx.ast.node(node_id))
-            .is_some_and(|name| cx.command_has_tag(name, tag)),
-        RuleTrigger::EnvironmentTag(tag) => lookup_environment_node_name(cx.ast.node(node_id))
-            .is_some_and(|name| cx.env_has_tag(name, tag)),
     }
 }
 
@@ -299,7 +290,7 @@ mod tests {
     use crate::transform::context::TransformContext;
     use crate::transform::rule::{
         RuleConsumes, RuleEffect, RuleMeta, RulePackage, RulePhase, RuleProduces, RuleSafety,
-        RuleTarget, RuleTier, RuleTrigger, TransformRule,
+        RuleTarget, RuleTier, TransformRule,
     };
     use crate::transform::rule_context::RuleContext;
     use texform_specs::argspec;
@@ -339,22 +330,55 @@ mod tests {
         summary: "mock skip rule",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
-        triggers: &[RuleTrigger::Command(&SKIP_COMMAND)],
         consumes: RuleConsumes {
-            eliminates: &[],
-            requires: &[],
+            eliminates: &[RuleTarget::Command(&SKIP_COMMAND)],
+            touches: &[],
         },
         produces: RuleProduces { targets: &[] },
     };
 
     static SKIP_RULE: SkipRule = SkipRule;
 
+    static TOUCH_RULE_META: RuleMeta = RuleMeta {
+        key: RuleKey {
+            package: RulePackage::Physics,
+            name: "touch-me",
+        },
+        tier: RuleTier::Base,
+        summary: "mock touch rule",
+        phase: RulePhase::Normalize,
+        safety: RuleSafety::Lossless,
+        consumes: RuleConsumes {
+            eliminates: &[],
+            touches: &[RuleTarget::Command(&SKIP_COMMAND)],
+        },
+        produces: RuleProduces { targets: &[] },
+    };
+
+    struct TouchRule;
+
+    impl TransformRule for TouchRule {
+        fn meta(&self) -> &'static RuleMeta {
+            &TOUCH_RULE_META
+        }
+
+        fn apply(
+            &self,
+            _cx: &mut RuleContext<'_>,
+            _node_id: NodeId,
+        ) -> Result<RuleEffect, TransformError> {
+            Ok(RuleEffect::Skipped)
+        }
+    }
+
+    static TOUCH_RULE: TouchRule = TouchRule;
+
     fn transform_context_with(rule: &'static dyn TransformRule) -> TransformContext {
         TransformContext::from_parts_for_test(vec![rule], Vec::new(), Vec::new(), 4)
     }
 
     #[test]
-    fn report_tracks_skipped_rule_attempts_after_trigger_match() {
+    fn report_tracks_skipped_rule_attempts_after_consumed_command_match() {
         let parse_ctx = ParseContextBuilder::empty()
             .insert_item(crate::parse::CommandItem::new(
                 "skip-me",
@@ -381,6 +405,40 @@ mod tests {
             report.applied,
             vec![AppliedRuleStat {
                 key: SKIP_RULE_META.key,
+                count: 0,
+                skipped_count: 1,
+            }]
+        );
+    }
+
+    #[test]
+    fn report_tracks_skipped_rule_attempts_after_touched_command_match() {
+        let parse_ctx = ParseContextBuilder::empty()
+            .insert_item(crate::parse::CommandItem::new(
+                "skip-me",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "",
+            ))
+            .build()
+            .expect("parse context should build");
+
+        let mut ast = Ast::new();
+        let node_id = ast.new_node(Node::Command {
+            name: "skip-me".to_string(),
+            args: Vec::new(),
+            known: true,
+        });
+        ast.append_child(ast.root(), node_id);
+
+        let report = transform_ast(&mut ast, &parse_ctx, &transform_context_with(&TOUCH_RULE))
+            .expect("transform with touch-only rule should succeed");
+
+        assert_eq!(report.iterations, 1);
+        assert_eq!(
+            report.applied,
+            vec![AppliedRuleStat {
+                key: TOUCH_RULE_META.key,
                 count: 0,
                 skipped_count: 1,
             }]
@@ -418,87 +476,6 @@ mod tests {
 
         transform_ast(&mut ast, &parse_ctx, &transform_ctx)
             .expect("runtime contract should ignore forms unavailable in this parse context");
-    }
-
-    #[test]
-    fn command_tag_trigger_checks_both_lanes() {
-        let parse_ctx = ParseContextBuilder::empty()
-            .insert_item(
-                crate::parse::CommandItem::new(
-                    "dual-tagged",
-                    CommandKind::Prefix,
-                    AllowedMode::Text,
-                    "m:T",
-                )
-                .with_tags(["presentation"]),
-            )
-            .insert_item(crate::parse::CommandItem::new(
-                "dual-tagged",
-                CommandKind::Prefix,
-                AllowedMode::Math,
-                "m",
-            ))
-            .build()
-            .expect("parse context should build");
-
-        let mut ast = Ast::new();
-        let node_id = ast.new_node(Node::Command {
-            name: "dual-tagged".to_string(),
-            args: Vec::new(),
-            known: true,
-        });
-        ast.append_child(ast.root(), node_id);
-
-        static TAG_RULE_META: RuleMeta = RuleMeta {
-            key: RuleKey {
-                package: RulePackage::Physics,
-                name: "tag-trigger",
-            },
-            tier: RuleTier::Base,
-            summary: "mock tag trigger rule",
-            phase: RulePhase::Normalize,
-            safety: RuleSafety::Lossless,
-            triggers: &[RuleTrigger::CommandTag("presentation")],
-            consumes: RuleConsumes {
-                eliminates: &[],
-                requires: &[],
-            },
-            produces: RuleProduces { targets: &[] },
-        };
-
-        struct TagSkipRule;
-
-        impl TransformRule for TagSkipRule {
-            fn meta(&self) -> &'static RuleMeta {
-                &TAG_RULE_META
-            }
-
-            fn apply(
-                &self,
-                _cx: &mut RuleContext<'_>,
-                _node_id: NodeId,
-            ) -> Result<RuleEffect, TransformError> {
-                Ok(RuleEffect::Skipped)
-            }
-        }
-
-        static TAG_SKIP_RULE: TagSkipRule = TagSkipRule;
-
-        let report = transform_ast(
-            &mut ast,
-            &parse_ctx,
-            &transform_context_with(&TAG_SKIP_RULE),
-        )
-        .expect("tag trigger should match text-lane metadata");
-
-        assert_eq!(
-            report.applied,
-            vec![AppliedRuleStat {
-                key: TAG_RULE_META.key,
-                count: 0,
-                skipped_count: 1,
-            }]
-        );
     }
 
     #[test]

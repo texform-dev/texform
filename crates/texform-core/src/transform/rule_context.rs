@@ -174,7 +174,7 @@ impl<'a> RuleContext<'a> {
         self.report.mark_rule_applied(key);
     }
 
-    /// Records that a rule was attempted after trigger matching but made no change.
+    /// Records that a rule was attempted after consumed target matching but made no change.
     pub fn mark_rule_skipped(&mut self, key: RuleKey) {
         self.report.mark_rule_skipped(key);
     }

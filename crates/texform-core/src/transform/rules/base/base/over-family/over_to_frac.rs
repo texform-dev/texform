@@ -10,7 +10,7 @@ use texform_specs::builtin::{ams, base};
 use crate::ast::ContentMode;
 use crate::transform::helpers::{mandatory_content, prefix_command};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
-use crate::transform::{cmd_targets, cmd_triggers, define_rule};
+use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
     /// Rewrites the infix `\over` primitive into the prefix `\frac{…}{…}` form.
@@ -20,10 +20,9 @@ define_rule! {
         summary: "Rewrite infix \\over into prefix \\frac",
         phase: Normalize,
         safety: Semantic,
-        triggers: cmd_triggers![&base::cmd::OVER],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::OVER],
-            requires: &[],
+            touches: &[],
         },
         produces: RuleProduces {
             targets: cmd_targets![&base::cmd::FRAC, &ams::cmd::FRAC],
