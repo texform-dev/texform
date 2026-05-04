@@ -24,6 +24,10 @@ pub fn lookup_package(name: &str) -> Option<&'static BuiltinPackage> {
     ALL_PACKAGES.iter().find(|pkg| pkg.name == name)
 }
 
+pub fn managed_package_import_order() -> &'static [PackageName] {
+    MANAGED_PACKAGE_IMPORT_ORDER
+}
+
 pub fn all_package_names() -> Vec<&'static str> {
     ALL_PACKAGES.iter().map(|pkg| pkg.name).collect()
 }

@@ -13,6 +13,16 @@ use specs_yaml::{
 };
 use texform_argspec::parse_arg_specs;
 
+const MANAGED_PACKAGE_IMPORT_ORDER: [&str; 7] = [
+    "base",
+    "ams",
+    "braket",
+    "physics",
+    "textmacros",
+    "bboldx",
+    "boldsymbol",
+];
+
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let specs_dir = manifest_dir.join("../../resources/specs");
@@ -31,6 +41,8 @@ fn main() {
         .iter()
         .map(|path| load_package(path.as_path()))
         .collect::<Vec<_>>();
+
+    assert_managed_order_matches_specs(packages.as_slice());
 
     fs::write(out_path, generate_builtin_source(packages.as_slice()))
         .unwrap_or_else(|err| panic!("failed to write generated builtin source: {err}"));
@@ -78,6 +90,27 @@ struct DelimiterRecordSource {
     allowed_mode: AllowedModeYaml,
     unicode_value: String,
     attributes: CharacterAttributesYaml,
+}
+
+fn assert_managed_order_matches_specs(packages: &[BuiltinPackageSource]) {
+    let package_names = packages
+        .iter()
+        .map(|package| package.name.as_str())
+        .collect::<Vec<_>>();
+
+    for managed in MANAGED_PACKAGE_IMPORT_ORDER {
+        assert!(
+            package_names.contains(&managed),
+            "managed package `{managed}` is missing from resources/specs"
+        );
+    }
+
+    for name in package_names {
+        assert!(
+            MANAGED_PACKAGE_IMPORT_ORDER.contains(&name),
+            "package `{name}` exists in resources/specs but is missing from MANAGED_PACKAGE_IMPORT_ORDER"
+        );
+    }
 }
 
 impl CommandKindYaml {
@@ -235,6 +268,8 @@ fn generate_builtin_source(packages: &[BuiltinPackageSource]) -> String {
         emit_package_module(&mut out, package);
     }
 
+    emit_package_name_enum(&mut out);
+
     out.push_str("pub static ALL_PACKAGES: &[BuiltinPackage] = &[\n");
     for package in packages {
         writeln!(
@@ -251,6 +286,78 @@ fn generate_builtin_source(packages: &[BuiltinPackageSource]) -> String {
     out.push_str("];\n");
 
     out
+}
+
+fn emit_package_name_enum(out: &mut String) {
+    out.push_str("#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]\n");
+    out.push_str("pub enum PackageName {\n");
+    for package_name in MANAGED_PACKAGE_IMPORT_ORDER {
+        writeln!(out, "    {},", package_variant_ident(package_name)).unwrap();
+    }
+    out.push_str("}\n");
+
+    out.push_str("pub static MANAGED_PACKAGE_IMPORT_ORDER: &[PackageName] = &[\n");
+    for package_name in MANAGED_PACKAGE_IMPORT_ORDER {
+        writeln!(
+            out,
+            "    PackageName::{},",
+            package_variant_ident(package_name)
+        )
+        .unwrap();
+    }
+    out.push_str("];\n");
+
+    out.push_str("impl PackageName {\n");
+    out.push_str("    pub const fn as_str(self) -> &'static str {\n");
+    out.push_str("        match self {\n");
+    for package_name in MANAGED_PACKAGE_IMPORT_ORDER {
+        writeln!(
+            out,
+            "            PackageName::{} => {:?},",
+            package_variant_ident(package_name),
+            package_name
+        )
+        .unwrap();
+    }
+    out.push_str("        }\n");
+    out.push_str("    }\n");
+
+    out.push_str("    pub const fn import_order(self) -> usize {\n");
+    out.push_str("        match self {\n");
+    for (index, package_name) in MANAGED_PACKAGE_IMPORT_ORDER.iter().enumerate() {
+        writeln!(
+            out,
+            "            PackageName::{} => {},",
+            package_variant_ident(package_name),
+            index
+        )
+        .unwrap();
+    }
+    out.push_str("        }\n");
+    out.push_str("    }\n");
+
+    out.push_str("    pub fn package(self) -> &'static BuiltinPackage {\n");
+    out.push_str(
+        "        lookup_package(self.as_str()).expect(\"generated package name must exist\")\n",
+    );
+    out.push_str("    }\n");
+
+    out.push_str("    #[allow(clippy::should_implement_trait)]\n");
+    out.push_str("    pub fn from_str(name: &str) -> Option<Self> {\n");
+    out.push_str("        match name {\n");
+    for package_name in MANAGED_PACKAGE_IMPORT_ORDER {
+        writeln!(
+            out,
+            "            {:?} => Some(PackageName::{}),",
+            package_name,
+            package_variant_ident(package_name)
+        )
+        .unwrap();
+    }
+    out.push_str("            _ => None,\n");
+    out.push_str("        }\n");
+    out.push_str("    }\n");
+    out.push_str("}\n");
 }
 
 fn emit_package_module(out: &mut String, package: &BuiltinPackageSource) {
@@ -514,6 +621,22 @@ fn package_module_ident(name: &str) -> String {
         }
     }
     ident
+}
+
+fn package_variant_ident(name: &str) -> String {
+    name.split(|ch: char| !ch.is_ascii_alphanumeric())
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            let Some(first) = chars.next() else {
+                return String::new();
+            };
+            let mut out = String::new();
+            out.push(first.to_ascii_uppercase());
+            out.extend(chars.map(|ch| ch.to_ascii_lowercase()));
+            out
+        })
+        .collect::<String>()
 }
 
 fn facade_ident(name: &str) -> Option<String> {

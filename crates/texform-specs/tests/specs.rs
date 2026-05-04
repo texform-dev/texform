@@ -1,7 +1,59 @@
 use std::borrow::Cow;
 
 use texform_argspec::{ArgForm, ArgSpec, ContentMode, DelimiterToken, ValueKind, parse_arg_specs};
+use texform_specs::builtin::{MANAGED_PACKAGE_IMPORT_ORDER, PackageName};
 use texform_specs::specs::{AllowedMode, load_package_specs_from_str};
+
+#[test]
+fn package_name_import_order_matches_transform_order() {
+    assert_eq!(
+        MANAGED_PACKAGE_IMPORT_ORDER,
+        &[
+            PackageName::Base,
+            PackageName::Ams,
+            PackageName::Braket,
+            PackageName::Physics,
+            PackageName::Textmacros,
+            PackageName::Bboldx,
+            PackageName::Boldsymbol,
+        ]
+    );
+    assert_eq!(
+        MANAGED_PACKAGE_IMPORT_ORDER
+            .iter()
+            .map(|package| package.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "base",
+            "ams",
+            "braket",
+            "physics",
+            "textmacros",
+            "bboldx",
+            "boldsymbol",
+        ]
+    );
+    assert_eq!(
+        texform_specs::builtin::managed_package_import_order(),
+        MANAGED_PACKAGE_IMPORT_ORDER
+    );
+    assert_eq!(
+        texform_specs::packages::MANAGED_PACKAGE_IMPORT_ORDER,
+        MANAGED_PACKAGE_IMPORT_ORDER
+    );
+}
+
+#[test]
+fn package_name_lookup_and_package_access_use_generated_registry() {
+    assert_eq!(PackageName::from_str("physics"), Some(PackageName::Physics));
+    assert_eq!(PackageName::from_str("missing"), None);
+    assert_eq!(PackageName::Physics.import_order(), 3);
+    assert_eq!(PackageName::Physics.package().name, "physics");
+    assert_eq!(
+        texform_specs::packages::PackageName::Physics.as_str(),
+        "physics"
+    );
+}
 
 #[test]
 fn test_parse_arg_specs_xparse_style() {

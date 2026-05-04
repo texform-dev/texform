@@ -1,5 +1,7 @@
 pub use crate::builtin::ALL_PACKAGES;
 pub use crate::builtin::BuiltinPackage as Package;
+pub use crate::builtin::MANAGED_PACKAGE_IMPORT_ORDER;
+pub use crate::builtin::PackageName;
 
 pub fn all_package_names() -> Vec<&'static str> {
     crate::builtin::all_package_names()
@@ -27,6 +29,22 @@ mod tests {
                 "braket",
                 "physics",
                 "textmacros"
+            ]
+        );
+    }
+
+    #[test]
+    fn package_name_facade_exposes_managed_import_order() {
+        assert_eq!(
+            MANAGED_PACKAGE_IMPORT_ORDER,
+            &[
+                PackageName::Base,
+                PackageName::Ams,
+                PackageName::Braket,
+                PackageName::Physics,
+                PackageName::Textmacros,
+                PackageName::Bboldx,
+                PackageName::Boldsymbol,
             ]
         );
     }
