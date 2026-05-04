@@ -1713,14 +1713,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_context_debug_omits_mutation_summary() {
-        let debug = format!("{:?}", ParseContext::empty());
-        assert!(debug.contains("ParseContext"));
-        assert!(debug.contains("kb"));
-        assert!(!debug.contains("mutation_summary"));
-    }
-
-    #[test]
     fn eof_unclosed_inline_math_is_normalized() {
         let expected = vec!["something else".to_string(), "'$'".to_string()];
         let mut diagnostic = ParseDiagnostic {

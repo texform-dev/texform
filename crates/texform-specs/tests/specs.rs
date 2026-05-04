@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use texform_argspec::{ArgForm, ArgSpec, ContentMode, DelimiterToken, ValueKind, parse_arg_specs};
-use texform_specs::builtin::{MANAGED_PACKAGE_IMPORT_ORDER, PackageName};
+use texform_specs::builtin::{ALL_PACKAGES, MANAGED_PACKAGE_IMPORT_ORDER, PackageName};
 use texform_specs::specs::{AllowedMode, load_package_specs_from_str};
 
 #[test]
@@ -53,6 +53,35 @@ fn package_name_lookup_and_package_access_use_generated_registry() {
         texform_specs::packages::PackageName::Physics.as_str(),
         "physics"
     );
+}
+
+#[test]
+fn all_resource_specs_are_registered() {
+    let names: Vec<&str> = ALL_PACKAGES.iter().map(|pkg| pkg.name).collect();
+    assert_eq!(texform_specs::packages::all_package_names(), names);
+    assert_eq!(
+        names,
+        vec![
+            "ams",
+            "base",
+            "bboldx",
+            "boldsymbol",
+            "braket",
+            "physics",
+            "textmacros"
+        ]
+    );
+}
+
+#[test]
+fn registered_packages_expose_builtin_records() {
+    for package in ALL_PACKAGES {
+        let is_empty = package.characters.is_empty()
+            && package.delimiters.is_empty()
+            && package.commands.is_empty()
+            && package.environments.is_empty();
+        assert!(!is_empty, "package {} should not be empty", package.name);
+    }
 }
 
 #[test]

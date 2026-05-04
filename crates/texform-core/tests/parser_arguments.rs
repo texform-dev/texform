@@ -408,6 +408,10 @@ fn text_content_generic_only_error_keeps_expected_found_diagnostic() {
         !output.diagnostics[0].expected.is_empty(),
         "expected/found details should stay available"
     );
+    assert_eq!(
+        output.diagnostics[0].expected,
+        ["something else", "end of input"]
+    );
 }
 
 #[test]
