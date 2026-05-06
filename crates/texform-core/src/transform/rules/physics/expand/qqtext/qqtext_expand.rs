@@ -1,0 +1,236 @@
+//! Expand quick-quad prose helpers, including the star branch, to explicit text and quad spacing.
+//!
+//! ```yaml
+//! proposal: qqtext-expand
+//! consumes:
+//!   eliminates: [cmd:qqtext, cmd:qq]
+//!   touches: null
+//! produces:
+//!   - cmd:text
+//!   - cmd:quad
+//! rewrite_patterns:
+//!   - {label: qqtext, from: '\qqtext{#1}', to: '\quad\text{#1}\quad'}
+//!   - {label: qqtext-star, from: '\qqtext*{#1}', to: '\text{#1}\quad'}
+//!   - {label: qq, from: '\qq{#1}', to: '\quad\text{#1}\quad'}
+//!   - {label: qq-star, from: '\qq*{#1}', to: '\text{#1}\quad'}
+//! ```
+
+use texform_specs::builtin::base;
+use texform_specs::builtin::physics;
+
+use crate::ast::{ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, GroupKind, Node, Slot};
+use crate::transform::engine::TransformError;
+use crate::transform::helpers::prefix_command;
+use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces, TransformRule};
+use crate::transform::rule_context::RuleContext;
+use crate::transform::{cmd_targets, define_rule};
+
+define_rule! {
+    /// Expand quick-quad prose helpers, including the star branch, to explicit text and quad spacing.
+    pub static QQTEXT_EXPAND: QqtextExpandRule {
+        key: Physics / "qqtext-expand",
+        tier: Expand,
+        summary: "Expand quick-quad prose helpers, including the star branch, to explicit text and quad spacing.",
+        phase: Normalize,
+        safety: Lossless,
+        enabled_by_packages: [Physics],
+        consumes: RuleConsumes {
+            eliminates: cmd_targets![&physics::cmd::QQTEXT, &physics::cmd::QQ],
+            touches: &[],
+        },
+        produces: RuleProduces {
+            targets: cmd_targets![&base::cmd::TEXT, &base::cmd::QUAD],
+        },
+        apply(rule, cx, node_id) {
+            expand_qqtext_like(rule, cx, node_id)
+        }
+    }
+}
+
+fn expand_qqtext_like(
+    rule: &QqtextExpandRule,
+    cx: &mut RuleContext<'_>,
+    node_id: crate::ast::NodeId,
+) -> Result<RuleEffect, TransformError> {
+    let (subject, args) = match cx.node(node_id) {
+        Node::Command { name, args, .. }
+            if name == physics::cmd::QQTEXT.name || name == physics::cmd::QQ.name =>
+        {
+            (format!("\\{name}"), args.clone())
+        }
+        _ => return Ok(RuleEffect::Skipped),
+    };
+
+    cx.expect_arg_len(rule.meta().key, &args, 2, &subject)?;
+    let starred = star_value(rule, cx, &args[0], &subject)?;
+    let text_arg = text_argument(rule, cx, &args[1], &subject)?;
+
+    match cx.ast.parent(node_id).map(|link| link.slot) {
+        Some(Slot::GroupChild(index)) => {
+            replace_group_child(cx, node_id, index, starred, text_arg);
+        }
+        _ => {
+            replace_single_slot(cx, node_id, starred, text_arg);
+        }
+    }
+
+    Ok(RuleEffect::Applied)
+}
+
+fn star_value(
+    rule: &QqtextExpandRule,
+    cx: &RuleContext<'_>,
+    slot: &ArgumentSlot,
+    subject: &str,
+) -> Result<bool, TransformError> {
+    match slot {
+        Some(arg) if arg.kind == ArgumentKind::Star => match arg.value {
+            ArgumentValue::Boolean(value) => Ok(value),
+            _ => Err(cx.invalid_shape(
+                rule.meta().key,
+                format!("{subject} star slot should carry a boolean value"),
+            )),
+        },
+        _ => Err(cx.invalid_shape(
+            rule.meta().key,
+            format!("{subject} should carry a star slot followed by a text argument"),
+        )),
+    }
+}
+
+fn text_argument(
+    rule: &QqtextExpandRule,
+    cx: &RuleContext<'_>,
+    slot: &ArgumentSlot,
+    subject: &str,
+) -> Result<ArgumentSlot, TransformError> {
+    match slot {
+        Some(arg)
+            if arg.kind == ArgumentKind::Mandatory
+                && matches!(arg.value, ArgumentValue::TextContent(_)) =>
+        {
+            Ok(Some(arg.clone()))
+        }
+        _ => Err(cx.invalid_shape(
+            rule.meta().key,
+            format!("{subject} should carry a mandatory text argument"),
+        )),
+    }
+}
+
+fn replace_group_child(
+    cx: &mut RuleContext<'_>,
+    node_id: crate::ast::NodeId,
+    index: usize,
+    starred: bool,
+    text_arg: ArgumentSlot,
+) {
+    let parent = cx
+        .ast
+        .parent_id(node_id)
+        .expect("group child should have a parent");
+    cx.ast
+        .replace_node(node_id, prefix_command(&base::cmd::TEXT, vec![text_arg]));
+
+    let text_index = if starred {
+        index
+    } else {
+        let leading_quad = cx.ast.new_node(prefix_command(&base::cmd::QUAD, Vec::new()));
+        cx.ast.insert_child(parent, index, leading_quad);
+        index + 1
+    };
+
+    let trailing_quad = cx.ast.new_node(prefix_command(&base::cmd::QUAD, Vec::new()));
+    cx.ast.insert_child(parent, text_index + 1, trailing_quad);
+}
+
+fn replace_single_slot(
+    cx: &mut RuleContext<'_>,
+    node_id: crate::ast::NodeId,
+    starred: bool,
+    text_arg: ArgumentSlot,
+) {
+    cx.ast.replace_node(node_id, Node::Text(String::new()));
+
+    let text_node = cx
+        .ast
+        .new_node(prefix_command(&base::cmd::TEXT, vec![text_arg]));
+    let trailing_quad = cx.ast.new_node(prefix_command(&base::cmd::QUAD, Vec::new()));
+    let mut children = Vec::new();
+
+    if !starred {
+        children.push(cx.ast.new_node(prefix_command(&base::cmd::QUAD, Vec::new())));
+    }
+    children.push(text_node);
+    children.push(trailing_quad);
+
+    cx.ast.replace_node(
+        node_id,
+        Node::Group {
+            children,
+            kind: GroupKind::Implicit,
+            mode: ContentMode::Math,
+        },
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::transform::transform_examples;
+
+    // START: Generated examples; DO NOT modify
+    transform_examples! {
+        rule: QQTEXT_EXPAND,
+        tier: Expand,
+        examples: [
+        {
+            label: qqtext_inline_clause,
+            packages: ["base", "physics"],
+            input: r"E=mc^2 \qqtext{for} v \ll c",
+            expected: r"E=mc^2 \quad\text{for}\quad v \ll c",
+        },
+        {
+            label: qqtext_star_inline_clause,
+            packages: ["base", "physics"],
+            input: r"f(x)=x^2\qqtext*{if} x>0",
+            expected: r"f(x)=x^2\text{if}\quad x>0",
+        },
+        {
+            label: qq_nonstar_alias,
+            packages: ["base", "physics"],
+            input: r"\Delta S=0 \qq{at extrema}",
+            expected: r"\Delta S=0 \quad\text{at extrema}\quad",
+        },
+        {
+            label: qq_star_inline_clause,
+            packages: ["base", "physics"],
+            input: r"A=B\qq*{where} B>0",
+            expected: r"A=B\text{where}\quad B>0",
+        },
+        ]
+    }
+    // END: Generated examples
+
+    #[test]
+    fn groups_qq_expansion_when_not_a_sibling_node() {
+        use crate::parse::ParseContext;
+        use crate::transform::TransformRule as _;
+        use crate::transform::{transform_ast, RuleTier, TransformContextBuilder};
+
+        let parse_ctx = ParseContext::from_packages(&["base", "physics"]);
+        let transform_ctx = TransformContextBuilder::from_tiers(&[RuleTier::Expand])
+            .only(QQTEXT_EXPAND.meta().key)
+            .build_with(&parse_ctx)
+            .expect("transform context should build");
+        let mut ast = parse_ctx
+            .parse_to_ast(r"\qq{if}^2", true)
+            .expect("parse should succeed");
+
+        let output = transform_ast(&mut ast, &parse_ctx, &transform_ctx)
+            .expect("qqtext-expand transform should succeed");
+
+        assert_eq!(output.applied.len(), 1);
+        assert_eq!(output.applied[0].count, 1);
+    }
+}
