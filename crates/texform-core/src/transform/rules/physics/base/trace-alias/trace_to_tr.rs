@@ -1,15 +1,27 @@
-//! Canonicalize trace aliases into the lowercase `\tr` command.
+//! Collapse trace aliases to the local tr anchor.
+//!
+//! ```yaml
+//! proposal: trace-to-tr
+//! consumes:
+//!   eliminates: [cmd:trace, cmd:Trace, cmd:Tr]
+//!   touches: null
+//! produces: cmd:tr
+//! rewrite_patterns:
+//!   - {label: trace, from: \trace, to: \tr}
+//!   - {label: trace-capital, from: \Trace, to: \tr}
+//!   - {label: tr-capital, from: \Tr, to: \tr}
+//! ```
 
 use texform_specs::builtin::physics;
 
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Canonicalize `\Tr`, `\trace`, and `\Trace` into `\tr`.
+    /// Collapse trace aliases to the local tr anchor.
     pub static TRACE_TO_TR: TraceToTrRule {
         key: Physics / "trace-to-tr",
         tier: Base,
-        summary: "Canonicalize \\Tr, \\trace, and \\Trace into \\tr",
+        summary: "Collapse trace aliases to the local tr anchor.",
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
@@ -24,9 +36,38 @@ alias_rule! {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::ast::Node;
     use crate::parse::ParseContext;
-    use crate::transform::{transform_ast, TransformProfile};
+    use crate::transform::transform_examples;
+    use crate::transform::{TransformProfile, transform_ast};
+
+    // START: Generated examples; DO NOT modify
+    transform_examples! {
+        rule: TRACE_TO_TR,
+        tier: Base,
+        examples: [
+        {
+            label: trace_density_operator,
+            packages: ["base", "physics"],
+            input: r"Z=\trace(\rho H)",
+            expected: r"Z=\tr(\rho H)",
+        },
+        {
+            label: trace_matrix_square,
+            packages: ["base", "physics"],
+            input: r"\Trace(M^2)=1",
+            expected: r"\tr(M^2)=1",
+        },
+        {
+            label: tr_partition_function,
+            packages: ["base", "physics"],
+            input: r"S=\Tr(e^{-\beta H})",
+            expected: r"S=\tr(e^{-\beta H})",
+        },
+        ]
+    }
+    // END: Generated examples
 
     #[test]
     fn rewrites_all_trace_aliases_to_tr() {

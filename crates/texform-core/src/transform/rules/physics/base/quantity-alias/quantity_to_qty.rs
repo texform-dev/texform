@@ -1,15 +1,28 @@
-//! Canonicalize `\quantity` into the shorter `\qty` command.
+//! Collapse quantity to the shorter qty helper.
+//!
+//! ```yaml
+//! proposal: quantity-to-qty
+//! consumes:
+//!   eliminates: cmd:quantity
+//!   touches: null
+//! produces: cmd:qty
+//! rewrite_patterns:
+//!   - {label: paren, from: \quantity(#1), to: \qty(#1)}
+//!   - {label: bracket, from: '\quantity[#1]', to: '\qty[#1]'}
+//!   - {label: brace, from: '\quantity{#1}', to: '\qty{#1}'}
+//!   - {label: vertical-bar, from: \quantity|#1|, to: \qty|#1|}
+//! ```
 
 use texform_specs::builtin::physics;
 
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Canonicalize `\quantity` into `\qty`.
+    /// Collapse quantity to the shorter qty helper.
     pub static QUANTITY_TO_QTY: QuantityToQtyRule {
         key: Physics / "quantity-to-qty",
         tier: Base,
-        summary: "Canonicalize \\quantity into \\qty",
+        summary: "Collapse quantity to the shorter qty helper.",
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
@@ -20,9 +33,44 @@ alias_rule! {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::ast::{ArgumentValue, Ast, Node, NodeId};
     use crate::parse::ParseContext;
-    use crate::transform::{transform_ast, TransformProfile};
+    use crate::transform::transform_examples;
+    use crate::transform::{TransformProfile, transform_ast};
+
+    // START: Generated examples; DO NOT modify
+    transform_examples! {
+        rule: QUANTITY_TO_QTY,
+        tier: Base,
+        examples: [
+        {
+            label: qty_alias,
+            packages: ["base", "physics"],
+            input: r"\quantity(a+b)",
+            expected: r"\qty(a+b)",
+        },
+        {
+            label: qty_alias_brace_context,
+            packages: ["base", "physics"],
+            input: r"g=\quantity{\frac{a}{b}}",
+            expected: r"g=\qty{\frac{a}{b}}",
+        },
+        {
+            label: qty_alias_bracket_context,
+            packages: ["base", "physics"],
+            input: r"\quantity[a+b]^{-1}",
+            expected: r"\qty[a+b]^{-1}",
+        },
+        {
+            label: qty_alias_vertical_bar_context,
+            packages: ["base", "physics"],
+            input: r"\quantity|x-y|<\varepsilon",
+            expected: r"\qty|x-y|<\varepsilon",
+        },
+        ]
+    }
+    // END: Generated examples
 
     fn assert_subtree_contains_char(ast: &Ast, node_id: NodeId, expected: char) {
         match ast.node(node_id) {
