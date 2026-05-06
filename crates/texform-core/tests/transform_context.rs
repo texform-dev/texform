@@ -15,11 +15,20 @@ fn only_many_keeps_the_requested_rules() {
         .build()
         .expect("parse context should build");
 
-    let requested = [all_rules()[1].meta().key, all_rules()[2].meta().key];
+    let requested = all_rules()
+        .iter()
+        .map(|rule| rule.meta())
+        .filter(|meta| {
+            meta.tier == RuleTier::Base && meta.enabled_by_packages.contains(&PackageName::Physics)
+        })
+        .take(2)
+        .map(|meta| meta.key)
+        .collect::<Vec<_>>();
+    assert_eq!(requested.len(), 2);
 
     let transform_ctx = TransformProfile::AUTHORING
         .builder()
-        .only_many(&requested)
+        .only_many(requested.as_slice())
         .build_with(&parse_ctx)
         .expect("transform context should build");
 

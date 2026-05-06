@@ -680,7 +680,7 @@ mod tests {
         assert!(
             default_ctx
                 .inner
-                .lookup_command("braket", ContentMode::Math)
+                .lookup_command("Bra", ContentMode::Math)
                 .is_none()
         );
         assert!(
@@ -692,7 +692,7 @@ mod tests {
         assert!(
             explicit_braket_ctx
                 .inner
-                .lookup_command("braket", ContentMode::Math)
+                .lookup_command("Bra", ContentMode::Math)
                 .is_some()
         );
     }
