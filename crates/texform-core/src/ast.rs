@@ -424,6 +424,27 @@ impl Ast {
         Self::node_edges(self.node(id))
     }
 
+    /// Deep-copy the subtree rooted at `id` and return the copied detached root.
+    ///
+    /// The cloned tree preserves node shape and scalar argument values, but every
+    /// copied node receives a fresh [`NodeId`]. The returned root is detached, so
+    /// callers can attach it with [`Ast::new_node`], [`Ast::replace_node`], or
+    /// group insertion helpers.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `id` is invalid or points at the main AST root.
+    pub fn clone_subtree(&mut self, id: NodeId) -> NodeId {
+        if id == self.root {
+            panic!("Cannot clone root node as a detached subtree");
+        }
+        if !self.contains(id) {
+            panic!("Invalid NodeId");
+        }
+
+        self.clone_subtree_impl(id)
+    }
+
     /// Return the next sibling of `id` when it is attached as a group child.
     ///
     /// Nodes in non-`GroupChild` slots return `None`.
@@ -952,6 +973,98 @@ impl Ast {
         }
     }
 
+    fn clone_subtree_impl(&mut self, id: NodeId) -> NodeId {
+        let cloned = match self.node(id).clone() {
+            Node::Root { .. } => panic!("Cannot clone root node as a detached subtree"),
+            Node::Group {
+                children,
+                kind,
+                mode,
+            } => Node::Group {
+                children: children
+                    .into_iter()
+                    .map(|child| self.clone_subtree_impl(child))
+                    .collect(),
+                kind,
+                mode,
+            },
+            Node::Command { name, args, known } => Node::Command {
+                name,
+                args: self.clone_argument_slots(args),
+                known,
+            },
+            Node::Infix {
+                name,
+                args,
+                left,
+                right,
+            } => Node::Infix {
+                name,
+                args: self.clone_argument_slots(args),
+                left: self.clone_subtree_impl(left),
+                right: self.clone_subtree_impl(right),
+            },
+            Node::Declarative { name, args } => Node::Declarative {
+                name,
+                args: self.clone_argument_slots(args),
+            },
+            Node::Environment {
+                name,
+                args,
+                known,
+                body,
+            } => Node::Environment {
+                name,
+                args: self.clone_argument_slots(args),
+                known,
+                body: self.clone_subtree_impl(body),
+            },
+            Node::Scripted {
+                base,
+                subscript,
+                superscript,
+            } => Node::Scripted {
+                base: self.clone_subtree_impl(base),
+                subscript: subscript.map(|child| self.clone_subtree_impl(child)),
+                superscript: superscript.map(|child| self.clone_subtree_impl(child)),
+            },
+            Node::Text(text) => Node::Text(text),
+            Node::Char(ch) => Node::Char(ch),
+            Node::ActiveSpace => Node::ActiveSpace,
+        };
+
+        self.new_node(cloned)
+    }
+
+    fn clone_argument_slots(&mut self, args: Vec<ArgumentSlot>) -> Vec<ArgumentSlot> {
+        args.into_iter()
+            .map(|slot| {
+                slot.map(|arg| Argument {
+                    kind: arg.kind,
+                    value: self.clone_argument_value(arg.value),
+                })
+            })
+            .collect()
+    }
+
+    fn clone_argument_value(&mut self, value: ArgumentValue) -> ArgumentValue {
+        match value {
+            ArgumentValue::MathContent(child) => {
+                ArgumentValue::MathContent(self.clone_subtree_impl(child))
+            }
+            ArgumentValue::TextContent(child) => {
+                ArgumentValue::TextContent(self.clone_subtree_impl(child))
+            }
+            ArgumentValue::Delimiter(delimiter) => ArgumentValue::Delimiter(delimiter),
+            ArgumentValue::CSName(name) => ArgumentValue::CSName(name),
+            ArgumentValue::Dimension(value) => ArgumentValue::Dimension(value),
+            ArgumentValue::Integer(value) => ArgumentValue::Integer(value),
+            ArgumentValue::KeyVal(value) => ArgumentValue::KeyVal(value),
+            ArgumentValue::Column(value) => ArgumentValue::Column(value),
+            ArgumentValue::Boolean(value) => ArgumentValue::Boolean(value),
+        }
+    }
+
     fn assert_unique_direct_children(node: &Node) {
         let mut seen = HashSet::new();
         for (child, _) in Self::node_edges(node) {
@@ -1216,7 +1329,7 @@ impl Default for Ast {
 
 #[cfg(test)]
 mod tests {
-    use super::{Ast, ContentMode, Node};
+    use super::{Argument, ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node, Slot};
 
     #[test]
     #[should_panic(expected = "Only ast.root() may be Node::Root")]
@@ -1227,6 +1340,84 @@ mod tests {
             mode: ContentMode::Math,
         });
         ast.detached_roots.insert(extra_root);
+
+        ast.assert_invariants();
+    }
+
+    #[test]
+    fn clone_subtree_creates_detached_copy_with_rewired_children() {
+        let mut ast = Ast::new();
+        let numerator_child = ast.new_node(Node::Char('x'));
+        let numerator = ast.new_node(Node::Group {
+            children: vec![numerator_child],
+            kind: GroupKind::Implicit,
+            mode: ContentMode::Math,
+        });
+        let denominator = ast.new_node(Node::Char('t'));
+        let frac = ast.new_node(Node::Command {
+            name: "frac".to_string(),
+            args: vec![
+                Some(Argument {
+                    kind: ArgumentKind::Mandatory,
+                    value: ArgumentValue::MathContent(numerator),
+                }),
+                Some(Argument {
+                    kind: ArgumentKind::Mandatory,
+                    value: ArgumentValue::MathContent(denominator),
+                }),
+            ],
+            known: true,
+        });
+
+        let cloned = ast.clone_subtree(frac);
+
+        assert_ne!(cloned, frac);
+        assert_eq!(ast.parent(cloned), None);
+        assert!(ast.detached_roots.contains(&cloned));
+
+        let Node::Command { args, .. } = ast.node(cloned) else {
+            panic!("cloned root should be a command");
+        };
+        let ArgumentValue::MathContent(cloned_numerator) =
+            args[0].as_ref().expect("first argument should exist").value
+        else {
+            panic!("first argument should be math content");
+        };
+        let ArgumentValue::MathContent(cloned_denominator) = args[1]
+            .as_ref()
+            .expect("second argument should exist")
+            .value
+        else {
+            panic!("second argument should be math content");
+        };
+
+        assert_ne!(cloned_numerator, numerator);
+        assert_ne!(cloned_denominator, denominator);
+        assert_eq!(
+            ast.parent(cloned_numerator),
+            Some(super::ParentLink {
+                parent: cloned,
+                slot: Slot::Argument(0),
+            })
+        );
+        assert_eq!(
+            ast.parent(cloned_denominator),
+            Some(super::ParentLink {
+                parent: cloned,
+                slot: Slot::Argument(1),
+            })
+        );
+
+        let cloned_numerator_children = ast.children(cloned_numerator);
+        assert_eq!(cloned_numerator_children.len(), 1);
+        assert_ne!(cloned_numerator_children[0], numerator_child);
+        assert_eq!(
+            ast.parent(cloned_numerator_children[0]),
+            Some(super::ParentLink {
+                parent: cloned_numerator,
+                slot: Slot::GroupChild(0),
+            })
+        );
 
         ast.assert_invariants();
     }
