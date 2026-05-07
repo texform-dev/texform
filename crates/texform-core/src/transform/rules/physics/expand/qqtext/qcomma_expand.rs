@@ -16,8 +16,10 @@
 use texform_specs::builtin::base;
 use texform_specs::builtin::physics;
 
-use crate::ast::{ContentMode, GroupKind, Node, Slot};
-use crate::transform::helpers::{mandatory_content, prefix_command};
+use crate::ast::{ContentMode, Node};
+use crate::transform::helpers::{
+    mandatory_content, prefix_command, replace_with_math_sequence,
+};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -53,27 +55,7 @@ define_rule! {
             );
             let quad = cx.ast.new_node(prefix_command(&base::cmd::QUAD, vec![]));
 
-            match cx.ast.parent(node_id).map(|link| link.slot) {
-                Some(Slot::GroupChild(index)) => {
-                    let parent = cx
-                        .ast
-                        .parent_id(node_id)
-                        .expect("group child should have a parent");
-                    cx.ast.replace_node(node_id, text_command);
-                    cx.ast.insert_child(parent, index + 1, quad);
-                }
-                _ => {
-                    let text = cx.ast.new_node(text_command);
-                    cx.ast.replace_node(
-                        node_id,
-                        Node::Group {
-                            children: vec![text, quad],
-                            kind: GroupKind::Implicit,
-                            mode: ContentMode::Math,
-                        },
-                    );
-                }
-            }
+            replace_with_math_sequence(cx, node_id, Vec::new(), text_command, vec![quad]);
             Ok(RuleEffect::Applied)
         }
     }

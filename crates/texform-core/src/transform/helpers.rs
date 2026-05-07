@@ -7,7 +7,7 @@
 use texform_specs::specs::BuiltinCommandRecord;
 
 use crate::ast::{
-    Argument, ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, GroupKind, Node, NodeId,
+    Argument, ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, GroupKind, Node, NodeId, Slot,
 };
 use crate::transform::engine::TransformError;
 use crate::transform::rule::RuleKey;
@@ -183,6 +183,68 @@ pub fn replace_node_discarding_detached_children(
     for child in old_children {
         if cx.ast.parent(child).is_none() {
             cx.ast.remove_detached(child);
+        }
+    }
+}
+
+/// Replaces a node with a math-mode sequence.
+///
+/// If `node_id` is a group child, `before` and `after` are inserted as real
+/// siblings around the replacement. In single-child slots, the sequence is
+/// wrapped in an implicit math group because those slots cannot hold siblings.
+pub fn replace_with_math_sequence(
+    cx: &mut RuleContext<'_>,
+    node_id: NodeId,
+    before: Vec<NodeId>,
+    replacement: Node,
+    after: Vec<NodeId>,
+) {
+    match cx.ast.parent(node_id).map(|link| link.slot) {
+        Some(Slot::GroupChild(index)) => {
+            let parent = cx
+                .ast
+                .parent_id(node_id)
+                .expect("group child should have a parent");
+            let before_len = before.len();
+
+            replace_node_discarding_detached_children(cx, node_id, replacement);
+            for (offset, child) in before.into_iter().enumerate() {
+                cx.ast.insert_child(parent, index + offset, child);
+            }
+            for (offset, child) in after.into_iter().enumerate() {
+                cx.ast
+                    .insert_child(parent, index + before_len + 1 + offset, child);
+            }
+        }
+        _ => {
+            let old_children: Vec<NodeId> = cx
+                .ast
+                .edges(node_id)
+                .into_iter()
+                .map(|(child, _)| child)
+                .collect();
+
+            cx.ast.replace_node(node_id, Node::Text(String::new()));
+            let replacement = cx.ast.new_node(replacement);
+            let mut children = before;
+            children.push(replacement);
+            children.extend(after);
+
+            replace_node_discarding_detached_children(
+                cx,
+                node_id,
+                Node::Group {
+                    children,
+                    kind: GroupKind::Implicit,
+                    mode: ContentMode::Math,
+                },
+            );
+
+            for child in old_children {
+                if cx.ast.parent(child).is_none() {
+                    cx.ast.remove_detached(child);
+                }
+            }
         }
     }
 }

@@ -18,9 +18,9 @@
 use texform_specs::builtin::base;
 use texform_specs::builtin::physics;
 
-use crate::ast::{ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, GroupKind, Node, Slot};
+use crate::ast::{ArgumentKind, ArgumentSlot, ArgumentValue, Node};
 use crate::transform::engine::TransformError;
-use crate::transform::helpers::prefix_command;
+use crate::transform::helpers::{prefix_command, replace_with_math_sequence};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces, TransformRule};
 use crate::transform::rule_context::RuleContext;
 use crate::transform::{cmd_targets, define_rule};
@@ -65,14 +65,7 @@ fn expand_qqtext_like(
     let starred = star_value(rule, cx, &args[0], &subject)?;
     let text_arg = text_argument(rule, cx, &args[1], &subject)?;
 
-    match cx.ast.parent(node_id).map(|link| link.slot) {
-        Some(Slot::GroupChild(index)) => {
-            replace_group_child(cx, node_id, index, starred, text_arg);
-        }
-        _ => {
-            replace_single_slot(cx, node_id, starred, text_arg);
-        }
-    }
+    replace_with_text_sequence(cx, node_id, starred, text_arg);
 
     Ok(RuleEffect::Applied)
 }
@@ -118,59 +111,24 @@ fn text_argument(
     }
 }
 
-fn replace_group_child(
+fn replace_with_text_sequence(
     cx: &mut RuleContext<'_>,
     node_id: crate::ast::NodeId,
-    index: usize,
     starred: bool,
     text_arg: ArgumentSlot,
 ) {
-    let parent = cx
-        .ast
-        .parent_id(node_id)
-        .expect("group child should have a parent");
-    cx.ast
-        .replace_node(node_id, prefix_command(&base::cmd::TEXT, vec![text_arg]));
-
-    let text_index = if starred {
-        index
+    let before = if starred {
+        Vec::new()
     } else {
-        let leading_quad = cx.ast.new_node(prefix_command(&base::cmd::QUAD, Vec::new()));
-        cx.ast.insert_child(parent, index, leading_quad);
-        index + 1
+        vec![cx.ast.new_node(prefix_command(&base::cmd::QUAD, Vec::new()))]
     };
-
-    let trailing_quad = cx.ast.new_node(prefix_command(&base::cmd::QUAD, Vec::new()));
-    cx.ast.insert_child(parent, text_index + 1, trailing_quad);
-}
-
-fn replace_single_slot(
-    cx: &mut RuleContext<'_>,
-    node_id: crate::ast::NodeId,
-    starred: bool,
-    text_arg: ArgumentSlot,
-) {
-    cx.ast.replace_node(node_id, Node::Text(String::new()));
-
-    let text_node = cx
-        .ast
-        .new_node(prefix_command(&base::cmd::TEXT, vec![text_arg]));
-    let trailing_quad = cx.ast.new_node(prefix_command(&base::cmd::QUAD, Vec::new()));
-    let mut children = Vec::new();
-
-    if !starred {
-        children.push(cx.ast.new_node(prefix_command(&base::cmd::QUAD, Vec::new())));
-    }
-    children.push(text_node);
-    children.push(trailing_quad);
-
-    cx.ast.replace_node(
+    let after = vec![cx.ast.new_node(prefix_command(&base::cmd::QUAD, Vec::new()))];
+    replace_with_math_sequence(
+        cx,
         node_id,
-        Node::Group {
-            children,
-            kind: GroupKind::Implicit,
-            mode: ContentMode::Math,
-        },
+        before,
+        prefix_command(&base::cmd::TEXT, vec![text_arg]),
+        after,
     );
 }
 

@@ -14,7 +14,8 @@ use texform_specs::argspec;
 use texform_specs::specs::{AllowedMode, BuiltinCommandRecord, CommandKind};
 use texform_specs::builtin::ams;
 
-use crate::ast::{GroupKind, Node, Slot};
+use crate::ast::Node;
+use crate::transform::helpers::replace_with_math_sequence;
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -56,34 +57,14 @@ define_rule! {
             };
             cx.expect_no_args(rule.meta().key, command.args, "\\implies")?;
 
-            let parent_link = cx
-                .ast
-                .parent(node_id)
-                .ok_or_else(|| cx.invalid_shape(rule.meta().key, "\\implies should be attached"))?;
-
-            if let Slot::GroupChild(index) = parent_link.slot {
-                cx.ast
-                    .replace_node(node_id, zero_arg_command("Longrightarrow"));
-
-                let left_spacing = cx.ast.new_node(zero_arg_command(";"));
-                let right_spacing = cx.ast.new_node(zero_arg_command(";"));
-                cx.ast.insert_child(parent_link.parent, index, left_spacing);
-                cx.ast
-                    .insert_child(parent_link.parent, index + 2, right_spacing);
-
-                return Ok(RuleEffect::Applied);
-            }
-
             let left_spacing = cx.ast.new_node(zero_arg_command(";"));
-            let arrow = cx.ast.new_node(zero_arg_command("Longrightarrow"));
             let right_spacing = cx.ast.new_node(zero_arg_command(";"));
-            cx.ast.replace_node(
+            replace_with_math_sequence(
+                cx,
                 node_id,
-                Node::Group {
-                    children: vec![left_spacing, arrow, right_spacing],
-                    kind: GroupKind::Implicit,
-                    mode: crate::ast::ContentMode::Math,
-                },
+                vec![left_spacing],
+                zero_arg_command("Longrightarrow"),
+                vec![right_spacing],
             );
             Ok(RuleEffect::Applied)
         }
