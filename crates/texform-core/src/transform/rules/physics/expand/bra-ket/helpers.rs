@@ -1,0 +1,411 @@
+use texform_specs::builtin::base;
+
+use crate::ast::{
+    ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind, Node, NodeId,
+    Slot,
+};
+use crate::transform::engine::TransformError;
+use crate::transform::helpers::{
+    append_cloned_math_content, replace_node_discarding_detached_children,
+    replace_with_math_sequence,
+};
+use crate::transform::rule::RuleKey;
+use crate::transform::rule_context::RuleContext;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum BraketSize {
+    Auto,
+    Fixed,
+    Middle,
+}
+
+pub(super) fn required_math_arg(
+    rule: RuleKey,
+    cx: &RuleContext<'_>,
+    slot: &ArgumentSlot,
+    subject: &str,
+    label: &str,
+) -> Result<NodeId, TransformError> {
+    match slot {
+        Some(arg)
+            if matches!(arg.kind, ArgumentKind::Mandatory | ArgumentKind::Group)
+                && matches!(arg.value, ArgumentValue::MathContent(_)) =>
+        {
+            match arg.value {
+                ArgumentValue::MathContent(node_id) => Ok(node_id),
+                _ => unreachable!("math content was checked above"),
+            }
+        }
+        _ => Err(cx.invalid_shape(rule, format!("{subject} {label} should be math content"))),
+    }
+}
+
+pub(super) fn optional_group_arg(
+    rule: RuleKey,
+    cx: &RuleContext<'_>,
+    slot: &ArgumentSlot,
+    subject: &str,
+    label: &str,
+) -> Result<Option<NodeId>, TransformError> {
+    match slot {
+        None => Ok(None),
+        Some(arg)
+            if arg.kind == ArgumentKind::Group && matches!(arg.value, ArgumentValue::MathContent(_)) =>
+        {
+            match arg.value {
+                ArgumentValue::MathContent(node_id) => Ok(Some(node_id)),
+                _ => unreachable!("math content was checked above"),
+            }
+        }
+        _ => Err(cx.invalid_shape(
+            rule,
+            format!("{subject} {label} should be an optional braced math group"),
+        )),
+    }
+}
+
+pub(super) fn replace_with_bra(
+    cx: &mut RuleContext<'_>,
+    node_id: NodeId,
+    size: BraketSize,
+    body: NodeId,
+) {
+    match size {
+        BraketSize::Auto | BraketSize::Middle => replace_with_delimited_group(
+            cx,
+            node_id,
+            Delimiter::Control("langle".to_string()),
+            vec![body],
+            Delimiter::Control("vert".to_string()),
+        ),
+        BraketSize::Fixed => {
+            let parts = fixed_parts(cx, body, control("vert"));
+            replace_with_fixed_sequence(cx, node_id, vec![control("langle")], parts);
+        }
+    }
+}
+
+pub(super) fn replace_with_ket(
+    cx: &mut RuleContext<'_>,
+    node_id: NodeId,
+    size: BraketSize,
+    body: NodeId,
+) {
+    match size {
+        BraketSize::Auto | BraketSize::Middle => replace_with_delimited_group(
+            cx,
+            node_id,
+            Delimiter::Control("vert".to_string()),
+            vec![body],
+            Delimiter::Control("rangle".to_string()),
+        ),
+        BraketSize::Fixed => {
+            let parts = fixed_parts(cx, body, control("rangle"));
+            replace_with_fixed_sequence(cx, node_id, vec![control("vert")], parts);
+        }
+    }
+}
+
+pub(super) fn replace_with_braket(
+    cx: &mut RuleContext<'_>,
+    node_id: NodeId,
+    size: BraketSize,
+    left: NodeId,
+    right: NodeId,
+) {
+    replace_with_angle_bar_parts(cx, node_id, size, &[left, right]);
+}
+
+pub(super) fn replace_with_expectation_body(
+    cx: &mut RuleContext<'_>,
+    node_id: NodeId,
+    size: BraketSize,
+    body: NodeId,
+) {
+    match size {
+        BraketSize::Auto | BraketSize::Middle => replace_with_delimited_group(
+            cx,
+            node_id,
+            Delimiter::Control("langle".to_string()),
+            vec![body],
+            Delimiter::Control("rangle".to_string()),
+        ),
+        BraketSize::Fixed => {
+            let parts = fixed_parts(cx, body, control("rangle"));
+            replace_with_fixed_sequence(cx, node_id, vec![control("langle")], parts);
+        }
+    }
+}
+
+pub(super) fn replace_with_expectation_state(
+    cx: &mut RuleContext<'_>,
+    node_id: NodeId,
+    size: BraketSize,
+    operator: NodeId,
+    state: NodeId,
+) {
+    match size {
+        BraketSize::Auto => replace_with_split_auto_angle_bar_parts(
+            cx,
+            node_id,
+            &[state, operator, state],
+        ),
+        BraketSize::Fixed | BraketSize::Middle => {
+            replace_with_angle_bar_parts(cx, node_id, size, &[state, operator, state]);
+        }
+    }
+}
+
+pub(super) fn replace_with_matrix_element(
+    cx: &mut RuleContext<'_>,
+    node_id: NodeId,
+    size: BraketSize,
+    left_state: NodeId,
+    operator: NodeId,
+    right_state: NodeId,
+) {
+    match size {
+        BraketSize::Auto => replace_with_split_auto_angle_bar_parts(
+            cx,
+            node_id,
+            &[left_state, operator, right_state],
+        ),
+        BraketSize::Fixed | BraketSize::Middle => replace_with_angle_bar_parts(
+            cx,
+            node_id,
+            size,
+            &[left_state, operator, right_state],
+        ),
+    }
+}
+
+pub(super) fn split_math_content_on_vert(
+    cx: &mut RuleContext<'_>,
+    body: NodeId,
+) -> Option<(NodeId, NodeId)> {
+    let Node::Group {
+        children,
+        kind: GroupKind::Implicit,
+        mode: ContentMode::Math,
+    } = cx.ast.node(body)
+    else {
+        return None;
+    };
+
+    let children = children.clone();
+    let split_at = children.iter().position(|&child| match cx.ast.node(child) {
+        Node::Char('|') => true,
+        Node::Command { name, .. } => name == "|" || name == "vert",
+        _ => false,
+    })?;
+
+    let left_children: Vec<NodeId> = children[..split_at]
+        .iter()
+        .map(|&child| cx.ast.clone_subtree(child))
+        .collect();
+    let right_children: Vec<NodeId> = children[split_at + 1..]
+        .iter()
+        .map(|&child| cx.ast.clone_subtree(child))
+        .collect();
+
+    Some((
+        cx.ast.new_node(Node::Group {
+            children: left_children,
+            kind: GroupKind::Implicit,
+            mode: ContentMode::Math,
+        }),
+        cx.ast.new_node(Node::Group {
+            children: right_children,
+            kind: GroupKind::Implicit,
+            mode: ContentMode::Math,
+        }),
+    ))
+}
+
+fn replace_with_angle_bar_parts(
+    cx: &mut RuleContext<'_>,
+    node_id: NodeId,
+    size: BraketSize,
+    parts: &[NodeId],
+) {
+    match size {
+        BraketSize::Auto | BraketSize::Middle => replace_with_middle_group(cx, node_id, parts),
+        BraketSize::Fixed => {
+            let mut after = Vec::new();
+            for (index, part) in parts.iter().enumerate() {
+                if index > 0 {
+                    after.push(cx.ast.new_node(control("vert")));
+                }
+                append_cloned_math_content(cx, &mut after, *part);
+            }
+            after.push(cx.ast.new_node(control("rangle")));
+            replace_with_fixed_sequence(cx, node_id, vec![control("langle")], after);
+        }
+    }
+}
+
+fn replace_with_middle_group(cx: &mut RuleContext<'_>, node_id: NodeId, parts: &[NodeId]) {
+    let mut children = Vec::new();
+    for (index, part) in parts.iter().enumerate() {
+        if index > 0 {
+            children.push(cx.ast.new_node(middle_vert()));
+        }
+        append_cloned_math_content(cx, &mut children, *part);
+    }
+    replace_node_discarding_detached_children(
+        cx,
+        node_id,
+        Node::Group {
+            children,
+            kind: GroupKind::Delimited {
+                left: Delimiter::Control("langle".to_string()),
+                right: Delimiter::Control("rangle".to_string()),
+            },
+            mode: ContentMode::Math,
+        },
+    );
+}
+
+fn replace_with_split_auto_angle_bar_parts(
+    cx: &mut RuleContext<'_>,
+    node_id: NodeId,
+    parts: &[NodeId],
+) {
+    let first = delimited_node(
+        cx,
+        Delimiter::Control("langle".to_string()),
+        parts[0],
+        Delimiter::Control("vert".to_string()),
+    );
+    let mut after = Vec::new();
+    append_cloned_math_content(cx, &mut after, parts[1]);
+    let last = delimited_node(
+        cx,
+        Delimiter::Control("vert".to_string()),
+        parts[2],
+        Delimiter::Control("rangle".to_string()),
+    );
+    after.push(cx.ast.new_node(last));
+
+    replace_with_math_sequence(cx, node_id, Vec::new(), first, after);
+}
+
+fn replace_with_delimited_group(
+    cx: &mut RuleContext<'_>,
+    node_id: NodeId,
+    left: Delimiter,
+    parts: Vec<NodeId>,
+    right: Delimiter,
+) {
+    let mut children = Vec::new();
+    for part in parts {
+        append_cloned_math_content(cx, &mut children, part);
+    }
+    replace_node_discarding_detached_children(
+        cx,
+        node_id,
+        Node::Group {
+            children,
+            kind: GroupKind::Delimited { left, right },
+            mode: ContentMode::Math,
+        },
+    );
+}
+
+fn delimited_node(cx: &mut RuleContext<'_>, left: Delimiter, body: NodeId, right: Delimiter) -> Node {
+    let mut children = Vec::new();
+    append_cloned_math_content(cx, &mut children, body);
+    Node::Group {
+        children,
+        kind: GroupKind::Delimited { left, right },
+        mode: ContentMode::Math,
+    }
+}
+
+fn replace_with_fixed_sequence(
+    cx: &mut RuleContext<'_>,
+    node_id: NodeId,
+    before: Vec<Node>,
+    parts: Vec<NodeId>,
+) {
+    let mut before_nodes = before
+        .into_iter()
+        .map(|node| cx.ast.new_node(node))
+        .collect::<Vec<_>>();
+    let Some(first) = before_nodes.pop() else {
+        return;
+    };
+
+    let mut after = Vec::new();
+    for part in parts {
+        after.push(part);
+    }
+
+    if matches!(cx.ast.slot(node_id), Some(Slot::ScriptBase)) {
+        replace_scripted_base_with_sequence(cx, node_id, before_nodes, first, after);
+    } else {
+        replace_with_math_sequence(cx, node_id, before_nodes, cx.ast.node(first).clone(), after);
+        cx.ast.remove_detached(first);
+    }
+}
+
+fn fixed_parts(cx: &mut RuleContext<'_>, body: NodeId, close: Node) -> Vec<NodeId> {
+    let mut parts = Vec::new();
+    append_cloned_math_content(cx, &mut parts, body);
+    parts.push(cx.ast.new_node(close));
+    parts
+}
+
+fn replace_scripted_base_with_sequence(
+    cx: &mut RuleContext<'_>,
+    node_id: NodeId,
+    before: Vec<NodeId>,
+    first: NodeId,
+    mut after: Vec<NodeId>,
+) {
+    let Some(parent) = cx.ast.parent_id(node_id) else {
+        return;
+    };
+    let Node::Scripted {
+        subscript,
+        superscript,
+        ..
+    } = cx.ast.node(parent)
+    else {
+        return;
+    };
+    let subscript = *subscript;
+    let superscript = *superscript;
+    let subscript = subscript.map(|id| cx.ast.clone_subtree(id));
+    let superscript = superscript.map(|id| cx.ast.clone_subtree(id));
+    let Some(last) = after.pop() else {
+        return;
+    };
+    let scripted_last = cx.ast.new_node(Node::Scripted {
+        base: last,
+        subscript,
+        superscript,
+    });
+    after.push(scripted_last);
+    replace_with_math_sequence(cx, parent, before, cx.ast.node(first).clone(), after);
+    cx.ast.remove_detached(first);
+}
+
+fn middle_vert() -> Node {
+    Node::Command {
+        name: base::cmd::MIDDLE.name.to_string(),
+        args: vec![Some(crate::ast::Argument {
+            kind: ArgumentKind::Mandatory,
+            value: ArgumentValue::Delimiter(Delimiter::Control("vert".to_string())),
+        })],
+        known: true,
+    }
+}
+
+fn control(name: &'static str) -> Node {
+    Node::Command {
+        name: name.to_string(),
+        args: Vec::new(),
+        known: true,
+    }
+}
