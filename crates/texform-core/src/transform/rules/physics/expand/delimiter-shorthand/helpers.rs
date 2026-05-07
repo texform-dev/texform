@@ -1,0 +1,156 @@
+use texform_specs::specs::BuiltinCommandRecord;
+
+use crate::ast::{
+    ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind, Node, NodeId,
+    Slot,
+};
+use crate::transform::engine::TransformError;
+use crate::transform::helpers::{
+    append_cloned_math_content, replace_node_discarding_detached_children, star_arg_value,
+    replace_with_math_sequence,
+};
+use crate::transform::rule::{RuleEffect, RuleKey};
+use crate::transform::rule_context::RuleContext;
+
+#[derive(Clone, Copy)]
+pub(super) enum FixedFenceToken {
+    Char(char),
+    Control(&'static str),
+}
+
+impl FixedFenceToken {
+    fn node(self) -> Node {
+        match self {
+            Self::Char(ch) => Node::Char(ch),
+            Self::Control(name) => Node::Command {
+                name: name.to_string(),
+                args: Vec::new(),
+                known: true,
+            },
+        }
+    }
+}
+
+pub(super) fn expand_delimiter_shorthand(
+    rule: RuleKey,
+    cx: &mut RuleContext<'_>,
+    node_id: NodeId,
+    record: &'static BuiltinCommandRecord,
+    auto_left: Delimiter,
+    auto_right: Delimiter,
+    fixed_left: FixedFenceToken,
+    fixed_right: FixedFenceToken,
+) -> Result<RuleEffect, TransformError> {
+    let Some(command) = cx.match_command(node_id, record) else {
+        return Ok(RuleEffect::Skipped);
+    };
+    let subject = format!(r"\{}", command.name);
+    let args = command.args.to_vec();
+
+    cx.expect_arg_len(rule, &args, 2, &subject)?;
+    let starred = star_arg_value(rule, cx, &args[0], &subject)?;
+    let body = required_group_math_content(rule, cx, &args[1], &subject, "body")?;
+
+    if starred {
+        replace_with_fixed_fence(cx, node_id, body, fixed_left, fixed_right);
+    } else {
+        replace_with_auto_fence(cx, node_id, body, auto_left, auto_right);
+    }
+
+    Ok(RuleEffect::Applied)
+}
+
+fn required_group_math_content(
+    rule: RuleKey,
+    cx: &RuleContext<'_>,
+    slot: &ArgumentSlot,
+    subject: &str,
+    label: &str,
+) -> Result<NodeId, TransformError> {
+    match slot {
+        Some(arg) if arg.kind == ArgumentKind::Group => match arg.value {
+            ArgumentValue::MathContent(node_id) => Ok(node_id),
+            _ => Err(cx.invalid_shape(rule, format!("{subject} {label} should be math content"))),
+        },
+        _ => Err(cx.invalid_shape(
+            rule,
+            format!("{subject} {label} should be a required braced math group"),
+        )),
+    }
+}
+
+fn replace_with_auto_fence(
+    cx: &mut RuleContext<'_>,
+    node_id: NodeId,
+    body: NodeId,
+    left: Delimiter,
+    right: Delimiter,
+) {
+    let mut children = Vec::new();
+    append_cloned_math_content(cx, &mut children, body);
+
+    replace_node_discarding_detached_children(
+        cx,
+        node_id,
+        Node::Group {
+            children,
+            kind: GroupKind::Delimited { left, right },
+            mode: ContentMode::Math,
+        },
+    );
+}
+
+fn replace_with_fixed_fence(
+    cx: &mut RuleContext<'_>,
+    node_id: NodeId,
+    body: NodeId,
+    left: FixedFenceToken,
+    right: FixedFenceToken,
+) {
+    if matches!(cx.ast.slot(node_id), Some(Slot::ScriptBase)) {
+        replace_scripted_base_with_fixed_fence(cx, node_id, body, left, right);
+        return;
+    }
+
+    let mut rest = Vec::new();
+    append_cloned_math_content(cx, &mut rest, body);
+    rest.push(cx.ast.new_node(right.node()));
+
+    replace_with_math_sequence(cx, node_id, Vec::new(), left.node(), rest);
+}
+
+fn replace_scripted_base_with_fixed_fence(
+    cx: &mut RuleContext<'_>,
+    node_id: NodeId,
+    body: NodeId,
+    left: FixedFenceToken,
+    right: FixedFenceToken,
+) {
+    let Some(parent) = cx.ast.parent_id(node_id) else {
+        return;
+    };
+
+    let (subscript, superscript) = match cx.ast.node(parent) {
+        Node::Scripted {
+            subscript,
+            superscript,
+            ..
+        } => (*subscript, *superscript),
+        _ => return,
+    };
+    let subscript = subscript.map(|id| cx.ast.clone_subtree(id));
+    let superscript = superscript.map(|id| cx.ast.clone_subtree(id));
+
+    let mut rest = Vec::new();
+    append_cloned_math_content(cx, &mut rest, body);
+
+    let close_base = cx.ast.new_node(right.node());
+    let close = cx.ast.new_node(Node::Scripted {
+        base: close_base,
+        subscript,
+        superscript,
+    });
+    rest.push(close);
+
+    replace_with_math_sequence(cx, parent, Vec::new(), left.node(), rest);
+}
