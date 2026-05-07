@@ -1,15 +1,8 @@
-use texform_specs::specs::BuiltinCommandRecord;
-
-use crate::ast::{
-    ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind, Node, NodeId,
-    Slot,
-};
-use crate::transform::engine::TransformError;
+use crate::ast::{ContentMode, Delimiter, GroupKind, Node, NodeId, Slot};
 use crate::transform::helpers::{
-    append_cloned_math_content, replace_node_discarding_detached_children, star_arg_value,
+    append_cloned_math_content, replace_node_discarding_detached_children,
     replace_with_math_sequence,
 };
-use crate::transform::rule::{RuleEffect, RuleKey};
 use crate::transform::rule_context::RuleContext;
 
 #[derive(Clone, Copy)]
@@ -31,51 +24,20 @@ impl FixedFenceToken {
     }
 }
 
-pub(super) fn expand_delimiter_shorthand(
-    rule: RuleKey,
+pub(super) fn replace_with_delimiter_shorthand(
     cx: &mut RuleContext<'_>,
     node_id: NodeId,
-    record: &'static BuiltinCommandRecord,
+    starred: bool,
+    body: NodeId,
     auto_left: Delimiter,
     auto_right: Delimiter,
     fixed_left: FixedFenceToken,
     fixed_right: FixedFenceToken,
-) -> Result<RuleEffect, TransformError> {
-    let Some(command) = cx.match_command(node_id, record) else {
-        return Ok(RuleEffect::Skipped);
-    };
-    let subject = format!(r"\{}", command.name);
-    let args = command.args.to_vec();
-
-    cx.expect_arg_len(rule, &args, 2, &subject)?;
-    let starred = star_arg_value(rule, cx, &args[0], &subject)?;
-    let body = required_group_math_content(rule, cx, &args[1], &subject, "body")?;
-
+) {
     if starred {
         replace_with_fixed_fence(cx, node_id, body, fixed_left, fixed_right);
     } else {
         replace_with_auto_fence(cx, node_id, body, auto_left, auto_right);
-    }
-
-    Ok(RuleEffect::Applied)
-}
-
-fn required_group_math_content(
-    rule: RuleKey,
-    cx: &RuleContext<'_>,
-    slot: &ArgumentSlot,
-    subject: &str,
-    label: &str,
-) -> Result<NodeId, TransformError> {
-    match slot {
-        Some(arg) if arg.kind == ArgumentKind::Group => match arg.value {
-            ArgumentValue::MathContent(node_id) => Ok(node_id),
-            _ => Err(cx.invalid_shape(rule, format!("{subject} {label} should be math content"))),
-        },
-        _ => Err(cx.invalid_shape(
-            rule,
-            format!("{subject} {label} should be a required braced math group"),
-        )),
     }
 }
 

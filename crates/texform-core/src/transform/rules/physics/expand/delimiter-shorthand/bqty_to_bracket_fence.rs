@@ -20,9 +20,10 @@
 use texform_specs::builtin::base;
 use texform_specs::builtin::physics;
 
-use super::helpers::{FixedFenceToken, expand_delimiter_shorthand};
-use crate::ast::Delimiter;
-use crate::transform::rule::{RuleConsumes, RuleProduces};
+use super::helpers::{FixedFenceToken, replace_with_delimiter_shorthand};
+use crate::ast::{ArgumentKind, ArgumentValue, Delimiter};
+use crate::transform::helpers::star_arg_value;
+use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
@@ -42,16 +43,39 @@ define_rule! {
             targets: cmd_targets![&base::cmd::LEFT, &base::cmd::RIGHT],
         },
         apply(rule, cx, node_id) {
-            expand_delimiter_shorthand(
-                rule.meta().key,
+            let Some(command) = cx.match_command(node_id, &physics::cmd::BQTY) else {
+                return Ok(RuleEffect::Skipped);
+            };
+            let subject = format!(r"\{}", command.name);
+            let args = command.args.to_vec();
+
+            cx.expect_arg_len(rule.meta().key, &args, 2, &subject)?;
+            let starred = star_arg_value(rule.meta().key, cx, &args[0], &subject)?;
+            let body = match &args[1] {
+                Some(arg) if arg.kind == ArgumentKind::Group => match arg.value {
+                    ArgumentValue::MathContent(node_id) => node_id,
+                    _ => return Err(cx.invalid_shape(
+                        rule.meta().key,
+                        format!("{subject} body should be math content"),
+                    )),
+                },
+                _ => return Err(cx.invalid_shape(
+                    rule.meta().key,
+                    format!("{subject} body should be a required braced math group"),
+                )),
+            };
+
+            replace_with_delimiter_shorthand(
                 cx,
                 node_id,
-                &physics::cmd::BQTY,
+                starred,
+                body,
                 Delimiter::Char('['),
                 Delimiter::Char(']'),
                 FixedFenceToken::Char('['),
                 FixedFenceToken::Char(']'),
-            )
+            );
+            Ok(RuleEffect::Applied)
         }
     }
 }

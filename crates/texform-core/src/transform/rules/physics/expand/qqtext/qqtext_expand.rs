@@ -20,7 +20,7 @@ use texform_specs::builtin::physics;
 
 use crate::ast::{ArgumentKind, ArgumentSlot, ArgumentValue, Node};
 use crate::transform::engine::TransformError;
-use crate::transform::helpers::{prefix_command, replace_with_math_sequence};
+use crate::transform::helpers::{prefix_command, replace_with_math_sequence, star_arg_value};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces, TransformRule};
 use crate::transform::rule_context::RuleContext;
 use crate::transform::{cmd_targets, define_rule};
@@ -62,33 +62,12 @@ fn expand_qqtext_like(
     };
 
     cx.expect_arg_len(rule.meta().key, &args, 2, &subject)?;
-    let starred = star_value(rule, cx, &args[0], &subject)?;
+    let starred = star_arg_value(rule.meta().key, cx, &args[0], &subject)?;
     let text_arg = text_argument(rule, cx, &args[1], &subject)?;
 
     replace_with_text_sequence(cx, node_id, starred, text_arg);
 
     Ok(RuleEffect::Applied)
-}
-
-fn star_value(
-    rule: &QqtextExpandRule,
-    cx: &RuleContext<'_>,
-    slot: &ArgumentSlot,
-    subject: &str,
-) -> Result<bool, TransformError> {
-    match slot {
-        Some(arg) if arg.kind == ArgumentKind::Star => match arg.value {
-            ArgumentValue::Boolean(value) => Ok(value),
-            _ => Err(cx.invalid_shape(
-                rule.meta().key,
-                format!("{subject} star slot should carry a boolean value"),
-            )),
-        },
-        _ => Err(cx.invalid_shape(
-            rule.meta().key,
-            format!("{subject} should carry a star slot followed by a text argument"),
-        )),
-    }
 }
 
 fn text_argument(
