@@ -198,6 +198,10 @@
 {"package":"physics","name":"matrixelement","branch":"bare[2]","renderer":"katex","tex":"\\matrixelement a{b}{c}","error":"KaTeX parse error: Undefined control sequence: \\matrixelement at position 1: \\̲m̲a̲t̲r̲i̲x̲e̲l̲e̲m̲e̲n̲t̲ ̲a{b}{c}"}
 {"package":"physics","name":"matrixelement","branch":"bare[3]","renderer":"katex","tex":"\\matrixelement{a}b{c}","error":"KaTeX parse error: Undefined control sequence: \\matrixelement at position 1: \\̲m̲a̲t̲r̲i̲x̲e̲l̲e̲m̲e̲n̲t̲{a}b{c}"}
 {"package":"physics","name":"matrixelement","branch":"bare[4]","renderer":"katex","tex":"\\matrixelement{a}{b}c","error":"KaTeX parse error: Undefined control sequence: \\matrixelement at position 1: \\̲m̲a̲t̲r̲i̲x̲e̲l̲e̲m̲e̲n̲t̲{a}{b}c"}
+{"package":"physics","name":"matrixquantity","branch":"baseline","renderer":"katex","tex":"\\matrixquantity","error":"KaTeX parse error: Undefined control sequence: \\matrixquantity at position 1: \\̲m̲a̲t̲r̲i̲x̲q̲u̲a̲n̲t̲i̲t̲y̲"}
+{"package":"physics","name":"matrixquantity","branch":"vary:s[0]","renderer":"katex","tex":"\\matrixquantity*","error":"KaTeX parse error: Undefined control sequence: \\matrixquantity at position 1: \\̲m̲a̲t̲r̲i̲x̲q̲u̲a̲n̲t̲i̲t̲y̲*"}
+{"package":"physics","name":"matrixquantity","branch":"vary:d[1]","renderer":"katex","tex":"\\matrixquantity (a)","error":"KaTeX parse error: Undefined control sequence: \\matrixquantity at position 1: \\̲m̲a̲t̲r̲i̲x̲q̲u̲a̲n̲t̲i̲t̲y̲ ̲(a)"}
+{"package":"physics","name":"matrixquantity","branch":"maximal","renderer":"katex","tex":"\\matrixquantity*(a)","error":"KaTeX parse error: Undefined control sequence: \\matrixquantity at position 1: \\̲m̲a̲t̲r̲i̲x̲q̲u̲a̲n̲t̲i̲t̲y̲*(a)"}
 {"package":"physics","name":"mdet","branch":"baseline","renderer":"katex","tex":"\\mdet{a}","error":"KaTeX parse error: Undefined control sequence: \\mdet at position 1: \\̲m̲d̲e̲t̲{a}"}
 {"package":"physics","name":"mdet","branch":"bare[0]","renderer":"katex","tex":"\\mdet a","error":"KaTeX parse error: Undefined control sequence: \\mdet at position 1: \\̲m̲d̲e̲t̲ ̲a"}
 {"package":"physics","name":"mel","branch":"baseline","renderer":"katex","tex":"\\mel{a}{b}{c}","error":"KaTeX parse error: Undefined control sequence: \\mel at position 1: \\̲m̲e̲l̲{a}{b}{c}"}
@@ -206,6 +210,10 @@
 {"package":"physics","name":"mel","branch":"bare[2]","renderer":"katex","tex":"\\mel a{b}{c}","error":"KaTeX parse error: Undefined control sequence: \\mel at position 1: \\̲m̲e̲l̲ ̲a{b}{c}"}
 {"package":"physics","name":"mel","branch":"bare[3]","renderer":"katex","tex":"\\mel{a}b{c}","error":"KaTeX parse error: Undefined control sequence: \\mel at position 1: \\̲m̲e̲l̲{a}b{c}"}
 {"package":"physics","name":"mel","branch":"bare[4]","renderer":"katex","tex":"\\mel{a}{b}c","error":"KaTeX parse error: Undefined control sequence: \\mel at position 1: \\̲m̲e̲l̲{a}{b}c"}
+{"package":"physics","name":"mqty","branch":"baseline","renderer":"katex","tex":"\\mqty","error":"KaTeX parse error: Undefined control sequence: \\mqty at position 1: \\̲m̲q̲t̲y̲"}
+{"package":"physics","name":"mqty","branch":"vary:s[0]","renderer":"katex","tex":"\\mqty*","error":"KaTeX parse error: Undefined control sequence: \\mqty at position 1: \\̲m̲q̲t̲y̲*"}
+{"package":"physics","name":"mqty","branch":"vary:d[1]","renderer":"katex","tex":"\\mqty (a)","error":"KaTeX parse error: Undefined control sequence: \\mqty at position 1: \\̲m̲q̲t̲y̲ ̲(a)"}
+{"package":"physics","name":"mqty","branch":"maximal","renderer":"katex","tex":"\\mqty*(a)","error":"KaTeX parse error: Undefined control sequence: \\mqty at position 1: \\̲m̲q̲t̲y̲*(a)"}
 {"package":"physics","name":"naturallogarithm","branch":"baseline","renderer":"katex","tex":"\\naturallogarithm","error":"KaTeX parse error: Undefined control sequence: \\naturallogarithm at position 1: \\̲n̲a̲t̲u̲r̲a̲l̲l̲o̲g̲a̲r̲i̲t̲h̲m̲"}
 {"package":"physics","name":"norm","branch":"baseline","renderer":"katex","tex":"\\norm{a}","error":"KaTeX parse error: Undefined control sequence: \\norm at position 1: \\̲n̲o̲r̲m̲{a}"}
 {"package":"physics","name":"norm","branch":"vary:s[0]","renderer":"katex","tex":"\\norm*{a}","error":"KaTeX parse error: Undefined control sequence: \\norm at position 1: \\̲n̲o̲r̲m̲*{a}"}
@@ -323,8 +331,16 @@
 {"package":"physics","name":"sech","branch":"baseline","renderer":"katex","tex":"\\sech","error":"KaTeX parse error: Undefined control sequence: \\sech at position 1: \\̲s̲e̲c̲h̲"}
 {"package":"physics","name":"sech","branch":"vary:o[0]","renderer":"katex","tex":"\\sech[a]","error":"KaTeX parse error: Undefined control sequence: \\sech at position 1: \\̲s̲e̲c̲h̲[a]"}
 {"package":"physics","name":"sine","branch":"baseline","renderer":"katex","tex":"\\sine","error":"KaTeX parse error: Undefined control sequence: \\sine at position 1: \\̲s̲i̲n̲e̲"}
+{"package":"physics","name":"smallmatrixquantity","branch":"baseline","renderer":"katex","tex":"\\smallmatrixquantity","error":"KaTeX parse error: Undefined control sequence: \\smallmatrixquantity at position 1: \\̲s̲m̲a̲l̲l̲m̲a̲t̲r̲i̲x̲q̲u̲a̲n̲t̲i̲t̲y̲"}
+{"package":"physics","name":"smallmatrixquantity","branch":"vary:s[0]","renderer":"katex","tex":"\\smallmatrixquantity*","error":"KaTeX parse error: Undefined control sequence: \\smallmatrixquantity at position 1: \\̲s̲m̲a̲l̲l̲m̲a̲t̲r̲i̲x̲q̲u̲a̲n̲t̲i̲t̲y̲*"}
+{"package":"physics","name":"smallmatrixquantity","branch":"vary:d[1]","renderer":"katex","tex":"\\smallmatrixquantity (a)","error":"KaTeX parse error: Undefined control sequence: \\smallmatrixquantity at position 1: \\̲s̲m̲a̲l̲l̲m̲a̲t̲r̲i̲x̲q̲u̲a̲n̲t̲i̲t̲y̲ ̲(a)"}
+{"package":"physics","name":"smallmatrixquantity","branch":"maximal","renderer":"katex","tex":"\\smallmatrixquantity*(a)","error":"KaTeX parse error: Undefined control sequence: \\smallmatrixquantity at position 1: \\̲s̲m̲a̲l̲l̲m̲a̲t̲r̲i̲x̲q̲u̲a̲n̲t̲i̲t̲y̲*(a)"}
 {"package":"physics","name":"smdet","branch":"baseline","renderer":"katex","tex":"\\smdet{a}","error":"KaTeX parse error: Undefined control sequence: \\smdet at position 1: \\̲s̲m̲d̲e̲t̲{a}"}
 {"package":"physics","name":"smdet","branch":"bare[0]","renderer":"katex","tex":"\\smdet a","error":"KaTeX parse error: Undefined control sequence: \\smdet at position 1: \\̲s̲m̲d̲e̲t̲ ̲a"}
+{"package":"physics","name":"smqty","branch":"baseline","renderer":"katex","tex":"\\smqty","error":"KaTeX parse error: Undefined control sequence: \\smqty at position 1: \\̲s̲m̲q̲t̲y̲"}
+{"package":"physics","name":"smqty","branch":"vary:s[0]","renderer":"katex","tex":"\\smqty*","error":"KaTeX parse error: Undefined control sequence: \\smqty at position 1: \\̲s̲m̲q̲t̲y̲*"}
+{"package":"physics","name":"smqty","branch":"vary:d[1]","renderer":"katex","tex":"\\smqty (a)","error":"KaTeX parse error: Undefined control sequence: \\smqty at position 1: \\̲s̲m̲q̲t̲y̲ ̲(a)"}
+{"package":"physics","name":"smqty","branch":"maximal","renderer":"katex","tex":"\\smqty*(a)","error":"KaTeX parse error: Undefined control sequence: \\smqty at position 1: \\̲s̲m̲q̲t̲y̲*(a)"}
 {"package":"physics","name":"spmqty","branch":"baseline","renderer":"katex","tex":"\\spmqty{a}","error":"KaTeX parse error: Undefined control sequence: \\spmqty at position 1: \\̲s̲p̲m̲q̲t̲y̲{a}"}
 {"package":"physics","name":"spmqty","branch":"bare[0]","renderer":"katex","tex":"\\spmqty a","error":"KaTeX parse error: Undefined control sequence: \\spmqty at position 1: \\̲s̲p̲m̲q̲t̲y̲ ̲a"}
 {"package":"physics","name":"sPmqty","branch":"baseline","renderer":"katex","tex":"\\sPmqty{a}","error":"KaTeX parse error: Undefined control sequence: \\sPmqty at position 1: \\̲s̲P̲m̲q̲t̲y̲{a}"}

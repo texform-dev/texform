@@ -979,6 +979,11 @@ commands:
     argspec: ''
     allowed_mode: math
     tags: []
+  - kind: prefix
+    argspec: ''
+    name: of
+    allowed_mode: math
+    tags: []
   - name: oldstyle
     kind: declarative
     argspec: ''

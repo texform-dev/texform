@@ -468,6 +468,12 @@ commands:
     argspec: s s m m m
     allowed_mode: math
     tags: []
+  - name: matrixquantity
+    kind: prefix
+    argspec: s d<(,)><[,]><{,}><|,|>
+    allowed_mode: math
+    tags:
+      - mathjax-extension
   - name: mdet
     kind: prefix
     argspec: m
@@ -479,6 +485,12 @@ commands:
     argspec: s s m m m
     allowed_mode: math
     tags: []
+  - name: mqty
+    kind: prefix
+    argspec: s d<(,)><[,]><{,}><|,|>
+    allowed_mode: math
+    tags:
+      - mathjax-extension
   - name: naturallogarithm
     kind: prefix
     argspec: ''
@@ -772,9 +784,21 @@ commands:
     argspec: o
     allowed_mode: math
     tags: []
+  - name: smallmatrixquantity
+    kind: prefix
+    argspec: s d<(,)><[,]><{,}><|,|>
+    allowed_mode: math
+    tags:
+      - mathjax-extension
   - name: smdet
     kind: prefix
     argspec: m
+    allowed_mode: math
+    tags:
+      - mathjax-extension
+  - name: smqty
+    kind: prefix
+    argspec: s d<(,)><[,]><{,}><|,|>
     allowed_mode: math
     tags:
       - mathjax-extension

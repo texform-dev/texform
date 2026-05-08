@@ -1,21 +1,21 @@
 {
-  "total_records": 615,
-  "total_cases": 1290,
+  "total_records": 620,
+  "total_cases": 1307,
   "by_renderer": {
     "mathjax": {
-      "full": 615,
+      "full": 619,
       "partial": 0,
-      "none": 0
+      "none": 1
     },
     "katex": {
       "full": 316,
       "partial": 7,
-      "none": 292
+      "none": 297
     },
     "xetex": {
-      "full": 475,
+      "full": 479,
       "partial": 17,
-      "none": 123
+      "none": 124
     }
   },
   "by_package": {
@@ -38,19 +38,19 @@
       }
     },
     "physics": {
-      "records": 179,
+      "records": 183,
       "mathjax": {
-        "full": 179,
+        "full": 183,
         "partial": 0,
         "none": 0
       },
       "katex": {
         "full": 25,
         "partial": 0,
-        "none": 154
+        "none": 158
       },
       "xetex": {
-        "full": 179,
+        "full": 183,
         "partial": 0,
         "none": 0
       }
@@ -92,21 +92,21 @@
       }
     },
     "base": {
-      "records": 273,
+      "records": 274,
       "mathjax": {
         "full": 273,
         "partial": 0,
-        "none": 0
+        "none": 1
       },
       "katex": {
         "full": 182,
         "partial": 4,
-        "none": 87
+        "none": 88
       },
       "xetex": {
         "full": 176,
         "partial": 13,
-        "none": 84
+        "none": 85
       }
     },
     "ams": {

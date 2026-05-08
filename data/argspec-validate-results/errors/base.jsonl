@@ -32,6 +32,7 @@
 {"package":"base","name":"mskip","branch":"neg:L[0]","renderer":"mathjax","tex":"\\mskip{a}","error":"Missing dimension or its units for \\mskip"}
 {"package":"base","name":"mspace","branch":"neg:L[0]","renderer":"mathjax","tex":"\\mspace{a}","error":"Missing dimension or its units for \\mspace"}
 {"package":"base","name":"newcolumntype","branch":"neg:I[1]","renderer":"mathjax","tex":"\\newcolumntype{a}[a]{b}","error":"Argument to a must be a positive integer"}
+{"package":"base","name":"of","branch":"baseline","renderer":"mathjax","tex":"\\of","error":"Undefined control sequence \\of"}
 {"package":"base","name":"overwithdelims","branch":"neg:D[0]","renderer":"mathjax","tex":"a \\overwithdelims a ( b","error":"Missing or unrecognized delimiter for \\overwithdelims"}
 {"package":"base","name":"overwithdelims","branch":"neg:D[1]","renderer":"mathjax","tex":"a \\overwithdelims ( a b","error":"Missing or unrecognized delimiter for \\overwithdelims"}
 {"package":"base","name":"raise","branch":"neg:L[0]","renderer":"mathjax","tex":"\\raise{a}{a}","error":"Missing dimension or its units for \\raise"}
@@ -170,6 +171,7 @@
 {"package":"base","name":"newcolumntype","branch":"bare[2]","renderer":"katex","tex":"\\newcolumntype{a}b","error":"KaTeX parse error: Undefined control sequence: \\newcolumntype at position 1: \\̲n̲e̲w̲c̲o̲l̲u̲m̲n̲t̲y̲p̲e̲{a}b"}
 {"package":"base","name":"newcolumntype","branch":"neg:I[1]","renderer":"katex","tex":"\\newcolumntype{a}[a]{b}","error":"KaTeX parse error: Undefined control sequence: \\newcolumntype at position 1: \\̲n̲e̲w̲c̲o̲l̲u̲m̲n̲t̲y̲p̲e̲{a}[a]{b}"}
 {"package":"base","name":"nonscript","branch":"baseline","renderer":"katex","tex":"{\\nonscript a}","error":"KaTeX parse error: Undefined control sequence: \\nonscript at position 2: {\\̲n̲o̲n̲s̲c̲r̲i̲p̲t̲ ̲a}"}
+{"package":"base","name":"of","branch":"baseline","renderer":"katex","tex":"\\of","error":"KaTeX parse error: Undefined control sequence: \\of at position 1: \\̲o̲f̲"}
 {"package":"base","name":"oldstyle","branch":"baseline","renderer":"katex","tex":"{\\oldstyle a}","error":"KaTeX parse error: Undefined control sequence: \\oldstyle at position 2: {\\̲o̲l̲d̲s̲t̲y̲l̲e̲ ̲a}"}
 {"package":"base","name":"overparen","branch":"baseline","renderer":"katex","tex":"\\overparen{a}","error":"KaTeX parse error: Undefined control sequence: \\overparen at position 1: \\̲o̲v̲e̲r̲p̲a̲r̲e̲n̲{a}"}
 {"package":"base","name":"overparen","branch":"bare[0]","renderer":"katex","tex":"\\overparen a","error":"KaTeX parse error: Undefined control sequence: \\overparen at position 1: \\̲o̲v̲e̲r̲p̲a̲r̲e̲n̲ ̲a"}
@@ -420,6 +422,7 @@
 {"package":"base","name":"newcolumntype","branch":"bare[0]","renderer":"xetex","tex":"\\newcolumntype a{b}","error":"! Undefined control sequence."}
 {"package":"base","name":"newcolumntype","branch":"bare[2]","renderer":"xetex","tex":"\\newcolumntype{a}b","error":"! Undefined control sequence."}
 {"package":"base","name":"newcolumntype","branch":"neg:I[1]","renderer":"xetex","tex":"\\newcolumntype{a}[a]{b}","error":"! Undefined control sequence."}
+{"package":"base","name":"of","branch":"baseline","renderer":"xetex","tex":"\\of","error":"! Undefined control sequence."}
 {"package":"base","name":"oldstyle","branch":"baseline","renderer":"xetex","tex":"{\\oldstyle a}","error":"! Undefined control sequence."}
 {"package":"base","name":"overleftrightarrow","branch":"baseline","renderer":"xetex","tex":"\\overleftrightarrow{a}","error":"! Undefined control sequence."}
 {"package":"base","name":"overleftrightarrow","branch":"bare[0]","renderer":"xetex","tex":"\\overleftrightarrow a","error":"! Undefined control sequence."}
