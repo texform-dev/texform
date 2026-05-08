@@ -10,22 +10,13 @@
 //!   - {label: implies, from: \implies, to: \;\Longrightarrow\;}
 //! ```
 
-use texform_specs::argspec;
-use texform_specs::specs::{AllowedMode, BuiltinCommandRecord, CommandKind};
 use texform_specs::builtin::ams;
+use texform_specs::builtin::base;
 
 use crate::ast::Node;
 use crate::transform::helpers::replace_with_math_sequence;
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
-
-static SEMICOLON: BuiltinCommandRecord = BuiltinCommandRecord {
-    name: ";",
-    kind: CommandKind::Prefix,
-    allowed_mode: AllowedMode::Math,
-    argspec: argspec!(""),
-    tags: &["spacing"],
-};
 
 fn zero_arg_command(name: &str) -> Node {
     Node::Command {
@@ -49,7 +40,7 @@ define_rule! {
             touches: &[],
         },
         produces: RuleProduces {
-            targets: cmd_targets![&SEMICOLON],
+            targets: cmd_targets![&base::cmd::_SEMICOLON],
         },
         apply(rule, cx, node_id) {
             let Some(command) = cx.match_command(node_id, &ams::cmd::IMPLIES) else {
@@ -57,8 +48,8 @@ define_rule! {
             };
             cx.expect_no_args(rule.meta().key, command.args, "\\implies")?;
 
-            let left_spacing = cx.ast.new_node(zero_arg_command(";"));
-            let right_spacing = cx.ast.new_node(zero_arg_command(";"));
+            let left_spacing = cx.ast.new_node(zero_arg_command(base::cmd::_SEMICOLON.name));
+            let right_spacing = cx.ast.new_node(zero_arg_command(base::cmd::_SEMICOLON.name));
             replace_with_math_sequence(
                 cx,
                 node_id,

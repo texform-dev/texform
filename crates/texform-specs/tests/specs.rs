@@ -85,6 +85,31 @@ fn registered_packages_expose_builtin_records() {
 }
 
 #[test]
+fn non_alpha_commands_have_stable_facades() {
+    use texform_specs::builtin::{base, braket, textmacros};
+
+    assert_eq!(base::cmd::_CONTROL_SPACE.name, " ");
+    assert_eq!(base::cmd::_COMMA.name, ",");
+    assert_eq!(base::cmd::_SEMICOLON.name, ";");
+    assert_eq!(base::cmd::_COLON.name, ":");
+    assert_eq!(base::cmd::_EXCLAMATION.name, "!");
+    assert_eq!(base::cmd::_STAR.name, "*");
+    assert_eq!(base::cmd::_BACKSLASH.name, "\\");
+    assert_eq!(base::cmd::_GREATER_THAN.name, ">");
+    assert_eq!(braket::cmd::_VERTICAL_BAR.name, "|");
+
+    assert_eq!(textmacros::cmd::_PERIOD.name, ".");
+    assert_eq!(textmacros::cmd::_APOSTROPHE.name, "'");
+    assert_eq!(textmacros::cmd::_LEFT_SINGLE_QUOTE.name, "‘");
+    assert_eq!(textmacros::cmd::_RIGHT_SINGLE_QUOTE.name, "’");
+    assert_eq!(textmacros::cmd::_DOUBLE_QUOTE.name, "\"");
+    assert_eq!(textmacros::cmd::_GRAVE_ACCENT.name, "`");
+    assert_eq!(textmacros::cmd::_CARET.name, "^");
+    assert_eq!(textmacros::cmd::_EQUALS.name, "=");
+    assert_eq!(textmacros::cmd::_TILDE.name, "~");
+}
+
+#[test]
 fn test_parse_arg_specs_xparse_style() {
     let specs = parse_arg_specs("s o m g", "xparse").expect("s o m g should be valid");
     assert_eq!(specs.len(), 4);
