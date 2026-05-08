@@ -38,6 +38,11 @@ define_rule! {
                 return Ok(RuleEffect::Skipped);
             };
             cx.expect_no_args(rule.meta().key, infix.args, "\\over")?;
+            // \buildrel uses TeX's \buildrel <above> \over <operator> shape; leave
+            // that infix form for buildrel-expand instead of turning it into \frac.
+            if contains_command(cx, infix.left, base::cmd::BUILDREL.name) {
+                return Ok(RuleEffect::Skipped);
+            }
             let unwrap_parent_id = cx.ast.parent_id(node_id).and_then(|parent_id| {
                 match cx.ast.node(parent_id) {
                     Node::Group {
@@ -72,6 +77,16 @@ define_rule! {
             Ok(RuleEffect::Applied)
         }
     }
+}
+
+fn contains_command(
+    cx: &crate::transform::rule_context::RuleContext<'_>,
+    node_id: crate::ast::NodeId,
+    command_name: &str,
+) -> bool {
+    cx.ast.find_all(node_id, |node| {
+        matches!(node, Node::Command { name, .. } if name == command_name)
+    }).len() > 0
 }
 
 #[cfg(test)]

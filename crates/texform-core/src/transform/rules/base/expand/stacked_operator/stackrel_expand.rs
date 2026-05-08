@@ -1,0 +1,88 @@
+//! Expand stackrel to an explicit relation-class stacked operator form.
+//!
+//! ```yaml
+//! proposal: stackrel-expand
+//! consumes:
+//!   eliminates: cmd:stackrel
+//!   touches: null
+//! produces:
+//!   - cmd:mathrel
+//!   - cmd:mathop
+//!   - cmd:limits
+//! rewrite_patterns:
+//!   - {from: '\stackrel{#1}{#2}', to: '\mathrel{\mathop{#2}\limits^{#1}}'}
+//! ```
+
+use texform_specs::builtin::base;
+
+use super::helpers::stacked_operator_command;
+use crate::transform::helpers::{replace_node_discarding_detached_children, required_math_content};
+use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
+use crate::transform::{cmd_targets, define_rule};
+
+define_rule! {
+    /// Expand stackrel to an explicit relation-class stacked operator form.
+    pub static STACKREL_EXPAND: StackrelExpandRule {
+        key: Base / "stackrel-expand",
+        tier: Expand,
+        summary: "Expand stackrel to an explicit relation-class stacked operator form.",
+        phase: Normalize,
+        safety: Lossless,
+        enabled_by_packages: [Base],
+        consumes: RuleConsumes {
+            eliminates: cmd_targets![&base::cmd::STACKREL],
+            touches: &[],
+        },
+        produces: RuleProduces {
+            targets: cmd_targets![&base::cmd::MATHREL, &base::cmd::MATHOP, &base::cmd::LIMITS],
+        },
+        apply(rule, cx, node_id) {
+            let Some(command) = cx.match_command(node_id, &base::cmd::STACKREL) else {
+                return Ok(RuleEffect::Skipped);
+            };
+            cx.expect_arg_len(rule.meta().key, command.args, 2, r"\stackrel")?;
+            let above = required_math_content(rule.meta().key, cx, &command.args[0], r"\stackrel", "above")?;
+            let operator = required_math_content(rule.meta().key, cx, &command.args[1], r"\stackrel", "operator")?;
+            let above = cx.ast.clone_subtree(above);
+            let operator = cx.ast.clone_subtree(operator);
+            let replacement = stacked_operator_command(cx, &base::cmd::MATHREL, operator, above);
+
+            replace_node_discarding_detached_children(cx, node_id, replacement);
+            Ok(RuleEffect::Applied)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::transform::transform_examples;
+
+    // START: Generated examples; DO NOT modify
+    transform_examples! {
+        rule: STACKREL_EXPAND,
+        tier: Expand,
+        examples: [
+        {
+            label: stackrel_relation_context,
+            packages: ["base"],
+            input: r"a\stackrel{?}{\le}b",
+            expected: r"a\mathrel{\mathop{\le}\limits^{?}}b",
+        },
+        ]
+    }
+    // END: Generated examples
+
+    transform_examples! {
+        rule: STACKREL_EXPAND,
+        tier: Expand,
+        examples: [
+        {
+            label: stackrel_preserves_grouped_above_content,
+            packages: ["base"],
+            input: r"x\stackrel{a+b}{\sim}y",
+            expected: r"x\mathrel{\mathop{\sim}\limits^{a+b}}y",
+        },
+        ]
+    }
+}
