@@ -735,6 +735,24 @@ fn test_compact_math_group_inner_spacing_affects_optional_argument_brackets() {
 }
 
 #[test]
+fn test_serialize_escaped_syntax_chars_round_trips_as_visible_chars() {
+    let first = serialize(&parse_to_ast(r"\%\$\#\_\{\}"));
+    let second = serialize(&parse_to_ast(&first));
+
+    assert_eq!(first, r"\% \$ \# \_ \{ \}");
+    assert_eq!(second, first);
+}
+
+#[test]
+fn test_serialize_text_escaped_braces_round_trips_as_visible_chars() {
+    let first = serialize(&parse_to_ast(r"\text{\{a\}}"));
+    let second = serialize(&parse_to_ast(&first));
+
+    assert_eq!(first, r"\text {\{a\}}");
+    assert_eq!(second, first);
+}
+
+#[test]
 fn test_serialize_is_text_idempotent_for_canonical_samples() {
     let samples = [
         (r"\frac{a}{b}", r"\frac { a } { b }"),

@@ -950,11 +950,25 @@ impl<'a> Serializer<'a> {
         } else {
             AtomKind::MathChar
         };
-        self.writer.emit(mode, kind, &ch.to_string(), self.options);
+        let text = serialized_char(ch, mode);
+        self.writer.emit(mode, kind, &text, self.options);
     }
 
     fn finish(self) -> String {
         self.writer.finish()
+    }
+}
+
+fn serialized_char(ch: char, mode: ContentMode) -> String {
+    let needs_escape = match mode {
+        ContentMode::Math => matches!(ch, '%' | '$' | '#' | '_' | '{' | '}'),
+        ContentMode::Text => matches!(ch, '%' | '$' | '&' | '#' | '_' | '{' | '}'),
+    };
+
+    if needs_escape {
+        format!(r"\{ch}")
+    } else {
+        ch.to_string()
     }
 }
 
