@@ -7,13 +7,13 @@
 //!   touches: null
 //! produces: cmd:frac
 //! rewrite_patterns:
-//!   - {label: over, from: '#1 \over #2', to: '\frac{#1}{#2}'}
+//!   - {from: '#1 \over #2', to: '\frac{#1}{#2}'}
 //! ```
 
 use texform_specs::builtin::base;
 
-use crate::ast::{ContentMode, GroupKind, Node};
-use crate::transform::helpers::{mandatory_content, prefix_command};
+use super::helpers::{infix_prefix_args, replace_infix_with_command, subtree_contains_command};
+use crate::ast::ContentMode;
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -40,59 +40,24 @@ define_rule! {
             cx.expect_no_args(rule.meta().key, infix.args, "\\over")?;
             // \buildrel uses TeX's \buildrel <above> \over <operator> shape; leave
             // that infix form for buildrel-expand instead of turning it into \frac.
-            if contains_command(cx, infix.left, base::cmd::BUILDREL.name) {
+            if subtree_contains_command(cx, infix.left, base::cmd::BUILDREL.name) {
                 return Ok(RuleEffect::Skipped);
             }
-            let unwrap_parent_id = cx.ast.parent_id(node_id).and_then(|parent_id| {
-                match cx.ast.node(parent_id) {
-                    Node::Group {
-                        children,
-                        kind: GroupKind::Explicit,
-                        ..
-                    } if children.as_slice() == [node_id] => Some(parent_id),
-                    _ => None,
-                }
-            });
-            let frac_args = vec![
-                mandatory_content(infix.left, ContentMode::Math),
-                mandatory_content(infix.right, ContentMode::Math),
-            ];
-
-            // Reuse the existing operand subtrees as the two mandatory frac args.
-            if let Some(parent_id) = unwrap_parent_id {
-                cx.ast.replace_node(node_id, Node::Text(String::new()));
-                cx.ast.replace_node(
-                    parent_id,
-                    Node::Command {
-                        name: base::cmd::FRAC.name.to_string(),
-                        args: frac_args,
-                        known: true,
-                    },
-                );
-                cx.ast.remove_detached(node_id);
-            } else {
-                cx.ast
-                    .replace_node(node_id, prefix_command(&base::cmd::FRAC, frac_args));
-            }
+            replace_infix_with_command(
+                cx,
+                node_id,
+                &base::cmd::FRAC,
+                infix_prefix_args(infix.left, infix.right, ContentMode::Math),
+            );
             Ok(RuleEffect::Applied)
         }
     }
 }
 
-fn contains_command(
-    cx: &crate::transform::rule_context::RuleContext<'_>,
-    node_id: crate::ast::NodeId,
-    command_name: &str,
-) -> bool {
-    cx.ast.find_all(node_id, |node| {
-        matches!(node, Node::Command { name, .. } if name == command_name)
-    }).len() > 0
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{ArgumentKind, ArgumentValue};
+    use crate::ast::{ArgumentKind, ArgumentValue, Node};
     use crate::parse::ParseContext;
     use crate::transform::transform_examples;
     use crate::transform::{TransformProfile, transform_ast};
