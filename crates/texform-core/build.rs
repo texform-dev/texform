@@ -2,8 +2,9 @@
 //!
 //! Rule files live under `src/transform/rules/` and declare exactly one
 //! `pub static UPPER_SNAKE: SomeRuleType`, where the constant name is the
-//! UPPER_SNAKE_CASE form of the file stem. Support files named `helpers.rs`
-//! or `_*.rs` are emitted as normal modules but are not added to `ALL_RULES`.
+//! UPPER_SNAKE_CASE form of the file stem. Support files named `helpers.rs` or
+//! `_*.rs` are emitted as normal modules but are not added to `ALL_RULES`. The
+//! generated registry file itself is ignored by discovery.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -23,34 +24,79 @@ enum ModuleKind {
     Support,
 }
 
-fn rust_module_name(component: &str) -> String {
-    let mut module_name = String::new();
-    for ch in component.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '_' {
-            module_name.push(ch.to_ascii_lowercase());
-        } else {
-            module_name.push('_');
-        }
+fn is_valid_directory_module_component(component: &str) -> bool {
+    if component.is_empty() || component == "_" {
+        return false;
     }
 
-    if module_name.is_empty()
-        || !module_name
-            .chars()
-            .next()
-            .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
-    {
-        module_name.insert(0, '_');
+    let mut chars = component.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first == '_' || first.is_ascii_lowercase()) {
+        return false;
     }
 
-    module_name
+    chars.all(|ch| ch == '_' || ch.is_ascii_lowercase() || ch.is_ascii_digit())
+}
+
+fn is_valid_file_module_component(component: &str) -> bool {
+    if component.is_empty() || component == "_" {
+        return false;
+    }
+
+    let mut chars = component.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first == '_' || first.is_ascii_alphabetic()) {
+        return false;
+    }
+
+    chars.all(|ch| ch == '_' || ch.is_ascii_alphabetic() || ch.is_ascii_digit())
+}
+
+fn validate_directory_module_component(component: &str, path: &Path) {
+    if !is_valid_directory_module_component(component) {
+        panic!(
+            "rule directory path component '{}' in '{}' must be a standard snake_case Rust module name",
+            component,
+            path.display()
+        );
+    }
+}
+
+fn validate_file_module_component(component: &str, path: &Path) {
+    if !is_valid_file_module_component(component) {
+        panic!(
+            "rule file stem '{}' in '{}' must be a valid Rust module name; use '_' instead of '-' and preserve rule-id case",
+            component,
+            path.display()
+        );
+    }
 }
 
 fn module_path(relative_path: &Path) -> Vec<String> {
-    relative_path
+    let components: Vec<String> = relative_path
         .with_extension("")
         .iter()
-        .map(|component| rust_module_name(component.to_str().unwrap()))
-        .collect()
+        .map(|component| {
+            let component = component.to_str().unwrap();
+            component.to_owned()
+        })
+        .collect();
+    let last_index = components
+        .len()
+        .checked_sub(1)
+        .expect("rule module paths are never empty");
+    for (index, component) in components.iter().enumerate() {
+        if index == last_index {
+            validate_file_module_component(component, relative_path);
+        } else {
+            validate_directory_module_component(component, relative_path);
+        }
+    }
+    components
 }
 
 fn is_support_module(file_name: &str) -> bool {
@@ -81,7 +127,10 @@ fn collect_module_entries(base_dir: &Path, dir: &Path, entries: &mut Vec<ModuleE
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
-        if file_name == "mod.rs" || path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+        if file_name == "mod.rs"
+            || file_name == "generated.rs"
+            || path.extension().and_then(|ext| ext.to_str()) != Some("rs")
+        {
             continue;
         }
 
@@ -134,13 +183,11 @@ fn validate_module_paths(entries: &[ModuleEntry]) {
     }
 }
 
-fn write_module_tree(
-    code: &mut String,
-    rules_dir: &Path,
-    entries: &[ModuleEntry],
-    prefix: &[String],
-    indent: usize,
-) {
+fn needs_non_snake_case_allow(module_name: &str) -> bool {
+    module_name.chars().any(|ch| ch.is_ascii_uppercase())
+}
+
+fn write_module_tree(code: &mut String, entries: &[ModuleEntry], prefix: &[String], indent: usize) {
     let mut child_modules = BTreeSet::new();
     let mut file_entries = Vec::new();
 
@@ -167,19 +214,19 @@ fn write_module_tree(
             path
         };
 
-        if let Some(entry) = file_entries
+        if file_entries
             .iter()
-            .find(|entry| entry.module_path == child_prefix)
+            .any(|entry| entry.module_path == child_prefix)
         {
-            let abs_path = rules_dir.join(&entry.relative_path);
-            writeln!(
-                code,
-                "{:indent$}#[path = \"{}\"]",
-                "",
-                abs_path.display().to_string().replace('\\', "/"),
-                indent = indent
-            )
-            .unwrap();
+            if needs_non_snake_case_allow(&child) {
+                writeln!(
+                    code,
+                    "{:indent$}#[allow(non_snake_case)]",
+                    "",
+                    indent = indent
+                )
+                .unwrap();
+            }
             writeln!(
                 code,
                 "{:indent$}pub(crate) mod {};",
@@ -191,6 +238,15 @@ fn write_module_tree(
             continue;
         }
 
+        if needs_non_snake_case_allow(&child) {
+            writeln!(
+                code,
+                "{:indent$}#[allow(non_snake_case)]",
+                "",
+                indent = indent
+            )
+            .unwrap();
+        }
         writeln!(
             code,
             "{:indent$}pub(crate) mod {} {{",
@@ -199,7 +255,7 @@ fn write_module_tree(
             indent = indent
         )
         .unwrap();
-        write_module_tree(code, rules_dir, entries, &child_prefix, indent + 4);
+        write_module_tree(code, entries, &child_prefix, indent + 4);
         writeln!(code, "{:indent$}}}", "", indent = indent).unwrap();
     }
 }
@@ -211,7 +267,6 @@ fn rule_path(entry: &ModuleEntry) -> String {
 fn main() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let rules_dir = Path::new(&manifest_dir).join("src/transform/rules");
-    let out_dir = env::var("OUT_DIR").unwrap();
 
     // Re-run if any file in the rules directory changes.
     println!("cargo:rerun-if-changed={}", rules_dir.display());
@@ -235,7 +290,7 @@ fn main() {
     .unwrap();
 
     writeln!(code, "use crate::transform::rule::TransformRule;\n").unwrap();
-    write_module_tree(&mut code, &rules_dir, &entries, &[], 0);
+    write_module_tree(&mut code, &entries, &[], 0);
 
     writeln!(code).unwrap();
     writeln!(
@@ -257,30 +312,59 @@ fn main() {
     }
     writeln!(code, "];").unwrap();
 
-    let out_path = Path::new(&out_dir).join("rules_registry.rs");
-    fs::write(&out_path, code).expect("failed to write rules_registry.rs");
+    let out_path = rules_dir.join("generated.rs");
+    let should_write = fs::read_to_string(&out_path).map_or(true, |existing| existing != code);
+    if should_write {
+        fs::write(&out_path, code).expect("failed to write transform/rules/generated.rs");
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{constant_name, is_support_module, module_path, rust_module_name};
+    use super::{
+        constant_name, is_support_module, is_valid_directory_module_component,
+        is_valid_file_module_component, module_path, needs_non_snake_case_allow,
+    };
     use std::path::Path;
 
     #[test]
-    fn module_names_are_plain_rust_identifiers() {
-        assert_eq!(rust_module_name("derivative-expand"), "derivative_expand");
-        assert_eq!(rust_module_name("trace_alias"), "trace_alias");
-        assert_eq!(rust_module_name("123-group"), "_123_group");
+    fn directory_names_are_standard_snake_case_modules() {
+        assert!(is_valid_directory_module_component("derivative_expand"));
+        assert!(is_valid_directory_module_component("trace_alias"));
+        assert!(is_valid_directory_module_component("_shared"));
+        assert!(!is_valid_directory_module_component("derivative-expand"));
+        assert!(!is_valid_directory_module_component("trace_capital_to_Tr"));
+        assert!(!is_valid_directory_module_component("123_group"));
+    }
+
+    #[test]
+    fn file_names_may_preserve_rule_id_case() {
+        assert!(is_valid_file_module_component("trace_capital_to_Tr"));
+        assert!(is_valid_file_module_component("Bqty_to_brace_fence"));
+        assert!(is_valid_file_module_component("implies_to_Longrightarrow"));
+        assert!(!is_valid_file_module_component("implies-to-Longrightarrow"));
+        assert!(!is_valid_file_module_component("123_rule"));
     }
 
     #[test]
     fn module_path_preserves_directory_shape() {
         assert_eq!(
             module_path(Path::new(
-                "physics/expand/derivative-expand/dv_to_frac_d.rs"
+                "physics/expand/ams_operator_alias/implies_to_Longrightarrow.rs"
             )),
-            vec!["physics", "expand", "derivative_expand", "dv_to_frac_d"]
+            vec![
+                "physics",
+                "expand",
+                "ams_operator_alias",
+                "implies_to_Longrightarrow"
+            ]
         );
+    }
+
+    #[test]
+    fn uppercase_file_modules_get_non_snake_case_allow() {
+        assert!(needs_non_snake_case_allow("implies_to_Longrightarrow"));
+        assert!(!needs_non_snake_case_allow("dv_to_frac_d"));
     }
 
     #[test]
@@ -294,7 +378,7 @@ mod tests {
     fn rule_constant_uses_file_stem() {
         assert_eq!(
             constant_name(Path::new(
-                "physics/expand/derivative-expand/dv_to_frac_d.rs"
+                "physics/expand/derivative_expand/dv_to_frac_d.rs"
             )),
             "DV_TO_FRAC_D"
         );

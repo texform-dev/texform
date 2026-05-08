@@ -7,6 +7,7 @@
 .playwright-mcp
 .codex
 .worktrees/
+/crates/texform-core/src/transform/rules/generated.rs
 
 # Python / uv
 __pycache__/
