@@ -86,43 +86,31 @@ mod tests {
             expected: r"\left\{q_i,p_j\right\}=\delta_{ij}",
         },
         {
-            label: poisson_bracket_bare_second_operand,
+            label: poisson_bracket_star_fixed_size,
             packages: ["base", "physics"],
-            input: r"\pb{f}g",
-            expected: r"\left\{f,g\right\}",
+            input: r"\pb*{f}{g}=0",
+            expected: r"\{f,g\}=0",
         },
         ]
     }
     // END: Generated examples
 
-    #[test]
-    fn poisson_bracket_star_fixed_size() {
-        let actual = transform_serialized(r"\pb*{f}{g}=0");
-
-        assert_eq!(actual, r"\{ f , g \} = 0");
-    }
-
-    #[test]
-    fn poisson_bracket_star_power_context() {
-        let actual = transform_serialized(r"\pb*{f}{g}^2");
-
-        assert_eq!(actual, r"\{ f , g \} ^ { 2 }");
-    }
-
-    fn transform_serialized(input: &str) -> String {
-        use crate::transform::TransformRule as _;
-
-        let parse_ctx = crate::parse::ParseContext::from_packages(&["base", "physics"]);
-        let transform_ctx =
-            crate::transform::TransformContextBuilder::from_tiers(&[crate::transform::RuleTier::Expand])
-                .only(POISSON_BRACKET_EXPAND.meta().key)
-                .build_with(&parse_ctx)
-                .expect("transform context should build");
-        let mut ast = parse_ctx.parse_to_ast(input, true).expect("parse input should succeed");
-
-        crate::transform::transform_ast(&mut ast, &parse_ctx, &transform_ctx)
-            .expect("poisson-bracket-expand transform should succeed");
-
-        crate::serialize::serialize(&ast)
+    transform_examples! {
+        rule: POISSON_BRACKET_EXPAND,
+        tier: Expand,
+        examples: [
+        {
+            label: poisson_bracket_bare_second_operand,
+            packages: ["base", "physics"],
+            input: r"\pb{f}g",
+            expected: r"\left\{f,g\right\}",
+        },
+        {
+            label: poisson_bracket_star_power_context,
+            packages: ["base", "physics"],
+            input: r"\pb*{f}{g}^2",
+            expected: r"\{f,g\}^2",
+        },
+        ]
     }
 }

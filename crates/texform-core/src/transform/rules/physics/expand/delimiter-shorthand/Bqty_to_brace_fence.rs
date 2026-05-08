@@ -96,39 +96,26 @@ mod tests {
             input: r"\Bqty{a+b}",
             expected: r"\left\{ a+b \right\}",
         },
+        {
+            label: bqty_star_set_builder,
+            packages: ["base", "physics"],
+            input: r"\Bqty*{x\mid x>0}",
+            expected: r"\{ x\mid x>0 \}",
+        },
         ]
     }
     // END: Generated examples
 
-    #[test]
-    fn bqty_star_set_builder_serializes_visible_brace_commands() {
-        let actual = transform_serialized(r"\Bqty*{x\mid x>0}");
-
-        assert_eq!(actual, r"\{ x \mid x > 0 \}");
-    }
-
-    #[test]
-    fn bqty_star_power_context_serializes_visible_brace_commands() {
-        let actual = transform_serialized(r"\Bqty*{x>0}^2");
-
-        assert_eq!(actual, r"\{ x > 0 \} ^ { 2 }");
-    }
-
-    fn transform_serialized(input: &str) -> String {
-        use crate::transform::TransformRule as _;
-
-        let parse_ctx = crate::parse::ParseContext::from_packages(&["base", "physics"]);
-        let transform_ctx = crate::transform::TransformContextBuilder::from_tiers(&[
-            crate::transform::RuleTier::Expand,
-        ])
-        .only(BQTY_TO_BRACE_FENCE.meta().key)
-        .build_with(&parse_ctx)
-        .expect("transform context should build");
-        let mut ast = parse_ctx.parse_to_ast(input, true).expect("parse input should succeed");
-
-        crate::transform::transform_ast(&mut ast, &parse_ctx, &transform_ctx)
-            .expect("Bqty-to-brace-fence transform should succeed");
-
-        crate::serialize::serialize(&ast)
+    transform_examples! {
+        rule: BQTY_TO_BRACE_FENCE,
+        tier: Expand,
+        examples: [
+        {
+            label: bqty_star_power_context,
+            packages: ["base", "physics"],
+            input: r"\Bqty*{x>0}^2",
+            expected: r"\{ x>0 \}^2",
+        },
+        ]
     }
 }
