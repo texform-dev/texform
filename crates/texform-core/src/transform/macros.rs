@@ -276,6 +276,16 @@ macro_rules! env_targets {
     };
 }
 
+#[allow(unused_macros)]
+macro_rules! char_targets {
+    () => {
+        &[] as &[$crate::transform::RuleTarget]
+    };
+    ($($record:expr),+ $(,)?) => {
+        &[$($crate::transform::RuleTarget::Character($record)),+]
+    };
+}
+
 macro_rules! alias_rule {
     (
         $(#[$attr:meta])*
@@ -376,6 +386,7 @@ macro_rules! transform_examples {
 }
 
 pub(crate) use alias_rule;
+pub(crate) use char_targets;
 pub(crate) use cmd_targets;
 pub(crate) use define_rule;
 pub(crate) use env_targets;
@@ -384,9 +395,9 @@ pub(crate) use transform_examples;
 
 #[cfg(test)]
 mod tests {
-    use texform_specs::builtin::{ams, base};
+    use texform_specs::builtin::{ams, base, bboldx};
 
-    use crate::transform::RuleTarget;
+    use crate::transform::{RuleTarget, RuleTargetKind};
 
     #[test]
     fn cmd_targets_expands_to_command_target_slice() {
@@ -402,5 +413,13 @@ mod tests {
             env_targets![&ams::env::ALIGN],
             &[RuleTarget::Environment(&ams::env::ALIGN)]
         );
+    }
+
+    #[test]
+    fn char_targets_wraps_character_records() {
+        let targets = char_targets![&bboldx::chars::BBDOTLESSI];
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].key().kind, RuleTargetKind::Character);
+        assert_eq!(targets[0].key().name, "bbdotlessi");
     }
 }

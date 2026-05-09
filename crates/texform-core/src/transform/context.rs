@@ -347,6 +347,7 @@ fn parse_context_knows_target(parse_ctx: &ParseContext, target: RuleTargetKey) -
     match target.kind {
         RuleTargetKind::Command => parse_ctx.knows_command_name(target.name),
         RuleTargetKind::Environment => parse_ctx.knows_env_name(target.name),
+        RuleTargetKind::Character => parse_ctx.knows_character_name(target.name),
     }
 }
 
@@ -533,6 +534,7 @@ fn rule_touched_by_mutations(
         .any(|target| match target.kind {
             RuleTargetKind::Command => summary.touched_commands.contains(target.name),
             RuleTargetKind::Environment => summary.touched_environments.contains(target.name),
+            RuleTargetKind::Character => summary.touched_commands.contains(target.name),
         })
 }
 
@@ -546,7 +548,7 @@ mod tests {
     };
     use crate::transform::rule_context::RuleContext;
     use texform_specs::argspec;
-    use texform_specs::builtin::PackageName;
+    use texform_specs::builtin::{PackageName, bboldx};
     use texform_specs::specs::{
         AllowedMode, BuiltinCommandRecord, BuiltinEnvironmentRecord, CommandKind, ContentMode,
     };
@@ -734,6 +736,25 @@ mod tests {
         },
     };
 
+    static PRODUCES_BBOLDX_CHAR_META: RuleMeta = RuleMeta {
+        key: RuleKey {
+            package: PackageName::Base,
+            name: "produces-bboldx-char",
+        },
+        enabled_by_packages: &[PackageName::Base],
+        class: RuleClass::Standard,
+        summary: "mock rule producing bboldx character",
+        phase: RulePhase::Normalize,
+        safety: RuleSafety::Lossless,
+        consumes: RuleConsumes {
+            eliminates: &[RuleTarget::Command(&COMMAND_A)],
+            touches: &[],
+        },
+        produces: RuleProduces {
+            targets: &[RuleTarget::Character(&bboldx::chars::BBDOTLESSI)],
+        },
+    };
+
     static RULE_A: MockRule = MockRule { meta: &RULE_A_META };
     static RULE_B: MockRule = MockRule { meta: &RULE_B_META };
     static RULE_C: MockRule = MockRule { meta: &RULE_C_META };
@@ -745,6 +766,9 @@ mod tests {
     };
     static PRODUCES_AMS_ENV_RULE: MockRule = MockRule {
         meta: &PRODUCES_AMS_ENV_META,
+    };
+    static PRODUCES_BBOLDX_CHAR_RULE: MockRule = MockRule {
+        meta: &PRODUCES_BBOLDX_CHAR_META,
     };
 
     fn filter_rules_for_test(
@@ -825,6 +849,21 @@ mod tests {
     }
 
     #[test]
+    fn filter_rules_checks_character_produced_target_availability() {
+        let base_ctx = ParseContext::from_packages(&["base"]);
+        let rules: [&'static dyn TransformRule; 1] = [&PRODUCES_BBOLDX_CHAR_RULE];
+
+        let enabled =
+            filter_rules_for_test(rules.as_slice(), &base_ctx).expect("filter should pass");
+        assert!(enabled.is_empty());
+
+        let bboldx_ctx = ParseContext::from_packages(&["base", "bboldx"]);
+        let enabled =
+            filter_rules_for_test(rules.as_slice(), &bboldx_ctx).expect("filter should pass");
+        assert_eq!(enabled.len(), 1);
+    }
+
+    #[test]
     fn only_rule_reports_error_when_produced_target_is_unavailable() {
         let parse_ctx = ParseContext::from_packages(&["base"]);
 
@@ -847,6 +886,38 @@ mod tests {
                     target: RuleTargetKey {
                         kind: RuleTargetKind::Environment,
                         name: "matrix",
+                    },
+                    active: vec![PackageName::Base],
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn only_rule_reports_error_when_character_produced_target_is_unavailable() {
+        let parse_ctx = ParseContext::from_packages(&["base"]);
+
+        let error = match filter_rules(
+            &[&PRODUCES_BBOLDX_CHAR_RULE],
+            TransformProfile::AUTHORING,
+            Some(&BTreeSet::from([PRODUCES_BBOLDX_CHAR_META.key])),
+            &BTreeSet::new(),
+            &parse_ctx,
+        ) {
+            Ok(_) => {
+                panic!("selected rule should be unavailable because char:bbdotlessi is not active")
+            }
+            Err(error) => error,
+        };
+
+        assert_eq!(
+            error,
+            TransformBuildError::SelectedRuleUnavailable {
+                rule: PRODUCES_BBOLDX_CHAR_META.key,
+                reason: RuleAvailabilityFailure::ProducedTargetUnavailable {
+                    target: RuleTargetKey {
+                        kind: RuleTargetKind::Character,
+                        name: "bbdotlessi",
                     },
                     active: vec![PackageName::Base],
                 },

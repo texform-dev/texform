@@ -68,7 +68,7 @@ adding another file-level symbol for every rule.
 For repeated rule shells, prefer the crate-private authoring macros:
 
 ```rust
-use crate::transform::{alias_rule, cmd_targets, define_rule, env_targets};
+use crate::transform::{alias_rule, char_targets, cmd_targets, define_rule, env_targets};
 ```
 
 These macros are intentionally local to `texform-core`; they are ergonomics
@@ -81,6 +81,7 @@ Always import builtin records through an explicit package module:
 ```rust
 use texform_specs::builtin::base;
 use texform_specs::builtin::ams;
+use texform_specs::builtin::bboldx;
 ```
 
 When referencing builtin records in consumes or produces, always use
@@ -89,6 +90,7 @@ the package-qualified path:
 ```rust
 RuleTarget::Command(&base::cmd::FRAC)
 RuleTarget::Environment(&ams::env::ALIGN)
+RuleTarget::Character(&bboldx::chars::BBDOTLESSI)
 ```
 
 The target contract is package-insensitive: each target means `kind + name`.
@@ -113,10 +115,10 @@ produces: RuleProduces {
 },
 ```
 
-If the same command or environment name exists in multiple packages, choose the
-first builtin record by texform package import order. `enabled_by_packages`
-declares which input packages make the rule loadable; it does not constrain
-which package supplies a produced target.
+If the same command, environment, or character name exists in multiple packages,
+choose the first builtin record by texform package import order.
+`enabled_by_packages` declares which input packages make the rule loadable; it
+does not constrain which package supplies a produced target.
 
 Package-specific split decisions are based on structural signatures:
 
@@ -220,6 +222,7 @@ Use the small metadata helpers when they reduce noise:
 ```rust
 cmd_targets![&base::cmd::FRAC]
 env_targets![&ams::env::ALIGN]
+char_targets![&bboldx::chars::BBDOTLESSI]
 ```
 
 These macros only wrap builtin paths into `RuleTarget::*` arrays. They do not

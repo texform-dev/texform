@@ -1,4 +1,5 @@
-use texform_core::transform::{PackageName, RuleClass, RuleKey};
+use texform_core::transform::{PackageName, RuleClass, RuleKey, RuleTarget, RuleTargetKind};
+use texform_specs::builtin::bboldx;
 
 #[test]
 fn rule_class_strings_match_profile_ids() {
@@ -15,4 +16,16 @@ fn rule_key_display_uses_generated_package_name() {
         name: "trace-to-tr",
     };
     assert_eq!(key.to_string(), "physics/trace-to-tr");
+}
+
+#[test]
+fn character_rule_target_exposes_public_key_and_labels() {
+    let target = RuleTarget::Character(&bboldx::chars::BBDOTLESSI);
+    let key = target.key();
+
+    assert_eq!(key.kind, RuleTargetKind::Character);
+    assert_eq!(key.name, "bbdotlessi");
+    assert_eq!(key.kind_label(), "character");
+    assert_eq!(target.kind_label(), "character");
+    assert_eq!(target.name(), "bbdotlessi");
 }

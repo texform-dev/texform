@@ -16,7 +16,9 @@
 //!   information, only semantic meaning, or is destructive.
 
 pub use texform_specs::builtin::PackageName;
-use texform_specs::specs::{BuiltinCommandRecord, BuiltinEnvironmentRecord};
+use texform_specs::specs::{
+    BuiltinCharacterRecord, BuiltinCommandRecord, BuiltinEnvironmentRecord,
+};
 
 use crate::ast::NodeId;
 use crate::transform::engine::TransformError;
@@ -88,7 +90,8 @@ impl std::fmt::Display for RuleKey {
     }
 }
 
-/// A specific command or environment that a rule operates on, references, or produces.
+/// A specific command, environment, or character that a rule operates on,
+/// references, or produces.
 ///
 /// Targets are used in [`RuleConsumes`] and [`RuleProduces`] to declare the
 /// knowledge-base entries a rule interacts with.
@@ -98,12 +101,15 @@ pub enum RuleTarget {
     Command(&'static BuiltinCommandRecord),
     /// A builtin environment record from `texform-specs`.
     Environment(&'static BuiltinEnvironmentRecord),
+    /// A builtin character record from `texform-specs`.
+    Character(&'static BuiltinCharacterRecord),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum RuleTargetKind {
     Command,
     Environment,
+    Character,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -117,6 +123,7 @@ impl RuleTargetKey {
         match self.kind {
             RuleTargetKind::Command => "command",
             RuleTargetKind::Environment => "environment",
+            RuleTargetKind::Character => "character",
         }
     }
 }
@@ -132,6 +139,10 @@ impl RuleTarget {
                 kind: RuleTargetKind::Environment,
                 name: record.name,
             },
+            RuleTarget::Character(record) => RuleTargetKey {
+                kind: RuleTargetKind::Character,
+                name: record.name,
+            },
         }
     }
 
@@ -139,6 +150,7 @@ impl RuleTarget {
         match self {
             RuleTarget::Command(_) => "command",
             RuleTarget::Environment(_) => "environment",
+            RuleTarget::Character(_) => "character",
         }
     }
 
@@ -146,6 +158,7 @@ impl RuleTarget {
         match self {
             RuleTarget::Command(record) => record.name,
             RuleTarget::Environment(record) => record.name,
+            RuleTarget::Character(record) => record.name,
         }
     }
 }
@@ -156,8 +169,8 @@ impl From<RuleTarget> for RuleTargetKey {
     }
 }
 
-/// Declares the commands/environments that a rule removes from, reads, or may
-/// otherwise touch in the AST.
+/// Declares the commands, environments, or characters that a rule removes from,
+/// reads, or may otherwise touch in the AST.
 ///
 /// The distinction matters for convergence analysis:
 /// - **`eliminates`** — forms the rule actively removes or replaces. After the
@@ -178,7 +191,7 @@ pub struct RuleConsumes {
 /// acceptable command set or is consumed by another rule, ensuring convergence.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RuleProduces {
-    /// Commands or environments that may appear in the AST after the rule fires.
+    /// Commands, environments, or characters that may appear in the AST after the rule fires.
     pub targets: &'static [RuleTarget],
 }
 
@@ -201,9 +214,9 @@ pub struct RuleMeta {
     pub phase: RulePhase,
     /// The information-preservation guarantee this rule provides.
     pub safety: RuleSafety,
-    /// Commands/environments this rule removes from, reads, or modifies in the AST.
+    /// Commands, environments, or characters this rule removes from, reads, or modifies in the AST.
     pub consumes: RuleConsumes,
-    /// Commands/environments this rule may introduce into the AST.
+    /// Commands, environments, or characters this rule may introduce into the AST.
     pub produces: RuleProduces,
 }
 

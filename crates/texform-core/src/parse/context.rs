@@ -819,12 +819,21 @@ impl ParseContext {
             || self.knows_env_name_in(name, ContentMode::Text)
     }
 
+    pub fn knows_character_name(&self, name: &str) -> bool {
+        self.knows_character_name_in(name, ContentMode::Math)
+            || self.knows_character_name_in(name, ContentMode::Text)
+    }
+
     fn knows_command_name_in(&self, name: &str, mode: ContentMode) -> bool {
         self.lookup_command(name, mode).is_some()
     }
 
     fn knows_env_name_in(&self, name: &str, mode: ContentMode) -> bool {
         self.lookup_env(name, mode).is_some()
+    }
+
+    fn knows_character_name_in(&self, name: &str, mode: ContentMode) -> bool {
+        self.lookup_character(name, mode).is_some()
     }
 }
 

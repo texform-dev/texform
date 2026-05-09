@@ -131,6 +131,16 @@ fn builder_compiles_distinct_math_and_text_kbs() {
 }
 
 #[test]
+fn knows_character_name_checks_loaded_character_entries() {
+    let bboldx = ParseContext::from_packages(&["bboldx"]);
+    assert!(bboldx.knows_character_name("bbdotlessi"));
+    assert!(bboldx.knows_character_name("txtbbdotlessi"));
+
+    let base = ParseContext::from_packages(&["base"]);
+    assert!(!base.knows_character_name("bbdotlessi"));
+}
+
+#[test]
 fn runtime_text_only_command_only_enters_text_lane() {
     let ctx = ParseContextBuilder::empty()
         .insert_item(CommandItem::new(

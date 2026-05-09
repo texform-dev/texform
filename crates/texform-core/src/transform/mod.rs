@@ -19,7 +19,7 @@ mod rules;
 #[allow(unused_imports)]
 pub(crate) use macros::transform_examples;
 #[allow(unused_imports)]
-pub(crate) use macros::{alias_rule, cmd_targets, define_rule, env_targets};
+pub(crate) use macros::{alias_rule, char_targets, cmd_targets, define_rule, env_targets};
 
 pub use context::{
     TransformBuildError, TransformContext, TransformContextBuilder, TransformProfile,

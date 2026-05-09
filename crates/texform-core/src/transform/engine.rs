@@ -11,9 +11,11 @@
 
 use crate::ast::{Ast, NodeId, NodeKind};
 use crate::knowledge::{lookup_command_node_name, lookup_environment_node_name};
-use crate::parse::ParseContext;
+use crate::parse::{ContentMode, ParseContext};
 use crate::transform::context::TransformContext;
-use crate::transform::rule::{RuleEffect, RuleKey, RuleMeta, RuleTarget, RuleTargetKey};
+use crate::transform::rule::{
+    RuleEffect, RuleKey, RuleMeta, RuleTarget, RuleTargetKey, RuleTargetKind,
+};
 use crate::transform::rule_context::RuleContext;
 
 /// Tracks how often a specific rule changed the AST or skipped after a consumed target match.
@@ -234,6 +236,12 @@ fn target_matches(target: RuleTarget, node_id: NodeId, cx: &RuleContext<'_>) -> 
         RuleTarget::Environment(record) => cx
             .active_env(node_id)
             .is_some_and(|active| active.name == record.name),
+        RuleTarget::Character(record) => lookup_command_node_name(cx.ast.node(node_id))
+            .is_some_and(|name| {
+                name == record.name
+                    && (cx.lookup_character(name, ContentMode::Math).is_some()
+                        || cx.lookup_character(name, ContentMode::Text).is_some())
+            }),
     }
 }
 
@@ -271,14 +279,12 @@ fn target_present(
     parse_ctx: &ParseContext,
 ) -> bool {
     match target.kind {
-        crate::transform::rule::RuleTargetKind::Command => {
-            lookup_command_node_name(ast.node(node_id))
-                .is_some_and(|name| name == target.name && parse_ctx.knows_command_name(name))
-        }
-        crate::transform::rule::RuleTargetKind::Environment => {
-            lookup_environment_node_name(ast.node(node_id))
-                .is_some_and(|name| name == target.name && parse_ctx.knows_env_name(name))
-        }
+        RuleTargetKind::Command => lookup_command_node_name(ast.node(node_id))
+            .is_some_and(|name| name == target.name && parse_ctx.knows_command_name(name)),
+        RuleTargetKind::Environment => lookup_environment_node_name(ast.node(node_id))
+            .is_some_and(|name| name == target.name && parse_ctx.knows_env_name(name)),
+        RuleTargetKind::Character => lookup_command_node_name(ast.node(node_id))
+            .is_some_and(|name| name == target.name && parse_ctx.knows_character_name(name)),
     }
 }
 
@@ -286,7 +292,7 @@ fn target_present(
 mod tests {
     use super::*;
     use crate::ast::{Node, NodeId};
-    use crate::parse::{AllowedMode, ContentMode, ParseContext, ParseContextBuilder};
+    use crate::parse::{AllowedMode, ParseContext, ParseContextBuilder};
     use crate::transform::context::TransformContext;
     use crate::transform::rule::{
         PackageName, RuleClass, RuleConsumes, RuleEffect, RuleMeta, RulePhase, RuleProduces,
@@ -294,7 +300,7 @@ mod tests {
     };
     use crate::transform::rule_context::RuleContext;
     use texform_specs::argspec;
-    use texform_specs::builtin::physics;
+    use texform_specs::builtin::{bboldx, physics};
     use texform_specs::specs::{BuiltinCommandRecord, CommandKind};
 
     struct SkipRule;
@@ -374,6 +380,41 @@ mod tests {
     }
 
     static TOUCH_RULE: TouchRule = TouchRule;
+
+    struct CharacterSkipRule;
+
+    impl TransformRule for CharacterSkipRule {
+        fn meta(&self) -> &'static RuleMeta {
+            &CHARACTER_SKIP_RULE_META
+        }
+
+        fn apply(
+            &self,
+            _cx: &mut RuleContext<'_>,
+            _node_id: NodeId,
+        ) -> Result<RuleEffect, TransformError> {
+            Ok(RuleEffect::Skipped)
+        }
+    }
+
+    static CHARACTER_SKIP_RULE_META: RuleMeta = RuleMeta {
+        key: RuleKey {
+            package: PackageName::Bboldx,
+            name: "character-skip",
+        },
+        enabled_by_packages: &[PackageName::Bboldx],
+        class: RuleClass::Standard,
+        summary: "mock character skip rule",
+        phase: RulePhase::Normalize,
+        safety: RuleSafety::Lossless,
+        consumes: RuleConsumes {
+            eliminates: &[RuleTarget::Character(&bboldx::chars::BBDOTLESSI)],
+            touches: &[],
+        },
+        produces: RuleProduces { targets: &[] },
+    };
+
+    static CHARACTER_SKIP_RULE: CharacterSkipRule = CharacterSkipRule;
 
     fn transform_context_with(rule: &'static dyn TransformRule) -> TransformContext {
         TransformContext::from_parts_for_test(vec![rule], Vec::new(), Vec::new(), 4)
@@ -538,6 +579,38 @@ mod tests {
             TransformEngineError::ContractViolation { target, node_name } => {
                 assert_eq!(target.name, "textonly-target");
                 assert_eq!(node_name.as_deref(), Some("textonly-target"));
+            }
+            other => panic!("expected contract violation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn character_targets_match_and_participate_in_eliminated_contract() {
+        let parse_ctx = ParseContext::from_packages(&["bboldx"]);
+        let mut ast = parse_ctx
+            .parse_to_ast(r"\bbdotlessi", true)
+            .expect("character command should parse");
+
+        let transform_ctx = TransformContext::from_parts_for_test(
+            vec![&CHARACTER_SKIP_RULE],
+            Vec::new(),
+            vec![RuleTarget::Character(&bboldx::chars::BBDOTLESSI).key()],
+            4,
+        );
+
+        let error = transform_ast(&mut ast, &parse_ctx, &transform_ctx)
+            .expect_err("character target should still trip eliminated contract");
+
+        match error {
+            TransformEngineError::ContractViolation { target, node_name } => {
+                assert_eq!(
+                    target,
+                    RuleTargetKey {
+                        kind: RuleTargetKind::Character,
+                        name: "bbdotlessi",
+                    }
+                );
+                assert_eq!(node_name.as_deref(), Some("bbdotlessi"));
             }
             other => panic!("expected contract violation, got {other:?}"),
         }

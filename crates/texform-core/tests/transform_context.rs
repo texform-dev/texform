@@ -265,6 +265,11 @@ fn package_contains_matching_target(package: PackageName, target: RuleTarget) ->
                 && candidate.argspec.source == record.argspec.source
                 && candidate.body_mode == record.body_mode
         }),
+        RuleTarget::Character(record) => builtin.characters.iter().any(|candidate| {
+            candidate.name == record.name
+                && candidate.allowed_mode == record.allowed_mode
+                && candidate.unicode_value == record.unicode_value
+        }),
     }
 }
 
