@@ -21,7 +21,7 @@ define_rule! {
     /// Expand pmqty to the core mqty builder with paren fence syntax.
     pub static PMQTY_TO_MQTY: PmqtyToMqtyRule {
         key: Physics / "pmqty-to-mqty",
-        tier: Expand,
+        class: Expand,
         summary: "Expand pmqty to the core mqty builder with paren fence syntax.",
         phase: Normalize,
         safety: Lossless,
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: PMQTY_TO_MQTY,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: pmqty_matrix_assignment,

@@ -24,7 +24,7 @@ define_rule! {
     /// Expand stackrel to an explicit relation-class stacked operator form.
     pub static STACKREL_EXPAND: StackrelExpandRule {
         key: Base / "stackrel-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand stackrel to an explicit relation-class stacked operator form.",
         phase: Normalize,
         safety: Lossless,
@@ -61,7 +61,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: STACKREL_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: stackrel_relation_context,
@@ -75,7 +75,7 @@ mod tests {
 
     transform_examples! {
         rule: STACKREL_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: stackrel_preserves_grouped_above_content,

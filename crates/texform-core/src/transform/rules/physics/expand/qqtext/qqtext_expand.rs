@@ -29,7 +29,7 @@ define_rule! {
     /// Expand quick-quad prose helpers, including the star branch, to explicit text and quad spacing.
     pub static QQTEXT_EXPAND: QqtextExpandRule {
         key: Physics / "qqtext-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand quick-quad prose helpers, including the star branch, to explicit text and quad spacing.",
         phase: Normalize,
         safety: Lossless,
@@ -119,7 +119,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: QQTEXT_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: qqtext_inline_clause,
@@ -153,10 +153,10 @@ mod tests {
     fn groups_qq_expansion_when_not_a_sibling_node() {
         use crate::parse::ParseContext;
         use crate::transform::TransformRule as _;
-        use crate::transform::{transform_ast, RuleTier, TransformContextBuilder};
+        use crate::transform::{transform_ast, RuleClass, TransformContextBuilder};
 
         let parse_ctx = ParseContext::from_packages(&["base", "physics"]);
-        let transform_ctx = TransformContextBuilder::from_tiers(&[RuleTier::Expand])
+        let transform_ctx = TransformContextBuilder::from_classes(&[RuleClass::Expand])
             .only(QQTEXT_EXPAND.meta().key)
             .build_with(&parse_ctx)
             .expect("transform context should build");

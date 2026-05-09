@@ -8,8 +8,8 @@
 //!
 //! - **Package** ([`PackageName`]) — the owning package namespace (base, ams,
 //!   physics).
-//! - **Tier** ([`RuleTier`]) — how aggressive the rewrite is (base, expand,
-//!   deep).
+//! - **Class** ([`RuleClass`]) — which preset selection class the rule belongs
+//!   to (standard, expand, drop, equiv).
 //! - **Phase** ([`RulePhase`]) — *when* the rule runs (normalize loop vs.
 //!   one-shot cleanup).
 //! - **Safety** ([`RuleSafety`]) — whether the transformation preserves full
@@ -23,18 +23,20 @@ use crate::transform::engine::TransformError;
 use crate::transform::rule_context::RuleContext;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum RuleTier {
-    Base,
+pub enum RuleClass {
+    Standard,
     Expand,
-    Deep,
+    Drop,
+    Equiv,
 }
 
-impl RuleTier {
+impl RuleClass {
     pub const fn as_str(self) -> &'static str {
         match self {
-            RuleTier::Base => "base",
-            RuleTier::Expand => "expand",
-            RuleTier::Deep => "deep",
+            RuleClass::Standard => "standard",
+            RuleClass::Expand => "expand",
+            RuleClass::Drop => "drop",
+            RuleClass::Equiv => "equiv",
         }
     }
 }
@@ -191,8 +193,8 @@ pub struct RuleMeta {
     pub key: RuleKey,
     /// Packages that make this rule loadable when any one of them is enabled.
     pub enabled_by_packages: &'static [PackageName],
-    /// Tier classification used by transform profiles.
-    pub tier: RuleTier,
+    /// Preset selection class used by transform profiles.
+    pub class: RuleClass,
     /// One-line human-readable description of what the rule does.
     pub summary: &'static str,
     /// The phase in which this rule executes.

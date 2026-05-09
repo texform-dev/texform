@@ -26,7 +26,7 @@ define_rule! {
     /// Canonicalize va to an explicit vec-wrapped mathbf form.
     pub static VA_TO_VEC_MATHBF: VaToVecMathbfRule {
         key: Physics / "va-to-vec-mathbf",
-        tier: Expand,
+        class: Expand,
         summary: "Canonicalize va to an explicit vec-wrapped mathbf form.",
         phase: Normalize,
         safety: Lossless,
@@ -60,7 +60,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: VA_TO_VEC_MATHBF,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: va_angular_momentum,

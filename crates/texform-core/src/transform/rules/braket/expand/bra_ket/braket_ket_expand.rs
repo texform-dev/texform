@@ -23,7 +23,7 @@ define_rule! {
     /// Expand ket to an explicit bar and angle-bracket fence form.
     pub static BRAKET_KET_EXPAND: BraketKetExpandRule {
         key: Braket / "braket-ket-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand ket to an explicit bar and angle-bracket fence form.",
         phase: Normalize,
         safety: Lossless,
@@ -57,7 +57,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: BRAKET_KET_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: ket_braket_package,

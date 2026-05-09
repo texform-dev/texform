@@ -22,7 +22,7 @@ define_rule! {
     /// Expand zmat to the explicit xmat zero-filled builder.
     pub static ZMAT_TO_XMAT: ZmatToXmatRule {
         key: Physics / "zmat-to-xmat",
-        tier: Expand,
+        class: Expand,
         summary: "Expand zmat to the explicit xmat zero-filled builder.",
         phase: Normalize,
         safety: Lossless,
@@ -65,7 +65,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: ZMAT_TO_XMAT,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: zmat_zero_matrix,

@@ -26,7 +26,7 @@ define_rule! {
     /// Canonicalize vu to an explicit hat-wrapped mathbf form.
     pub static VU_TO_HAT_MATHBF: VuToHatMathbfRule {
         key: Physics / "vu-to-hat-mathbf",
-        tier: Expand,
+        class: Expand,
         summary: "Canonicalize vu to an explicit hat-wrapped mathbf form.",
         phase: Normalize,
         safety: Lossless,
@@ -60,7 +60,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: VU_TO_HAT_MATHBF,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: vu_boundary_normal,

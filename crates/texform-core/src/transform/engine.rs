@@ -289,8 +289,8 @@ mod tests {
     use crate::parse::{AllowedMode, ContentMode, ParseContext, ParseContextBuilder};
     use crate::transform::context::TransformContext;
     use crate::transform::rule::{
-        PackageName, RuleConsumes, RuleEffect, RuleMeta, RulePhase, RuleProduces, RuleSafety,
-        RuleTarget, RuleTier, TransformRule,
+        PackageName, RuleClass, RuleConsumes, RuleEffect, RuleMeta, RulePhase, RuleProduces,
+        RuleSafety, RuleTarget, TransformRule,
     };
     use crate::transform::rule_context::RuleContext;
     use texform_specs::argspec;
@@ -327,7 +327,7 @@ mod tests {
             name: "skip-me",
         },
         enabled_by_packages: &[PackageName::Physics],
-        tier: RuleTier::Base,
+        class: RuleClass::Standard,
         summary: "mock skip rule",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
@@ -346,7 +346,7 @@ mod tests {
             name: "touch-me",
         },
         enabled_by_packages: &[PackageName::Physics],
-        tier: RuleTier::Base,
+        class: RuleClass::Standard,
         summary: "mock touch rule",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,

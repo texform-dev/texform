@@ -30,7 +30,7 @@ define_rule! {
     /// Rewrite norm to explicit double-vertical-bar fences.
     pub static NORM_TO_DOUBLE_VERT_FENCE: NormToDoubleVertFenceRule {
         key: Physics / "norm-to-double-vert-fence",
-        tier: Expand,
+        class: Expand,
         summary: "Rewrite norm to explicit double-vertical-bar fences.",
         phase: Normalize,
         safety: Lossless,
@@ -90,7 +90,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: NORM_TO_DOUBLE_VERT_FENCE,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: norm,
@@ -116,7 +116,7 @@ mod tests {
 
     transform_examples! {
         rule: NORM_TO_DOUBLE_VERT_FENCE,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: norm_star_power_context,

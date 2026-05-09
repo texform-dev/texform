@@ -5,7 +5,7 @@ use std::collections::{BTreeSet, VecDeque};
 use crate::parse::ParseContext;
 use crate::transform::registry::all_rules;
 use crate::transform::rule::{
-    RuleKey, RulePhase, RuleTarget, RuleTargetKey, RuleTargetKind, RuleTier, TransformRule,
+    RuleClass, RuleKey, RulePhase, RuleTarget, RuleTargetKey, RuleTargetKind, TransformRule,
 };
 use texform_specs::builtin::PackageName;
 
@@ -15,31 +15,41 @@ pub(crate) type EliminatedForms = Vec<RuleTargetKey>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TransformProfile {
     pub name: &'static str,
-    pub tiers: &'static [RuleTier],
+    pub classes: &'static [RuleClass],
 }
 
 impl TransformProfile {
     pub const AUTHORING: Self = Self {
         name: "authoring",
-        tiers: &[RuleTier::Base],
+        classes: &[RuleClass::Standard],
     };
 
     pub const CORPUS: Self = Self {
         name: "corpus",
-        tiers: &[RuleTier::Base, RuleTier::Expand],
+        classes: &[RuleClass::Standard, RuleClass::Expand],
+    };
+
+    pub const CORPUS_DROP: Self = Self {
+        name: "corpus-drop",
+        classes: &[RuleClass::Standard, RuleClass::Expand, RuleClass::Drop],
     };
 
     pub const EQUIV: Self = Self {
         name: "equiv",
-        tiers: &[RuleTier::Base, RuleTier::Expand, RuleTier::Deep],
+        classes: &[
+            RuleClass::Standard,
+            RuleClass::Expand,
+            RuleClass::Drop,
+            RuleClass::Equiv,
+        ],
     };
 
     pub fn builder(self) -> TransformContextBuilder {
         TransformContextBuilder::new(self)
     }
 
-    fn includes(self, tier: RuleTier) -> bool {
-        self.tiers.contains(&tier)
+    fn includes(self, class: RuleClass) -> bool {
+        self.classes.contains(&class)
     }
 }
 
@@ -180,10 +190,10 @@ impl TransformContextBuilder {
         }
     }
 
-    pub fn from_tiers(tiers: &'static [RuleTier]) -> Self {
+    pub fn from_classes(classes: &'static [RuleClass]) -> Self {
         Self::new(TransformProfile {
             name: "custom",
-            tiers,
+            classes,
         })
     }
 
@@ -261,7 +271,7 @@ fn filter_rules(
         let key = rule.meta().key;
         let explicitly_selected = only.is_some_and(|only_keys| only_keys.contains(&key));
 
-        if !profile.includes(rule.meta().tier) {
+        if !profile.includes(rule.meta().class) {
             continue;
         }
         if only.is_some_and(|only_keys| !only_keys.contains(&key)) {
@@ -532,7 +542,7 @@ mod tests {
     use crate::ast::NodeId;
     use crate::transform::engine::TransformError;
     use crate::transform::rule::{
-        RuleConsumes, RuleEffect, RuleMeta, RuleProduces, RuleSafety, RuleTier, TransformRule,
+        RuleClass, RuleConsumes, RuleEffect, RuleMeta, RuleProduces, RuleSafety, TransformRule,
     };
     use crate::transform::rule_context::RuleContext;
     use texform_specs::argspec;
@@ -618,7 +628,7 @@ mod tests {
             name: "a",
         },
         enabled_by_packages: &[PackageName::Physics],
-        tier: RuleTier::Base,
+        class: RuleClass::Standard,
         summary: "mock rule a",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
@@ -637,7 +647,7 @@ mod tests {
             name: "b",
         },
         enabled_by_packages: &[PackageName::Physics],
-        tier: RuleTier::Base,
+        class: RuleClass::Standard,
         summary: "mock rule b",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
@@ -656,7 +666,7 @@ mod tests {
             name: "c",
         },
         enabled_by_packages: &[PackageName::Physics],
-        tier: RuleTier::Base,
+        class: RuleClass::Standard,
         summary: "mock rule c",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
@@ -675,7 +685,7 @@ mod tests {
             name: "cleanup",
         },
         enabled_by_packages: &[PackageName::Base],
-        tier: RuleTier::Base,
+        class: RuleClass::Standard,
         summary: "mock cleanup rule",
         phase: RulePhase::Cleanup,
         safety: RuleSafety::Lossless,
@@ -694,7 +704,7 @@ mod tests {
             name: "duplicate-eliminate",
         },
         enabled_by_packages: &[PackageName::Physics],
-        tier: RuleTier::Base,
+        class: RuleClass::Standard,
         summary: "mock rule with duplicate eliminate variants",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
@@ -711,7 +721,7 @@ mod tests {
             name: "produces-ams-env",
         },
         enabled_by_packages: &[PackageName::Base],
-        tier: RuleTier::Base,
+        class: RuleClass::Standard,
         summary: "mock rule producing matrix environment",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,

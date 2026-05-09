@@ -30,7 +30,7 @@ define_rule! {
     /// Expand braket to an explicit angle-bracket form with a middle bar.
     pub static PHYSICS_BRAKET_EXPAND: PhysicsBraketExpandRule {
         key: Physics / "physics-braket-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand braket to an explicit angle-bracket form with a middle bar.",
         phase: Normalize,
         safety: Lossless,
@@ -74,7 +74,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: PHYSICS_BRAKET_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: braket_orthonormality,

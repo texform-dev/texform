@@ -23,7 +23,7 @@ define_rule! {
     /// Expand bra to an explicit angle-bracket and bar fence form.
     pub static BRAKET_BRA_EXPAND: BraketBraExpandRule {
         key: Braket / "braket-bra-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand bra to an explicit angle-bracket and bar fence form.",
         phase: Normalize,
         safety: Lossless,
@@ -57,7 +57,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: BRAKET_BRA_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: bra_braket_package,

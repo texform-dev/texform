@@ -23,7 +23,7 @@ define_rule! {
     /// Expand substack directly to the explicit centered subarray environment.
     pub static SUBSTACK_EXPAND: SubstackExpandRule {
         key: Ams / "substack-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand substack directly to the explicit centered subarray environment.",
         phase: Normalize,
         safety: Lossless,
@@ -78,7 +78,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: SUBSTACK_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: three_row_substack,
@@ -92,7 +92,7 @@ mod tests {
 
     transform_examples! {
         rule: SUBSTACK_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: preserves_linebreak_spacing_argument,

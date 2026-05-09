@@ -23,7 +23,7 @@ define_rule! {
     /// Expand braket to an explicit angle-bracket form with a middle bar.
     pub static BRAKET_BRAKET_EXPAND: BraketBraketExpandRule {
         key: Braket / "braket-braket-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand braket to an explicit angle-bracket form with a middle bar.",
         phase: Normalize,
         safety: Lossless,
@@ -57,7 +57,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: BRAKET_BRAKET_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: braket_package_single_argument,
@@ -71,7 +71,7 @@ mod tests {
 
     transform_examples! {
         rule: BRAKET_BRAKET_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: braket_package_overlap_without_bar,

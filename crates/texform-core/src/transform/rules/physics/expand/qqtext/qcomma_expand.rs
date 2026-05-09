@@ -27,7 +27,7 @@ define_rule! {
     /// Expand quick-quad punctuation helpers to explicit text punctuation plus trailing quad spacing.
     pub static QCOMMA_EXPAND: QcommaExpandRule {
         key: Physics / "qcomma-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand quick-quad punctuation helpers to explicit text punctuation plus trailing quad spacing.",
         phase: Normalize,
         safety: Lossless,
@@ -67,12 +67,12 @@ mod tests {
     use crate::parse::ParseContext;
     use crate::transform::TransformRule as _;
     use crate::transform::transform_examples;
-    use crate::transform::{transform_ast, RuleTier, TransformContextBuilder};
+    use crate::transform::{transform_ast, RuleClass, TransformContextBuilder};
 
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: QCOMMA_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: qcomma_between_clauses,
@@ -93,7 +93,7 @@ mod tests {
     #[test]
     fn groups_qcomma_expansion_when_not_a_sibling_node() {
         let parse_ctx = ParseContext::from_packages(&["base", "physics"]);
-        let transform_ctx = TransformContextBuilder::from_tiers(&[RuleTier::Expand])
+        let transform_ctx = TransformContextBuilder::from_classes(&[RuleClass::Expand])
             .only(QCOMMA_EXPAND.meta().key)
             .build_with(&parse_ctx)
             .expect("transform context should build");

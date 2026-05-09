@@ -25,7 +25,7 @@ define_rule! {
     /// Canonicalize vb to an explicit mathbf wrapper.
     pub static VB_TO_MATHBF: VbToMathbfRule {
         key: Physics / "vb-to-mathbf",
-        tier: Expand,
+        class: Expand,
         summary: "Canonicalize vb to an explicit mathbf wrapper.",
         phase: Normalize,
         safety: Lossless,
@@ -59,7 +59,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: VB_TO_MATHBF,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: vb_momentum,

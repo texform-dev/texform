@@ -30,7 +30,7 @@ define_rule! {
     /// Rewrite abs to explicit vertical bar fences.
     pub static ABS_TO_VERT_FENCE: AbsToVertFenceRule {
         key: Physics / "abs-to-vert-fence",
-        tier: Expand,
+        class: Expand,
         summary: "Rewrite abs to explicit vertical bar fences.",
         phase: Normalize,
         safety: Lossless,
@@ -90,7 +90,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: ABS_TO_VERT_FENCE,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: abs_inequality,
@@ -116,7 +116,7 @@ mod tests {
 
     transform_examples! {
         rule: ABS_TO_VERT_FENCE,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: abs_star_power_context,

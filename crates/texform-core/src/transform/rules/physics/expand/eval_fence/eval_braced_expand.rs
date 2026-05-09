@@ -30,7 +30,7 @@ define_rule! {
     /// Expand braced eval notation to the explicit fence-and-bar form.
     pub static EVAL_BRACED_EXPAND: EvalBracedExpandRule {
         key: Physics / "eval-braced-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand braced eval notation to the explicit fence-and-bar form.",
         phase: Normalize,
         safety: Lossless,
@@ -109,7 +109,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: EVAL_BRACED_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: braced_eval_antiderivative,

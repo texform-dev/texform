@@ -28,6 +28,6 @@ pub use engine::{
     AppliedRuleStat, TransformEngineError, TransformError, TransformReport, transform_ast,
 };
 pub use rule::{
-    PackageName, RuleConsumes, RuleEffect, RuleKey, RuleMeta, RulePhase, RuleProduces, RuleSafety,
-    RuleTarget, RuleTargetKey, RuleTargetKind, RuleTier, TransformRule,
+    PackageName, RuleClass, RuleConsumes, RuleEffect, RuleKey, RuleMeta, RulePhase, RuleProduces,
+    RuleSafety, RuleTarget, RuleTargetKey, RuleTargetKind, TransformRule,
 };

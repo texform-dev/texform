@@ -29,7 +29,7 @@ define_rule! {
     /// Expand poisson brackets to explicit brace fences.
     pub static POISSON_BRACKET_EXPAND: PoissonBracketExpandRule {
         key: Physics / "poisson-bracket-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand poisson brackets to explicit brace fences.",
         phase: Normalize,
         safety: Lossless,
@@ -79,7 +79,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: POISSON_BRACKET_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: poisson_bracket_canonical,
@@ -99,7 +99,7 @@ mod tests {
 
     transform_examples! {
         rule: POISSON_BRACKET_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: poisson_bracket_bare_second_operand,

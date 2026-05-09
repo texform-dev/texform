@@ -22,7 +22,7 @@ define_rule! {
     /// Rewrite rank to an explicit operatorname form instead of a package-local alias.
     pub static RANK_TO_OPERATORNAME_RANK: RankToOperatornameRankRule {
         key: Physics / "rank-to-operatorname-rank",
-        tier: Expand,
+        class: Expand,
         summary: "Rewrite rank to an explicit operatorname form instead of a package-local alias.",
         phase: Normalize,
         safety: Lossless,
@@ -75,7 +75,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: RANK_TO_OPERATORNAME_RANK,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: rank_bare_operator,

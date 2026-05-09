@@ -29,7 +29,7 @@ define_rule! {
     /// Expand idotsint to explicit repeated integral surfaces.
     pub static IDOTSINT_EXPAND: IdotsintExpandRule {
         key: Ams / "idotsint-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand idotsint to explicit repeated integral surfaces.",
         phase: Normalize,
         safety: Lossless,
@@ -227,7 +227,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: IDOTSINT_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: plain_multi_integral_domain,

@@ -29,7 +29,7 @@ define_rule! {
     /// Expand commutators to explicit square-bracket fences.
     pub static COMMUTATOR_EXPAND: CommutatorExpandRule {
         key: Physics / "commutator-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand commutators to explicit square-bracket fences.",
         phase: Normalize,
         safety: Lossless,
@@ -79,7 +79,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: COMMUTATOR_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: commutator_angular_momentum,
@@ -99,7 +99,7 @@ mod tests {
 
     transform_examples! {
         rule: COMMUTATOR_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: commutator_bare_second_operand,

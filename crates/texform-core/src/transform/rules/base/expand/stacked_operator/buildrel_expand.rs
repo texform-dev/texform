@@ -28,7 +28,7 @@ define_rule! {
     /// Expand buildrel syntax to an explicit relation-class stacked operator form.
     pub static BUILDREL_EXPAND: BuildrelExpandRule {
         key: Base / "buildrel-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand buildrel syntax to an explicit relation-class stacked operator form.",
         phase: Normalize,
         safety: Lossless,
@@ -136,7 +136,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: BUILDREL_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: asymptotic_relation_stack,
@@ -156,7 +156,7 @@ mod tests {
 
     transform_examples! {
         rule: BUILDREL_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: braced_above_keeps_following_relation_operand,

@@ -11,7 +11,7 @@ macro_rules! define_rule {
         $(#[$attr:meta])*
         pub static $static_name:ident : $rule_ty:ident {
             key: $package:ident / $name:literal,
-            tier: $tier:ident,
+            class: $class:ident,
             summary: $summary:expr,
             phase: $phase:ident,
             safety: $safety:ident,
@@ -29,7 +29,7 @@ macro_rules! define_rule {
             $rule_ty,
             $package,
             $name,
-            $tier,
+            $class,
             $summary,
             $phase,
             $safety,
@@ -46,7 +46,7 @@ macro_rules! define_rule {
         $(#[$attr:meta])*
         pub static $static_name:ident : $rule_ty:ident {
             key: $package:ident / $name:literal,
-            tier: $tier:ident,
+            class: $class:ident,
             summary: $summary:expr,
             phase: $phase:ident,
             safety: $safety:ident,
@@ -63,7 +63,7 @@ macro_rules! define_rule {
             $rule_ty,
             $package,
             $name,
-            $tier,
+            $class,
             $summary,
             $phase,
             $safety,
@@ -79,7 +79,7 @@ macro_rules! define_rule {
         $(#[$attr:meta])*
         pub static $static_name:ident : $rule_ty:ident {
             key: $package:ident / $name:literal,
-            tier: $tier:ident,
+            class: $class:ident,
             summary: $summary:expr,
             phase: $phase:ident,
             safety: $safety:ident,
@@ -98,7 +98,7 @@ macro_rules! define_rule {
             $rule_ty,
             $package,
             $name,
-            $tier,
+            $class,
             $summary,
             $phase,
             $safety,
@@ -116,7 +116,7 @@ macro_rules! define_rule {
         $(#[$attr:meta])*
         pub static $static_name:ident : $rule_ty:ident {
             key: $package:ident / $name:literal,
-            tier: $tier:ident,
+            class: $class:ident,
             summary: $summary:expr,
             phase: $phase:ident,
             safety: $safety:ident,
@@ -134,7 +134,7 @@ macro_rules! define_rule {
             $rule_ty,
             $package,
             $name,
-            $tier,
+            $class,
             $summary,
             $phase,
             $safety,
@@ -153,7 +153,7 @@ macro_rules! define_rule {
         $rule_ty:ident,
         $package:ident,
         $name:literal,
-        $tier:ident,
+        $class:ident,
         $summary:expr,
         $phase:ident,
         $safety:ident,
@@ -181,7 +181,7 @@ macro_rules! define_rule {
                     enabled_by_packages: &[
                         $($crate::transform::PackageName::$enabled_package),+
                     ],
-                    tier: $crate::transform::RuleTier::$tier,
+                    class: $crate::transform::RuleClass::$class,
                     summary: $summary,
                     phase: $crate::transform::RulePhase::$phase,
                     safety: $crate::transform::RuleSafety::$safety,
@@ -210,7 +210,7 @@ macro_rules! define_rule {
         $rule_ty:ident,
         $package:ident,
         $name:literal,
-        $tier:ident,
+        $class:ident,
         $summary:expr,
         $phase:ident,
         $safety:ident,
@@ -236,7 +236,7 @@ macro_rules! define_rule {
                     enabled_by_packages: &[
                         $($crate::transform::PackageName::$enabled_package),+
                     ],
-                    tier: $crate::transform::RuleTier::$tier,
+                    class: $crate::transform::RuleClass::$class,
                     summary: $summary,
                     phase: $crate::transform::RulePhase::$phase,
                     safety: $crate::transform::RuleSafety::$safety,
@@ -281,7 +281,7 @@ macro_rules! alias_rule {
         $(#[$attr:meta])*
         pub static $static_name:ident : $rule_ty:ident {
             key: $package:ident / $name:literal,
-            tier: $tier:ident,
+            class: $class:ident,
             summary: $summary:expr,
             phase: $phase:ident,
             safety: $safety:ident,
@@ -295,7 +295,7 @@ macro_rules! alias_rule {
             $(#[$attr])*
             pub static $static_name: $rule_ty {
                 key: $package / $name,
-                tier: $tier,
+                class: $class,
                 summary: $summary,
                 phase: $phase,
                 safety: $safety,
@@ -333,7 +333,7 @@ macro_rules! alias_rule {
 macro_rules! transform_examples {
     (
         rule: $rule:expr,
-        tier: $tier:ident,
+        class: $class:ident,
         examples: [
             $({
                 label: $label:ident,
@@ -348,8 +348,8 @@ macro_rules! transform_examples {
             fn $label() {
                 use $crate::transform::TransformRule as _;
                 let parse_ctx = $crate::parse::ParseContext::from_packages(&[$($pkg),+]);
-                let transform_ctx = $crate::transform::TransformContextBuilder::from_tiers(
-                    &[$crate::transform::RuleTier::$tier],
+                let transform_ctx = $crate::transform::TransformContextBuilder::from_classes(
+                    &[$crate::transform::RuleClass::$class],
                 )
                     .only($rule.meta().key)
                     .build_with(&parse_ctx)

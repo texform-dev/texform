@@ -30,7 +30,7 @@ define_rule! {
     /// Rewrite bqty to explicit bracket fences.
     pub static BQTY_TO_BRACKET_FENCE: BqtyToBracketFenceRule {
         key: Physics / "bqty-to-bracket-fence",
-        tier: Expand,
+        class: Expand,
         summary: "Rewrite bqty to explicit bracket fences.",
         phase: Normalize,
         safety: Lossless,
@@ -90,7 +90,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: BQTY_TO_BRACKET_FENCE,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: bqty,
@@ -116,7 +116,7 @@ mod tests {
 
     transform_examples! {
         rule: BQTY_TO_BRACKET_FENCE,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: bqty_star_power_context,

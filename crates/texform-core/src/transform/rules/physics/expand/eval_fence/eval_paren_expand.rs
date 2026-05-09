@@ -32,7 +32,7 @@ define_rule! {
     /// Expand paren-style eval notation to the explicit fence-and-bar form.
     pub static EVAL_PAREN_EXPAND: EvalParenExpandRule {
         key: Physics / "eval-paren-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand paren-style eval notation to the explicit fence-and-bar form.",
         phase: Normalize,
         safety: Lossless,
@@ -105,7 +105,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: EVAL_PAREN_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: paren_eval_trig,

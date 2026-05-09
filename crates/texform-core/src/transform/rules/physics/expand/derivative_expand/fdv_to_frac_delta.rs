@@ -35,7 +35,7 @@ define_rule! {
     /// Expand fdv forms to explicit delta-based derivative fractions.
     pub static FDV_TO_FRAC_DELTA: FdvToFracDeltaRule {
         key: Physics / "fdv-to-frac-delta",
-        tier: Expand,
+        class: Expand,
         summary: "Expand fdv forms to explicit delta-based derivative fractions.",
         phase: Normalize,
         safety: Lossless,
@@ -93,7 +93,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: FDV_TO_FRAC_DELTA,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: fdv_euler_lagrange,
@@ -125,7 +125,7 @@ mod tests {
 
     transform_examples! {
         rule: FDV_TO_FRAC_DELTA,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: fdv_ordered_operator_form,

@@ -37,7 +37,7 @@ define_rule! {
     /// Expand pdv forms to explicit partial-derivative fractions.
     pub static PDV_TO_FRAC_PARTIAL: PdvToFracPartialRule {
         key: Physics / "pdv-to-frac-partial",
-        tier: Expand,
+        class: Expand,
         summary: "Expand pdv forms to explicit partial-derivative fractions.",
         phase: Normalize,
         safety: Lossless,
@@ -113,7 +113,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: PDV_TO_FRAC_PARTIAL,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: pdv_embedded,
@@ -151,7 +151,7 @@ mod tests {
 
     transform_examples! {
         rule: PDV_TO_FRAC_PARTIAL,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: pdv_ordered_operator_form,

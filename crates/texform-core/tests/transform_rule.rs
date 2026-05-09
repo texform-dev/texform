@@ -1,10 +1,11 @@
-use texform_core::transform::{PackageName, RuleKey, RuleTier};
+use texform_core::transform::{PackageName, RuleClass, RuleKey};
 
 #[test]
-fn rule_tier_strings_match_profile_ids() {
-    assert_eq!(RuleTier::Base.as_str(), "base");
-    assert_eq!(RuleTier::Expand.as_str(), "expand");
-    assert_eq!(RuleTier::Deep.as_str(), "deep");
+fn rule_class_strings_match_profile_ids() {
+    assert_eq!(RuleClass::Standard.as_str(), "standard");
+    assert_eq!(RuleClass::Expand.as_str(), "expand");
+    assert_eq!(RuleClass::Drop.as_str(), "drop");
+    assert_eq!(RuleClass::Equiv.as_str(), "equiv");
 }
 
 #[test]

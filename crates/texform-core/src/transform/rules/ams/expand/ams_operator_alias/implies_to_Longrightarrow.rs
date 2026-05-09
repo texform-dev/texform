@@ -30,7 +30,7 @@ define_rule! {
     /// Collapse implies to the explicit AMS long-right-arrow spelling with source-backed spacing.
     pub static IMPLIES_TO_LONGRIGHTARROW: ImpliesToLongrightarrowRule {
         key: Ams / "implies-to-Longrightarrow",
-        tier: Expand,
+        class: Expand,
         summary: "Collapse implies to the explicit AMS long-right-arrow spelling with source-backed spacing.",
         phase: Normalize,
         safety: Lossless,
@@ -69,12 +69,12 @@ mod tests {
     use crate::parse::ParseContext;
     use crate::transform::TransformRule as _;
     use crate::transform::transform_examples;
-    use crate::transform::{RuleTier, TransformContextBuilder, transform_ast};
+    use crate::transform::{RuleClass, TransformContextBuilder, transform_ast};
 
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: IMPLIES_TO_LONGRIGHTARROW,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: implies_between_inequalities,
@@ -95,7 +95,7 @@ mod tests {
     #[test]
     fn rewrites_implies_as_spaced_sibling_commands() {
         let parse_ctx = ParseContext::from_packages(&["base", "ams"]);
-        let transform_ctx = TransformContextBuilder::from_tiers(&[RuleTier::Expand])
+        let transform_ctx = TransformContextBuilder::from_classes(&[RuleClass::Expand])
             .only(IMPLIES_TO_LONGRIGHTARROW.meta().key)
             .build_with(&parse_ctx)
             .expect("transform context should build");
@@ -125,7 +125,7 @@ mod tests {
     #[test]
     fn groups_spaced_implies_when_used_as_script_base() {
         let parse_ctx = ParseContext::from_packages(&["base", "ams"]);
-        let transform_ctx = TransformContextBuilder::from_tiers(&[RuleTier::Expand])
+        let transform_ctx = TransformContextBuilder::from_classes(&[RuleClass::Expand])
             .only(IMPLIES_TO_LONGRIGHTARROW.meta().key)
             .build_with(&parse_ctx)
             .expect("transform context should build");

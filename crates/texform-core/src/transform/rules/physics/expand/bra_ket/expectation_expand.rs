@@ -32,7 +32,7 @@ define_rule! {
     /// Expand expectation-value helpers to explicit angle brackets.
     pub static EXPECTATION_EXPAND: ExpectationExpandRule {
         key: Physics / "expectation-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand expectation-value helpers to explicit angle brackets.",
         phase: Normalize,
         safety: Lossless,
@@ -91,7 +91,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: EXPECTATION_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: expectation_state_label,

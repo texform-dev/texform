@@ -30,7 +30,7 @@ define_rule! {
     /// Rewrite pqty to explicit parenthesis fences.
     pub static PQTY_TO_PAREN_FENCE: PqtyToParenFenceRule {
         key: Physics / "pqty-to-paren-fence",
-        tier: Expand,
+        class: Expand,
         summary: "Rewrite pqty to explicit parenthesis fences.",
         phase: Normalize,
         safety: Lossless,
@@ -90,7 +90,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: PQTY_TO_PAREN_FENCE,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: pqty,
@@ -110,7 +110,7 @@ mod tests {
 
     transform_examples! {
         rule: PQTY_TO_PAREN_FENCE,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: pqty_star_power_context,

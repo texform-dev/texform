@@ -25,7 +25,7 @@ define_rule! {
     /// Expand bra to an explicit angle-bracket and bar fence form.
     pub static PHYSICS_BRA_EXPAND: PhysicsBraExpandRule {
         key: Physics / "physics-bra-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand bra to an explicit angle-bracket and bar fence form.",
         phase: Normalize,
         safety: Lossless,
@@ -66,7 +66,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: PHYSICS_BRA_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: bra_acting_on_operator,

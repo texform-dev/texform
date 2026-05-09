@@ -36,7 +36,7 @@ define_rule! {
     /// Expand dv forms to explicit d-based derivative fractions.
     pub static DV_TO_FRAC_D: DvToFracDRule {
         key: Physics / "dv-to-frac-d",
-        tier: Expand,
+        class: Expand,
         summary: "Expand dv forms to explicit d-based derivative fractions.",
         phase: Normalize,
         safety: Lossless,
@@ -94,7 +94,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: DV_TO_FRAC_D,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: dv_kinematics,
@@ -126,7 +126,7 @@ mod tests {
 
     transform_examples! {
         rule: DV_TO_FRAC_D,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: dv_ordered_operator_form,

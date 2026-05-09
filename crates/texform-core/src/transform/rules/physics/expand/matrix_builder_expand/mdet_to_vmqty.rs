@@ -20,7 +20,7 @@ define_rule! {
     /// Expand mdet to the vmqty determinant-style builder.
     pub static MDET_TO_VMQTY: MdetToVmqtyRule {
         key: Physics / "mdet-to-vmqty",
-        tier: Expand,
+        class: Expand,
         summary: "Expand mdet to the vmqty determinant-style builder.",
         phase: Normalize,
         safety: Lossless,
@@ -57,7 +57,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: MDET_TO_VMQTY,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: mdet_characteristic_polynomial,

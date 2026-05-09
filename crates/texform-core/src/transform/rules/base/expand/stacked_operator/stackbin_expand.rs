@@ -24,7 +24,7 @@ define_rule! {
     /// Expand stackbin to an explicit binary-class stacked operator form.
     pub static STACKBIN_EXPAND: StackbinExpandRule {
         key: Base / "stackbin-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand stackbin to an explicit binary-class stacked operator form.",
         phase: Normalize,
         safety: Lossless,
@@ -61,7 +61,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: STACKBIN_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: stackbin_binary_context,
@@ -75,7 +75,7 @@ mod tests {
 
     transform_examples! {
         rule: STACKBIN_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: stackbin_preserves_compound_operator,

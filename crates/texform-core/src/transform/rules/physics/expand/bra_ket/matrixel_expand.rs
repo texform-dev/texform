@@ -27,7 +27,7 @@ define_rule! {
     /// Expand matrix elements to explicit angle-bracket and bar fences.
     pub static MATRIXEL_EXPAND: MatrixelExpandRule {
         key: Physics / "matrixel-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand matrix elements to explicit angle-bracket and bar fences.",
         phase: Normalize,
         safety: Lossless,
@@ -76,7 +76,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: MATRIXEL_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: matrix_element_operator,

@@ -4,9 +4,9 @@ This directory stores concrete transform rules.
 
 ## Adding a New Rule
 
-1. Create a new `.rs` file under the package/tier/group layout, for example
-   `base/base/over_family/over_to_frac.rs` or
-   `physics/base/trace_alias/trace_to_tr.rs`.
+1. Create a new `.rs` file under the package/class/group layout, for example
+   `base/standard/over_family/over_to_frac.rs` or
+   `physics/standard/trace_alias/trace_to_tr.rs`.
 2. Define and export exactly one `pub static MY_RULE: MyRuleType` where the
    constant name is the UPPER_SNAKE_CASE form of the file stem.
 3. That's it — the build script auto-discovers the file and registers it.
@@ -32,11 +32,12 @@ hand.
 Rules use this directory structure:
 
 ```text
-<package>/<tier>/<directory_group>/<rule_file_stem>.rs
+<package>/<class>/<directory_group>/<rule_file_stem>.rs
 ```
 
 - `package` is the owning rule package, such as `base`, `ams`, or `physics`.
-- `tier` is the profile tier: `base`, `expand`, or `deep`.
+- `class` is the preset selection class: `standard`, `expand`, `drop`, or
+  `equiv`.
 - `directory_group` is the Rust module path segment for a human-readable group.
   It must be snake_case. It is not part of `RuleMeta` and does not affect
   scheduling.
@@ -138,7 +139,7 @@ still needs ordinary Rust code:
 define_rule! {
     pub static OVER_TO_FRAC: OverToFracRule {
         key: Base / "over-to-frac",
-        tier: Base,
+        class: Standard,
         summary: "Rewrite infix \\over into prefix \\frac",
         phase: Normalize,
         safety: Semantic,
@@ -179,7 +180,7 @@ the rule only renames the command:
 alias_rule! {
     pub static TRACE_TO_TR: TraceToTrRule {
         key: Physics / "trace-to-tr",
-        tier: Base,
+        class: Standard,
         summary: "Canonicalize \\Tr, \\trace, and \\Trace into \\tr",
         phase: Normalize,
         safety: Lossless,
@@ -259,11 +260,13 @@ let transform_ctx = TransformProfile::AUTHORING
     .build_with(&parse_ctx)?;
 ```
 
-Profiles select rules by tier before `only` or `disable` is applied:
+Profiles select rules by class before `only` or `disable` is applied:
 
-- `AUTHORING` includes `RuleTier::Base`
-- `CORPUS` includes `RuleTier::Base` and `RuleTier::Expand`
-- `EQUIV` includes all tiers
+- `AUTHORING` includes `RuleClass::Standard`
+- `CORPUS` includes `RuleClass::Standard` and `RuleClass::Expand`
+- `CORPUS_DROP` includes `RuleClass::Standard`, `RuleClass::Expand`, and
+  `RuleClass::Drop`
+- `EQUIV` includes all classes
 
 `only` is an allowlist inside the selected profile; it does not enable an
-`expand` or `deep` rule in a narrower profile.
+`expand`, `drop`, or `equiv` rule in a narrower profile.

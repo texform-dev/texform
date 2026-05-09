@@ -21,7 +21,7 @@ define_rule! {
     /// Expand bmqty to the core mqty builder with bracket fence syntax.
     pub static BMQTY_TO_MQTY: BmqtyToMqtyRule {
         key: Physics / "bmqty-to-mqty",
-        tier: Expand,
+        class: Expand,
         summary: "Expand bmqty to the core mqty builder with bracket fence syntax.",
         phase: Normalize,
         safety: Lossless,
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: BMQTY_TO_MQTY,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: bmqty_gram_matrix,

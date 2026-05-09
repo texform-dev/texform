@@ -25,7 +25,7 @@ define_rule! {
     /// Expand ket to an explicit bar and angle-bracket fence form.
     pub static PHYSICS_KET_EXPAND: PhysicsKetExpandRule {
         key: Physics / "physics-ket-expand",
-        tier: Expand,
+        class: Expand,
         summary: "Expand ket to an explicit bar and angle-bracket fence form.",
         phase: Normalize,
         safety: Lossless,
@@ -66,7 +66,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: PHYSICS_KET_EXPAND,
-        tier: Expand,
+        class: Expand,
         examples: [
         {
             label: ket_eigenvalue,

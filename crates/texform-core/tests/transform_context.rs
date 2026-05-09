@@ -4,7 +4,7 @@ use texform_core::parse::{
 use texform_core::transform::context::RuleAvailabilityFailure;
 use texform_core::transform::registry::all_rules;
 use texform_core::transform::{
-    PackageName, RuleKey, RuleMeta, RuleTarget, RuleTier, TransformBuildError, TransformProfile,
+    PackageName, RuleClass, RuleKey, RuleMeta, RuleTarget, TransformBuildError, TransformProfile,
 };
 use texform_specs::builtin::MANAGED_PACKAGE_IMPORT_ORDER;
 
@@ -19,7 +19,8 @@ fn only_many_keeps_the_requested_rules() {
         .iter()
         .map(|rule| rule.meta())
         .filter(|meta| {
-            meta.tier == RuleTier::Base && meta.enabled_by_packages.contains(&PackageName::Physics)
+            meta.class == RuleClass::Standard
+                && meta.enabled_by_packages.contains(&PackageName::Physics)
         })
         .take(2)
         .map(|meta| meta.key)
@@ -92,19 +93,19 @@ fn disabling_all_rules_builds_empty_transform_context() {
 }
 
 #[test]
-fn only_does_not_bypass_profile_tier_filter_and_can_return_empty_context() {
+fn only_does_not_bypass_profile_class_filter_and_can_return_empty_context() {
     let parse_ctx = ParseContextBuilder::default()
         .packages(&["physics"])
         .build()
         .expect("parse context should build");
 
     let base_rule = all_rules()[0].meta().key;
-    let deep_only = TransformProfile {
-        name: "deep-only",
-        tiers: &[RuleTier::Deep],
+    let equiv_only = TransformProfile {
+        name: "equiv-only",
+        classes: &[RuleClass::Equiv],
     };
 
-    let transform_ctx = deep_only
+    let transform_ctx = equiv_only
         .builder()
         .only(base_rule)
         .build_with(&parse_ctx)
