@@ -171,6 +171,12 @@ struct Manifest {
     timestamp: String,
 }
 
+pub struct GitCommitInfo {
+    pub short_hash: String,
+    pub full_hash: String,
+    pub date: String,
+}
+
 #[derive(Serialize)]
 struct ErrorEntry {
     formula: String,
@@ -357,19 +363,17 @@ pub fn write_commit_results(
     summary: &Summary,
     records: &[FormulaRecord],
     results: &[FormulaResults],
-    commit_hash: &str,
-    commit_full: &str,
-    commit_date: &str,
+    commit: &GitCommitInfo,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = history_root
-        .join(format!("{commit_date}-{commit_hash}"))
+        .join(format!("{}-{}", commit.date, commit.short_hash))
         .join(slug);
     std::fs::create_dir_all(&dir)?;
     write_json_file(&dir.join("summary.json"), summary)?;
 
     let manifest = Manifest {
-        commit_hash: commit_hash.to_string(),
-        commit_full: commit_full.to_string(),
+        commit_hash: commit.short_hash.clone(),
+        commit_full: commit.full_hash.clone(),
         dataset: slug.to_string(),
         dataset_row_count: records.len(),
         timestamp: now_timestamp(),
@@ -385,9 +389,9 @@ pub fn write_commit_results(
     Ok(())
 }
 
-/// Returns `(short_hash, full_hash, commit_date)` for HEAD.
-/// `commit_date` is formatted as `yyyy-mm-dd`.
-pub fn git_commit_info() -> (String, String, String) {
+/// Returns the short hash, full hash, and commit date for HEAD.
+/// The date is formatted as `yyyy-mm-dd`.
+pub fn git_commit_info() -> GitCommitInfo {
     let bench_root = crate::config::resolve_bench_root();
     let repo_root = bench_root
         .parent()
@@ -421,7 +425,11 @@ pub fn git_commit_info() -> (String, String, String) {
         .and_then(|ci| ci.split_whitespace().next().map(|s| s.to_string()))
         .unwrap_or_else(|| "0000-00-00".to_string());
 
-    (short, full, date)
+    GitCommitInfo {
+        short_hash: short,
+        full_hash: full,
+        date,
+    }
 }
 
 pub fn latest_commit_baseline(
@@ -976,9 +984,11 @@ mod tests {
             &summary,
             &records,
             &results,
-            "abc12345",
-            "abc12345full",
-            "2024-01-01",
+            &GitCommitInfo {
+                short_hash: "abc12345".to_string(),
+                full_hash: "abc12345full".to_string(),
+                date: "2024-01-01".to_string(),
+            },
         )
         .unwrap();
 

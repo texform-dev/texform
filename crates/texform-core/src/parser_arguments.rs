@@ -153,7 +153,7 @@ fn parse_content_substream(
     strict: bool,
     source_offset: usize,
 ) -> (Option<TrackedNode>, Vec<Rich<'static, Token>>) {
-    let src = tokens_to_string(&tokens);
+    let src = tokens_to_string(tokens);
     let token_stream = build_token_stream(src.as_str());
     let parser = content_block_parser_with_source(mode, ctx, strict, src.as_str());
 

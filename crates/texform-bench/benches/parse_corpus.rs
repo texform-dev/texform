@@ -256,16 +256,14 @@ fn run_datasets(
                 }
                 eprintln!("{message}");
             }
-            if let Some((ref commit_hash, ref commit_full, ref commit_date)) = commit_info {
+            if let Some(ref commit) = commit_info {
                 if let Err(error) = output::write_commit_results(
                     &history_root,
                     &entry.slug,
                     summary,
                     &records,
                     &results,
-                    commit_hash,
-                    commit_full,
-                    commit_date,
+                    commit,
                 ) {
                     let message =
                         format!("[{}] Failed to write commit results: {error}", entry.slug);

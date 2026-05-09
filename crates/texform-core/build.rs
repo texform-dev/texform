@@ -218,6 +218,15 @@ fn write_module_tree(code: &mut String, entries: &[ModuleEntry], prefix: &[Strin
             .iter()
             .any(|entry| entry.module_path == child_prefix)
         {
+            if prefix.last() == Some(&child) {
+                writeln!(
+                    code,
+                    "{:indent$}#[allow(clippy::module_inception)]",
+                    "",
+                    indent = indent
+                )
+                .unwrap();
+            }
             if needs_non_snake_case_allow(&child) {
                 writeln!(
                     code,
@@ -238,6 +247,15 @@ fn write_module_tree(code: &mut String, entries: &[ModuleEntry], prefix: &[Strin
             continue;
         }
 
+        if prefix.last() == Some(&child) {
+            writeln!(
+                code,
+                "{:indent$}#[allow(clippy::module_inception)]",
+                "",
+                indent = indent
+            )
+            .unwrap();
+        }
         if needs_non_snake_case_allow(&child) {
             writeln!(
                 code,

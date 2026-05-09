@@ -11,6 +11,13 @@ pub(super) enum FixedFenceToken {
     Control(&'static str),
 }
 
+pub(super) struct FencePair {
+    pub(super) auto_left: Delimiter,
+    pub(super) auto_right: Delimiter,
+    pub(super) fixed_left: FixedFenceToken,
+    pub(super) fixed_right: FixedFenceToken,
+}
+
 impl FixedFenceToken {
     fn node(self) -> Node {
         match self {
@@ -29,15 +36,12 @@ pub(super) fn replace_with_delimiter_shorthand(
     node_id: NodeId,
     starred: bool,
     body: NodeId,
-    auto_left: Delimiter,
-    auto_right: Delimiter,
-    fixed_left: FixedFenceToken,
-    fixed_right: FixedFenceToken,
+    fences: FencePair,
 ) {
     if starred {
-        replace_with_fixed_fence(cx, node_id, body, fixed_left, fixed_right);
+        replace_with_fixed_fence(cx, node_id, body, fences.fixed_left, fences.fixed_right);
     } else {
-        replace_with_auto_fence(cx, node_id, body, auto_left, auto_right);
+        replace_with_auto_fence(cx, node_id, body, fences.auto_left, fences.auto_right);
     }
 }
 

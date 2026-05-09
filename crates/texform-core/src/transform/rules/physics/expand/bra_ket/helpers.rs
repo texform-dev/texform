@@ -179,49 +179,6 @@ pub(super) fn replace_with_matrix_element(
     }
 }
 
-pub(super) fn split_math_content_on_vert(
-    cx: &mut RuleContext<'_>,
-    body: NodeId,
-) -> Option<(NodeId, NodeId)> {
-    let Node::Group {
-        children,
-        kind: GroupKind::Implicit,
-        mode: ContentMode::Math,
-    } = cx.ast.node(body)
-    else {
-        return None;
-    };
-
-    let children = children.clone();
-    let split_at = children.iter().position(|&child| match cx.ast.node(child) {
-        Node::Char('|') => true,
-        Node::Command { name, .. } => name == "|" || name == "vert",
-        _ => false,
-    })?;
-
-    let left_children: Vec<NodeId> = children[..split_at]
-        .iter()
-        .map(|&child| cx.ast.clone_subtree(child))
-        .collect();
-    let right_children: Vec<NodeId> = children[split_at + 1..]
-        .iter()
-        .map(|&child| cx.ast.clone_subtree(child))
-        .collect();
-
-    Some((
-        cx.ast.new_node(Node::Group {
-            children: left_children,
-            kind: GroupKind::Implicit,
-            mode: ContentMode::Math,
-        }),
-        cx.ast.new_node(Node::Group {
-            children: right_children,
-            kind: GroupKind::Implicit,
-            mode: ContentMode::Math,
-        }),
-    ))
-}
-
 fn replace_with_angle_bar_parts(
     cx: &mut RuleContext<'_>,
     node_id: NodeId,

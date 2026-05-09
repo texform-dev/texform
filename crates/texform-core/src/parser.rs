@@ -1706,29 +1706,29 @@ where
                         continue;
                     }
 
-                    if let Some(open_name) = opening_environment.as_ref() {
-                        if let Some(end_name) = peek_environment_name_at_cursor(input, "end") {
-                            if end_name == *open_name {
-                                if failure_environment_stack.last() != Some(open_name) {
-                                    break;
-                                }
-                                if !consume_environment_end(input) {
-                                    break;
-                                }
-                                consumed = true;
+                    if let Some(open_name) = opening_environment.as_ref()
+                        && let Some(end_name) = peek_environment_name_at_cursor(input, "end")
+                    {
+                        if end_name == *open_name {
+                            if failure_environment_stack.last() != Some(open_name) {
                                 break;
                             }
-
-                            if outer_environment_stack.iter().any(|name| name == &end_name) {
-                                break;
-                            }
-
                             if !consume_environment_end(input) {
                                 break;
                             }
                             consumed = true;
                             break;
                         }
+
+                        if outer_environment_stack.iter().any(|name| name == &end_name) {
+                            break;
+                        }
+
+                        if !consume_environment_end(input) {
+                            break;
+                        }
+                        consumed = true;
+                        break;
                     }
 
                     match input.peek().as_ref() {
@@ -2578,7 +2578,7 @@ where
     let stop_boundary = ws.clone().ignore_then(control_seq("end")).rewind();
 
     let guarded_item = stop_boundary.clone().not().ignore_then(normal_item.clone());
-    let leading = custom(move |input| {
+    custom(move |input| {
         let mut items = Vec::new();
 
         loop {
@@ -2600,9 +2600,7 @@ where
         }
 
         Ok(items)
-    });
-
-    leading
+    })
 }
 
 /// Construct mutually recursive math/text content parsers.

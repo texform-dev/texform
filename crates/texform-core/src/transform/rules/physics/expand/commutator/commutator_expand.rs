@@ -17,8 +17,8 @@ use texform_specs::builtin::base;
 use texform_specs::builtin::physics;
 
 use super::helpers::{
-    FixedFenceToken, replace_with_binary_bracket_fence, required_braced_math_arg,
-    required_math_arg,
+    BinaryFencePair, FixedFenceToken, replace_with_binary_bracket_fence,
+    required_braced_math_arg, required_math_arg,
 };
 use crate::ast::Delimiter;
 use crate::transform::helpers::star_arg_value;
@@ -59,10 +59,12 @@ define_rule! {
                 starred,
                 left,
                 right,
-                Delimiter::Char('['),
-                Delimiter::Char(']'),
-                FixedFenceToken::Char('['),
-                FixedFenceToken::Char(']'),
+                BinaryFencePair {
+                    auto_left: Delimiter::Char('['),
+                    auto_right: Delimiter::Char(']'),
+                    fixed_left: FixedFenceToken::Char('['),
+                    fixed_right: FixedFenceToken::Char(']'),
+                },
             );
             Ok(RuleEffect::Applied)
         }

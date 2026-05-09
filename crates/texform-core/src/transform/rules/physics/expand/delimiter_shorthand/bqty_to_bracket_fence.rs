@@ -20,7 +20,7 @@
 use texform_specs::builtin::base;
 use texform_specs::builtin::physics;
 
-use super::helpers::{FixedFenceToken, replace_with_delimiter_shorthand};
+use super::helpers::{FencePair, FixedFenceToken, replace_with_delimiter_shorthand};
 use crate::ast::{ArgumentKind, ArgumentValue, Delimiter};
 use crate::transform::helpers::star_arg_value;
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
@@ -70,10 +70,12 @@ define_rule! {
                 node_id,
                 starred,
                 body,
-                Delimiter::Char('['),
-                Delimiter::Char(']'),
-                FixedFenceToken::Char('['),
-                FixedFenceToken::Char(']'),
+                FencePair {
+                    auto_left: Delimiter::Char('['),
+                    auto_right: Delimiter::Char(']'),
+                    fixed_left: FixedFenceToken::Char('['),
+                    fixed_right: FixedFenceToken::Char(']'),
+                },
             );
             Ok(RuleEffect::Applied)
         }

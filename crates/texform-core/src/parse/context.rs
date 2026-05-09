@@ -1263,9 +1263,7 @@ fn find_argument_surface_span(tokens: &LexedSource, after: usize) -> Option<Span
         index += 1;
     }
 
-    let Some((token, span)) = tokens.get(index) else {
-        return None;
-    };
+    let (token, span) = tokens.get(index)?;
 
     match token {
         Token::LBracket => {
@@ -1325,7 +1323,7 @@ fn find_invalid_left_context(
     while index < tokens.len() {
         match &tokens[index].0 {
             Token::ControlSeq(name) if name == "begin" => {
-                environment_stack.push(environment_body_start(&tokens, index));
+                environment_stack.push(environment_body_start(tokens, index));
             }
             Token::ControlSeq(name) if name == "end" => {
                 environment_stack.pop();
