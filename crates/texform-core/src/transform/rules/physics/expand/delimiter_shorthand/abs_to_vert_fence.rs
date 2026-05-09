@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: abs-to-vert-fence
+//! triggers:
+//!   - cmd:abs
 //! consumes:
 //!   eliminates: cmd:abs
 //!   touches: null
@@ -35,6 +37,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::ABS],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::ABS],
             touches: &[],

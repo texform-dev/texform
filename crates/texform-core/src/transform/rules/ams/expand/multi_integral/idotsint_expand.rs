@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: idotsint-expand
+//! triggers:
+//!   - cmd:idotsint
 //! consumes:
 //!   eliminates: cmd:idotsint
 //!   touches: null
@@ -34,6 +36,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Ams],
+        triggers: cmd_targets![&ams::cmd::IDOTSINT],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&ams::cmd::IDOTSINT],
             touches: &[],

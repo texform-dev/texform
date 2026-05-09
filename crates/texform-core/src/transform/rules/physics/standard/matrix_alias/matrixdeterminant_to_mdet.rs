@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: matrixdeterminant-to-mdet
+//! triggers:
+//!   - cmd:matrixdeterminant
 //! consumes:
 //!   eliminates: cmd:matrixdeterminant
 //!   touches: null

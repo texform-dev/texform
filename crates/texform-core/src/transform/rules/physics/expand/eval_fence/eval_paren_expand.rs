@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: eval-paren-expand
+//! triggers:
+//!   - cmd:eval
 //! consumes:
 //!   eliminates: cmd:eval
 //!   touches: null
@@ -37,6 +39,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::EVAL],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::EVAL],
             touches: &[],

@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: pdv-to-frac-partial
+//! triggers:
+//!   - cmd:pdv
 //! consumes:
 //!   eliminates: cmd:pdv
 //!   touches: null
@@ -42,6 +44,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::PDV],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::PDV],
             touches: &[],

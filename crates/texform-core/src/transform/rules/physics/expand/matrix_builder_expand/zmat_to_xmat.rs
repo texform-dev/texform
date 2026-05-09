@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: zmat-to-xmat
+//! triggers:
+//!   - cmd:zmat
 //! consumes:
 //!   eliminates: cmd:zmat
 //!   touches: null
@@ -27,6 +29,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::ZMAT],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::ZMAT],
             touches: &[],

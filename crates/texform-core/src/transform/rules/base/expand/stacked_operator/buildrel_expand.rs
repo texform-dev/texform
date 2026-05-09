@@ -2,9 +2,11 @@
 //!
 //! ```yaml
 //! proposal: buildrel-expand
+//! triggers:
+//!   - cmd:buildrel
 //! consumes:
 //!   eliminates: cmd:buildrel
-//!   touches: null
+//!   touches: cmd:over
 //! produces:
 //!   - cmd:mathrel
 //!   - cmd:mathop
@@ -33,9 +35,10 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Base],
+        triggers: cmd_targets![&base::cmd::BUILDREL],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::BUILDREL],
-            touches: &[],
+            touches: cmd_targets![&base::cmd::OVER],
         },
         produces: RuleProduces {
             targets: cmd_targets![&base::cmd::MATHREL, &base::cmd::MATHOP, &base::cmd::LIMITS],
@@ -180,7 +183,7 @@ mod tests {
             .parse_to_ast(r"A_n \buildrel n\to\infty \over = B_n", true)
             .expect("parse input should succeed");
 
-        transform_ast(&mut ast, &parse_ctx, &transform_ctx).expect("transform should succeed");
+        let report = transform_ast(&mut ast, &parse_ctx, &transform_ctx).expect("transform should succeed");
         let actual = crate::serialize::serialize(&ast);
         let expected_ast = parse_ctx
             .parse_to_ast(r"A_n \mathrel{\mathop{=}\limits^{n\to\infty}} B_n", true)
@@ -189,5 +192,12 @@ mod tests {
 
         assert_eq!(actual, expected);
         assert!(!actual.contains(r"\frac"));
+        let buildrel_stat = report
+            .applied
+            .iter()
+            .find(|stat| stat.key.to_string() == "base/buildrel-expand")
+            .expect("buildrel-expand should be attempted");
+        assert_eq!(buildrel_stat.count, 1);
+        assert_eq!(buildrel_stat.skipped_count, 0);
     }
 }

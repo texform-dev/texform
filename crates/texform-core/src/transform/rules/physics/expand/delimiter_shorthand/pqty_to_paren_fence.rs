@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: pqty-to-paren-fence
+//! triggers:
+//!   - cmd:pqty
 //! consumes:
 //!   eliminates: cmd:pqty
 //!   touches: null
@@ -35,6 +37,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::PQTY],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::PQTY],
             touches: &[],

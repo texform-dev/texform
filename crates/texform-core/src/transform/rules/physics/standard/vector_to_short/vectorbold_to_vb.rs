@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: vectorbold-to-vb
+//! triggers:
+//!   - cmd:vectorbold
 //! consumes:
 //!   eliminates: cmd:vectorbold
 //!   touches: null

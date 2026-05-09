@@ -2,12 +2,14 @@
 //!
 //! ```yaml
 //! proposal: probability-to-pr
+//! triggers:
+//!   - cmd:Probability
 //! consumes:
 //!   eliminates: cmd:Probability
 //!   touches: null
 //! produces: cmd:Pr
 //! rewrite_patterns:
-//!   - {label: probability, from: \Probability, to: \Pr}
+//!   - {from: \Probability, to: \Pr}
 //! ```
 
 use texform_specs::builtin::base;

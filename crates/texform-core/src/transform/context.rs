@@ -113,6 +113,10 @@ pub enum TransformBuildError {
         rule: RuleKey,
         reason: RuleAvailabilityFailure,
     },
+    InvalidRuleMetadata {
+        rule: RuleKey,
+        message: &'static str,
+    },
     DependencyCycle {
         chain: Vec<RuleKey>,
     },
@@ -127,6 +131,9 @@ impl std::fmt::Display for TransformBuildError {
         match self {
             TransformBuildError::SelectedRuleUnavailable { rule, reason } => {
                 write!(f, "selected transform rule {rule} is unavailable: {reason}")
+            }
+            TransformBuildError::InvalidRuleMetadata { rule, message } => {
+                write!(f, "transform rule {rule} has invalid metadata: {message}")
             }
             TransformBuildError::DependencyCycle { chain } => {
                 let chain = chain
@@ -284,6 +291,8 @@ fn filter_rules(
             continue;
         }
 
+        validate_rule_metadata(rule)?;
+
         if let Some(reason) = package_availability_failure(rule, parse_ctx) {
             if explicitly_selected {
                 return Err(TransformBuildError::SelectedRuleUnavailable { rule: key, reason });
@@ -302,6 +311,39 @@ fn filter_rules(
     }
 
     Ok(enabled)
+}
+
+fn validate_rule_metadata(rule: &'static dyn TransformRule) -> Result<(), TransformBuildError> {
+    let meta = rule.meta();
+    if meta.triggers.is_empty() {
+        return Err(TransformBuildError::InvalidRuleMetadata {
+            rule: meta.key,
+            message: "triggers must be non-empty",
+        });
+    }
+
+    let consumes = meta
+        .consumes
+        .eliminates
+        .iter()
+        .chain(meta.consumes.touches.iter())
+        .copied()
+        .map(RuleTarget::key)
+        .collect::<Vec<_>>();
+    if meta
+        .triggers
+        .iter()
+        .copied()
+        .map(RuleTarget::key)
+        .any(|trigger| !consumes.contains(&trigger))
+    {
+        return Err(TransformBuildError::InvalidRuleMetadata {
+            rule: meta.key,
+            message: "triggers must be a subset of consumes",
+        });
+    }
+
+    Ok(())
 }
 
 fn package_availability_failure(
@@ -634,6 +676,7 @@ mod tests {
         summary: "mock rule a",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
+        triggers: &[RuleTarget::Command(&COMMAND_C)],
         consumes: RuleConsumes {
             eliminates: &[RuleTarget::Command(&COMMAND_C)],
             touches: &[],
@@ -653,6 +696,7 @@ mod tests {
         summary: "mock rule b",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
+        triggers: &[RuleTarget::Command(&COMMAND_A)],
         consumes: RuleConsumes {
             eliminates: &[RuleTarget::Command(&COMMAND_A)],
             touches: &[],
@@ -672,6 +716,7 @@ mod tests {
         summary: "mock rule c",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
+        triggers: &[RuleTarget::Command(&COMMAND_B)],
         consumes: RuleConsumes {
             eliminates: &[RuleTarget::Command(&COMMAND_B)],
             touches: &[],
@@ -691,8 +736,9 @@ mod tests {
         summary: "mock cleanup rule",
         phase: RulePhase::Cleanup,
         safety: RuleSafety::Lossless,
+        triggers: &[RuleTarget::Command(&COMMAND_A)],
         consumes: RuleConsumes {
-            eliminates: &[],
+            eliminates: &[RuleTarget::Command(&COMMAND_A)],
             touches: &[],
         },
         produces: RuleProduces {
@@ -710,6 +756,7 @@ mod tests {
         summary: "mock rule with duplicate eliminate variants",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
+        triggers: &SHARED_VARIANT_TARGETS,
         consumes: RuleConsumes {
             eliminates: &SHARED_VARIANT_TARGETS,
             touches: &[],
@@ -727,6 +774,7 @@ mod tests {
         summary: "mock rule producing matrix environment",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
+        triggers: &[RuleTarget::Command(&COMMAND_A)],
         consumes: RuleConsumes {
             eliminates: &[RuleTarget::Command(&COMMAND_A)],
             touches: &[],
@@ -746,6 +794,7 @@ mod tests {
         summary: "mock rule producing bboldx character",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
+        triggers: &[RuleTarget::Command(&COMMAND_A)],
         consumes: RuleConsumes {
             eliminates: &[RuleTarget::Command(&COMMAND_A)],
             touches: &[],

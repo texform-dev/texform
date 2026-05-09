@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: bqty-to-bracket-fence
+//! triggers:
+//!   - cmd:bqty
 //! consumes:
 //!   eliminates: cmd:bqty
 //!   touches: null
@@ -35,6 +37,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::BQTY],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::BQTY],
             touches: &[],

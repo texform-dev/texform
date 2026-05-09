@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: matrixel-expand
+//! triggers:
+//!   - cmd:matrixel
 //! consumes:
 //!   eliminates: cmd:matrixel
 //!   touches: null
@@ -32,6 +34,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::MATRIXEL],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::MATRIXEL],
             touches: &[],

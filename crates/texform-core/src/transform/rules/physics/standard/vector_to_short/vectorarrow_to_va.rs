@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: vectorarrow-to-va
+//! triggers:
+//!   - cmd:vectorarrow
 //! consumes:
 //!   eliminates: cmd:vectorarrow
 //!   touches: null

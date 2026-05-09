@@ -198,8 +198,9 @@ pub struct RuleProduces {
 /// Static metadata bundle that fully describes a rule's identity, scheduling,
 /// and dependency contract.
 ///
-/// The engine uses `consumes` to decide when to attempt a rule, `produces` to
-/// verify convergence, and `phase`/`safety` to control scheduling and filtering.
+/// The engine uses `triggers` and `consumes` to decide when to attempt a rule,
+/// `produces` to verify convergence, and `phase`/`safety` to control scheduling
+/// and filtering.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RuleMeta {
     /// Unique identifier for this rule.
@@ -214,6 +215,11 @@ pub struct RuleMeta {
     pub phase: RulePhase,
     /// The information-preservation guarantee this rule provides.
     pub safety: RuleSafety,
+    /// Commands, environments, or characters that decide where the engine attempts this rule.
+    ///
+    /// Triggers must be non-empty. They only affect scheduling and do not
+    /// participate in eliminated-form contracts or dependency analysis.
+    pub triggers: &'static [RuleTarget],
     /// Commands, environments, or characters this rule removes from, reads, or modifies in the AST.
     pub consumes: RuleConsumes,
     /// Commands, environments, or characters this rule may introduce into the AST.

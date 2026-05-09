@@ -2,6 +2,9 @@
 //!
 //! ```yaml
 //! proposal: qqtext-expand
+//! triggers:
+//!   - cmd:qqtext
+//!   - cmd:qq
 //! consumes:
 //!   eliminates: [cmd:qqtext, cmd:qq]
 //!   touches: null
@@ -34,6 +37,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::QQTEXT, &physics::cmd::QQ],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::QQTEXT, &physics::cmd::QQ],
             touches: &[],

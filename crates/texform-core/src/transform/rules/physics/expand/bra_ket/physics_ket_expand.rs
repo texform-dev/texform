@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: physics-ket-expand
+//! triggers:
+//!   - cmd:ket
 //! consumes:
 //!   eliminates: cmd:ket
 //!   touches: null
@@ -30,6 +32,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::KET],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::KET],
             touches: &[],

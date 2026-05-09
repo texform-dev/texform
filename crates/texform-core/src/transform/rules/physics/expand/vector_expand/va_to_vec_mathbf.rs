@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: va-to-vec-mathbf
+//! triggers:
+//!   - cmd:va
 //! consumes:
 //!   eliminates: cmd:va
 //!   touches: null
@@ -31,6 +33,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::VA],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::VA],
             touches: &[],

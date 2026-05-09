@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: trace-to-tr
+//! triggers:
+//!   - cmd:trace
 //! consumes:
 //!   eliminates: cmd:trace
 //!   touches: null

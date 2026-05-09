@@ -2,6 +2,9 @@
 //!
 //! ```yaml
 //! proposal: qcomma-expand
+//! triggers:
+//!   - cmd:qc
+//!   - cmd:qcomma
 //! consumes:
 //!   eliminates: [cmd:qc, cmd:qcomma]
 //!   touches: null
@@ -32,6 +35,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::QC, &physics::cmd::QCOMMA],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::QC, &physics::cmd::QCOMMA],
             touches: &[],

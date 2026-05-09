@@ -74,6 +74,38 @@ use crate::transform::{alias_rule, char_targets, cmd_targets, define_rule, env_t
 These macros are intentionally local to `texform-core`; they are ergonomics
 helpers for builtin rules, not a public rule-definition API.
 
+## Scheduling With `triggers`
+
+`RuleMeta.triggers` is the required scheduling entry list. The engine attempts
+the rule only on nodes matching `triggers`.
+
+For ordinary single-target rules, set `triggers` to the eliminated target. Use
+a smaller trigger list when a rule consumes multiple targets but has a smaller
+natural entry point. Examples include owner-command structures such as
+`\buildrel ... \over ...` and `\root ... \of ...`.
+
+Do not use `triggers` to hide dependencies. Every trigger target must also
+appear in `eliminates` or `touches`.
+
+```rust
+triggers: cmd_targets![&base::cmd::OVER],
+consumes: RuleConsumes {
+    eliminates: cmd_targets![&base::cmd::OVER],
+    touches: &[],
+},
+```
+
+```rust
+triggers: cmd_targets![&base::cmd::BUILDREL],
+consumes: RuleConsumes {
+    eliminates: cmd_targets![&base::cmd::BUILDREL],
+    touches: cmd_targets![&base::cmd::OVER],
+},
+```
+
+Here `cmd:over` is a touched separator inside the structure, not a global
+eliminated-form contract owned by `buildrel-expand`.
+
 ## Builtin Record Imports
 
 Always import builtin records through an explicit package module:

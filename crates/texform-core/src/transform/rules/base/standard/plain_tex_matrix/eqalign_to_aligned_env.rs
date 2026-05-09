@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: eqalign-to-aligned-env
+//! triggers:
+//!   - cmd:eqalign
 //! consumes:
 //!   eliminates: [cmd:eqalign, cmd:cr]
 //!   touches: null
@@ -26,6 +28,7 @@ define_rule! {
         phase: Normalize,
         safety: Semantic,
         enabled_by_packages: [Base],
+        triggers: cmd_targets![&base::cmd::EQALIGN],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::EQALIGN, &base::cmd::CR],
             touches: &[],

@@ -2,6 +2,9 @@
 //!
 //! ```yaml
 //! proposal: functional-derivative-to-fdv
+//! triggers:
+//!   - cmd:fderivative
+//!   - cmd:functionalderivative
 //! consumes:
 //!   eliminates: [cmd:fderivative, cmd:functionalderivative]
 //!   touches: null

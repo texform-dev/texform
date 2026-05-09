@@ -2,9 +2,11 @@
 //!
 //! ```yaml
 //! proposal: root-of-to-sqrt
+//! triggers:
+//!   - cmd:root
 //! consumes:
 //!   eliminates: cmd:root
-//!   touches: null
+//!   touches: cmd:of
 //! produces: cmd:sqrt
 //! rewrite_patterns:
 //!   - {from: '\root #1 \of #2', to: '\sqrt[#1]{#2}'}
@@ -27,9 +29,10 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Base],
+        triggers: cmd_targets![&base::cmd::ROOT],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::ROOT],
-            touches: &[],
+            touches: cmd_targets![&base::cmd::OF],
         },
         produces: RuleProduces {
             targets: cmd_targets![&base::cmd::SQRT],

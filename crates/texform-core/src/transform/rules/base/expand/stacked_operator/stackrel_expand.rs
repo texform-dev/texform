@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: stackrel-expand
+//! triggers:
+//!   - cmd:stackrel
 //! consumes:
 //!   eliminates: cmd:stackrel
 //!   touches: null
@@ -29,6 +31,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Base],
+        triggers: cmd_targets![&base::cmd::STACKREL],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::STACKREL],
             touches: &[],

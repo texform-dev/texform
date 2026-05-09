@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: derivative-to-dv
+//! triggers:
+//!   - cmd:derivative
 //! consumes:
 //!   eliminates: cmd:derivative
 //!   touches: null

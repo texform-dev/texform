@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: commutator-expand
+//! triggers:
+//!   - cmd:comm
 //! consumes:
 //!   eliminates: cmd:comm
 //!   touches: null
@@ -34,6 +36,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::COMM],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::COMM],
             touches: &[],

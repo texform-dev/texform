@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: vu-to-hat-mathbf
+//! triggers:
+//!   - cmd:vu
 //! consumes:
 //!   eliminates: cmd:vu
 //!   touches: null
@@ -31,6 +33,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::VU],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::VU],
             touches: &[],

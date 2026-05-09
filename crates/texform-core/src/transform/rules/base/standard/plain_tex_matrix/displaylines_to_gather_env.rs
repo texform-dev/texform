@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: displaylines-to-gather-env
+//! triggers:
+//!   - cmd:displaylines
 //! consumes:
 //!   eliminates: [cmd:displaylines, cmd:cr]
 //!   touches: null
@@ -30,6 +32,7 @@ define_rule! {
         phase: Normalize,
         safety: Semantic,
         enabled_by_packages: [Base],
+        triggers: cmd_targets![&base::cmd::DISPLAYLINES],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::DISPLAYLINES, &base::cmd::CR],
             touches: &[],

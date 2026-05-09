@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: brace-to-genfrac
+//! triggers:
+//!   - cmd:brace
 //! consumes:
 //!   eliminates: cmd:brace
 //!   touches: null
@@ -27,6 +29,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Base],
+        triggers: cmd_targets![&base::cmd::BRACE],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::BRACE],
             touches: &[],

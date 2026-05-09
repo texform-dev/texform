@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: pmqty-to-mqty
+//! triggers:
+//!   - cmd:pmqty
 //! consumes:
 //!   eliminates: cmd:pmqty
 //!   touches: null
@@ -26,6 +28,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::PMQTY],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::PMQTY],
             touches: &[],

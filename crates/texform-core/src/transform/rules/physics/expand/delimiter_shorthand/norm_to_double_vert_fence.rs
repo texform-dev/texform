@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: norm-to-double-vert-fence
+//! triggers:
+//!   - cmd:norm
 //! consumes:
 //!   eliminates: cmd:norm
 //!   touches: null
@@ -35,6 +37,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::NORM],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::NORM],
             touches: &[],

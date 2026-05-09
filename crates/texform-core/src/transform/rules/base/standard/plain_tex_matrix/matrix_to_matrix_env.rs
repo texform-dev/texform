@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: matrix-to-matrix-env
+//! triggers:
+//!   - cmd:matrix
 //! consumes:
 //!   eliminates: [cmd:matrix, cmd:cr]
 //!   touches: null
@@ -26,6 +28,7 @@ define_rule! {
         phase: Normalize,
         safety: Semantic,
         enabled_by_packages: [Base],
+        triggers: cmd_targets![&base::cmd::MATRIX],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::MATRIX, &base::cmd::CR],
             touches: &[],

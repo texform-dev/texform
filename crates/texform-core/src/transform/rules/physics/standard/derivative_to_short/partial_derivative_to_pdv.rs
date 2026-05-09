@@ -2,6 +2,9 @@
 //!
 //! ```yaml
 //! proposal: partial-derivative-to-pdv
+//! triggers:
+//!   - cmd:partialderivative
+//!   - cmd:pderivative
 //! consumes:
 //!   eliminates: [cmd:partialderivative, cmd:pderivative]
 //!   touches: null

@@ -18,14 +18,14 @@ use crate::transform::rule::{
 };
 use crate::transform::rule_context::RuleContext;
 
-/// Tracks how often a specific rule changed the AST or skipped after a consumed target match.
+/// Tracks how often a specific rule changed the AST or skipped after a scheduling target match.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppliedRuleStat {
     /// The identity of the rule.
     pub key: RuleKey,
     /// The total number of times this rule fired.
     pub count: usize,
-    /// The total number of times this rule's consumed target matched but `apply()` returned `Skipped`.
+    /// The total number of times this rule's scheduling target matched but `apply()` returned `Skipped`.
     pub skipped_count: usize,
 }
 
@@ -220,12 +220,9 @@ fn preorder_snapshot(ast: &Ast) -> Vec<NodeId> {
 }
 
 fn rule_matches(meta: &RuleMeta, node_id: NodeId, cx: &RuleContext<'_>) -> bool {
-    meta.consumes
-        .eliminates
-        .iter()
-        .chain(meta.consumes.touches.iter())
-        .copied()
-        .any(|target| target_matches(target, node_id, cx))
+    let target_matches_node = |target| target_matches(target, node_id, cx);
+
+    meta.triggers.iter().copied().any(target_matches_node)
 }
 
 fn target_matches(target: RuleTarget, node_id: NodeId, cx: &RuleContext<'_>) -> bool {
@@ -327,6 +324,14 @@ mod tests {
         tags: &[],
     };
 
+    static TOUCH_COMMAND: BuiltinCommandRecord = BuiltinCommandRecord {
+        name: "touch-only",
+        kind: CommandKind::Prefix,
+        allowed_mode: AllowedMode::Math,
+        argspec: argspec!(""),
+        tags: &[],
+    };
+
     static SKIP_RULE_META: RuleMeta = RuleMeta {
         key: RuleKey {
             package: PackageName::Physics,
@@ -337,6 +342,7 @@ mod tests {
         summary: "mock skip rule",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
+        triggers: &[RuleTarget::Command(&SKIP_COMMAND)],
         consumes: RuleConsumes {
             eliminates: &[RuleTarget::Command(&SKIP_COMMAND)],
             touches: &[],
@@ -356,6 +362,7 @@ mod tests {
         summary: "mock touch rule",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
+        triggers: &[RuleTarget::Command(&SKIP_COMMAND)],
         consumes: RuleConsumes {
             eliminates: &[],
             touches: &[RuleTarget::Command(&SKIP_COMMAND)],
@@ -380,6 +387,42 @@ mod tests {
     }
 
     static TOUCH_RULE: TouchRule = TouchRule;
+
+    struct TriggerOnlyRule;
+
+    impl TransformRule for TriggerOnlyRule {
+        fn meta(&self) -> &'static RuleMeta {
+            &TRIGGER_ONLY_RULE_META
+        }
+
+        fn apply(
+            &self,
+            _cx: &mut RuleContext<'_>,
+            _node_id: NodeId,
+        ) -> Result<RuleEffect, TransformError> {
+            Ok(RuleEffect::Skipped)
+        }
+    }
+
+    static TRIGGER_ONLY_RULE_META: RuleMeta = RuleMeta {
+        key: RuleKey {
+            package: PackageName::Physics,
+            name: "trigger-only",
+        },
+        enabled_by_packages: &[PackageName::Physics],
+        class: RuleClass::Standard,
+        summary: "mock trigger-only rule",
+        phase: RulePhase::Normalize,
+        safety: RuleSafety::Lossless,
+        triggers: &[RuleTarget::Command(&SKIP_COMMAND)],
+        consumes: RuleConsumes {
+            eliminates: &[RuleTarget::Command(&SKIP_COMMAND)],
+            touches: &[RuleTarget::Command(&TOUCH_COMMAND)],
+        },
+        produces: RuleProduces { targets: &[] },
+    };
+
+    static TRIGGER_ONLY_RULE: TriggerOnlyRule = TriggerOnlyRule;
 
     struct CharacterSkipRule;
 
@@ -407,6 +450,7 @@ mod tests {
         summary: "mock character skip rule",
         phase: RulePhase::Normalize,
         safety: RuleSafety::Lossless,
+        triggers: &[RuleTarget::Character(&bboldx::chars::BBDOTLESSI)],
         consumes: RuleConsumes {
             eliminates: &[RuleTarget::Character(&bboldx::chars::BBDOTLESSI)],
             touches: &[],
@@ -486,6 +530,36 @@ mod tests {
                 skipped_count: 1,
             }]
         );
+    }
+
+    #[test]
+    fn explicit_triggers_do_not_match_touched_targets() {
+        let parse_ctx = ParseContextBuilder::empty()
+            .insert_item(crate::parse::CommandItem::new(
+                "touch-only",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "",
+            ))
+            .build()
+            .expect("parse context should build");
+
+        let mut ast = Ast::new();
+        let node_id = ast.new_node(Node::Command {
+            name: "touch-only".to_string(),
+            args: Vec::new(),
+            known: true,
+        });
+        ast.append_child(ast.root(), node_id);
+
+        let report = transform_ast(
+            &mut ast,
+            &parse_ctx,
+            &transform_context_with(&TRIGGER_ONLY_RULE),
+        )
+        .expect("transform with trigger-only rule should succeed");
+
+        assert!(report.applied.is_empty());
     }
 
     #[test]

@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: cases-to-cases-env
+//! triggers:
+//!   - cmd:cases
 //! consumes:
 //!   eliminates: [cmd:cases, cmd:cr]
 //!   touches: null
@@ -26,6 +28,7 @@ define_rule! {
         phase: Normalize,
         safety: Semantic,
         enabled_by_packages: [Base],
+        triggers: cmd_targets![&base::cmd::CASES],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::CASES, &base::cmd::CR],
             touches: &[],

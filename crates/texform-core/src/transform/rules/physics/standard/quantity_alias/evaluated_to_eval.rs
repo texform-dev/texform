@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: evaluated-to-eval
+//! triggers:
+//!   - cmd:evaluated
 //! consumes:
 //!   eliminates: cmd:evaluated
 //!   touches: null

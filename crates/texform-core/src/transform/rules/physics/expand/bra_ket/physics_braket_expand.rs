@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: physics-braket-expand
+//! triggers:
+//!   - cmd:braket
 //! consumes:
 //!   eliminates: cmd:braket
 //!   touches: null
@@ -35,6 +37,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::BRAKET],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::BRAKET],
             touches: &[],

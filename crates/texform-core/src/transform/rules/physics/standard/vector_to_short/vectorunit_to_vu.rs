@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: vectorunit-to-vu
+//! triggers:
+//!   - cmd:vectorunit
 //! consumes:
 //!   eliminates: cmd:vectorunit
 //!   touches: null

@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: stackbin-expand
+//! triggers:
+//!   - cmd:stackbin
 //! consumes:
 //!   eliminates: cmd:stackbin
 //!   touches: null
@@ -29,6 +31,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Base],
+        triggers: cmd_targets![&base::cmd::STACKBIN],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::STACKBIN],
             touches: &[],

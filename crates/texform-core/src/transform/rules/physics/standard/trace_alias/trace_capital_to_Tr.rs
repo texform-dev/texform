@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: trace-capital-to-Tr
+//! triggers:
+//!   - cmd:Trace
 //! consumes:
 //!   eliminates: cmd:Trace
 //!   touches: null

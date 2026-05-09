@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: atop-to-genfrac
+//! triggers:
+//!   - cmd:atop
 //! consumes:
 //!   eliminates: cmd:atop
 //!   touches: null
@@ -27,6 +29,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Base],
+        triggers: cmd_targets![&base::cmd::ATOP],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::ATOP],
             touches: &[],

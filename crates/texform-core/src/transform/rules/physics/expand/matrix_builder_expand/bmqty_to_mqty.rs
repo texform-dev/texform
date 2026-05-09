@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: bmqty-to-mqty
+//! triggers:
+//!   - cmd:bmqty
 //! consumes:
 //!   eliminates: cmd:bmqty
 //!   touches: null
@@ -26,6 +28,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::BMQTY],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::BMQTY],
             touches: &[],

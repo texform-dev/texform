@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: antidiagonalmatrix-to-admat
+//! triggers:
+//!   - cmd:antidiagonalmatrix
 //! consumes:
 //!   eliminates: cmd:antidiagonalmatrix
 //!   touches: null

@@ -2,12 +2,14 @@
 //!
 //! ```yaml
 //! proposal: sine-to-sin
+//! triggers:
+//!   - cmd:sine
 //! consumes:
 //!   eliminates: cmd:sine
 //!   touches: null
 //! produces: cmd:sin
 //! rewrite_patterns:
-//!   - {label: sine, from: \sine, to: \sin}
+//!   - {from: \sine, to: \sin}
 //! ```
 
 use texform_specs::builtin::base;

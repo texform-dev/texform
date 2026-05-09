@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: vb-to-mathbf
+//! triggers:
+//!   - cmd:vb
 //! consumes:
 //!   eliminates: cmd:vb
 //!   touches: null
@@ -30,6 +32,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::VB],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::VB],
             touches: &[],

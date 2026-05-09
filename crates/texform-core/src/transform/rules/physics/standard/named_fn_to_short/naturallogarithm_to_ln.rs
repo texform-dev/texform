@@ -2,12 +2,14 @@
 //!
 //! ```yaml
 //! proposal: naturallogarithm-to-ln
+//! triggers:
+//!   - cmd:naturallogarithm
 //! consumes:
 //!   eliminates: cmd:naturallogarithm
 //!   touches: null
 //! produces: cmd:ln
 //! rewrite_patterns:
-//!   - {label: naturallogarithm, from: \naturallogarithm, to: \ln}
+//!   - {from: \naturallogarithm, to: \ln}
 //! ```
 
 use texform_specs::builtin::base;
@@ -26,6 +28,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::NATURALLOGARITHM],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::NATURALLOGARITHM],
             touches: &[],

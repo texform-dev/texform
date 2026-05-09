@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: poisson-bracket-expand
+//! triggers:
+//!   - cmd:pb
 //! consumes:
 //!   eliminates: cmd:pb
 //!   touches: null
@@ -34,6 +36,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::PB],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::PB],
             touches: &[],

@@ -2,12 +2,14 @@
 //!
 //! ```yaml
 //! proposal: cosine-to-cos
+//! triggers:
+//!   - cmd:cosine
 //! consumes:
 //!   eliminates: cmd:cosine
 //!   touches: null
 //! produces: cmd:cos
 //! rewrite_patterns:
-//!   - {label: cosine, from: \cosine, to: \cos}
+//!   - {from: \cosine, to: \cos}
 //! ```
 
 use texform_specs::builtin::base;

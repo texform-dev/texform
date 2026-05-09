@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: pmatrix-to-pmatrix-env
+//! triggers:
+//!   - cmd:pmatrix
 //! consumes:
 //!   eliminates: [cmd:pmatrix, cmd:cr]
 //!   touches: null
@@ -26,6 +28,7 @@ define_rule! {
         phase: Normalize,
         safety: Semantic,
         enabled_by_packages: [Base],
+        triggers: cmd_targets![&base::cmd::PMATRIX],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::PMATRIX, &base::cmd::CR],
             touches: &[],

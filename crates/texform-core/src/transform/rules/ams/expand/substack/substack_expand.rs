@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: substack-expand
+//! triggers:
+//!   - cmd:substack
 //! consumes:
 //!   eliminates: cmd:substack
 //!   touches: null
@@ -28,6 +30,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Ams],
+        triggers: cmd_targets![&ams::cmd::SUBSTACK],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&ams::cmd::SUBSTACK],
             touches: &[],

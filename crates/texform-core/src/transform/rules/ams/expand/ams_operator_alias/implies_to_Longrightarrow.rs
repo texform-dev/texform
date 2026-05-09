@@ -2,12 +2,14 @@
 //!
 //! ```yaml
 //! proposal: implies-to-Longrightarrow
+//! triggers:
+//!   - cmd:implies
 //! consumes:
 //!   eliminates: cmd:implies
 //!   touches: null
 //! produces: cmd:;
 //! rewrite_patterns:
-//!   - {label: implies, from: \implies, to: \;\Longrightarrow\;}
+//!   - {from: \implies, to: \;\Longrightarrow\;}
 //! ```
 
 use texform_specs::builtin::ams;
@@ -35,6 +37,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Ams],
+        triggers: cmd_targets![&ams::cmd::IMPLIES],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&ams::cmd::IMPLIES],
             touches: &[],

@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: eqalignno-to-align-env
+//! triggers:
+//!   - cmd:eqalignno
 //! consumes:
 //!   eliminates: [cmd:eqalignno, cmd:cr]
 //!   touches: null
@@ -33,6 +35,7 @@ define_rule! {
         phase: Normalize,
         safety: Semantic,
         enabled_by_packages: [Base],
+        triggers: cmd_targets![&base::cmd::EQALIGNNO],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::EQALIGNNO, &base::cmd::CR],
             touches: &[],

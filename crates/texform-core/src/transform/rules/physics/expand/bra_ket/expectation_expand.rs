@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: expectation-expand
+//! triggers:
+//!   - cmd:ev
 //! consumes:
 //!   eliminates: cmd:ev
 //!   touches: null
@@ -37,6 +39,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::EV],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::EV],
             touches: &[],

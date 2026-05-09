@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: overwithdelims-to-genfrac
+//! triggers:
+//!   - cmd:overwithdelims
 //! consumes:
 //!   eliminates: cmd:overwithdelims
 //!   touches: null
@@ -26,6 +28,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Base],
+        triggers: cmd_targets![&base::cmd::OVERWITHDELIMS],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::OVERWITHDELIMS],
             touches: &[],

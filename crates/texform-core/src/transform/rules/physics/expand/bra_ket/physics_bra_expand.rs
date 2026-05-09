@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: physics-bra-expand
+//! triggers:
+//!   - cmd:bra
 //! consumes:
 //!   eliminates: cmd:bra
 //!   touches: null
@@ -30,6 +32,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::BRA],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::BRA],
             touches: &[],

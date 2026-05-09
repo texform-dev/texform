@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: quantity-to-qty
+//! triggers:
+//!   - cmd:quantity
 //! consumes:
 //!   eliminates: cmd:quantity
 //!   touches: null

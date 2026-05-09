@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: diagonalmatrix-to-dmat
+//! triggers:
+//!   - cmd:diagonalmatrix
 //! consumes:
 //!   eliminates: cmd:diagonalmatrix
 //!   touches: null

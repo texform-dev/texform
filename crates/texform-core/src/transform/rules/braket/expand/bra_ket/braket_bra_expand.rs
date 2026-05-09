@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: braket-bra-expand
+//! triggers:
+//!   - cmd:bra
 //! consumes:
 //!   eliminates: cmd:bra
 //!   touches: null
@@ -28,6 +30,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Braket],
+        triggers: cmd_targets![&braket::cmd::BRA],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&braket::cmd::BRA],
             touches: &[],

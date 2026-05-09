@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: absolutevalue-to-abs
+//! triggers:
+//!   - cmd:absolutevalue
 //! consumes:
 //!   eliminates: cmd:absolutevalue
 //!   touches: null

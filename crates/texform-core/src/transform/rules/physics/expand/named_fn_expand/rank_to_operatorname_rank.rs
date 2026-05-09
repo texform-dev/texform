@@ -2,12 +2,14 @@
 //!
 //! ```yaml
 //! proposal: rank-to-operatorname-rank
+//! triggers:
+//!   - cmd:rank
 //! consumes:
 //!   eliminates: cmd:rank
 //!   touches: null
 //! produces: cmd:operatorname
 //! rewrite_patterns:
-//!   - {label: rank, from: \rank, to: '\operatorname{rank}'}
+//!   - {from: \rank, to: '\operatorname{rank}'}
 //! ```
 
 use texform_specs::builtin::ams;
@@ -27,6 +29,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::RANK],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::RANK],
             touches: &[],

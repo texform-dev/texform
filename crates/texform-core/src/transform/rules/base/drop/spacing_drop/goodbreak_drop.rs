@@ -2,12 +2,14 @@
 //!
 //! ```yaml
 //! proposal: goodbreak-drop
+//! triggers:
+//!   - cmd:goodbreak
 //! consumes:
 //!   eliminates: cmd:goodbreak
 //!   touches: null
 //! produces: null
 //! rewrite_patterns:
-//!   - {label: goodbreak, from: \goodbreak, to: ''}
+//!   - {from: \goodbreak, to: ''}
 //! ```
 
 use texform_specs::builtin::base;
@@ -24,6 +26,7 @@ define_rule! {
         phase: Normalize,
         safety: Semantic,
         enabled_by_packages: [Base],
+        triggers: cmd_targets![&base::cmd::GOODBREAK],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::GOODBREAK],
             touches: &[],

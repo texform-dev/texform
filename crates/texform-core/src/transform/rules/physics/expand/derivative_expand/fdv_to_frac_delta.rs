@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: fdv-to-frac-delta
+//! triggers:
+//!   - cmd:fdv
 //! consumes:
 //!   eliminates: cmd:fdv
 //!   touches: null
@@ -40,6 +42,7 @@ define_rule! {
         phase: Normalize,
         safety: Lossless,
         enabled_by_packages: [Physics],
+        triggers: cmd_targets![&physics::cmd::FDV],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&physics::cmd::FDV],
             touches: &[],

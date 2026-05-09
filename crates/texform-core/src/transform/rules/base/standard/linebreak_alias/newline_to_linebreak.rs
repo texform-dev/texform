@@ -2,6 +2,8 @@
 //!
 //! ```yaml
 //! proposal: newline-to-linebreak
+//! triggers:
+//!   - cmd:newline
 //! consumes:
 //!   eliminates: cmd:newline
 //!   touches: null
@@ -25,6 +27,7 @@ define_rule! {
         phase: Normalize,
         safety: Semantic,
         enabled_by_packages: [Base],
+        triggers: cmd_targets![&base::cmd::NEWLINE],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::NEWLINE],
             touches: &[],
