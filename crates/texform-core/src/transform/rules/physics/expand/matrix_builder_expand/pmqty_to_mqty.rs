@@ -20,7 +20,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand pmqty to the core mqty builder with paren fence syntax.
     pub static PMQTY_TO_MQTY: PmqtyToMqtyRule {
         key: Physics / "pmqty-to-mqty",
         class: Expand,

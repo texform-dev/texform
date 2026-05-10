@@ -24,7 +24,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Canonicalize vb to an explicit mathbf wrapper.
     pub static VB_TO_MATHBF: VbToMathbfRule {
         key: Physics / "vb-to-mathbf",
         class: Expand,

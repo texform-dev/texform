@@ -34,7 +34,6 @@ use crate::transform::rule_context::RuleContext;
 use crate::transform::{TransformRule, cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand fdv forms to explicit delta-based derivative fractions.
     pub static FDV_TO_FRAC_DELTA: FdvToFracDeltaRule {
         key: Physics / "fdv-to-frac-delta",
         class: Expand,

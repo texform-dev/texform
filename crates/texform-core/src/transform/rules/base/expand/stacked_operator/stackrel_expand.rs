@@ -23,7 +23,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand stackrel to an explicit relation-class stacked operator form.
     pub static STACKREL_EXPAND: StackrelExpandRule {
         key: Base / "stackrel-expand",
         class: Expand,

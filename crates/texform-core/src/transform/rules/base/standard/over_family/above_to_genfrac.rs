@@ -21,7 +21,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Rewrite above to a thickness-preserving genfrac form.
     pub static ABOVE_TO_GENFRAC: AboveToGenfracRule {
         key: Base / "above-to-genfrac",
         class: Standard,

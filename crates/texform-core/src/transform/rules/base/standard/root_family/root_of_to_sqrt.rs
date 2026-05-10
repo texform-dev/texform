@@ -21,7 +21,6 @@ use crate::transform::rule_context::RuleContext;
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Rewrite legacy root-of syntax to bracketed sqrt notation.
     pub static ROOT_OF_TO_SQRT: RootOfToSqrtRule {
         key: Base / "root-of-to-sqrt",
         class: Standard,

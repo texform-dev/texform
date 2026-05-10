@@ -23,7 +23,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand stackbin to an explicit binary-class stacked operator form.
     pub static STACKBIN_EXPAND: StackbinExpandRule {
         key: Base / "stackbin-expand",
         class: Expand,

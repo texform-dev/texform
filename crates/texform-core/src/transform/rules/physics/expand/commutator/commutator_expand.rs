@@ -28,7 +28,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand commutators to explicit square-bracket fences.
     pub static COMMUTATOR_EXPAND: CommutatorExpandRule {
         key: Physics / "commutator-expand",
         class: Expand,

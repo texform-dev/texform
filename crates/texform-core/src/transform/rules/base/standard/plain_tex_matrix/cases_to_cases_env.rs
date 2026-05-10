@@ -20,7 +20,6 @@ use crate::transform::rule::{RuleConsumes, RuleProduces};
 use crate::transform::{cmd_targets, define_rule, env_targets};
 
 define_rule! {
-    /// Rewrite plain-TeX cases to the standard cases environment with row breaks.
     pub static CASES_TO_CASES_ENV: CasesToCasesEnvRule {
         key: Base / "cases-to-cases-env",
         class: Standard,

@@ -21,7 +21,6 @@ use crate::transform::rule_context::RuleContext;
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand zmat to the explicit xmat zero-filled builder.
     pub static ZMAT_TO_XMAT: ZmatToXmatRule {
         key: Physics / "zmat-to-xmat",
         class: Expand,

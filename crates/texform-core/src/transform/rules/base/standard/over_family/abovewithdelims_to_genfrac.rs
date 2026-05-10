@@ -20,7 +20,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Rewrite abovewithdelims to an explicit genfrac with delimiters and thickness.
     pub static ABOVEWITHDELIMS_TO_GENFRAC: AbovewithdelimsToGenfracRule {
         key: Base / "abovewithdelims-to-genfrac",
         class: Standard,

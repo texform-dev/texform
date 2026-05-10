@@ -28,7 +28,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand idotsint to explicit repeated integral surfaces.
     pub static IDOTSINT_EXPAND: IdotsintExpandRule {
         key: Ams / "idotsint-expand",
         class: Expand,

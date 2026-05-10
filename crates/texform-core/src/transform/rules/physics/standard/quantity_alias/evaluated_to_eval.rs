@@ -20,7 +20,6 @@ use texform_specs::builtin::physics;
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Collapse evaluated to the shorter eval helper before eval expansion.
     pub static EVALUATED_TO_EVAL: EvaluatedToEvalRule {
         key: Physics / "evaluated-to-eval",
         class: Standard,

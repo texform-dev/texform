@@ -29,7 +29,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Rewrite norm to explicit double-vertical-bar fences.
     pub static NORM_TO_DOUBLE_VERT_FENCE: NormToDoubleVertFenceRule {
         key: Physics / "norm-to-double-vert-fence",
         class: Expand,

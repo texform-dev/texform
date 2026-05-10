@@ -17,7 +17,6 @@ use texform_specs::builtin::physics;
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Collapse matrixdeterminant to the shorter mdet determinant helper.
     pub static MATRIXDETERMINANT_TO_MDET: MatrixdeterminantToMdetRule {
         key: Physics / "matrixdeterminant-to-mdet",
         class: Standard,

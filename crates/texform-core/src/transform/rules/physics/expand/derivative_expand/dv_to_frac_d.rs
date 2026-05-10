@@ -35,7 +35,6 @@ use crate::transform::rule_context::RuleContext;
 use crate::transform::{TransformRule, cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand dv forms to explicit d-based derivative fractions.
     pub static DV_TO_FRAC_D: DvToFracDRule {
         key: Physics / "dv-to-frac-d",
         class: Expand,

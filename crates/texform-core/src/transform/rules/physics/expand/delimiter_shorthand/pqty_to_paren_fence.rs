@@ -29,7 +29,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Rewrite pqty to explicit parenthesis fences.
     pub static PQTY_TO_PAREN_FENCE: PqtyToParenFenceRule {
         key: Physics / "pqty-to-paren-fence",
         class: Expand,

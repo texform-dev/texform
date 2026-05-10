@@ -18,7 +18,6 @@ use texform_specs::builtin::physics;
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Collapse vectorarrow to the short va helper.
     pub static VECTORARROW_TO_VA: VectorarrowToVaRule {
         key: Physics / "vectorarrow-to-va",
         class: Standard,

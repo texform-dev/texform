@@ -20,7 +20,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Rewrite overwithdelims to an explicit genfrac with delimiters.
     pub static OVERWITHDELIMS_TO_GENFRAC: OverwithdelimsToGenfracRule {
         key: Base / "overwithdelims-to-genfrac",
         class: Standard,

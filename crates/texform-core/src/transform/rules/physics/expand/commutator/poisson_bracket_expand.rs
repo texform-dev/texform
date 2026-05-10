@@ -28,7 +28,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand poisson brackets to explicit brace fences.
     pub static POISSON_BRACKET_EXPAND: PoissonBracketExpandRule {
         key: Physics / "poisson-bracket-expand",
         class: Expand,

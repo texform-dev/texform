@@ -21,7 +21,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Rewrite infix brace to an explicit genfrac with brace delimiters.
     pub static BRACE_TO_GENFRAC: BraceToGenfracRule {
         key: Base / "brace-to-genfrac",
         class: Standard,

@@ -29,7 +29,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Rewrite abs to explicit vertical bar fences.
     pub static ABS_TO_VERT_FENCE: AbsToVertFenceRule {
         key: Physics / "abs-to-vert-fence",
         class: Expand,

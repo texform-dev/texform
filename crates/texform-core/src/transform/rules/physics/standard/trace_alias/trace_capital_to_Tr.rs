@@ -17,7 +17,6 @@ use texform_specs::builtin::physics;
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Collapse capital Trace to the local Tr anchor.
     pub static TRACE_CAPITAL_TO_TR: TraceCapitalToTrRule {
         key: Physics / "trace-capital-to-Tr",
         class: Standard,

@@ -29,7 +29,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Rewrite Bqty to explicit brace fences.
     pub static BQTY_TO_BRACE_FENCE: BqtyToBraceFenceRule {
         key: Physics / "Bqty-to-brace-fence",
         class: Expand,

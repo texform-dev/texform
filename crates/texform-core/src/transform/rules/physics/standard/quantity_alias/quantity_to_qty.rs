@@ -20,7 +20,6 @@ use texform_specs::builtin::physics;
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Collapse quantity to the shorter qty helper.
     pub static QUANTITY_TO_QTY: QuantityToQtyRule {
         key: Physics / "quantity-to-qty",
         class: Standard,

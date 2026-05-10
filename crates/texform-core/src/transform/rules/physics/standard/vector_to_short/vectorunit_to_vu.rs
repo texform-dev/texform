@@ -18,7 +18,6 @@ use texform_specs::builtin::physics;
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Collapse vectorunit to the short vu helper.
     pub static VECTORUNIT_TO_VU: VectorunitToVuRule {
         key: Physics / "vectorunit-to-vu",
         class: Standard,

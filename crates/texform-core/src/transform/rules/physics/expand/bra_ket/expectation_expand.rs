@@ -31,7 +31,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand expectation-value helpers to explicit angle brackets.
     pub static EXPECTATION_EXPAND: ExpectationExpandRule {
         key: Physics / "expectation-expand",
         class: Expand,

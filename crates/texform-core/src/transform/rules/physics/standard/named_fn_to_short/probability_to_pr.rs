@@ -18,7 +18,6 @@ use texform_specs::builtin::physics;
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Collapse `\Probability` into `\Pr`.
     pub static PROBABILITY_TO_PR: ProbabilityToPrRule {
         key: Physics / "probability-to-pr",
         class: Standard,

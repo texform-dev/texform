@@ -21,7 +21,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Rewrite infix choose to an explicit binom command.
     pub static CHOOSE_TO_BINOM: ChooseToBinomRule {
         key: Base / "choose-to-binom",
         class: Standard,

@@ -19,7 +19,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand mdet to the vmqty determinant-style builder.
     pub static MDET_TO_VMQTY: MdetToVmqtyRule {
         key: Physics / "mdet-to-vmqty",
         class: Expand,

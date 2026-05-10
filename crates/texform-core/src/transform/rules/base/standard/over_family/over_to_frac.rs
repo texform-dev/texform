@@ -20,7 +20,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Rewrite infix over to an explicit frac command.
     pub static OVER_TO_FRAC: OverToFracRule {
         key: Base / "over-to-frac",
         class: Standard,

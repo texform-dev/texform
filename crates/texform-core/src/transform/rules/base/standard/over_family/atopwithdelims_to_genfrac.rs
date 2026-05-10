@@ -20,7 +20,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Rewrite atopwithdelims to an explicit delimited no-rule genfrac form.
     pub static ATOPWITHDELIMS_TO_GENFRAC: AtopwithdelimsToGenfracRule {
         key: Base / "atopwithdelims-to-genfrac",
         class: Standard,

@@ -22,7 +22,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule, env_targets};
 
 define_rule! {
-    /// Expand substack directly to the explicit centered subarray environment.
     pub static SUBSTACK_EXPAND: SubstackExpandRule {
         key: Ams / "substack-expand",
         class: Expand,

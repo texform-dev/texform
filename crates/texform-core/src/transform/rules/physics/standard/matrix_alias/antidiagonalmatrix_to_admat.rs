@@ -18,7 +18,6 @@ use texform_specs::builtin::physics;
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Collapse antidiagonalmatrix to the shorter admat helper.
     pub static ANTIDIAGONALMATRIX_TO_ADMAT: AntidiagonalmatrixToAdmatRule {
         key: Physics / "antidiagonalmatrix-to-admat",
         class: Standard,

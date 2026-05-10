@@ -29,7 +29,6 @@ use crate::transform::rule_context::RuleContext;
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand braced eval notation to the explicit fence-and-bar form.
     pub static EVAL_BRACED_EXPAND: EvalBracedExpandRule {
         key: Physics / "eval-braced-expand",
         class: Expand,

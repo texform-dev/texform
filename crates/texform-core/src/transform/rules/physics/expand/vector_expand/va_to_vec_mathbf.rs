@@ -25,7 +25,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Canonicalize va to an explicit vec-wrapped mathbf form.
     pub static VA_TO_VEC_MATHBF: VaToVecMathbfRule {
         key: Physics / "va-to-vec-mathbf",
         class: Expand,

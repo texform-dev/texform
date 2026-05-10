@@ -27,7 +27,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand buildrel syntax to an explicit relation-class stacked operator form.
     pub static BUILDREL_EXPAND: BuildrelExpandRule {
         key: Base / "buildrel-expand",
         class: Expand,

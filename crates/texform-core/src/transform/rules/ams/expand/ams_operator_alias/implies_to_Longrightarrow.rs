@@ -29,7 +29,6 @@ fn zero_arg_command(name: &str) -> Node {
 }
 
 define_rule! {
-    /// Collapse implies to the explicit AMS long-right-arrow spelling with source-backed spacing.
     pub static IMPLIES_TO_LONGRIGHTARROW: ImpliesToLongrightarrowRule {
         key: Ams / "implies-to-Longrightarrow",
         class: Expand,

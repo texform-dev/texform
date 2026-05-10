@@ -25,7 +25,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Canonicalize vu to an explicit hat-wrapped mathbf form.
     pub static VU_TO_HAT_MATHBF: VuToHatMathbfRule {
         key: Physics / "vu-to-hat-mathbf",
         class: Expand,

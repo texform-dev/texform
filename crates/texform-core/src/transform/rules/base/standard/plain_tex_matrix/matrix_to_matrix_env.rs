@@ -20,7 +20,6 @@ use crate::transform::rule::{RuleConsumes, RuleProduces};
 use crate::transform::{cmd_targets, define_rule, env_targets};
 
 define_rule! {
-    /// Rewrite plain-TeX matrix to the standard matrix environment with row breaks.
     pub static MATRIX_TO_MATRIX_ENV: MatrixToMatrixEnvRule {
         key: Base / "matrix-to-matrix-env",
         class: Standard,

@@ -20,7 +20,6 @@ use crate::transform::rule::{RuleConsumes, RuleProduces};
 use crate::transform::{cmd_targets, define_rule, env_targets};
 
 define_rule! {
-    /// Rewrite plain-TeX pmatrix to the standard pmatrix environment with row breaks.
     pub static PMATRIX_TO_PMATRIX_ENV: PmatrixToPmatrixEnvRule {
         key: Base / "pmatrix-to-pmatrix-env",
         class: Standard,

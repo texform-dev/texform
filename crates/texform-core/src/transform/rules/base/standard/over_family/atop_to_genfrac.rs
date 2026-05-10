@@ -21,7 +21,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Rewrite infix atop to an explicit no-rule genfrac form.
     pub static ATOP_TO_GENFRAC: AtopToGenfracRule {
         key: Base / "atop-to-genfrac",
         class: Standard,

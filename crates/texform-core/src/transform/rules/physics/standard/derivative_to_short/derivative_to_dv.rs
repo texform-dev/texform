@@ -20,7 +20,6 @@ use texform_specs::builtin::physics;
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Collapse derivative to the compact dv command.
     pub static DERIVATIVE_TO_DV: DerivativeToDvRule {
         key: Physics / "derivative-to-dv",
         class: Standard,

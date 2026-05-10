@@ -20,7 +20,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Collapse the long natural logarithm helper to the standard ln operator.
     pub static NATURALLOGARITHM_TO_LN: NaturallogarithmToLnRule {
         key: Physics / "naturallogarithm-to-ln",
         class: Standard,

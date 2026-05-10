@@ -20,7 +20,6 @@ use crate::transform::rule::{RuleConsumes, RuleProduces};
 use crate::transform::{cmd_targets, define_rule, env_targets};
 
 define_rule! {
-    /// Rewrite eqalign to the standard aligned environment.
     pub static EQALIGN_TO_ALIGNED_ENV: EqalignToAlignedEnvRule {
         key: Base / "eqalign-to-aligned-env",
         class: Standard,

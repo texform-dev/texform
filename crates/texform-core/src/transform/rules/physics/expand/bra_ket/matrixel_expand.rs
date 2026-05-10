@@ -26,7 +26,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand matrix elements to explicit angle-bracket and bar fences.
     pub static MATRIXEL_EXPAND: MatrixelExpandRule {
         key: Physics / "matrixel-expand",
         class: Expand,

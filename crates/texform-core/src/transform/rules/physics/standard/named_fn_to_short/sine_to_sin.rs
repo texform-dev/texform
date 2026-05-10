@@ -18,7 +18,6 @@ use texform_specs::builtin::physics;
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Collapse the long sine helper to the standard sin operator.
     pub static SINE_TO_SIN: SineToSinRule {
         key: Physics / "sine-to-sin",
         class: Standard,

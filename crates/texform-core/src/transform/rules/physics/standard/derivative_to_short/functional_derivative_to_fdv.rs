@@ -25,7 +25,6 @@ use texform_specs::builtin::physics;
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Collapse long functional derivative names to the fdv command.
     pub static FUNCTIONAL_DERIVATIVE_TO_FDV: FunctionalDerivativeToFdvRule {
         key: Physics / "functional-derivative-to-fdv",
         class: Standard,

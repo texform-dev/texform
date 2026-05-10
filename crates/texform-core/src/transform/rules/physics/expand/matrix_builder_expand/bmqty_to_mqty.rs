@@ -20,7 +20,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand bmqty to the core mqty builder with bracket fence syntax.
     pub static BMQTY_TO_MQTY: BmqtyToMqtyRule {
         key: Physics / "bmqty-to-mqty",
         class: Expand,

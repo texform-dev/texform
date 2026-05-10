@@ -24,7 +24,6 @@ use crate::transform::rule::{RuleConsumes, RuleProduces, RuleTarget};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Rewrite displaylines to the standard gather environment.
     pub static DISPLAYLINES_TO_GATHER_ENV: DisplaylinesToGatherEnvRule {
         key: Base / "displaylines-to-gather-env",
         class: Standard,

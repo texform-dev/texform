@@ -22,7 +22,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand ket to an explicit bar and angle-bracket fence form.
     pub static BRAKET_KET_EXPAND: BraketKetExpandRule {
         key: Braket / "braket-ket-expand",
         class: Expand,

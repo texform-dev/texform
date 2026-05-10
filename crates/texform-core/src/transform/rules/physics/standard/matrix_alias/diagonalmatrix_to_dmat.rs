@@ -18,7 +18,6 @@ use texform_specs::builtin::physics;
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Collapse diagonalmatrix to the shorter dmat helper.
     pub static DIAGONALMATRIX_TO_DMAT: DiagonalmatrixToDmatRule {
         key: Physics / "diagonalmatrix-to-dmat",
         class: Standard,

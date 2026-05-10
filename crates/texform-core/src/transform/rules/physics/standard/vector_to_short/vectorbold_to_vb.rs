@@ -18,7 +18,6 @@ use texform_specs::builtin::physics;
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Collapse vectorbold to the short vb helper.
     pub static VECTORBOLD_TO_VB: VectorboldToVbRule {
         key: Physics / "vectorbold-to-vb",
         class: Standard,

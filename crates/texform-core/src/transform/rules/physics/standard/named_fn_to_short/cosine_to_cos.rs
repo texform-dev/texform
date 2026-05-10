@@ -18,7 +18,6 @@ use texform_specs::builtin::physics;
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Collapse the long cosine helper to the standard cos operator.
     pub static COSINE_TO_COS: CosineToCosRule {
         key: Physics / "cosine-to-cos",
         class: Standard,

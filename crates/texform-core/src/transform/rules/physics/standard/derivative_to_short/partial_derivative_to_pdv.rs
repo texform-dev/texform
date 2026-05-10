@@ -27,7 +27,6 @@ use texform_specs::builtin::physics;
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Collapse long partial derivative names to the pdv command.
     pub static PARTIAL_DERIVATIVE_TO_PDV: PartialDerivativeToPdvRule {
         key: Physics / "partial-derivative-to-pdv",
         class: Standard,

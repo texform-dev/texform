@@ -29,7 +29,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand braket to an explicit angle-bracket form with a middle bar.
     pub static PHYSICS_BRAKET_EXPAND: PhysicsBraketExpandRule {
         key: Physics / "physics-braket-expand",
         class: Expand,

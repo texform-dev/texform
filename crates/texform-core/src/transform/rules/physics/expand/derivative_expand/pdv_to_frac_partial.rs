@@ -36,7 +36,6 @@ use crate::transform::rule_context::RuleContext;
 use crate::transform::{TransformRule, cmd_targets, define_rule};
 
 define_rule! {
-    /// Expand pdv forms to explicit partial-derivative fractions.
     pub static PDV_TO_FRAC_PARTIAL: PdvToFracPartialRule {
         key: Physics / "pdv-to-frac-partial",
         class: Expand,

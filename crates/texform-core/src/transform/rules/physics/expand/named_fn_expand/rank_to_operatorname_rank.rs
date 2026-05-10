@@ -21,7 +21,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Rewrite rank to an explicit operatorname form instead of a package-local alias.
     pub static RANK_TO_OPERATORNAME_RANK: RankToOperatornameRankRule {
         key: Physics / "rank-to-operatorname-rank",
         class: Expand,

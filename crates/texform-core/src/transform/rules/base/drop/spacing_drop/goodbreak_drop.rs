@@ -18,7 +18,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Drop goodbreak as a pure linebreak hint during cleanup-oriented normalization.
     pub static GOODBREAK_DROP: GoodbreakDropRule {
         key: Base / "goodbreak-drop",
         class: Drop,

@@ -18,7 +18,6 @@ use texform_specs::builtin::physics;
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Collapse absolutevalue to the shorter abs helper before fence expansion.
     pub static ABSOLUTEVALUE_TO_ABS: AbsolutevalueToAbsRule {
         key: Physics / "absolutevalue-to-abs",
         class: Standard,

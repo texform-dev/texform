@@ -17,7 +17,6 @@ use texform_specs::builtin::physics;
 use crate::transform::alias_rule;
 
 alias_rule! {
-    /// Collapse lowercase trace to the local tr anchor.
     pub static TRACE_TO_TR: TraceToTrRule {
         key: Physics / "trace-to-tr",
         class: Standard,

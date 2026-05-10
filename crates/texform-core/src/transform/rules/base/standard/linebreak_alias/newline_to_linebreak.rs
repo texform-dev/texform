@@ -19,7 +19,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Collapse newline to the explicit linebreak command.
     pub static NEWLINE_TO_LINEBREAK: NewlineToLinebreakRule {
         key: Base / "newline-to-linebreak",
         class: Standard,

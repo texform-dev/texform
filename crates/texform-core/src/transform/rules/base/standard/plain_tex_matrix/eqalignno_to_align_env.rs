@@ -27,7 +27,6 @@ use crate::transform::rule_context::RuleContext;
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Rewrite eqalignno to the standard align environment.
     pub static EQALIGNNO_TO_ALIGN_ENV: EqalignnoToAlignEnvRule {
         key: Base / "eqalignno-to-align-env",
         class: Standard,

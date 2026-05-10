@@ -19,7 +19,6 @@ use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
-    /// Collapse break to the explicit linebreak command.
     pub static BREAK_TO_LINEBREAK: BreakToLinebreakRule {
         key: Base / "break-to-linebreak",
         class: Standard,
