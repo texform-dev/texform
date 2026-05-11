@@ -266,7 +266,7 @@ semantics.
 For shared transform helpers, import the specific functions you use:
 
 ```rust
-use crate::transform::helpers::{mandatory_content, prefix_command};
+use crate::transform::helpers::{mandatory_content, prefix_command_node};
 ```
 
 Use `RuleContext` helpers for node matching and shape checks when possible:
@@ -281,7 +281,7 @@ cx.expect_no_args(rule.meta().key, infix.args, "\\over")?;
 Preferred style:
 
 1. Keep package prefixes for builtin records, such as `base::cmd::OVER`
-2. Import shared constructor helpers directly, such as `prefix_command` and `mandatory_content`
+2. Import shared constructor helpers directly, such as `prefix_command_node` and `mandatory_content`
 3. Prefer `RuleContext` match/shape helpers over open-coded `match` + repeated error construction
 
 ## Transform Profiles

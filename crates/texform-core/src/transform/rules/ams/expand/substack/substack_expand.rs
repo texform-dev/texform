@@ -15,9 +15,7 @@
 use texform_specs::builtin::ams;
 
 use crate::ast::{Argument, ArgumentKind, ArgumentValue, Node, NodeId};
-use crate::transform::helpers::{
-    implicit_math_group, replace_node_discarding_detached_children, required_math_content,
-};
+use crate::transform::helpers::required_math_content;
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule, env_targets};
 
@@ -51,7 +49,7 @@ define_rule! {
                 body,
             };
 
-            replace_node_discarding_detached_children(cx, node_id, replacement);
+            cx.ast.replace_node_drop_detached_children(node_id, replacement);
             Ok(RuleEffect::Applied)
         }
     }
@@ -61,7 +59,7 @@ fn environment_body(cx: &mut crate::transform::rule_context::RuleContext<'_>, bo
     let body = cx.ast.clone_subtree(body);
     match cx.ast.node(body) {
         Node::Group { .. } => body,
-        _ => implicit_math_group(cx, vec![body]),
+        _ => cx.ast.implicit_math_group(vec![body]),
     }
 }
 

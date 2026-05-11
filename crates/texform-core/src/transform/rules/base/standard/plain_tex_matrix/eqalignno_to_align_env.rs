@@ -18,7 +18,7 @@ use texform_specs::builtin::ams;
 use texform_specs::builtin::base;
 
 use super::helpers::{
-    cr_rows, is_char, linebreak_command, mandatory_math_body, replace_with_environment, tag_command,
+    cr_rows, linebreak_command, mandatory_math_body, replace_with_environment, tag_command,
 };
 use crate::ast::{Node, NodeId};
 use crate::transform::engine::TransformError;
@@ -86,7 +86,7 @@ fn split_eqalignno_row(
 
     let Some(amp_index) = row
         .windows(2)
-        .rposition(|pair| is_char(cx, pair[0], '&') && is_char(cx, pair[1], '('))
+        .rposition(|pair| cx.ast.is_char(pair[0], '&') && cx.ast.is_char(pair[1], '('))
     else {
         return Err(cx.invalid_shape(
             rule,

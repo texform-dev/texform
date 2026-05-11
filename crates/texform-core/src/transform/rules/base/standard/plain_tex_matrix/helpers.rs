@@ -3,9 +3,7 @@ use texform_specs::specs::{BuiltinCommandRecord, BuiltinEnvironmentRecord};
 
 use crate::ast::{ArgumentSlot, Node, NodeId};
 use crate::transform::engine::TransformError;
-use crate::transform::helpers::{
-    implicit_math_group, replace_node_discarding_detached_children, required_math_content, star,
-};
+use crate::transform::helpers::{required_math_content, star};
 use crate::transform::rule::{RuleEffect, RuleKey};
 use crate::transform::rule_context::RuleContext;
 
@@ -80,10 +78,6 @@ fn is_cr_command(cx: &RuleContext<'_>, node_id: NodeId) -> bool {
     )
 }
 
-pub(super) fn is_char(cx: &RuleContext<'_>, node_id: NodeId, expected: char) -> bool {
-    matches!(cx.ast.node(node_id), Node::Char(ch) if *ch == expected)
-}
-
 pub(super) fn replace_with_environment(
     cx: &mut RuleContext<'_>,
     node_id: NodeId,
@@ -91,10 +85,8 @@ pub(super) fn replace_with_environment(
     args: Vec<ArgumentSlot>,
     children: Vec<NodeId>,
 ) {
-    let body = implicit_math_group(cx, children);
-    replace_node_discarding_detached_children(
-        cx,
-        node_id,
+    let body = cx.ast.implicit_math_group(children);
+    cx.ast.replace_node_drop_detached_children(node_id,
         Node::Environment {
             name: target.name.to_string(),
             args,

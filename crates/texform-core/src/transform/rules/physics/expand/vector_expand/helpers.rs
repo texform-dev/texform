@@ -5,8 +5,7 @@ use texform_specs::specs::BuiltinCommandRecord;
 use crate::ast::{ContentMode, Node, NodeId};
 use crate::transform::engine::TransformError;
 use crate::transform::helpers::{
-    mandatory_content, prefix_command, replace_node_discarding_detached_children,
-    required_math_content, star_arg_value,
+    mandatory_content, prefix_command_node, required_math_content, star_arg_value,
 };
 use crate::transform::rule::RuleKey;
 use crate::transform::rule_context::RuleContext;
@@ -30,7 +29,7 @@ pub(super) fn replace_with_vector_style(
     body: NodeId,
 ) {
     let replacement = vector_style_command(cx, starred, body);
-    replace_node_discarding_detached_children(cx, node_id, replacement);
+    cx.ast.replace_node_drop_detached_children(node_id, replacement);
 }
 
 pub(super) fn replace_with_wrapped_vector_style(
@@ -42,11 +41,11 @@ pub(super) fn replace_with_wrapped_vector_style(
 ) {
     let styled_command = vector_style_command(cx, starred, body);
     let styled = cx.ast.new_node(styled_command);
-    let replacement = prefix_command(
+    let replacement = prefix_command_node(
         wrapper,
         vec![mandatory_content(styled, ContentMode::Math)],
     );
-    replace_node_discarding_detached_children(cx, node_id, replacement);
+    cx.ast.replace_node_drop_detached_children(node_id, replacement);
 }
 
 fn vector_style_command(cx: &mut RuleContext<'_>, starred: bool, body: NodeId) -> Node {
@@ -56,5 +55,5 @@ fn vector_style_command(cx: &mut RuleContext<'_>, starred: bool, body: NodeId) -
         &base::cmd::MATHBF
     };
     let body = cx.ast.clone_subtree(body);
-    prefix_command(record, vec![mandatory_content(body, ContentMode::Math)])
+    prefix_command_node(record, vec![mandatory_content(body, ContentMode::Math)])
 }

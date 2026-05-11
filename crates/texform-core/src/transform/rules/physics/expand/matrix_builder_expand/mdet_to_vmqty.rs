@@ -14,7 +14,7 @@
 
 use texform_specs::builtin::physics;
 
-use crate::transform::helpers::{prefix_command, required_math_content};
+use crate::transform::helpers::{prefix_command_node, required_math_content};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -45,7 +45,7 @@ define_rule! {
             let _body = required_math_content(rule.meta().key, cx, &args[0], &subject, "body")?;
 
             cx.ast
-                .replace_node(node_id, prefix_command(&physics::cmd::VMQTY, args));
+                .replace_node(node_id, prefix_command_node(&physics::cmd::VMQTY, args));
             Ok(RuleEffect::Applied)
         }
     }

@@ -30,7 +30,6 @@ use crate::transform::engine::TransformError;
 use crate::transform::helpers::{
     optional_group_math_content, optional_math_content, required_math_content, star_arg_value,
 };
-use crate::transform::helpers::replace_node_discarding_detached_children;
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::rule_context::RuleContext;
 use crate::transform::{TransformRule, cmd_targets, define_rule};
@@ -103,7 +102,7 @@ fn expand_pdv(
     };
     let replacement = derivative_fraction(starred, numerator, denominator);
 
-    replace_node_discarding_detached_children(cx, node_id, replacement);
+    cx.ast.replace_node_drop_detached_children(node_id, replacement);
     Ok(RuleEffect::Applied)
 }
 

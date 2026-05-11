@@ -502,6 +502,28 @@ impl Ast {
         result
     }
 
+    /// Check whether `id` is a character node matching `expected`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `id` is invalid.
+    pub fn is_char(&self, id: NodeId, expected: char) -> bool {
+        matches!(self.node(id), Node::Char(ch) if *ch == expected)
+    }
+
+    /// Check whether the subtree rooted at `start` contains a command named `name`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `start` is invalid.
+    pub fn subtree_contains_command(&self, start: NodeId, name: &str) -> bool {
+        self.find(
+            start,
+            |node| matches!(node, Node::Command { name: command_name, .. } if command_name == name),
+        )
+        .is_some()
+    }
+
     /// Insert a new detached node into the arena and return its [`NodeId`].
     ///
     /// If `node` references child IDs, those children must already exist as
@@ -739,6 +761,100 @@ impl Ast {
         old_node
     }
 
+    /// Appends cloned math content into `out`, flattening implicit math groups.
+    ///
+    /// Parser-created content arguments often wrap multiple items in an
+    /// implicit math group. Flattening that wrapper lets transforms compose
+    /// output such as `\partial f` without introducing extra braces around `f`.
+    pub fn append_cloned_math_content(&mut self, out: &mut Vec<NodeId>, source: NodeId) {
+        match self.node(source) {
+            Node::Group {
+                children,
+                kind: GroupKind::Implicit,
+                mode: ContentMode::Math,
+            } => {
+                let children = children.clone();
+                out.extend(children.into_iter().map(|child| self.clone_subtree(child)));
+            }
+            _ => out.push(self.clone_subtree(source)),
+        }
+    }
+
+    /// Creates an implicit math group containing `children`.
+    pub fn implicit_math_group(&mut self, children: Vec<NodeId>) -> NodeId {
+        self.new_node(Node::Group {
+            children,
+            kind: GroupKind::Implicit,
+            mode: ContentMode::Math,
+        })
+    }
+
+    /// Creates a scripted node with only a superscript.
+    pub fn superscript(&mut self, base: NodeId, superscript: NodeId) -> NodeId {
+        self.new_node(Node::Scripted {
+            base,
+            subscript: None,
+            superscript: Some(superscript),
+        })
+    }
+
+    /// Replaces `id` and removes any old child subtrees detached by the replacement.
+    pub fn replace_node_drop_detached_children(&mut self, id: NodeId, replacement: Node) {
+        let old_children: Vec<NodeId> =
+            self.edges(id).into_iter().map(|(child, _)| child).collect();
+        self.replace_node(id, replacement);
+        for child in old_children {
+            if self.parent(child).is_none() {
+                self.remove_detached(child);
+            }
+        }
+    }
+
+    /// Replaces a node with a math-mode sequence.
+    ///
+    /// `replacement` must be a detached root. If `id` is a group child,
+    /// `before` and `after` are inserted as real siblings around the
+    /// replacement payload. In single-child slots, the sequence is wrapped in
+    /// an implicit math group because those slots cannot hold siblings.
+    pub fn replace_with_math_sequence(
+        &mut self,
+        id: NodeId,
+        before: Vec<NodeId>,
+        replacement: NodeId,
+        after: Vec<NodeId>,
+    ) {
+        match self.parent(id).map(|link| link.slot) {
+            Some(Slot::GroupChild(index)) => {
+                let parent = self
+                    .parent_id(id)
+                    .expect("group child should have a parent");
+                let before_len = before.len();
+                let replacement_node = self.take_detached_root_node(replacement);
+
+                self.replace_node_drop_detached_children(id, replacement_node);
+                for (offset, child) in before.into_iter().enumerate() {
+                    self.insert_child(parent, index + offset, child);
+                }
+                for (offset, child) in after.into_iter().enumerate() {
+                    self.insert_child(parent, index + before_len + 1 + offset, child);
+                }
+            }
+            _ => {
+                let mut children = before;
+                children.push(replacement);
+                children.extend(after);
+                self.replace_node_drop_detached_children(
+                    id,
+                    Node::Group {
+                        children,
+                        kind: GroupKind::Implicit,
+                        mode: ContentMode::Math,
+                    },
+                );
+            }
+        }
+    }
+
     /// Destroy a detached subtree and return the removed root node value.
     ///
     /// The subtree must already be detached from the main tree. All descendants
@@ -886,6 +1002,35 @@ impl Ast {
                 "Environment body must be a Group node"
             );
         }
+    }
+
+    fn take_detached_root_node(&mut self, id: NodeId) -> Node {
+        if id == self.root {
+            panic!("Cannot consume root node as detached replacement");
+        }
+        if !self.contains(id) {
+            panic!("Invalid NodeId");
+        }
+        if self.parent(id).is_some() {
+            panic!("Can only consume detached roots");
+        }
+        if !self.detached_roots.remove(&id) {
+            panic!("Node is not a detached root");
+        }
+
+        let node = self.nodes.remove(id).expect("Detached root must exist");
+        for (child, _) in Self::node_edges(&node) {
+            let link = self
+                .parent
+                .remove(child)
+                .expect("Detached root child should have a parent link");
+            assert_eq!(
+                link.parent, id,
+                "Detached replacement child must point at the consumed root"
+            );
+            self.detached_roots.insert(child);
+        }
+        node
     }
 
     fn reindex_group_children(&mut self, parent: NodeId, start: usize) {
@@ -1419,6 +1564,159 @@ mod tests {
             })
         );
 
+        ast.assert_invariants();
+    }
+
+    #[test]
+    fn append_cloned_math_content_flattens_implicit_groups() {
+        let mut ast = Ast::new();
+        let x = ast.new_node(Node::Char('x'));
+        let y = ast.new_node(Node::Char('y'));
+        let source = ast.new_node(Node::Group {
+            children: vec![x, y],
+            kind: GroupKind::Implicit,
+            mode: ContentMode::Math,
+        });
+        let mut out = Vec::new();
+
+        ast.append_cloned_math_content(&mut out, source);
+
+        assert_eq!(out.len(), 2);
+        assert_ne!(out[0], x);
+        assert_ne!(out[1], y);
+        assert_eq!(ast.node(out[0]), &Node::Char('x'));
+        assert_eq!(ast.node(out[1]), &Node::Char('y'));
+        assert_eq!(ast.parent(out[0]), None);
+        assert_eq!(ast.parent(out[1]), None);
+        ast.assert_invariants();
+    }
+
+    #[test]
+    fn constructs_implicit_math_group() {
+        let mut ast = Ast::new();
+        let x = ast.new_node(Node::Char('x'));
+        let y = ast.new_node(Node::Char('y'));
+
+        let group = ast.implicit_math_group(vec![x, y]);
+
+        assert_eq!(
+            ast.node(group),
+            &Node::Group {
+                children: vec![x, y],
+                kind: GroupKind::Implicit,
+                mode: ContentMode::Math,
+            }
+        );
+        assert_eq!(ast.parent_id(x), Some(group));
+        assert_eq!(ast.parent_id(y), Some(group));
+        ast.assert_invariants();
+    }
+
+    #[test]
+    fn constructs_superscript_node() {
+        let mut ast = Ast::new();
+        let base = ast.new_node(Node::Char('a'));
+        let power = ast.new_node(Node::Char('2'));
+
+        let scripted = ast.superscript(base, power);
+
+        assert_eq!(
+            ast.node(scripted),
+            &Node::Scripted {
+                base,
+                subscript: None,
+                superscript: Some(power),
+            }
+        );
+        assert_eq!(ast.parent_id(base), Some(scripted));
+        assert_eq!(ast.parent_id(power), Some(scripted));
+        ast.assert_invariants();
+    }
+
+    #[test]
+    fn replace_node_drop_detached_children_removes_old_subtree() {
+        let mut ast = Ast::new();
+        let old_child = ast.new_node(Node::Char('x'));
+        let old_grandchild = ast.new_node(Node::Char('y'));
+        let old_child = ast.new_node(Node::Group {
+            children: vec![old_child, old_grandchild],
+            kind: GroupKind::Implicit,
+            mode: ContentMode::Math,
+        });
+        let target = ast.new_node(Node::Group {
+            children: vec![old_child],
+            kind: GroupKind::Implicit,
+            mode: ContentMode::Math,
+        });
+        ast.append_child(ast.root(), target);
+        let new_child = ast.new_node(Node::Char('z'));
+
+        ast.replace_node_drop_detached_children(
+            target,
+            Node::Group {
+                children: vec![new_child],
+                kind: GroupKind::Implicit,
+                mode: ContentMode::Math,
+            },
+        );
+
+        assert!(!ast.contains(old_child));
+        assert!(!ast.contains(old_grandchild));
+        assert_eq!(ast.parent_id(new_child), Some(target));
+        assert_eq!(ast.children(target), &[new_child]);
+        ast.assert_invariants();
+    }
+
+    #[test]
+    fn replace_with_math_sequence_splices_group_children() {
+        let mut ast = Ast::new();
+        let target = ast.new_node(Node::Char('x'));
+        let root = ast.root();
+        ast.append_child(root, target);
+        let before = ast.new_node(Node::Char('a'));
+        let replacement = ast.new_node(Node::Char('b'));
+        let after = ast.new_node(Node::Char('c'));
+
+        ast.replace_with_math_sequence(target, vec![before], replacement, vec![after]);
+
+        assert!(!ast.contains(replacement));
+        assert_eq!(ast.children(root), &[before, target, after]);
+        assert_eq!(ast.node(target), &Node::Char('b'));
+        assert_eq!(ast.parent_id(before), Some(root));
+        assert_eq!(ast.parent_id(after), Some(root));
+        ast.assert_invariants();
+    }
+
+    #[test]
+    fn replace_with_math_sequence_wraps_single_child_slots() {
+        let mut ast = Ast::new();
+        let target = ast.new_node(Node::Char('x'));
+        let command = ast.new_node(Node::Command {
+            name: "sqrt".to_string(),
+            args: vec![Some(Argument {
+                kind: ArgumentKind::Mandatory,
+                value: ArgumentValue::MathContent(target),
+            })],
+            known: true,
+        });
+        ast.append_child(ast.root(), command);
+        let before = ast.new_node(Node::Char('a'));
+        let replacement = ast.new_node(Node::Char('b'));
+        let after = ast.new_node(Node::Char('c'));
+
+        ast.replace_with_math_sequence(target, vec![before], replacement, vec![after]);
+
+        assert_eq!(
+            ast.node(target),
+            &Node::Group {
+                children: vec![before, replacement, after],
+                kind: GroupKind::Implicit,
+                mode: ContentMode::Math,
+            }
+        );
+        assert_eq!(ast.parent_id(before), Some(target));
+        assert_eq!(ast.parent_id(replacement), Some(target));
+        assert_eq!(ast.parent_id(after), Some(target));
         ast.assert_invariants();
     }
 }

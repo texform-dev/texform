@@ -1,8 +1,4 @@
 use crate::ast::{ContentMode, Delimiter, GroupKind, Node, NodeId, Slot};
-use crate::transform::helpers::{
-    append_cloned_math_content, replace_node_discarding_detached_children,
-    replace_with_math_sequence,
-};
 use crate::transform::rule_context::RuleContext;
 
 #[derive(Clone, Copy)]
@@ -53,11 +49,9 @@ fn replace_with_auto_fence(
     right: Delimiter,
 ) {
     let mut children = Vec::new();
-    append_cloned_math_content(cx, &mut children, body);
+    cx.ast.append_cloned_math_content(&mut children, body);
 
-    replace_node_discarding_detached_children(
-        cx,
-        node_id,
+    cx.ast.replace_node_drop_detached_children(node_id,
         Node::Group {
             children,
             kind: GroupKind::Delimited { left, right },
@@ -79,10 +73,12 @@ fn replace_with_fixed_fence(
     }
 
     let mut rest = Vec::new();
-    append_cloned_math_content(cx, &mut rest, body);
+    cx.ast.append_cloned_math_content(&mut rest, body);
     rest.push(cx.ast.new_node(right.node()));
 
-    replace_with_math_sequence(cx, node_id, Vec::new(), left.node(), rest);
+    let left = cx.ast.new_node(left.node());
+    cx.ast
+        .replace_with_math_sequence(node_id, Vec::new(), left, rest);
 }
 
 fn replace_scripted_base_with_fixed_fence(
@@ -108,7 +104,7 @@ fn replace_scripted_base_with_fixed_fence(
     let superscript = superscript.map(|id| cx.ast.clone_subtree(id));
 
     let mut rest = Vec::new();
-    append_cloned_math_content(cx, &mut rest, body);
+    cx.ast.append_cloned_math_content(&mut rest, body);
 
     let close_base = cx.ast.new_node(right.node());
     let close = cx.ast.new_node(Node::Scripted {
@@ -118,5 +114,7 @@ fn replace_scripted_base_with_fixed_fence(
     });
     rest.push(close);
 
-    replace_with_math_sequence(cx, parent, Vec::new(), left.node(), rest);
+    let left = cx.ast.new_node(left.node());
+    cx.ast
+        .replace_with_math_sequence(parent, Vec::new(), left, rest);
 }

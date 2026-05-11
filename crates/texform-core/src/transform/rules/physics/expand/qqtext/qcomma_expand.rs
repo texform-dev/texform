@@ -20,9 +20,7 @@ use texform_specs::builtin::base;
 use texform_specs::builtin::physics;
 
 use crate::ast::{ContentMode, Node};
-use crate::transform::helpers::{
-    mandatory_content, prefix_command, replace_with_math_sequence,
-};
+use crate::transform::helpers::{mandatory_content, prefix_command_node};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -52,13 +50,15 @@ define_rule! {
             cx.expect_no_args(rule.meta().key, command.args, &format!(r"\{}", command.name))?;
 
             let comma = cx.ast.new_node(Node::Text(",".to_string()));
-            let text_command = prefix_command(
+            let text_command = prefix_command_node(
                 &base::cmd::TEXT,
                 vec![mandatory_content(comma, ContentMode::Text)],
             );
-            let quad = cx.ast.new_node(prefix_command(&base::cmd::QUAD, vec![]));
+            let text_command = cx.ast.new_node(text_command);
+            let quad = cx.ast.new_node(prefix_command_node(&base::cmd::QUAD, vec![]));
 
-            replace_with_math_sequence(cx, node_id, Vec::new(), text_command, vec![quad]);
+            cx.ast
+                .replace_with_math_sequence(node_id, Vec::new(), text_command, vec![quad]);
             Ok(RuleEffect::Applied)
         }
     }

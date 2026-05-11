@@ -3,10 +3,6 @@ use crate::ast::{
     Slot,
 };
 use crate::transform::engine::TransformError;
-use crate::transform::helpers::{
-    append_cloned_math_content, replace_node_discarding_detached_children,
-    replace_with_math_sequence,
-};
 use crate::transform::rule::RuleKey;
 use crate::transform::rule_context::RuleContext;
 
@@ -112,9 +108,7 @@ fn replace_with_auto_fence(
     let mut children = Vec::new();
     append_binary_bracket_body(cx, &mut children, left, right);
 
-    replace_node_discarding_detached_children(
-        cx,
-        node_id,
+    cx.ast.replace_node_drop_detached_children(node_id,
         Node::Group {
             children,
             kind: GroupKind::Delimited {
@@ -143,7 +137,9 @@ fn replace_with_fixed_fence(
     append_binary_bracket_body(cx, &mut rest, left, right);
     rest.push(cx.ast.new_node(close.node()));
 
-    replace_with_math_sequence(cx, node_id, Vec::new(), open.node(), rest);
+    let open = cx.ast.new_node(open.node());
+    cx.ast
+        .replace_with_math_sequence(node_id, Vec::new(), open, rest);
 }
 
 fn replace_scripted_base_with_fixed_fence(
@@ -180,7 +176,9 @@ fn replace_scripted_base_with_fixed_fence(
     });
     rest.push(close);
 
-    replace_with_math_sequence(cx, parent, Vec::new(), open.node(), rest);
+    let open = cx.ast.new_node(open.node());
+    cx.ast
+        .replace_with_math_sequence(parent, Vec::new(), open, rest);
 }
 
 fn append_binary_bracket_body(
@@ -189,7 +187,7 @@ fn append_binary_bracket_body(
     left: NodeId,
     right: NodeId,
 ) {
-    append_cloned_math_content(cx, out, left);
+    cx.ast.append_cloned_math_content(out, left);
     out.push(cx.ast.new_node(Node::Char(',')));
-    append_cloned_math_content(cx, out, right);
+    cx.ast.append_cloned_math_content(out, right);
 }

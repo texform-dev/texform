@@ -1,10 +1,7 @@
 use texform_specs::builtin::base;
 
 use crate::ast::{ContentMode, Delimiter, GroupKind, Node, NodeId};
-use crate::transform::helpers::{
-    append_cloned_math_content, mandatory_content, prefix_command,
-    replace_node_discarding_detached_children,
-};
+use crate::transform::helpers::{mandatory_content, prefix_command_node};
 use crate::transform::rule_context::RuleContext;
 
 pub(super) fn replace_with_eval_fence(
@@ -19,13 +16,11 @@ pub(super) fn replace_with_eval_fence(
     if starred {
         children.push(smash_body(cx, body));
     } else {
-        append_cloned_math_content(cx, &mut children, body);
+        cx.ast.append_cloned_math_content(&mut children, body);
     }
     children.push(vphantom_int(cx));
 
-    replace_node_discarding_detached_children(
-        cx,
-        node_id,
+    cx.ast.replace_node_drop_detached_children(node_id,
         Node::Group {
             children,
             kind: GroupKind::Delimited { left, right },
@@ -36,7 +31,7 @@ pub(super) fn replace_with_eval_fence(
 
 fn smash_body(cx: &mut RuleContext<'_>, body: NodeId) -> NodeId {
     let body = cx.ast.clone_subtree(body);
-    cx.ast.new_node(prefix_command(
+    cx.ast.new_node(prefix_command_node(
         &base::cmd::SMASH,
         vec![None, mandatory_content(body, ContentMode::Math)],
     ))
@@ -48,7 +43,7 @@ fn vphantom_int(cx: &mut RuleContext<'_>) -> NodeId {
         args: Vec::new(),
         known: true,
     });
-    cx.ast.new_node(prefix_command(
+    cx.ast.new_node(prefix_command_node(
         &base::cmd::VPHANTOM,
         vec![mandatory_content(int, ContentMode::Math)],
     ))

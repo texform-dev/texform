@@ -15,7 +15,7 @@
 use texform_specs::builtin::physics;
 
 use crate::ast::{ArgumentSlot, ContentMode, Node};
-use crate::transform::helpers::{mandatory_content, prefix_command, star};
+use crate::transform::helpers::{mandatory_content, prefix_command_node, star};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::rule_context::RuleContext;
 use crate::transform::{cmd_targets, define_rule};
@@ -48,7 +48,7 @@ define_rule! {
             xmat_args.extend(args);
 
             cx.ast
-                .replace_node(node_id, prefix_command(&physics::cmd::XMAT, xmat_args));
+                .replace_node(node_id, prefix_command_node(&physics::cmd::XMAT, xmat_args));
             Ok(RuleEffect::Applied)
         }
     }

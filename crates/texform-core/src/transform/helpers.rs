@@ -6,9 +6,7 @@
 
 use texform_specs::specs::BuiltinCommandRecord;
 
-use crate::ast::{
-    Argument, ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, GroupKind, Node, NodeId, Slot,
-};
+use crate::ast::{Argument, ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Node, NodeId};
 use crate::transform::engine::TransformError;
 use crate::transform::rule::RuleKey;
 use crate::transform::rule_context::RuleContext;
@@ -34,7 +32,7 @@ pub fn star(value: bool) -> ArgumentSlot {
 }
 
 /// Creates a prefix [`Node::Command`] from a builtin command record and a list of argument slots.
-pub fn prefix_command(record: &'static BuiltinCommandRecord, args: Vec<ArgumentSlot>) -> Node {
+pub fn prefix_command_node(record: &'static BuiltinCommandRecord, args: Vec<ArgumentSlot>) -> Node {
     Node::Command {
         name: record.name.to_string(),
         args,
@@ -126,133 +124,10 @@ pub fn required_math_content(
     }
 }
 
-/// Appends cloned math content into `out`, flattening implicit math groups.
-///
-/// Parser-created content arguments often wrap multiple items in an implicit
-/// math group. Flattening that wrapper lets rules compose output such as
-/// `\partial f` without introducing extra braces around `f`.
-pub fn append_cloned_math_content(cx: &mut RuleContext<'_>, out: &mut Vec<NodeId>, source: NodeId) {
-    match cx.ast.node(source) {
-        Node::Group {
-            children,
-            kind: GroupKind::Implicit,
-            mode: ContentMode::Math,
-        } => {
-            let children = children.clone();
-            out.extend(
-                children
-                    .into_iter()
-                    .map(|child| cx.ast.clone_subtree(child)),
-            );
-        }
-        _ => out.push(cx.ast.clone_subtree(source)),
-    }
-}
-
-/// Creates an implicit math group containing `children`.
-pub fn implicit_math_group(cx: &mut RuleContext<'_>, children: Vec<NodeId>) -> NodeId {
-    cx.ast.new_node(Node::Group {
-        children,
-        kind: GroupKind::Implicit,
-        mode: ContentMode::Math,
-    })
-}
-
-/// Creates a scripted node with only a superscript.
-pub fn superscript(cx: &mut RuleContext<'_>, base: NodeId, superscript: NodeId) -> NodeId {
-    cx.ast.new_node(Node::Scripted {
-        base,
-        subscript: None,
-        superscript: Some(superscript),
-    })
-}
-
-/// Replaces `node_id` and removes any old child subtrees detached by the replacement.
-pub fn replace_node_discarding_detached_children(
-    cx: &mut RuleContext<'_>,
-    node_id: NodeId,
-    replacement: Node,
-) {
-    let old_children: Vec<NodeId> = cx
-        .ast
-        .edges(node_id)
-        .into_iter()
-        .map(|(child, _)| child)
-        .collect();
-    cx.ast.replace_node(node_id, replacement);
-    for child in old_children {
-        if cx.ast.parent(child).is_none() {
-            cx.ast.remove_detached(child);
-        }
-    }
-}
-
-/// Replaces a node with a math-mode sequence.
-///
-/// If `node_id` is a group child, `before` and `after` are inserted as real
-/// siblings around the replacement. In single-child slots, the sequence is
-/// wrapped in an implicit math group because those slots cannot hold siblings.
-pub fn replace_with_math_sequence(
-    cx: &mut RuleContext<'_>,
-    node_id: NodeId,
-    before: Vec<NodeId>,
-    replacement: Node,
-    after: Vec<NodeId>,
-) {
-    match cx.ast.parent(node_id).map(|link| link.slot) {
-        Some(Slot::GroupChild(index)) => {
-            let parent = cx
-                .ast
-                .parent_id(node_id)
-                .expect("group child should have a parent");
-            let before_len = before.len();
-
-            replace_node_discarding_detached_children(cx, node_id, replacement);
-            for (offset, child) in before.into_iter().enumerate() {
-                cx.ast.insert_child(parent, index + offset, child);
-            }
-            for (offset, child) in after.into_iter().enumerate() {
-                cx.ast
-                    .insert_child(parent, index + before_len + 1 + offset, child);
-            }
-        }
-        _ => {
-            let old_children: Vec<NodeId> = cx
-                .ast
-                .edges(node_id)
-                .into_iter()
-                .map(|(child, _)| child)
-                .collect();
-
-            cx.ast.replace_node(node_id, Node::Text(String::new()));
-            let replacement = cx.ast.new_node(replacement);
-            let mut children = before;
-            children.push(replacement);
-            children.extend(after);
-
-            replace_node_discarding_detached_children(
-                cx,
-                node_id,
-                Node::Group {
-                    children,
-                    kind: GroupKind::Implicit,
-                    mode: ContentMode::Math,
-                },
-            );
-
-            for child in old_children {
-                if cx.ast.parent(child).is_none() {
-                    cx.ast.remove_detached(child);
-                }
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{GroupKind, Node};
+    use crate::ast::Node;
     use crate::parse::ParseContext;
     use crate::transform::engine::TransformReport;
     use crate::transform::rule::{PackageName, RuleKey};
@@ -325,131 +200,5 @@ mod tests {
             optional_math_content(TEST_RULE, &cx, &None, r"\example", "order").unwrap(),
             None
         );
-    }
-
-    #[test]
-    fn append_cloned_math_content_flattens_implicit_groups() {
-        let parse_ctx = ParseContext::from_packages(&["base"]);
-        let mut report = TransformReport {
-            applied: Vec::new(),
-            iterations: 0,
-        };
-        let mut ast = crate::ast::Ast::new();
-        let x = ast.new_node(Node::Char('x'));
-        let y = ast.new_node(Node::Char('y'));
-        let source = ast.new_node(Node::Group {
-            children: vec![x, y],
-            kind: GroupKind::Implicit,
-            mode: ContentMode::Math,
-        });
-        let mut cx = RuleContext::new(
-            &mut ast,
-            parse_ctx.math_kb(),
-            parse_ctx.text_kb(),
-            &mut report,
-        );
-        let mut out = Vec::new();
-
-        append_cloned_math_content(&mut cx, &mut out, source);
-
-        assert_eq!(out.len(), 2);
-        assert_ne!(out[0], x);
-        assert_ne!(out[1], y);
-        assert_eq!(cx.ast.node(out[0]), &Node::Char('x'));
-        assert_eq!(cx.ast.node(out[1]), &Node::Char('y'));
-        assert_eq!(cx.ast.parent(out[0]), None);
-        assert_eq!(cx.ast.parent(out[1]), None);
-        cx.ast.assert_invariants();
-    }
-
-    #[test]
-    fn constructs_common_math_nodes() {
-        let parse_ctx = ParseContext::from_packages(&["base"]);
-        let mut report = TransformReport {
-            applied: Vec::new(),
-            iterations: 0,
-        };
-        let mut ast = crate::ast::Ast::new();
-        let x = ast.new_node(Node::Char('x'));
-        let y = ast.new_node(Node::Char('y'));
-        let base = ast.new_node(Node::Char('a'));
-        let power = ast.new_node(Node::Char('2'));
-        let mut cx = RuleContext::new(
-            &mut ast,
-            parse_ctx.math_kb(),
-            parse_ctx.text_kb(),
-            &mut report,
-        );
-
-        let group = implicit_math_group(&mut cx, vec![x, y]);
-        let scripted = superscript(&mut cx, base, power);
-
-        assert_eq!(
-            cx.ast.node(group),
-            &Node::Group {
-                children: vec![x, y],
-                kind: GroupKind::Implicit,
-                mode: ContentMode::Math,
-            }
-        );
-        assert_eq!(cx.ast.parent_id(x), Some(group));
-        assert_eq!(cx.ast.parent_id(y), Some(group));
-        assert_eq!(
-            cx.ast.node(scripted),
-            &Node::Scripted {
-                base,
-                subscript: None,
-                superscript: Some(power),
-            }
-        );
-        assert_eq!(cx.ast.parent_id(base), Some(scripted));
-        assert_eq!(cx.ast.parent_id(power), Some(scripted));
-        cx.ast.assert_invariants();
-    }
-
-    #[test]
-    fn replace_node_discarding_detached_children_removes_old_subtree() {
-        let parse_ctx = ParseContext::from_packages(&["base"]);
-        let mut report = TransformReport {
-            applied: Vec::new(),
-            iterations: 0,
-        };
-        let mut ast = crate::ast::Ast::new();
-        let old_child = ast.new_node(Node::Char('x'));
-        let old_grandchild = ast.new_node(Node::Char('y'));
-        let old_child = ast.new_node(Node::Group {
-            children: vec![old_child, old_grandchild],
-            kind: GroupKind::Implicit,
-            mode: ContentMode::Math,
-        });
-        let target = ast.new_node(Node::Group {
-            children: vec![old_child],
-            kind: GroupKind::Implicit,
-            mode: ContentMode::Math,
-        });
-        ast.append_child(ast.root(), target);
-        let new_child = ast.new_node(Node::Char('z'));
-        let mut cx = RuleContext::new(
-            &mut ast,
-            parse_ctx.math_kb(),
-            parse_ctx.text_kb(),
-            &mut report,
-        );
-
-        replace_node_discarding_detached_children(
-            &mut cx,
-            target,
-            Node::Group {
-                children: vec![new_child],
-                kind: GroupKind::Implicit,
-                mode: ContentMode::Math,
-            },
-        );
-
-        assert!(!cx.ast.contains(old_child));
-        assert!(!cx.ast.contains(old_grandchild));
-        assert_eq!(cx.ast.parent_id(new_child), Some(target));
-        assert_eq!(cx.ast.children(target), &[new_child]);
-        cx.ast.assert_invariants();
     }
 }

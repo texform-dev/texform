@@ -4,10 +4,6 @@ use crate::ast::{
     ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind, Node, NodeId,
 };
 use crate::transform::engine::TransformError;
-use crate::transform::helpers::{
-    append_cloned_math_content, replace_node_discarding_detached_children,
-    replace_with_math_sequence,
-};
 use crate::transform::rule::RuleKey;
 use crate::transform::rule_context::RuleContext;
 
@@ -34,16 +30,20 @@ pub(super) fn required_math_arg(
 
 pub(super) fn replace_with_fixed_bra(cx: &mut RuleContext<'_>, node_id: NodeId, body: NodeId) {
     let mut after = Vec::new();
-    append_cloned_math_content(cx, &mut after, body);
+    cx.ast.append_cloned_math_content(&mut after, body);
     after.push(cx.ast.new_node(control("vert")));
-    replace_with_math_sequence(cx, node_id, Vec::new(), control("langle"), after);
+    let replacement = cx.ast.new_node(control("langle"));
+    cx.ast
+        .replace_with_math_sequence(node_id, Vec::new(), replacement, after);
 }
 
 pub(super) fn replace_with_fixed_ket(cx: &mut RuleContext<'_>, node_id: NodeId, body: NodeId) {
     let mut after = Vec::new();
-    append_cloned_math_content(cx, &mut after, body);
+    cx.ast.append_cloned_math_content(&mut after, body);
     after.push(cx.ast.new_node(control("rangle")));
-    replace_with_math_sequence(cx, node_id, Vec::new(), control("vert"), after);
+    let replacement = cx.ast.new_node(control("vert"));
+    cx.ast
+        .replace_with_math_sequence(node_id, Vec::new(), replacement, after);
 }
 
 pub(super) fn replace_with_braket(cx: &mut RuleContext<'_>, node_id: NodeId, body: NodeId) {
@@ -56,10 +56,8 @@ pub(super) fn replace_with_braket(cx: &mut RuleContext<'_>, node_id: NodeId, bod
 
 fn replace_with_angle_group(cx: &mut RuleContext<'_>, node_id: NodeId, body: NodeId) {
     let mut children = Vec::new();
-    append_cloned_math_content(cx, &mut children, body);
-    replace_node_discarding_detached_children(
-        cx,
-        node_id,
+    cx.ast.append_cloned_math_content(&mut children, body);
+    cx.ast.replace_node_drop_detached_children(node_id,
         Node::Group {
             children,
             kind: GroupKind::Delimited {
@@ -78,12 +76,10 @@ fn replace_with_middle_braket(
     right: NodeId,
 ) {
     let mut children = Vec::new();
-    append_cloned_math_content(cx, &mut children, left);
+    cx.ast.append_cloned_math_content(&mut children, left);
     children.push(cx.ast.new_node(middle_vert()));
-    append_cloned_math_content(cx, &mut children, right);
-    replace_node_discarding_detached_children(
-        cx,
-        node_id,
+    cx.ast.append_cloned_math_content(&mut children, right);
+    cx.ast.replace_node_drop_detached_children(node_id,
         Node::Group {
             children,
             kind: GroupKind::Delimited {

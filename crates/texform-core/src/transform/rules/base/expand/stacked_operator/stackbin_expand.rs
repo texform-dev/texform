@@ -18,7 +18,7 @@
 use texform_specs::builtin::base;
 
 use super::helpers::stacked_operator_command;
-use crate::transform::helpers::{replace_node_discarding_detached_children, required_math_content};
+use crate::transform::helpers::required_math_content;
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -49,7 +49,7 @@ define_rule! {
             let operator = cx.ast.clone_subtree(operator);
             let replacement = stacked_operator_command(cx, &base::cmd::MATHBIN, operator, above);
 
-            replace_node_discarding_detached_children(cx, node_id, replacement);
+            cx.ast.replace_node_drop_detached_children(node_id, replacement);
             Ok(RuleEffect::Applied)
         }
     }

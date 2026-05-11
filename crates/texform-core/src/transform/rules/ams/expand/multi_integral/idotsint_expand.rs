@@ -21,9 +21,7 @@ use texform_specs::builtin::base;
 use texform_specs::specs::BuiltinCharacterRecord;
 
 use crate::ast::{ContentMode, Node, NodeId, Slot};
-use crate::transform::helpers::{
-    implicit_math_group, mandatory_content, prefix_command, replace_with_math_sequence,
-};
+use crate::transform::helpers::{mandatory_content, prefix_command_node};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -135,12 +133,12 @@ fn replace_idotsint_followed_by_scripted_limits(
     let limits_with_scripts = Node::Scripted {
         base: cx
             .ast
-            .new_node(prefix_command(&base::cmd::LIMITS, Vec::new())),
+            .new_node(prefix_command_node(&base::cmd::LIMITS, Vec::new())),
         subscript,
         superscript,
     };
     let mathop_body = explicit_multi_integral_body(cx);
-    let mathop = prefix_command(
+    let mathop = prefix_command_node(
         &base::cmd::MATHOP,
         vec![mandatory_content(mathop_body, ContentMode::Math)],
     );
@@ -165,10 +163,8 @@ fn explicit_multi_integral_body(cx: &mut crate::transform::rule_context::RuleCon
     let first_int = cx.ast.new_node(integral_command());
     let cdots = cx.ast.new_node(cdots_command());
     let second_int = cx.ast.new_node(integral_command());
-    implicit_math_group(
-        cx,
-        vec![first_space, second_space, first_int, cdots, second_int],
-    )
+    cx.ast
+        .implicit_math_group(vec![first_space, second_space, first_int, cdots, second_int])
 }
 
 fn clone_script_attachments(
@@ -192,7 +188,9 @@ fn replace_with_math_nodes(
         .next()
         .expect("idotsint expansions always emit at least one node");
     let after = nodes.map(|node| cx.ast.new_node(node)).collect();
-    replace_with_math_sequence(cx, node_id, Vec::new(), replacement, after);
+    let replacement = cx.ast.new_node(replacement);
+    cx.ast
+        .replace_with_math_sequence(node_id, Vec::new(), replacement, after);
 }
 
 fn character_command(record: &'static BuiltinCharacterRecord) -> Node {
@@ -206,11 +204,11 @@ fn character_command(record: &'static BuiltinCharacterRecord) -> Node {
 }
 
 fn negative_thin_space_command() -> Node {
-    prefix_command(&base::cmd::_EXCLAMATION, Vec::new())
+    prefix_command_node(&base::cmd::_EXCLAMATION, Vec::new())
 }
 
 fn thin_space_command() -> Node {
-    prefix_command(&base::cmd::_COMMA, Vec::new())
+    prefix_command_node(&base::cmd::_COMMA, Vec::new())
 }
 
 fn integral_command() -> Node {

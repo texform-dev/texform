@@ -16,7 +16,7 @@ use texform_specs::builtin::ams;
 use texform_specs::builtin::physics;
 
 use crate::ast::{ContentMode, GroupKind, Node};
-use crate::transform::helpers::{mandatory_content, prefix_command, star};
+use crate::transform::helpers::{mandatory_content, prefix_command_node, star};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -53,7 +53,7 @@ define_rule! {
             });
             cx.ast.replace_node(
                 node_id,
-                prefix_command(
+                prefix_command_node(
                     &ams::cmd::OPERATORNAME,
                     vec![
                         star(false),

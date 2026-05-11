@@ -5,7 +5,7 @@ use crate::ast::{
     NodeId,
 };
 use crate::transform::engine::TransformError;
-use crate::transform::helpers::{mandatory_content, prefix_command};
+use crate::transform::helpers::{mandatory_content, prefix_command_node};
 use crate::transform::rule::RuleKey;
 use crate::transform::rule_context::RuleContext;
 
@@ -125,15 +125,5 @@ pub(super) fn replace_infix_with_command(
     command: &'static BuiltinCommandRecord,
     args: Vec<ArgumentSlot>,
 ) {
-    replace_stacked_infix(cx, node_id, prefix_command(command, args));
-}
-
-pub(super) fn subtree_contains_command(
-    cx: &RuleContext<'_>,
-    node_id: NodeId,
-    command_name: &str,
-) -> bool {
-    cx.ast.find(node_id, |node| {
-        matches!(node, Node::Command { name, .. } if name == command_name)
-    }).is_some()
+    replace_stacked_infix(cx, node_id, prefix_command_node(command, args));
 }

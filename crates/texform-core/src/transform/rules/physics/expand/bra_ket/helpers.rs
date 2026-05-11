@@ -5,10 +5,6 @@ use crate::ast::{
     Slot,
 };
 use crate::transform::engine::TransformError;
-use crate::transform::helpers::{
-    append_cloned_math_content, replace_node_discarding_detached_children,
-    replace_with_math_sequence,
-};
 use crate::transform::rule::RuleKey;
 use crate::transform::rule_context::RuleContext;
 
@@ -193,7 +189,7 @@ fn replace_with_angle_bar_parts(
                 if index > 0 {
                     after.push(cx.ast.new_node(control("vert")));
                 }
-                append_cloned_math_content(cx, &mut after, *part);
+                cx.ast.append_cloned_math_content(&mut after, *part);
             }
             after.push(cx.ast.new_node(control("rangle")));
             replace_with_fixed_sequence(cx, node_id, vec![control("langle")], after);
@@ -207,11 +203,9 @@ fn replace_with_middle_group(cx: &mut RuleContext<'_>, node_id: NodeId, parts: &
         if index > 0 {
             children.push(cx.ast.new_node(middle_vert()));
         }
-        append_cloned_math_content(cx, &mut children, *part);
+        cx.ast.append_cloned_math_content(&mut children, *part);
     }
-    replace_node_discarding_detached_children(
-        cx,
-        node_id,
+    cx.ast.replace_node_drop_detached_children(node_id,
         Node::Group {
             children,
             kind: GroupKind::Delimited {
@@ -235,7 +229,7 @@ fn replace_with_split_auto_angle_bar_parts(
         Delimiter::Control("vert".to_string()),
     );
     let mut after = Vec::new();
-    append_cloned_math_content(cx, &mut after, parts[1]);
+    cx.ast.append_cloned_math_content(&mut after, parts[1]);
     let last = delimited_node(
         cx,
         Delimiter::Control("vert".to_string()),
@@ -244,7 +238,9 @@ fn replace_with_split_auto_angle_bar_parts(
     );
     after.push(cx.ast.new_node(last));
 
-    replace_with_math_sequence(cx, node_id, Vec::new(), first, after);
+    let first = cx.ast.new_node(first);
+    cx.ast
+        .replace_with_math_sequence(node_id, Vec::new(), first, after);
 }
 
 fn replace_with_delimited_group(
@@ -256,11 +252,9 @@ fn replace_with_delimited_group(
 ) {
     let mut children = Vec::new();
     for part in parts {
-        append_cloned_math_content(cx, &mut children, part);
+        cx.ast.append_cloned_math_content(&mut children, part);
     }
-    replace_node_discarding_detached_children(
-        cx,
-        node_id,
+    cx.ast.replace_node_drop_detached_children(node_id,
         Node::Group {
             children,
             kind: GroupKind::Delimited { left, right },
@@ -271,7 +265,7 @@ fn replace_with_delimited_group(
 
 fn delimited_node(cx: &mut RuleContext<'_>, left: Delimiter, body: NodeId, right: Delimiter) -> Node {
     let mut children = Vec::new();
-    append_cloned_math_content(cx, &mut children, body);
+    cx.ast.append_cloned_math_content(&mut children, body);
     Node::Group {
         children,
         kind: GroupKind::Delimited { left, right },
@@ -301,14 +295,14 @@ fn replace_with_fixed_sequence(
     if matches!(cx.ast.slot(node_id), Some(Slot::ScriptBase)) {
         replace_scripted_base_with_sequence(cx, node_id, before_nodes, first, after);
     } else {
-        replace_with_math_sequence(cx, node_id, before_nodes, cx.ast.node(first).clone(), after);
-        cx.ast.remove_detached(first);
+        cx.ast
+            .replace_with_math_sequence(node_id, before_nodes, first, after);
     }
 }
 
 fn fixed_parts(cx: &mut RuleContext<'_>, body: NodeId, close: Node) -> Vec<NodeId> {
     let mut parts = Vec::new();
-    append_cloned_math_content(cx, &mut parts, body);
+    cx.ast.append_cloned_math_content(&mut parts, body);
     parts.push(cx.ast.new_node(close));
     parts
 }
@@ -344,8 +338,7 @@ fn replace_scripted_base_with_sequence(
         superscript,
     });
     after.push(scripted_last);
-    replace_with_math_sequence(cx, parent, before, cx.ast.node(first).clone(), after);
-    cx.ast.remove_detached(first);
+    cx.ast.replace_with_math_sequence(parent, before, first, after);
 }
 
 fn middle_vert() -> Node {

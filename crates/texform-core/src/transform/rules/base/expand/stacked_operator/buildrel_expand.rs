@@ -19,10 +19,7 @@ use texform_specs::builtin::base;
 
 use super::helpers::stacked_operator_command;
 use crate::ast::{ContentMode, GroupKind, Node, NodeId, Slot};
-use crate::transform::helpers::{
-    append_cloned_math_content, implicit_math_group, replace_with_math_sequence,
-    required_math_content,
-};
+use crate::transform::helpers::required_math_content;
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -87,7 +84,7 @@ define_rule! {
             }
 
             let mut above_parts = Vec::new();
-            append_cloned_math_content(cx, &mut above_parts, above_head);
+            cx.ast.append_cloned_math_content(&mut above_parts, above_head);
             for &child in &left_children[buildrel_index + 1..] {
                 above_parts.push(cx.ast.clone_subtree(child));
             }
@@ -100,8 +97,10 @@ define_rule! {
                 .map(|child| cx.ast.clone_subtree(child))
                 .collect();
             let replacement = stacked_operator_command(cx, &base::cmd::MATHREL, operator, above);
+            let replacement = cx.ast.new_node(replacement);
 
-            replace_with_math_sequence(cx, over_id, before, replacement, after);
+            cx.ast
+                .replace_with_math_sequence(over_id, before, replacement, after);
             Ok(RuleEffect::Applied)
         }
     }
@@ -111,7 +110,7 @@ fn math_content_from_parts(cx: &mut crate::transform::rule_context::RuleContext<
     if parts.len() == 1 {
         parts.pop().expect("single-part vector should have one item")
     } else {
-        implicit_math_group(cx, parts)
+        cx.ast.implicit_math_group(parts)
     }
 }
 

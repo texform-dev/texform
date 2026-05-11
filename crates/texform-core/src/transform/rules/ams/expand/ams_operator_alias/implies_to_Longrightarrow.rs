@@ -16,7 +16,6 @@ use texform_specs::builtin::ams;
 use texform_specs::builtin::base;
 
 use crate::ast::Node;
-use crate::transform::helpers::replace_with_math_sequence;
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -51,12 +50,12 @@ define_rule! {
             cx.expect_no_args(rule.meta().key, command.args, "\\implies")?;
 
             let left_spacing = cx.ast.new_node(zero_arg_command(base::cmd::_SEMICOLON.name));
+            let arrow = cx.ast.new_node(zero_arg_command("Longrightarrow"));
             let right_spacing = cx.ast.new_node(zero_arg_command(base::cmd::_SEMICOLON.name));
-            replace_with_math_sequence(
-                cx,
+            cx.ast.replace_with_math_sequence(
                 node_id,
                 vec![left_spacing],
-                zero_arg_command("Longrightarrow"),
+                arrow,
                 vec![right_spacing],
             );
             Ok(RuleEffect::Applied)

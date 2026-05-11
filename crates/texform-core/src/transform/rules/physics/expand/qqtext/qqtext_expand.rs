@@ -21,9 +21,9 @@
 use texform_specs::builtin::base;
 use texform_specs::builtin::physics;
 
-use crate::ast::{ArgumentKind, ArgumentSlot, ArgumentValue, Node};
+use crate::ast::{Argument, ArgumentKind, ArgumentSlot, ArgumentValue, Node};
 use crate::transform::engine::TransformError;
-use crate::transform::helpers::{prefix_command, replace_with_math_sequence, star_arg_value};
+use crate::transform::helpers::{prefix_command_node, star_arg_value};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces, TransformRule};
 use crate::transform::rule_context::RuleContext;
 use crate::transform::{cmd_targets, define_rule};
@@ -75,21 +75,27 @@ fn expand_qqtext_like(
 
 fn text_argument(
     rule: &QqtextExpandRule,
-    cx: &RuleContext<'_>,
+    cx: &mut RuleContext<'_>,
     slot: &ArgumentSlot,
     subject: &str,
 ) -> Result<ArgumentSlot, TransformError> {
     match slot {
-        Some(arg)
-            if arg.kind == ArgumentKind::Mandatory
-                && matches!(arg.value, ArgumentValue::TextContent(_)) =>
-        {
-            Ok(Some(arg.clone()))
+        Some(arg) if arg.kind == ArgumentKind::Mandatory => match arg.value {
+            ArgumentValue::TextContent(node_id) => Ok(Some(Argument {
+                kind: arg.kind.clone(),
+                value: ArgumentValue::TextContent(cx.ast.clone_subtree(node_id)),
+            })),
+            _ => Err(cx.invalid_shape(
+                rule.meta().key,
+                format!("{subject} should carry a mandatory text argument"),
+            )),
+        },
+        _ => {
+            Err(cx.invalid_shape(
+                rule.meta().key,
+                format!("{subject} should carry a mandatory text argument"),
+            ))
         }
-        _ => Err(cx.invalid_shape(
-            rule.meta().key,
-            format!("{subject} should carry a mandatory text argument"),
-        )),
     }
 }
 
@@ -102,14 +108,16 @@ fn replace_with_text_sequence(
     let before = if starred {
         Vec::new()
     } else {
-        vec![cx.ast.new_node(prefix_command(&base::cmd::QUAD, Vec::new()))]
+        vec![cx.ast.new_node(prefix_command_node(&base::cmd::QUAD, Vec::new()))]
     };
-    let after = vec![cx.ast.new_node(prefix_command(&base::cmd::QUAD, Vec::new()))];
-    replace_with_math_sequence(
-        cx,
+    let after = vec![cx.ast.new_node(prefix_command_node(&base::cmd::QUAD, Vec::new()))];
+    let text_command = cx
+        .ast
+        .new_node(prefix_command_node(&base::cmd::TEXT, vec![text_arg]));
+    cx.ast.replace_with_math_sequence(
         node_id,
         before,
-        prefix_command(&base::cmd::TEXT, vec![text_arg]),
+        text_command,
         after,
     );
 }

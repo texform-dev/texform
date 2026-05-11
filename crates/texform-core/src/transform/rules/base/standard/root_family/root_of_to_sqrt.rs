@@ -15,7 +15,7 @@
 use texform_specs::builtin::base;
 
 use crate::ast::{Argument, ArgumentKind, ArgumentValue, ContentMode, GroupKind, Node, NodeId, Slot};
-use crate::transform::helpers::{mandatory_content, prefix_command, required_math_content};
+use crate::transform::helpers::{mandatory_content, prefix_command_node, required_math_content};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleKey, RuleProduces};
 use crate::transform::rule_context::RuleContext;
 use crate::transform::{cmd_targets, define_rule};
@@ -118,7 +118,7 @@ fn rewrite_root_of(
 
     cx.ast.replace_node(
         node_id,
-        prefix_command(
+        prefix_command_node(
             &base::cmd::SQRT,
             vec![
                 Some(Argument {
