@@ -606,133 +606,6 @@ fn content_mode_to_string(mode: ContentMode) -> &'static str {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use texform_core::parse::{PackageLoadError, ParseContextBuildError};
-
-    fn custom_command_context() -> ParseContext {
-        ParseContext {
-            inner: texform_core::parse::ParseContextBuilder::default()
-                .insert_item(CommandItem::new(
-                    "probe",
-                    CommandKind::Prefix,
-                    AllowedMode::Math,
-                    "m",
-                ))
-                .build()
-                .expect("custom parse context should build"),
-        }
-    }
-
-    #[test]
-    fn serialize_rejects_diagnostics_bearing_parse_results() {
-        let output = api::parse_latex(r"\unknowncmd", true);
-
-        let err = prepare_parse_output_for_serialize(&output)
-            .expect_err("should reject diagnostics-bearing parse results");
-        assert_eq!(err, SerializePrepareError::DiagnosticsPresent);
-    }
-
-    #[test]
-    fn package_load_build_errors_keep_package_loading_prefix() {
-        let error = format_parse_context_build_error(ParseContextBuildError::PackageLoad(
-            PackageLoadError::UnknownPackage {
-                name: "missing".to_string(),
-            },
-        ));
-
-        assert_eq!(error, "package loading failed: unknown package: missing");
-    }
-
-    #[test]
-    fn invalid_context_item_build_errors_include_item_name() {
-        let error = format_parse_context_build_error(ParseContextBuildError::InvalidContextItem {
-            name: "foo".to_string(),
-            source: texform_core::parse::ArgSpecParseError {
-                context: "foo".to_string(),
-                char_index: 0,
-                message: "expected argument kind".to_string(),
-            },
-        });
-
-        assert_eq!(
-            error,
-            "spec validation failed for foo: invalid argspec (foo) at char 0: expected argument kind"
-        );
-    }
-
-    #[test]
-    fn empty_package_list_is_not_treated_like_default_packages() {
-        let default_ctx =
-            ParseContext::new(None, None).expect("default parse context should build");
-        let empty_packages_ctx = ParseContext::new(Some(vec![]), None)
-            .expect("empty package list parse context should build");
-        let explicit_braket_ctx = ParseContext::new(Some(vec!["braket".into()]), None)
-            .expect("explicit braket parse context should build");
-
-        assert!(
-            default_ctx
-                .inner
-                .lookup_command("frac", ContentMode::Math)
-                .is_some()
-        );
-        assert!(
-            default_ctx
-                .inner
-                .lookup_command("Bra", ContentMode::Math)
-                .is_none()
-        );
-        assert!(
-            empty_packages_ctx
-                .inner
-                .lookup_command("frac", ContentMode::Math)
-                .is_none()
-        );
-        assert!(
-            explicit_braket_ctx
-                .inner
-                .lookup_command("Bra", ContentMode::Math)
-                .is_some()
-        );
-    }
-
-    #[test]
-    fn parse_context_serialize_uses_context_items() {
-        let ctx = custom_command_context();
-        let global_output = api::parse_latex(r"\probe{x}", true);
-
-        let global_err = prepare_parse_output_for_serialize(&global_output)
-            .expect_err("global parse path should reject the custom command");
-        assert_eq!(global_err, SerializePrepareError::DiagnosticsPresent);
-
-        let output = ctx
-            .serialize(r"\probe{x}", Some(true), None)
-            .expect("custom command should serialize with instance context");
-
-        assert_eq!(output, r"\probe { x }");
-    }
-
-    #[test]
-    fn lookup_command_is_mode_specific() {
-        let ctx = ParseContext::new(Some(vec!["base".into(), "textmacros".into()]), None)
-            .expect("parse context should build");
-
-        let math = ctx
-            .lookup_command_meta("underline", "math")
-            .expect("math lookup should succeed")
-            .expect("underline should be known in math mode");
-        let text = ctx
-            .lookup_command_meta("underline", "text")
-            .expect("text lookup should succeed")
-            .expect("underline should be known in text mode");
-
-        assert_eq!(math.argspec.source, "m");
-        assert_eq!(text.argspec.source, "m:T");
-        assert!(ctx.knows_command_name("underline"));
-    }
-}
-
 fn command_meta_to_js(meta: &ActiveCommandRecord) -> JsValue {
     let value = js_sys::Object::new();
     js_sys::Reflect::set(&value, &"name".into(), &meta.name.into()).unwrap();
@@ -962,4 +835,131 @@ fn delimiter_token_to_js(token: &DelimiterToken) -> JsValue {
         }
     }
     value.into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use texform_core::parse::{PackageLoadError, ParseContextBuildError};
+
+    fn custom_command_context() -> ParseContext {
+        ParseContext {
+            inner: texform_core::parse::ParseContextBuilder::default()
+                .insert_item(CommandItem::new(
+                    "probe",
+                    CommandKind::Prefix,
+                    AllowedMode::Math,
+                    "m",
+                ))
+                .build()
+                .expect("custom parse context should build"),
+        }
+    }
+
+    #[test]
+    fn serialize_rejects_diagnostics_bearing_parse_results() {
+        let output = api::parse_latex(r"\unknowncmd", true);
+
+        let err = prepare_parse_output_for_serialize(&output)
+            .expect_err("should reject diagnostics-bearing parse results");
+        assert_eq!(err, SerializePrepareError::DiagnosticsPresent);
+    }
+
+    #[test]
+    fn package_load_build_errors_keep_package_loading_prefix() {
+        let error = format_parse_context_build_error(ParseContextBuildError::PackageLoad(
+            PackageLoadError::UnknownPackage {
+                name: "missing".to_string(),
+            },
+        ));
+
+        assert_eq!(error, "package loading failed: unknown package: missing");
+    }
+
+    #[test]
+    fn invalid_context_item_build_errors_include_item_name() {
+        let error = format_parse_context_build_error(ParseContextBuildError::InvalidContextItem {
+            name: "foo".to_string(),
+            source: texform_core::parse::ArgSpecParseError {
+                context: "foo".to_string(),
+                char_index: 0,
+                message: "expected argument kind".to_string(),
+            },
+        });
+
+        assert_eq!(
+            error,
+            "spec validation failed for foo: invalid argspec (foo) at char 0: expected argument kind"
+        );
+    }
+
+    #[test]
+    fn empty_package_list_is_not_treated_like_default_packages() {
+        let default_ctx =
+            ParseContext::new(None, None).expect("default parse context should build");
+        let empty_packages_ctx = ParseContext::new(Some(vec![]), None)
+            .expect("empty package list parse context should build");
+        let explicit_braket_ctx = ParseContext::new(Some(vec!["braket".into()]), None)
+            .expect("explicit braket parse context should build");
+
+        assert!(
+            default_ctx
+                .inner
+                .lookup_command("frac", ContentMode::Math)
+                .is_some()
+        );
+        assert!(
+            default_ctx
+                .inner
+                .lookup_command("Bra", ContentMode::Math)
+                .is_none()
+        );
+        assert!(
+            empty_packages_ctx
+                .inner
+                .lookup_command("frac", ContentMode::Math)
+                .is_none()
+        );
+        assert!(
+            explicit_braket_ctx
+                .inner
+                .lookup_command("Bra", ContentMode::Math)
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn parse_context_serialize_uses_context_items() {
+        let ctx = custom_command_context();
+        let global_output = api::parse_latex(r"\probe{x}", true);
+
+        let global_err = prepare_parse_output_for_serialize(&global_output)
+            .expect_err("global parse path should reject the custom command");
+        assert_eq!(global_err, SerializePrepareError::DiagnosticsPresent);
+
+        let output = ctx
+            .serialize(r"\probe{x}", Some(true), None)
+            .expect("custom command should serialize with instance context");
+
+        assert_eq!(output, r"\probe { x }");
+    }
+
+    #[test]
+    fn lookup_command_is_mode_specific() {
+        let ctx = ParseContext::new(Some(vec!["base".into(), "textmacros".into()]), None)
+            .expect("parse context should build");
+
+        let math = ctx
+            .lookup_command_meta("underline", "math")
+            .expect("math lookup should succeed")
+            .expect("underline should be known in math mode");
+        let text = ctx
+            .lookup_command_meta("underline", "text")
+            .expect("text lookup should succeed")
+            .expect("underline should be known in text mode");
+
+        assert_eq!(math.argspec.source, "m");
+        assert_eq!(text.argspec.source, "m:T");
+        assert!(ctx.knows_command_name("underline"));
+    }
 }

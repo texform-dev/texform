@@ -14,7 +14,7 @@ pub struct DatasetEntry {
 
 impl DatasetsConfig {
     pub fn load_from_yaml(yaml_path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
-        let content = std::fs::read_to_string(&yaml_path)
+        let content = std::fs::read_to_string(yaml_path)
             .map_err(|error| format!("failed to read {}: {error}", yaml_path.display()))?;
         Ok(serde_yaml::from_str(&content)?)
     }

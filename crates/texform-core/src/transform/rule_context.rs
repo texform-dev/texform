@@ -536,11 +536,10 @@ mod tests {
             value: ArgumentValue::MathContent(grouped),
         });
 
-        assert_eq!(
+        assert!(
             cx.for_rule(TEST_RULE)
                 .star_arg_value(&star, r"\example")
-                .unwrap(),
-            true
+                .unwrap()
         );
         assert_eq!(
             cx.for_rule(TEST_RULE)

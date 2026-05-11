@@ -290,24 +290,22 @@ fn run_datasets(
             .expect("summary was just pushed and must exist");
 
         if options.write {
-            if let Err(error) = output::write_summary(&results_root, &entry.slug, summary) {
+            if let Err(error) = output::write_summary(results_root, &entry.slug, summary) {
                 let message = format!("[{}] Failed to write summary: {error}", entry.slug);
                 if options.strict_errors {
                     return Err(message);
                 }
                 eprintln!("{message}");
             }
-            if let Some(ref commit) = commit_info {
-                if let Some(writer) = commit_writer
-                    && let Err(error) = writer.finish(summary, commit)
-                {
-                    let message =
-                        format!("[{}] Failed to write commit results: {error}", entry.slug);
-                    if options.strict_errors {
-                        return Err(message);
-                    }
-                    eprintln!("{message}");
+            if let Some(ref commit) = commit_info
+                && let Some(writer) = commit_writer
+                && let Err(error) = writer.finish(summary, commit)
+            {
+                let message = format!("[{}] Failed to write commit results: {error}", entry.slug);
+                if options.strict_errors {
+                    return Err(message);
                 }
+                eprintln!("{message}");
             }
         }
 
@@ -323,14 +321,14 @@ fn run_datasets(
 
     if !summaries.is_empty() {
         let overall = output::build_overall(&summaries);
-        if options.write {
-            if let Err(error) = output::write_overall(&results_root, &overall) {
-                let message = format!("Failed to write overall summary: {error}");
-                if options.strict_errors {
-                    return Err(message);
-                }
-                eprintln!("{message}");
+        if options.write
+            && let Err(error) = output::write_overall(results_root, &overall)
+        {
+            let message = format!("Failed to write overall summary: {error}");
+            if options.strict_errors {
+                return Err(message);
             }
+            eprintln!("{message}");
         }
 
         if total_tasks > 0 {
