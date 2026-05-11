@@ -1,4 +1,5 @@
 use clap::Parser;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
 use texform_bench::stats::ModeStats;
@@ -10,14 +11,28 @@ use texform_bench::{config, data, output, runner};
     about = "Benchmark texform parser on real-world corpora"
 )]
 struct Args {
+    /// Dataset configuration YAML. Defaults to the texform repo bench/datasets.yaml.
+    #[arg(long)]
+    datasets_yaml: Option<PathBuf>,
+
+    /// Result output directory. Defaults to a results/ directory next to datasets-yaml.
+    #[arg(long)]
+    results_root: Option<PathBuf>,
+
     #[arg(long = "dataset")]
     datasets: Vec<String>,
 
     #[arg(long)]
     limit: Option<usize>,
 
+    #[arg(long, hide = true, default_value_t = 0)]
+    offset: usize,
+
     #[arg(long, help = "Run without writing any result files")]
     dry_run: bool,
+
+    #[arg(long, hide = true)]
+    skip_commit_results: bool,
 
     #[arg(
         long,
@@ -49,11 +64,17 @@ fn main() -> ExitCode {
 }
 
 fn run(args: Args) -> Result<(), String> {
-    let bench_root = config::resolve_bench_root();
-    let results_root = bench_root.join("results");
-    let history_root = bench_root.join("history");
+    let datasets_yaml = args
+        .datasets_yaml
+        .clone()
+        .unwrap_or_else(config::default_datasets_yaml);
+    let results_root = args
+        .results_root
+        .clone()
+        .unwrap_or_else(|| config::default_results_root(&datasets_yaml));
+    let commits_root = results_root.join("commits");
 
-    let config = match config::DatasetsConfig::load(&bench_root) {
+    let config = match config::DatasetsConfig::load_from_yaml(&datasets_yaml) {
         Ok(config) => config,
         Err(error) => {
             return Err(format!("Failed to load datasets.yaml: {error}"));
@@ -61,7 +82,7 @@ fn run(args: Args) -> Result<(), String> {
     };
 
     if args.check {
-        return run_check(&args, &config, &bench_root, &results_root, &history_root);
+        return run_check(&args, &config, &datasets_yaml, &results_root, &commits_root);
     }
 
     let selected = config.filter_by_slugs(&args.datasets);
@@ -80,9 +101,9 @@ fn run(args: Args) -> Result<(), String> {
     run_datasets(
         &args,
         &selected,
-        &bench_root,
+        &datasets_yaml,
         &results_root,
-        &history_root,
+        &commits_root,
         RunOptions {
             write: !args.dry_run,
             strict_errors: false,
@@ -95,9 +116,9 @@ fn run(args: Args) -> Result<(), String> {
 fn run_check(
     args: &Args,
     config: &config::DatasetsConfig,
-    bench_root: &std::path::Path,
-    results_root: &std::path::Path,
-    history_root: &std::path::Path,
+    datasets_yaml: &Path,
+    results_root: &Path,
+    commits_root: &Path,
 ) -> Result<(), String> {
     if args.dry_run {
         return Err("--check cannot be combined with --dry-run".to_string());
@@ -121,9 +142,9 @@ fn run_check(
     let probe = run_datasets(
         args,
         &selected,
-        bench_root,
+        datasets_yaml,
         results_root,
-        history_root,
+        commits_root,
         RunOptions {
             write: false,
             strict_errors: true,
@@ -140,9 +161,9 @@ fn run_check(
     run_datasets(
         args,
         &config.datasets,
-        bench_root,
+        datasets_yaml,
         results_root,
-        history_root,
+        commits_root,
         RunOptions {
             write: true,
             strict_errors: true,
@@ -155,13 +176,13 @@ fn run_check(
 fn run_datasets(
     args: &Args,
     selected: &[config::DatasetEntry],
-    bench_root: &std::path::Path,
-    results_root: &std::path::Path,
-    history_root: &std::path::Path,
+    datasets_yaml: &Path,
+    results_root: &Path,
+    commits_root: &Path,
     options: RunOptions,
 ) -> Result<RunResult, String> {
     let latest_baseline = if options.write {
-        match output::latest_commit_baseline(&history_root) {
+        match output::latest_commit_baseline(commits_root) {
             Ok(baseline) => baseline,
             Err(error) => {
                 eprintln!("Failed to load latest benchmark baseline: {error}");
@@ -172,7 +193,7 @@ fn run_datasets(
         None
     };
 
-    let commit_info = if options.write {
+    let commit_info = if options.write && !args.skip_commit_results {
         Some(output::git_commit_info())
     } else {
         None
@@ -184,7 +205,7 @@ fn run_datasets(
     let mut ran_datasets = 0_usize;
 
     for entry in selected {
-        let data_path = bench_root.join(&entry.file);
+        let data_path = config::resolve_dataset_file(datasets_yaml, entry);
         match data::check_data_file(&data_path) {
             data::DataFileStatus::Missing => {
                 let message = format!(
@@ -212,12 +233,40 @@ fn run_datasets(
         }
 
         eprintln!(
-            "[{}] Loading formulas from {}...",
+            "[{}] Reading formulas from {}...",
             entry.slug,
             data_path.display()
         );
-        let records = match data::read_formula_records(&data_path, args.limit) {
-            Ok(records) => records,
+
+        let start = Instant::now();
+        let mut accumulator = output::SummaryAccumulator::new();
+        let mut commit_writer = if options.write {
+            commit_info
+                .as_ref()
+                .map(|commit| output::start_commit_results(commits_root, &entry.slug, commit))
+                .transpose()
+                .map_err(|error| {
+                    format!("[{}] Failed to create commit results: {error}", entry.slug)
+                })?
+        } else {
+            None
+        };
+        let records_read = match data::read_formula_record_batches(
+            &data_path,
+            args.offset,
+            args.limit,
+            |records| {
+                let results = runner::run_bench(&records);
+                if let Some(writer) = commit_writer.as_mut() {
+                    writer.write_batch_errors(&records, &results)?;
+                }
+                accumulator.append(&records, &results);
+                drop(results);
+                trim_allocator();
+                Ok(())
+            },
+        ) {
+            Ok(records_read) => records_read,
             Err(error) => {
                 let message = format!("[{}] Failed to read parquet: {error}", entry.slug);
                 if options.strict_errors {
@@ -227,16 +276,8 @@ fn run_datasets(
                 continue;
             }
         };
-        eprintln!(
-            "[{}] Loaded {} formulas, benchmarking...",
-            entry.slug,
-            records.len()
-        );
-
-        let start = Instant::now();
-        let results = runner::run_bench(&records);
         let elapsed = start.elapsed();
-        let summary = output::build_summary(&entry.slug, &records, &results);
+        let summary = accumulator.finish(&entry.slug);
 
         total_tasks += summary.total_tasks;
         total_strict_failed += summary.strict.failed;
@@ -257,14 +298,9 @@ fn run_datasets(
                 eprintln!("{message}");
             }
             if let Some(ref commit) = commit_info {
-                if let Err(error) = output::write_commit_results(
-                    &history_root,
-                    &entry.slug,
-                    summary,
-                    &records,
-                    &results,
-                    commit,
-                ) {
+                if let Some(writer) = commit_writer
+                    && let Err(error) = writer.finish(summary, commit)
+                {
                     let message =
                         format!("[{}] Failed to write commit results: {error}", entry.slug);
                     if options.strict_errors {
@@ -278,7 +314,7 @@ fn run_datasets(
         println!(
             "[{}] {} formulas in {:.1}s\n  {}\n  {}",
             entry.slug,
-            records.len(),
+            records_read,
             elapsed.as_secs_f64(),
             format_mode_stats("strict", &summary.strict),
             format_mode_stats("nonstrict", &summary.nonstrict),
@@ -333,6 +369,20 @@ fn run_datasets(
 
     Ok(RunResult { summaries })
 }
+
+#[cfg(target_os = "linux")]
+fn trim_allocator() {
+    unsafe extern "C" {
+        fn malloc_trim(pad: usize) -> i32;
+    }
+
+    unsafe {
+        malloc_trim(0);
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn trim_allocator() {}
 
 fn format_mode_stats(label: &str, stats: &ModeStats) -> String {
     format!(

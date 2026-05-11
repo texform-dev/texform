@@ -9,6 +9,7 @@ use std::path::Path;
 const LFS_POINTER_PREFIX: &[u8] = b"version https://git-lfs.github.com/spec/v1";
 const FORMULA_ID_COLUMN: &str = "formula_id";
 const FORMULA_COLUMN: &str = "formula";
+const RECORD_BATCH_SIZE: usize = 8_192;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FormulaRecord {
@@ -39,15 +40,29 @@ pub fn check_data_file(path: &Path) -> DataFileStatus {
     DataFileStatus::Ready
 }
 
-pub fn read_formula_records(
+pub fn read_formula_record_batches<F>(
     path: &Path,
+    offset: usize,
     limit: Option<usize>,
-) -> Result<Vec<FormulaRecord>, Box<dyn std::error::Error>> {
+    mut on_batch: F,
+) -> Result<usize, Box<dyn std::error::Error>>
+where
+    F: FnMut(Vec<FormulaRecord>) -> Result<(), Box<dyn std::error::Error>>,
+{
+    // The parquet reader honors with_offset/with_limit exactly, so callers do not need
+    // to re-check or truncate.
     let file = File::open(path)?;
-    let builder = ParquetRecordBatchReaderBuilder::try_new(file)?;
+    let mut builder =
+        ParquetRecordBatchReaderBuilder::try_new(file)?.with_batch_size(RECORD_BATCH_SIZE);
+    if offset > 0 {
+        builder = builder.with_offset(offset);
+    }
+    if let Some(limit) = limit {
+        builder = builder.with_limit(limit);
+    }
     let reader = builder.build()?;
 
-    let mut records = Vec::new();
+    let mut total_records = 0_usize;
     for batch in reader {
         let batch = batch?;
         let formula_id_column = batch.column_by_name(FORMULA_ID_COLUMN).ok_or_else(|| {
@@ -60,18 +75,17 @@ pub fn read_formula_records(
             .column_by_name(FORMULA_COLUMN)
             .ok_or_else(|| format!("column '{FORMULA_COLUMN}' not found in {}", path.display()))?;
 
-        let reached_limit = match (formula_id_column.data_type(), formula_column.data_type()) {
+        let mut records = Vec::with_capacity(batch.num_rows());
+        match (formula_id_column.data_type(), formula_column.data_type()) {
             (DataType::Utf8, DataType::Utf8) => collect_records(
                 formula_id_column.as_string::<i32>(),
                 formula_column.as_string::<i32>(),
                 &mut records,
-                limit,
             ),
             (DataType::LargeUtf8, DataType::LargeUtf8) => collect_records(
                 formula_id_column.as_string::<i64>(),
                 formula_column.as_string::<i64>(),
                 &mut records,
-                limit,
             ),
             (formula_id_type, formula_type) => {
                 return Err(format!(
@@ -80,22 +94,22 @@ pub fn read_formula_records(
                 )
                 .into())
             }
-        };
+        }
 
-        if reached_limit {
-            break;
+        if !records.is_empty() {
+            total_records += records.len();
+            on_batch(records)?;
         }
     }
 
-    Ok(records)
+    Ok(total_records)
 }
 
 fn collect_records<O: OffsetSizeTrait>(
     formula_ids: &GenericStringArray<O>,
     formulas: &GenericStringArray<O>,
     records: &mut Vec<FormulaRecord>,
-    limit: Option<usize>,
-) -> bool {
+) {
     debug_assert_eq!(formula_ids.len(), formulas.len());
 
     for index in 0..formula_ids.len() {
@@ -107,12 +121,5 @@ fn collect_records<O: OffsetSizeTrait>(
             formula_id: formula_ids.value(index).to_string(),
             formula: formulas.value(index).to_string(),
         });
-        if let Some(limit) = limit
-            && records.len() >= limit
-        {
-            return true;
-        }
     }
-
-    false
 }

@@ -211,22 +211,50 @@ impl RowBuffer {
             vec![dataset, formula_id, name, kind, count],
         )?)
     }
+}
 
-    /// Write the buffer to `path` as a single zstd-compressed parquet file.
-    pub fn write_parquet(self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+/// Streaming parquet writer for `RowBuffer` chunks.
+pub struct ParquetRowWriter {
+    writer: ArrowWriter<File>,
+    rows_written: usize,
+}
+
+impl ParquetRowWriter {
+    pub fn try_new(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let schema = Self::schema();
-        let batch = self.into_record_batch()?;
+        let schema = RowBuffer::schema();
         let file = File::create(path)?;
         let props = WriterProperties::builder()
             .set_compression(Compression::ZSTD(ZstdLevel::try_new(3)?))
             .build();
-        let mut writer = ArrowWriter::try_new(file, schema, Some(props))?;
-        writer.write(&batch)?;
-        writer.close()?;
+        let writer = ArrowWriter::try_new(file, schema, Some(props))?;
+        Ok(Self {
+            writer,
+            rows_written: 0,
+        })
+    }
+
+    pub fn write_buffer(&mut self, buffer: RowBuffer) -> Result<(), Box<dyn std::error::Error>> {
+        if buffer.is_empty() {
+            return Ok(());
+        }
+        let batch = buffer.into_record_batch()?;
+        self.write_batch(&batch)
+    }
+
+    // ArrowWriter cuts row groups at its configured `max_row_group_size` (default 1M rows),
+    // so callers only need to feed batches.
+    pub fn write_batch(&mut self, batch: &RecordBatch) -> Result<(), Box<dyn std::error::Error>> {
+        self.rows_written += batch.num_rows();
+        self.writer.write(batch)?;
         Ok(())
+    }
+
+    pub fn finish(self) -> Result<usize, Box<dyn std::error::Error>> {
+        self.writer.close()?;
+        Ok(self.rows_written)
     }
 }
 
@@ -310,7 +338,9 @@ mod tests {
 
         let mut buf = RowBuffer::new();
         buf.extend_from_counter("linxy", "abc123def456", &counter);
-        buf.write_parquet(tmp.path()).unwrap();
+        let mut writer = ParquetRowWriter::try_new(tmp.path()).unwrap();
+        writer.write_buffer(buf).unwrap();
+        writer.finish().unwrap();
 
         let file = std::fs::File::open(tmp.path()).unwrap();
         let reader = ParquetRecordBatchReaderBuilder::try_new(file)

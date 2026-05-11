@@ -34,4 +34,4 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
-        entry: cargo bench -p texform-bench --bench parse_corpus -- --dataset lf80m-benchmarks --check
+        entry: cargo run --release -p texform-bench --bin parse_corpus -- --dataset lf80m-benchmarks --check

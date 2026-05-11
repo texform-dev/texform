@@ -4,10 +4,6 @@ version.workspace = true
 edition.workspace = true
 publish = false
 
-[[bench]]
-name = "parse_corpus"
-harness = false
-
 [dependencies]
 texform-core.workspace = true
 texform-interface.workspace = true
@@ -23,6 +19,10 @@ clap = { version = "4.6.1", features = ["derive"] }
 
 [dev-dependencies]
 tempfile = "3"
+
+[[bin]]
+name = "parse_corpus"
+path = "src/bin/parse_corpus.rs"
 
 [[bin]]
 name = "texform-counter-dump"

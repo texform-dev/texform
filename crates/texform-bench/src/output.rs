@@ -13,6 +13,9 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use texform_core::parse::ParseDiagnostic;
 
+const HISTOGRAM_BUCKET_US: u128 = 10;
+const HISTOGRAM_BUCKET_COUNT: usize = 100_001;
+
 struct FixedPrecisionPrettyFormatter<'a> {
     inner: serde_json::ser::PrettyFormatter<'a>,
 }
@@ -113,13 +116,192 @@ pub struct Summary {
     pub strict: ModeStats,
     pub nonstrict: ModeStats,
     #[serde(skip, default)]
-    strict_durations: Vec<Duration>,
+    strict_duration_buckets: Vec<u32>,
     #[serde(skip, default)]
-    strict_oks: Vec<bool>,
+    strict_duration_ms_sum: f64,
     #[serde(skip, default)]
-    nonstrict_durations: Vec<Duration>,
+    strict_count: usize,
     #[serde(skip, default)]
-    nonstrict_oks: Vec<bool>,
+    strict_failed: usize,
+    #[serde(skip, default)]
+    nonstrict_duration_buckets: Vec<u32>,
+    #[serde(skip, default)]
+    nonstrict_duration_ms_sum: f64,
+    #[serde(skip, default)]
+    nonstrict_count: usize,
+    #[serde(skip, default)]
+    nonstrict_failed: usize,
+}
+
+#[derive(Debug, Default)]
+pub struct SummaryAccumulator {
+    total_tasks: usize,
+    strict_duration_buckets: Vec<u32>,
+    strict_duration_ms_sum: f64,
+    strict_count: usize,
+    strict_failed: usize,
+    nonstrict_duration_buckets: Vec<u32>,
+    nonstrict_duration_ms_sum: f64,
+    nonstrict_count: usize,
+    nonstrict_failed: usize,
+    strict_max: Option<(Duration, String)>,
+    nonstrict_max: Option<(Duration, String)>,
+}
+
+impl SummaryAccumulator {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn append(&mut self, records: &[FormulaRecord], results: &[FormulaResults]) {
+        debug_assert_eq!(records.len(), results.len());
+
+        self.total_tasks += records.len();
+        ensure_histogram(&mut self.strict_duration_buckets);
+        ensure_histogram(&mut self.nonstrict_duration_buckets);
+
+        for (record, result) in records.iter().zip(results.iter()) {
+            push_duration(&mut self.strict_duration_buckets, result.strict.duration);
+            self.strict_duration_ms_sum += result.strict.duration.as_secs_f64() * 1_000.0;
+            self.strict_count += 1;
+            if !result.strict.ok {
+                self.strict_failed += 1;
+            }
+
+            push_duration(
+                &mut self.nonstrict_duration_buckets,
+                result.nonstrict.duration,
+            );
+            self.nonstrict_duration_ms_sum += result.nonstrict.duration.as_secs_f64() * 1_000.0;
+            self.nonstrict_count += 1;
+            if !result.nonstrict.ok {
+                self.nonstrict_failed += 1;
+            }
+
+            if self
+                .strict_max
+                .as_ref()
+                .is_none_or(|(duration, _)| result.strict.duration > *duration)
+            {
+                self.strict_max = Some((result.strict.duration, record.formula_id.clone()));
+            }
+            if self
+                .nonstrict_max
+                .as_ref()
+                .is_none_or(|(duration, _)| result.nonstrict.duration > *duration)
+            {
+                self.nonstrict_max = Some((result.nonstrict.duration, record.formula_id.clone()));
+            }
+        }
+    }
+
+    pub fn finish(self, slug: &str) -> Summary {
+        let strict_max_duration = self.strict_max.as_ref().map(|(duration, _)| *duration);
+        let strict_max_formula_id = self
+            .strict_max
+            .as_ref()
+            .map(|(_, formula_id)| formula_id.clone());
+        let mut strict = mode_stats_from_histogram(
+            self.strict_count,
+            self.strict_failed,
+            self.strict_duration_ms_sum,
+            &self.strict_duration_buckets,
+            strict_max_duration,
+        );
+        strict.timing_ms.max_formula_id = strict_max_formula_id;
+
+        let nonstrict_max_duration = self.nonstrict_max.as_ref().map(|(duration, _)| *duration);
+        let nonstrict_max_formula_id = self
+            .nonstrict_max
+            .as_ref()
+            .map(|(_, formula_id)| formula_id.clone());
+        let mut nonstrict = mode_stats_from_histogram(
+            self.nonstrict_count,
+            self.nonstrict_failed,
+            self.nonstrict_duration_ms_sum,
+            &self.nonstrict_duration_buckets,
+            nonstrict_max_duration,
+        );
+        nonstrict.timing_ms.max_formula_id = nonstrict_max_formula_id;
+
+        Summary {
+            dataset: slug.to_string(),
+            dataset_row_count: self.total_tasks,
+            total_tasks: self.total_tasks,
+            completed: self.total_tasks,
+            strict,
+            nonstrict,
+            strict_duration_buckets: self.strict_duration_buckets,
+            strict_duration_ms_sum: self.strict_duration_ms_sum,
+            strict_count: self.strict_count,
+            strict_failed: self.strict_failed,
+            nonstrict_duration_buckets: self.nonstrict_duration_buckets,
+            nonstrict_duration_ms_sum: self.nonstrict_duration_ms_sum,
+            nonstrict_count: self.nonstrict_count,
+            nonstrict_failed: self.nonstrict_failed,
+        }
+    }
+}
+
+fn ensure_histogram(buckets: &mut Vec<u32>) {
+    if buckets.is_empty() {
+        buckets.resize(HISTOGRAM_BUCKET_COUNT, 0);
+    }
+}
+
+fn push_duration(buckets: &mut [u32], duration: Duration) {
+    let bucket = (duration.as_micros() / HISTOGRAM_BUCKET_US)
+        .min(HISTOGRAM_BUCKET_COUNT.saturating_sub(1) as u128) as usize;
+    buckets[bucket] = buckets[bucket].saturating_add(1);
+}
+
+fn mode_stats_from_histogram(
+    total: usize,
+    failed: usize,
+    sum_ms: f64,
+    buckets: &[u32],
+    max_duration: Option<Duration>,
+) -> ModeStats {
+    let failed = failed.min(total);
+    ModeStats {
+        ok: total.saturating_sub(failed),
+        failed,
+        failure_rate_pct: if total == 0 {
+            0.0
+        } else {
+            failed as f64 / total as f64 * 100.0
+        },
+        timing_ms: stats::TimingStats {
+            mean: if total == 0 {
+                0.0
+            } else {
+                sum_ms / total as f64
+            },
+            p50: histogram_percentile_ms(buckets, total, 50.0),
+            p95: histogram_percentile_ms(buckets, total, 95.0),
+            p99: histogram_percentile_ms(buckets, total, 99.0),
+            max: max_duration
+                .map(|duration| duration.as_secs_f64() * 1_000.0)
+                .unwrap_or(0.0),
+            max_formula_id: None,
+        },
+    }
+}
+
+fn histogram_percentile_ms(buckets: &[u32], total: usize, percentile: f64) -> f64 {
+    if total == 0 {
+        return 0.0;
+    }
+
+    let rank = ((percentile.clamp(0.0, 100.0) / 100.0) * total as f64).ceil() as usize;
+    let mut seen = 0_usize;
+    for (index, count) in buckets.iter().enumerate() {
+        seen += *count as usize;
+        if seen >= rank {
+            return (index as f64 * HISTOGRAM_BUCKET_US as f64) / 1_000.0;
+        }
+    }
+    ((buckets.len().saturating_sub(1)) as f64 * HISTOGRAM_BUCKET_US as f64) / 1_000.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -175,6 +357,11 @@ pub struct GitCommitInfo {
     pub short_hash: String,
     pub full_hash: String,
     pub date: String,
+}
+
+pub struct CommitResultWriter {
+    dir: std::path::PathBuf,
+    errors: std::io::BufWriter<std::fs::File>,
 }
 
 #[derive(Serialize)]
@@ -240,55 +427,74 @@ impl From<&OverallSummary> for StableOverallSummary {
 }
 
 pub fn build_summary(slug: &str, records: &[FormulaRecord], results: &[FormulaResults]) -> Summary {
-    let strict_durations: Vec<Duration> = results
-        .iter()
-        .map(|result| result.strict.duration)
-        .collect();
-    let strict_oks: Vec<bool> = results.iter().map(|result| result.strict.ok).collect();
-    let nonstrict_durations: Vec<Duration> = results
-        .iter()
-        .map(|result| result.nonstrict.duration)
-        .collect();
-    let nonstrict_oks: Vec<bool> = results.iter().map(|result| result.nonstrict.ok).collect();
-    let mut strict = stats::compute_mode_stats(&strict_durations, &strict_oks);
-    strict.timing_ms.max_formula_id = max_formula_id(records, results, true);
-
-    let mut nonstrict = stats::compute_mode_stats(&nonstrict_durations, &nonstrict_oks);
-    nonstrict.timing_ms.max_formula_id = max_formula_id(records, results, false);
-
-    Summary {
-        dataset: slug.to_string(),
-        dataset_row_count: records.len(),
-        total_tasks: records.len(),
-        completed: records.len(),
-        strict,
-        nonstrict,
-        strict_durations,
-        strict_oks,
-        nonstrict_durations,
-        nonstrict_oks,
-    }
+    let mut accumulator = SummaryAccumulator::new();
+    accumulator.append(records, results);
+    accumulator.finish(slug)
 }
 
 pub fn build_overall(summaries: &[Summary]) -> OverallSummary {
     let total_tasks = summaries.iter().map(|summary| summary.total_tasks).sum();
-    let mut strict_durations = Vec::with_capacity(total_tasks);
-    let mut strict_oks = Vec::with_capacity(total_tasks);
-    let mut nonstrict_durations = Vec::with_capacity(total_tasks);
-    let mut nonstrict_oks = Vec::with_capacity(total_tasks);
+    let mut strict_duration_buckets = vec![0_u32; HISTOGRAM_BUCKET_COUNT];
+    let mut nonstrict_duration_buckets = vec![0_u32; HISTOGRAM_BUCKET_COUNT];
+    let strict_count = summaries.iter().map(|summary| summary.strict_count).sum();
+    let nonstrict_count = summaries
+        .iter()
+        .map(|summary| summary.nonstrict_count)
+        .sum();
+    let strict_failed = summaries.iter().map(|summary| summary.strict_failed).sum();
+    let nonstrict_failed = summaries
+        .iter()
+        .map(|summary| summary.nonstrict_failed)
+        .sum();
+    let strict_duration_ms_sum = summaries
+        .iter()
+        .map(|summary| summary.strict_duration_ms_sum)
+        .sum();
+    let nonstrict_duration_ms_sum = summaries
+        .iter()
+        .map(|summary| summary.nonstrict_duration_ms_sum)
+        .sum();
+    let strict_max = summaries
+        .iter()
+        .map(|summary| summary.strict.timing_ms.max)
+        .fold(0.0, f64::max);
+    let nonstrict_max = summaries
+        .iter()
+        .map(|summary| summary.nonstrict.timing_ms.max)
+        .fold(0.0, f64::max);
 
     for summary in summaries {
-        strict_durations.extend(summary.strict_durations.iter().copied());
-        strict_oks.extend(summary.strict_oks.iter().copied());
-        nonstrict_durations.extend(summary.nonstrict_durations.iter().copied());
-        nonstrict_oks.extend(summary.nonstrict_oks.iter().copied());
+        for (target, source) in strict_duration_buckets
+            .iter_mut()
+            .zip(summary.strict_duration_buckets.iter())
+        {
+            *target = target.saturating_add(*source);
+        }
+        for (target, source) in nonstrict_duration_buckets
+            .iter_mut()
+            .zip(summary.nonstrict_duration_buckets.iter())
+        {
+            *target = target.saturating_add(*source);
+        }
     }
 
     OverallSummary {
         dataset_count: summaries.len(),
         total_tasks,
-        strict: stats::compute_mode_stats(&strict_durations, &strict_oks),
-        nonstrict: stats::compute_mode_stats(&nonstrict_durations, &nonstrict_oks),
+        strict: mode_stats_from_histogram(
+            strict_count,
+            strict_failed,
+            strict_duration_ms_sum,
+            &strict_duration_buckets,
+            Some(Duration::from_secs_f64(strict_max / 1_000.0)),
+        ),
+        nonstrict: mode_stats_from_histogram(
+            nonstrict_count,
+            nonstrict_failed,
+            nonstrict_duration_ms_sum,
+            &nonstrict_duration_buckets,
+            Some(Duration::from_secs_f64(nonstrict_max / 1_000.0)),
+        ),
     }
 }
 
@@ -389,17 +595,85 @@ pub fn write_commit_results(
     Ok(())
 }
 
+pub fn start_commit_results(
+    commits_root: &Path,
+    slug: &str,
+    commit: &GitCommitInfo,
+) -> Result<CommitResultWriter, Box<dyn std::error::Error>> {
+    let dir = commits_root.join(&commit.full_hash).join(slug);
+    std::fs::create_dir_all(&dir)?;
+    let errors = std::io::BufWriter::new(std::fs::File::create(dir.join("errors.jsonl"))?);
+    Ok(CommitResultWriter { dir, errors })
+}
+
+impl CommitResultWriter {
+    pub fn write_batch_errors(
+        &mut self,
+        records: &[FormulaRecord],
+        results: &[FormulaResults],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for (record, result) in records.iter().zip(results.iter()) {
+            if !result.strict.ok {
+                serde_json::to_writer(
+                    &mut self.errors,
+                    &ErrorEntry {
+                        formula: record.formula.clone(),
+                        strict: true,
+                        diagnostic_count: result.strict.diagnostic_count,
+                        diagnostics: result.strict.diagnostics.clone(),
+                    },
+                )?;
+                self.errors.write_all(b"\n")?;
+            }
+
+            if !result.nonstrict.ok {
+                serde_json::to_writer(
+                    &mut self.errors,
+                    &ErrorEntry {
+                        formula: record.formula.clone(),
+                        strict: false,
+                        diagnostic_count: result.nonstrict.diagnostic_count,
+                        diagnostics: result.nonstrict.diagnostics.clone(),
+                    },
+                )?;
+                self.errors.write_all(b"\n")?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn finish(
+        mut self,
+        summary: &Summary,
+        commit: &GitCommitInfo,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.errors.flush()?;
+        write_json_file(&self.dir.join("summary.json"), summary)?;
+
+        let manifest = Manifest {
+            commit_hash: commit.short_hash.clone(),
+            commit_full: commit.full_hash.clone(),
+            dataset: summary.dataset.clone(),
+            dataset_row_count: summary.dataset_row_count,
+            timestamp: now_timestamp(),
+        };
+        std::fs::write(
+            self.dir.join("manifest.json"),
+            serde_json::to_string_pretty(&manifest)?,
+        )?;
+
+        Ok(())
+    }
+}
+
 /// Returns the short hash, full hash, and commit date for HEAD.
 /// The date is formatted as `yyyy-mm-dd`.
 pub fn git_commit_info() -> GitCommitInfo {
-    let bench_root = crate::config::resolve_bench_root();
-    let repo_root = bench_root
-        .parent()
-        .expect("bench root should live inside the texform repo");
+    let repo_root = crate::config::default_repo_root();
 
     let full = std::process::Command::new("git")
         .arg("-C")
-        .arg(repo_root)
+        .arg(&repo_root)
         .args(["rev-parse", "HEAD"])
         .output()
         .ok()
@@ -416,7 +690,7 @@ pub fn git_commit_info() -> GitCommitInfo {
 
     let date = std::process::Command::new("git")
         .arg("-C")
-        .arg(repo_root)
+        .arg(&repo_root)
         .args(["log", "-1", "--format=%ci", "HEAD"])
         .output()
         .ok()
@@ -530,9 +804,12 @@ fn latest_commit_dir(
 
         let path = entry.path();
         let timestamp = latest_snapshot_marker(&path)?;
-        // Directory name is `yyyy-mm-dd-<hash>` (11-char date prefix).
         let dir_name = entry.file_name().to_string_lossy().into_owned();
-        let commit_hash = dir_name.get(11..).unwrap_or(&dir_name).to_string();
+        let commit_hash = dir_name
+            .get(11..)
+            .filter(|_| looks_like_dated_snapshot_dir(&dir_name))
+            .unwrap_or(&dir_name)
+            .to_string();
 
         if latest
             .as_ref()
@@ -591,6 +868,17 @@ fn parse_timestamp_marker(timestamp: &str) -> Option<u128> {
     }
 
     None
+}
+
+fn looks_like_dated_snapshot_dir(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    bytes.len() > 11
+        && bytes.get(4) == Some(&b'-')
+        && bytes.get(7) == Some(&b'-')
+        && bytes.get(10) == Some(&b'-')
+        && bytes[..4].iter().all(u8::is_ascii_digit)
+        && bytes[5..7].iter().all(u8::is_ascii_digit)
+        && bytes[8..10].iter().all(u8::is_ascii_digit)
 }
 
 fn system_time_to_marker(timestamp: SystemTime) -> u128 {
@@ -776,28 +1064,6 @@ fn write_errors_jsonl(
         }
     }
     Ok(())
-}
-
-fn max_formula_id(
-    records: &[FormulaRecord],
-    results: &[FormulaResults],
-    strict: bool,
-) -> Option<String> {
-    let mut current: Option<(Duration, &str)> = None;
-
-    for (record, result) in records.iter().zip(results.iter()) {
-        let duration = if strict {
-            result.strict.duration
-        } else {
-            result.nonstrict.duration
-        };
-
-        if current.is_none_or(|(max_duration, _)| duration > max_duration) {
-            current = Some((duration, record.formula_id.as_str()));
-        }
-    }
-
-    current.map(|(_, formula_id)| formula_id.to_string())
 }
 
 #[cfg(test)]
@@ -1171,10 +1437,14 @@ mod tests {
                     max_formula_id: Some("beta".to_string()),
                 },
             },
-            strict_durations: Vec::new(),
-            strict_oks: Vec::new(),
-            nonstrict_durations: Vec::new(),
-            nonstrict_oks: Vec::new(),
+            strict_duration_buckets: Vec::new(),
+            strict_duration_ms_sum: strict_mean_ms * total_tasks as f64,
+            strict_count: total_tasks,
+            strict_failed: 0,
+            nonstrict_duration_buckets: Vec::new(),
+            nonstrict_duration_ms_sum: nonstrict_mean_ms * total_tasks as f64,
+            nonstrict_count: total_tasks,
+            nonstrict_failed: 0,
         }
     }
 

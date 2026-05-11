@@ -131,13 +131,16 @@ The corpus bench lives in `crates/texform-bench` and reads Parquet datasets from
 git lfs install && git lfs pull
 
 # run all datasets
-cargo bench -p texform-bench --bench parse_corpus
+cargo run --release -p texform-bench --bin parse_corpus
 
 # run one dataset
-cargo bench -p texform-bench --bench parse_corpus -- --dataset lf80m-benchmarks
+cargo run --release -p texform-bench --bin parse_corpus -- --dataset lf80m-benchmarks
 
 # pre-commit probe: check one dataset first, then refresh all results if it changed or is missing
-cargo bench -p texform-bench --bench parse_corpus -- --dataset lf80m-benchmarks --check
+cargo run --release -p texform-bench --bin parse_corpus -- --dataset lf80m-benchmarks --check
+
+# dump per-dataset counter map shards
+cargo run --release -p texform-bench --bin texform-counter-dump
 ```
 
 See [`bench/README.md`](bench/README.md) for dataset provenance and result locations.

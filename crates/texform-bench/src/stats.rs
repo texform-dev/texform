@@ -55,6 +55,37 @@ pub fn compute_mode_stats(durations: &[Duration], oks: &[bool]) -> ModeStats {
     }
 }
 
+pub fn compute_mode_stats_from_ms(durations_ms: &[f32], failed: usize) -> ModeStats {
+    let total = durations_ms.len();
+    let failed = failed.min(total);
+    let ok = total.saturating_sub(failed);
+
+    let mut timing_ms: Vec<f32> = durations_ms.to_vec();
+    timing_ms.sort_by(|left, right| left.partial_cmp(right).unwrap());
+
+    ModeStats {
+        ok,
+        failed,
+        failure_rate_pct: if total == 0 {
+            0.0
+        } else {
+            failed as f64 / total as f64 * 100.0
+        },
+        timing_ms: TimingStats {
+            mean: if total == 0 {
+                0.0
+            } else {
+                timing_ms.iter().map(|value| f64::from(*value)).sum::<f64>() / total as f64
+            },
+            p50: percentile_ms(&timing_ms, 50.0),
+            p95: percentile_ms(&timing_ms, 95.0),
+            p99: percentile_ms(&timing_ms, 99.0),
+            max: timing_ms.last().copied().map(f64::from).unwrap_or(0.0),
+            max_formula_id: None,
+        },
+    }
+}
+
 fn percentile(sorted: &[f64], p: f64) -> f64 {
     if sorted.is_empty() {
         return 0.0;
@@ -63,6 +94,16 @@ fn percentile(sorted: &[f64], p: f64) -> f64 {
     let rank = ((p.clamp(0.0, 100.0) / 100.0) * sorted.len() as f64).ceil() as usize;
     let index = rank.saturating_sub(1).min(sorted.len() - 1);
     sorted[index]
+}
+
+fn percentile_ms(sorted: &[f32], p: f64) -> f64 {
+    if sorted.is_empty() {
+        return 0.0;
+    }
+
+    let rank = ((p.clamp(0.0, 100.0) / 100.0) * sorted.len() as f64).ceil() as usize;
+    let index = rank.saturating_sub(1).min(sorted.len() - 1);
+    f64::from(sorted[index])
 }
 
 #[cfg(test)]
