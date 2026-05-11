@@ -38,7 +38,7 @@ define_rule! {
             let Some(command) = cx.match_command(node_id, &base::cmd::NEWLINE) else {
                 return Ok(RuleEffect::Skipped);
             };
-            cx.expect_no_args(rule.meta().key, command.args, "\\newline")?;
+            cx.for_rule(Self::KEY).expect_no_args(command.args, "\\newline")?;
 
             cx.ast.replace_node(node_id, linebreak_command());
             Ok(RuleEffect::Applied)

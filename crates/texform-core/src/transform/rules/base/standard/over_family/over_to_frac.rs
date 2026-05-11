@@ -40,7 +40,7 @@ define_rule! {
             let Some(infix) = cx.match_infix(node_id, &base::cmd::OVER) else {
                 return Ok(RuleEffect::Skipped);
             };
-            cx.expect_no_args(rule.meta().key, infix.args, "\\over")?;
+            cx.for_rule(Self::KEY).expect_no_args(infix.args, "\\over")?;
             // \buildrel uses TeX's \buildrel <above> \over <operator> shape; leave
             // that infix form for buildrel-expand instead of turning it into \frac.
             if cx.ast.subtree_contains_command(infix.left, base::cmd::BUILDREL.name) {

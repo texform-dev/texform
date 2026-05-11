@@ -23,7 +23,7 @@ use super::helpers::{
     required_math_arg,
 };
 use crate::ast::Delimiter;
-use crate::transform::helpers::{FenceToken, star_arg_value};
+use crate::transform::helpers::FenceToken;
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -47,13 +47,13 @@ define_rule! {
             let Some(command) = cx.match_command(node_id, &physics::cmd::COMM) else {
                 return Ok(RuleEffect::Skipped);
             };
-            let subject = format!(r"\{}", command.name);
+            let subject = command.subject();
             let args = command.args.to_vec();
 
-            cx.expect_arg_len(rule.meta().key, &args, 3, &subject)?;
-            let starred = star_arg_value(rule.meta().key, cx, &args[0], &subject)?;
-            let left = required_braced_math_arg(rule.meta().key, cx, &args[1], &subject, "left operand")?;
-            let right = required_math_arg(rule.meta().key, cx, &args[2], &subject, "right operand")?;
+            cx.for_rule(Self::KEY).expect_arg_len(&args, 3, &subject)?;
+            let starred = cx.for_rule(Self::KEY).star_arg_value(&args[0], &subject)?;
+            let left = required_braced_math_arg(Self::KEY, cx, &args[1], &subject, "left operand")?;
+            let right = required_math_arg(Self::KEY, cx, &args[2], &subject, "right operand")?;
 
             replace_with_binary_bracket_fence(
                 cx,

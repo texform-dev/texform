@@ -43,9 +43,9 @@ define_rule! {
             let Some(command) = cx.match_command(node_id, &physics::cmd::VB) else {
                 return Ok(RuleEffect::Skipped);
             };
-            let subject = format!(r"\{}", command.name);
+            let subject = command.subject();
             let args = command.args.to_vec();
-            let (starred, body) = vector_args(rule.meta().key, cx, &args, &subject)?;
+            let (starred, body) = vector_args(Self::KEY, cx, &args, &subject)?;
 
             replace_with_vector_style(cx, node_id, starred, body);
             Ok(RuleEffect::Applied)

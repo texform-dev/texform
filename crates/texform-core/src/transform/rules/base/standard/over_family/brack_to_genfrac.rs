@@ -40,7 +40,7 @@ define_rule! {
             let Some(infix) = cx.match_infix(node_id, &base::cmd::BRACK) else {
                 return Ok(RuleEffect::Skipped);
             };
-            cx.expect_no_args(rule.meta().key, infix.args, r"\brack")?;
+            cx.for_rule(Self::KEY).expect_no_args(infix.args, r"\brack")?;
 
             replace_infix_with_command(
                 cx,

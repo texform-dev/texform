@@ -2,7 +2,7 @@ use texform_specs::builtin::base;
 use texform_specs::builtin::physics;
 
 use crate::ast::{ContentMode, Node, NodeId};
-use crate::transform::helpers::{bare_command_node, mandatory_content, prefix_command_node};
+use crate::transform::helpers::{bare_command_node, mandatory_content_slot, prefix_command_node};
 use crate::transform::rule_context::RuleContext;
 
 pub(super) type DifferentialSymbol = fn(&mut RuleContext<'_>) -> NodeId;
@@ -67,8 +67,8 @@ pub(super) fn derivative_fraction(starred: bool, numerator: NodeId, denominator:
     prefix_command_node(
         record,
         vec![
-            mandatory_content(numerator, ContentMode::Math),
-            mandatory_content(denominator, ContentMode::Math),
+            mandatory_content_slot(numerator, ContentMode::Math),
+            mandatory_content_slot(denominator, ContentMode::Math),
         ],
     )
 }
@@ -77,7 +77,7 @@ pub(super) fn differential_d(cx: &mut RuleContext<'_>) -> NodeId {
     let d = cx.ast.new_node(Node::Char('d'));
     cx.ast.new_node(prefix_command_node(
         &base::cmd::MATHRM,
-        vec![mandatory_content(d, ContentMode::Math)],
+        vec![mandatory_content_slot(d, ContentMode::Math)],
     ))
 }
 

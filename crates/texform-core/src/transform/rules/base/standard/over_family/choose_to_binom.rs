@@ -41,7 +41,7 @@ define_rule! {
             let Some(infix) = cx.match_infix(node_id, &base::cmd::CHOOSE) else {
                 return Ok(RuleEffect::Skipped);
             };
-            cx.expect_no_args(rule.meta().key, infix.args, r"\choose")?;
+            cx.for_rule(Self::KEY).expect_no_args(infix.args, r"\choose")?;
             replace_infix_with_command(
                 cx,
                 node_id,

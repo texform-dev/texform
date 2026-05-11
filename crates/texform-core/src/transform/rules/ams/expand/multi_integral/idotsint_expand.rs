@@ -21,7 +21,7 @@ use texform_specs::builtin::base;
 use texform_specs::specs::BuiltinCharacterRecord;
 
 use crate::ast::{ContentMode, Node, NodeId, Slot};
-use crate::transform::helpers::{bare_command_node, mandatory_content, prefix_command_node};
+use crate::transform::helpers::{bare_command_node, mandatory_content_slot, prefix_command_node};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -50,7 +50,7 @@ define_rule! {
             let Some(command) = cx.match_command(node_id, &ams::cmd::IDOTSINT) else {
                 return Ok(RuleEffect::Skipped);
             };
-            cx.expect_no_args(rule.meta().key, command.args, r"\idotsint")?;
+            cx.for_rule(Self::KEY).expect_no_args(command.args, r"\idotsint")?;
 
             if replace_idotsint_followed_by_scripted_limits(cx, node_id)? {
                 return Ok(RuleEffect::Applied);
@@ -140,7 +140,7 @@ fn replace_idotsint_followed_by_scripted_limits(
     let mathop_body = explicit_multi_integral_body(cx);
     let mathop = prefix_command_node(
         &base::cmd::MATHOP,
-        vec![mandatory_content(mathop_body, ContentMode::Math)],
+        vec![mandatory_content_slot(mathop_body, ContentMode::Math)],
     );
     replace_with_math_nodes(
         cx,

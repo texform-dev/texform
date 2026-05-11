@@ -3,7 +3,7 @@ use texform_specs::specs::BuiltinCommandRecord;
 use crate::ast::{ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind, Node, NodeId};
 use crate::transform::engine::TransformError;
 use crate::transform::helpers::{
-    delimiter_slot, dimension_slot, integer_slot, mandatory_content, prefix_command_node,
+    delimiter_slot, dimension_slot, integer_slot, mandatory_content_slot, prefix_command_node,
 };
 use crate::transform::rule::RuleKey;
 use crate::transform::rule_context::RuleContext;
@@ -18,12 +18,9 @@ pub(super) fn delimiter_arg(
     match slot {
         Some(arg) if arg.kind == ArgumentKind::Mandatory => match &arg.value {
             ArgumentValue::Delimiter(delimiter) => Ok(delimiter.clone()),
-            _ => Err(cx.invalid_shape(rule, format!("{subject} {label} should be a delimiter"))),
+            _ => Err(cx.for_rule(rule).invalid_shape(format!("{subject} {label} should be a delimiter"))),
         },
-        _ => Err(cx.invalid_shape(
-            rule,
-            format!("{subject} {label} should be a mandatory delimiter argument"),
-        )),
+        _ => Err(cx.for_rule(rule).invalid_shape(format!("{subject} {label} should be a mandatory delimiter argument"))),
     }
 }
 
@@ -37,12 +34,9 @@ pub(super) fn dimension_arg(
     match slot {
         Some(arg) if arg.kind == ArgumentKind::Mandatory => match &arg.value {
             ArgumentValue::Dimension(value) => Ok(value.clone()),
-            _ => Err(cx.invalid_shape(rule, format!("{subject} {label} should be a dimension"))),
+            _ => Err(cx.for_rule(rule).invalid_shape(format!("{subject} {label} should be a dimension"))),
         },
-        _ => Err(cx.invalid_shape(
-            rule,
-            format!("{subject} {label} should be a mandatory dimension argument"),
-        )),
+        _ => Err(cx.for_rule(rule).invalid_shape(format!("{subject} {label} should be a mandatory dimension argument"))),
     }
 }
 
@@ -59,8 +53,8 @@ pub(super) fn genfrac_args(
         delimiter_slot(right_delimiter),
         dimension_slot(thickness),
         integer_slot(style),
-        mandatory_content(numerator, ContentMode::Math),
-        mandatory_content(denominator, ContentMode::Math),
+        mandatory_content_slot(numerator, ContentMode::Math),
+        mandatory_content_slot(denominator, ContentMode::Math),
     ]
 }
 

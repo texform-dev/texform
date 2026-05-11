@@ -43,9 +43,9 @@ define_rule! {
             let Some(command) = cx.match_command(node_id, &base::cmd::DISPLAYLINES) else {
                 return Ok(crate::transform::rule::RuleEffect::Skipped);
             };
-            cx.expect_arg_len(rule.meta().key, command.args, 1, r"\displaylines")?;
+            cx.for_rule(Self::KEY).expect_arg_len(command.args, 1, r"\displaylines")?;
             let body = mandatory_math_body(
-                rule.meta().key,
+                Self::KEY,
                 cx,
                 &command.args[0],
                 base::cmd::DISPLAYLINES.name,

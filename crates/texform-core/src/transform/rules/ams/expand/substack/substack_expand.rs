@@ -15,7 +15,6 @@
 use texform_specs::builtin::ams;
 
 use crate::ast::{Argument, ArgumentKind, ArgumentValue, Node, NodeId};
-use crate::transform::helpers::required_math_content;
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule, env_targets};
 
@@ -39,8 +38,8 @@ define_rule! {
             let Some(command) = cx.match_command(node_id, &ams::cmd::SUBSTACK) else {
                 return Ok(RuleEffect::Skipped);
             };
-            cx.expect_arg_len(rule.meta().key, command.args, 1, r"\substack")?;
-            let body = required_math_content(rule.meta().key, cx, &command.args[0], r"\substack", "body")?;
+            cx.for_rule(Self::KEY).expect_arg_len(command.args, 1, r"\substack")?;
+            let body = cx.for_rule(Self::KEY).mandatory_math_content(&command.args[0], r"\substack", "body")?;
             let body = environment_body(cx, body);
             let replacement = Node::Environment {
                 name: ams::env::SUBARRAY.name.to_string(),

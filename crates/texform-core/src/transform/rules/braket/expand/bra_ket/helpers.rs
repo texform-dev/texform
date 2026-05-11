@@ -1,11 +1,23 @@
 use texform_specs::builtin::base;
 
 use crate::ast::{
-    ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, Node, NodeId,
+    ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind, Node, NodeId,
 };
 use crate::transform::helpers::bare_command_node;
-pub(super) use crate::transform::helpers::required_math_content_any as required_math_arg;
+use crate::transform::engine::TransformError;
+use crate::transform::rule::RuleKey;
 use crate::transform::rule_context::RuleContext;
+
+pub(super) fn required_math_arg(
+    rule: RuleKey,
+    cx: &mut RuleContext<'_>,
+    slot: &ArgumentSlot,
+    subject: &str,
+    label: &str,
+) -> Result<NodeId, TransformError> {
+    cx.for_rule(rule)
+        .mandatory_or_group_math_content(slot, subject, label)
+}
 
 pub(super) fn replace_with_fixed_bra(cx: &mut RuleContext<'_>, node_id: NodeId, body: NodeId) {
     let mut after = Vec::new();

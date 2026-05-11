@@ -3,7 +3,7 @@ use texform_specs::specs::{BuiltinCommandRecord, BuiltinEnvironmentRecord};
 
 use crate::ast::{ArgumentSlot, Node, NodeId};
 use crate::transform::engine::TransformError;
-use crate::transform::helpers::{bare_command_node, linebreak_command_node, required_math_content, star};
+use crate::transform::helpers::{bare_command_node, linebreak_command_node, star_slot};
 use crate::transform::rule::{RuleEffect, RuleKey};
 use crate::transform::rule_context::RuleContext;
 
@@ -18,7 +18,9 @@ pub(super) fn rewrite_cr_body_to_environment(
     let Some(command) = cx.match_command(node_id, source) else {
         return Ok(RuleEffect::Skipped);
     };
-    cx.expect_arg_len(rule, command.args, 1, &format!(r"\{}", source.name))?;
+    let subject = format!(r"\{}", source.name);
+    cx.for_rule(rule)
+        .expect_arg_len(command.args, 1, &subject)?;
     let body = mandatory_math_body(rule, cx, &command.args[0], source.name)?;
     let children = cr_body_children(cx, body);
 
@@ -32,7 +34,7 @@ pub(super) fn mandatory_math_body(
     slot: &ArgumentSlot,
     command_name: &str,
 ) -> Result<NodeId, TransformError> {
-    required_math_content(rule, cx, slot, &format!(r"\{command_name}"), "body")
+    cx.for_rule(rule).mandatory_math_content(slot, &format!(r"\{command_name}"), "body")
 }
 
 fn cr_body_children(cx: &mut RuleContext<'_>, body: NodeId) -> Vec<NodeId> {
@@ -108,8 +110,8 @@ pub(super) fn tag_command(tag: NodeId) -> Node {
     Node::Command {
         name: ams::cmd::TAG.name.to_string(),
         args: vec![
-            star(false),
-            crate::transform::helpers::mandatory_content(tag, crate::ast::ContentMode::Text),
+            star_slot(false),
+            crate::transform::helpers::mandatory_content_slot(tag, crate::ast::ContentMode::Text),
         ],
         known: true,
     }

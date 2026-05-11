@@ -198,8 +198,10 @@ Prefer this macro for rules that:
 2. Need shape validation with `RuleContext`
 3. Need bespoke matching logic beyond simple rename canonicalization
 
-The inline form always binds an explicit rule variable, such as `rule`, so the
-body can call `rule.meta().key` without relying on a magic `self` binding.
+The inline form exposes `Self::KEY`, and rule bodies should bind a scoped
+context with `cx.for_rule(Self::KEY)` for shape checks and argument extraction.
+The explicit rule variable remains available for rare cases that need the full
+rule value.
 
 When IDE navigation matters more than keeping the body inline, use the
 `apply_fn: path` variant and move the rewrite code into a normal function.
@@ -266,7 +268,7 @@ semantics.
 For shared transform helpers, import the specific functions you use:
 
 ```rust
-use crate::transform::helpers::{mandatory_content, prefix_command_node};
+use crate::transform::helpers::{mandatory_content_slot, prefix_command_node};
 ```
 
 Use `RuleContext` helpers for node matching and shape checks when possible:
@@ -275,14 +277,15 @@ Use `RuleContext` helpers for node matching and shape checks when possible:
 let Some(infix) = cx.match_infix(node_id, &base::cmd::OVER) else {
     return Ok(RuleEffect::Skipped);
 };
-cx.expect_no_args(rule.meta().key, infix.args, "\\over")?;
+let subject = infix.subject();
+cx.for_rule(Self::KEY).expect_no_args(infix.args, &subject)?;
 ```
 
 Preferred style:
 
 1. Keep package prefixes for builtin records, such as `base::cmd::OVER`
-2. Import shared constructor helpers directly, such as `prefix_command_node` and `mandatory_content`
-3. Prefer `RuleContext` match/shape helpers over open-coded `match` + repeated error construction
+2. Import shared constructor helpers directly, such as `prefix_command_node` and `mandatory_content_slot`
+3. Prefer `RuleContext` match helpers and scoped shape helpers over open-coded `match` + repeated error construction
 
 ## Transform Profiles
 

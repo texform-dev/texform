@@ -19,7 +19,6 @@ use texform_specs::builtin::base;
 
 use super::helpers::stacked_operator_command;
 use crate::ast::{ContentMode, GroupKind, Node, NodeId, Slot};
-use crate::transform::helpers::required_math_content;
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -43,9 +42,9 @@ define_rule! {
             let Some(command) = cx.match_command(node_id, &base::cmd::BUILDREL) else {
                 return Ok(RuleEffect::Skipped);
             };
-            cx.expect_arg_len(rule.meta().key, command.args, 1, r"\buildrel")?;
+            cx.for_rule(Self::KEY).expect_arg_len(command.args, 1, r"\buildrel")?;
             let above_head =
-                required_math_content(rule.meta().key, cx, &command.args[0], r"\buildrel", "above")?;
+                cx.for_rule(Self::KEY).mandatory_math_content(&command.args[0], r"\buildrel", "above")?;
 
             let Some(buildrel_link) = cx.ast.parent(node_id) else {
                 return Ok(RuleEffect::Skipped);
@@ -64,7 +63,7 @@ define_rule! {
             let Some(infix) = cx.match_infix(over_id, &base::cmd::OVER) else {
                 return Ok(RuleEffect::Skipped);
             };
-            cx.expect_no_args(rule.meta().key, infix.args, r"\over")?;
+            cx.for_rule(Self::KEY).expect_no_args(infix.args, r"\over")?;
             // This rule owns \buildrel ... \over ... before over-to-frac can treat
             // the same \over as a generic fraction infix.
             let right = infix.right;

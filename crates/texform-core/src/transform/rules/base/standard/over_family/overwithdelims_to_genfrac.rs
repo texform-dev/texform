@@ -39,11 +39,11 @@ define_rule! {
             let Some(infix) = cx.match_infix(node_id, &base::cmd::OVERWITHDELIMS) else {
                 return Ok(RuleEffect::Skipped);
             };
-            cx.expect_arg_len(rule.meta().key, infix.args, 2, r"\overwithdelims")?;
+            cx.for_rule(Self::KEY).expect_arg_len(infix.args, 2, r"\overwithdelims")?;
             let left_delimiter =
-                delimiter_arg(rule.meta().key, cx, &infix.args[0], r"\overwithdelims", "left delimiter")?;
+                delimiter_arg(Self::KEY, cx, &infix.args[0], r"\overwithdelims", "left delimiter")?;
             let right_delimiter =
-                delimiter_arg(rule.meta().key, cx, &infix.args[1], r"\overwithdelims", "right delimiter")?;
+                delimiter_arg(Self::KEY, cx, &infix.args[1], r"\overwithdelims", "right delimiter")?;
 
             replace_infix_with_command(
                 cx,

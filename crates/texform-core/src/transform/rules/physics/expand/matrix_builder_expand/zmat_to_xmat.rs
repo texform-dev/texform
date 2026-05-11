@@ -15,7 +15,7 @@
 use texform_specs::builtin::physics;
 
 use crate::ast::{ArgumentSlot, ContentMode, Node};
-use crate::transform::helpers::{mandatory_content, prefix_command_node, star};
+use crate::transform::helpers::{mandatory_content_slot, prefix_command_node, star_slot};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::rule_context::RuleContext;
 use crate::transform::{cmd_targets, define_rule};
@@ -40,11 +40,11 @@ define_rule! {
             let Some(command) = cx.match_command(node_id, &physics::cmd::ZMAT) else {
                 return Ok(RuleEffect::Skipped);
             };
-            let subject = format!(r"\{}", command.name);
+            let subject = command.subject();
             let args = command.args.to_vec();
 
-            cx.expect_arg_len(rule.meta().key, &args, 2, &subject)?;
-            let mut xmat_args = vec![star(false), zero_math_arg(cx)];
+            cx.for_rule(Self::KEY).expect_arg_len(&args, 2, &subject)?;
+            let mut xmat_args = vec![star_slot(false), zero_math_arg(cx)];
             xmat_args.extend(args);
 
             cx.ast
@@ -56,7 +56,7 @@ define_rule! {
 
 fn zero_math_arg(cx: &mut RuleContext<'_>) -> ArgumentSlot {
     let zero = cx.ast.new_node(Node::Char('0'));
-    mandatory_content(zero, ContentMode::Math)
+    mandatory_content_slot(zero, ContentMode::Math)
 }
 
 #[cfg(test)]

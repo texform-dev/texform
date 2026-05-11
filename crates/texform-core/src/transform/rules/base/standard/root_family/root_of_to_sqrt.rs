@@ -15,7 +15,7 @@
 use texform_specs::builtin::base;
 
 use crate::ast::{Argument, ArgumentKind, ArgumentValue, ContentMode, GroupKind, Node, NodeId, Slot};
-use crate::transform::helpers::{mandatory_content, prefix_command_node, required_math_content};
+use crate::transform::helpers::{mandatory_content_slot, prefix_command_node};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleKey, RuleProduces};
 use crate::transform::rule_context::RuleContext;
 use crate::transform::{cmd_targets, define_rule};
@@ -37,7 +37,7 @@ define_rule! {
             targets: cmd_targets![&base::cmd::SQRT],
         },
         apply(rule, cx, node_id) {
-            rewrite_root_of(rule.meta().key, cx, node_id)
+            rewrite_root_of(Self::KEY, cx, node_id)
         }
     }
 }
@@ -50,17 +50,14 @@ fn rewrite_root_of(
     let Some(root) = cx.match_command(node_id, &base::cmd::ROOT) else {
         return Ok(RuleEffect::Skipped);
     };
-    cx.expect_arg_len(rule_key, root.args, 1, "\\root")?;
-    let degree_head = required_math_content(rule_key, cx, &root.args[0], "\\root", "degree")?;
+    cx.for_rule(rule_key).expect_arg_len(root.args, 1, "\\root")?;
+    let degree_head = cx.for_rule(rule_key).mandatory_math_content(&root.args[0], "\\root", "degree")?;
 
     let Some(parent_link) = cx.ast.parent(node_id) else {
-        return Err(cx.invalid_shape(rule_key, "\\root should be attached to a parent"));
+        return Err(cx.for_rule(rule_key).invalid_shape("\\root should be attached to a parent"));
     };
     let Slot::GroupChild(root_index) = parent_link.slot else {
-        return Err(cx.invalid_shape(
-            rule_key,
-            "\\root should appear as math-list content",
-        ));
+        return Err(cx.for_rule(rule_key).invalid_shape("\\root should appear as math-list content"));
     };
 
     let siblings = cx.ast.children(parent_link.parent).to_vec();
@@ -70,21 +67,15 @@ fn rewrite_root_of(
         .skip(root_index + 1)
         .find_map(|(index, &sibling)| cx.match_command(sibling, &base::cmd::OF).map(|_| index))
     else {
-        return Err(cx.invalid_shape(
-            rule_key,
-            "\\root should be followed by \\of",
-        ));
+        return Err(cx.for_rule(rule_key).invalid_shape("\\root should be followed by \\of"));
     };
     let of = cx
         .match_command(siblings[of_index], &base::cmd::OF)
         .expect("\\of index should still refer to an \\of command");
-    cx.expect_no_args(rule_key, of.args, "\\of")?;
+    cx.for_rule(rule_key).expect_no_args(of.args, "\\of")?;
 
     if siblings.get(of_index + 1).is_none() {
-        return Err(cx.invalid_shape(
-            rule_key,
-            "\\of should be followed by a radicand",
-        ));
+        return Err(cx.for_rule(rule_key).invalid_shape("\\of should be followed by a radicand"));
     }
 
     cx.ast.replace_node(node_id, Node::Text(String::new()));
@@ -125,7 +116,7 @@ fn rewrite_root_of(
                     kind: ArgumentKind::Optional,
                     value: ArgumentValue::MathContent(degree),
                 }),
-                mandatory_content(radicand, ContentMode::Math),
+                mandatory_content_slot(radicand, ContentMode::Math),
             ],
         ),
     );

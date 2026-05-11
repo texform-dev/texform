@@ -44,7 +44,7 @@ define_rule! {
             let Some(command) = cx.match_command(node_id, &ams::cmd::IMPLIES) else {
                 return Ok(RuleEffect::Skipped);
             };
-            cx.expect_no_args(rule.meta().key, command.args, "\\implies")?;
+            cx.for_rule(Self::KEY).expect_no_args(command.args, "\\implies")?;
 
             let left_spacing = cx.ast.new_node(zero_arg_command(base::cmd::_SEMICOLON.name));
             let arrow = cx.ast.new_node(zero_arg_command("Longrightarrow"));

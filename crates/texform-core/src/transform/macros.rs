@@ -179,14 +179,18 @@ macro_rules! define_rule {
 
         pub static $static_name: $rule_ty = $rule_ty;
 
+        impl $rule_ty {
+            pub const KEY: $crate::transform::RuleKey = $crate::transform::RuleKey {
+                package: $crate::transform::PackageName::$package,
+                name: $name,
+            };
+        }
+
         impl $crate::transform::TransformRule for $rule_ty {
             fn meta(&self) -> &'static $crate::transform::RuleMeta {
                 $meta_init
                 static META: $crate::transform::RuleMeta = $crate::transform::RuleMeta {
-                    key: $crate::transform::RuleKey {
-                        package: $crate::transform::PackageName::$package,
-                        name: $name,
-                    },
+                    key: $rule_ty::KEY,
                     enabled_by_packages: &[
                         $($crate::transform::PackageName::$enabled_package),+
                     ],
@@ -207,6 +211,7 @@ macro_rules! define_rule {
                 node_id: $crate::ast::NodeId,
             ) -> Result<$crate::transform::RuleEffect, $crate::transform::TransformError> {
                 let $rule = self;
+                let _ = $rule;
                 let $cx = cx;
                 let $node_id = node_id;
                 $body
@@ -236,14 +241,18 @@ macro_rules! define_rule {
 
         pub static $static_name: $rule_ty = $rule_ty;
 
+        impl $rule_ty {
+            pub const KEY: $crate::transform::RuleKey = $crate::transform::RuleKey {
+                package: $crate::transform::PackageName::$package,
+                name: $name,
+            };
+        }
+
         impl $crate::transform::TransformRule for $rule_ty {
             fn meta(&self) -> &'static $crate::transform::RuleMeta {
                 $meta_init
                 static META: $crate::transform::RuleMeta = $crate::transform::RuleMeta {
-                    key: $crate::transform::RuleKey {
-                        package: $crate::transform::PackageName::$package,
-                        name: $name,
-                    },
+                    key: $rule_ty::KEY,
                     enabled_by_packages: &[
                         $($crate::transform::PackageName::$enabled_package),+
                     ],

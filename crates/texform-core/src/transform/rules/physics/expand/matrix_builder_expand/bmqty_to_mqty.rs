@@ -15,7 +15,6 @@
 use texform_specs::builtin::physics;
 
 use super::helpers::matrix_quantity_command;
-use crate::transform::helpers::required_math_content;
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -39,11 +38,11 @@ define_rule! {
             let Some(command) = cx.match_command(node_id, &physics::cmd::BMQTY) else {
                 return Ok(RuleEffect::Skipped);
             };
-            let subject = format!(r"\{}", command.name);
+            let subject = command.subject();
             let args = command.args.to_vec();
 
-            cx.expect_arg_len(rule.meta().key, &args, 1, &subject)?;
-            let body = required_math_content(rule.meta().key, cx, &args[0], &subject, "body")?;
+            cx.for_rule(Self::KEY).expect_arg_len(&args, 1, &subject)?;
+            let body = cx.for_rule(Self::KEY).mandatory_math_content(&args[0], &subject, "body")?;
 
             cx.ast
                 .replace_node(node_id, matrix_quantity_command(body, '[', ']'));

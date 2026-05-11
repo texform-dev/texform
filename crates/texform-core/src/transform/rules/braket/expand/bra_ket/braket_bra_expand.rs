@@ -41,10 +41,10 @@ define_rule! {
             let Some(command) = cx.match_command(node_id, &braket::cmd::BRA) else {
                 return Ok(RuleEffect::Skipped);
             };
-            let subject = format!(r"\{}", command.name);
+            let subject = command.subject();
             let args = command.args.to_vec();
-            cx.expect_arg_len(rule.meta().key, &args, 1, &subject)?;
-            let body = required_math_arg(rule.meta().key, cx, &args[0], &subject, "body")?;
+            cx.for_rule(Self::KEY).expect_arg_len(&args, 1, &subject)?;
+            let body = required_math_arg(Self::KEY, cx, &args[0], &subject, "body")?;
             replace_with_fixed_bra(cx, node_id, body);
             Ok(RuleEffect::Applied)
         }

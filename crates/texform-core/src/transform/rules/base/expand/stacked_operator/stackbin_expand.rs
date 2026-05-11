@@ -18,7 +18,6 @@
 use texform_specs::builtin::base;
 
 use super::helpers::stacked_operator_command;
-use crate::transform::helpers::required_math_content;
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -42,9 +41,9 @@ define_rule! {
             let Some(command) = cx.match_command(node_id, &base::cmd::STACKBIN) else {
                 return Ok(RuleEffect::Skipped);
             };
-            cx.expect_arg_len(rule.meta().key, command.args, 2, r"\stackbin")?;
-            let above = required_math_content(rule.meta().key, cx, &command.args[0], r"\stackbin", "above")?;
-            let operator = required_math_content(rule.meta().key, cx, &command.args[1], r"\stackbin", "operator")?;
+            cx.for_rule(Self::KEY).expect_arg_len(command.args, 2, r"\stackbin")?;
+            let above = cx.for_rule(Self::KEY).mandatory_math_content(&command.args[0], r"\stackbin", "above")?;
+            let operator = cx.for_rule(Self::KEY).mandatory_math_content(&command.args[1], r"\stackbin", "operator")?;
             let above = cx.ast.clone_subtree(above);
             let operator = cx.ast.clone_subtree(operator);
             let replacement = stacked_operator_command(cx, &base::cmd::MATHBIN, operator, above);

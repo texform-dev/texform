@@ -46,9 +46,9 @@ define_rule! {
             let Some(command) = cx.match_command(node_id, &base::cmd::EQALIGNNO) else {
                 return Ok(crate::transform::rule::RuleEffect::Skipped);
             };
-            cx.expect_arg_len(rule.meta().key, command.args, 1, r"\eqalignno")?;
+            cx.for_rule(Self::KEY).expect_arg_len(command.args, 1, r"\eqalignno")?;
             let body = mandatory_math_body(
-                rule.meta().key,
+                Self::KEY,
                 cx,
                 &command.args[0],
                 base::cmd::EQALIGNNO.name,
@@ -58,7 +58,7 @@ define_rule! {
             let mut children = Vec::new();
 
             for (index, row) in rows.into_iter().enumerate() {
-                let (row, tag) = split_eqalignno_row(rule.meta().key, cx, row)?;
+                let (row, tag) = split_eqalignno_row(Self::KEY, cx, row)?;
                 children.extend(row);
                 children.push(cx.ast.new_node(tag_command(tag)));
                 if index + 1 < row_count {
@@ -78,20 +78,17 @@ fn split_eqalignno_row(
     mut row: Vec<NodeId>,
 ) -> Result<(Vec<NodeId>, NodeId), TransformError> {
     let Some(last) = row.last().copied() else {
-        return Err(cx.invalid_shape(rule, r"\eqalignno row should not be empty"));
+        return Err(cx.for_rule(rule).invalid_shape(r"\eqalignno row should not be empty"));
     };
     if !matches!(cx.ast.node(last), Node::Char(')')) {
-        return Err(cx.invalid_shape(rule, r"\eqalignno row should end with a parenthesized tag"));
+        return Err(cx.for_rule(rule).invalid_shape(r"\eqalignno row should end with a parenthesized tag"));
     }
 
     let Some(amp_index) = row
         .windows(2)
         .rposition(|pair| cx.ast.is_char(pair[0], '&') && cx.ast.is_char(pair[1], '('))
     else {
-        return Err(cx.invalid_shape(
-            rule,
-            r"\eqalignno row should contain a final &(...) tag",
-        ));
+        return Err(cx.for_rule(rule).invalid_shape(r"\eqalignno row should contain a final &(...) tag"));
     };
 
     let tag_tail = row.split_off(amp_index);
@@ -114,10 +111,7 @@ fn text_node_from_math_nodes(
             Node::Char(ch) => text.push(*ch),
             Node::Text(value) => text.push_str(value),
             _ => {
-                return Err(cx.invalid_shape(
-                    rule,
-                    r"\eqalignno tags should contain text-like content",
-                ));
+                return Err(cx.for_rule(rule).invalid_shape(r"\eqalignno tags should contain text-like content"));
             }
         }
     }

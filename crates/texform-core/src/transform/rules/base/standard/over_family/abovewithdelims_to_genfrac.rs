@@ -39,13 +39,13 @@ define_rule! {
             let Some(infix) = cx.match_infix(node_id, &base::cmd::ABOVEWITHDELIMS) else {
                 return Ok(RuleEffect::Skipped);
             };
-            cx.expect_arg_len(rule.meta().key, infix.args, 3, r"\abovewithdelims")?;
+            cx.for_rule(Self::KEY).expect_arg_len(infix.args, 3, r"\abovewithdelims")?;
             let left_delimiter =
-                delimiter_arg(rule.meta().key, cx, &infix.args[0], r"\abovewithdelims", "left delimiter")?;
+                delimiter_arg(Self::KEY, cx, &infix.args[0], r"\abovewithdelims", "left delimiter")?;
             let right_delimiter =
-                delimiter_arg(rule.meta().key, cx, &infix.args[1], r"\abovewithdelims", "right delimiter")?;
+                delimiter_arg(Self::KEY, cx, &infix.args[1], r"\abovewithdelims", "right delimiter")?;
             let thickness =
-                dimension_arg(rule.meta().key, cx, &infix.args[2], r"\abovewithdelims", "thickness")?;
+                dimension_arg(Self::KEY, cx, &infix.args[2], r"\abovewithdelims", "thickness")?;
 
             replace_infix_with_command(
                 cx,

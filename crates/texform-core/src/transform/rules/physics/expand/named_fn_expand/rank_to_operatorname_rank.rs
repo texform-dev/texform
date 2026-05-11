@@ -16,7 +16,7 @@ use texform_specs::builtin::ams;
 use texform_specs::builtin::physics;
 
 use crate::ast::{ContentMode, GroupKind, Node};
-use crate::transform::helpers::{mandatory_content, prefix_command_node, star};
+use crate::transform::helpers::{mandatory_content_slot, prefix_command_node, star_slot};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -40,7 +40,7 @@ define_rule! {
             let Some(command) = cx.match_command(node_id, &physics::cmd::RANK) else {
                 return Ok(RuleEffect::Skipped);
             };
-            cx.expect_no_args(rule.meta().key, command.args, r"\rank")?;
+            cx.for_rule(Self::KEY).expect_no_args(command.args, r"\rank")?;
 
             let rank_children = "rank"
                 .chars()
@@ -56,8 +56,8 @@ define_rule! {
                 prefix_command_node(
                     &ams::cmd::OPERATORNAME,
                     vec![
-                        star(false),
-                        mandatory_content(rank_text, ContentMode::Math),
+                        star_slot(false),
+                        mandatory_content_slot(rank_text, ContentMode::Math),
                     ],
                 ),
             );

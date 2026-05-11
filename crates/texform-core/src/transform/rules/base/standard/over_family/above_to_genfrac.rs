@@ -40,8 +40,8 @@ define_rule! {
             let Some(infix) = cx.match_infix(node_id, &base::cmd::ABOVE) else {
                 return Ok(RuleEffect::Skipped);
             };
-            cx.expect_arg_len(rule.meta().key, infix.args, 1, r"\above")?;
-            let thickness = dimension_arg(rule.meta().key, cx, &infix.args[0], r"\above", "thickness")?;
+            cx.for_rule(Self::KEY).expect_arg_len(infix.args, 1, r"\above")?;
+            let thickness = dimension_arg(Self::KEY, cx, &infix.args[0], r"\above", "thickness")?;
 
             replace_infix_with_command(
                 cx,

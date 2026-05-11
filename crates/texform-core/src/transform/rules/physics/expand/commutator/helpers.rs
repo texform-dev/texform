@@ -3,7 +3,6 @@ use crate::ast::{
 };
 use crate::transform::engine::TransformError;
 use crate::transform::helpers::FenceToken;
-pub(super) use crate::transform::helpers::required_math_content_any as required_math_arg;
 use crate::transform::rule::RuleKey;
 use crate::transform::rule_context::RuleContext;
 
@@ -16,7 +15,7 @@ pub(super) struct BinaryFencePair {
 
 pub(super) fn required_braced_math_arg(
     rule: RuleKey,
-    cx: &RuleContext<'_>,
+    cx: &mut RuleContext<'_>,
     slot: &ArgumentSlot,
     subject: &str,
     label: &str,
@@ -24,13 +23,21 @@ pub(super) fn required_braced_math_arg(
     match slot {
         Some(arg) if arg.kind == ArgumentKind::Group => match arg.value {
             ArgumentValue::MathContent(node_id) => Ok(node_id),
-            _ => Err(cx.invalid_shape(rule, format!("{subject} {label} should be math content"))),
+            _ => Err(cx.for_rule(rule).invalid_shape(format!("{subject} {label} should be math content"))),
         },
-        _ => Err(cx.invalid_shape(
-            rule,
-            format!("{subject} {label} should be a required braced math group"),
-        )),
+        _ => Err(cx.for_rule(rule).invalid_shape(format!("{subject} {label} should be a required braced math group"))),
     }
+}
+
+pub(super) fn required_math_arg(
+    rule: RuleKey,
+    cx: &mut RuleContext<'_>,
+    slot: &ArgumentSlot,
+    subject: &str,
+    label: &str,
+) -> Result<NodeId, TransformError> {
+    cx.for_rule(rule)
+        .mandatory_or_group_math_content(slot, subject, label)
 }
 
 pub(super) fn replace_with_binary_bracket_fence(

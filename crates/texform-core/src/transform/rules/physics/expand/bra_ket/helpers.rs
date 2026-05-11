@@ -3,9 +3,8 @@ use texform_specs::builtin::base;
 use crate::ast::{
     ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind, Node, NodeId,
 };
-use crate::transform::helpers::bare_command_node;
-pub(super) use crate::transform::helpers::required_math_content_any as required_math_arg;
 use crate::transform::engine::TransformError;
+use crate::transform::helpers::bare_command_node;
 use crate::transform::rule::RuleKey;
 use crate::transform::rule_context::RuleContext;
 
@@ -18,26 +17,24 @@ pub(super) enum BraketSize {
 
 pub(super) fn optional_group_arg(
     rule: RuleKey,
-    cx: &RuleContext<'_>,
+    cx: &mut RuleContext<'_>,
     slot: &ArgumentSlot,
     subject: &str,
     label: &str,
 ) -> Result<Option<NodeId>, TransformError> {
-    match slot {
-        None => Ok(None),
-        Some(arg)
-            if arg.kind == ArgumentKind::Group && matches!(arg.value, ArgumentValue::MathContent(_)) =>
-        {
-            match arg.value {
-                ArgumentValue::MathContent(node_id) => Ok(Some(node_id)),
-                _ => unreachable!("math content was checked above"),
-            }
-        }
-        _ => Err(cx.invalid_shape(
-            rule,
-            format!("{subject} {label} should be an optional braced math group"),
-        )),
-    }
+    cx.for_rule(rule)
+        .optional_group_math_content(slot, subject, label)
+}
+
+pub(super) fn required_math_arg(
+    rule: RuleKey,
+    cx: &mut RuleContext<'_>,
+    slot: &ArgumentSlot,
+    subject: &str,
+    label: &str,
+) -> Result<NodeId, TransformError> {
+    cx.for_rule(rule)
+        .mandatory_or_group_math_content(slot, subject, label)
 }
 
 pub(super) fn replace_with_bra(

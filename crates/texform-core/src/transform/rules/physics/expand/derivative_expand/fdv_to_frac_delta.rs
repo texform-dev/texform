@@ -25,12 +25,9 @@ use super::helpers::{
 };
 use crate::ast::NodeId;
 use crate::transform::engine::TransformError;
-use crate::transform::helpers::{
-    optional_group_math_content, optional_math_content, required_math_content, star_arg_value,
-};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::rule_context::RuleContext;
-use crate::transform::{TransformRule, cmd_targets, define_rule};
+use crate::transform::{cmd_targets, define_rule};
 
 define_rule! {
     pub static FDV_TO_FRAC_DELTA: FdvToFracDeltaRule {
@@ -55,23 +52,23 @@ define_rule! {
 }
 
 fn expand_fdv(
-    rule: &FdvToFracDeltaRule,
+    __rule: &FdvToFracDeltaRule,
     cx: &mut RuleContext<'_>,
     node_id: NodeId,
 ) -> Result<RuleEffect, TransformError> {
     let Some(command) = cx.match_command(node_id, &physics::cmd::FDV) else {
         return Ok(RuleEffect::Skipped);
     };
-    let subject = format!(r"\{}", command.name);
+    let subject = command.subject();
     let args = command.args.to_vec();
 
-    cx.expect_arg_len(rule.meta().key, &args, 4, &subject)?;
-    let rule_key = rule.meta().key;
-    let starred = star_arg_value(rule_key, cx, &args[0], &subject)?;
-    let order = optional_math_content(rule_key, cx, &args[1], &subject, "optional order")?;
-    let first = required_math_content(rule_key, cx, &args[2], &subject, "first argument")?;
+    cx.for_rule(FdvToFracDeltaRule::KEY).expect_arg_len(&args, 4, &subject)?;
+    let rule_key = FdvToFracDeltaRule::KEY;
+    let starred = cx.for_rule(rule_key).star_arg_value(&args[0], &subject)?;
+    let order = cx.for_rule(rule_key).optional_math_content(&args[1], &subject, "optional order")?;
+    let first = cx.for_rule(rule_key).mandatory_math_content(&args[2], &subject, "first argument")?;
     let denominator =
-        optional_group_math_content(rule_key, cx, &args[3], &subject, "denominator")?;
+        cx.for_rule(rule_key).optional_group_math_content(&args[3], &subject, "denominator")?;
 
     let numerator = if denominator.is_some() {
         derivative_numerator(cx, delta_symbol, order, Some(first))

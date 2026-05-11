@@ -37,7 +37,7 @@ define_rule! {
             let Some(command) = cx.match_command(node_id, &base::cmd::GOODBREAK) else {
                 return Ok(RuleEffect::Skipped);
             };
-            cx.expect_no_args(rule.meta().key, command.args, "\\goodbreak")?;
+            cx.for_rule(Self::KEY).expect_no_args(command.args, "\\goodbreak")?;
 
             cx.ast.remove_node(node_id);
             Ok(RuleEffect::Applied)

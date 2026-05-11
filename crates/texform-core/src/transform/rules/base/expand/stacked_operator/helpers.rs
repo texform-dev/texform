@@ -2,7 +2,7 @@ use texform_specs::builtin::base;
 use texform_specs::specs::BuiltinCommandRecord;
 
 use crate::ast::{ContentMode, Node, NodeId};
-use crate::transform::helpers::{mandatory_content, prefix_command_node};
+use crate::transform::helpers::{mandatory_content_slot, prefix_command_node};
 use crate::transform::rule_context::RuleContext;
 
 pub(super) fn stacked_operator_command(
@@ -13,7 +13,7 @@ pub(super) fn stacked_operator_command(
 ) -> Node {
     let mathop = cx.ast.new_node(prefix_command_node(
         &base::cmd::MATHOP,
-        vec![mandatory_content(operator, ContentMode::Math)],
+        vec![mandatory_content_slot(operator, ContentMode::Math)],
     ));
     let limits = cx
         .ast
@@ -23,6 +23,6 @@ pub(super) fn stacked_operator_command(
 
     prefix_command_node(
         class_record,
-        vec![mandatory_content(body, ContentMode::Math)],
+        vec![mandatory_content_slot(body, ContentMode::Math)],
     )
 }

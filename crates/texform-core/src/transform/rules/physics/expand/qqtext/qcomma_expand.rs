@@ -20,7 +20,7 @@ use texform_specs::builtin::base;
 use texform_specs::builtin::physics;
 
 use crate::ast::{ContentMode, Node};
-use crate::transform::helpers::{mandatory_content, prefix_command_node};
+use crate::transform::helpers::{mandatory_content_slot, prefix_command_node};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -47,12 +47,12 @@ define_rule! {
             else {
                 return Ok(RuleEffect::Skipped);
             };
-            cx.expect_no_args(rule.meta().key, command.args, &format!(r"\{}", command.name))?;
+            cx.for_rule(Self::KEY).expect_no_args(command.args, &command.subject())?;
 
             let comma = cx.ast.new_node(Node::Text(",".to_string()));
             let text_command = prefix_command_node(
                 &base::cmd::TEXT,
-                vec![mandatory_content(comma, ContentMode::Text)],
+                vec![mandatory_content_slot(comma, ContentMode::Text)],
             );
             let text_command = cx.ast.new_node(text_command);
             let quad = cx.ast.new_node(prefix_command_node(&base::cmd::QUAD, vec![]));

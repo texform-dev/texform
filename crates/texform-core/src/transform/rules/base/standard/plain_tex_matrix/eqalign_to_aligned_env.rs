@@ -37,7 +37,7 @@ define_rule! {
         },
         apply(rule, cx, node_id) {
             rewrite_cr_body_to_environment(
-                rule.meta().key,
+                Self::KEY,
                 cx,
                 node_id,
                 &base::cmd::EQALIGN,

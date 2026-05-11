@@ -23,8 +23,8 @@ use texform_specs::builtin::physics;
 
 use crate::ast::{Argument, ArgumentKind, ArgumentSlot, ArgumentValue, Node};
 use crate::transform::engine::TransformError;
-use crate::transform::helpers::{prefix_command_node, star_arg_value};
-use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces, TransformRule};
+use crate::transform::helpers::prefix_command_node;
+use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::rule_context::RuleContext;
 use crate::transform::{cmd_targets, define_rule};
 
@@ -51,7 +51,7 @@ define_rule! {
 }
 
 fn expand_qqtext_like(
-    rule: &QqtextExpandRule,
+    _rule: &QqtextExpandRule,
     cx: &mut RuleContext<'_>,
     node_id: crate::ast::NodeId,
 ) -> Result<RuleEffect, TransformError> {
@@ -64,9 +64,9 @@ fn expand_qqtext_like(
         _ => return Ok(RuleEffect::Skipped),
     };
 
-    cx.expect_arg_len(rule.meta().key, &args, 2, &subject)?;
-    let starred = star_arg_value(rule.meta().key, cx, &args[0], &subject)?;
-    let text_arg = text_argument(rule, cx, &args[1], &subject)?;
+    cx.for_rule(QqtextExpandRule::KEY).expect_arg_len(&args, 2, &subject)?;
+    let starred = cx.for_rule(QqtextExpandRule::KEY).star_arg_value(&args[0], &subject)?;
+    let text_arg = text_argument(cx, &args[1], &subject)?;
 
     replace_with_text_sequence(cx, node_id, starred, text_arg);
 
@@ -74,7 +74,6 @@ fn expand_qqtext_like(
 }
 
 fn text_argument(
-    rule: &QqtextExpandRule,
     cx: &mut RuleContext<'_>,
     slot: &ArgumentSlot,
     subject: &str,
@@ -85,16 +84,10 @@ fn text_argument(
                 kind: arg.kind.clone(),
                 value: ArgumentValue::TextContent(cx.ast.clone_subtree(node_id)),
             })),
-            _ => Err(cx.invalid_shape(
-                rule.meta().key,
-                format!("{subject} should carry a mandatory text argument"),
-            )),
+            _ => Err(cx.for_rule(QqtextExpandRule::KEY).invalid_shape(format!("{subject} should carry a mandatory text argument"))),
         },
         _ => {
-            Err(cx.invalid_shape(
-                rule.meta().key,
-                format!("{subject} should carry a mandatory text argument"),
-            ))
+            Err(cx.for_rule(QqtextExpandRule::KEY).invalid_shape(format!("{subject} should carry a mandatory text argument")))
         }
     }
 }

@@ -38,7 +38,7 @@ define_rule! {
             let Some(command) = cx.match_command(node_id, &base::cmd::BREAK) else {
                 return Ok(RuleEffect::Skipped);
             };
-            cx.expect_no_args(rule.meta().key, command.args, "\\break")?;
+            cx.for_rule(Self::KEY).expect_no_args(command.args, "\\break")?;
 
             cx.ast.replace_node(node_id, linebreak_command());
             Ok(RuleEffect::Applied)

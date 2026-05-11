@@ -23,7 +23,6 @@ use texform_specs::builtin::physics;
 use super::helpers::replace_with_eval_fence;
 use crate::ast::{ArgumentKind, ArgumentSlot, ArgumentValue, Delimiter, NodeId};
 use crate::transform::engine::TransformError;
-use crate::transform::helpers::star_arg_value;
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleKey, RuleProduces};
 use crate::transform::rule_context::RuleContext;
 use crate::transform::{cmd_targets, define_rule};
@@ -45,7 +44,7 @@ define_rule! {
             targets: cmd_targets![&base::cmd::LEFT, &base::cmd::RIGHT, &base::cmd::VPHANTOM, &base::cmd::SMASH],
         },
         apply(rule, cx, node_id) {
-            expand_braced_eval(rule.meta().key, cx, node_id)
+            expand_braced_eval(Self::KEY, cx, node_id)
         }
     }
 }
@@ -58,11 +57,11 @@ fn expand_braced_eval(
     let Some(command) = cx.match_command(node_id, &physics::cmd::EVAL) else {
         return Ok(RuleEffect::Skipped);
     };
-    let subject = format!(r"\{}", command.name);
+    let subject = command.subject();
     let args = command.args.to_vec();
 
-    cx.expect_arg_len(rule, &args, 2, &subject)?;
-    let starred = star_arg_value(rule, cx, &args[0], &subject)?;
+    cx.for_rule(rule).expect_arg_len(&args, 2, &subject)?;
+    let starred = cx.for_rule(rule).star_arg_value(&args[0], &subject)?;
     let Some(body) = braced_eval_body(rule, cx, &args[1], &subject)? else {
         return Ok(RuleEffect::Skipped);
     };
@@ -93,10 +92,7 @@ fn braced_eval_body(
         {
             match arg.value {
                 ArgumentValue::MathContent(node_id) => Ok(Some(node_id)),
-                _ => Err(cx.invalid_shape(
-                    rule,
-                    format!("{subject} braced eval body should be math content"),
-                )),
+                _ => Err(cx.for_rule(rule).invalid_shape(format!("{subject} braced eval body should be math content"))),
             }
         }
         _ => Ok(None),
