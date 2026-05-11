@@ -16,15 +16,12 @@ use texform_specs::builtin::ams;
 use texform_specs::builtin::base;
 
 use crate::ast::Node;
+use crate::transform::helpers::bare_command_node;
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
 fn zero_arg_command(name: &str) -> Node {
-    Node::Command {
-        name: name.to_string(),
-        args: Vec::new(),
-        known: true,
-    }
+    bare_command_node(name)
 }
 
 define_rule! {

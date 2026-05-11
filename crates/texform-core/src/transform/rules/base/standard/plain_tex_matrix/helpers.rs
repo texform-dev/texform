@@ -3,7 +3,7 @@ use texform_specs::specs::{BuiltinCommandRecord, BuiltinEnvironmentRecord};
 
 use crate::ast::{ArgumentSlot, Node, NodeId};
 use crate::transform::engine::TransformError;
-use crate::transform::helpers::{required_math_content, star};
+use crate::transform::helpers::{bare_command_node, linebreak_command_node, required_math_content, star};
 use crate::transform::rule::{RuleEffect, RuleKey};
 use crate::transform::rule_context::RuleContext;
 
@@ -97,19 +97,11 @@ pub(super) fn replace_with_environment(
 }
 
 pub(super) fn linebreak_command() -> Node {
-    Node::Command {
-        name: "\\".to_string(),
-        args: vec![star(false), None],
-        known: true,
-    }
+    linebreak_command_node()
 }
 
 pub(super) fn notag_command() -> Node {
-    Node::Command {
-        name: ams::cmd::NOTAG.name.to_string(),
-        args: Vec::new(),
-        known: true,
-    }
+    bare_command_node(ams::cmd::NOTAG.name)
 }
 
 pub(super) fn tag_command(tag: NodeId) -> Node {

@@ -1,14 +1,6 @@
-use crate::ast::{ArgumentSlot, Node};
-use crate::transform::helpers::star;
-
-pub(super) fn linebreak_args() -> Vec<ArgumentSlot> {
-    vec![star(false), None]
-}
+use crate::ast::Node;
+use crate::transform::helpers::linebreak_command_node;
 
 pub(super) fn linebreak_command() -> Node {
-    Node::Command {
-        name: "\\".to_string(),
-        args: linebreak_args(),
-        known: true,
-    }
+    linebreak_command_node()
 }

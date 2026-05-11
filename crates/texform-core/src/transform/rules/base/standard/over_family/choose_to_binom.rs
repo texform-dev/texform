@@ -15,8 +15,9 @@
 use texform_specs::builtin::ams;
 use texform_specs::builtin::base;
 
-use super::helpers::{infix_prefix_args, replace_infix_with_command};
+use super::helpers::replace_infix_with_command;
 use crate::ast::ContentMode;
+use crate::transform::helpers::infix_prefix_args;
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 

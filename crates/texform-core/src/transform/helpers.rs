@@ -4,9 +4,12 @@
 //! The helpers here eliminate the boilerplate of constructing [`Argument`]
 //! wrappers by hand, keeping rule implementations focused on semantics.
 
+use texform_specs::builtin::base;
 use texform_specs::specs::BuiltinCommandRecord;
 
-use crate::ast::{Argument, ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Node, NodeId};
+use crate::ast::{
+    Argument, ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, Node, NodeId,
+};
 use crate::transform::engine::TransformError;
 use crate::transform::rule::RuleKey;
 use crate::transform::rule_context::RuleContext;
@@ -23,6 +26,38 @@ pub fn mandatory_content(node_id: NodeId, mode: ContentMode) -> ArgumentSlot {
     })
 }
 
+/// Creates a mandatory delimiter argument slot.
+pub fn delimiter_slot(delimiter: Delimiter) -> ArgumentSlot {
+    Some(Argument {
+        kind: ArgumentKind::Mandatory,
+        value: ArgumentValue::Delimiter(delimiter),
+    })
+}
+
+/// Creates a mandatory dimension argument slot.
+pub fn dimension_slot(value: impl Into<String>) -> ArgumentSlot {
+    Some(Argument {
+        kind: ArgumentKind::Mandatory,
+        value: ArgumentValue::Dimension(value.into()),
+    })
+}
+
+/// Creates a mandatory integer argument slot.
+pub fn integer_slot(value: impl Into<String>) -> ArgumentSlot {
+    Some(Argument {
+        kind: ArgumentKind::Mandatory,
+        value: ArgumentValue::Integer(value.into()),
+    })
+}
+
+/// Creates the two mandatory content arguments used when converting an infix node to a prefix command.
+pub fn infix_prefix_args(left: NodeId, right: NodeId, mode: ContentMode) -> Vec<ArgumentSlot> {
+    vec![
+        mandatory_content(left, mode),
+        mandatory_content(right, mode),
+    ]
+}
+
 /// Creates a star (boolean) argument slot, representing a `*` modifier on a command.
 pub fn star(value: bool) -> ArgumentSlot {
     Some(Argument {
@@ -31,12 +66,41 @@ pub fn star(value: bool) -> ArgumentSlot {
     })
 }
 
+/// Creates a known command node with no arguments.
+pub fn bare_command_node(name: &str) -> Node {
+    Node::Command {
+        name: name.to_string(),
+        args: Vec::new(),
+        known: true,
+    }
+}
+
 /// Creates a prefix [`Node::Command`] from a builtin command record and a list of argument slots.
 pub fn prefix_command_node(record: &'static BuiltinCommandRecord, args: Vec<ArgumentSlot>) -> Node {
     Node::Command {
         name: record.name.to_string(),
         args,
         known: true,
+    }
+}
+
+/// Creates the parser-shaped linebreak command.
+pub fn linebreak_command_node() -> Node {
+    prefix_command_node(&base::cmd::_BACKSLASH, vec![star(false), None])
+}
+
+#[derive(Clone, Copy)]
+pub enum FenceToken {
+    Char(char),
+    Control(&'static str),
+}
+
+impl FenceToken {
+    pub fn node(self) -> Node {
+        match self {
+            Self::Char(ch) => Node::Char(ch),
+            Self::Control(name) => bare_command_node(name),
+        }
     }
 }
 
@@ -101,6 +165,25 @@ pub fn optional_group_math_content(
             rule,
             format!("{subject} optional {label} should be a braced group"),
         )),
+    }
+}
+
+/// Extracts a required math-content argument that may be either mandatory or a braced group.
+pub fn required_math_content_any(
+    rule: RuleKey,
+    cx: &RuleContext<'_>,
+    slot: &ArgumentSlot,
+    subject: &str,
+    label: &str,
+) -> Result<NodeId, TransformError> {
+    match slot {
+        Some(arg) if matches!(arg.kind, ArgumentKind::Mandatory | ArgumentKind::Group) => match arg
+            .value
+        {
+            ArgumentValue::MathContent(node_id) => Ok(node_id),
+            _ => Err(cx.invalid_shape(rule, format!("{subject} {label} should be math content"))),
+        },
+        _ => Err(cx.invalid_shape(rule, format!("{subject} {label} should be math content"))),
     }
 }
 
@@ -195,6 +278,16 @@ mod tests {
                 ArgumentValue::MathContent(id) => Some(id),
                 _ => None,
             })
+        );
+        assert_eq!(
+            required_math_content_any(TEST_RULE, &cx, &grouped, r"\example", "argument").unwrap(),
+            grouped
+                .as_ref()
+                .and_then(|arg| match arg.value {
+                    ArgumentValue::MathContent(id) => Some(id),
+                    _ => None,
+                })
+                .unwrap()
         );
         assert_eq!(
             optional_math_content(TEST_RULE, &cx, &None, r"\example", "order").unwrap(),

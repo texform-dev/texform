@@ -1,30 +1,12 @@
-use crate::ast::{ContentMode, Delimiter, GroupKind, Node, NodeId, Slot};
+use crate::ast::{ContentMode, Delimiter, GroupKind, Node, NodeId};
+use crate::transform::helpers::FenceToken;
 use crate::transform::rule_context::RuleContext;
-
-#[derive(Clone, Copy)]
-pub(super) enum FixedFenceToken {
-    Char(char),
-    Control(&'static str),
-}
 
 pub(super) struct FencePair {
     pub(super) auto_left: Delimiter,
     pub(super) auto_right: Delimiter,
-    pub(super) fixed_left: FixedFenceToken,
-    pub(super) fixed_right: FixedFenceToken,
-}
-
-impl FixedFenceToken {
-    fn node(self) -> Node {
-        match self {
-            Self::Char(ch) => Node::Char(ch),
-            Self::Control(name) => Node::Command {
-                name: name.to_string(),
-                args: Vec::new(),
-                known: true,
-            },
-        }
-    }
+    pub(super) fixed_left: FenceToken,
+    pub(super) fixed_right: FenceToken,
 }
 
 pub(super) fn replace_with_delimiter_shorthand(
@@ -64,57 +46,14 @@ fn replace_with_fixed_fence(
     cx: &mut RuleContext<'_>,
     node_id: NodeId,
     body: NodeId,
-    left: FixedFenceToken,
-    right: FixedFenceToken,
+    left: FenceToken,
+    right: FenceToken,
 ) {
-    if matches!(cx.ast.slot(node_id), Some(Slot::ScriptBase)) {
-        replace_scripted_base_with_fixed_fence(cx, node_id, body, left, right);
-        return;
-    }
-
     let mut rest = Vec::new();
     cx.ast.append_cloned_math_content(&mut rest, body);
     rest.push(cx.ast.new_node(right.node()));
 
     let left = cx.ast.new_node(left.node());
     cx.ast
-        .replace_with_math_sequence(node_id, Vec::new(), left, rest);
-}
-
-fn replace_scripted_base_with_fixed_fence(
-    cx: &mut RuleContext<'_>,
-    node_id: NodeId,
-    body: NodeId,
-    left: FixedFenceToken,
-    right: FixedFenceToken,
-) {
-    let Some(parent) = cx.ast.parent_id(node_id) else {
-        return;
-    };
-
-    let (subscript, superscript) = match cx.ast.node(parent) {
-        Node::Scripted {
-            subscript,
-            superscript,
-            ..
-        } => (*subscript, *superscript),
-        _ => return,
-    };
-    let subscript = subscript.map(|id| cx.ast.clone_subtree(id));
-    let superscript = superscript.map(|id| cx.ast.clone_subtree(id));
-
-    let mut rest = Vec::new();
-    cx.ast.append_cloned_math_content(&mut rest, body);
-
-    let close_base = cx.ast.new_node(right.node());
-    let close = cx.ast.new_node(Node::Scripted {
-        base: close_base,
-        subscript,
-        superscript,
-    });
-    rest.push(close);
-
-    let left = cx.ast.new_node(left.node());
-    cx.ast
-        .replace_with_math_sequence(parent, Vec::new(), left, rest);
+        .replace_with_math_sequence_preserving_scripts(node_id, Vec::new(), left, rest);
 }

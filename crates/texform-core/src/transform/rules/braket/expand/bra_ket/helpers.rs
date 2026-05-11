@@ -1,32 +1,11 @@
 use texform_specs::builtin::base;
 
 use crate::ast::{
-    ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind, Node, NodeId,
+    ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, Node, NodeId,
 };
-use crate::transform::engine::TransformError;
-use crate::transform::rule::RuleKey;
+use crate::transform::helpers::bare_command_node;
+pub(super) use crate::transform::helpers::required_math_content_any as required_math_arg;
 use crate::transform::rule_context::RuleContext;
-
-pub(super) fn required_math_arg(
-    rule: RuleKey,
-    cx: &RuleContext<'_>,
-    slot: &ArgumentSlot,
-    subject: &str,
-    label: &str,
-) -> Result<NodeId, TransformError> {
-    match slot {
-        Some(arg)
-            if matches!(arg.kind, ArgumentKind::Mandatory | ArgumentKind::Group)
-                && matches!(arg.value, ArgumentValue::MathContent(_)) =>
-        {
-            match arg.value {
-                ArgumentValue::MathContent(node_id) => Ok(node_id),
-                _ => unreachable!("math content was checked above"),
-            }
-        }
-        _ => Err(cx.invalid_shape(rule, format!("{subject} {label} should be math content"))),
-    }
-}
 
 pub(super) fn replace_with_fixed_bra(cx: &mut RuleContext<'_>, node_id: NodeId, body: NodeId) {
     let mut after = Vec::new();
@@ -143,9 +122,5 @@ fn middle_vert() -> Node {
 }
 
 fn control(name: &'static str) -> Node {
-    Node::Command {
-        name: name.to_string(),
-        args: Vec::new(),
-        known: true,
-    }
+    bare_command_node(name)
 }

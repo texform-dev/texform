@@ -22,9 +22,9 @@
 use texform_specs::builtin::base;
 use texform_specs::builtin::physics;
 
-use super::helpers::{FencePair, FixedFenceToken, replace_with_delimiter_shorthand};
+use super::helpers::{FencePair, replace_with_delimiter_shorthand};
 use crate::ast::{ArgumentKind, ArgumentValue, Delimiter};
-use crate::transform::helpers::star_arg_value;
+use crate::transform::helpers::{FenceToken, star_arg_value};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -75,8 +75,8 @@ define_rule! {
                 FencePair {
                     auto_left: Delimiter::Control("|".to_string()),
                     auto_right: Delimiter::Control("|".to_string()),
-                    fixed_left: FixedFenceToken::Control("|"),
-                    fixed_right: FixedFenceToken::Control("|"),
+                    fixed_left: FenceToken::Control("|"),
+                    fixed_right: FenceToken::Control("|"),
                 },
             );
             Ok(RuleEffect::Applied)

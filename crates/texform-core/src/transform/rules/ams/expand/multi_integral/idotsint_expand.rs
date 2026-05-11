@@ -21,7 +21,7 @@ use texform_specs::builtin::base;
 use texform_specs::specs::BuiltinCharacterRecord;
 
 use crate::ast::{ContentMode, Node, NodeId, Slot};
-use crate::transform::helpers::{mandatory_content, prefix_command_node};
+use crate::transform::helpers::{bare_command_node, mandatory_content, prefix_command_node};
 use crate::transform::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::transform::{cmd_targets, define_rule};
 
@@ -196,11 +196,7 @@ fn replace_with_math_nodes(
 fn character_command(record: &'static BuiltinCharacterRecord) -> Node {
     // TeX control-sequence character records such as \int remain command
     // nodes in the AST.
-    Node::Command {
-        name: record.name.to_string(),
-        args: Vec::new(),
-        known: true,
-    }
+    bare_command_node(record.name)
 }
 
 fn negative_thin_space_command() -> Node {

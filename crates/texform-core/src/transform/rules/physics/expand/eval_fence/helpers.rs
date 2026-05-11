@@ -1,7 +1,7 @@
 use texform_specs::builtin::base;
 
 use crate::ast::{ContentMode, Delimiter, GroupKind, Node, NodeId};
-use crate::transform::helpers::{mandatory_content, prefix_command_node};
+use crate::transform::helpers::{bare_command_node, mandatory_content, prefix_command_node};
 use crate::transform::rule_context::RuleContext;
 
 pub(super) fn replace_with_eval_fence(
@@ -38,11 +38,7 @@ fn smash_body(cx: &mut RuleContext<'_>, body: NodeId) -> NodeId {
 }
 
 fn vphantom_int(cx: &mut RuleContext<'_>) -> NodeId {
-    let int = cx.ast.new_node(Node::Command {
-        name: "int".to_string(),
-        args: Vec::new(),
-        known: true,
-    });
+    let int = cx.ast.new_node(bare_command_node("int"));
     cx.ast.new_node(prefix_command_node(
         &base::cmd::VPHANTOM,
         vec![mandatory_content(int, ContentMode::Math)],

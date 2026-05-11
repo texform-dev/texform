@@ -855,6 +855,55 @@ impl Ast {
         }
     }
 
+    /// Replaces a node with a math-mode sequence, moving scripts from a
+    /// parent [`Node::Scripted`] onto the final emitted node when `id` is the
+    /// scripted base.
+    pub fn replace_with_math_sequence_preserving_scripts(
+        &mut self,
+        id: NodeId,
+        before: Vec<NodeId>,
+        first: NodeId,
+        mut after: Vec<NodeId>,
+    ) {
+        if self.slot(id) != Some(Slot::ScriptBase) {
+            self.replace_with_math_sequence(id, before, first, after);
+            return;
+        }
+
+        let Some(parent) = self.parent_id(id) else {
+            self.replace_with_math_sequence(id, before, first, after);
+            return;
+        };
+        let Node::Scripted {
+            subscript,
+            superscript,
+            ..
+        } = self.node(parent)
+        else {
+            self.replace_with_math_sequence(id, before, first, after);
+            return;
+        };
+        let subscript = *subscript;
+        let superscript = *superscript;
+        let subscript = subscript.map(|node_id| self.clone_subtree(node_id));
+        let superscript = superscript.map(|node_id| self.clone_subtree(node_id));
+
+        // Fixed fences carry scripts on the closing token, which is the final
+        // node of these replacement sequences.
+        let last = after.pop().unwrap_or(first);
+        let scripted_last = self.new_node(Node::Scripted {
+            base: last,
+            subscript,
+            superscript,
+        });
+        if after.is_empty() && last == first {
+            self.replace_with_math_sequence(parent, before, scripted_last, after);
+        } else {
+            after.push(scripted_last);
+            self.replace_with_math_sequence(parent, before, first, after);
+        }
+    }
+
     /// Destroy a detached subtree and return the removed root node value.
     ///
     /// The subtree must already be detached from the main tree. All descendants
@@ -1717,6 +1766,54 @@ mod tests {
         assert_eq!(ast.parent_id(before), Some(target));
         assert_eq!(ast.parent_id(replacement), Some(target));
         assert_eq!(ast.parent_id(after), Some(target));
+        ast.assert_invariants();
+    }
+
+    #[test]
+    fn replace_with_math_sequence_preserving_scripts_moves_scripts_to_last_node() {
+        let mut ast = Ast::new();
+        let base = ast.new_node(Node::Char('x'));
+        let subscript = ast.new_node(Node::Char('i'));
+        let superscript = ast.new_node(Node::Char('2'));
+        let scripted = ast.new_node(Node::Scripted {
+            base,
+            subscript: Some(subscript),
+            superscript: Some(superscript),
+        });
+        ast.append_child(ast.root(), scripted);
+        let open = ast.new_node(Node::Char('['));
+        let body = ast.new_node(Node::Char('y'));
+        let close = ast.new_node(Node::Char(']'));
+
+        ast.replace_with_math_sequence_preserving_scripts(
+            base,
+            Vec::new(),
+            open,
+            vec![body, close],
+        );
+
+        let root_children = ast.children(ast.root()).to_vec();
+        assert_eq!(root_children.len(), 3);
+        assert_eq!(root_children[0], scripted);
+        assert_eq!(ast.node(scripted), &Node::Char('['));
+        assert_eq!(root_children[1], body);
+        let Node::Scripted {
+            base: scripted_close,
+            subscript: moved_subscript,
+            superscript: moved_superscript,
+        } = ast.node(root_children[2])
+        else {
+            panic!("expected scripts to move to the close token");
+        };
+        assert_eq!(ast.node(*scripted_close), &Node::Char(']'));
+        assert_eq!(
+            moved_subscript.map(|id| ast.node(id)),
+            Some(&Node::Char('i'))
+        );
+        assert_eq!(
+            moved_superscript.map(|id| ast.node(id)),
+            Some(&Node::Char('2'))
+        );
         ast.assert_invariants();
     }
 }

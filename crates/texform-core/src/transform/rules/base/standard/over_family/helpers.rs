@@ -1,11 +1,10 @@
 use texform_specs::specs::BuiltinCommandRecord;
 
-use crate::ast::{
-    Argument, ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind, Node,
-    NodeId,
-};
+use crate::ast::{ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind, Node, NodeId};
 use crate::transform::engine::TransformError;
-use crate::transform::helpers::{mandatory_content, prefix_command_node};
+use crate::transform::helpers::{
+    delimiter_slot, dimension_slot, integer_slot, mandatory_content, prefix_command_node,
+};
 use crate::transform::rule::RuleKey;
 use crate::transform::rule_context::RuleContext;
 
@@ -45,35 +44,6 @@ pub(super) fn dimension_arg(
             format!("{subject} {label} should be a mandatory dimension argument"),
         )),
     }
-}
-
-pub(super) fn delimiter_slot(delimiter: Delimiter) -> ArgumentSlot {
-    Some(Argument {
-        kind: ArgumentKind::Mandatory,
-        value: ArgumentValue::Delimiter(delimiter),
-    })
-}
-
-pub(super) fn dimension_slot(value: impl Into<String>) -> ArgumentSlot {
-    Some(Argument {
-        kind: ArgumentKind::Mandatory,
-        value: ArgumentValue::Dimension(value.into()),
-    })
-}
-
-pub(super) fn integer_slot(value: impl Into<String>) -> ArgumentSlot {
-    Some(Argument {
-        kind: ArgumentKind::Mandatory,
-        value: ArgumentValue::Integer(value.into()),
-    })
-}
-
-pub(super) fn infix_prefix_args(
-    left: NodeId,
-    right: NodeId,
-    mode: ContentMode,
-) -> Vec<ArgumentSlot> {
-    vec![mandatory_content(left, mode), mandatory_content(right, mode)]
 }
 
 pub(super) fn genfrac_args(
