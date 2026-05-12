@@ -1,7 +1,7 @@
 //! Counter aggregation for proposal impact evaluation.
 //!
-//! Walks a parsed `SyntaxNode` and counts occurrences of each `(kind, name)`
-//! pair where `kind` is "cmd", "env", or "char". Command-like nodes
+//! Walks a parsed `SyntaxNode` and counts occurrences of each `(kind, mode, name)`
+//! tuple where `kind` is "cmd", "env", or "char". Command-like nodes
 //! contribute as command or character targets according to the builtin specs;
 //! environment nodes contribute as environment targets.
 
@@ -15,7 +15,7 @@ use arrow_schema::{DataType, Field, Schema};
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::properties::WriterProperties;
-use texform_interface::syntax_node::{Argument, ArgumentValue, SyntaxNode};
+use texform_interface::syntax_node::{Argument, ArgumentValue, ContentMode, SyntaxNode};
 use texform_specs::builtin::ALL_PACKAGES;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -35,10 +35,17 @@ impl Kind {
     }
 }
 
+fn mode_str(mode: ContentMode) -> &'static str {
+    match mode {
+        ContentMode::Math => "math",
+        ContentMode::Text => "text",
+    }
+}
+
 /// Counter aggregated from a single formula's AST.
 #[derive(Debug, Default)]
 pub struct FormulaCounter {
-    pub counts: HashMap<(Kind, String), u32>,
+    pub counts: HashMap<(Kind, ContentMode, String), u32>,
 }
 
 impl FormulaCounter {
@@ -46,21 +53,28 @@ impl FormulaCounter {
         self.counts.is_empty()
     }
 
-    fn bump(&mut self, kind: Kind, name: &str) {
-        *self.counts.entry((kind, name.to_string())).or_insert(0) += 1;
+    fn bump(&mut self, kind: Kind, mode: ContentMode, name: &str) {
+        *self
+            .counts
+            .entry((kind, mode, name.to_string()))
+            .or_insert(0) += 1;
     }
 }
 
 /// Walk a `SyntaxNode` and accumulate target counts into `out`.
 pub fn count_node(node: &SyntaxNode, out: &mut FormulaCounter) {
+    count_node_in_mode(node, ContentMode::Math, out);
+}
+
+fn count_node_in_mode(node: &SyntaxNode, inherited_mode: ContentMode, out: &mut FormulaCounter) {
     match node {
-        SyntaxNode::Root { children, .. } | SyntaxNode::Group { children, .. } => {
+        SyntaxNode::Root { mode, children } | SyntaxNode::Group { mode, children, .. } => {
             for child in children {
-                count_node(child, out);
+                count_node_in_mode(child, *mode, out);
             }
         }
         SyntaxNode::Command { name, args, .. } => {
-            bump_cmd_like(out, name);
+            bump_cmd_like(out, inherited_mode, name);
             count_args(args, out);
         }
         SyntaxNode::Infix {
@@ -69,33 +83,33 @@ pub fn count_node(node: &SyntaxNode, out: &mut FormulaCounter) {
             left,
             right,
         } => {
-            bump_cmd_like(out, name);
+            bump_cmd_like(out, inherited_mode, name);
             count_args(args, out);
-            count_node(left, out);
-            count_node(right, out);
+            count_node_in_mode(left, inherited_mode, out);
+            count_node_in_mode(right, inherited_mode, out);
         }
         SyntaxNode::Declarative { name, args } => {
-            bump_cmd_like(out, name);
+            bump_cmd_like(out, inherited_mode, name);
             count_args(args, out);
         }
         SyntaxNode::Environment {
             name, args, body, ..
         } => {
-            out.bump(Kind::Env, name);
+            out.bump(Kind::Env, inherited_mode, name);
             count_args(args, out);
-            count_node(body, out);
+            count_node_in_mode(body, inherited_mode, out);
         }
         SyntaxNode::Scripted {
             base,
             subscript,
             superscript,
         } => {
-            count_node(base, out);
+            count_node_in_mode(base, inherited_mode, out);
             if let Some(sub) = subscript {
-                count_node(sub, out);
+                count_node_in_mode(sub, inherited_mode, out);
             }
             if let Some(sup) = superscript {
-                count_node(sup, out);
+                count_node_in_mode(sup, inherited_mode, out);
             }
         }
         SyntaxNode::Text(_)
@@ -105,7 +119,7 @@ pub fn count_node(node: &SyntaxNode, out: &mut FormulaCounter) {
     }
 }
 
-fn bump_cmd_like(out: &mut FormulaCounter, name: &str) {
+fn bump_cmd_like(out: &mut FormulaCounter, mode: ContentMode, name: &str) {
     let has_cmd = ALL_PACKAGES
         .iter()
         .any(|pkg| pkg.commands.iter().any(|record| record.name == name));
@@ -114,10 +128,10 @@ fn bump_cmd_like(out: &mut FormulaCounter, name: &str) {
         .any(|pkg| pkg.characters.iter().any(|record| record.name == name));
 
     if has_cmd || !has_char {
-        out.bump(Kind::Cmd, name);
+        out.bump(Kind::Cmd, mode, name);
     }
     if has_char {
-        out.bump(Kind::Char, name);
+        out.bump(Kind::Char, mode, name);
     }
 }
 
@@ -125,8 +139,11 @@ fn count_args(args: &[Option<Argument>], out: &mut FormulaCounter) {
     for slot in args {
         let Some(arg) = slot else { continue };
         match &arg.value {
-            ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
-                count_node(node, out);
+            ArgumentValue::MathContent(node) => {
+                count_node_in_mode(node, ContentMode::Math, out);
+            }
+            ArgumentValue::TextContent(node) => {
+                count_node_in_mode(node, ContentMode::Text, out);
             }
             ArgumentValue::Delimiter(_)
             | ArgumentValue::CSName(_)
@@ -147,6 +164,7 @@ pub struct RowBuffer {
     formula_id: Vec<String>,
     name: Vec<String>,
     kind: Vec<&'static str>,
+    mode: Vec<&'static str>,
     count: Vec<u32>,
 }
 
@@ -170,11 +188,12 @@ impl RowBuffer {
         formula_id: &str,
         counter: &FormulaCounter,
     ) {
-        for ((kind, name), count) in &counter.counts {
+        for ((kind, mode, name), count) in &counter.counts {
             self.dataset.push(dataset.to_string());
             self.formula_id.push(formula_id.to_string());
             self.name.push(name.clone());
             self.kind.push(kind.as_str());
+            self.mode.push(mode_str(*mode));
             self.count.push(*count);
         }
     }
@@ -184,6 +203,7 @@ impl RowBuffer {
         self.formula_id.extend(other.formula_id);
         self.name.extend(other.name);
         self.kind.extend(other.kind);
+        self.mode.extend(other.mode);
         self.count.extend(other.count);
     }
 
@@ -193,6 +213,7 @@ impl RowBuffer {
             Field::new("formula_id", DataType::Utf8, false),
             Field::new("name", DataType::Utf8, false),
             Field::new("kind", DataType::Utf8, false),
+            Field::new("mode", DataType::Utf8, false),
             Field::new("count", DataType::UInt32, false),
         ]))
     }
@@ -205,10 +226,13 @@ impl RowBuffer {
         let kind: ArrayRef = Arc::new(StringArray::from(
             self.kind.into_iter().map(String::from).collect::<Vec<_>>(),
         ));
+        let mode: ArrayRef = Arc::new(StringArray::from(
+            self.mode.into_iter().map(String::from).collect::<Vec<_>>(),
+        ));
         let count: ArrayRef = Arc::new(UInt32Array::from(self.count));
         Ok(RecordBatch::try_new(
             schema,
-            vec![dataset, formula_id, name, kind, count],
+            vec![dataset, formula_id, name, kind, mode, count],
         )?)
     }
 }
@@ -285,40 +309,87 @@ mod tests {
     #[test]
     fn counts_command_in_args() {
         let counter = count_formula(r"\frac{a}{b}");
-        assert_eq!(counter.counts.get(&(Kind::Cmd, "frac".into())), Some(&1));
+        assert_eq!(
+            counter
+                .counts
+                .get(&(Kind::Cmd, ContentMode::Math, "frac".into())),
+            Some(&1)
+        );
     }
 
     #[test]
     fn counts_infix_command() {
         let counter = count_formula(r"{a \over b}");
-        assert_eq!(counter.counts.get(&(Kind::Cmd, "over".into())), Some(&1));
+        assert_eq!(
+            counter
+                .counts
+                .get(&(Kind::Cmd, ContentMode::Math, "over".into())),
+            Some(&1)
+        );
     }
 
     #[test]
     fn counts_environment() {
         let counter = count_formula(r"\begin{matrix}a & b\\c & d\end{matrix}");
-        assert_eq!(counter.counts.get(&(Kind::Env, "matrix".into())), Some(&1));
+        assert_eq!(
+            counter
+                .counts
+                .get(&(Kind::Env, ContentMode::Math, "matrix".into())),
+            Some(&1)
+        );
     }
 
     #[test]
     fn counts_nested_args_recursively() {
         let counter = count_formula(r"\sqrt{\frac{a}{b}}");
-        assert_eq!(counter.counts.get(&(Kind::Cmd, "sqrt".into())), Some(&1));
-        assert_eq!(counter.counts.get(&(Kind::Cmd, "frac".into())), Some(&1));
+        assert_eq!(
+            counter
+                .counts
+                .get(&(Kind::Cmd, ContentMode::Math, "sqrt".into())),
+            Some(&1)
+        );
+        assert_eq!(
+            counter
+                .counts
+                .get(&(Kind::Cmd, ContentMode::Math, "frac".into())),
+            Some(&1)
+        );
     }
 
     #[test]
     fn aggregates_repeated_names() {
         let counter = count_formula(r"\alpha + \alpha + \alpha");
-        assert_eq!(counter.counts.get(&(Kind::Char, "alpha".into())), Some(&3));
+        assert_eq!(
+            counter
+                .counts
+                .get(&(Kind::Char, ContentMode::Math, "alpha".into())),
+            Some(&3)
+        );
+    }
+
+    #[test]
+    fn separates_same_command_by_content_mode() {
+        let counter = count_formula(r"\bf{x} + \text{\bf y}");
+        assert_eq!(
+            counter
+                .counts
+                .get(&(Kind::Cmd, ContentMode::Math, "bf".into())),
+            Some(&1)
+        );
+        assert_eq!(
+            counter
+                .counts
+                .get(&(Kind::Cmd, ContentMode::Text, "bf".into())),
+            Some(&1)
+        );
     }
 
     #[test]
     fn row_buffer_extends_from_counter() {
         let mut counter = FormulaCounter::default();
-        counter.bump(Kind::Cmd, "frac");
-        counter.bump(Kind::Cmd, "frac");
-        counter.bump(Kind::Env, "matrix");
+        counter.bump(Kind::Cmd, ContentMode::Math, "frac");
+        counter.bump(Kind::Cmd, ContentMode::Math, "frac");
+        counter.bump(Kind::Env, ContentMode::Math, "matrix");
 
         let mut buf = RowBuffer::new();
         buf.extend_from_counter("linxy", "abc123def456", &counter);
@@ -333,8 +404,8 @@ mod tests {
             .unwrap();
 
         let mut counter = FormulaCounter::default();
-        counter.bump(Kind::Cmd, "frac");
-        counter.bump(Kind::Env, "matrix");
+        counter.bump(Kind::Cmd, ContentMode::Math, "frac");
+        counter.bump(Kind::Env, ContentMode::Math, "matrix");
 
         let mut buf = RowBuffer::new();
         buf.extend_from_counter("linxy", "abc123def456", &counter);
@@ -355,7 +426,7 @@ mod tests {
             let names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
             assert_eq!(
                 names,
-                vec!["dataset", "formula_id", "name", "kind", "count"],
+                vec!["dataset", "formula_id", "name", "kind", "mode", "count"],
             );
         }
         assert_eq!(total_rows, 2);
