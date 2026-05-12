@@ -80,7 +80,7 @@ pub enum ArgumentValue {
 /// Content mode: math or text
 ///
 /// Determines how content is parsed and interpreted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub enum ContentMode {
     /// Math mode: default mode, supports formulas, scripts, infix commands

@@ -663,6 +663,171 @@ impl Ast {
         id
     }
 
+    /// Replace all direct children of a root/group node.
+    ///
+    /// New children may be detached roots or existing direct children of the
+    /// same parent. Removed children are preserved as detached roots.
+    pub fn replace_children(&mut self, parent: NodeId, children: Vec<NodeId>) -> Vec<NodeId> {
+        let old_children = match self.node(parent) {
+            Node::Root { children, .. } | Node::Group { children, .. } => children.clone(),
+            _ => panic!("Parent is not a Group node"),
+        };
+        let old_child_set: HashSet<NodeId> = old_children.iter().copied().collect();
+
+        let mut seen = HashSet::new();
+        for child in &children {
+            assert!(
+                seen.insert(*child),
+                "Node cannot reference the same child twice"
+            );
+            assert!(self.contains(*child), "Invalid child NodeId");
+            assert!(*child != self.root, "Cannot attach the AST root as a child");
+            self.assert_no_cycle(*child, parent);
+
+            if old_child_set.contains(child) {
+                assert_eq!(
+                    self.parent(*child),
+                    Some(ParentLink {
+                        parent,
+                        slot: Slot::GroupChild(
+                            old_children
+                                .iter()
+                                .position(|old_child| old_child == child)
+                                .expect("old child should have an index")
+                        )
+                    }),
+                    "Can only reuse direct children of the replaced parent"
+                );
+            } else {
+                self.assert_child_is_detached_root(*child);
+            }
+        }
+
+        let new_child_set: HashSet<NodeId> = children.iter().copied().collect();
+        let removed: Vec<NodeId> = old_children
+            .iter()
+            .copied()
+            .filter(|child| !new_child_set.contains(child))
+            .collect();
+
+        for child in &removed {
+            self.parent.remove(*child);
+            self.detached_roots.insert(*child);
+        }
+        for child in &children {
+            self.detached_roots.remove(child);
+        }
+
+        match self.node_mut(parent) {
+            Node::Root {
+                children: old_children,
+                ..
+            }
+            | Node::Group {
+                children: old_children,
+                ..
+            } => *old_children = children,
+            _ => panic!("Parent is not a Group node"),
+        }
+        self.reindex_group_children(parent, 0);
+        removed
+    }
+
+    /// Detach a contiguous range of direct children from a root/group node.
+    pub fn detach_children_range(
+        &mut self,
+        parent: NodeId,
+        range: std::ops::Range<usize>,
+    ) -> Vec<NodeId> {
+        let removed = match self.node_mut(parent) {
+            Node::Root { children, .. } | Node::Group { children, .. } => {
+                children.drain(range.clone()).collect::<Vec<_>>()
+            }
+            _ => panic!("Parent is not a Group node"),
+        };
+
+        for child in &removed {
+            self.parent.remove(*child);
+            self.detached_roots.insert(*child);
+        }
+        self.reindex_group_children(parent, range.start);
+        removed
+    }
+
+    /// Replace a content child or another single-child slot.
+    ///
+    /// The replacement must be a detached root. The old child becomes detached.
+    pub fn replace_content_child(&mut self, old: NodeId, replacement: NodeId) {
+        if old == self.root {
+            panic!("Cannot replace root node");
+        }
+        let parent_link = self
+            .parent(old)
+            .unwrap_or_else(|| panic!("Cannot replace node without a parent"));
+        self.assert_child_is_detached_root(replacement);
+        self.assert_no_cycle(replacement, parent_link.parent);
+        self.assert_slot_shape(parent_link.slot, replacement);
+
+        match self.node_mut(parent_link.parent) {
+            Node::Command { args, .. }
+            | Node::Infix { args, .. }
+            | Node::Declarative { args, .. }
+                if matches!(parent_link.slot, Slot::Argument(_)) =>
+            {
+                replace_argument_child(args, parent_link.slot, old, replacement);
+            }
+            Node::Environment { args, body, .. } => match parent_link.slot {
+                Slot::Argument(_) => {
+                    replace_argument_child(args, parent_link.slot, old, replacement)
+                }
+                Slot::EnvBody => {
+                    assert_eq!(*body, old, "Environment body must match old node");
+                    *body = replacement;
+                }
+                _ => panic!("Expected environment body or argument slot"),
+            },
+            Node::Scripted {
+                base,
+                subscript,
+                superscript,
+            } => match parent_link.slot {
+                Slot::ScriptBase => {
+                    assert_eq!(*base, old, "Script base must match old node");
+                    *base = replacement;
+                }
+                Slot::ScriptSub => {
+                    assert_eq!(
+                        subscript,
+                        &Some(old),
+                        "Script subscript must match old node"
+                    );
+                    *subscript = Some(replacement);
+                }
+                Slot::ScriptSup => {
+                    assert_eq!(
+                        superscript,
+                        &Some(old),
+                        "Script superscript must match old node"
+                    );
+                    *superscript = Some(replacement);
+                }
+                _ => panic!("Expected script slot"),
+            },
+            _ => panic!("Parent does not have replaceable content children"),
+        }
+
+        self.parent.remove(old);
+        self.detached_roots.insert(old);
+        self.detached_roots.remove(&replacement);
+        self.parent.insert(
+            replacement,
+            ParentLink {
+                parent: parent_link.parent,
+                slot: parent_link.slot,
+            },
+        );
+    }
+
     /// Remove an attached node and its entire subtree from the arena.
     ///
     /// This is implemented as [`Ast::detach`] followed by
@@ -1515,6 +1680,23 @@ impl Ast {
     }
 }
 
+fn replace_argument_child(args: &mut [ArgumentSlot], slot: Slot, old: NodeId, replacement: NodeId) {
+    let Slot::Argument(index) = slot else {
+        panic!("Expected argument slot");
+    };
+    let argument = args
+        .get_mut(index)
+        .and_then(Option::as_mut)
+        .unwrap_or_else(|| panic!("Argument slot is missing"));
+    match &mut argument.value {
+        ArgumentValue::MathContent(child) | ArgumentValue::TextContent(child) => {
+            assert_eq!(*child, old, "Argument child must match old node");
+            *child = replacement;
+        }
+        _ => panic!("Argument slot is not content"),
+    }
+}
+
 impl Default for Ast {
     fn default() -> Self {
         Self::new()
@@ -1679,6 +1861,101 @@ mod tests {
         );
         assert_eq!(ast.parent_id(base), Some(scripted));
         assert_eq!(ast.parent_id(power), Some(scripted));
+        ast.assert_invariants();
+    }
+
+    #[test]
+    fn replace_children_detaches_removed_children_and_adopts_new_children() {
+        let mut ast = Ast::new();
+        let root = ast.root();
+        let a = ast.new_node(Node::Char('a'));
+        let b = ast.new_node(Node::Char('b'));
+        let c = ast.new_node(Node::Char('c'));
+        ast.append_child(root, a);
+        ast.append_child(root, b);
+
+        let removed = ast.replace_children(root, vec![b, c]);
+
+        assert_eq!(removed, vec![a]);
+        assert_eq!(ast.children(root), &[b, c]);
+        assert_eq!(ast.parent(a), None);
+        assert!(ast.detached_roots.contains(&a));
+        assert_eq!(
+            ast.parent(b),
+            Some(super::ParentLink {
+                parent: root,
+                slot: Slot::GroupChild(0),
+            })
+        );
+        assert_eq!(
+            ast.parent(c),
+            Some(super::ParentLink {
+                parent: root,
+                slot: Slot::GroupChild(1),
+            })
+        );
+        ast.assert_invariants();
+    }
+
+    #[test]
+    fn detach_children_range_detaches_ordered_segment() {
+        let mut ast = Ast::new();
+        let root = ast.root();
+        let a = ast.new_node(Node::Char('a'));
+        let b = ast.new_node(Node::Char('b'));
+        let c = ast.new_node(Node::Char('c'));
+        let d = ast.new_node(Node::Char('d'));
+        for child in [a, b, c, d] {
+            ast.append_child(root, child);
+        }
+
+        let removed = ast.detach_children_range(root, 1..3);
+
+        assert_eq!(removed, vec![b, c]);
+        assert_eq!(ast.children(root), &[a, d]);
+        assert_eq!(ast.parent(b), None);
+        assert_eq!(ast.parent(c), None);
+        assert!(ast.detached_roots.contains(&b));
+        assert!(ast.detached_roots.contains(&c));
+        assert_eq!(ast.slot(d), Some(Slot::GroupChild(1)));
+        ast.assert_invariants();
+    }
+
+    #[test]
+    fn replace_content_child_replaces_script_slot() {
+        let mut ast = Ast::new();
+        let base = ast.new_node(Node::Char('x'));
+        let superscript = ast.new_node(Node::Char('y'));
+        let scripted = ast.new_node(Node::Scripted {
+            base,
+            subscript: None,
+            superscript: Some(superscript),
+        });
+        ast.append_child(ast.root(), scripted);
+        let replacement = ast.new_node(Node::Group {
+            children: Vec::new(),
+            kind: GroupKind::Implicit,
+            mode: ContentMode::Math,
+        });
+
+        ast.replace_content_child(superscript, replacement);
+
+        assert_eq!(ast.parent(superscript), None);
+        assert!(ast.detached_roots.contains(&superscript));
+        assert_eq!(
+            ast.parent(replacement),
+            Some(super::ParentLink {
+                parent: scripted,
+                slot: Slot::ScriptSup,
+            })
+        );
+        assert!(matches!(
+            ast.node(scripted),
+            Node::Scripted {
+                superscript: Some(child),
+                ..
+            } if *child == replacement
+        ));
         ast.assert_invariants();
     }
 

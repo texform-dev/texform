@@ -20,5 +20,10 @@ texform-specs.workspace = true
 [dev-dependencies]
 serde_json.workspace = true
 
+[build-dependencies]
+serde.workspace = true
+serde_yaml.workspace = true
+texform-specs.workspace = true
+
 [features]
 tsify = ["dep:tsify-next", "dep:wasm-bindgen", "texform-interface/tsify"]

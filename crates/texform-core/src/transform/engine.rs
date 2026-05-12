@@ -1,18 +1,21 @@
 //! Transform engine that applies transformation rules to an AST.
 //!
-//! The engine executes in two phases:
+//! The engine executes in three ordered steps:
 //!
-//! 1. **Normalize** — runs in a fixed-point loop, repeatedly applying normalization
+//! 1. **LowerDeclarative** — rewrites registered declarative-scope commands before
+//!    ordinary rule execution.
+//! 2. **Normalize** — runs in a fixed-point loop, repeatedly applying normalization
 //!    rules until the AST stabilizes (no rule fires) or the iteration limit is reached.
-//! 2. **Cleanup** — runs a single pass of cleanup rules after normalization is complete.
+//! 3. **Cleanup** — runs a single pass of cleanup rules after normalization is complete.
 //!
-//! After both phases, the engine validates the resulting AST against the
+//! After these steps, the engine validates the resulting AST against the
 //! eliminated-form contract derived into [`TransformContext`].
 
 use crate::ast::{Ast, NodeId, NodeKind};
 use crate::knowledge::{lookup_command_node_name, lookup_environment_node_name};
 use crate::parse::{ContentMode, ParseContext};
 use crate::transform::context::TransformContext;
+use crate::transform::lower_declarative;
 use crate::transform::rule::{
     RuleEffect, RuleKey, RuleMeta, RuleTarget, RuleTargetKey, RuleTargetKind,
 };
@@ -30,12 +33,14 @@ pub struct AppliedRuleStat {
 }
 
 /// Accumulates statistics across an entire transformation pass.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TransformReport {
     /// Per-rule execution counts for rules that were attempted at least once.
     pub applied: Vec<AppliedRuleStat>,
     /// The number of fixed-point iterations the normalize phase completed.
     pub iterations: usize,
+    /// Statistics from the declarative-scope lowering pre-pass.
+    pub lower_declarative: lower_declarative::LowerDeclarativeReport,
 }
 
 impl TransformReport {
@@ -131,10 +136,9 @@ pub fn transform_ast(
     parse_ctx: &ParseContext,
     transform_ctx: &TransformContext,
 ) -> Result<TransformReport, TransformEngineError> {
-    let mut report = TransformReport {
-        applied: Vec::new(),
-        iterations: 0,
-    };
+    let mut report = TransformReport::default();
+
+    lower_declarative::run(ast, &mut report.lower_declarative);
 
     for iteration in 0..transform_ctx.max_iterations() {
         let mut changed = false;
@@ -614,10 +618,7 @@ mod tests {
         );
         assert!(parse_ctx.knows_command_name("textonly-target"));
 
-        let mut report = TransformReport {
-            applied: Vec::new(),
-            iterations: 0,
-        };
+        let mut report = TransformReport::default();
 
         let mut scratch_ast = Ast::new();
         let cx = RuleContext::new(

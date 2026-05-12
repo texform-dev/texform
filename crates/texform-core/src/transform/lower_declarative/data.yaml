@@ -1,0 +1,200 @@
+declaratives:
+  - command: base:bf
+    set: { font: VARIANT.BOLD }
+  - command: base:cal
+    set: { font: VARIANT.CALLIGRAPHIC }
+  - command: base:it
+    set: { font: VARIANT.MATHITALIC }
+  - command: base:mit
+    set: { font: VARIANT.ITALIC }
+  - command: base:oldstyle
+    set: { font: -tex-oldstyle }
+  - command: base:rm
+    set: { font: VARIANT.NORMAL }
+  - command: base:sf
+    set: { font: VARIANT.SANSSERIF }
+  - command: base:tt
+    set: { font: VARIANT.MONOSPACE }
+  - command: textmacros:bf
+    set: { font: VARIANT.BOLD }
+  - command: textmacros:cal
+    set: { font: VARIANT.CALLIGRAPHIC }
+  - command: textmacros:it
+    set: { font: -tex-mathit }
+  - command: textmacros:mit
+    set: { font: VARIANT.ITALIC }
+  - command: textmacros:oldstyle
+    set: { font: -tex-oldstyle }
+  - command: textmacros:rm
+    set: { font: VARIANT.NORMAL }
+  - command: textmacros:sf
+    set: { font: VARIANT.SANSSERIF }
+  - command: textmacros:tt
+    set: { font: VARIANT.MONOSPACE }
+  - command: base:Huge
+    set: { size: 2.49 }
+  - command: base:huge
+    set: { size: 2.07 }
+  - command: base:LARGE
+    set: { size: 1.73 }
+  - command: base:Large
+    set: { size: 1.44 }
+  - command: base:large
+    set: { size: 1.2 }
+  - command: base:normalsize
+    set: { size: 1.0 }
+  - command: base:scriptsize
+    set: { size: 0.7 }
+  - command: base:small
+    set: { size: 0.85 }
+  - command: base:Tiny
+    set: { size: 0.6 }
+  - command: base:tiny
+    set: { size: 0.5 }
+  - command: textmacros:Huge
+    set: { size: 2.49 }
+  - command: textmacros:huge
+    set: { size: 2.07 }
+  - command: textmacros:LARGE
+    set: { size: 1.73 }
+  - command: textmacros:Large
+    set: { size: 1.44 }
+  - command: textmacros:large
+    set: { size: 1.2 }
+  - command: textmacros:normalsize
+    set: { size: 1.0 }
+  - command: textmacros:scriptsize
+    set: { size: 0.7 }
+  - command: textmacros:small
+    set: { size: 0.85 }
+  - command: textmacros:Tiny
+    set: { size: 0.6 }
+  - command: textmacros:tiny
+    set: { size: 0.5 }
+  - command: base:displaystyle
+    set: { style: { letter: D, display: true, level: 0 } }
+  - command: base:textstyle
+    set: { style: { letter: T, display: false, level: 0 } }
+  - command: base:scriptstyle
+    set: { style: { letter: S, display: false, level: 1 } }
+  - command: base:scriptscriptstyle
+    set: { style: { letter: SS, display: false, level: 2 } }
+attribute_targets:
+  font:
+    - value: VARIANT.BOLD
+      math:
+        prefix: base:mathbf
+        declarative: base:bf
+      text:
+        prefix: textmacros:textbf
+        declarative: textmacros:bf
+    - value: VARIANT.CALLIGRAPHIC
+      math:
+        prefix: base:mathcal
+        declarative: base:cal
+      text:
+        declarative: textmacros:cal
+    - value: VARIANT.MATHITALIC
+      math:
+        prefix: base:mathit
+        declarative: base:it
+    - value: VARIANT.NORMAL
+      math:
+        prefix: base:mathrm
+        declarative: base:rm
+      text:
+        prefix: textmacros:textrm
+        declarative: textmacros:rm
+    - value: VARIANT.SANSSERIF
+      math:
+        prefix: base:mathsf
+        declarative: base:sf
+      text:
+        prefix: textmacros:textsf
+        declarative: textmacros:sf
+    - value: VARIANT.MONOSPACE
+      math:
+        prefix: base:mathtt
+        declarative: base:tt
+      text:
+        prefix: textmacros:texttt
+        declarative: textmacros:tt
+    - value: VARIANT.ITALIC
+      math:
+        prefix: base:symit
+        declarative: base:mit
+      text:
+        declarative: textmacros:mit
+    - value: -tex-mathit
+      text:
+        prefix: textmacros:textit
+        declarative: textmacros:it
+    - value: -tex-oldstyle
+      math:
+        declarative: base:oldstyle
+      text:
+        declarative: textmacros:oldstyle
+  size:
+    - value: 2.49
+      math:
+        declarative: base:Huge
+      text:
+        declarative: textmacros:Huge
+    - value: 2.07
+      math:
+        declarative: base:huge
+      text:
+        declarative: textmacros:huge
+    - value: 1.73
+      math:
+        declarative: base:LARGE
+      text:
+        declarative: textmacros:LARGE
+    - value: 1.44
+      math:
+        declarative: base:Large
+      text:
+        declarative: textmacros:Large
+    - value: 1.2
+      math:
+        declarative: base:large
+      text:
+        declarative: textmacros:large
+    - value: 1.0
+      math:
+        declarative: base:normalsize
+      text:
+        declarative: textmacros:normalsize
+    - value: 0.85
+      math:
+        declarative: base:small
+      text:
+        declarative: textmacros:small
+    - value: 0.7
+      math:
+        declarative: base:scriptsize
+      text:
+        declarative: textmacros:scriptsize
+    - value: 0.6
+      math:
+        declarative: base:Tiny
+      text:
+        declarative: textmacros:Tiny
+    - value: 0.5
+      math:
+        declarative: base:tiny
+      text:
+        declarative: textmacros:tiny
+  style:
+    - value: { letter: D, display: true, level: 0 }
+      math:
+        declarative: base:displaystyle
+    - value: { letter: T, display: false, level: 0 }
+      math:
+        declarative: base:textstyle
+    - value: { letter: S, display: false, level: 1 }
+      math:
+        declarative: base:scriptstyle
+    - value: { letter: SS, display: false, level: 2 }
+      math:
+        declarative: base:scriptscriptstyle

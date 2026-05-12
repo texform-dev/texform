@@ -504,10 +504,7 @@ mod tests {
     #[test]
     fn extracts_common_prefix_argument_shapes() {
         let parse_ctx = ParseContext::from_packages(&["base"]);
-        let mut report = TransformReport {
-            applied: Vec::new(),
-            iterations: 0,
-        };
+        let mut report = TransformReport::default();
         let mut ast = Ast::new();
         let required = ast.new_node(Node::Char('x'));
         let optional = ast.new_node(Node::Char('2'));

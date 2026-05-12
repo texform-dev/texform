@@ -2,6 +2,14 @@
 
 This directory stores concrete transform rules.
 
+## Declarative-Scope Commands
+
+Do not add one-off transform rules for declarative-scope commands such as
+`\bf`, `\rm`, `\large`, or `\displaystyle`. These commands are handled by the
+hard-coded `transform::lower_declarative` pre-pass before normal rule execution.
+The data source for that phase is
+`src/transform/lower_declarative/data.yaml`.
+
 ## Adding a New Rule
 
 1. Create a new `.rs` file under the package/class/group layout, for example

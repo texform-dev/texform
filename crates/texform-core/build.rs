@@ -1,15 +1,23 @@
-//! Build script that auto-discovers builtin transform rule modules.
+//! Build script that auto-discovers builtin transform rule modules and emits
+//! the LowerDeclarative phase data tables.
 //!
 //! Rule files live under `src/transform/rules/` and declare exactly one
 //! `pub static UPPER_SNAKE: SomeRuleType`, where the constant name is the
 //! UPPER_SNAKE_CASE form of the file stem. Support files named `helpers.rs` or
 //! `_*.rs` are emitted as normal modules but are not added to `ALL_RULES`. The
 //! generated registry file itself is ignored by discovery.
+//!
+//! LowerDeclarative data is generated from
+//! `src/transform/lower_declarative/data.yaml` via the codegen module included
+//! below.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::{env, fs};
+
+#[path = "src/transform/lower_declarative/codegen.rs"]
+mod lower_declarative_codegen;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct ModuleEntry {
@@ -284,9 +292,10 @@ fn rule_path(entry: &ModuleEntry) -> String {
 
 fn main() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let rules_dir = Path::new(&manifest_dir).join("src/transform/rules");
+    let manifest_dir_path = Path::new(&manifest_dir);
+    lower_declarative_codegen::generate(manifest_dir_path);
 
-    // Re-run if any file in the rules directory changes.
+    let rules_dir = manifest_dir_path.join("src/transform/rules");
     println!("cargo:rerun-if-changed={}", rules_dir.display());
 
     let mut entries = Vec::new();

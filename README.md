@@ -88,6 +88,51 @@ Key axes include:
 | `math.scripts.order` | `SubFirst` | Fixed output order: `_` before `^` |
 | `syntax.environments.name_spacing` | `Spaced` | `\begin {matrix}` vs `\begin{matrix}` |
 
+## Transform
+
+TeXForm includes a rule-based AST transform engine in `texform-core::transform`. It normalizes a
+parsed AST so downstream consumers — formula equivalence, MER tokenization, LLM pretraining
+corpora, or polished authoring output — can work against a stable canonical form without
+re-implementing LaTeX semantics per use case.
+
+### Pipeline
+
+The engine runs in three phases:
+
+1. **`LowerDeclarative`** — a hard-coded pre-pass that lifts declarative-scope commands such as
+   `\bf`, `\rm`, `\large`, and `\displaystyle` out of stack-based scopes and into explicit AST
+   shapes (for example `{\bf X}` → `\mathbf{X}`). This runs before any rule, so rules never have
+   to reason about implicit-scope semantics.
+2. **`Normalize`** — fixed-point loop over all enabled rules until no rule fires.
+3. **`Cleanup`** — one-shot pass for rules that should run only after normalization has settled.
+
+### Rule Classes
+
+Every transform rule belongs to exactly one **class**. The class captures the rule's intent rather
+than its mechanism, and consumers choose which classes to apply by selecting a profile.
+
+| Class      | Intent |
+|------------|--------|
+| `Standard` | Uncontroversial author-facing standardization: deprecated-syntax modernization, typo fixes, alias canonicalization, cross-package anchor unification. Does not collapse stylistic choices that an author may legitimately make. |
+| `Expand`   | Corpus-oriented normal form: rewrites convenience commands, semantic macros, package-specific commands, and spacing primitives into more universal structures. Output remains readable LaTeX and preserves layout information. |
+| `Drop`     | Removes non-ink, metadata, and layout hints a corpus should not learn — linebreak preferences, invisible layout nodes, and similar caller-opt-in deletions. |
+| `Equiv`    | Aggressive normalization tuned for equivalence comparison; may sacrifice common idioms or author intent for higher recall. Rewrites rather than deletes. |
+
+A rule's class is decided by its immediate rewrite intent, not by what later rules might do to the
+result.
+
+### Profiles
+
+`TransformProfile` bundles classes for common downstream scenarios:
+
+| Profile       | Classes                                  | Target scenario                                              |
+|---------------|------------------------------------------|--------------------------------------------------------------|
+| `AUTHORING`   | `Standard`                               | Polished author-facing formatting; stylistic choices kept.   |
+| `CORPUS`      | `Standard` + `Expand`                    | MER input or LLM pretraining corpus; layout info preserved.  |
+| `CORPUS_DROP` | `Standard` + `Expand` + `Drop`           | Stronger corpus cleaning; drops linebreak/layout hints.      |
+| `EQUIV`       | `Standard` + `Expand` + `Drop` + `Equiv` | Aggressive normalization for formula equivalence comparison. |
+
+See `crates/texform-core/src/transform/rules/README.md` for rule authoring conventions.
 
 ## Language Bindings
 
