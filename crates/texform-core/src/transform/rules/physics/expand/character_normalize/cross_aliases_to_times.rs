@@ -29,7 +29,7 @@ define_rule! {
         key: Physics / "cross-aliases-to-times",
         class: Expand,
         summary: "Normalize physics cross-product glyph aliases to times for corpus form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         triggers: char_targets![&physics::chars::CP, &physics::chars::CROSS, &physics::chars::CROSSPRODUCT],

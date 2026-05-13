@@ -29,7 +29,7 @@ define_rule! {
         key: Physics / "va-to-vec-mathbf",
         class: Expand,
         summary: "Canonicalize va to an explicit vec-wrapped mathbf form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::VA],

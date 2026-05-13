@@ -24,7 +24,7 @@ define_rule! {
         key: Ams / "doublecap-to-Cap",
         class: Standard,
         summary: "Collapse doublecap to the more common Cap character.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::DOUBLECAP],

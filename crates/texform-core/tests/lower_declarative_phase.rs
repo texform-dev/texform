@@ -2,7 +2,7 @@
 //!
 //! Tests go through the public `transform_ast` entry point with the standard
 //! rule class, so they implicitly check that LowerDeclarative composes
-//! cleanly with the existing Normalize / Cleanup phases.
+//! cleanly with the existing ApplyRules / Cleanup phases.
 
 use texform_core::ast::{Ast, ContentMode, Node};
 use texform_core::parse::ParseContext;

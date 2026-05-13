@@ -24,7 +24,7 @@ define_rule! {
         key: Base / "cases-to-cases-env",
         class: Standard,
         summary: "Rewrite plain-TeX cases to the standard cases environment with row breaks.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Semantic,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::CASES],

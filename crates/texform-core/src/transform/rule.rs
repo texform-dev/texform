@@ -10,7 +10,7 @@
 //!   physics).
 //! - **Class** ([`RuleClass`]) — which preset selection class the rule belongs
 //!   to (standard, expand, drop, equiv).
-//! - **Phase** ([`RulePhase`]) — *when* the rule runs (normalize loop vs.
+//! - **Phase** ([`RulePhase`]) — *when* the rule runs (ApplyRules loop vs.
 //!   one-shot cleanup).
 //! - **Safety** ([`RuleSafety`]) — whether the transformation preserves full
 //!   information, only semantic meaning, or is destructive.
@@ -45,15 +45,15 @@ impl RuleClass {
 
 /// Execution phase that determines *how* a rule is scheduled.
 ///
-/// The transform engine runs in two phases:
-/// 1. **Normalize** — rules are applied repeatedly in a fixed-point loop until
+/// The transform engine schedules rule implementations in two groups:
+/// 1. **ApplyRules** — rules are applied repeatedly in a fixed-point loop until
 ///    no rule produces a change (or the iteration limit is reached).
-/// 2. **Cleanup** — rules run exactly once after normalization is complete.
+/// 2. **Cleanup** — rules run exactly once after ApplyRules is complete.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RulePhase {
-    /// The rule participates in the normalize fixed-point loop.
-    Normalize,
-    /// The rule runs once after all normalize iterations have converged.
+    /// The rule participates in the ApplyRules fixed-point loop.
+    ApplyRules,
+    /// The rule runs once after all ApplyRules iterations have converged.
     Cleanup,
 }
 
@@ -228,7 +228,7 @@ pub struct RuleMeta {
 
 /// Result of attempting to apply a rule to a single node.
 ///
-/// The engine uses this to decide whether the normalize loop made progress
+/// The engine uses this to decide whether the ApplyRules loop made progress
 /// in the current iteration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuleEffect {

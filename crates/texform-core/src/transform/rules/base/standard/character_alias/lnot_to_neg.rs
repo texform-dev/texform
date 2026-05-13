@@ -24,7 +24,7 @@ define_rule! {
         key: Base / "lnot-to-neg",
         class: Standard,
         summary: "Collapse lnot to the standard neg character.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::LNOT],

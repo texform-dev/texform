@@ -24,7 +24,7 @@ define_rule! {
         key: Base / "owns-to-ni",
         class: Standard,
         summary: "Collapse owns to the shorter ni character.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::OWNS],

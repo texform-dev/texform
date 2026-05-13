@@ -23,7 +23,7 @@ define_rule! {
         key: Physics / "mdet-to-vmqty",
         class: Expand,
         summary: "Expand mdet to the vmqty determinant-style builder.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::MDET],

@@ -24,7 +24,7 @@ define_rule! {
         key: Ams / "vartriangleleft-to-lhd",
         class: Standard,
         summary: "Collapse vartriangleleft to the more common lhd character.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::VARTRIANGLELEFT],

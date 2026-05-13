@@ -22,7 +22,7 @@ alias_rule! {
         key: Physics / "probability-to-pr",
         class: Standard,
         summary: "Collapse the long Probability helper to the standard Pr operator form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         canonical: &base::cmd::PR,

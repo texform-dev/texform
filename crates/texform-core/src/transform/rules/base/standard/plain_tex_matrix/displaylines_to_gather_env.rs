@@ -28,7 +28,7 @@ define_rule! {
         key: Base / "displaylines-to-gather-env",
         class: Standard,
         summary: "Rewrite displaylines to the standard gather environment.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Semantic,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::DISPLAYLINES],

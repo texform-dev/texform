@@ -24,7 +24,7 @@ define_rule! {
         key: Ams / "llless-to-lll",
         class: Standard,
         summary: "Collapse llless to the shorter lll character.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::LLLESS],

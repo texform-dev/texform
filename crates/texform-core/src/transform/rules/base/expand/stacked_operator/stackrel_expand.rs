@@ -26,7 +26,7 @@ define_rule! {
         key: Base / "stackrel-expand",
         class: Expand,
         summary: "Expand stackrel to an explicit relation-class stacked operator form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::STACKREL],

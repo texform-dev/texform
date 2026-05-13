@@ -24,7 +24,7 @@ define_rule! {
         key: Base / "lor-to-vee",
         class: Expand,
         summary: "Normalize lor to vee for corpus form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::LOR],

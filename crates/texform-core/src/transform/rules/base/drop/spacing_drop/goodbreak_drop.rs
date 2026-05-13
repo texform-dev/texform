@@ -22,7 +22,7 @@ define_rule! {
         key: Base / "goodbreak-drop",
         class: Drop,
         summary: "Drop goodbreak as a pure linebreak hint during cleanup-oriented normalization.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Semantic,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::GOODBREAK],

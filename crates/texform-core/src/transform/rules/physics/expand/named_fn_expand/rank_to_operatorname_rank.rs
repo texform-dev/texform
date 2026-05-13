@@ -25,7 +25,7 @@ define_rule! {
         key: Physics / "rank-to-operatorname-rank",
         class: Expand,
         summary: "Rewrite rank to an explicit operatorname form instead of a package-local alias.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::RANK],

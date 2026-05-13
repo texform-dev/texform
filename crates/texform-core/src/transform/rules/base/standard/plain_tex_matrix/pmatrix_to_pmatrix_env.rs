@@ -24,7 +24,7 @@ define_rule! {
         key: Base / "pmatrix-to-pmatrix-env",
         class: Standard,
         summary: "Rewrite plain-TeX pmatrix to the standard pmatrix environment with row breaks.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Semantic,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::PMATRIX],

@@ -23,7 +23,7 @@ define_rule! {
         key: Ams / "substack-expand",
         class: Expand,
         summary: "Expand substack directly to the explicit centered subarray environment.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Ams],
         triggers: cmd_targets![&ams::cmd::SUBSTACK],

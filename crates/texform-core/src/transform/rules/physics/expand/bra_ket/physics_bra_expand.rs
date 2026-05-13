@@ -27,7 +27,7 @@ define_rule! {
         key: Physics / "physics-bra-expand",
         class: Expand,
         summary: "Expand bra to an explicit angle-bracket and bar fence form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::BRA],

@@ -24,7 +24,7 @@ define_rule! {
         key: Physics / "naturallogarithm-to-ln",
         class: Standard,
         summary: "Collapse the long natural logarithm helper to the standard ln operator.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::NATURALLOGARITHM],

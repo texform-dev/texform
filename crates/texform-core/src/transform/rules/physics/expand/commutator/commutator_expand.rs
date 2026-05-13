@@ -32,7 +32,7 @@ define_rule! {
         key: Physics / "commutator-expand",
         class: Expand,
         summary: "Expand commutators to explicit square-bracket fences.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::COMM],

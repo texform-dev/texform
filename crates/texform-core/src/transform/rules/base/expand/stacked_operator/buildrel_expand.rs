@@ -27,7 +27,7 @@ define_rule! {
         key: Base / "buildrel-expand",
         class: Expand,
         summary: "Expand buildrel syntax to an explicit relation-class stacked operator form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::BUILDREL],

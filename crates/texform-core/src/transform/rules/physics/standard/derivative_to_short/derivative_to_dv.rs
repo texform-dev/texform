@@ -24,7 +24,7 @@ alias_rule! {
         key: Physics / "derivative-to-dv",
         class: Standard,
         summary: "Collapse derivative to the compact dv command.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::DV,

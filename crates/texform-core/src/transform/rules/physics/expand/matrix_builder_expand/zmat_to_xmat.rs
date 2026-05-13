@@ -25,7 +25,7 @@ define_rule! {
         key: Physics / "zmat-to-xmat",
         class: Expand,
         summary: "Expand zmat to the explicit xmat zero-filled builder.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::ZMAT],

@@ -183,7 +183,7 @@ define_rule! {
         key: Base / "over-to-frac",
         class: Standard,
         summary: "Rewrite infix \\over into prefix \\frac",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Semantic,
         enabled_by_packages: [Base],
         consumes: RuleConsumes {
@@ -226,7 +226,7 @@ alias_rule! {
         key: Physics / "trace-to-tr",
         class: Standard,
         summary: "Canonicalize \\Tr, \\trace, and \\Trace into \\tr",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::TR,

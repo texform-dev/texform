@@ -24,7 +24,7 @@ define_rule! {
         key: Base / "rightarrow-to-to",
         class: Expand,
         summary: "Normalize rightarrow to the shorter to arrow character for corpus form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::RIGHTARROW],

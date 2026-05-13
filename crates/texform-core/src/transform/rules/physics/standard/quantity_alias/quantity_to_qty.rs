@@ -24,7 +24,7 @@ alias_rule! {
         key: Physics / "quantity-to-qty",
         class: Standard,
         summary: "Collapse quantity to the shorter qty helper.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::QTY,

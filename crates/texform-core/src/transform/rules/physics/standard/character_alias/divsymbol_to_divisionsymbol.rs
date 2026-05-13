@@ -24,7 +24,7 @@ define_rule! {
         key: Physics / "divsymbol-to-divisionsymbol",
         class: Standard,
         summary: "Collapse divsymbol to the documented divisionsymbol character alias.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         triggers: char_targets![&physics::chars::DIVSYMBOL],

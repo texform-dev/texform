@@ -24,7 +24,7 @@ define_rule! {
         key: Ams / "gggtr-to-ggg",
         class: Standard,
         summary: "Collapse gggtr to the shorter ggg character.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::GGGTR],

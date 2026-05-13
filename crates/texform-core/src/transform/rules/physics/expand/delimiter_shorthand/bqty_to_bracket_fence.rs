@@ -33,7 +33,7 @@ define_rule! {
         key: Physics / "bqty-to-bracket-fence",
         class: Expand,
         summary: "Rewrite bqty to explicit bracket fences.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::BQTY],

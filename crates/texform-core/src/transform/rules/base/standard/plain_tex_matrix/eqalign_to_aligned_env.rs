@@ -24,7 +24,7 @@ define_rule! {
         key: Base / "eqalign-to-aligned-env",
         class: Standard,
         summary: "Rewrite eqalign to the standard aligned environment.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Semantic,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::EQALIGN],

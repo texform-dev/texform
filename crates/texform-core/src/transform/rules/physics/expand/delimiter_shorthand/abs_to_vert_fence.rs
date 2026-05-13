@@ -33,7 +33,7 @@ define_rule! {
         key: Physics / "abs-to-vert-fence",
         class: Expand,
         summary: "Rewrite abs to explicit vertical bar fences.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::ABS],

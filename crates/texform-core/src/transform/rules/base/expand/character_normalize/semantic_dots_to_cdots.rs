@@ -28,7 +28,7 @@ define_rule! {
         key: Base / "semantic-dots-to-cdots",
         class: Expand,
         summary: "Normalize semantic centered-dot ellipsis aliases to cdots for corpus form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::DOTSB, &base::chars::DOTSM, &base::chars::DOTSI],

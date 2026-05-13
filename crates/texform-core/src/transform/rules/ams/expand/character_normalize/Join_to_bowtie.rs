@@ -25,7 +25,7 @@ define_rule! {
         key: Ams / "Join-to-bowtie",
         class: Expand,
         summary: "Normalize Join to bowtie for corpus form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::JOIN],

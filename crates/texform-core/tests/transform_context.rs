@@ -34,7 +34,7 @@ fn only_many_keeps_the_requested_rules() {
         .expect("transform context should build");
 
     let active_keys = transform_ctx
-        .normalize_rules()
+        .apply_rules()
         .iter()
         .map(|rule| rule.meta().key)
         .collect::<Vec<_>>();
@@ -62,7 +62,7 @@ fn build_with_disables_rules_touching_mutated_command_names() {
         .expect("transform context should build");
 
     let active = transform_ctx
-        .normalize_rules()
+        .apply_rules()
         .iter()
         .map(|rule| rule.meta().key.to_string())
         .collect::<Vec<_>>();
@@ -88,7 +88,7 @@ fn disabling_all_rules_builds_empty_transform_context() {
         .build_with(&parse_ctx)
         .expect("empty transform context should be a valid no-op");
 
-    assert!(transform_ctx.normalize_rules().is_empty());
+    assert!(transform_ctx.apply_rules().is_empty());
     assert!(transform_ctx.cleanup_rules().is_empty());
 }
 
@@ -111,7 +111,7 @@ fn only_does_not_bypass_profile_class_filter_and_can_return_empty_context() {
         .build_with(&parse_ctx)
         .expect("empty transform context should be a valid no-op");
 
-    assert!(transform_ctx.normalize_rules().is_empty());
+    assert!(transform_ctx.apply_rules().is_empty());
     assert!(transform_ctx.cleanup_rules().is_empty());
 }
 
@@ -123,7 +123,7 @@ fn build_with_all_rules_filtered_by_packages_returns_empty_context() {
         .build_with(&parse_ctx)
         .expect("empty package context should produce a no-op transform context");
 
-    assert!(context.normalize_rules().is_empty());
+    assert!(context.apply_rules().is_empty());
     assert!(context.cleanup_rules().is_empty());
     assert!(context.eliminated_forms().is_empty());
 }
@@ -138,7 +138,7 @@ fn build_with_keeps_only_rules_enabled_by_parse_context_packages() {
         .expect("transform context should build");
 
     let active = transform_ctx
-        .normalize_rules()
+        .apply_rules()
         .iter()
         .map(|rule| rule.meta())
         .collect::<Vec<_>>();

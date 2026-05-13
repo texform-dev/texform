@@ -22,7 +22,7 @@ alias_rule! {
         key: Physics / "vectorarrow-to-va",
         class: Standard,
         summary: "Collapse vectorarrow to the short va helper.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::VA,

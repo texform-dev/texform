@@ -25,7 +25,7 @@ define_rule! {
         key: Ams / "vartriangle-to-bigtriangleup",
         class: Expand,
         summary: "Normalize vartriangle to bigtriangleup for corpus form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::VARTRIANGLE],

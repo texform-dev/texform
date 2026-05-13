@@ -55,15 +55,15 @@ impl TransformProfile {
 
 #[derive(Clone)]
 pub struct TransformContext {
-    normalize_rules: RuleList,
+    apply_rules: RuleList,
     cleanup_rules: RuleList,
     eliminated_forms: EliminatedForms,
     max_iterations: usize,
 }
 
 impl TransformContext {
-    pub fn normalize_rules(&self) -> &[&'static dyn TransformRule] {
-        self.normalize_rules.as_slice()
+    pub fn apply_rules(&self) -> &[&'static dyn TransformRule] {
+        self.apply_rules.as_slice()
     }
 
     pub fn cleanup_rules(&self) -> &[&'static dyn TransformRule] {
@@ -81,13 +81,13 @@ impl TransformContext {
     #[cfg(test)]
     #[allow(dead_code)]
     pub(crate) fn from_parts_for_test(
-        normalize_rules: RuleList,
+        apply_rules: RuleList,
         cleanup_rules: RuleList,
         eliminated_forms: EliminatedForms,
         max_iterations: usize,
     ) -> Self {
         Self {
-            normalize_rules,
+            apply_rules,
             cleanup_rules,
             eliminated_forms,
             max_iterations,
@@ -122,7 +122,7 @@ pub enum TransformBuildError {
     },
     CleanupBoundaryConflict {
         cleanup_rule: RuleKey,
-        normalize_rule: RuleKey,
+        apply_rules_rule: RuleKey,
     },
 }
 
@@ -145,10 +145,10 @@ impl std::fmt::Display for TransformBuildError {
             }
             TransformBuildError::CleanupBoundaryConflict {
                 cleanup_rule,
-                normalize_rule,
+                apply_rules_rule,
             } => write!(
                 f,
-                "cleanup rule {cleanup_rule} produces input consumed by normalize rule {normalize_rule}"
+                "cleanup rule {cleanup_rule} produces input consumed by ApplyRules rule {apply_rules_rule}"
             ),
         }
     }
@@ -237,11 +237,11 @@ impl TransformContextBuilder {
             parse_ctx,
         )?;
 
-        let normalize_rules = topological_sort(
+        let apply_rules = topological_sort(
             enabled
                 .iter()
                 .copied()
-                .filter(|rule| matches!(rule.meta().phase, RulePhase::Normalize))
+                .filter(|rule| matches!(rule.meta().phase, RulePhase::ApplyRules))
                 .collect::<Vec<_>>()
                 .as_slice(),
         )?;
@@ -254,10 +254,10 @@ impl TransformContextBuilder {
                 .as_slice(),
         )?;
 
-        assert_cleanup_boundary(normalize_rules.as_slice(), cleanup_rules.as_slice())?;
+        assert_cleanup_boundary(apply_rules.as_slice(), cleanup_rules.as_slice())?;
 
         Ok(TransformContext {
-            normalize_rules,
+            apply_rules,
             cleanup_rules,
             eliminated_forms: derive_eliminated_forms(enabled.as_slice()),
             max_iterations: self.max_iterations,
@@ -413,7 +413,7 @@ fn derive_eliminated_forms(rules: &[&'static dyn TransformRule]) -> EliminatedFo
 }
 
 fn assert_cleanup_boundary(
-    normalize_rules: &[&'static dyn TransformRule],
+    apply_rules: &[&'static dyn TransformRule],
     cleanup_rules: &[&'static dyn TransformRule],
 ) -> Result<(), TransformBuildError> {
     for cleanup_rule in cleanup_rules {
@@ -425,19 +425,19 @@ fn assert_cleanup_boundary(
             .copied()
             .map(RuleTarget::key)
         {
-            for normalize_rule in normalize_rules {
-                let consumes = normalize_rule
+            for apply_rules_rule in apply_rules {
+                let consumes = apply_rules_rule
                     .meta()
                     .consumes
                     .eliminates
                     .iter()
-                    .chain(normalize_rule.meta().consumes.touches.iter())
+                    .chain(apply_rules_rule.meta().consumes.touches.iter())
                     .copied()
                     .map(RuleTarget::key);
                 if consumes.into_iter().any(|consumed| consumed == produced) {
                     return Err(TransformBuildError::CleanupBoundaryConflict {
                         cleanup_rule: cleanup_rule.meta().key,
-                        normalize_rule: normalize_rule.meta().key,
+                        apply_rules_rule: apply_rules_rule.meta().key,
                     });
                 }
             }
@@ -674,7 +674,7 @@ mod tests {
         enabled_by_packages: &[PackageName::Physics],
         class: RuleClass::Standard,
         summary: "mock rule a",
-        phase: RulePhase::Normalize,
+        phase: RulePhase::ApplyRules,
         safety: RuleSafety::Lossless,
         triggers: &[RuleTarget::Command(&COMMAND_C)],
         consumes: RuleConsumes {
@@ -694,7 +694,7 @@ mod tests {
         enabled_by_packages: &[PackageName::Physics],
         class: RuleClass::Standard,
         summary: "mock rule b",
-        phase: RulePhase::Normalize,
+        phase: RulePhase::ApplyRules,
         safety: RuleSafety::Lossless,
         triggers: &[RuleTarget::Command(&COMMAND_A)],
         consumes: RuleConsumes {
@@ -714,7 +714,7 @@ mod tests {
         enabled_by_packages: &[PackageName::Physics],
         class: RuleClass::Standard,
         summary: "mock rule c",
-        phase: RulePhase::Normalize,
+        phase: RulePhase::ApplyRules,
         safety: RuleSafety::Lossless,
         triggers: &[RuleTarget::Command(&COMMAND_B)],
         consumes: RuleConsumes {
@@ -754,7 +754,7 @@ mod tests {
         enabled_by_packages: &[PackageName::Physics],
         class: RuleClass::Standard,
         summary: "mock rule with duplicate eliminate variants",
-        phase: RulePhase::Normalize,
+        phase: RulePhase::ApplyRules,
         safety: RuleSafety::Lossless,
         triggers: &SHARED_VARIANT_TARGETS,
         consumes: RuleConsumes {
@@ -772,7 +772,7 @@ mod tests {
         enabled_by_packages: &[PackageName::Base],
         class: RuleClass::Standard,
         summary: "mock rule producing matrix environment",
-        phase: RulePhase::Normalize,
+        phase: RulePhase::ApplyRules,
         safety: RuleSafety::Lossless,
         triggers: &[RuleTarget::Command(&COMMAND_A)],
         consumes: RuleConsumes {
@@ -792,7 +792,7 @@ mod tests {
         enabled_by_packages: &[PackageName::Base],
         class: RuleClass::Standard,
         summary: "mock rule producing bboldx character",
-        phase: RulePhase::Normalize,
+        phase: RulePhase::ApplyRules,
         safety: RuleSafety::Lossless,
         triggers: &[RuleTarget::Command(&COMMAND_A)],
         consumes: RuleConsumes {
@@ -856,17 +856,17 @@ mod tests {
 
     #[test]
     fn cleanup_boundary_reports_conflicting_rules() {
-        let normalize_rules: [&'static dyn TransformRule; 1] = [&RULE_B];
+        let apply_rules: [&'static dyn TransformRule; 1] = [&RULE_B];
         let cleanup_rules: [&'static dyn TransformRule; 1] = [&CLEANUP_RULE];
 
-        let error = assert_cleanup_boundary(normalize_rules.as_slice(), cleanup_rules.as_slice())
-            .expect_err("cleanup boundary should reject normalize input");
+        let error = assert_cleanup_boundary(apply_rules.as_slice(), cleanup_rules.as_slice())
+            .expect_err("cleanup boundary should reject ApplyRules input");
 
         assert_eq!(
             error,
             TransformBuildError::CleanupBoundaryConflict {
                 cleanup_rule: CLEANUP_RULE_META.key,
-                normalize_rule: RULE_B_META.key,
+                apply_rules_rule: RULE_B_META.key,
             }
         );
     }

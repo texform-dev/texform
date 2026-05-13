@@ -4,9 +4,9 @@
 //!
 //! 1. **LowerDeclarative** — rewrites registered declarative-scope commands before
 //!    ordinary rule execution.
-//! 2. **Normalize** — runs in a fixed-point loop, repeatedly applying normalization
-//!    rules until the AST stabilizes (no rule fires) or the iteration limit is reached.
-//! 3. **Cleanup** — runs a single pass of cleanup rules after normalization is complete.
+//! 2. **ApplyRules** — runs transform rules in a fixed-point loop until the AST
+//!    stabilizes (no rule fires) or the iteration limit is reached.
+//! 3. **Cleanup** — runs a single pass of cleanup rules after ApplyRules is complete.
 //!
 //! After these steps, the engine validates the resulting AST against the
 //! eliminated-form contract derived into [`TransformContext`].
@@ -37,7 +37,7 @@ pub struct AppliedRuleStat {
 pub struct TransformReport {
     /// Per-rule execution counts for rules that were attempted at least once.
     pub applied: Vec<AppliedRuleStat>,
-    /// The number of fixed-point iterations the normalize phase completed.
+    /// The number of fixed-point iterations the ApplyRules phase completed.
     pub iterations: usize,
     /// Statistics from the declarative-scope lowering pre-pass.
     pub lower_declarative: lower_declarative::LowerDeclarativeReport,
@@ -106,7 +106,7 @@ pub enum TransformEngineError {
         target: RuleTargetKey,
         node_name: Option<String>,
     },
-    /// The normalize phase did not converge within the allowed iteration budget.
+    /// The ApplyRules phase did not converge within the allowed iteration budget.
     MaxIterationsExceeded { max_iterations: usize },
 }
 
@@ -152,7 +152,7 @@ pub fn transform_ast(
                     continue;
                 }
 
-                for rule in transform_ctx.normalize_rules() {
+                for rule in transform_ctx.apply_rules() {
                     if !rule_matches(rule.meta(), node_id, &cx) {
                         continue;
                     }
@@ -344,7 +344,7 @@ mod tests {
         enabled_by_packages: &[PackageName::Physics],
         class: RuleClass::Standard,
         summary: "mock skip rule",
-        phase: RulePhase::Normalize,
+        phase: RulePhase::ApplyRules,
         safety: RuleSafety::Lossless,
         triggers: &[RuleTarget::Command(&SKIP_COMMAND)],
         consumes: RuleConsumes {
@@ -364,7 +364,7 @@ mod tests {
         enabled_by_packages: &[PackageName::Physics],
         class: RuleClass::Standard,
         summary: "mock touch rule",
-        phase: RulePhase::Normalize,
+        phase: RulePhase::ApplyRules,
         safety: RuleSafety::Lossless,
         triggers: &[RuleTarget::Command(&SKIP_COMMAND)],
         consumes: RuleConsumes {
@@ -416,7 +416,7 @@ mod tests {
         enabled_by_packages: &[PackageName::Physics],
         class: RuleClass::Standard,
         summary: "mock trigger-only rule",
-        phase: RulePhase::Normalize,
+        phase: RulePhase::ApplyRules,
         safety: RuleSafety::Lossless,
         triggers: &[RuleTarget::Command(&SKIP_COMMAND)],
         consumes: RuleConsumes {
@@ -452,7 +452,7 @@ mod tests {
         enabled_by_packages: &[PackageName::Bboldx],
         class: RuleClass::Standard,
         summary: "mock character skip rule",
-        phase: RulePhase::Normalize,
+        phase: RulePhase::ApplyRules,
         safety: RuleSafety::Lossless,
         triggers: &[RuleTarget::Character(&bboldx::chars::BBDOTLESSI)],
         consumes: RuleConsumes {

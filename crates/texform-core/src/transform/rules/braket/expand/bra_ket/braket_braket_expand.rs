@@ -26,7 +26,7 @@ define_rule! {
         key: Braket / "braket-braket-expand",
         class: Expand,
         summary: "Expand braket to an explicit angle-bracket form with a middle bar.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Braket],
         triggers: cmd_targets![&braket::cmd::BRAKET],

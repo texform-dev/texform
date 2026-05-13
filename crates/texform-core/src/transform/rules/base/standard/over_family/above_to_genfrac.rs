@@ -25,7 +25,7 @@ define_rule! {
         key: Base / "above-to-genfrac",
         class: Standard,
         summary: "Rewrite above to a thickness-preserving genfrac form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::ABOVE],

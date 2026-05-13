@@ -103,8 +103,8 @@ The engine runs in three phases:
    `\bf`, `\rm`, `\large`, and `\displaystyle` out of stack-based scopes and into explicit AST
    shapes (for example `{\bf X}` → `\mathbf{X}`). This runs before any rule, so rules never have
    to reason about implicit-scope semantics.
-2. **`Normalize`** — fixed-point loop over all enabled rules until no rule fires.
-3. **`Cleanup`** — one-shot pass for rules that should run only after normalization has settled.
+2. **`ApplyRules`** — fixed-point loop over all enabled rules until no rule fires.
+3. **`Cleanup`** — one-shot pass for rules that should run only after ApplyRules has settled.
 
 ### Rule Classes
 

@@ -31,7 +31,7 @@ define_rule! {
         key: Base / "eqalignno-to-align-env",
         class: Standard,
         summary: "Rewrite eqalignno to the standard align environment.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Semantic,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::EQALIGNNO],

@@ -26,7 +26,7 @@ define_rule! {
         key: Braket / "braket-bra-expand",
         class: Expand,
         summary: "Expand bra to an explicit angle-bracket and bar fence form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Braket],
         triggers: cmd_targets![&braket::cmd::BRA],

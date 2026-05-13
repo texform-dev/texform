@@ -22,7 +22,7 @@ alias_rule! {
         key: Physics / "absolutevalue-to-abs",
         class: Standard,
         summary: "Collapse absolutevalue to the shorter abs helper before fence expansion.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::ABS,

@@ -34,7 +34,7 @@ define_rule! {
         key: Physics / "eval-paren-expand",
         class: Expand,
         summary: "Expand paren-style eval notation to the explicit fence-and-bar form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::EVAL],

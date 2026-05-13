@@ -24,7 +24,7 @@ define_rule! {
         key: Ams / "vartriangleright-to-rhd",
         class: Standard,
         summary: "Collapse vartriangleright to the more common rhd character.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::VARTRIANGLERIGHT],

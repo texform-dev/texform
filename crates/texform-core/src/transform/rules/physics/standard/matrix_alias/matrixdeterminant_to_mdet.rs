@@ -21,7 +21,7 @@ alias_rule! {
         key: Physics / "matrixdeterminant-to-mdet",
         class: Standard,
         summary: "Collapse matrixdeterminant to the shorter mdet determinant helper.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::MDET,

@@ -24,7 +24,7 @@ define_rule! {
         key: Base / "gets-to-leftarrow",
         class: Expand,
         summary: "Normalize gets to leftarrow for corpus form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::GETS],

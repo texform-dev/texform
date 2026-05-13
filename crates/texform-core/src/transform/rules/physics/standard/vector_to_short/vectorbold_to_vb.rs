@@ -22,7 +22,7 @@ alias_rule! {
         key: Physics / "vectorbold-to-vb",
         class: Standard,
         summary: "Collapse vectorbold to the short vb helper.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::VB,

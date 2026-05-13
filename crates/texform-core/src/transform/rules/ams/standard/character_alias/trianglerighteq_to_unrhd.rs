@@ -24,7 +24,7 @@ define_rule! {
         key: Ams / "trianglerighteq-to-unrhd",
         class: Standard,
         summary: "Collapse trianglerighteq to the more common unrhd character.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::TRIANGLERIGHTEQ],

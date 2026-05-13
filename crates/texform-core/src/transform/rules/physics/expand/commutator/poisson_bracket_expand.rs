@@ -32,7 +32,7 @@ define_rule! {
         key: Physics / "poisson-bracket-expand",
         class: Expand,
         summary: "Expand poisson brackets to explicit brace fences.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::PB],

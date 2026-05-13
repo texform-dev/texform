@@ -24,7 +24,7 @@ define_rule! {
         key: Ams / "Doteq-to-doteqdot",
         class: Standard,
         summary: "Collapse Doteq to the descriptive doteqdot character.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::DOTEQ],

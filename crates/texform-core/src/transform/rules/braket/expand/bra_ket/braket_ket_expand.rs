@@ -26,7 +26,7 @@ define_rule! {
         key: Braket / "braket-ket-expand",
         class: Expand,
         summary: "Expand ket to an explicit bar and angle-bracket fence form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Braket],
         triggers: cmd_targets![&braket::cmd::KET],

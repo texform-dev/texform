@@ -34,7 +34,7 @@ define_rule! {
         key: Physics / "fdv-to-frac-delta",
         class: Expand,
         summary: "Expand fdv forms to explicit delta-based derivative fractions.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::FDV],

@@ -24,7 +24,7 @@ define_rule! {
         key: Base / "le-to-leq",
         class: Standard,
         summary: "Collapse le to the explicit leq relation character.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::LE],

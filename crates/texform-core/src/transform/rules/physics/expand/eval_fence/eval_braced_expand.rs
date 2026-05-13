@@ -32,7 +32,7 @@ define_rule! {
         key: Physics / "eval-braced-expand",
         class: Expand,
         summary: "Expand braced eval notation to the explicit fence-and-bar form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::EVAL],

@@ -24,7 +24,7 @@ define_rule! {
         key: Ams / "lozenge-to-Diamond",
         class: Expand,
         summary: "Normalize lozenge to Diamond for corpus form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::LOZENGE],

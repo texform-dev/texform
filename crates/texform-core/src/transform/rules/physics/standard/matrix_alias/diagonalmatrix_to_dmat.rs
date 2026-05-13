@@ -22,7 +22,7 @@ alias_rule! {
         key: Physics / "diagonalmatrix-to-dmat",
         class: Standard,
         summary: "Collapse diagonalmatrix to the shorter dmat helper.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::DMAT,

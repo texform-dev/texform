@@ -24,7 +24,7 @@ define_rule! {
         key: Ams / "square-to-Box",
         class: Expand,
         summary: "Normalize square to Box for corpus form.",
-        phase: Normalize,
+        phase: ApplyRules,
         safety: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::SQUARE],
