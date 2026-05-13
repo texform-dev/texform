@@ -1,6 +1,6 @@
-from typing import Any
+from typing import Any, Literal
 
-__all__ = ["ParseError", "parse"]
+__all__ = ["ParseError", "count_targets", "normalize", "parse"]
 
 
 class ParseError(Exception):
@@ -16,7 +16,11 @@ class ParseError(Exception):
     partial_result: dict[str, Any] | None
 
 
-def parse(src: str, strict: bool = False) -> dict[str, Any]:
+def parse(
+    src: str,
+    strict: bool = False,
+    packages: list[str] | None = None,
+) -> dict[str, Any]:
     """Parse a LaTeX formula.
 
     Args:
@@ -31,4 +35,23 @@ def parse(src: str, strict: bool = False) -> dict[str, Any]:
         ParseError: If the parser emits any diagnostics. The exception
             carries ``diagnostics`` and ``partial_result`` attributes.
     """
+    ...
+
+
+def normalize(
+    src: str,
+    profile: Literal["authoring", "corpus", "corpus-drop", "equiv"] = "authoring",
+    strict: bool = True,
+    packages: list[str] | None = None,
+) -> dict[str, Any]:
+    """Normalize a LaTeX formula and return the normalized source plus report."""
+    ...
+
+
+def count_targets(
+    src: str,
+    strict: bool = False,
+    packages: list[str] | None = None,
+) -> dict[str, int]:
+    """Count command, environment, and character targets in a LaTeX formula."""
     ...

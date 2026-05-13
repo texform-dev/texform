@@ -5,7 +5,6 @@
 //! contribute as command or character targets according to the builtin specs;
 //! environment nodes contribute as environment targets.
 
-use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
@@ -15,144 +14,16 @@ use arrow_schema::{DataType, Field, Schema};
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::properties::WriterProperties;
-use texform_interface::syntax_node::{Argument, ArgumentValue, ContentMode, SyntaxNode};
-use texform_specs::builtin::ALL_PACKAGES;
+use texform_interface::syntax_node::ContentMode;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Kind {
-    Cmd,
-    Env,
-    Char,
-}
-
-impl Kind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Kind::Cmd => "cmd",
-            Kind::Env => "env",
-            Kind::Char => "char",
-        }
-    }
-}
+pub use texform_core::target_counter::{
+    TargetCounter as FormulaCounter, TargetCounterKey, TargetKind as Kind, count_node,
+};
 
 fn mode_str(mode: ContentMode) -> &'static str {
     match mode {
         ContentMode::Math => "math",
         ContentMode::Text => "text",
-    }
-}
-
-/// Counter aggregated from a single formula's AST.
-#[derive(Debug, Default)]
-pub struct FormulaCounter {
-    pub counts: HashMap<(Kind, ContentMode, String), u32>,
-}
-
-impl FormulaCounter {
-    pub fn is_empty(&self) -> bool {
-        self.counts.is_empty()
-    }
-
-    fn bump(&mut self, kind: Kind, mode: ContentMode, name: &str) {
-        *self
-            .counts
-            .entry((kind, mode, name.to_string()))
-            .or_insert(0) += 1;
-    }
-}
-
-/// Walk a `SyntaxNode` and accumulate target counts into `out`.
-pub fn count_node(node: &SyntaxNode, out: &mut FormulaCounter) {
-    count_node_in_mode(node, ContentMode::Math, out);
-}
-
-fn count_node_in_mode(node: &SyntaxNode, inherited_mode: ContentMode, out: &mut FormulaCounter) {
-    match node {
-        SyntaxNode::Root { mode, children } | SyntaxNode::Group { mode, children, .. } => {
-            for child in children {
-                count_node_in_mode(child, *mode, out);
-            }
-        }
-        SyntaxNode::Command { name, args, .. } => {
-            bump_cmd_like(out, inherited_mode, name);
-            count_args(args, out);
-        }
-        SyntaxNode::Infix {
-            name,
-            args,
-            left,
-            right,
-        } => {
-            bump_cmd_like(out, inherited_mode, name);
-            count_args(args, out);
-            count_node_in_mode(left, inherited_mode, out);
-            count_node_in_mode(right, inherited_mode, out);
-        }
-        SyntaxNode::Declarative { name, args } => {
-            bump_cmd_like(out, inherited_mode, name);
-            count_args(args, out);
-        }
-        SyntaxNode::Environment {
-            name, args, body, ..
-        } => {
-            out.bump(Kind::Env, inherited_mode, name);
-            count_args(args, out);
-            count_node_in_mode(body, inherited_mode, out);
-        }
-        SyntaxNode::Scripted {
-            base,
-            subscript,
-            superscript,
-        } => {
-            count_node_in_mode(base, inherited_mode, out);
-            if let Some(sub) = subscript {
-                count_node_in_mode(sub, inherited_mode, out);
-            }
-            if let Some(sup) = superscript {
-                count_node_in_mode(sup, inherited_mode, out);
-            }
-        }
-        SyntaxNode::Text(_)
-        | SyntaxNode::Char(_)
-        | SyntaxNode::ActiveSpace
-        | SyntaxNode::Error { .. } => {}
-    }
-}
-
-fn bump_cmd_like(out: &mut FormulaCounter, mode: ContentMode, name: &str) {
-    let has_cmd = ALL_PACKAGES
-        .iter()
-        .any(|pkg| pkg.commands.iter().any(|record| record.name == name));
-    let has_char = ALL_PACKAGES
-        .iter()
-        .any(|pkg| pkg.characters.iter().any(|record| record.name == name));
-
-    if has_cmd || !has_char {
-        out.bump(Kind::Cmd, mode, name);
-    }
-    if has_char {
-        out.bump(Kind::Char, mode, name);
-    }
-}
-
-fn count_args(args: &[Option<Argument>], out: &mut FormulaCounter) {
-    for slot in args {
-        let Some(arg) = slot else { continue };
-        match &arg.value {
-            ArgumentValue::MathContent(node) => {
-                count_node_in_mode(node, ContentMode::Math, out);
-            }
-            ArgumentValue::TextContent(node) => {
-                count_node_in_mode(node, ContentMode::Text, out);
-            }
-            ArgumentValue::Delimiter(_)
-            | ArgumentValue::CSName(_)
-            | ArgumentValue::Dimension(_)
-            | ArgumentValue::Integer(_)
-            | ArgumentValue::KeyVal(_)
-            | ArgumentValue::Column(_)
-            | ArgumentValue::Boolean(_) => {}
-        }
     }
 }
 
@@ -188,12 +59,12 @@ impl RowBuffer {
         formula_id: &str,
         counter: &FormulaCounter,
     ) {
-        for ((kind, mode, name), count) in &counter.counts {
+        for (key, count) in &counter.counts {
             self.dataset.push(dataset.to_string());
             self.formula_id.push(formula_id.to_string());
-            self.name.push(name.clone());
-            self.kind.push(kind.as_str());
-            self.mode.push(mode_str(*mode));
+            self.name.push(key.name.clone());
+            self.kind.push(key.kind.as_str());
+            self.mode.push(mode_str(key.mode));
             self.count.push(*count);
         }
     }
@@ -288,6 +159,14 @@ mod tests {
     use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
     use texform_core::api;
 
+    fn key(kind: Kind, mode: ContentMode, name: &str) -> TargetCounterKey {
+        TargetCounterKey {
+            kind,
+            mode,
+            name: name.to_string(),
+        }
+    }
+
     fn count_formula(src: &str) -> FormulaCounter {
         let output = api::parse_latex(src, false);
         let result = output.result.expect("parse_latex returned no result");
@@ -312,7 +191,7 @@ mod tests {
         assert_eq!(
             counter
                 .counts
-                .get(&(Kind::Cmd, ContentMode::Math, "frac".into())),
+                .get(&key(Kind::Cmd, ContentMode::Math, "frac")),
             Some(&1)
         );
     }
@@ -323,7 +202,7 @@ mod tests {
         assert_eq!(
             counter
                 .counts
-                .get(&(Kind::Cmd, ContentMode::Math, "over".into())),
+                .get(&key(Kind::Cmd, ContentMode::Math, "over")),
             Some(&1)
         );
     }
@@ -334,7 +213,7 @@ mod tests {
         assert_eq!(
             counter
                 .counts
-                .get(&(Kind::Env, ContentMode::Math, "matrix".into())),
+                .get(&key(Kind::Env, ContentMode::Math, "matrix")),
             Some(&1)
         );
     }
@@ -345,13 +224,13 @@ mod tests {
         assert_eq!(
             counter
                 .counts
-                .get(&(Kind::Cmd, ContentMode::Math, "sqrt".into())),
+                .get(&key(Kind::Cmd, ContentMode::Math, "sqrt")),
             Some(&1)
         );
         assert_eq!(
             counter
                 .counts
-                .get(&(Kind::Cmd, ContentMode::Math, "frac".into())),
+                .get(&key(Kind::Cmd, ContentMode::Math, "frac")),
             Some(&1)
         );
     }
@@ -362,7 +241,7 @@ mod tests {
         assert_eq!(
             counter
                 .counts
-                .get(&(Kind::Char, ContentMode::Math, "alpha".into())),
+                .get(&key(Kind::Char, ContentMode::Math, "alpha")),
             Some(&3)
         );
     }
@@ -371,15 +250,11 @@ mod tests {
     fn separates_same_command_by_content_mode() {
         let counter = count_formula(r"\bf{x} + \text{\bf y}");
         assert_eq!(
-            counter
-                .counts
-                .get(&(Kind::Cmd, ContentMode::Math, "bf".into())),
+            counter.counts.get(&key(Kind::Cmd, ContentMode::Math, "bf")),
             Some(&1)
         );
         assert_eq!(
-            counter
-                .counts
-                .get(&(Kind::Cmd, ContentMode::Text, "bf".into())),
+            counter.counts.get(&key(Kind::Cmd, ContentMode::Text, "bf")),
             Some(&1)
         );
     }

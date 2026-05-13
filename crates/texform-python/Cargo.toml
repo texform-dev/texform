@@ -8,6 +8,7 @@ name = "_native"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { workspace = true, features = ["extension-module"] }
+pyo3 = { workspace = true, features = ["auto-initialize"] }
 pythonize.workspace = true
+serde_json.workspace = true
 texform-core.workspace = true
