@@ -108,8 +108,8 @@ fn normalize(
         "report": {
             "iterations": report.iterations,
             "applied": applied,
-            "lower_declarative": {
-                "eliminated_empty_segments": report.lower_declarative.eliminated_empty_segments,
+            "lower_attributes": {
+                "eliminated_empty_segments": report.lower_attributes.eliminated_empty_segments,
             },
         },
     });

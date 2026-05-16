@@ -1,12 +1,13 @@
 //! Transform engine that applies transformation rules to an AST.
 //!
-//! The engine executes in three ordered steps:
+//! The engine executes in four ordered steps:
 //!
-//! 1. **LowerDeclarative** — rewrites registered declarative-scope commands before
+//! 1. **LowerAttributes** — rewrites registered declarative-scope commands before
 //!    ordinary rule execution.
 //! 2. **ApplyRules** — runs transform rules in a fixed-point loop until the AST
 //!    stabilizes (no rule fires) or the iteration limit is reached.
-//! 3. **Cleanup** — runs a single pass of cleanup rules after ApplyRules is complete.
+//! 3. **LowerAttributes** — normalizes attribute prefixes created by ApplyRules.
+//! 4. **Cleanup** — runs a single pass of cleanup rules after ApplyRules is complete.
 //!
 //! After these steps, the engine validates the resulting AST against the
 //! eliminated-form contract derived into [`TransformContext`].
@@ -15,7 +16,7 @@ use crate::ast::{Ast, NodeId, NodeKind};
 use crate::knowledge::{lookup_command_node_name, lookup_environment_node_name};
 use crate::parse::{ContentMode, ParseContext};
 use crate::transform::context::TransformContext;
-use crate::transform::lower_declarative;
+use crate::transform::lower_attributes;
 use crate::transform::rule::{
     RuleEffect, RuleKey, RuleMeta, RuleTarget, RuleTargetKey, RuleTargetKind,
 };
@@ -39,8 +40,8 @@ pub struct TransformReport {
     pub applied: Vec<AppliedRuleStat>,
     /// The number of fixed-point iterations the ApplyRules phase completed.
     pub iterations: usize,
-    /// Statistics from the declarative-scope lowering pre-pass.
-    pub lower_declarative: lower_declarative::LowerDeclarativeReport,
+    /// Statistics from the attribute lowering passes.
+    pub lower_attributes: lower_attributes::LowerAttributesReport,
 }
 
 impl TransformReport {
@@ -138,7 +139,7 @@ pub fn transform_ast(
 ) -> Result<TransformReport, TransformEngineError> {
     let mut report = TransformReport::default();
 
-    lower_declarative::run(ast, &mut report.lower_declarative);
+    lower_attributes::run(ast, &mut report.lower_attributes);
 
     for iteration in 0..transform_ctx.max_iterations() {
         let mut changed = false;
@@ -185,6 +186,8 @@ pub fn transform_ast(
             });
         }
     }
+
+    lower_attributes::run(ast, &mut report.lower_attributes);
 
     if !transform_ctx.cleanup_rules().is_empty() {
         let snapshot = preorder_snapshot(ast);

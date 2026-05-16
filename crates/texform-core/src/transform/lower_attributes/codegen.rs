@@ -1,4 +1,4 @@
-//! Build-time logic for the LowerDeclarative phase.
+//! Build-time logic for the LowerAttributes phase.
 //!
 //! This module owns the data.yaml schema, a canonical representation of
 //! attribute values, validation against the builtin command registry, and
@@ -179,7 +179,7 @@ fn parse_command_ref(value: &str, context: &str) -> CommandRefParts {
 
 fn find_package(name: &str) -> &'static BuiltinPackage {
     builtin::lookup_package(name)
-        .unwrap_or_else(|| panic!("lower declarative package `{name}` is not in builtin specs"))
+        .unwrap_or_else(|| panic!("lower attributes package `{name}` is not in builtin specs"))
 }
 
 fn find_command(parts: &CommandRefParts, original: &str) -> &'static BuiltinCommandRecord {
@@ -188,17 +188,17 @@ fn find_command(parts: &CommandRefParts, original: &str) -> &'static BuiltinComm
         .iter()
         .copied()
         .find(|record| record.name == parts.name)
-        .unwrap_or_else(|| panic!("lower declarative command `{original}` is not in builtin specs"))
+        .unwrap_or_else(|| panic!("lower attributes command `{original}` is not in builtin specs"))
 }
 
 fn command_allowed_mode(command: &str) -> ContentMode {
-    let parts = parse_command_ref(command, "lower declarative");
+    let parts = parse_command_ref(command, "lower attributes");
     let record = find_command(&parts, command);
     match record.allowed_mode {
         AllowedMode::Math => ContentMode::Math,
         AllowedMode::Text => ContentMode::Text,
         AllowedMode::Both => {
-            panic!("lower declarative command `{command}` must have one allowed mode")
+            panic!("lower attributes command `{command}` must have one allowed mode")
         }
     }
 }
@@ -209,10 +209,10 @@ fn validate(data: &DataYaml) {
     let mut seen_commands = BTreeSet::new();
     let mut seen_mode_names = BTreeSet::new();
     for declarative in &data.declaratives {
-        let parts = parse_command_ref(&declarative.command, "lower declarative");
+        let parts = parse_command_ref(&declarative.command, "lower attributes");
         if !seen_commands.insert((parts.package.clone(), parts.name.clone())) {
             panic!(
-                "duplicate lower declarative command `{}`",
+                "duplicate lower attributes command `{}`",
                 declarative.command
             );
         }
@@ -220,7 +220,7 @@ fn validate(data: &DataYaml) {
         let mode = command_allowed_mode(&declarative.command);
         if !seen_mode_names.insert((mode_code(mode), parts.name.clone())) {
             panic!(
-                "duplicate lower declarative mode/name {:?}:{}",
+                "duplicate lower attributes mode/name {:?}:{}",
                 mode, parts.name
             );
         }
@@ -235,13 +235,13 @@ fn validate(data: &DataYaml) {
         let mode = command_allowed_mode(&declarative.command);
         let target = find_target(data, &value, mode).unwrap_or_else(|| {
             panic!(
-                "lower declarative command `{}` has no matching attribute target",
+                "lower attributes command `{}` has no matching attribute target",
                 declarative.command
             )
         });
         assert_eq!(
             target.declarative, declarative.command,
-            "lower declarative target for `{}` must point back to the declarative command",
+            "lower attributes target for `{}` must point back to the declarative command",
             declarative.command
         );
     }
@@ -252,11 +252,11 @@ fn validate_declarative_command(command: &str) {
 }
 
 fn validate_command_kind(command: &str, expected: CommandKind) {
-    let parts = parse_command_ref(command, "lower declarative");
+    let parts = parse_command_ref(command, "lower attributes");
     let record = find_command(&parts, command);
     if record.kind != expected {
         panic!(
-            "lower declarative command `{command}` must be {}, got {}",
+            "lower attributes command `{command}` must be {}, got {}",
             expected.label(),
             record.kind.label()
         );
@@ -264,11 +264,11 @@ fn validate_command_kind(command: &str, expected: CommandKind) {
 }
 
 fn validate_prefix_command(command: &str, mode: ContentMode) {
-    let parts = parse_command_ref(command, "lower declarative");
+    let parts = parse_command_ref(command, "lower attributes");
     let record = find_command(&parts, command);
     if record.kind != CommandKind::Prefix {
         panic!(
-            "lower declarative prefix `{command}` must be prefix, got {}",
+            "lower attributes prefix `{command}` must be prefix, got {}",
             record.kind.label()
         );
     }
@@ -282,12 +282,12 @@ fn validate_prefix_command(command: &str, mode: ContentMode) {
                 && matches!(arg.kind, ValueKind::Content { .. })
         })
         .unwrap_or_else(|| {
-            panic!("lower declarative prefix `{command}` must have mandatory content")
+            panic!("lower attributes prefix `{command}` must have mandatory content")
         });
     assert_eq!(
         mandatory.kind.content_mode(),
         Some(mode),
-        "lower declarative prefix `{command}` mandatory content mode must be {:?}",
+        "lower attributes prefix `{command}` mandatory content mode must be {:?}",
         mode
     );
 }
@@ -309,7 +309,7 @@ fn validate_targets<T>(
         let value = to_value(&target.value);
         assert_eq!(value.attr(), attr, "attribute target value mismatch");
         if !seen.insert(value.clone()) {
-            panic!("duplicate lower declarative attribute target value {value:?}");
+            panic!("duplicate lower attributes attribute target value {value:?}");
         }
         if let Some(math) = &target.math {
             validate_mode_target(math, ContentMode::Math);
@@ -522,7 +522,7 @@ fn write_targets<T>(
 /// Read `data.yaml`, validate it against the builtin KB, and (re)write
 /// `generated.rs`. Called once from `build.rs`.
 pub(crate) fn generate(manifest_dir: &Path) {
-    let base = manifest_dir.join("src/transform/lower_declarative");
+    let base = manifest_dir.join("src/transform/lower_attributes");
     let data_path = base.join("data.yaml");
     let codegen_path = base.join("codegen.rs");
     println!("cargo:rerun-if-changed={}", data_path.display());
@@ -539,6 +539,6 @@ pub(crate) fn generate(manifest_dir: &Path) {
     let should_write = fs::read_to_string(&out_path).map_or(true, |existing| existing != code);
     if should_write {
         fs::write(&out_path, code)
-            .expect("failed to write transform/lower_declarative/generated.rs");
+            .expect("failed to write transform/lower_attributes/generated.rs");
     }
 }

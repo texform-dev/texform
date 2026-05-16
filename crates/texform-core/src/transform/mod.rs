@@ -8,7 +8,7 @@
 pub mod context;
 pub mod engine;
 pub mod helpers;
-pub(crate) mod lower_declarative;
+pub(crate) mod lower_attributes;
 pub(crate) mod macro_support;
 mod macros;
 pub mod registry;
@@ -28,7 +28,7 @@ pub use context::{
 pub use engine::{
     AppliedRuleStat, TransformEngineError, TransformError, TransformReport, transform_ast,
 };
-pub use lower_declarative::{Attr, AttrValue, LowerDeclarativeReport, SizeValue, StyleValue};
+pub use lower_attributes::{Attr, AttrValue, LowerAttributesReport, SizeValue, StyleValue};
 pub use rule::{
     PackageName, RuleClass, RuleConsumes, RuleEffect, RuleKey, RuleMeta, RulePhase, RuleProduces,
     RuleSafety, RuleTarget, RuleTargetKey, RuleTargetKind, TransformRule,

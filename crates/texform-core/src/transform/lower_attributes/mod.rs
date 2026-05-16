@@ -1,4 +1,4 @@
-//! Lower declarative-scope commands to explicit prefix / declarative form.
+//! Lower attribute-scope commands to explicit prefix / declarative form.
 //!
 //! The phase rewrites every Root / Group / Environment container so that
 //! registered declaratives such as `\bf`, `\large`, or `\displaystyle` are
@@ -23,7 +23,7 @@ use generated::{CommandRef, DeclarativeEntry, ModeTarget};
 
 /// Per-phase statistics. Aggregated into [`crate::transform::TransformReport`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct LowerDeclarativeReport {
+pub struct LowerAttributesReport {
     /// How many times each declarative command was removed from the AST.
     pub dropped: HashMap<&'static str, usize>,
     /// Of the drops above, how many were redundant repeats of the active
@@ -118,7 +118,7 @@ impl AttributeState {
 // Entry point
 // ---------------------------------------------------------------------------
 
-pub(crate) fn run(ast: &mut Ast, report: &mut LowerDeclarativeReport) {
+pub(crate) fn run(ast: &mut Ast, report: &mut LowerAttributesReport) {
     visit(ast, ast.root(), report);
 }
 
@@ -126,7 +126,7 @@ pub(crate) fn run(ast: &mut Ast, report: &mut LowerDeclarativeReport) {
 // Traversal
 // ---------------------------------------------------------------------------
 
-fn visit(ast: &mut Ast, node_id: NodeId, report: &mut LowerDeclarativeReport) {
+fn visit(ast: &mut Ast, node_id: NodeId, report: &mut LowerAttributesReport) {
     if !ast.contains(node_id) {
         return;
     }
@@ -160,7 +160,7 @@ fn visit(ast: &mut Ast, node_id: NodeId, report: &mut LowerDeclarativeReport) {
 fn process_single_content_children(
     ast: &mut Ast,
     parent: NodeId,
-    report: &mut LowerDeclarativeReport,
+    report: &mut LowerAttributesReport,
 ) {
     let edges = ast.edges(parent);
     for (child, slot) in edges {
@@ -222,7 +222,7 @@ fn process_container(
     ast: &mut Ast,
     parent: NodeId,
     mode: ContentMode,
-    report: &mut LowerDeclarativeReport,
+    report: &mut LowerAttributesReport,
 ) {
     let original = ast.children(parent).to_vec();
     if original.is_empty() {
@@ -270,7 +270,7 @@ fn rebuild_segments(
     retained: &[NodeId],
     changepoints: &[(usize, AttrValue)],
     mode: ContentMode,
-    report: &mut LowerDeclarativeReport,
+    report: &mut LowerAttributesReport,
 ) -> Vec<NodeId> {
     let total = retained.len();
     let mut rebuilt: Vec<NodeId> = Vec::new();
@@ -311,7 +311,7 @@ fn apply_state(
     mut children: Vec<NodeId>,
     state: AttributeState,
     mode: ContentMode,
-    report: &mut LowerDeclarativeReport,
+    report: &mut LowerAttributesReport,
 ) -> Vec<NodeId> {
     debug_assert!(
         !children.is_empty(),
