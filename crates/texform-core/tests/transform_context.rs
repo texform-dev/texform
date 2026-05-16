@@ -99,7 +99,12 @@ fn only_does_not_bypass_profile_class_filter_and_can_return_empty_context() {
         .build()
         .expect("parse context should build");
 
-    let base_rule = all_rules()[0].meta().key;
+    let non_equiv_rule = all_rules()
+        .iter()
+        .map(|rule| rule.meta())
+        .find(|meta| meta.class != RuleClass::Equiv)
+        .expect("registry should contain a non-equiv rule")
+        .key;
     let equiv_only = TransformProfile {
         name: "equiv-only",
         classes: &[RuleClass::Equiv],
@@ -107,7 +112,7 @@ fn only_does_not_bypass_profile_class_filter_and_can_return_empty_context() {
 
     let transform_ctx = equiv_only
         .builder()
-        .only(base_rule)
+        .only(non_equiv_rule)
         .build_with(&parse_ctx)
         .expect("empty transform context should be a valid no-op");
 
