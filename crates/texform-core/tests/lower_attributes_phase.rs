@@ -15,11 +15,19 @@ struct Outcome {
 }
 
 fn run_with_packages(src: &str, packages: &[&str]) -> Outcome {
+    run_with_packages_and_classes(src, packages, &[RuleClass::Standard])
+}
+
+fn run_with_packages_and_classes(
+    src: &str,
+    packages: &[&str],
+    classes: &'static [RuleClass],
+) -> Outcome {
     let parse_ctx = ParseContext::from_packages(packages);
     let mut ast = parse_ctx
         .parse_to_ast(src, false)
         .expect("source should parse");
-    let transform_ctx = TransformContextBuilder::from_classes(&[RuleClass::Standard])
+    let transform_ctx = TransformContextBuilder::from_classes(classes)
         .build_with(&parse_ctx)
         .expect("transform context should build");
     transform_ast(&mut ast, &parse_ctx, &transform_ctx).expect("transform should succeed");
@@ -51,17 +59,21 @@ fn serialized(src: &str, expected: &str) {
     serialized_with_packages(src, expected, &["base", "textmacros"]);
 }
 
+fn serialized_text(src: &str, expected: &str) {
+    assert_eq!(run(src).text, expected);
+}
+
 #[test]
 fn consumes_explicit_groups_that_scope_declaratives() {
     serialized(r"{\bf x}y", r"\mathbf{x}y");
     serialized(r"{\bf \rm x}", r"\mathrm{x}");
-    serialized(r"{\bf {\bf x}}", r"\mathbf{x}");
+    serialized_text(r"{\bf {\bf x}}", r"\mathbf { { x } }");
 }
 
 #[test]
 fn preserves_structural_explicit_groups() {
-    serialized(r"\mathbf{{x}}", r"\mathbf{{x}}");
-    serialized(r"\mathbf{{\mathbf{x}}}", r"\mathbf{{x}}");
+    serialized_text(r"\mathbf{{x}}", r"\mathbf { { x } }");
+    serialized_text(r"\mathbf{{\mathbf{x}}}", r"\mathbf { { x } }");
     serialized(r"{{\bf x}}", r"{\mathbf{x}}");
 }
 
@@ -76,7 +88,7 @@ fn absorbs_nested_math_prefix_wrappers() {
 #[test]
 fn falls_back_to_preserving_noop_declarative_groups() {
     serialized(r"{x \bf}", r"{x}");
-    serialized(r"\mathbf{{\bf x}}", r"\mathbf{{x}}");
+    serialized_text(r"\mathbf{{\bf x}}", r"\mathbf { { x } }");
     serialized(r"{\bf}", r"{}");
     serialized(r"{\bf \rm}", r"{}");
 }
@@ -125,9 +137,10 @@ fn lower_attributes_is_idempotent_on_serialized_output() {
 
 #[test]
 fn post_pass_normalizes_prefixes_created_by_apply_rules() {
-    serialized_with_packages(
+    let actual = run_with_packages_and_classes(
         r"\vb{\rm x}",
-        r"\mathrm{x}",
-        &["base", "textmacros", "physics"],
+        &["base", "textmacros", "physics", "boldsymbol"],
+        &[RuleClass::Standard, RuleClass::Expand],
     );
+    assert_eq!(actual.text, r"\mathrm { x }");
 }

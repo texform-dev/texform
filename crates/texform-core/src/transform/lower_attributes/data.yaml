@@ -1,99 +1,94 @@
 declaratives:
   - command: base:bf
-    set: { font: VARIANT.BOLD }
+    set: { math_font: VARIANT.BOLD }
   - command: base:cal
-    set: { font: VARIANT.CALLIGRAPHIC }
+    set: { math_font: VARIANT.CALLIGRAPHIC }
   - command: base:it
-    set: { font: VARIANT.MATHITALIC }
+    set: { math_font: VARIANT.MATHITALIC }
   - command: base:mit
-    set: { font: VARIANT.ITALIC }
+    set: { math_font: VARIANT.ITALIC }
   - command: base:oldstyle
-    set: { font: -tex-oldstyle }
+    set: { math_font: -tex-oldstyle }
   - command: base:rm
-    set: { font: VARIANT.NORMAL }
+    set: { math_font: VARIANT.NORMAL }
   - command: base:sf
-    set: { font: VARIANT.SANSSERIF }
+    set: { math_font: VARIANT.SANSSERIF }
   - command: base:tt
-    set: { font: VARIANT.MONOSPACE }
+    set: { math_font: VARIANT.MONOSPACE }
   - command: textmacros:bf
-    set: { font: VARIANT.BOLD }
+    set: { text_series: bold }
   - command: textmacros:cal
-    set: { font: VARIANT.CALLIGRAPHIC }
+    set: { text_family: calligraphic }
   - command: textmacros:it
-    set: { font: -tex-mathit }
+    set: { text_shape: italic }
   - command: textmacros:mit
-    set: { font: VARIANT.ITALIC }
+    set: { text_family: italic }
   - command: textmacros:oldstyle
-    set: { font: -tex-oldstyle }
+    set: { text_family: oldstyle }
   - command: textmacros:rm
-    set: { font: VARIANT.NORMAL }
+    set: { text_family: roman }
   - command: textmacros:sf
-    set: { font: VARIANT.SANSSERIF }
+    set: { text_family: sansserif }
   - command: textmacros:tt
-    set: { font: VARIANT.MONOSPACE }
+    set: { text_family: typewriter }
   - command: base:Huge
-    set: { size: 2.49 }
+    set: { math_size: 2.49 }
   - command: base:huge
-    set: { size: 2.07 }
+    set: { math_size: 2.07 }
   - command: base:LARGE
-    set: { size: 1.73 }
+    set: { math_size: 1.73 }
   - command: base:Large
-    set: { size: 1.44 }
+    set: { math_size: 1.44 }
   - command: base:large
-    set: { size: 1.2 }
+    set: { math_size: 1.2 }
   - command: base:normalsize
-    set: { size: 1.0 }
+    set: { math_size: 1.0 }
   - command: base:scriptsize
-    set: { size: 0.7 }
+    set: { math_size: 0.7 }
   - command: base:small
-    set: { size: 0.85 }
+    set: { math_size: 0.85 }
   - command: base:Tiny
-    set: { size: 0.6 }
+    set: { math_size: 0.6 }
   - command: base:tiny
-    set: { size: 0.5 }
+    set: { math_size: 0.5 }
   - command: textmacros:Huge
-    set: { size: 2.49 }
+    set: { text_size: 2.49 }
   - command: textmacros:huge
-    set: { size: 2.07 }
+    set: { text_size: 2.07 }
   - command: textmacros:LARGE
-    set: { size: 1.73 }
+    set: { text_size: 1.73 }
   - command: textmacros:Large
-    set: { size: 1.44 }
+    set: { text_size: 1.44 }
   - command: textmacros:large
-    set: { size: 1.2 }
+    set: { text_size: 1.2 }
   - command: textmacros:normalsize
-    set: { size: 1.0 }
+    set: { text_size: 1.0 }
   - command: textmacros:scriptsize
-    set: { size: 0.7 }
+    set: { text_size: 0.7 }
   - command: textmacros:small
-    set: { size: 0.85 }
+    set: { text_size: 0.85 }
   - command: textmacros:Tiny
-    set: { size: 0.6 }
+    set: { text_size: 0.6 }
   - command: textmacros:tiny
-    set: { size: 0.5 }
+    set: { text_size: 0.5 }
   - command: base:displaystyle
-    set: { style: { letter: D, display: true, level: 0 } }
+    set: { math_style: { letter: D, display: true, level: 0 } }
   - command: base:textstyle
-    set: { style: { letter: T, display: false, level: 0 } }
+    set: { math_style: { letter: T, display: false, level: 0 } }
   - command: base:scriptstyle
-    set: { style: { letter: S, display: false, level: 1 } }
+    set: { math_style: { letter: S, display: false, level: 1 } }
   - command: base:scriptscriptstyle
-    set: { style: { letter: SS, display: false, level: 2 } }
+    set: { math_style: { letter: SS, display: false, level: 2 } }
 attribute_targets:
-  font:
+  math_font:
     - value: VARIANT.BOLD
       math:
         prefix: base:mathbf
         declarative: base:bf
-      text:
-        prefix: textmacros:textbf
-        declarative: textmacros:bf
     - value: VARIANT.CALLIGRAPHIC
       math:
         prefix: base:mathcal
         declarative: base:cal
-      text:
-        declarative: textmacros:cal
     - value: VARIANT.MATHITALIC
       math:
         prefix: base:mathit
@@ -102,90 +97,53 @@ attribute_targets:
       math:
         prefix: base:mathrm
         declarative: base:rm
-      text:
-        prefix: textmacros:textrm
-        declarative: textmacros:rm
     - value: VARIANT.SANSSERIF
       math:
         prefix: base:mathsf
         declarative: base:sf
-      text:
-        prefix: textmacros:textsf
-        declarative: textmacros:sf
     - value: VARIANT.MONOSPACE
       math:
         prefix: base:mathtt
         declarative: base:tt
-      text:
-        prefix: textmacros:texttt
-        declarative: textmacros:tt
     - value: VARIANT.ITALIC
       math:
         prefix: base:symit
         declarative: base:mit
-      text:
-        declarative: textmacros:mit
-    - value: -tex-mathit
-      text:
-        prefix: textmacros:textit
-        declarative: textmacros:it
     - value: -tex-oldstyle
       math:
         declarative: base:oldstyle
-      text:
-        declarative: textmacros:oldstyle
-  size:
+  math_size:
     - value: 2.49
       math:
         declarative: base:Huge
-      text:
-        declarative: textmacros:Huge
     - value: 2.07
       math:
         declarative: base:huge
-      text:
-        declarative: textmacros:huge
     - value: 1.73
       math:
         declarative: base:LARGE
-      text:
-        declarative: textmacros:LARGE
     - value: 1.44
       math:
         declarative: base:Large
-      text:
-        declarative: textmacros:Large
     - value: 1.2
       math:
         declarative: base:large
-      text:
-        declarative: textmacros:large
     - value: 1.0
       math:
         declarative: base:normalsize
-      text:
-        declarative: textmacros:normalsize
     - value: 0.85
       math:
         declarative: base:small
-      text:
-        declarative: textmacros:small
     - value: 0.7
       math:
         declarative: base:scriptsize
-      text:
-        declarative: textmacros:scriptsize
     - value: 0.6
       math:
         declarative: base:Tiny
-      text:
-        declarative: textmacros:Tiny
     - value: 0.5
       math:
         declarative: base:tiny
-      text:
-        declarative: textmacros:tiny
-  style:
+  math_style:
     - value: { letter: D, display: true, level: 0 }
       math:
         declarative: base:displaystyle
@@ -198,3 +156,66 @@ attribute_targets:
     - value: { letter: SS, display: false, level: 2 }
       math:
         declarative: base:scriptscriptstyle
+  text_family:
+    - value: roman
+      text:
+        prefix: textmacros:textrm
+        declarative: textmacros:rm
+    - value: sansserif
+      text:
+        prefix: textmacros:textsf
+        declarative: textmacros:sf
+    - value: typewriter
+      text:
+        prefix: textmacros:texttt
+        declarative: textmacros:tt
+    - value: calligraphic
+      text:
+        declarative: textmacros:cal
+    - value: italic
+      text:
+        declarative: textmacros:mit
+    - value: oldstyle
+      text:
+        declarative: textmacros:oldstyle
+  text_series:
+    - value: bold
+      text:
+        prefix: textmacros:textbf
+        declarative: textmacros:bf
+  text_shape:
+    - value: italic
+      text:
+        prefix: textmacros:textit
+        declarative: textmacros:it
+  text_size:
+    - value: 2.49
+      text:
+        declarative: textmacros:Huge
+    - value: 2.07
+      text:
+        declarative: textmacros:huge
+    - value: 1.73
+      text:
+        declarative: textmacros:LARGE
+    - value: 1.44
+      text:
+        declarative: textmacros:Large
+    - value: 1.2
+      text:
+        declarative: textmacros:large
+    - value: 1.0
+      text:
+        declarative: textmacros:normalsize
+    - value: 0.85
+      text:
+        declarative: textmacros:small
+    - value: 0.7
+      text:
+        declarative: textmacros:scriptsize
+    - value: 0.6
+      text:
+        declarative: textmacros:Tiny
+    - value: 0.5
+      text:
+        declarative: textmacros:tiny

@@ -97,14 +97,15 @@ re-implementing LaTeX semantics per use case.
 
 ### Pipeline
 
-The engine runs in three phases:
+The engine runs in four ordered steps:
 
-1. **`LowerDeclarative`** — a hard-coded pre-pass that lifts declarative-scope commands such as
-   `\bf`, `\rm`, `\large`, and `\displaystyle` out of stack-based scopes and into explicit AST
-   shapes (for example `{\bf X}` → `\mathbf{X}`). This runs before any rule, so rules never have
-   to reason about implicit-scope semantics.
+1. **`LowerAttributes`** — a hard-coded attribute canonicalization pass that runs before and after
+   ApplyRules. It absorbs registered declarative-scope commands and registered prefix wrappers into
+   a canonical attribute form.
 2. **`ApplyRules`** — fixed-point loop over all enabled rules until no rule fires.
-3. **`Cleanup`** — one-shot pass for rules that should run only after ApplyRules has settled.
+3. **`LowerAttributes`** — a second pass that canonicalizes attribute markers produced by
+   ApplyRules.
+4. **`Cleanup`** — one-shot pass for rules that should run only after ApplyRules has settled.
 
 ### Rule Classes
 

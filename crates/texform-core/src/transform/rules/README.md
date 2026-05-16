@@ -2,13 +2,17 @@
 
 This directory stores concrete transform rules.
 
-## Declarative-Scope Commands
+## Attribute Markers
 
 Do not add one-off transform rules for declarative-scope commands such as
-`\bf`, `\rm`, `\large`, or `\displaystyle`. These commands are handled by the
-hard-coded `transform::lower_declarative` pre-pass before normal rule execution.
+`\bf`, `\rm`, `\large`, or `\displaystyle`, or for registered prefix wrappers
+such as `\mathbf` and `\textbf`. These markers are handled by the hard-coded
+`transform::lower_attributes` pass before and after normal rule execution.
 The data source for that phase is
-`src/transform/lower_declarative/data.yaml`.
+`src/transform/lower_attributes/data.yaml`.
+
+Ordinary ApplyRules and Cleanup rules can assume registered attribute markers
+have already been lowered to the canonical form for their current phase.
 
 ## Adding a New Rule
 
