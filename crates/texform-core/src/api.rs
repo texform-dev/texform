@@ -19,8 +19,8 @@ use texform_interface::syntax_node::SyntaxNode;
 
 use crate::ast::Ast;
 use crate::parse::{
-    ContextItem, ParseContext, ParseContextBuildError, ParseContextBuilder, ParseDiagnostic,
-    ParseOutput, Span,
+    ContextItem, ParseConfig, ParseContext, ParseContextBuildError, ParseContextBuilder,
+    ParseDiagnostic, ParseOutput, Span,
 };
 use crate::serialize::{self, SerializeOptions};
 
@@ -46,11 +46,8 @@ pub type ParseWithContextOutput = Vec<ParseWithContextItem>;
 /// lazily-initialized [`ParseContext`] across calls so the knowledge base
 /// is built only once.
 ///
-/// Set `strict` to `true` to reject unknown command/environment names as
-/// errors; when `false`, they are preserved as ordinary command/environment
-/// nodes with `known: false`.
-pub fn parse_latex(src: &str, strict: bool) -> ParseOutput {
-    ParseContext::shared().parse(src, strict)
+pub fn parse_latex(src: &str, config: &ParseConfig) -> ParseOutput {
+    ParseContext::shared().parse(src, config)
 }
 
 /// Inject context items into a fresh parse context and parse multiple inputs.
@@ -68,7 +65,7 @@ pub fn parse_with_context_items(
     items: &[ContextItem],
     inputs: &[&str],
     packages: Option<&[&str]>,
-    strict: bool,
+    config: &ParseConfig,
 ) -> ParseWithContextOutput {
     if let Some(message) = validate_context_items(items) {
         return invalid_inputs_output(inputs, message);
@@ -100,7 +97,7 @@ pub fn parse_with_context_items(
         .iter()
         .map(|input| ParseWithContextItem {
             input: (*input).to_string(),
-            output: ctx.parse(input, strict),
+            output: ctx.parse(input, config),
         })
         .collect()
 }
@@ -137,6 +134,7 @@ fn invalid_input_output(message: String) -> ParseOutput {
     ParseOutput {
         result: None,
         diagnostics: vec![ParseDiagnostic {
+            kind: None,
             message,
             span: Span { start: 0, end: 0 },
             expected: Vec::new(),

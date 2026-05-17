@@ -13,7 +13,7 @@ fn parse_inline_column_command(src: &str) -> ParseOutput {
         ))
         .build()
         .expect("colspec argspec should be valid");
-    ctx.parse(src, false)
+    ctx.parse(src, &texform_core::parse::ParseConfig::default())
 }
 
 #[test]

@@ -4,7 +4,7 @@ use texform_core::ast::{
 };
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
-    ParseContext, ParseContextBuilder,
+    ParseConfig, ParseContext, ParseContextBuilder,
 };
 use texform_interface::syntax_node::{ArgumentValue as SyntaxArgumentValue, SyntaxNode};
 
@@ -17,7 +17,12 @@ fn parse_with_items(src: &str, strict: bool, items: Vec<ContextItem>) -> SyntaxN
         .build()
         .expect("test items should have valid xparse specs");
 
-    let output = ctx.parse(src, strict);
+    let config = if strict {
+        ParseConfig::STRICT_NO_RECOVER
+    } else {
+        ParseConfig::NONSTRICT_RECOVER
+    };
+    let output = ctx.parse(src, &config);
     assert!(
         output.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -133,7 +138,10 @@ fn test_ast_conversion_preserves_unknown_environment_known_flag() {
 
 #[test]
 fn test_ast_conversion_copies_text_content_variant() {
-    let output = ParseContext::shared().parse(r"\text{\%}", true);
+    let output = ParseContext::shared().parse(
+        r"\text{\%}",
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
+    );
     let syntax = output
         .result
         .as_ref()

@@ -3,7 +3,7 @@
 use texform_core::api::parse_with_context_items;
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
-    ParseContextBuilder, ParseOutput,
+    ParseConfig, ParseContextBuilder, ParseOutput,
 };
 use texform_interface::syntax_node::{Argument, ArgumentValue, ContentMode, SyntaxNode};
 
@@ -35,7 +35,12 @@ pub(crate) fn parse_with_items(items: &[ContextItem], src: &str, strict: bool) -
         builder = builder.insert_item(item.clone());
     }
     let ctx = builder.build().expect("context items should be valid");
-    ctx.parse(src, strict)
+    let config = if strict {
+        ParseConfig::STRICT_NO_RECOVER
+    } else {
+        ParseConfig::NONSTRICT_RECOVER
+    };
+    ctx.parse(src, &config)
 }
 
 pub(crate) fn parse_single_via_public_api(
@@ -43,7 +48,12 @@ pub(crate) fn parse_single_via_public_api(
     src: &str,
     strict: bool,
 ) -> ParseOutput {
-    let mut outputs = parse_with_context_items(items, &[src], None, strict);
+    let config = if strict {
+        ParseConfig::STRICT_NO_RECOVER
+    } else {
+        ParseConfig::NONSTRICT_RECOVER
+    };
+    let mut outputs = parse_with_context_items(items, &[src], None, &config);
     assert_eq!(outputs.len(), 1);
     outputs.remove(0).output
 }

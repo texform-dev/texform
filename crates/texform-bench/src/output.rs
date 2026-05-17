@@ -1229,13 +1229,13 @@ mod tests {
                     duration: Duration::from_micros(10),
                     ok: false,
                     diagnostic_count: 1,
-                    diagnostics: vec![ParseDiagnostic {
-                        message: "strict failed".to_string(),
-                        span: Span { start: 0, end: 1 },
-                        expected: vec!["group".to_string()],
-                        found: Some("\\foo".to_string()),
-                        contexts: Vec::new(),
-                    }],
+                    diagnostics: vec![ParseDiagnostic::new(
+                        "strict failed",
+                        Span { start: 0, end: 1 },
+                        vec!["group".to_string()],
+                        Some("\\foo".to_string()),
+                        Vec::new(),
+                    )],
                 },
                 nonstrict: ParseResult {
                     duration: Duration::from_micros(12),
@@ -1255,13 +1255,13 @@ mod tests {
                     duration: Duration::from_micros(25),
                     ok: false,
                     diagnostic_count: 1,
-                    diagnostics: vec![ParseDiagnostic {
-                        message: "nonstrict failed".to_string(),
-                        span: Span { start: 2, end: 3 },
-                        expected: vec!["delimiter".to_string()],
-                        found: Some("\\bar".to_string()),
-                        contexts: Vec::new(),
-                    }],
+                    diagnostics: vec![ParseDiagnostic::new(
+                        "nonstrict failed",
+                        Span { start: 2, end: 3 },
+                        vec!["delimiter".to_string()],
+                        Some("\\bar".to_string()),
+                        Vec::new(),
+                    )],
                 },
             },
         ];
@@ -1425,13 +1425,13 @@ mod tests {
                     duration: Duration::from_micros(30),
                     ok: false,
                     diagnostic_count: 2,
-                    diagnostics: vec![ParseDiagnostic {
-                        message: "invalid token".to_string(),
-                        span: Span { start: 0, end: 1 },
-                        expected: vec!["group".to_string()],
-                        found: Some("\\foo".to_string()),
-                        contexts: Vec::new(),
-                    }],
+                    diagnostics: vec![ParseDiagnostic::new(
+                        "invalid token",
+                        Span { start: 0, end: 1 },
+                        vec!["group".to_string()],
+                        Some("\\foo".to_string()),
+                        Vec::new(),
+                    )],
                 },
                 nonstrict: ParseResult {
                     duration: Duration::from_micros(25),

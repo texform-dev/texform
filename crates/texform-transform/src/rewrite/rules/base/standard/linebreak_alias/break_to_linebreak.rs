@@ -72,7 +72,7 @@ mod tests {
     fn rewrites_break_to_parser_shaped_linebreak_command() {
         let parse_ctx = ParseContext::from_packages(&["base"]);
         let mut ast = parse_ctx
-            .parse_to_ast(r"\break", true)
+            .parse_to_ast(r"\break", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
             .expect("parse should succeed");
 
         let output =

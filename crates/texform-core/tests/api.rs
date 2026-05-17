@@ -7,7 +7,9 @@ use support::{
 use texform_core::api::{
     parse_latex, parse_with_context_items, serialize_latex, serialize_latex_with,
 };
-use texform_core::parse::{AllowedMode, CommandKind, ContextItem, ParseOutput};
+use texform_core::parse::{
+    AllowedMode, CommandKind, ContextItem, ParseConfig, ParseDiagnosticKind, ParseOutput,
+};
 use texform_core::serialize::SerializeOptions;
 use texform_interface::syntax_node::{ArgumentValue, ContentMode, Delimiter, SyntaxNode};
 
@@ -56,7 +58,7 @@ fn assert_first_diagnostic_expected_found(
 
 #[test]
 fn full_success() {
-    let output = parse_latex(r"\\*[1cm]", false);
+    let output = parse_latex(r"\\*[1cm]", &texform_core::parse::ParseConfig::default());
     assert!(output.result.is_some(), "should produce a result");
     assert!(output.diagnostics.is_empty(), "no diagnostics expected");
 
@@ -71,14 +73,20 @@ fn full_success() {
 
 #[test]
 fn pure_failure_strict() {
-    let output = parse_latex(r"\unknowncmd", true);
+    let output = parse_latex(
+        r"\unknowncmd",
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
+    );
     assert!(output.result.is_none(), "strict unknown should fail");
     assert!(!output.diagnostics.is_empty(), "should have diagnostics");
 }
 
 #[test]
 fn strict_parse_accepts_bare_delimiter_control() {
-    let output = parse_latex(r"\langle", true);
+    let output = parse_latex(
+        r"\langle",
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
+    );
     assert!(
         output.diagnostics.is_empty(),
         "bare delimiter control should parse"
@@ -355,6 +363,59 @@ fn generic_only_content_error_is_not_filtered_out() {
 }
 
 #[test]
+fn recover_false_keeps_nonstrict_unknowns_without_partial_recovery() {
+    let config = ParseConfig::NONSTRICT_NO_RECOVER;
+    let output = parse_latex(r"\unknowncmd {", &config);
+
+    assert!(
+        output.result.is_none(),
+        "recover=false should not keep a partial tree for malformed input"
+    );
+    assert_eq!(collect_messages(&output), vec!["not a command"]);
+}
+
+#[test]
+fn max_group_depth_exceeded_reports_public_kind() {
+    let config = ParseConfig {
+        max_group_depth: 1,
+        ..ParseConfig::NONSTRICT_RECOVER
+    };
+    let output = parse_latex("{{x}}", &config);
+
+    assert!(
+        output
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.kind == Some(ParseDiagnosticKind::MaxGroupDepthExceeded)),
+        "expected max depth diagnostic, got {:?}",
+        output.diagnostics
+    );
+    let result = output.result.expect("max depth should keep an error node");
+    assert!(
+        contains_error_node(&result.node),
+        "max depth should produce an Error node"
+    );
+}
+
+#[test]
+fn max_group_depth_restored_between_sibling_groups() {
+    // Sequential sibling groups each enter and exit a fresh scope; the depth
+    // counter must be restored on group exit so that with max_group_depth = 2
+    // a string of single-level groups parses cleanly.  Regression guard for
+    // ParserState::enter_group's RAII drop.
+    let config = ParseConfig {
+        max_group_depth: 2,
+        ..ParseConfig::NONSTRICT_RECOVER
+    };
+    let output = parse_latex("{a}{b}{c}", &config);
+    assert!(
+        output.diagnostics.is_empty(),
+        "depth must be restored between sibling groups, got {:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
 fn nested_content_arguments_merge_inner_direct_error_once() {
     let output = parse_with_items(
         &[
@@ -486,7 +547,10 @@ fn mode_error_for_math_only_environment_in_text() {
 
 #[test]
 fn diagnostics_serialize_includes_contexts_field() {
-    let output = parse_latex(r"\unknowncmd", true);
+    let output = parse_latex(
+        r"\unknowncmd",
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
+    );
     let json = serde_json::to_value(&output).unwrap();
     let diagnostics = json.get("diagnostics").unwrap().as_array().unwrap();
     assert!(!diagnostics.is_empty());
@@ -495,12 +559,15 @@ fn diagnostics_serialize_includes_contexts_field() {
     assert!(diagnostic.get("span").is_some());
     assert!(diagnostic.get("expected").is_some());
     assert!(diagnostic.get("contexts").is_some());
-    assert!(diagnostic.get("kind").is_none());
+    assert!(diagnostic.get("kind").is_some());
 }
 
 #[test]
 fn invalid_left_delimiter_reports_root_cause_and_contexts() {
-    let output = parse_latex(r"\begin{aligned}\left\foo x \right)\end{aligned}", false);
+    let output = parse_latex(
+        r"\begin{aligned}\left\foo x \right)\end{aligned}",
+        &texform_core::parse::ParseConfig::default(),
+    );
     assert!(!output.diagnostics.is_empty(), "should have diagnostics");
 
     let diagnostic = &output.diagnostics[0];
@@ -517,7 +584,10 @@ fn invalid_left_delimiter_reports_root_cause_and_contexts() {
 
 #[test]
 fn invalid_left_delimiter_reports_bare_left_context_only() {
-    let output = parse_latex(r"\left\foo x \right)", false);
+    let output = parse_latex(
+        r"\left\foo x \right)",
+        &texform_core::parse::ParseConfig::default(),
+    );
     assert!(!output.diagnostics.is_empty(), "should have diagnostics");
 
     let diagnostic = &output.diagnostics[0];
@@ -534,7 +604,10 @@ fn invalid_left_delimiter_reports_bare_left_context_only() {
 
 #[test]
 fn partial_result_keeps_outer_delimited_group_and_following_siblings() {
-    let output = parse_latex(r"\left( \begin{matrix} a \end{align} \right) + z", false);
+    let output = parse_latex(
+        r"\left( \begin{matrix} a \end{align} \right) + z",
+        &texform_core::parse::ParseConfig::default(),
+    );
     assert!(!output.diagnostics.is_empty(), "should have diagnostics");
 
     let result = output
@@ -581,7 +654,10 @@ fn partial_result_keeps_outer_delimited_group_and_following_siblings() {
 
 #[test]
 fn partial_result_json_contains_error_node() {
-    let output = parse_latex(r"\left( \begin{matrix} a \end{align} \right) + z", false);
+    let output = parse_latex(
+        r"\left( \begin{matrix} a \end{align} \right) + z",
+        &texform_core::parse::ParseConfig::default(),
+    );
     assert!(!output.diagnostics.is_empty(), "should have diagnostics");
 
     let json = serde_json::to_value(&output).expect("parse output should serialize to JSON");
@@ -606,7 +682,7 @@ fn partial_result_json_contains_error_node() {
 #[test]
 fn partial_result_keeps_outer_environment_on_inner_environment_error() {
     let src = r"\begin{matrix} \begin{align} x \end{matrix}";
-    let output = parse_latex(src, false);
+    let output = parse_latex(src, &texform_core::parse::ParseConfig::default());
     assert!(!output.diagnostics.is_empty(), "should have diagnostics");
     assert_eq!(
         output.diagnostics[0].message,
@@ -648,7 +724,7 @@ fn partial_result_keeps_outer_environment_on_inner_environment_error() {
 #[test]
 fn partial_result_keeps_following_siblings_after_environment_mismatch() {
     let src = r"\begin{matrix} x \end{align} + z";
-    let output = parse_latex(src, false);
+    let output = parse_latex(src, &texform_core::parse::ParseConfig::default());
     assert!(!output.diagnostics.is_empty(), "should have diagnostics");
     assert_eq!(
         output.diagnostics[0].message,
@@ -690,7 +766,7 @@ fn partial_result_keeps_following_siblings_after_environment_mismatch() {
 #[test]
 fn environment_mismatch_rewrite_does_not_capture_later_generic_errors() {
     let src = r"\begin{matrix} x \end{align}}";
-    let output = parse_latex(src, false);
+    let output = parse_latex(src, &texform_core::parse::ParseConfig::default());
     assert_eq!(
         output.diagnostics.len(),
         2,
@@ -807,7 +883,7 @@ fn parse_with_context_items_command_target() {
         )],
         &[r"\probe{a}"],
         None,
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
     assert_eq!(output.len(), 1);
     assert!(
@@ -831,7 +907,7 @@ fn parse_with_context_items_environment_target() {
         )],
         &[r"\begin{probeenv}a\end{probeenv}"],
         None,
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
     assert_eq!(output.len(), 1);
     assert!(
@@ -855,7 +931,7 @@ fn parse_with_context_items_reports_invalid_spec() {
         )],
         &[r"\probe", r"\probe*"],
         None,
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
     assert_eq!(output.len(), 2);
     assert!(
@@ -878,7 +954,7 @@ fn parse_with_context_items_defaults_to_empty_context() {
         )],
         &[r"\probe{\text{a}}"],
         None,
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
     assert_eq!(output.len(), 1);
     assert!(
@@ -896,7 +972,7 @@ fn parse_with_context_items_supports_explicit_text_command() {
         ],
         &[r"\probe{\text{a}}"],
         None,
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
     assert_eq!(output.len(), 1);
     assert!(
@@ -920,7 +996,7 @@ fn parse_with_context_items_supports_explicit_control_delimiter_args() {
         ],
         &[r"\probe\langle", r"\probe\rangle", r"\probe\|"],
         None,
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
     assert_eq!(output.len(), 3);
 
@@ -975,7 +1051,7 @@ fn parse_with_context_items_supports_runtime_delimiter_controls() {
         ],
         &[r"\left\langle x\right\rangle"],
         Some(&[]),
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
     assert_eq!(output.len(), 1);
     assert!(
@@ -1019,7 +1095,7 @@ fn parse_with_context_items_supports_nullable_delimiter_arguments() {
             r"\genfracprobe{(}{)}{0}{1}{a}{b}",
         ],
         Some(&["base"]),
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
     assert_eq!(output.len(), 2);
 
@@ -1078,7 +1154,7 @@ fn parse_with_context_items_can_use_empty_package_list() {
         )],
         &[r"\probe{\text{a}}"],
         Some(&[]),
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
     assert_eq!(output.len(), 1);
     assert!(
@@ -1098,7 +1174,7 @@ fn parse_with_context_items_can_load_explicit_packages() {
         )],
         &[r"\probe{\arccos}"],
         Some(&["base"]),
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
     assert_eq!(output.len(), 1);
     assert!(
@@ -1124,7 +1200,7 @@ fn parse_with_context_items_can_load_package_linebreaks() {
             r"\text{a\\[5pt]b}",
         ],
         Some(&["ams", "base", "textmacros"]),
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
 
     assert_eq!(output.len(), 6);
@@ -1145,7 +1221,12 @@ fn parse_with_context_items_can_load_package_linebreaks() {
 
 #[test]
 fn parse_with_context_items_uses_public_package_loading_order() {
-    let output = parse_with_context_items(&[], &[r"\div{a}"], Some(&["physics", "base"]), true);
+    let output = parse_with_context_items(
+        &[],
+        &[r"\div{a}"],
+        Some(&["physics", "base"]),
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
+    );
     assert_eq!(output.len(), 1);
     assert!(
         output[0].output.diagnostics.is_empty(),
@@ -1186,7 +1267,7 @@ fn parse_with_context_items_reports_unknown_package() {
         )],
         &[r"\probe{a}"],
         Some(&["missing-package"]),
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
     assert_eq!(output.len(), 1);
     assert!(
@@ -1207,7 +1288,7 @@ fn parse_with_context_items_multiple_specs() {
         ],
         &[r"\foo{\begin{bar}x\end{bar}}"],
         None,
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
     assert_eq!(output.len(), 1);
     assert!(output[0].output.result.is_some(), "multi-spec should parse");
@@ -1226,7 +1307,7 @@ fn parse_with_context_items_duplicate_name_rejected() {
         ],
         &[r"\foo{x}"],
         None,
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
     assert_eq!(output.len(), 1);
     assert!(
@@ -1247,7 +1328,7 @@ fn parse_with_context_items_duplicate_delimiter_rejected() {
         ],
         &[r"\left\langle x\right\rangle"],
         Some(&[]),
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
     assert_eq!(output.len(), 1);
     assert!(

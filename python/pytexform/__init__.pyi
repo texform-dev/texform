@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-__all__ = ["ParseError", "count_targets", "normalize", "parse"]
+__all__ = ["ParseConfig", "ParseError", "count_targets", "normalize", "parse"]
 
 
 class ParseError(Exception):
@@ -16,17 +16,29 @@ class ParseError(Exception):
     partial_result: dict[str, Any] | None
 
 
+class ParseConfig:
+    strict: bool
+    recover: bool
+    max_group_depth: int
+
+    def __init__(
+        self,
+        strict: bool = False,
+        recover: bool = True,
+        max_group_depth: int = 128,
+    ) -> None: ...
+
+
 def parse(
     src: str,
-    strict: bool = False,
+    config: ParseConfig | None = None,
     packages: list[str] | None = None,
 ) -> dict[str, Any]:
     """Parse a LaTeX formula.
 
     Args:
         src: Source string of the LaTeX formula.
-        strict: When ``True``, unknown commands raise :class:`ParseError`.
-            Defaults to ``False``.
+        config: Parse configuration. Defaults to ``ParseConfig()``.
 
     Returns:
         A dict with ``node`` (root AST node) and ``span`` (byte range) keys.
@@ -41,7 +53,6 @@ def parse(
 def normalize(
     src: str,
     profile: Literal["authoring", "corpus", "corpus-drop", "equiv"] = "authoring",
-    strict: bool = True,
     packages: list[str] | None = None,
 ) -> dict[str, Any]:
     """Normalize a LaTeX formula and return the normalized source plus report."""
@@ -50,7 +61,7 @@ def normalize(
 
 def count_targets(
     src: str,
-    strict: bool = False,
+    config: ParseConfig | None = None,
     packages: list[str] | None = None,
 ) -> dict[str, int]:
     """Count command, environment, and character targets in a LaTeX formula."""

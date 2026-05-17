@@ -16,7 +16,7 @@ use crate::column_parser::parse_column_template;
 use crate::dimension::is_valid_dimension_unit;
 use crate::knowledge::{ArgForm, ArgSpec, DelimiterToken, ValueKind};
 use crate::lexer::Token;
-use crate::parse::{ParseContext, ParseDiagnosticKind};
+use crate::parse::{ParseDiagnosticKind, ParserState};
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind,
     SyntaxNode,
@@ -147,15 +147,15 @@ fn collect_delimited_tokens<'src, 'parse>(
 /// whether this subparse should stay recoverable or fall back to the outer
 /// argument error path without re-running the parser.
 fn parse_content_substream(
-    ctx: &ParseContext,
+    state: &ParserState<'_>,
     mode: ContentMode,
     tokens: &[Token],
-    strict: bool,
     source_offset: usize,
 ) -> (Option<TrackedNode>, Vec<Rich<'static, Token>>) {
     let src = tokens_to_string(tokens);
     let token_stream = build_token_stream(src.as_str());
-    let parser = content_block_parser_with_source(mode, ctx, strict, src.as_str());
+    let sub_state = ParserState::new(state.ctx, state.config, src.as_str());
+    let parser = content_block_parser_with_source(mode, &sub_state, src.as_str());
 
     let (tracked, errors) = parser
         .then_ignore(end())
@@ -172,8 +172,7 @@ fn parse_content_substream(
         (Some(tracked), diagnostics)
     } else if let Some((tracked, recover_diagnostics)) = recover_direct_error_substream(
         mode,
-        ctx,
-        strict,
+        state,
         src.as_str(),
         source_offset,
         shifted_errors.as_slice(),
@@ -194,8 +193,7 @@ fn parse_content_substream(
 // Retry the block parser without `end()` and only accept it when it surfaces a direct inner error.
 fn recover_direct_error_substream(
     mode: ContentMode,
-    ctx: &ParseContext,
-    strict: bool,
+    state: &ParserState<'_>,
     src: &str,
     source_offset: usize,
     shifted_errors: &[Rich<'static, Token>],
@@ -213,7 +211,8 @@ fn recover_direct_error_substream(
         .unwrap_or(src.len());
     let recover_src = src.get(..recover_end).unwrap_or(src);
     let token_stream = build_token_stream(recover_src);
-    let parser = content_block_parser_with_source(mode, ctx, strict, recover_src);
+    let sub_state = ParserState::new(state.ctx, state.config, recover_src);
+    let parser = content_block_parser_with_source(mode, &sub_state, recover_src);
     let (tracked, errors) = parser.parse(token_stream).into_output_errors();
     let diagnostics: Vec<_> = errors
         .into_iter()
@@ -268,11 +267,10 @@ fn is_direct_custom_error(err: &Rich<'static, Token>) -> bool {
 /// inner generic content failures that get normalized later during conversion.
 fn normalized_inner_generic_message(err: &Rich<'static, Token>) -> String {
     let message = format!("{err}");
-    if matches!(
-        message.as_str(),
-        "found '$' expected something else, or '$'"
-            | "found end of input expected something else, or '$'"
-    ) {
+    if (message.starts_with("found '$' expected ")
+        || message.starts_with("found end of input expected "))
+        && message.contains("'$'")
+    {
         "found '$' expected something else, or end of input".to_string()
     } else {
         message
@@ -385,13 +383,12 @@ fn normalize_content_subparse(mode: ContentMode, tracked: TrackedNode) -> Tracke
 /// a useful direct diagnostic.
 fn parse_tokens_as_content<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
-    ctx: &'parse ParseContext,
+    state: &'parse ParserState<'parse>,
     mode: ContentMode,
     tokens: Vec<Token>,
-    strict: bool,
     source_offset: usize,
 ) -> Result<TrackedNode, Rich<'src, Token>> {
-    let (content, diagnostics) = parse_content_substream(ctx, mode, &tokens, strict, source_offset);
+    let (content, diagnostics) = parse_content_substream(state, mode, &tokens, source_offset);
     if let Some(content) = content {
         return Ok(content);
     }
@@ -422,7 +419,7 @@ fn parse_tokens_as_content<'src, 'parse>(
         });
 
     if let Some(generic_error) = generic_error {
-        if strict {
+        if state.config.strict {
             return Err(rebuild_owned_rich(generic_error));
         }
 
@@ -449,15 +446,14 @@ fn parse_tokens_as_content<'src, 'parse>(
 /// parsing depending on the spec.
 fn parse_delimited_value<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
-    ctx: &'parse ParseContext,
+    state: &'parse ParserState<'parse>,
     kind: ValueKind,
     tokens: Vec<Token>,
-    strict: bool,
     nullable: bool,
 ) -> Result<ArgumentValue, Rich<'src, Token>> {
     match kind {
         ValueKind::Content { mode } => {
-            let content = parse_tokens_as_content(input, ctx, mode, tokens, strict, 0)?;
+            let content = parse_tokens_as_content(input, state, mode, tokens, 0)?;
             Ok(argument_content_value(mode, content.node))
         }
         ValueKind::CSName => {
@@ -527,7 +523,7 @@ fn parse_delimited_value<'src, 'parse>(
                 return Ok(ArgumentValue::Delimiter(Delimiter::None));
             }
             let value = insignificant_whitespace()
-                .ignore_then(delimiter(ctx))
+                .ignore_then(delimiter(state.ctx))
                 .then_ignore(insignificant_whitespace())
                 .then_ignore(end())
                 .parse(build_token_stream(src.as_str()))
@@ -576,14 +572,14 @@ fn parse_tokens_as_cs_name<'src, 'parse>(
 /// its source span, and (for content arguments) a tracked content subtree
 /// so that callers can expose `arg.N` / `arg.N.content` paths.
 pub(super) fn argument_parser<'a>(
-    ctx: &'a ParseContext,
+    state: &'a ParserState<'a>,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     spec: &'static ArgSpec,
-    strict: bool,
 ) -> ArgumentParser<'a> {
     custom(move |input| {
         let arg_start = input.cursor();
+        let ctx = state.ctx;
 
         match &spec.form {
             ArgForm::Standard => match spec.kind {
@@ -596,10 +592,9 @@ pub(super) fn argument_parser<'a>(
                             let content_offset = arg_span.start + 1; // skip opening brace
                             let content = parse_tokens_as_content(
                                 input,
-                                ctx,
+                                state,
                                 mode,
                                 tokens,
-                                strict,
                                 content_offset,
                             )?;
                             Ok(TrackedArgumentSlot {
@@ -615,20 +610,18 @@ pub(super) fn argument_parser<'a>(
                             let item: TrackedNode = match mode {
                                 ContentMode::Math => input.parse(
                                     math_item_parser(
-                                        ctx,
+                                        state,
                                         math_content.clone(),
                                         text_content.clone(),
-                                        strict,
                                     )
                                     .labelled("mandatory argument")
                                     .as_context(),
                                 )?,
                                 ContentMode::Text => input.parse(
                                     text_item_parser(
-                                        ctx,
+                                        state,
                                         math_content.clone(),
                                         text_content.clone(),
-                                        strict,
                                     )
                                     .labelled("mandatory argument")
                                     .as_context(),
@@ -658,14 +651,8 @@ pub(super) fn argument_parser<'a>(
                         };
                         let arg_span = input.span_from_cursor(&arg_start);
                         let content_offset = arg_span.start + 1; // skip opening bracket
-                        let content = parse_tokens_as_content(
-                            input,
-                            ctx,
-                            mode,
-                            tokens,
-                            strict,
-                            content_offset,
-                        )?;
+                        let content =
+                            parse_tokens_as_content(input, state, mode, tokens, content_offset)?;
                         Ok(TrackedArgumentSlot {
                             slot: Some(Argument::from_value(
                                 ArgumentKind::Optional,
@@ -939,7 +926,7 @@ pub(super) fn argument_parser<'a>(
                 if let ValueKind::Content { mode } = spec.kind {
                     let content_offset = arg_span.start + 1;
                     let content =
-                        parse_tokens_as_content(input, ctx, mode, tokens, strict, content_offset)?;
+                        parse_tokens_as_content(input, state, mode, tokens, content_offset)?;
                     return Ok(TrackedArgumentSlot {
                         slot: Some(Argument::from_value(
                             ArgumentKind::Group,
@@ -950,8 +937,7 @@ pub(super) fn argument_parser<'a>(
                     });
                 }
 
-                let value =
-                    parse_delimited_value(input, ctx, spec.kind, tokens, strict, spec.nullable)?;
+                let value = parse_delimited_value(input, state, spec.kind, tokens, spec.nullable)?;
                 Ok(TrackedArgumentSlot::with_span(
                     Some(Argument::from_value(ArgumentKind::Group, value)),
                     arg_span,
@@ -981,7 +967,7 @@ pub(super) fn argument_parser<'a>(
                     let content_span_end = arg_span.end.saturating_sub(close_len);
                     let _ = content_span_end; // content span is computed inside parse_tokens_as_content
                     let content =
-                        parse_tokens_as_content(input, ctx, mode, tokens, strict, content_offset)?;
+                        parse_tokens_as_content(input, state, mode, tokens, content_offset)?;
                     return Ok(TrackedArgumentSlot {
                         slot: Some(Argument::from_value(
                             ArgumentKind::Delimited {
@@ -995,8 +981,7 @@ pub(super) fn argument_parser<'a>(
                     });
                 }
 
-                let value =
-                    parse_delimited_value(input, ctx, spec.kind, tokens, strict, spec.nullable)?;
+                let value = parse_delimited_value(input, state, spec.kind, tokens, spec.nullable)?;
                 Ok(TrackedArgumentSlot::with_span(
                     Some(Argument::from_value(
                         ArgumentKind::Delimited {
@@ -1033,7 +1018,7 @@ pub(super) fn argument_parser<'a>(
                     let open_len = delimiter_token_source_len(open);
                     let content_offset = arg_span.start + open_len;
                     let content =
-                        parse_tokens_as_content(input, ctx, mode, tokens, strict, content_offset)?;
+                        parse_tokens_as_content(input, state, mode, tokens, content_offset)?;
                     return Ok(TrackedArgumentSlot {
                         slot: Some(Argument::from_value(
                             ArgumentKind::Paired {
@@ -1047,8 +1032,7 @@ pub(super) fn argument_parser<'a>(
                     });
                 }
 
-                let value =
-                    parse_delimited_value(input, ctx, spec.kind, tokens, strict, spec.nullable)?;
+                let value = parse_delimited_value(input, state, spec.kind, tokens, spec.nullable)?;
                 Ok(TrackedArgumentSlot::with_span(
                     Some(Argument::from_value(
                         ArgumentKind::Paired {

@@ -113,7 +113,7 @@ fn genfrac_accepts_empty_and_integer_style_arguments() {
             r"\genfrac{}{}{0.0pt}{1}{a}{b}",
         ],
         Some(&["base", "ams"]),
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
     assert_eq!(outputs.len(), 2);
 
@@ -211,7 +211,7 @@ fn keyval_argument_accepts_nested_and_escaped_shapes() {
             r"\includegraphics[key=\{,other=c]{file}",
         ],
         None,
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
 
     let expected = ["key=val", "key={a,b},other=c", r"key=\{,other=c"];
@@ -247,7 +247,7 @@ fn keyval_argument_rejects_invalid_shapes() {
             r"\includegraphics[key={a]{file}",
         ],
         None,
-        true,
+        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
     );
 
     for item in &outputs {
@@ -448,7 +448,7 @@ fn strict_text_content_command_error_has_no_partial_result() {
 fn nonstrict_text_content_direct_error_survives_trailing_generic() {
     let ctx = content_test_context();
     let src = r"\text{\underline{a^2}$}";
-    let output = ctx.parse(src, false);
+    let output = ctx.parse(src, &texform_core::parse::ParseConfig::default());
 
     assert_eq!(
         collect_messages(&output),

@@ -21,7 +21,7 @@ fn run_with_packages(src: &str, packages: &[&str]) -> Outcome {
 fn run_with_packages_and_classes(src: &str, packages: &[&str], classes: &[RuleClass]) -> Outcome {
     let parse_ctx = ParseContext::from_packages(packages);
     let mut ast = parse_ctx
-        .parse_to_ast(src, false)
+        .parse_to_ast(src, &texform_core::parse::ParseConfig::default())
         .expect("source should parse");
     let mut config = TransformConfig::AUTHORING;
     config.rewrite.classes = classes
@@ -46,7 +46,7 @@ fn serialized_with_packages(src: &str, expected: &str, packages: &[&str]) {
 
     let parse_ctx = ParseContext::from_packages(packages);
     let expected_ast = parse_ctx
-        .parse_to_ast(expected, false)
+        .parse_to_ast(expected, &texform_core::parse::ParseConfig::default())
         .expect("expected output should parse");
     expected_ast.assert_invariants();
 

@@ -92,7 +92,7 @@ mod tests {
     fn output_matches_operatorname_argument_shape() {
         let parse_ctx = ParseContext::from_packages(&["base", "physics", "ams"]);
         let mut ast = parse_ctx
-            .parse_to_ast(r"\rank A", true)
+            .parse_to_ast(r"\rank A", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
             .expect("parse should succeed");
 
         let output = run_one_rule_for_test(

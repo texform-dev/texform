@@ -33,7 +33,7 @@ use logos::Logos;
 
 use crate::knowledge::{ActiveCommandRecord, ActiveEnvironmentRecord, ArgSpec, CommandKind};
 use crate::lexer::Token;
-use crate::parse::{ParseContext, ParseDiagnosticKind};
+use crate::parse::{ParseConfig, ParseContext, ParseDiagnosticKind, ParserState};
 use texform_interface::syntax_node::{ArgumentSlot, ContentMode, Delimiter, GroupKind, SyntaxNode};
 
 use self::arguments::{
@@ -449,11 +449,10 @@ fn with_argument_context<'a>(
 
 fn parse_argument_slots<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
-    ctx: &'src ParseContext,
+    state: &'src ParserState<'src>,
     math_content: ContentParser<'src>,
     text_content: ContentParser<'src>,
     args: &'static [ArgSpec],
-    strict: bool,
     context_label: &'static str,
 ) -> Result<Vec<TrackedArgumentSlot>, Rich<'src, Token>> {
     let ws = insignificant_whitespace();
@@ -465,13 +464,7 @@ fn parse_argument_slots<'src, 'parse>(
         }
 
         let arg_start = input.cursor();
-        let parser = argument_parser(
-            ctx,
-            math_content.clone(),
-            text_content.clone(),
-            spec,
-            strict,
-        );
+        let parser = argument_parser(state, math_content.clone(), text_content.clone(), spec);
         let arg = input.parse(parser).map_err(|err| {
             let original_kind = diagnostic_kind(&err);
             let arg_span = err
@@ -847,16 +840,45 @@ where
 
 /// Parse an explicit `{...}` group with the given content parser.
 fn braced_group_parser<'a, P>(
+    state: &'a ParserState<'a>,
     mode: ContentMode,
     content: P,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone
 where
     P: Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone + 'a,
 {
-    just(Token::LBrace)
-        .ignore_then(content)
-        .then_ignore(just(Token::RBrace))
-        .map_with(move |children, e| {
+    custom(move |input| {
+        let group_start = input.cursor();
+        input.parse(just(Token::LBrace))?;
+
+        let Some(_guard) = state.enter_group() else {
+            skip_to_matching_rbrace(input);
+            let span = input.span_from_cursor(&group_start);
+            let message = format!(
+                "max group depth ({}) exceeded",
+                state.config.max_group_depth
+            );
+            let diagnostic = custom_error(
+                span,
+                message.clone(),
+                ParseDiagnosticKind::MaxGroupDepthExceeded,
+            )
+            .into_owned();
+            return Ok(TrackedNode::leaf(
+                SyntaxNode::Error {
+                    message,
+                    snippet: slice_snippet(state.src, span),
+                },
+                span,
+            )
+            .with_diagnostics(vec![diagnostic]));
+        };
+
+        let result = input.parse(content.clone().then_ignore(just(Token::RBrace)));
+        // _guard drops here: depth is restored on both Ok and Err paths.
+
+        result.map(move |children| {
+            let span = input.span_from_cursor(&group_start);
             let (nodes, records, diagnostics) = TrackedNode::decompose_children(children);
             TrackedNode {
                 node: SyntaxNode::Group {
@@ -864,11 +886,24 @@ where
                     kind: GroupKind::Explicit,
                     children: nodes,
                 },
-                span: e.span(),
+                span,
                 records,
                 diagnostics,
             }
         })
+    })
+}
+
+fn skip_to_matching_rbrace<'src, 'parse>(input: &mut ParserInput<'src, 'parse>) {
+    let mut depth = 1usize;
+    while depth > 0 {
+        match input.next() {
+            Some(Token::LBrace) => depth = depth.saturating_add(1),
+            Some(Token::RBrace) => depth -= 1,
+            Some(_) => {}
+            None => return,
+        }
+    }
 }
 
 /// Parse `\left ... \right` delimited math group.
@@ -1220,13 +1255,21 @@ where
 /// or a list of rich diagnostics on failure. For partial-parse semantics
 /// (result + diagnostics), use [`ParseContext::parse`](crate::parse::ParseContext::parse)
 /// instead.
-pub fn parse(src: &str, strict: bool) -> Result<Spanned<SyntaxNode>, Vec<Rich<'_, Token>>> {
+pub fn parse(src: &str, strict: bool) -> Result<Spanned<SyntaxNode>, Vec<Rich<'static, Token>>> {
     let token_stream = build_token_stream(src);
-    math_block_parser(ParseContext::shared(), strict)
+    let config = if strict {
+        ParseConfig::STRICT_RECOVER
+    } else {
+        ParseConfig::NONSTRICT_RECOVER
+    };
+    let state = ParserState::new(ParseContext::shared(), &config, src);
+    let parser = math_block_parser(&state)
         .map_with(|tracked, e| (promote_to_root(tracked.node), e.span()))
-        .then_ignore(end())
+        .then_ignore(end());
+    parser
         .parse(token_stream)
         .into_result()
+        .map_err(|errors| errors.into_iter().map(Rich::into_owned).collect())
 }
 
 /// Promote the top-level implicit group produced by `math_block_parser` /
@@ -1274,14 +1317,13 @@ fn env_body_parser<'a>(
 
 fn mode_item_parser<'a>(
     mode: ContentMode,
-    ctx: &'a ParseContext,
+    state: &'a ParserState<'a>,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
-    strict: bool,
 ) -> NodeParser<'a> {
     match mode {
-        ContentMode::Math => math_item_parser(ctx, math_content, text_content, strict).boxed(),
-        ContentMode::Text => text_item_parser(ctx, math_content, text_content, strict).boxed(),
+        ContentMode::Math => math_item_parser(state, math_content, text_content).boxed(),
+        ContentMode::Text => text_item_parser(state, math_content, text_content).boxed(),
     }
 }
 
@@ -1843,16 +1885,15 @@ fn infix_guard<'a>(
 ///
 /// Callers decide whether to wrap it with padding or stop-guards.
 fn math_item_node_parser<'a, P>(
-    ctx: &'a ParseContext,
+    state: &'a ParserState<'a>,
     group_content: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
-    strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone
 where
     P: Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone + 'a,
 {
-    let atom = math_atom_parser(ctx, group_content, math_content, text_content, strict);
+    let atom = math_atom_parser(state, group_content, math_content, text_content);
     scripted_atom_parser(atom)
 }
 
@@ -1861,20 +1902,13 @@ where
 /// This parser does not consume trailing whitespace so the following argument
 /// slot can still enforce `no_leading_space`.
 fn math_item_parser<'a>(
-    ctx: &'a ParseContext,
+    state: &'a ParserState<'a>,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
-    strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
-    let item = math_item_node_parser(
-        ctx,
-        math_content.clone(),
-        math_content,
-        text_content,
-        strict,
-    );
+    let item = math_item_node_parser(state, math_content.clone(), math_content, text_content);
 
-    infix_guard(ctx, ContentMode::Math)
+    infix_guard(state.ctx, ContentMode::Math)
         .or(control_seq("right"))
         .or(control_seq("end"))
         .not()
@@ -1883,18 +1917,11 @@ fn math_item_parser<'a>(
 
 /// Parse a single text item (respecting stop guards).
 fn text_item_parser<'a>(
-    ctx: &'a ParseContext,
+    state: &'a ParserState<'a>,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
-    strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
-    let normal_item = text_atom_parser(
-        ctx,
-        text_content.clone(),
-        math_content,
-        text_content,
-        strict,
-    );
+    let normal_item = text_atom_parser(state, text_content.clone(), math_content, text_content);
 
     control_seq("end").not().ignore_then(normal_item)
 }
@@ -1904,13 +1931,14 @@ fn text_item_parser<'a>(
 // ============================================================================
 
 fn prefix_command_parser<'a>(
-    ctx: &'a ParseContext,
+    state: &'a ParserState<'a>,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     current_mode: ContentMode,
-    strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     custom(move |input| {
+        let ctx = state.ctx;
+        let strict = state.config.strict;
         let cmd_start = input.cursor();
         let (name, meta) =
             match command_head_parser(input, ctx, CommandKind::Prefix, current_mode, strict) {
@@ -1920,11 +1948,10 @@ fn prefix_command_parser<'a>(
 
         let cmd_args = parse_argument_slots(
             input,
-            ctx,
+            state,
             math_content.clone(),
             text_content.clone(),
             meta.argspec.args,
-            strict,
             "command argument",
         )?;
 
@@ -1944,13 +1971,14 @@ fn prefix_command_parser<'a>(
 }
 
 fn declarative_command_parser<'a>(
-    ctx: &'a ParseContext,
+    state: &'a ParserState<'a>,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     current_mode: ContentMode,
-    strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     custom(move |input| {
+        let ctx = state.ctx;
+        let strict = state.config.strict;
         let cmd_start = input.cursor();
         let (name, meta) =
             match command_head_parser(input, ctx, CommandKind::Declarative, current_mode, strict) {
@@ -1960,11 +1988,10 @@ fn declarative_command_parser<'a>(
 
         let cmd_args = parse_argument_slots(
             input,
-            ctx,
+            state,
             math_content.clone(),
             text_content.clone(),
             meta.argspec.args,
-            strict,
             "declarative command argument",
         )?;
 
@@ -2029,13 +2056,14 @@ fn env_name_parser<'a>() -> impl Parser<'a, TokenStream<'a>, String, ParserError
 
 /// Parse a full environment including body and closing tag.
 fn environment_parser<'a>(
-    ctx: &'a ParseContext,
+    state: &'a ParserState<'a>,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
     current_mode: ContentMode,
-    strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     custom(move |input| {
+        let ctx = state.ctx;
+        let strict = state.config.strict;
         let env_start = input.cursor();
         let ws = insignificant_whitespace();
 
@@ -2051,11 +2079,10 @@ fn environment_parser<'a>(
                 ModeLookup::Found(meta) => {
                     let cmd_args = parse_argument_slots(
                         input,
-                        ctx,
+                        state,
                         math_content.clone(),
                         text_content.clone(),
                         meta.argspec.args,
-                        strict,
                         "environment argument",
                     )?;
 
@@ -2108,14 +2135,9 @@ fn environment_parser<'a>(
             }
 
             let checkpoint = input.save();
-            let probe = mode_item_parser(
-                body_mode,
-                ctx,
-                math_content.clone(),
-                text_content.clone(),
-                strict,
-            )
-            .padded_by(ws.clone());
+            let probe =
+                mode_item_parser(body_mode, state, math_content.clone(), text_content.clone())
+                    .padded_by(ws.clone());
             let probe_result = input.parse(probe);
             input.rewind(checkpoint);
 
@@ -2171,33 +2193,32 @@ fn environment_parser<'a>(
 
 /// Parse a math atom (group/command/env/char) without scripts.
 fn math_atom_parser<'a, P>(
-    ctx: &'a ParseContext,
+    state: &'a ParserState<'a>,
     group_content: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
-    strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone
 where
     P: Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone + 'a,
 {
-    let explicit_group = braced_group_parser(ContentMode::Math, group_content.clone());
+    let ctx = state.ctx;
+    let strict = state.config.strict;
+    let explicit_group = braced_group_parser(state, ContentMode::Math, group_content.clone());
     let delimited_group = delimited_group_parser(ctx, math_content.clone());
     let environment = environment_parser(
-        ctx,
+        state,
         math_content.clone(),
         text_content.clone(),
         ContentMode::Math,
-        strict,
     );
     let prefix_command = prefix_command_parser(
-        ctx,
+        state,
         math_content.clone(),
         text_content.clone(),
         ContentMode::Math,
-        strict,
     );
     let declarative_command =
-        declarative_command_parser(ctx, math_content, text_content, ContentMode::Math, strict);
+        declarative_command_parser(state, math_content, text_content, ContentMode::Math);
     let delimiter_control_command = delimiter_control_command_parser(ctx);
     let unknown_command = unknown_command_parser(ctx, strict);
     let fallback = choice((
@@ -2285,15 +2306,16 @@ where
 
 /// Parse a text atom (text chunk, inline math, group, command, env).
 fn text_atom_parser<'a, P>(
-    ctx: &'a ParseContext,
+    state: &'a ParserState<'a>,
     group_content: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
-    strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone
 where
     P: Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone + 'a,
 {
+    let ctx = state.ctx;
+    let strict = state.config.strict;
     let inline_math = just(Token::MathShift)
         .ignore_then(implicit_group_parser(
             ContentMode::Math,
@@ -2330,23 +2352,21 @@ where
         ))
     });
 
-    let explicit_group = braced_group_parser(ContentMode::Text, group_content);
+    let explicit_group = braced_group_parser(state, ContentMode::Text, group_content);
     let environment = environment_parser(
-        ctx,
+        state,
         math_content.clone(),
         text_content.clone(),
         ContentMode::Text,
-        strict,
     );
     let prefix_command = prefix_command_parser(
-        ctx,
+        state,
         math_content.clone(),
         text_content.clone(),
         ContentMode::Text,
-        strict,
     );
     let declarative_command =
-        declarative_command_parser(ctx, math_content, text_content, ContentMode::Text, strict);
+        declarative_command_parser(state, math_content, text_content, ContentMode::Text);
     let unknown_command = unknown_command_parser(ctx, strict);
 
     let control_seq_fallback = choice((
@@ -2373,15 +2393,16 @@ where
 
 /// Build math-mode group content (leading items + optional infix tail).
 fn math_group_content_parser<'a, P>(
-    ctx: &'a ParseContext,
+    state: &'a ParserState<'a>,
     normal_item: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
-    strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone
 where
     P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
 {
+    let ctx = state.ctx;
+    let strict = state.config.strict;
     let ws = insignificant_whitespace();
     let stop_infix = infix_guard(ctx, ContentMode::Math);
     let stop_boundary = ws
@@ -2450,19 +2471,17 @@ where
 
             let args = parse_argument_slots(
                 input,
-                ctx,
+                state,
                 math_content_for_infix.clone(),
                 text_content_for_infix.clone(),
                 meta.argspec.args,
-                strict,
                 "infix command argument",
             )?;
 
             let normal_item = math_item_parser(
-                ctx,
+                state,
                 math_content_for_infix.clone(),
                 text_content_for_infix.clone(),
-                strict,
             )
             .padded_by(ws.clone())
             .boxed();
@@ -2564,11 +2583,7 @@ where
 
 /// Build text-mode group content as an ordinary item sequence.
 fn text_group_content_parser<'a, P>(
-    _ctx: &'a ParseContext,
     normal_item: P,
-    _math_content: ContentParser<'a>,
-    _text_content: ContentParser<'a>,
-    _strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone
 where
     P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
@@ -2611,10 +2626,7 @@ where
 /// as boxed parsers. Avoid [`Recursive::declare`] here: capturing declared
 /// parser clones inside their own definitions forms strong `Rc` cycles in
 /// chumsky 0.11 and leaks one parser graph per parse call.
-fn mode_content_parsers<'a>(
-    ctx: &'a ParseContext,
-    strict: bool,
-) -> (ContentParser<'a>, ContentParser<'a>) {
+fn mode_content_parsers<'a>(state: &'a ParserState<'a>) -> (ContentParser<'a>, ContentParser<'a>) {
     let math = recursive(move |group_content| {
         let ws = insignificant_whitespace();
         let math_content = group_content.clone().boxed();
@@ -2623,37 +2635,23 @@ fn mode_content_parsers<'a>(
             move |group_content| {
                 let text_content = group_content.clone().boxed();
                 let normal_item = text_atom_parser(
-                    ctx,
+                    state,
                     group_content,
                     math_content.clone(),
                     text_content.clone(),
-                    strict,
                 );
-                text_group_content_parser(
-                    ctx,
-                    normal_item,
-                    math_content.clone(),
-                    text_content,
-                    strict,
-                )
+                text_group_content_parser(normal_item)
             }
         })
         .boxed();
         let base_item = math_item_node_parser(
-            ctx,
+            state,
             group_content,
             math_content.clone(),
             text_content.clone(),
-            strict,
         );
-        let normal_item = if strict {
-            // Strict math still needs per-item whitespace so infix/declarative tails see the command head.
-            base_item.padded_by(ws.clone()).boxed()
-        } else {
-            base_item.padded_by(ws.clone()).boxed()
-        };
-        math_group_content_parser(ctx, normal_item, math_content, text_content, strict)
-            .padded_by(ws)
+        let normal_item = base_item.padded_by(ws.clone()).boxed();
+        math_group_content_parser(state, normal_item, math_content, text_content).padded_by(ws)
     })
     .boxed();
 
@@ -2662,13 +2660,12 @@ fn mode_content_parsers<'a>(
         move |group_content| {
             let text_content = group_content.clone().boxed();
             let normal_item = text_atom_parser(
-                ctx,
+                state,
                 group_content,
                 math_content.clone(),
                 text_content.clone(),
-                strict,
             );
-            text_group_content_parser(ctx, normal_item, math_content.clone(), text_content, strict)
+            text_group_content_parser(normal_item)
         }
     })
     .boxed();
@@ -2677,8 +2674,7 @@ fn mode_content_parsers<'a>(
 }
 
 fn mode_content_parsers_with_source<'a>(
-    ctx: &'a ParseContext,
-    strict: bool,
+    state: &'a ParserState<'a>,
     src: &'a str,
 ) -> (ContentParser<'a>, ContentParser<'a>) {
     let math = recursive(move |group_content| {
@@ -2689,56 +2685,47 @@ fn mode_content_parsers_with_source<'a>(
             move |group_content| {
                 let text_content = group_content.clone().boxed();
                 let base_item = text_atom_parser(
-                    ctx,
+                    state,
                     group_content,
                     math_content.clone(),
                     text_content.clone(),
-                    strict,
                 );
-                let normal_item = if strict {
-                    base_item.boxed()
-                } else {
+                let normal_item = if state.config.recover {
                     recoverable_content_item_parser(
-                        ctx,
+                        state.ctx,
                         ContentMode::Text,
                         src,
                         base_item,
                         is_text_hard_stop,
                     )
                     .boxed()
+                } else {
+                    base_item.boxed()
                 };
-                text_group_content_parser(
-                    ctx,
-                    normal_item,
-                    math_content.clone(),
-                    text_content,
-                    strict,
-                )
+                text_group_content_parser(normal_item)
             }
         })
         .boxed();
         let base_item = math_item_node_parser(
-            ctx,
+            state,
             group_content,
             math_content.clone(),
             text_content.clone(),
-            strict,
         );
-        let normal_item = if strict {
-            // Strict math still needs per-item whitespace so infix/declarative tails see the command head.
-            base_item.padded_by(ws.clone()).boxed()
-        } else {
+        let normal_item = if state.config.recover {
             recoverable_content_item_parser(
-                ctx,
+                state.ctx,
                 ContentMode::Math,
                 src,
                 base_item.padded_by(ws.clone()),
                 is_math_hard_stop,
             )
             .boxed()
+        } else {
+            // Math items still need per-item whitespace so infix/declarative tails see the command head.
+            base_item.padded_by(ws.clone()).boxed()
         };
-        math_group_content_parser(ctx, normal_item, math_content, text_content, strict)
-            .padded_by(ws)
+        math_group_content_parser(state, normal_item, math_content, text_content).padded_by(ws)
     })
     .boxed();
 
@@ -2747,25 +2734,24 @@ fn mode_content_parsers_with_source<'a>(
         move |group_content| {
             let text_content = group_content.clone().boxed();
             let base_item = text_atom_parser(
-                ctx,
+                state,
                 group_content,
                 math_content.clone(),
                 text_content.clone(),
-                strict,
             );
-            let normal_item = if strict {
-                base_item.boxed()
-            } else {
+            let normal_item = if state.config.recover {
                 recoverable_content_item_parser(
-                    ctx,
+                    state.ctx,
                     ContentMode::Text,
                     src,
                     base_item,
                     is_text_hard_stop,
                 )
                 .boxed()
+            } else {
+                base_item.boxed()
             };
-            text_group_content_parser(ctx, normal_item, math_content.clone(), text_content, strict)
+            text_group_content_parser(normal_item)
         }
     })
     .boxed();
@@ -2774,19 +2760,18 @@ fn mode_content_parsers_with_source<'a>(
 }
 
 /// Construct top-level math/text group parsers from content parsers.
-fn mode_group_parsers<'a>(ctx: &'a ParseContext, strict: bool) -> (NodeParser<'a>, NodeParser<'a>) {
-    let (math_content, text_content) = mode_content_parsers(ctx, strict);
+fn mode_group_parsers<'a>(state: &'a ParserState<'a>) -> (NodeParser<'a>, NodeParser<'a>) {
+    let (math_content, text_content) = mode_content_parsers(state);
     let math_group = implicit_group_parser(ContentMode::Math, math_content).boxed();
     let text_group = implicit_group_parser(ContentMode::Text, text_content).boxed();
     (math_group, text_group)
 }
 
 fn mode_group_parsers_with_source<'a>(
-    ctx: &'a ParseContext,
-    strict: bool,
+    state: &'a ParserState<'a>,
     src: &'a str,
 ) -> (NodeParser<'a>, NodeParser<'a>) {
-    let (math_content, text_content) = mode_content_parsers_with_source(ctx, strict, src);
+    let (math_content, text_content) = mode_content_parsers_with_source(state, src);
     let math_group = implicit_group_parser(ContentMode::Math, math_content).boxed();
     let text_group = implicit_group_parser(ContentMode::Text, text_content).boxed();
     (math_group, text_group)
@@ -2797,30 +2782,28 @@ fn mode_group_parsers_with_source<'a>(
 /// Returns a boxed parser that produces an implicit math-mode group
 /// wrapping all parsed items. This is the parser used by
 /// [`ParseContext::parse`](crate::parse::ParseContext::parse).
-pub(crate) fn math_block_parser<'a>(ctx: &'a ParseContext, strict: bool) -> NodeParser<'a> {
-    let (math_parser, _) = mode_group_parsers(ctx, strict);
+pub(crate) fn math_block_parser<'a>(state: &'a ParserState<'a>) -> NodeParser<'a> {
+    let (math_parser, _) = mode_group_parsers(state);
     math_parser
 }
 
 pub(crate) fn math_block_parser_with_source<'a>(
-    ctx: &'a ParseContext,
-    strict: bool,
+    state: &'a ParserState<'a>,
     src: &'a str,
 ) -> NodeParser<'a> {
-    let (math_parser, _) = mode_group_parsers_with_source(ctx, strict, src);
+    let (math_parser, _) = mode_group_parsers_with_source(state, src);
     math_parser
 }
 
 pub(crate) fn content_block_parser_with_source<'a>(
     mode: ContentMode,
-    ctx: &'a ParseContext,
-    strict: bool,
+    state: &'a ParserState<'a>,
     src: &'a str,
 ) -> NodeParser<'a> {
     match mode {
-        ContentMode::Math => math_block_parser_with_source(ctx, strict, src),
+        ContentMode::Math => math_block_parser_with_source(state, src),
         ContentMode::Text => {
-            let (_, text_parser) = mode_group_parsers_with_source(ctx, strict, src);
+            let (_, text_parser) = mode_group_parsers_with_source(state, src);
             text_parser
         }
     }

@@ -375,16 +375,17 @@ macro_rules! transform_examples {
                     flatten_groups: $crate::FlattenGroupsConfig::DISABLED,
                 };
                 cfg.rewrite.only($rule.meta().key);
+                let parse_config = $crate::parse::ParseConfig::STRICT_NO_RECOVER;
 
                 let mut ast = parse_ctx
-                    .parse_to_ast($input, true)
+                    .parse_to_ast($input, &parse_config)
                     .expect("parse input should succeed");
                 $crate::run(&mut ast, &parse_ctx, &cfg)
                     .expect("transform should succeed");
                 let actual = $crate::serialize::serialize(&ast);
 
                 let expected_ast = parse_ctx
-                    .parse_to_ast($expected, true)
+                    .parse_to_ast($expected, &parse_config)
                     .expect("parse expected should succeed");
                 let canonical_expected = $crate::serialize::serialize(&expected_ast);
 

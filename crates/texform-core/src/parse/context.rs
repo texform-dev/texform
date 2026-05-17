@@ -27,6 +27,7 @@ pub use crate::knowledge::KnowledgeBase;
 pub use crate::knowledge::PackageLoadError;
 use crate::knowledge::default_package_names;
 use crate::lexer::Token;
+use crate::parse::{ParseConfig, ParserState};
 use crate::parser::{self, RelativeSpanEntry, TokenStream, TrackedNode, build_token_stream};
 
 type LexedSource = Vec<(Token, std::ops::Range<usize>)>;
@@ -39,13 +40,16 @@ const DIAGNOSTIC_KIND_CONTEXT_PREFIX: &str = "__texform_diagnostic_kind:";
 const DIAGNOSTIC_KIND_MESSAGE_PREFIX: &str = "\x1etexform-kind:";
 const DIAGNOSTIC_KIND_MESSAGE_SEPARATOR: char = '\x1e';
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ParseDiagnosticKind {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
+#[serde(rename_all = "kebab-case")]
+pub enum ParseDiagnosticKind {
     ArgumentValidation,
     CommandModeError,
     EnvironmentModeError,
     EnvironmentNameMismatch,
     LeftRightDelimiter,
+    MaxGroupDepthExceeded,
     RawExpectedFound,
     TextScriptError,
     UnclosedInlineMath,
@@ -53,13 +57,14 @@ pub(crate) enum ParseDiagnosticKind {
 }
 
 impl ParseDiagnosticKind {
-    pub(crate) const fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             ParseDiagnosticKind::ArgumentValidation => "argument-validation",
             ParseDiagnosticKind::CommandModeError => "command-mode-error",
             ParseDiagnosticKind::EnvironmentModeError => "environment-mode-error",
             ParseDiagnosticKind::EnvironmentNameMismatch => "environment-name-mismatch",
             ParseDiagnosticKind::LeftRightDelimiter => "left-right-delimiter",
+            ParseDiagnosticKind::MaxGroupDepthExceeded => "max-group-depth-exceeded",
             ParseDiagnosticKind::RawExpectedFound => "raw-expected-found",
             ParseDiagnosticKind::TextScriptError => "text-script-error",
             ParseDiagnosticKind::UnclosedInlineMath => "unclosed-inline-math",
@@ -74,6 +79,7 @@ impl ParseDiagnosticKind {
             "environment-mode-error" => Some(Self::EnvironmentModeError),
             "environment-name-mismatch" => Some(Self::EnvironmentNameMismatch),
             "left-right-delimiter" => Some(Self::LeftRightDelimiter),
+            "max-group-depth-exceeded" => Some(Self::MaxGroupDepthExceeded),
             "raw-expected-found" => Some(Self::RawExpectedFound),
             "text-script-error" => Some(Self::TextScriptError),
             "unclosed-inline-math" => Some(Self::UnclosedInlineMath),
@@ -561,7 +567,10 @@ impl ParseResult {
 /// expected/found information for richer error reporting.
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
+#[non_exhaustive]
 pub struct ParseDiagnostic {
+    /// Stable machine-readable diagnostic kind, when available
+    pub kind: Option<ParseDiagnosticKind>,
     /// Human-readable error description
     pub message: String,
     /// Source location of the error
@@ -572,6 +581,25 @@ pub struct ParseDiagnostic {
     pub found: Option<String>,
     /// Additional related source ranges for richer diagnostics
     pub contexts: Vec<ParseDiagnosticContext>,
+}
+
+impl ParseDiagnostic {
+    pub fn new(
+        message: impl Into<String>,
+        span: Span,
+        expected: Vec<String>,
+        found: Option<String>,
+        contexts: Vec<ParseDiagnosticContext>,
+    ) -> Self {
+        Self {
+            kind: None,
+            message: message.into(),
+            span,
+            expected,
+            found,
+            contexts,
+        }
+    }
 }
 
 /// Unified parse output carrying an optional result and zero or more diagnostics.
@@ -745,13 +773,13 @@ impl ParseContext {
     /// Parse a LaTeX formula and return a unified output.
     ///
     /// Uses chumsky's output+errors semantics so that a partial syntax tree
-    /// can coexist with diagnostics. Set `strict` to reject unknown commands.
-    pub fn parse(&self, src: &str, strict: bool) -> ParseOutput {
-        parse_with_context(self, src, strict)
+    /// can coexist with diagnostics.
+    pub fn parse(&self, src: &str, config: &ParseConfig) -> ParseOutput {
+        parse_with_context(self, src, config)
     }
 
-    pub fn parse_to_ast(&self, src: &str, strict: bool) -> Result<Ast, ParseAstError> {
-        let output = self.parse(src, strict);
+    pub fn parse_to_ast(&self, src: &str, config: &ParseConfig) -> Result<Ast, ParseAstError> {
+        let output = self.parse(src, config);
         match (output.result, output.diagnostics) {
             (Some(result), diagnostics) if diagnostics.is_empty() => {
                 Ok(Ast::from_syntax_root(&result.node))
@@ -842,9 +870,13 @@ fn shared_ctx() -> &'static ParseContext {
     DEFAULT.get_or_init(ParseContext::default)
 }
 
-pub(crate) fn parse_with_context(ctx: &ParseContext, src: &str, strict: bool) -> ParseOutput {
+pub(crate) fn parse_with_context(
+    ctx: &ParseContext,
+    src: &str,
+    config: &ParseConfig,
+) -> ParseOutput {
     let token_stream = build_token_stream(src);
-    let (output, mut errors) = parse_raw(ctx, src, token_stream, strict);
+    let (output, mut errors) = parse_raw(ctx, src, token_stream, config);
 
     let result = output.map(|tracked| {
         let (node, span, records, diagnostics) = tracked.finish_root();
@@ -876,9 +908,10 @@ fn parse_raw(
     ctx: &ParseContext,
     src: &str,
     token_stream: TokenStream<'_>,
-    strict: bool,
+    config: &ParseConfig,
 ) -> (Option<TrackedNode>, Vec<Rich<'static, Token>>) {
-    let (output, errors) = parser::math_block_parser_with_source(ctx, strict, src)
+    let state = ParserState::new(ctx, config, src);
+    let (output, errors) = parser::math_block_parser_with_source(&state, src)
         .then_ignore(end())
         .parse(token_stream)
         .into_output_errors();
@@ -951,6 +984,7 @@ fn convert_diagnostic(ctx: &ParseContext, src: &str, err: Rich<'static, Token>) 
     let kind = kind.or_else(|| infer_raw_diagnostic_kind(expected.as_slice(), found.as_deref()));
 
     let mut diagnostic = ParseDiagnostic {
+        kind,
         message,
         span,
         expected,
@@ -1047,7 +1081,7 @@ fn supplement_unclosed_inline_math_message(
     }
 
     diagnostic.message = "found '$' expected something else, or end of input".to_string();
-    if diagnostic.expected == ["something else", "'$'"] {
+    if diagnostic.expected.iter().any(|value| value == "'$'") {
         diagnostic.expected = vec!["something else".to_string(), "end of input".to_string()];
     }
     if diagnostic.found.as_deref() == Some("\\text")
@@ -1723,6 +1757,7 @@ mod tests {
     fn eof_unclosed_inline_math_is_normalized() {
         let expected = vec!["something else".to_string(), "'$'".to_string()];
         let mut diagnostic = ParseDiagnostic {
+            kind: Some(ParseDiagnosticKind::UnclosedInlineMath),
             message: "found end of input expected something else, or '$'".to_string(),
             span: Span { start: 0, end: 2 },
             expected,
@@ -1748,6 +1783,7 @@ mod tests {
     #[test]
     fn argument_validation_span_uses_kind_not_message() {
         let mut diagnostic = ParseDiagnostic {
+            kind: Some(ParseDiagnosticKind::ArgumentValidation),
             message: "argument value was rejected".to_string(),
             span: Span { start: 0, end: 7 },
             expected: Vec::new(),

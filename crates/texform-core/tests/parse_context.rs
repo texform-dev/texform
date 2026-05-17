@@ -191,7 +191,10 @@ fn parser_uses_text_lane_for_nested_text_only_command() {
     assert!(ctx.knows_command_name("textonly"));
     assert!(ctx.knows_env_name("textenv"));
 
-    let output = ctx.parse(r"\text{\textonly{ab}}", false);
+    let output = ctx.parse(
+        r"\text{\textonly{ab}}",
+        &texform_core::parse::ParseConfig::default(),
+    );
     assert!(
         output.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",

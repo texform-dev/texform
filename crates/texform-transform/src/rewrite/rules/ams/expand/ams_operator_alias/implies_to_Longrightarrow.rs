@@ -92,7 +92,7 @@ mod tests {
     fn rewrites_implies_as_spaced_sibling_commands() {
         let parse_ctx = ParseContext::from_packages(&["base", "ams"]);
         let mut ast = parse_ctx
-            .parse_to_ast(r"a \implies b", true)
+            .parse_to_ast(r"a \implies b", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
             .expect("parse should succeed");
 
         let output = run_one_rule_for_test(
@@ -123,7 +123,7 @@ mod tests {
     fn groups_spaced_implies_when_used_as_script_base() {
         let parse_ctx = ParseContext::from_packages(&["base", "ams"]);
         let mut ast = parse_ctx
-            .parse_to_ast(r"\implies^2", true)
+            .parse_to_ast(r"\implies^2", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
             .expect("parse should succeed");
 
         let output = run_one_rule_for_test(

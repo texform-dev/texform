@@ -5,7 +5,7 @@ use texform_core::parse::{
 use texform_interface::syntax_node::{ContentMode, SyntaxNode};
 
 fn parse_ok(src: &str) -> ParseResult {
-    let output = ParseContext::shared().parse(src, false);
+    let output = ParseContext::shared().parse(src, &texform_core::parse::ParseConfig::default());
     assert!(
         output.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -23,7 +23,7 @@ fn parse_ok_with_items(items: &[ContextItem], src: &str) -> ParseResult {
     let output = builder
         .build()
         .expect("context items should be valid")
-        .parse(src, false);
+        .parse(src, &texform_core::parse::ParseConfig::default());
     assert!(
         output.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -245,7 +245,8 @@ fn unknown_environment_keeps_normal_body_path_in_nonstrict_mode() {
 
 #[test]
 fn partial_parse_does_not_invent_missing_argument_paths() {
-    let output = ParseContext::shared().parse(r"\frac{a", false);
+    let output =
+        ParseContext::shared().parse(r"\frac{a", &texform_core::parse::ParseConfig::default());
     assert!(!output.diagnostics.is_empty());
 
     let result = output.result.expect("expected partial result");

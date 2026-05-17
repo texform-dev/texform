@@ -2,7 +2,7 @@ use ariadne::{Config, IndexType, Label, Report, ReportKind, Source};
 use std::env;
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContentMode, ContextItem, DelimiterControlItem,
-    EnvironmentItem, ParseContextBuilder, ParseDiagnostic, ParseOutput,
+    EnvironmentItem, ParseConfig, ParseContextBuilder, ParseDiagnostic, ParseOutput,
 };
 
 struct CliOptions {
@@ -128,7 +128,12 @@ fn parse_with_options(options: &CliOptions) -> Result<ParseOutput, String> {
     let ctx = builder
         .build()
         .map_err(|error| format!("failed to build parse context: {error:?}"))?;
-    Ok(ctx.parse(options.input.as_str(), options.strict))
+    let config = if options.strict {
+        ParseConfig::STRICT_NO_RECOVER
+    } else {
+        ParseConfig::NONSTRICT_RECOVER
+    };
+    Ok(ctx.parse(options.input.as_str(), &config))
 }
 
 fn print_summary(options: &CliOptions) {

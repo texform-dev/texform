@@ -1,12 +1,60 @@
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pythonize::pythonize;
-use texform_core::parse::ParseContext;
+use texform_core::parse::{ParseConfig as CoreParseConfig, ParseContext};
 use texform_core::serialize;
 use texform_core::target_counter::{TargetCounter, count_node};
 use texform_transform::{TransformConfig, run as transform};
 
 pyo3::create_exception!(pytexform, ParseError, PyException);
+
+#[pyclass(name = "ParseConfig")]
+#[derive(Clone, Debug)]
+struct PyParseConfig {
+    #[pyo3(get, set)]
+    strict: bool,
+    #[pyo3(get, set)]
+    recover: bool,
+    #[pyo3(get, set)]
+    max_group_depth: usize,
+}
+
+#[pymethods]
+impl PyParseConfig {
+    #[new]
+    #[pyo3(signature = (strict = false, recover = true, max_group_depth = 128))]
+    fn new(strict: bool, recover: bool, max_group_depth: usize) -> Self {
+        Self {
+            strict,
+            recover,
+            max_group_depth,
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "ParseConfig(strict={}, recover={}, max_group_depth={})",
+            self.strict, self.recover, self.max_group_depth
+        )
+    }
+}
+
+impl PyParseConfig {
+    fn into_core(&self) -> CoreParseConfig {
+        CoreParseConfig {
+            strict: self.strict,
+            recover: self.recover,
+            max_group_depth: self.max_group_depth,
+        }
+    }
+}
+
+fn py_config_to_core(config: Option<PyRef<'_, PyParseConfig>>) -> CoreParseConfig {
+    config
+        .as_deref()
+        .map(PyParseConfig::into_core)
+        .unwrap_or_default()
+}
 
 fn parse_context(packages: Option<Vec<String>>) -> PyResult<ParseContext> {
     match packages {
@@ -37,15 +85,16 @@ fn config_from_profile_name(name: &str) -> PyResult<&'static TransformConfig> {
 /// Raises `pytexform.ParseError` when diagnostics are present.
 /// The exception carries `diagnostics` (list[dict]) and `partial_result` (dict | None).
 #[pyfunction]
-#[pyo3(signature = (src, strict = false, packages = None))]
+#[pyo3(signature = (src, config = None, packages = None))]
 fn parse(
     py: Python<'_>,
     src: &str,
-    strict: bool,
+    config: Option<PyRef<'_, PyParseConfig>>,
     packages: Option<Vec<String>>,
 ) -> PyResult<Py<PyAny>> {
     let ctx = parse_context(packages)?;
-    let output = ctx.parse(src, strict);
+    let config = py_config_to_core(config);
+    let output = ctx.parse(src, &config);
 
     if output.diagnostics.is_empty() {
         match output.result {
@@ -72,17 +121,17 @@ fn parse(
 }
 
 #[pyfunction]
-#[pyo3(signature = (src, profile = "authoring", strict = true, packages = None))]
+#[pyo3(signature = (src, profile = "authoring", packages = None))]
 fn normalize(
     py: Python<'_>,
     src: &str,
     profile: &str,
-    strict: bool,
     packages: Option<Vec<String>>,
 ) -> PyResult<Py<PyAny>> {
     let ctx = parse_context(packages)?;
+    let parse_config = CoreParseConfig::STRICT_NO_RECOVER;
     let mut ast = ctx
-        .parse_to_ast(src, strict)
+        .parse_to_ast(src, &parse_config)
         .map_err(|error| ParseError::new_err(error.to_string()))?;
     let config = config_from_profile_name(profile)?;
     let report = transform(&mut ast, &ctx, config)
@@ -115,15 +164,16 @@ fn normalize(
 }
 
 #[pyfunction]
-#[pyo3(signature = (src, strict = false, packages = None))]
+#[pyo3(signature = (src, config = None, packages = None))]
 fn count_targets(
     py: Python<'_>,
     src: &str,
-    strict: bool,
+    config: Option<PyRef<'_, PyParseConfig>>,
     packages: Option<Vec<String>>,
 ) -> PyResult<Py<PyAny>> {
     let ctx = parse_context(packages)?;
-    let output = ctx.parse(src, strict);
+    let config = py_config_to_core(config);
+    let output = ctx.parse(src, &config);
     if !output.diagnostics.is_empty() {
         let first_msg = output.diagnostics[0].message.clone();
         return Err(ParseError::new_err(first_msg));
@@ -143,6 +193,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse, m)?)?;
     m.add_function(wrap_pyfunction!(normalize, m)?)?;
     m.add_function(wrap_pyfunction!(count_targets, m)?)?;
+    m.add_class::<PyParseConfig>()?;
     m.add("ParseError", m.py().get_type::<ParseError>())?;
     Ok(())
 }

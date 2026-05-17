@@ -3,10 +3,11 @@ use texform_argspec::{ArgForm, ArgSpec, DelimiterToken, ValueKind, parse_arg_spe
 use texform_core::api;
 use texform_core::parse::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, AllowedMode, CommandItem,
-    CommandKind, ContentMode, ContextItem, DelimiterControlItem, EnvironmentItem,
+    CommandKind, ContentMode, ContextItem, DelimiterControlItem, EnvironmentItem, ParseConfig,
     ParseContextBuildError, ParseOutput, ParseResult,
 };
 use texform_core::serialize::SerializeOptions;
+use tsify_next::Tsify;
 use wasm_bindgen::prelude::*;
 
 // Additional TypeScript declarations for JS-shaped API values that are not
@@ -14,6 +15,24 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen(typescript_custom_section)]
 const WASM_API_TYPES: &str = r#"
 export type ArgumentSlot = Argument | null | undefined;
+
+export type ParseConfigInput = {
+    strict?: boolean;
+    recover?: boolean;
+    maxGroupDepth?: number;
+};
+
+export type ParseDiagnosticKind =
+    | "argument-validation"
+    | "command-mode-error"
+    | "environment-mode-error"
+    | "environment-name-mismatch"
+    | "left-right-delimiter"
+    | "max-group-depth-exceeded"
+    | "raw-expected-found"
+    | "text-script-error"
+    | "unclosed-inline-math"
+    | "unknown-environment";
 
 export type ArgSpecInfo = {
     required: boolean;
@@ -139,6 +158,38 @@ enum ContextItemInput {
     },
 }
 
+#[derive(Debug, Clone, Deserialize, Default, Tsify)]
+#[tsify(from_wasm_abi)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ParseConfigInput {
+    strict: Option<bool>,
+    recover: Option<bool>,
+    max_group_depth: Option<usize>,
+}
+
+impl ParseConfigInput {
+    fn into_config(self) -> ParseConfig {
+        let mut config = ParseConfig::default();
+        if let Some(strict) = self.strict {
+            config.strict = strict;
+        }
+        if let Some(recover) = self.recover {
+            config.recover = recover;
+        }
+        if let Some(max_group_depth) = self.max_group_depth {
+            config.max_group_depth = max_group_depth;
+        }
+        config
+    }
+}
+
+fn parse_config_input(value: Option<ParseConfigInput>) -> ParseConfig {
+    match value {
+        Some(value) => value.into_config(),
+        None => ParseConfig::default(),
+    }
+}
+
 #[wasm_bindgen]
 pub struct ParseContext {
     inner: texform_core::parse::ParseContext,
@@ -174,19 +225,19 @@ impl ParseContext {
         self.inner.is_delimiter_control(name)
     }
 
-    pub fn parse(&self, src: &str, strict: Option<bool>) -> Result<JsValue, JsValue> {
-        let strict = strict.unwrap_or(false);
-        parse_output_to_result(self.inner.parse(src, strict))
+    pub fn parse(&self, src: &str, config: Option<ParseConfigInput>) -> Result<JsValue, JsValue> {
+        let config = parse_config_input(config);
+        parse_output_to_result(self.inner.parse(src, &config))
     }
 
     pub fn serialize(
         &self,
         src: &str,
-        strict: Option<bool>,
+        config: Option<ParseConfigInput>,
         options: Option<JsValue>,
     ) -> Result<String, JsValue> {
-        let strict = strict.unwrap_or(false);
-        let output = self.inner.parse(src, strict);
+        let config = parse_config_input(config);
+        let output = self.inner.parse(src, &config);
 
         let parsed_options = match options {
             Some(opts_js) => Some(
@@ -280,9 +331,9 @@ impl ParseContext {
 /// Throws an error object with `diagnostics` and `partial_result` when
 /// diagnostics are present.
 #[wasm_bindgen]
-pub fn parse(src: &str, strict: Option<bool>) -> Result<JsValue, JsValue> {
-    let strict = strict.unwrap_or(false);
-    parse_output_to_result(api::parse_latex(src, strict))
+pub fn parse(src: &str, config: Option<ParseConfigInput>) -> Result<JsValue, JsValue> {
+    let config = parse_config_input(config);
+    parse_output_to_result(api::parse_latex(src, &config))
 }
 
 /// Test one or more context items by injecting them and parsing one or more inputs.
@@ -293,9 +344,9 @@ pub fn parse_with_context_items(
     items: JsValue,
     inputs: Vec<String>,
     packages: Option<Vec<String>>,
-    strict: Option<bool>,
+    config: Option<ParseConfigInput>,
 ) -> Result<JsValue, JsValue> {
-    let strict = strict.unwrap_or(false);
+    let config = parse_config_input(config);
     let items: Vec<ContextItemInput> = serde_wasm_bindgen::from_value(items)
         .map_err(|error| JsValue::from_str(&format!("invalid context items: {}", error)))?;
 
@@ -313,7 +364,7 @@ pub fn parse_with_context_items(
         &core_items,
         input_refs.as_slice(),
         package_refs.as_deref(),
-        strict,
+        &config,
     );
     parse_with_context_output_to_result(output)
 }
@@ -388,11 +439,11 @@ pub fn validate_spec(spec: &str) -> JsValue {
 #[wasm_bindgen]
 pub fn serialize(
     src: &str,
-    strict: Option<bool>,
+    config: Option<ParseConfigInput>,
     options: Option<JsValue>,
 ) -> Result<String, JsValue> {
-    let strict = strict.unwrap_or(false);
-    let output = api::parse_latex(src, strict);
+    let config = parse_config_input(config);
+    let output = api::parse_latex(src, &config);
 
     let parsed_options = match options {
         Some(opts_js) => Some(
@@ -858,7 +909,8 @@ mod tests {
 
     #[test]
     fn serialize_rejects_diagnostics_bearing_parse_results() {
-        let output = api::parse_latex(r"\unknowncmd", true);
+        let config = ParseConfig::STRICT_NO_RECOVER;
+        let output = api::parse_latex(r"\unknowncmd", &config);
 
         let err = prepare_parse_output_for_serialize(&output)
             .expect_err("should reject diagnostics-bearing parse results");
@@ -931,14 +983,15 @@ mod tests {
     #[test]
     fn parse_context_serialize_uses_context_items() {
         let ctx = custom_command_context();
-        let global_output = api::parse_latex(r"\probe{x}", true);
+        let config = ParseConfig::STRICT_NO_RECOVER;
+        let global_output = api::parse_latex(r"\probe{x}", &config);
 
         let global_err = prepare_parse_output_for_serialize(&global_output)
             .expect_err("global parse path should reject the custom command");
         assert_eq!(global_err, SerializePrepareError::DiagnosticsPresent);
 
         let output = ctx
-            .serialize(r"\probe{x}", Some(true), None)
+            .serialize(r"\probe{x}", None, None)
             .expect("custom command should serialize with instance context");
 
         assert_eq!(output, r"\probe { x }");

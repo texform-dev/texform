@@ -142,7 +142,7 @@ mod tests {
     fn rejects_non_text_like_tag_content() {
         let parse_ctx = crate::parse::ParseContext::from_packages(&["base", "ams"]);
         let mut ast = parse_ctx
-            .parse_to_ast(r"\eqalignno{x&=y&(n_i)}", true)
+            .parse_to_ast(r"\eqalignno{x&=y&(n_i)}", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
             .expect("parse should succeed");
 
         let err = run_one_rule_for_test(

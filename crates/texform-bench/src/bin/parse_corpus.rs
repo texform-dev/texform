@@ -1,7 +1,7 @@
 use clap::Parser;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use texform_bench::stats::ModeStats;
 use texform_bench::{config, data, output, runner};
 
@@ -51,6 +51,13 @@ struct RunOptions {
 
 struct RunResult {
     summaries: Vec<output::Summary>,
+}
+
+#[derive(Clone)]
+struct SlowSample {
+    duration: Duration,
+    formula_id: String,
+    formula_len: usize,
 }
 
 fn main() -> ExitCode {
@@ -240,6 +247,8 @@ fn run_datasets(
 
         let start = Instant::now();
         let mut accumulator = output::SummaryAccumulator::new();
+        let mut slow_nonstrict = Vec::new();
+        let mut slow_strict = Vec::new();
         let mut commit_writer = if options.write {
             commit_info
                 .as_ref()
@@ -257,6 +266,15 @@ fn run_datasets(
             args.limit,
             |records| {
                 let results = runner::run_bench(&records);
+                collect_slow_samples(&mut slow_nonstrict, &records, &results, false, 5, None);
+                collect_slow_samples(
+                    &mut slow_strict,
+                    &records,
+                    &results,
+                    true,
+                    10,
+                    Some(Duration::from_millis(100)),
+                );
                 if let Some(writer) = commit_writer.as_mut() {
                     writer.write_batch_errors(&records, &results)?;
                 }
@@ -317,6 +335,8 @@ fn run_datasets(
             format_mode_stats("strict", &summary.strict),
             format_mode_stats("nonstrict", &summary.nonstrict),
         );
+        print_slow_samples(&entry.slug, "nonstrict", &slow_nonstrict);
+        print_slow_samples(&entry.slug, "strict", &slow_strict);
     }
 
     if !summaries.is_empty() {
@@ -366,6 +386,48 @@ fn run_datasets(
     }
 
     Ok(RunResult { summaries })
+}
+
+fn collect_slow_samples(
+    samples: &mut Vec<SlowSample>,
+    records: &[data::FormulaRecord],
+    results: &[runner::FormulaResults],
+    strict: bool,
+    limit: usize,
+    threshold: Option<Duration>,
+) {
+    for (record, result) in records.iter().zip(results.iter()) {
+        let duration = if strict {
+            result.strict.duration
+        } else {
+            result.nonstrict.duration
+        };
+        if threshold.is_some_and(|threshold| duration <= threshold) {
+            continue;
+        }
+        samples.push(SlowSample {
+            duration,
+            formula_id: record.formula_id.clone(),
+            formula_len: record.formula.len(),
+        });
+    }
+    samples.sort_by(|a, b| b.duration.cmp(&a.duration));
+    samples.truncate(limit);
+}
+
+fn print_slow_samples(slug: &str, mode: &str, samples: &[SlowSample]) {
+    if samples.is_empty() {
+        return;
+    }
+    eprintln!("[{slug}] top-{} slow {mode}:", samples.len());
+    for sample in samples {
+        eprintln!(
+            "  {:>10.2}ms  {}  {} chars",
+            sample.duration.as_secs_f64() * 1_000.0,
+            sample.formula_id,
+            sample.formula_len
+        );
+    }
 }
 
 #[cfg(target_os = "linux")]
