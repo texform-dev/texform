@@ -1,0 +1,580 @@
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashSet};
+use std::time::Instant;
+
+use clap::{Parser, ValueEnum};
+use rayon::prelude::*;
+use serde::Serialize;
+use texform_bench::{config, data};
+use texform_core::ast::Ast;
+use texform_core::parse::{ParseConfig, ParseContext};
+use texform_core::serialize::serialize;
+use texform_transform::{
+    FlattenGroupsConfig, LowerAttributesConfig, RewriteConfig, TransformConfig, TransformContext,
+};
+
+#[derive(Parser)]
+#[command(
+    name = "texform-evaluate-flatten-groups",
+    about = "Evaluate the FlattenGroups transform phase across bench datasets."
+)]
+struct Args {
+    /// Comma-separated dataset slugs.
+    #[arg(
+        long,
+        value_delimiter = ',',
+        default_value = "linxy,unimer,wikipedia,lf80m-benchmarks"
+    )]
+    datasets: Vec<String>,
+
+    /// Limit records per dataset.
+    #[arg(long)]
+    limit: Option<usize>,
+
+    /// Number of highest-impact examples to keep per comparison.
+    #[arg(long, default_value_t = 12)]
+    sample_limit: usize,
+
+    /// Output format.
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+    format: OutputFormat,
+}
+
+#[derive(Clone, Copy, Debug, Default, ValueEnum)]
+enum OutputFormat {
+    #[default]
+    Text,
+    Json,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Comparison {
+    NoTransformVsFlattenOnly,
+    OtherPhasesVsFull,
+}
+
+impl Comparison {
+    fn label(self) -> &'static str {
+        match self {
+            Self::NoTransformVsFlattenOnly => "no_transform_vs_flatten_only",
+            Self::OtherPhasesVsFull => "other_phases_vs_full",
+        }
+    }
+}
+
+#[derive(Default)]
+struct ComparisonStats {
+    changed: usize,
+    removed_empty: usize,
+    replaced_single_child: usize,
+    spliced: usize,
+    redirected_slot: usize,
+    samples: TopSamples,
+}
+
+#[derive(Default)]
+struct DatasetStats {
+    records: usize,
+    parsed: usize,
+    parse_failed: usize,
+    transform_failed: usize,
+    flatten_only: ComparisonStats,
+    full_delta: ComparisonStats,
+}
+
+#[derive(Default)]
+struct RecordAnalysis {
+    parsed: bool,
+    transform_failures: usize,
+    flatten_only: Option<ChangeRecord>,
+    full_delta: Option<ChangeRecord>,
+}
+
+struct ChangeRecord {
+    formula_id: String,
+    source: String,
+    before: String,
+    after: String,
+    impact: usize,
+    formula_len: usize,
+    report: texform_transform::FlattenGroupsReport,
+}
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Serialize)]
+struct Sample {
+    impact: usize,
+    formula_len: usize,
+    dataset: String,
+    formula_id: String,
+    source: String,
+    before: String,
+    after: String,
+    removed_empty: usize,
+    replaced_single_child: usize,
+    spliced: usize,
+    redirected_slot: usize,
+}
+
+#[derive(Default)]
+struct TopSamples {
+    heap: BinaryHeap<Reverse<Sample>>,
+}
+
+impl TopSamples {
+    fn push(&mut self, sample: Sample, limit: usize) {
+        if limit == 0 {
+            return;
+        }
+        self.heap.push(Reverse(sample));
+        if self.heap.len() > limit {
+            self.heap.pop();
+        }
+    }
+
+    fn sorted(&self) -> Vec<Sample> {
+        let mut samples = self
+            .heap
+            .iter()
+            .map(|Reverse(sample)| sample.clone())
+            .collect::<Vec<_>>();
+        samples.sort_by(|left, right| {
+            right
+                .impact
+                .cmp(&left.impact)
+                .then_with(|| right.formula_len.cmp(&left.formula_len))
+        });
+        samples
+    }
+}
+
+#[derive(Serialize)]
+struct EvaluationReport {
+    elapsed_sec: f64,
+    datasets: Vec<DatasetOutput>,
+    overall: DatasetOutput,
+}
+
+#[derive(Serialize)]
+struct DatasetOutput {
+    dataset: String,
+    records: usize,
+    parsed: usize,
+    parse_failed: usize,
+    transform_failed: usize,
+    comparisons: Vec<ComparisonOutput>,
+}
+
+#[derive(Serialize)]
+struct ComparisonOutput {
+    comparison: &'static str,
+    changed: usize,
+    records_pct: f64,
+    parsed_pct: f64,
+    removed_empty: usize,
+    replaced_single_child: usize,
+    spliced: usize,
+    redirected_slot: usize,
+    samples: Vec<Sample>,
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = Args::parse();
+    let wanted = args.datasets.iter().cloned().collect::<HashSet<_>>();
+    let datasets_yaml = config::default_datasets_yaml();
+    let datasets = config::DatasetsConfig::load_from_yaml(&datasets_yaml)?;
+    let parse_ctx = ParseContext::shared();
+    let parse_cfg = ParseConfig::NONSTRICT_NO_RECOVER;
+    let flatten_only_ctx = TransformContext::from_config(flatten_only_config(), parse_ctx)?;
+    let other_phases_ctx = TransformContext::from_config(other_phases_config(), parse_ctx)?;
+    let full_ctx = TransformContext::from_config(TransformConfig::EQUIV, parse_ctx)?;
+
+    let start = Instant::now();
+    let mut overall = DatasetStats::default();
+    let mut dataset_outputs = Vec::new();
+
+    for dataset in datasets
+        .datasets
+        .iter()
+        .filter(|dataset| wanted.contains(&dataset.slug))
+    {
+        let data_path = config::resolve_dataset_file(&datasets_yaml, dataset);
+        match data::check_data_file(&data_path) {
+            data::DataFileStatus::Ready => {}
+            other => {
+                eprintln!(
+                    "[{}] skipping {:?}: {}",
+                    dataset.slug,
+                    data_path,
+                    data_file_status_label(other)
+                );
+                continue;
+            }
+        }
+
+        let mut stats = DatasetStats::default();
+        data::read_formula_record_batches(&data_path, 0, args.limit, |records| {
+            stats.records += records.len();
+            overall.records += records.len();
+
+            let analyses = records
+                .par_iter()
+                .map(|record| {
+                    analyze_record(
+                        record,
+                        parse_ctx,
+                        &parse_cfg,
+                        &flatten_only_ctx,
+                        &other_phases_ctx,
+                        &full_ctx,
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            for analysis in analyses {
+                if !analysis.parsed {
+                    stats.parse_failed += 1;
+                    overall.parse_failed += 1;
+                    continue;
+                }
+
+                stats.parsed += 1;
+                overall.parsed += 1;
+                stats.transform_failed += analysis.transform_failures;
+                overall.transform_failed += analysis.transform_failures;
+
+                if let Some(change) = analysis.flatten_only {
+                    record_change(
+                        &mut stats.flatten_only,
+                        Comparison::NoTransformVsFlattenOnly,
+                        &dataset.slug,
+                        &change,
+                        args.sample_limit,
+                    );
+                    record_change(
+                        &mut overall.flatten_only,
+                        Comparison::NoTransformVsFlattenOnly,
+                        &dataset.slug,
+                        &change,
+                        args.sample_limit,
+                    );
+                }
+                if let Some(change) = analysis.full_delta {
+                    record_change(
+                        &mut stats.full_delta,
+                        Comparison::OtherPhasesVsFull,
+                        &dataset.slug,
+                        &change,
+                        args.sample_limit,
+                    );
+                    record_change(
+                        &mut overall.full_delta,
+                        Comparison::OtherPhasesVsFull,
+                        &dataset.slug,
+                        &change,
+                        args.sample_limit,
+                    );
+                }
+            }
+            Ok(())
+        })?;
+
+        if matches!(args.format, OutputFormat::Text) {
+            print_dataset(&dataset.slug, &stats);
+        }
+        dataset_outputs.push(dataset_output(&dataset.slug, &stats));
+    }
+
+    let elapsed_sec = start.elapsed().as_secs_f64();
+    match args.format {
+        OutputFormat::Text => {
+            print_dataset("overall", &overall);
+            println!("elapsed_sec\t{elapsed_sec:.2}");
+        }
+        OutputFormat::Json => {
+            let report = EvaluationReport {
+                elapsed_sec,
+                datasets: dataset_outputs,
+                overall: dataset_output("overall", &overall),
+            };
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+    }
+
+    Ok(())
+}
+
+fn flatten_only_config() -> TransformConfig {
+    TransformConfig {
+        lower_attributes: LowerAttributesConfig::DISABLED,
+        rewrite: RewriteConfig::DISABLED,
+        flatten_groups: FlattenGroupsConfig::ENABLED,
+    }
+}
+
+fn other_phases_config() -> TransformConfig {
+    let mut config = TransformConfig::EQUIV;
+    config.flatten_groups = FlattenGroupsConfig::DISABLED;
+    config
+}
+
+fn analyze_record(
+    record: &data::FormulaRecord,
+    parse_ctx: &ParseContext,
+    parse_cfg: &ParseConfig,
+    flatten_only_ctx: &TransformContext,
+    other_phases_ctx: &TransformContext,
+    full_ctx: &TransformContext,
+) -> RecordAnalysis {
+    let Ok(ast) = parse_ctx.parse_to_ast(&record.formula, parse_cfg) else {
+        return RecordAnalysis::default();
+    };
+
+    let mut analysis = RecordAnalysis {
+        parsed: true,
+        ..RecordAnalysis::default()
+    };
+
+    match compare_flatten_only(record, &ast, flatten_only_ctx, parse_ctx) {
+        Ok(change) => analysis.flatten_only = change,
+        Err(_) => analysis.transform_failures += 1,
+    }
+
+    match compare_full_delta(record, &ast, other_phases_ctx, full_ctx, parse_ctx) {
+        Ok(change) => analysis.full_delta = change,
+        Err(_) => analysis.transform_failures += 1,
+    }
+
+    analysis
+}
+
+fn compare_flatten_only(
+    record: &data::FormulaRecord,
+    ast: &Ast,
+    flatten_only_ctx: &TransformContext,
+    parse_ctx: &ParseContext,
+) -> Result<Option<ChangeRecord>, texform_transform::TransformError> {
+    let before = serialize(ast);
+    let mut after_ast = ast.clone();
+    let report = flatten_only_ctx
+        .run(&mut after_ast, parse_ctx)?
+        .flatten_groups;
+    let after = serialize(&after_ast);
+    if before != after {
+        let impact = levenshtein(&before, &after);
+        return Ok(Some(ChangeRecord {
+            formula_id: record.formula_id.clone(),
+            source: record.formula.clone(),
+            before,
+            after,
+            impact,
+            formula_len: record.formula.len(),
+            report,
+        }));
+    }
+    Ok(None)
+}
+
+fn compare_full_delta(
+    record: &data::FormulaRecord,
+    ast: &Ast,
+    other_phases_ctx: &TransformContext,
+    full_ctx: &TransformContext,
+    parse_ctx: &ParseContext,
+) -> Result<Option<ChangeRecord>, texform_transform::TransformError> {
+    let mut other_ast = ast.clone();
+    other_phases_ctx.run(&mut other_ast, parse_ctx)?;
+    let before = serialize(&other_ast);
+
+    let mut full_ast = ast.clone();
+    let report = full_ctx.run(&mut full_ast, parse_ctx)?.flatten_groups;
+    let after = serialize(&full_ast);
+
+    if before != after {
+        let impact = levenshtein(&before, &after);
+        return Ok(Some(ChangeRecord {
+            formula_id: record.formula_id.clone(),
+            source: record.formula.clone(),
+            before,
+            after,
+            impact,
+            formula_len: record.formula.len(),
+            report,
+        }));
+    }
+    Ok(None)
+}
+
+fn record_change(
+    stats: &mut ComparisonStats,
+    comparison: Comparison,
+    dataset: &str,
+    change: &ChangeRecord,
+    sample_limit: usize,
+) {
+    stats.changed += 1;
+    stats.removed_empty += change.report.removed_empty;
+    stats.replaced_single_child += change.report.replaced_single_child;
+    stats.spliced += change.report.spliced;
+    stats.redirected_slot += change.report.redirected_slot;
+    stats.samples.push(
+        Sample {
+            impact: change.impact,
+            formula_len: change.formula_len,
+            dataset: dataset.to_string(),
+            formula_id: format!("{}:{}", comparison.label(), change.formula_id),
+            source: truncate(&change.source),
+            before: truncate(&change.before),
+            after: truncate(&change.after),
+            removed_empty: change.report.removed_empty,
+            replaced_single_child: change.report.replaced_single_child,
+            spliced: change.report.spliced,
+            redirected_slot: change.report.redirected_slot,
+        },
+        sample_limit,
+    );
+}
+
+fn dataset_output(slug: &str, stats: &DatasetStats) -> DatasetOutput {
+    DatasetOutput {
+        dataset: slug.to_string(),
+        records: stats.records,
+        parsed: stats.parsed,
+        parse_failed: stats.parse_failed,
+        transform_failed: stats.transform_failed,
+        comparisons: vec![
+            comparison_output(
+                Comparison::NoTransformVsFlattenOnly,
+                stats.records,
+                stats.parsed,
+                &stats.flatten_only,
+            ),
+            comparison_output(
+                Comparison::OtherPhasesVsFull,
+                stats.records,
+                stats.parsed,
+                &stats.full_delta,
+            ),
+        ],
+    }
+}
+
+fn comparison_output(
+    comparison: Comparison,
+    records: usize,
+    parsed: usize,
+    stats: &ComparisonStats,
+) -> ComparisonOutput {
+    ComparisonOutput {
+        comparison: comparison.label(),
+        changed: stats.changed,
+        records_pct: pct(stats.changed, records),
+        parsed_pct: pct(stats.changed, parsed),
+        removed_empty: stats.removed_empty,
+        replaced_single_child: stats.replaced_single_child,
+        spliced: stats.spliced,
+        redirected_slot: stats.redirected_slot,
+        samples: stats.samples.sorted(),
+    }
+}
+
+fn print_dataset(slug: &str, stats: &DatasetStats) {
+    println!("\n== {slug} ==");
+    println!(
+        "records\t{}\nparsed\t{}\nparse_failed\t{}\ntransform_failed\t{}",
+        stats.records, stats.parsed, stats.parse_failed, stats.transform_failed
+    );
+    print_comparison(
+        Comparison::NoTransformVsFlattenOnly,
+        stats.records,
+        stats.parsed,
+        &stats.flatten_only,
+    );
+    print_comparison(
+        Comparison::OtherPhasesVsFull,
+        stats.records,
+        stats.parsed,
+        &stats.full_delta,
+    );
+}
+
+fn data_file_status_label(status: data::DataFileStatus) -> &'static str {
+    match status {
+        data::DataFileStatus::Ready => "ready",
+        data::DataFileStatus::Missing => "missing",
+        data::DataFileStatus::LfsPointer => "lfs-pointer",
+    }
+}
+
+fn print_comparison(
+    comparison: Comparison,
+    records: usize,
+    parsed: usize,
+    stats: &ComparisonStats,
+) {
+    let pct_records = pct(stats.changed, records);
+    let pct_parsed = pct(stats.changed, parsed);
+    println!(
+        "{}\tchanged={} ({:.2}% of records, {:.2}% of parsed)\tremoved_empty={}\treplaced_single_child={}\tspliced={}\tredirected_slot={}",
+        comparison.label(),
+        stats.changed,
+        pct_records,
+        pct_parsed,
+        stats.removed_empty,
+        stats.replaced_single_child,
+        stats.spliced,
+        stats.redirected_slot
+    );
+    for (index, sample) in stats.samples.sorted().iter().enumerate() {
+        println!(
+            "sample\t{}\timpact={}\tlen={}\tdataset={}\tid={}\treport=[empty:{} single:{} splice:{} redirect:{}]\nsource\t{}\nbefore\t{}\nafter\t{}",
+            index + 1,
+            sample.impact,
+            sample.formula_len,
+            sample.dataset,
+            sample.formula_id,
+            sample.removed_empty,
+            sample.replaced_single_child,
+            sample.spliced,
+            sample.redirected_slot,
+            sample.source,
+            sample.before,
+            sample.after
+        );
+    }
+}
+
+fn pct(part: usize, total: usize) -> f64 {
+    if total == 0 {
+        0.0
+    } else {
+        part as f64 / total as f64 * 100.0
+    }
+}
+
+fn truncate(value: &str) -> String {
+    const MAX: usize = 420;
+    let mut out = value.chars().take(MAX).collect::<String>();
+    if value.chars().count() > MAX {
+        out.push_str("...");
+    }
+    out.replace('\n', "\\n")
+}
+
+fn levenshtein(left: &str, right: &str) -> usize {
+    let right_chars = right.chars().collect::<Vec<_>>();
+    let mut previous = (0..=right_chars.len()).collect::<Vec<_>>();
+    let mut current = vec![0; right_chars.len() + 1];
+
+    for (left_index, left_ch) in left.chars().enumerate() {
+        current[0] = left_index + 1;
+        for (right_index, right_ch) in right_chars.iter().enumerate() {
+            let cost = usize::from(left_ch != *right_ch);
+            current[right_index + 1] = (previous[right_index + 1] + 1)
+                .min(current[right_index] + 1)
+                .min(previous[right_index] + cost);
+        }
+        std::mem::swap(&mut previous, &mut current);
+    }
+
+    previous[right_chars.len()]
+}

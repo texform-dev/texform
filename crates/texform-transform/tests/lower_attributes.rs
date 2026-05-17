@@ -65,13 +65,13 @@ fn serialized_text(src: &str, expected: &str) {
 fn consumes_explicit_groups_that_scope_declaratives() {
     serialized(r"{\bf x}y", r"\mathbf{x}y");
     serialized(r"{\bf \rm x}", r"\mathrm{x}");
-    serialized_text(r"{\bf {\bf x}}", r"\mathbf { { x } }");
+    serialized_text(r"{\bf {\bf x}}", r"\mathbf { x }");
 }
 
 #[test]
-fn preserves_structural_explicit_groups() {
-    serialized_text(r"\mathbf{{x}}", r"\mathbf { { x } }");
-    serialized_text(r"\mathbf{{\mathbf{x}}}", r"\mathbf { { x } }");
+fn flattens_structural_explicit_groups_after_lowering() {
+    serialized_text(r"\mathbf{{x}}", r"\mathbf { x }");
+    serialized_text(r"\mathbf{{\mathbf{x}}}", r"\mathbf { x }");
     serialized(r"{{\bf x}}", r"{\mathbf{x}}");
 }
 
@@ -85,10 +85,10 @@ fn absorbs_nested_math_prefix_wrappers() {
 
 #[test]
 fn falls_back_to_preserving_noop_declarative_groups() {
-    serialized(r"{x \bf}", r"{x}");
-    serialized_text(r"\mathbf{{\bf x}}", r"\mathbf { { x } }");
-    serialized(r"{\bf}", r"{}");
-    serialized(r"{\bf \rm}", r"{}");
+    serialized(r"{x \bf}", r"x");
+    serialized_text(r"\mathbf{{\bf x}}", r"\mathbf { x }");
+    serialized_text(r"{\bf}", r"{ }");
+    serialized_text(r"{\bf \rm}", r"{ }");
 }
 
 #[test]

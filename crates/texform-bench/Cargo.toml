@@ -8,6 +8,7 @@ publish = false
 texform-core.workspace = true
 texform-interface.workspace = true
 texform-specs.workspace = true
+texform-transform.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
@@ -27,3 +28,7 @@ path = "src/bin/parse_corpus.rs"
 [[bin]]
 name = "texform-counter-dump"
 path = "src/bin/dump_counters.rs"
+
+[[bin]]
+name = "texform-evaluate-flatten-groups"
+path = "src/bin/evaluate_flatten_groups.rs"

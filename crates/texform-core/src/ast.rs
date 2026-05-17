@@ -776,6 +776,17 @@ impl Ast {
             {
                 replace_argument_child(args, parent_link.slot, old, replacement);
             }
+            Node::Infix { left, right, .. } => match parent_link.slot {
+                Slot::InfixLeft => {
+                    assert_eq!(*left, old, "Infix left operand must match old node");
+                    *left = replacement;
+                }
+                Slot::InfixRight => {
+                    assert_eq!(*right, old, "Infix right operand must match old node");
+                    *right = replacement;
+                }
+                _ => panic!("Expected infix operand slot"),
+            },
             Node::Environment { args, body, .. } => match parent_link.slot {
                 Slot::Argument(_) => {
                     replace_argument_child(args, parent_link.slot, old, replacement)
@@ -1953,6 +1964,41 @@ mod tests {
             ast.node(scripted),
             Node::Scripted {
                 superscript: Some(child),
+                ..
+            } if *child == replacement
+        ));
+        ast.assert_invariants();
+    }
+
+    #[test]
+    fn replace_content_child_replaces_infix_operand() {
+        let mut ast = Ast::new();
+        let left = ast.new_node(Node::Char('a'));
+        let right = ast.new_node(Node::Char('b'));
+        let infix = ast.new_node(Node::Infix {
+            name: "over".to_string(),
+            args: Vec::new(),
+            left,
+            right,
+        });
+        ast.append_child(ast.root(), infix);
+        let replacement = ast.new_node(Node::Char('x'));
+
+        ast.replace_content_child(right, replacement);
+
+        assert_eq!(ast.parent(right), None);
+        assert!(ast.detached_roots.contains(&right));
+        assert_eq!(
+            ast.parent(replacement),
+            Some(super::ParentLink {
+                parent: infix,
+                slot: Slot::InfixRight,
+            })
+        );
+        assert!(matches!(
+            ast.node(infix),
+            Node::Infix {
+                right: child,
                 ..
             } if *child == replacement
         ));

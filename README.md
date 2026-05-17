@@ -102,8 +102,8 @@ The engine runs the following ordered phases, all driven from `TransformConfig`:
 1. **LowerAttributes (pre)** — canonicalize declarative-scope commands and registered prefix wrappers.
 2. **Rewrite** — apply rewrite rules in a fixed-point loop.
 3. **LowerAttributes (post)** — re-canonicalize attribute markers produced by rewrite rules.
-4. **FlattenGroups (reserved)** — currently a no-op placeholder; the redundant-group removal
-   algorithm lands in the follow-up FlattenGroups spec.
+4. **FlattenGroups** — remove redundant explicit and implicit groups after earlier phases have
+   finished producing canonical structure.
 
 ### Rule Classes
 
@@ -185,6 +185,12 @@ cargo run --release -p texform-bench --bin parse_corpus -- --dataset lf80m-bench
 
 # dump per-dataset counter map shards
 cargo run --release -p texform-bench --bin texform-counter-dump
+
+# evaluate FlattenGroups impact across bench datasets
+cargo run --release -p texform-bench --bin texform-evaluate-flatten-groups
+
+# machine-readable FlattenGroups impact summary
+cargo run --release -p texform-bench --bin texform-evaluate-flatten-groups -- --format json
 ```
 
 See [`bench/README.md`](bench/README.md) for dataset provenance and result locations.
