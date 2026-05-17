@@ -357,6 +357,17 @@ pub struct GitCommitInfo {
     pub short_hash: String,
     pub full_hash: String,
     pub date: String,
+    pub dirty: bool,
+}
+
+impl GitCommitInfo {
+    fn commit_dir_name(&self) -> String {
+        if self.dirty {
+            format!("{}-dirty", self.full_hash)
+        } else {
+            self.full_hash.clone()
+        }
+    }
 }
 
 pub struct CommitResultWriter {
@@ -600,7 +611,7 @@ pub fn start_commit_results(
     slug: &str,
     commit: &GitCommitInfo,
 ) -> Result<CommitResultWriter, Box<dyn std::error::Error>> {
-    let dir = commits_root.join(&commit.full_hash).join(slug);
+    let dir = commits_root.join(commit.commit_dir_name()).join(slug);
     std::fs::create_dir_all(&dir)?;
     let errors = std::io::BufWriter::new(std::fs::File::create(dir.join("errors.jsonl"))?);
     Ok(CommitResultWriter { dir, errors })
@@ -698,12 +709,24 @@ pub fn git_commit_info() -> GitCommitInfo {
         .map(|stdout| stdout.trim().to_string())
         .and_then(|ci| ci.split_whitespace().next().map(|s| s.to_string()))
         .unwrap_or_else(|| "0000-00-00".to_string());
+    let dirty = git_worktree_dirty(&repo_root);
 
     GitCommitInfo {
         short_hash: short,
         full_hash: full,
         date,
+        dirty,
     }
+}
+
+fn git_worktree_dirty(repo_root: &Path) -> bool {
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["status", "--porcelain"])
+        .output()
+        .ok()
+        .is_some_and(|output| !output.stdout.is_empty())
 }
 
 pub fn latest_commit_baseline(
@@ -1254,6 +1277,7 @@ mod tests {
                 short_hash: "abc12345".to_string(),
                 full_hash: "abc12345full".to_string(),
                 date: "2024-01-01".to_string(),
+                dirty: false,
             },
         )
         .unwrap();
@@ -1275,6 +1299,25 @@ mod tests {
         assert!(errors.contains("\"strict\":false"));
         assert!(errors.contains("strict failed"));
         assert!(errors.contains("nonstrict failed"));
+
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn start_commit_results_suffixes_dirty_commit_directory() {
+        let dir = make_temp_dir("dirty-commit-results");
+        let commit = GitCommitInfo {
+            short_hash: "abc12345".to_string(),
+            full_hash: "abc12345full".to_string(),
+            date: "2024-01-01".to_string(),
+            dirty: true,
+        };
+
+        let writer = start_commit_results(&dir, "demo", &commit).unwrap();
+        drop(writer);
+
+        assert!(dir.join("abc12345full-dirty").join("demo").exists());
+        assert!(!dir.join("abc12345full").exists());
 
         std::fs::remove_dir_all(dir).unwrap();
     }
