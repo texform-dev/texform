@@ -2608,20 +2608,37 @@ where
 /// Math content may embed text content (via `\text`-family commands) and
 /// vice versa (via inline math `$...$`). Both parsers are declared with
 /// [`chumsky::recursive`] and wired to each other before being returned
-/// as boxed parsers.
+/// as boxed parsers. Avoid [`Recursive::declare`] here: capturing declared
+/// parser clones inside their own definitions forms strong `Rc` cycles in
+/// chumsky 0.11 and leaks one parser graph per parse call.
 fn mode_content_parsers<'a>(
     ctx: &'a ParseContext,
     strict: bool,
 ) -> (ContentParser<'a>, ContentParser<'a>) {
-    let mut math = Recursive::declare();
-    let mut text = Recursive::declare();
-
-    let math_for_math = math.clone();
-    let text_for_math = text.clone();
-    math.define(recursive(move |group_content| {
+    let math = recursive(move |group_content| {
         let ws = insignificant_whitespace();
-        let math_content = math_for_math.clone().boxed();
-        let text_content = text_for_math.clone().boxed();
+        let math_content = group_content.clone().boxed();
+        let text_content = recursive({
+            let math_content = group_content.clone().boxed();
+            move |group_content| {
+                let text_content = group_content.clone().boxed();
+                let normal_item = text_atom_parser(
+                    ctx,
+                    group_content,
+                    math_content.clone(),
+                    text_content.clone(),
+                    strict,
+                );
+                text_group_content_parser(
+                    ctx,
+                    normal_item,
+                    math_content.clone(),
+                    text_content,
+                    strict,
+                )
+            }
+        })
+        .boxed();
         let base_item = math_item_node_parser(
             ctx,
             group_content,
@@ -2637,24 +2654,26 @@ fn mode_content_parsers<'a>(
         };
         math_group_content_parser(ctx, normal_item, math_content, text_content, strict)
             .padded_by(ws)
-    }));
+    })
+    .boxed();
 
-    let math_for_text = math.clone();
-    let text_for_text = text.clone();
-    text.define(recursive(move |group_content| {
-        let math_content = math_for_text.clone().boxed();
-        let text_content = text_for_text.clone().boxed();
-        let normal_item = text_atom_parser(
-            ctx,
-            group_content,
-            math_content.clone(),
-            text_content.clone(),
-            strict,
-        );
-        text_group_content_parser(ctx, normal_item, math_content, text_content, strict)
-    }));
+    let text = recursive({
+        let math_content = math.clone();
+        move |group_content| {
+            let text_content = group_content.clone().boxed();
+            let normal_item = text_atom_parser(
+                ctx,
+                group_content,
+                math_content.clone(),
+                text_content.clone(),
+                strict,
+            );
+            text_group_content_parser(ctx, normal_item, math_content.clone(), text_content, strict)
+        }
+    })
+    .boxed();
 
-    (math.boxed(), text.boxed())
+    (math, text)
 }
 
 fn mode_content_parsers_with_source<'a>(
@@ -2662,15 +2681,42 @@ fn mode_content_parsers_with_source<'a>(
     strict: bool,
     src: &'a str,
 ) -> (ContentParser<'a>, ContentParser<'a>) {
-    let mut math = Recursive::declare();
-    let mut text = Recursive::declare();
-
-    let math_for_math = math.clone();
-    let text_for_math = text.clone();
-    math.define(recursive(move |group_content| {
+    let math = recursive(move |group_content| {
         let ws = insignificant_whitespace();
-        let math_content = math_for_math.clone().boxed();
-        let text_content = text_for_math.clone().boxed();
+        let math_content = group_content.clone().boxed();
+        let text_content = recursive({
+            let math_content = group_content.clone().boxed();
+            move |group_content| {
+                let text_content = group_content.clone().boxed();
+                let base_item = text_atom_parser(
+                    ctx,
+                    group_content,
+                    math_content.clone(),
+                    text_content.clone(),
+                    strict,
+                );
+                let normal_item = if strict {
+                    base_item.boxed()
+                } else {
+                    recoverable_content_item_parser(
+                        ctx,
+                        ContentMode::Text,
+                        src,
+                        base_item,
+                        is_text_hard_stop,
+                    )
+                    .boxed()
+                };
+                text_group_content_parser(
+                    ctx,
+                    normal_item,
+                    math_content.clone(),
+                    text_content,
+                    strict,
+                )
+            }
+        })
+        .boxed();
         let base_item = math_item_node_parser(
             ctx,
             group_content,
@@ -2693,36 +2739,38 @@ fn mode_content_parsers_with_source<'a>(
         };
         math_group_content_parser(ctx, normal_item, math_content, text_content, strict)
             .padded_by(ws)
-    }));
+    })
+    .boxed();
 
-    let math_for_text = math.clone();
-    let text_for_text = text.clone();
-    text.define(recursive(move |group_content| {
-        let math_content = math_for_text.clone().boxed();
-        let text_content = text_for_text.clone().boxed();
-        let base_item = text_atom_parser(
-            ctx,
-            group_content,
-            math_content.clone(),
-            text_content.clone(),
-            strict,
-        );
-        let normal_item = if strict {
-            base_item.boxed()
-        } else {
-            recoverable_content_item_parser(
+    let text = recursive({
+        let math_content = math.clone();
+        move |group_content| {
+            let text_content = group_content.clone().boxed();
+            let base_item = text_atom_parser(
                 ctx,
-                ContentMode::Text,
-                src,
-                base_item,
-                is_text_hard_stop,
-            )
-            .boxed()
-        };
-        text_group_content_parser(ctx, normal_item, math_content, text_content, strict)
-    }));
+                group_content,
+                math_content.clone(),
+                text_content.clone(),
+                strict,
+            );
+            let normal_item = if strict {
+                base_item.boxed()
+            } else {
+                recoverable_content_item_parser(
+                    ctx,
+                    ContentMode::Text,
+                    src,
+                    base_item,
+                    is_text_hard_stop,
+                )
+                .boxed()
+            };
+            text_group_content_parser(ctx, normal_item, math_content.clone(), text_content, strict)
+        }
+    })
+    .boxed();
 
-    (math.boxed(), text.boxed())
+    (math, text)
 }
 
 /// Construct top-level math/text group parsers from content parsers.
