@@ -1219,7 +1219,6 @@ dependencies = [
  "logos",
  "serde",
  "serde_json",
- "serde_yaml",
  "slotmap",
  "texform-argspec",
  "texform-interface",
@@ -1246,6 +1245,7 @@ dependencies = [
  "pythonize",
  "serde_json",
  "texform-core",
+ "texform-transform",
 ]
 
 [[package]]
@@ -1268,6 +1268,17 @@ dependencies = [
  "quote",
  "syn",
  "texform-argspec",
+]
+
+[[package]]
+name = "texform-transform"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_yaml",
+ "texform-core",
+ "texform-interface",
+ "texform-specs",
 ]
 
 [[package]]

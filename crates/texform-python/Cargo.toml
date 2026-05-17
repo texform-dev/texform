@@ -12,3 +12,4 @@ pyo3 = { workspace = true, features = ["auto-initialize"] }
 pythonize.workspace = true
 serde_json.workspace = true
 texform-core.workspace = true
+texform-transform.workspace = true

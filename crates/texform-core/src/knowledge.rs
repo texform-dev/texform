@@ -899,7 +899,7 @@ fn merge_environment_meta(
     )
 }
 
-pub(crate) fn lookup_command_node_name(node: &Node) -> Option<&str> {
+pub fn lookup_command_node_name(node: &Node) -> Option<&str> {
     match node {
         Node::Command { name, .. } | Node::Infix { name, .. } | Node::Declarative { name, .. } => {
             Some(name.as_str())
@@ -908,7 +908,7 @@ pub(crate) fn lookup_command_node_name(node: &Node) -> Option<&str> {
     }
 }
 
-pub(crate) fn lookup_environment_node_name(node: &Node) -> Option<&str> {
+pub fn lookup_environment_node_name(node: &Node) -> Option<&str> {
     match node {
         Node::Environment { name, .. } => Some(name.as_str()),
         _ => None,

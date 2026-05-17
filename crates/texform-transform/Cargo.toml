@@ -1,0 +1,16 @@
+[package]
+name = "texform-transform"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_yaml.workspace = true
+texform-core.workspace = true
+texform-interface.workspace = true
+texform-specs.workspace = true
+
+[build-dependencies]
+serde.workspace = true
+serde_yaml.workspace = true
+texform-specs.workspace = true

@@ -90,22 +90,20 @@ Key axes include:
 
 ## Transform
 
-TeXForm includes a rule-based AST transform engine in `texform-core::transform`. It normalizes a
-parsed AST so downstream consumers — formula equivalence, MER tokenization, LLM pretraining
-corpora, or polished authoring output — can work against a stable canonical form without
-re-implementing LaTeX semantics per use case.
+TeXForm includes a phase-oriented AST transform engine in `texform-transform`. It normalizes a parsed
+AST so downstream consumers — formula equivalence, MER tokenization, LLM pretraining corpora, or
+polished authoring output — can work against a stable canonical form without re-implementing LaTeX
+semantics per use case.
 
 ### Pipeline
 
-The engine runs in four ordered steps:
+The engine runs the following ordered phases, all driven from `TransformConfig`:
 
-1. **`LowerAttributes`** — a hard-coded attribute canonicalization pass that runs before and after
-   ApplyRules. It absorbs registered declarative-scope commands and registered prefix wrappers into
-   a canonical attribute form.
-2. **`ApplyRules`** — fixed-point loop over all enabled rules until no rule fires.
-3. **`LowerAttributes`** — a second pass that canonicalizes attribute markers produced by
-   ApplyRules.
-4. **`Cleanup`** — one-shot pass for rules that should run only after ApplyRules has settled.
+1. **LowerAttributes (pre)** — canonicalize declarative-scope commands and registered prefix wrappers.
+2. **Rewrite** — apply rewrite rules in a fixed-point loop.
+3. **LowerAttributes (post)** — re-canonicalize attribute markers produced by rewrite rules.
+4. **FlattenGroups (reserved)** — currently a no-op placeholder; the redundant-group removal
+   algorithm lands in the follow-up FlattenGroups spec.
 
 ### Rule Classes
 
@@ -124,7 +122,7 @@ result.
 
 ### Profiles
 
-`TransformProfile` bundles classes for common downstream scenarios:
+`TransformConfig` bundles classes for common downstream scenarios:
 
 | Profile       | Classes                                  | Target scenario                                              |
 |---------------|------------------------------------------|--------------------------------------------------------------|
@@ -133,7 +131,7 @@ result.
 | `CORPUS_DROP` | `Standard` + `Expand` + `Drop`           | Stronger corpus cleaning; drops linebreak/layout hints.      |
 | `EQUIV`       | `Standard` + `Expand` + `Drop` + `Equiv` | Aggressive normalization for formula equivalence comparison. |
 
-See `crates/texform-core/src/transform/rules/README.md` for rule authoring conventions.
+See `crates/texform-transform/src/rewrite/rules/README.md` for rule authoring conventions.
 
 ## Language Bindings
 
@@ -148,7 +146,7 @@ TeXForm exposes two Rust-side entry layers:
 
 ```bash
 uv sync --dev          # set up .venv and install deps
-maturin develop        # build from repo root
+uv run maturin develop # build from repo root
 ```
 
 ```python

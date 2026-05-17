@@ -282,7 +282,7 @@ impl From<DelimiterControlItem> for ContextItem {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(crate) struct MutationSummary {
+pub struct MutationSummary {
     pub touched_commands: HashSet<String>,
     pub touched_environments: HashSet<String>,
 }
@@ -661,7 +661,7 @@ impl ParseContext {
         }
     }
 
-    pub(crate) fn mutation_summary(&self) -> &MutationSummary {
+    pub fn mutation_summary(&self) -> &MutationSummary {
         &self.mutation_summary
     }
 

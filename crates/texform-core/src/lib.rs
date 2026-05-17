@@ -19,7 +19,6 @@ pub mod parse;
 pub mod parser;
 pub mod serialize;
 pub mod target_counter;
-pub mod transform;
 
 mod dimension;
-mod knowledge;
+pub mod knowledge;

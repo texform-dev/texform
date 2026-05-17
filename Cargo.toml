@@ -7,6 +7,7 @@ members = [
   "crates/texform-python",
   "crates/texform-specs",
   "crates/texform-specs-macros",
+  "crates/texform-transform",
   "crates/texform-wasm",
 ]
 resolver = "3"
@@ -40,3 +41,4 @@ texform-core = { path = "crates/texform-core" }
 texform-interface = { path = "crates/texform-interface" }
 texform-specs = { path = "crates/texform-specs" }
 texform-specs-macros = { path = "crates/texform-specs-macros" }
+texform-transform = { path = "crates/texform-transform" }

@@ -4,7 +4,7 @@ use pythonize::pythonize;
 use texform_core::parse::ParseContext;
 use texform_core::serialize;
 use texform_core::target_counter::{TargetCounter, count_node};
-use texform_core::transform::{TransformProfile, transform_ast};
+use texform_transform::{TransformConfig, run as transform};
 
 pyo3::create_exception!(pytexform, ParseError, PyException);
 
@@ -19,12 +19,12 @@ fn parse_context(packages: Option<Vec<String>>) -> PyResult<ParseContext> {
     }
 }
 
-fn profile_from_name(name: &str) -> PyResult<TransformProfile> {
+fn config_from_profile_name(name: &str) -> PyResult<&'static TransformConfig> {
     match name {
-        "authoring" => Ok(TransformProfile::AUTHORING),
-        "corpus" => Ok(TransformProfile::CORPUS),
-        "corpus-drop" => Ok(TransformProfile::CORPUS_DROP),
-        "equiv" => Ok(TransformProfile::EQUIV),
+        "authoring" => Ok(&TransformConfig::AUTHORING),
+        "corpus" => Ok(&TransformConfig::CORPUS),
+        "corpus-drop" => Ok(&TransformConfig::CORPUS_DROP),
+        "equiv" => Ok(&TransformConfig::EQUIV),
         other => Err(ParseError::new_err(format!(
             "unknown transform profile: {other}"
         ))),
@@ -84,14 +84,12 @@ fn normalize(
     let mut ast = ctx
         .parse_to_ast(src, strict)
         .map_err(|error| ParseError::new_err(error.to_string()))?;
-    let transform_ctx = profile_from_name(profile)?
-        .builder()
-        .build_with(&ctx)
-        .map_err(|error| ParseError::new_err(error.to_string()))?;
-    let report = transform_ast(&mut ast, &ctx, &transform_ctx)
+    let config = config_from_profile_name(profile)?;
+    let report = transform(&mut ast, &ctx, config)
         .map_err(|error| ParseError::new_err(error.to_string()))?;
     let normalized = serialize::serialize(&ast);
     let applied = report
+        .rewrite
         .applied
         .iter()
         .map(|stat| {
@@ -106,7 +104,7 @@ fn normalize(
     let out = serde_json::json!({
         "normalized": normalized,
         "report": {
-            "iterations": report.iterations,
+            "iterations": report.rewrite.iterations,
             "applied": applied,
             "lower_attributes": {
                 "eliminated_empty_segments": report.lower_attributes.eliminated_empty_segments,

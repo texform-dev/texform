@@ -8,7 +8,6 @@ ariadne.workspace = true
 chumsky.workspace = true
 logos.workspace = true
 serde.workspace = true
-serde_yaml.workspace = true
 slotmap.workspace = true
 tsify-next = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
@@ -19,11 +18,6 @@ texform-specs.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
-
-[build-dependencies]
-serde.workspace = true
-serde_yaml.workspace = true
-texform-specs.workspace = true
 
 [features]
 tsify = ["dep:tsify-next", "dep:wasm-bindgen", "texform-interface/tsify"]
