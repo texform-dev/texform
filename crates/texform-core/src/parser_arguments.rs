@@ -162,10 +162,16 @@ fn parse_content_substream(
         .parse(token_stream)
         .into_output_errors();
 
-    let shifted_errors: Vec<_> = errors
+    let mut shifted_errors: Vec<_> = sub_state
+        .take_recovery_diagnostics()
         .into_iter()
-        .map(|err| shift_owned_rich_span(err.into_owned(), source_offset))
+        .map(|err| shift_owned_rich_span(err, source_offset))
         .collect();
+    shifted_errors.extend(
+        errors
+            .into_iter()
+            .map(|err| shift_owned_rich_span(err.into_owned(), source_offset)),
+    );
     let diagnostics = filter_outer_errors(shifted_errors.clone(), source_offset + src.len());
 
     let (tracked, diagnostics) = if let Some(tracked) = tracked {
@@ -214,10 +220,16 @@ fn recover_direct_error_substream(
     let sub_state = ParserState::new(state.ctx, state.config, recover_src);
     let parser = content_block_parser_with_source(mode, &sub_state, recover_src);
     let (tracked, errors) = parser.parse(token_stream).into_output_errors();
-    let diagnostics: Vec<_> = errors
+    let mut diagnostics: Vec<_> = sub_state
+        .take_recovery_diagnostics()
         .into_iter()
-        .map(|err| shift_owned_rich_span(err.into_owned(), source_offset))
+        .map(|err| shift_owned_rich_span(err, source_offset))
         .collect();
+    diagnostics.extend(
+        errors
+            .into_iter()
+            .map(|err| shift_owned_rich_span(err.into_owned(), source_offset)),
+    );
 
     let tracked_has_direct = tracked
         .as_ref()

@@ -917,8 +917,9 @@ fn parse_raw(
         .into_output_errors();
 
     // Convert borrowed errors to owned so they outlive the token stream.
-    let errors = errors.into_iter().map(|e| e.into_owned()).collect();
-    (output, errors)
+    let mut collected_errors = state.take_recovery_diagnostics();
+    collected_errors.extend(errors.into_iter().map(|e| e.into_owned()));
+    (output, collected_errors)
 }
 
 fn node_span_entry(entry: RelativeSpanEntry) -> NodeSpanEntry {

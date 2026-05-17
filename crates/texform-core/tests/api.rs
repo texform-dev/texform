@@ -1,5 +1,7 @@
 mod support;
 
+use std::time::{Duration, Instant};
+
 use support::{
     assert_first_diagnostic_span_eq, collect_messages, command_item, contains_command_named,
     contains_error_node, delimiter_control_item, environment_item, parse_with_items,
@@ -372,6 +374,28 @@ fn recover_false_keeps_nonstrict_unknowns_without_partial_recovery() {
         "recover=false should not keep a partial tree for malformed input"
     );
     assert_eq!(collect_messages(&output), vec!["not a command"]);
+}
+
+#[test]
+fn nonstrict_recover_handles_unclosed_nested_groups_without_exponential_retry() {
+    let src = format!("{}x", "{".repeat(18));
+
+    let started = Instant::now();
+    let output = parse_latex(&src, &ParseConfig::NONSTRICT_RECOVER);
+    let elapsed = started.elapsed();
+
+    assert!(
+        output.result.is_some(),
+        "recovery should keep a partial tree"
+    );
+    assert!(
+        !output.diagnostics.is_empty(),
+        "unclosed groups should report diagnostics"
+    );
+    assert!(
+        elapsed < Duration::from_millis(250),
+        "recover=true should not retry exponentially for unclosed nested groups; elapsed={elapsed:?}"
+    );
 }
 
 #[test]

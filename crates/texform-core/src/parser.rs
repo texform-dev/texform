@@ -27,7 +27,6 @@ use chumsky::{
     input::{Cursor, InputRef, Stream},
     label::LabelError,
     prelude::*,
-    recovery::via_parser,
 };
 use logos::Logos;
 
@@ -1628,8 +1627,137 @@ fn is_hard_stop_after_whitespace<'src, 'parse>(
     result
 }
 
+fn recovery_diagnostic_from_error(
+    err: &Rich<'_, Token>,
+    message: &str,
+    kind: Option<ParseDiagnosticKind>,
+) -> Rich<'static, Token> {
+    let Some(kind) = kind else {
+        return clone_rich_error(err).into_owned();
+    };
+
+    match err.reason() {
+        chumsky::error::RichReason::ExpectedFound { .. }
+            if matches!(
+                kind,
+                ParseDiagnosticKind::RawExpectedFound
+                    | ParseDiagnosticKind::EnvironmentNameMismatch
+                    | ParseDiagnosticKind::UnclosedInlineMath
+            ) =>
+        {
+            with_diagnostic_kind(clone_rich_error(err), kind).into_owned()
+        }
+        chumsky::error::RichReason::ExpectedFound { .. } => {
+            custom_error(*err.span(), message, kind).into_owned()
+        }
+        chumsky::error::RichReason::Custom(original_message) => {
+            let (_, public_message) = ParseDiagnosticKind::split_message(original_message.as_str());
+            if public_message == message {
+                with_diagnostic_kind(clone_rich_error(err), kind).into_owned()
+            } else {
+                custom_error(*err.span(), message, kind).into_owned()
+            }
+        }
+    }
+}
+
+fn invalid_left_recovery_diagnostic(
+    ctx: &ParseContext,
+    src: &str,
+    search_start: usize,
+    search_end: usize,
+) -> Option<Rich<'static, Token>> {
+    let tokens: Vec<(Token, SimpleSpan)> = Token::lexer(src)
+        .spanned()
+        .map(|(token, span)| {
+            let token = token.unwrap_or_else(|()| {
+                panic!("Lexer error while scanning recoverable \\left diagnostic")
+            });
+            (token, SimpleSpan::from(span))
+        })
+        .collect();
+
+    let mut index = 0;
+    while index < tokens.len() {
+        let (token, span) = &tokens[index];
+        if span.start > search_end {
+            break;
+        }
+        if span.start < search_start {
+            index += 1;
+            continue;
+        }
+
+        if !matches!(token, Token::ControlSeq(name) if name == "left") {
+            index += 1;
+            continue;
+        }
+
+        let mut next = index + 1;
+        while matches!(tokens.get(next), Some((Token::Whitespaces, _))) {
+            next += 1;
+        }
+
+        let Some((delimiter_token, delimiter_span)) = tokens.get(next) else {
+            return Some(
+                custom_error(
+                    *span,
+                    "invalid \\left delimiter",
+                    ParseDiagnosticKind::LeftRightDelimiter,
+                )
+                .into_owned(),
+            );
+        };
+
+        if delimiter_span.start > search_end {
+            return None;
+        }
+
+        let valid = match delimiter_token {
+            Token::Char(c) => ctx
+                .lookup_delimiter(c.to_string().as_str(), false, ContentMode::Math)
+                .is_some(),
+            Token::LBracket => ctx
+                .lookup_delimiter("[", false, ContentMode::Math)
+                .is_some(),
+            Token::RBracket => ctx
+                .lookup_delimiter("]", false, ContentMode::Math)
+                .is_some(),
+            Token::ControlSeq(name) => ctx
+                .lookup_delimiter(name.as_str(), true, ContentMode::Math)
+                .is_some(),
+            _ => false,
+        };
+
+        if !valid {
+            return Some(
+                custom_error(
+                    *delimiter_span,
+                    "invalid \\left delimiter",
+                    ParseDiagnosticKind::LeftRightDelimiter,
+                )
+                .into_owned(),
+            );
+        }
+
+        index += 1;
+    }
+
+    None
+}
+
+fn expected_found_control_sequence(err: &Rich<'_, Token>, expected_name: &str) -> bool {
+    match err.reason() {
+        chumsky::error::RichReason::ExpectedFound {
+            found: Some(found), ..
+        } => matches!(&**found, Token::ControlSeq(name) if name == expected_name),
+        chumsky::error::RichReason::ExpectedFound { found: None, .. }
+        | chumsky::error::RichReason::Custom(_) => false,
+    }
+}
+
 fn recoverable_content_item_parser<'a, P>(
-    ctx: &'a ParseContext,
+    state: &'a ParserState<'a>,
     current_mode: ContentMode,
     src: &'a str,
     item: P,
@@ -1639,6 +1767,7 @@ where
     P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
 {
     custom(move |input| {
+        let ctx = state.ctx;
         let ws = insignificant_whitespace();
         let metadata_checkpoint = input.save();
         let _ = input.parse(ws.clone());
@@ -1809,7 +1938,14 @@ where
             }
         });
 
-        input.parse(item.clone().recover_with(via_parser(recovery_parser)))
+        let invalid_left_diagnostic = (expected_found_control_sequence(&err, "right")
+            || expected_found_control_sequence(&err, "end"))
+        .then(|| invalid_left_recovery_diagnostic(ctx, src, item_start_index, err.span().end))
+        .flatten();
+        let diagnostic = invalid_left_diagnostic
+            .unwrap_or_else(|| recovery_diagnostic_from_error(&err, message.as_str(), kind));
+        state.push_recovery_diagnostic(diagnostic);
+        input.parse(recovery_parser)
     })
 }
 
@@ -2692,7 +2828,7 @@ fn mode_content_parsers_with_source<'a>(
                 );
                 let normal_item = if state.config.recover {
                     recoverable_content_item_parser(
-                        state.ctx,
+                        state,
                         ContentMode::Text,
                         src,
                         base_item,
@@ -2714,7 +2850,7 @@ fn mode_content_parsers_with_source<'a>(
         );
         let normal_item = if state.config.recover {
             recoverable_content_item_parser(
-                state.ctx,
+                state,
                 ContentMode::Math,
                 src,
                 base_item.padded_by(ws.clone()),
@@ -2741,7 +2877,7 @@ fn mode_content_parsers_with_source<'a>(
             );
             let normal_item = if state.config.recover {
                 recoverable_content_item_parser(
-                    state.ctx,
+                    state,
                     ContentMode::Text,
                     src,
                     base_item,

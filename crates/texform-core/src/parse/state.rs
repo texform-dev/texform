@@ -12,15 +12,18 @@
 //! `ParserState` is constructed once at the entry point of every parse call
 //! and threaded through the internal `custom` parser closures.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 use super::{ParseConfig, ParseContext};
+use crate::lexer::Token;
+use chumsky::error::Rich;
 
 pub(crate) struct ParserState<'a> {
     pub(crate) ctx: &'a ParseContext,
     pub(crate) config: &'a ParseConfig,
     pub(crate) src: &'a str,
     group_depth: Cell<usize>,
+    recovery_diagnostics: RefCell<Vec<Rich<'static, Token>>>,
 }
 
 impl<'a> ParserState<'a> {
@@ -30,6 +33,7 @@ impl<'a> ParserState<'a> {
             config,
             src,
             group_depth: Cell::new(0),
+            recovery_diagnostics: RefCell::new(Vec::new()),
         }
     }
 
@@ -48,6 +52,32 @@ impl<'a> ParserState<'a> {
         self.group_depth.set(prev + 1);
         Some(GroupGuard { state: self, prev })
     }
+
+    pub(crate) fn push_recovery_diagnostic(&self, diagnostic: Rich<'static, Token>) {
+        let mut diagnostics = self.recovery_diagnostics.borrow_mut();
+        if diagnostics
+            .iter()
+            .any(|existing| recovery_diagnostics_match(existing, &diagnostic))
+        {
+            return;
+        }
+        diagnostics.push(diagnostic);
+    }
+
+    pub(crate) fn take_recovery_diagnostics(&self) -> Vec<Rich<'static, Token>> {
+        std::mem::take(&mut *self.recovery_diagnostics.borrow_mut())
+    }
+}
+
+fn recovery_diagnostics_match(left: &Rich<'static, Token>, right: &Rich<'static, Token>) -> bool {
+    left.span() == right.span()
+        && left.reason().to_string() == right.reason().to_string()
+        && left
+            .contexts()
+            .map(|(label, span)| (label.to_string(), *span))
+            .eq(right
+                .contexts()
+                .map(|(label, span)| (label.to_string(), *span)))
 }
 
 /// RAII handle returned by [`ParserState::enter_group`]. Restores the
