@@ -184,13 +184,13 @@ cargo run --release -p texform-bench --bin parse_corpus -- --dataset lf80m-bench
 cargo run --release -p texform-bench --bin parse_corpus -- --dataset lf80m-benchmarks --check
 
 # dump per-dataset counter map shards
-cargo run --release -p texform-bench --bin texform-counter-dump
+cargo run --release -p texform-bench --bin counter_dump
 
 # evaluate FlattenGroups impact across bench datasets
-cargo run --release -p texform-bench --bin texform-evaluate-flatten-groups
+cargo run --release -p texform-bench --bin evaluate_flatten_groups
 
-# machine-readable FlattenGroups impact summary
-cargo run --release -p texform-bench --bin texform-evaluate-flatten-groups -- --format json
+# current summaries are written to bench/results/parse_corpus/summary.json
+# and bench/results/flatten_groups/summary.json
 ```
 
 See [`bench/README.md`](bench/README.md) for dataset provenance and result locations.

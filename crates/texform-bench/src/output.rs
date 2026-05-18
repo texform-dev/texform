@@ -319,16 +319,16 @@ pub enum StoredSummaryStatus {
     Different,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, PartialEq)]
 struct StableModeStats {
     ok: usize,
     failed: usize,
     failure_rate_pct: f64,
 }
 
-#[derive(Serialize)]
-struct StableSummary<'a> {
-    dataset: &'a str,
+#[derive(Serialize, Deserialize, PartialEq)]
+struct StableSummary {
+    dataset: String,
     dataset_row_count: usize,
     total_tasks: usize,
     completed: usize,
@@ -336,12 +336,18 @@ struct StableSummary<'a> {
     nonstrict: StableModeStats,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct StableOverallSummary {
     dataset_count: usize,
     total_tasks: usize,
     strict: StableModeStats,
     nonstrict: StableModeStats,
+}
+
+#[derive(Serialize, Deserialize)]
+struct StableRunSummary {
+    datasets: Vec<StableSummary>,
+    overall: StableOverallSummary,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -361,7 +367,7 @@ pub struct GitCommitInfo {
 }
 
 impl GitCommitInfo {
-    fn commit_dir_name(&self) -> String {
+    pub fn commit_dir_name(&self) -> String {
         if self.dirty {
             format!("{}-dirty", self.full_hash)
         } else {
@@ -413,10 +419,10 @@ impl From<&ModeStats> for StableModeStats {
     }
 }
 
-impl<'a> From<&'a Summary> for StableSummary<'a> {
-    fn from(summary: &'a Summary) -> Self {
+impl From<&Summary> for StableSummary {
+    fn from(summary: &Summary) -> Self {
         Self {
-            dataset: summary.dataset.as_str(),
+            dataset: summary.dataset.clone(),
             dataset_row_count: summary.dataset_row_count,
             total_tasks: summary.total_tasks,
             completed: summary.completed,
@@ -433,6 +439,15 @@ impl From<&OverallSummary> for StableOverallSummary {
             total_tasks: overall.total_tasks,
             strict: StableModeStats::from(&overall.strict),
             nonstrict: StableModeStats::from(&overall.nonstrict),
+        }
+    }
+}
+
+impl StableRunSummary {
+    fn from_parts(summaries: &[Summary], overall: &OverallSummary) -> Self {
+        Self {
+            datasets: summaries.iter().map(StableSummary::from).collect(),
+            overall: StableOverallSummary::from(overall),
         }
     }
 }
@@ -514,15 +529,22 @@ pub fn stored_summary_status(
     slug: &str,
     summary: &Summary,
 ) -> Result<StoredSummaryStatus, Box<dyn std::error::Error>> {
-    let path = results_root.join(slug).join("summary.json");
+    let path = results_root.join("summary.json");
     if !path.exists() {
         return Ok(StoredSummaryStatus::Missing);
     }
 
-    let existing = std::fs::read_to_string(&path)?;
-    let current = serialize_stable_summary(summary)?;
+    let existing: StableRunSummary = serde_json::from_reader(std::fs::File::open(&path)?)?;
+    let Some(existing_summary) = existing
+        .datasets
+        .iter()
+        .find(|stored| stored.dataset == slug)
+    else {
+        return Ok(StoredSummaryStatus::Missing);
+    };
+    let current = StableSummary::from(summary);
 
-    if existing.trim() == current.trim() {
+    if *existing_summary == current {
         Ok(StoredSummaryStatus::Match)
     } else {
         Ok(StoredSummaryStatus::Different)
@@ -544,33 +566,14 @@ pub fn summaries_need_refresh(
     Ok(false)
 }
 
-fn serialize_stable_summary(summary: &Summary) -> Result<String, Box<dyn std::error::Error>> {
-    let stable = StableSummary::from(summary);
-    let mut buf = Vec::new();
-    let formatter = FixedPrecisionPrettyFormatter::new();
-    let mut serializer = serde_json::Serializer::with_formatter(&mut buf, formatter);
-    stable.serialize(&mut serializer)?;
-    Ok(String::from_utf8(buf)?)
-}
-
-pub fn write_summary(
+pub fn write_run_summary(
     results_root: &Path,
-    slug: &str,
-    summary: &Summary,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = results_root.join(slug);
-    std::fs::create_dir_all(&dir)?;
-    write_json_file(&dir.join("summary.json"), &StableSummary::from(summary))?;
-    Ok(())
-}
-
-pub fn write_overall(
-    results_root: &Path,
+    summaries: &[Summary],
     overall: &OverallSummary,
 ) -> Result<(), Box<dyn std::error::Error>> {
     write_json_file(
-        &results_root.join("overall.json"),
-        &StableOverallSummary::from(overall),
+        &results_root.join("summary.json"),
+        &StableRunSummary::from_parts(summaries, overall),
     )
 }
 
@@ -964,7 +967,13 @@ fn maybe_push_regression(
     }
 }
 
-fn write_json_file<T: Serialize>(path: &Path, value: &T) -> Result<(), Box<dyn std::error::Error>> {
+pub fn write_json_file<T: Serialize>(
+    path: &Path,
+    value: &T,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     let file = std::fs::File::create(path)?;
     let writer = std::io::BufWriter::new(file);
     let formatter = FixedPrecisionPrettyFormatter::new();
@@ -1113,30 +1122,20 @@ mod tests {
     }
 
     #[test]
-    fn write_summary_omits_unstable_timing_fields() {
-        let dir = make_temp_dir("stable-summary");
+    fn write_run_summary_omits_unstable_timing_fields() {
+        let dir = make_temp_dir("stable-run-summary");
         let summary = build_summary("demo", &sample_records(), &sample_results());
+        let summaries = vec![summary];
+        let overall = build_overall(&summaries);
 
-        write_summary(&dir, "demo", &summary).unwrap();
+        write_run_summary(&dir, &summaries, &overall).unwrap();
 
-        let summary_json = std::fs::read_to_string(dir.join("demo").join("summary.json")).unwrap();
+        let summary_json = std::fs::read_to_string(dir.join("summary.json")).unwrap();
+        assert!(summary_json.contains("\"datasets\""));
+        assert!(summary_json.contains("\"overall\""));
         assert!(!summary_json.contains("timing_ms"));
         assert!(!summary_json.contains("max_formula_id"));
-
-        std::fs::remove_dir_all(dir).unwrap();
-    }
-
-    #[test]
-    fn write_overall_omits_unstable_timing_fields() {
-        let dir = make_temp_dir("stable-overall");
-        let summary = build_summary("demo", &sample_records(), &sample_results());
-        let overall = build_overall(&[summary]);
-
-        write_overall(&dir, &overall).unwrap();
-
-        let overall_json = std::fs::read_to_string(dir.join("overall.json")).unwrap();
-        assert!(!overall_json.contains("timing_ms"));
-        assert!(!overall_json.contains("max_formula_id"));
+        assert!(!dir.join("overall.json").exists());
 
         std::fs::remove_dir_all(dir).unwrap();
     }
@@ -1157,8 +1156,10 @@ mod tests {
     fn stored_summary_status_reports_match_for_identical_summary() {
         let dir = make_temp_dir("summary-status-match");
         let summary = build_summary("demo", &sample_records(), &sample_results());
+        let summaries = vec![summary.clone()];
+        let overall = build_overall(&summaries);
 
-        write_summary(&dir, "demo", &summary).unwrap();
+        write_run_summary(&dir, &summaries, &overall).unwrap();
 
         let status = stored_summary_status(&dir, "demo", &summary).unwrap();
 
@@ -1171,7 +1172,9 @@ mod tests {
     fn stored_summary_status_reports_different_for_changed_summary() {
         let dir = make_temp_dir("summary-status-different");
         let original = build_summary("demo", &sample_records(), &sample_results());
-        write_summary(&dir, "demo", &original).unwrap();
+        let summaries = vec![original.clone()];
+        let overall = build_overall(&summaries);
+        write_run_summary(&dir, &summaries, &overall).unwrap();
 
         let mut changed = original.clone();
         changed.strict.ok = 2;
@@ -1190,9 +1193,10 @@ mod tests {
         let dir = make_temp_dir("summaries-refresh-all-match");
         let first = build_summary("demo-a", &sample_records(), &sample_results());
         let second = build_summary("demo-b", &sample_records(), &sample_results());
+        let summaries = vec![first.clone(), second.clone()];
+        let overall = build_overall(&summaries);
 
-        write_summary(&dir, "demo-a", &first).unwrap();
-        write_summary(&dir, "demo-b", &second).unwrap();
+        write_run_summary(&dir, &summaries, &overall).unwrap();
 
         let needs_refresh = summaries_need_refresh(&dir, &[first, second]).unwrap();
 
@@ -1206,8 +1210,10 @@ mod tests {
         let dir = make_temp_dir("summaries-refresh-needed");
         let matching = build_summary("demo-a", &sample_records(), &sample_results());
         let mut different = build_summary("demo-b", &sample_records(), &sample_results());
+        let stored_summaries = vec![matching.clone()];
+        let overall = build_overall(&stored_summaries);
 
-        write_summary(&dir, "demo-a", &matching).unwrap();
+        write_run_summary(&dir, &stored_summaries, &overall).unwrap();
         different.nonstrict.ok = 1;
         different.nonstrict.failed = 1;
         different.nonstrict.failure_rate_pct = 50.0;

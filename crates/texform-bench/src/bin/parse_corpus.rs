@@ -7,7 +7,7 @@ use texform_bench::{config, data, output, runner};
 
 #[derive(Parser)]
 #[command(
-    name = "texform-bench",
+    name = "parse_corpus",
     about = "Benchmark texform parser on real-world corpora"
 )]
 struct Args {
@@ -15,7 +15,7 @@ struct Args {
     #[arg(long)]
     datasets_yaml: Option<PathBuf>,
 
-    /// Result output directory. Defaults to a results/ directory next to datasets-yaml.
+    /// Result output directory. Defaults to results/parse_corpus next to datasets-yaml.
     #[arg(long)]
     results_root: Option<PathBuf>,
 
@@ -78,7 +78,7 @@ fn run(args: Args) -> Result<(), String> {
     let results_root = args
         .results_root
         .clone()
-        .unwrap_or_else(|| config::default_results_root(&datasets_yaml));
+        .unwrap_or_else(|| config::default_results_root(&datasets_yaml).join("parse_corpus"));
     let commits_root = results_root.join("commits");
 
     let config = match config::DatasetsConfig::load_from_yaml(&datasets_yaml) {
@@ -308,13 +308,6 @@ fn run_datasets(
             .expect("summary was just pushed and must exist");
 
         if options.write {
-            if let Err(error) = output::write_summary(results_root, &entry.slug, summary) {
-                let message = format!("[{}] Failed to write summary: {error}", entry.slug);
-                if options.strict_errors {
-                    return Err(message);
-                }
-                eprintln!("{message}");
-            }
             if let Some(ref commit) = commit_info
                 && let Some(writer) = commit_writer
                 && let Err(error) = writer.finish(summary, commit)
@@ -342,9 +335,9 @@ fn run_datasets(
     if !summaries.is_empty() {
         let overall = output::build_overall(&summaries);
         if options.write
-            && let Err(error) = output::write_overall(results_root, &overall)
+            && let Err(error) = output::write_run_summary(results_root, &summaries, &overall)
         {
-            let message = format!("Failed to write overall summary: {error}");
+            let message = format!("Failed to write run summary: {error}");
             if options.strict_errors {
                 return Err(message);
             }

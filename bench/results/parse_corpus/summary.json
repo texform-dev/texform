@@ -1,0 +1,82 @@
+{
+  "datasets": [
+    {
+      "dataset": "linxy",
+      "dataset_row_count": 93579,
+      "total_tasks": 93579,
+      "completed": 93579,
+      "strict": {
+        "ok": 91811,
+        "failed": 1768,
+        "failure_rate_pct": 1.89
+      },
+      "nonstrict": {
+        "ok": 93296,
+        "failed": 283,
+        "failure_rate_pct": 0.30
+      }
+    },
+    {
+      "dataset": "unimer",
+      "dataset_row_count": 606802,
+      "total_tasks": 606802,
+      "completed": 606802,
+      "strict": {
+        "ok": 593515,
+        "failed": 13287,
+        "failure_rate_pct": 2.19
+      },
+      "nonstrict": {
+        "ok": 605845,
+        "failed": 957,
+        "failure_rate_pct": 0.16
+      }
+    },
+    {
+      "dataset": "wikipedia",
+      "dataset_row_count": 492136,
+      "total_tasks": 492136,
+      "completed": 492136,
+      "strict": {
+        "ok": 480909,
+        "failed": 11227,
+        "failure_rate_pct": 2.28
+      },
+      "nonstrict": {
+        "ok": 491567,
+        "failed": 569,
+        "failure_rate_pct": 0.12
+      }
+    },
+    {
+      "dataset": "lf80m-benchmarks",
+      "dataset_row_count": 34104,
+      "total_tasks": 34104,
+      "completed": 34104,
+      "strict": {
+        "ok": 31981,
+        "failed": 2123,
+        "failure_rate_pct": 6.23
+      },
+      "nonstrict": {
+        "ok": 33905,
+        "failed": 199,
+        "failure_rate_pct": 0.58
+      }
+    }
+  ],
+  "overall": {
+    "dataset_count": 4,
+    "total_tasks": 1226621,
+    "strict": {
+      "ok": 1198216,
+      "failed": 28405,
+      "failure_rate_pct": 2.32
+    },
+    "nonstrict": {
+      "ok": 1224613,
+      "failed": 2008,
+      "failure_rate_pct": 0.16
+    }
+  }
+}

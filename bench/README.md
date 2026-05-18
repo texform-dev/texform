@@ -6,7 +6,7 @@ This directory contains the corpus bench inputs and outputs for `texform-bench`.
 
 - `data/` — tracked Parquet datasets used by the bench
 - `datasets.yaml` — slug-to-file mapping consumed by `texform-bench`
-- `results/` — `overall.json`, per-dataset summaries, counter map shards, commit snapshots, and working files
+- `results/` — current summaries, counter map shards, ignored commit snapshots, and working files
 
 Each dataset parquet stores `formula_id` and `formula`.
 `formula_id` is the first 12 hex chars of the normalized formula SHA-256, while dedup still uses the full hash.
@@ -49,15 +49,20 @@ cargo run --release -p texform-bench --bin parse_corpus -- --dataset lf80m-bench
 # dump per-dataset counter map shards for proposal evaluation
 # each dataset is sliced into fixed-size chunks; every chunk runs in a fresh
 # `--direct` child process so allocator retention cannot accumulate across the run
-cargo run --release -p texform-bench --bin texform-counter-dump
+cargo run --release -p texform-bench --bin counter_dump
+
+# evaluate FlattenGroups impact across bench datasets
+cargo run --release -p texform-bench --bin evaluate_flatten_groups
 ```
 
 ## Results
 
-- `results/overall.json` — aggregated counts, failure rates, and timing percentiles across the current bench run
-- `results/<slug>/summary.json` — per-dataset counts, failure rates, timing percentiles, and `timing_ms.max_formula_id`
-- `results/commits/<hash>/<slug>/summary.json` — per-dataset snapshot for that commit
-- `results/commits/<hash>/<slug>/errors.jsonl` — strict and nonstrict failures with full diagnostics
+- `results/parse_corpus/summary.json` — tracked current parse_corpus summary; per-dataset entries live under `datasets`
+- `results/parse_corpus/commits/<hash>/<slug>/summary.json` — ignored per-dataset snapshot for that commit
+- `results/parse_corpus/commits/<hash>/<slug>/errors.jsonl` — ignored strict and nonstrict failures with full diagnostics
+- `results/flatten_groups/summary.json` — tracked current FlattenGroups impact summary; per-dataset entries live under `datasets`
+- `results/flatten_groups/commits/<hash>/<slug>/summary.json` — ignored per-dataset FlattenGroups snapshot for that commit
+- `results/flatten_groups/commits/<hash>/<slug>/samples.json` — ignored highest-impact FlattenGroups examples for local inspection
 - `results/counter_map/` — per-formula target counter rows for proposal evaluation. The layout switches by dataset size:
   - `results/counter_map/<slug>.parquet` when the dataset fits in a single chunk (the conventional small-dataset layout);
   - `results/counter_map/<slug>/part-<offset>-<limit>.parquet` when the dataset spans multiple chunks. Downstream consumers (Polars / PyArrow / DuckDB) read either form as a parquet dataset, so no merge step is needed.

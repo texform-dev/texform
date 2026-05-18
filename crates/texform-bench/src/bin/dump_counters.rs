@@ -31,7 +31,7 @@ const DEFAULT_CHUNK_SIZE: usize = 1_000_000;
 
 #[derive(Parser)]
 #[command(
-    name = "texform-counter-dump",
+    name = "counter_dump",
     about = "Dump per-formula rule target counter rows to parquet"
 )]
 struct Args {

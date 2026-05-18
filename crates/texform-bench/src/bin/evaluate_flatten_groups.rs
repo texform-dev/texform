@@ -1,11 +1,12 @@
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashSet};
+use std::path::PathBuf;
 use std::time::Instant;
 
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use rayon::prelude::*;
 use serde::Serialize;
-use texform_bench::{config, data};
+use texform_bench::{config, data, output};
 use texform_core::ast::Ast;
 use texform_core::parse::{ParseConfig, ParseContext};
 use texform_core::serialize::serialize;
@@ -15,10 +16,18 @@ use texform_transform::{
 
 #[derive(Parser)]
 #[command(
-    name = "texform-evaluate-flatten-groups",
+    name = "evaluate_flatten_groups",
     about = "Evaluate the FlattenGroups transform phase across bench datasets."
 )]
 struct Args {
+    /// Dataset configuration YAML. Defaults to the texform repo bench/datasets.yaml.
+    #[arg(long)]
+    datasets_yaml: Option<PathBuf>,
+
+    /// Result output directory. Defaults to results/flatten_groups next to datasets-yaml.
+    #[arg(long)]
+    results_root: Option<PathBuf>,
+
     /// Comma-separated dataset slugs.
     #[arg(
         long,
@@ -34,17 +43,6 @@ struct Args {
     /// Number of highest-impact examples to keep per comparison.
     #[arg(long, default_value_t = 12)]
     sample_limit: usize,
-
-    /// Output format.
-    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-    format: OutputFormat,
-}
-
-#[derive(Clone, Copy, Debug, Default, ValueEnum)]
-enum OutputFormat {
-    #[default]
-    Text,
-    Json,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -142,6 +140,9 @@ impl TopSamples {
                 .impact
                 .cmp(&left.impact)
                 .then_with(|| right.formula_len.cmp(&left.formula_len))
+                .then_with(|| left.dataset.cmp(&right.dataset))
+                .then_with(|| left.formula_id.cmp(&right.formula_id))
+                .then_with(|| left.source.cmp(&right.source))
         });
         samples
     }
@@ -149,7 +150,6 @@ impl TopSamples {
 
 #[derive(Serialize)]
 struct EvaluationReport {
-    elapsed_sec: f64,
     datasets: Vec<DatasetOutput>,
     overall: DatasetOutput,
 }
@@ -174,13 +174,34 @@ struct ComparisonOutput {
     replaced_single_child: usize,
     spliced: usize,
     redirected_slot: usize,
+}
+
+#[derive(Serialize)]
+struct DatasetSamplesOutput {
+    dataset: String,
+    comparisons: Vec<ComparisonSamplesOutput>,
+}
+
+#[derive(Serialize)]
+struct ComparisonSamplesOutput {
+    comparison: &'static str,
     samples: Vec<Sample>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let wanted = args.datasets.iter().cloned().collect::<HashSet<_>>();
-    let datasets_yaml = config::default_datasets_yaml();
+    let datasets_yaml = args
+        .datasets_yaml
+        .clone()
+        .unwrap_or_else(config::default_datasets_yaml);
+    let results_root = args
+        .results_root
+        .clone()
+        .unwrap_or_else(|| config::default_results_root(&datasets_yaml).join("flatten_groups"));
+    let commit_root = results_root
+        .join("commits")
+        .join(output::git_commit_info().commit_dir_name());
     let datasets = config::DatasetsConfig::load_from_yaml(&datasets_yaml)?;
     let parse_ctx = ParseContext::shared();
     let parse_cfg = ParseConfig::NONSTRICT_NO_RECOVER;
@@ -255,7 +276,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Comparison::NoTransformVsFlattenOnly,
                         &dataset.slug,
                         &change,
-                        args.sample_limit,
+                        0,
                     );
                 }
                 if let Some(change) = analysis.full_delta {
@@ -271,34 +292,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Comparison::OtherPhasesVsFull,
                         &dataset.slug,
                         &change,
-                        args.sample_limit,
+                        0,
                     );
                 }
             }
             Ok(())
         })?;
 
-        if matches!(args.format, OutputFormat::Text) {
-            print_dataset(&dataset.slug, &stats);
-        }
-        dataset_outputs.push(dataset_output(&dataset.slug, &stats));
+        let dataset_summary = dataset_output(&dataset.slug, &stats);
+        let dataset_samples = dataset_samples_output(&dataset.slug, &stats);
+        print_dataset(&dataset.slug, &stats);
+        output::write_json_file(
+            &commit_root.join(&dataset.slug).join("summary.json"),
+            &dataset_summary,
+        )?;
+        output::write_json_file(
+            &commit_root.join(&dataset.slug).join("samples.json"),
+            &dataset_samples,
+        )?;
+        dataset_outputs.push(dataset_summary);
     }
 
     let elapsed_sec = start.elapsed().as_secs_f64();
-    match args.format {
-        OutputFormat::Text => {
-            print_dataset("overall", &overall);
-            println!("elapsed_sec\t{elapsed_sec:.2}");
-        }
-        OutputFormat::Json => {
-            let report = EvaluationReport {
-                elapsed_sec,
-                datasets: dataset_outputs,
-                overall: dataset_output("overall", &overall),
-            };
-            println!("{}", serde_json::to_string_pretty(&report)?);
-        }
-    }
+    let report = EvaluationReport {
+        datasets: dataset_outputs,
+        overall: dataset_output("overall", &overall),
+    };
+    let summary_path = results_root.join("summary.json");
+    output::write_json_file(&summary_path, &report)?;
+
+    print_dataset("overall", &overall);
+    println!("elapsed_sec\t{elapsed_sec:.2}");
+    println!("results_root\t{}", results_root.display());
+    println!("summary_json\t{}", summary_path.display());
 
     Ok(())
 }
@@ -473,6 +499,25 @@ fn comparison_output(
         replaced_single_child: stats.replaced_single_child,
         spliced: stats.spliced,
         redirected_slot: stats.redirected_slot,
+    }
+}
+
+fn dataset_samples_output(slug: &str, stats: &DatasetStats) -> DatasetSamplesOutput {
+    DatasetSamplesOutput {
+        dataset: slug.to_string(),
+        comparisons: vec![
+            comparison_samples_output(Comparison::NoTransformVsFlattenOnly, &stats.flatten_only),
+            comparison_samples_output(Comparison::OtherPhasesVsFull, &stats.full_delta),
+        ],
+    }
+}
+
+fn comparison_samples_output(
+    comparison: Comparison,
+    stats: &ComparisonStats,
+) -> ComparisonSamplesOutput {
+    ComparisonSamplesOutput {
+        comparison: comparison.label(),
         samples: stats.samples.sorted(),
     }
 }
@@ -524,23 +569,6 @@ fn print_comparison(
         stats.spliced,
         stats.redirected_slot
     );
-    for (index, sample) in stats.samples.sorted().iter().enumerate() {
-        println!(
-            "sample\t{}\timpact={}\tlen={}\tdataset={}\tid={}\treport=[empty:{} single:{} splice:{} redirect:{}]\nsource\t{}\nbefore\t{}\nafter\t{}",
-            index + 1,
-            sample.impact,
-            sample.formula_len,
-            sample.dataset,
-            sample.formula_id,
-            sample.removed_empty,
-            sample.replaced_single_child,
-            sample.spliced,
-            sample.redirected_slot,
-            sample.source,
-            sample.before,
-            sample.after
-        );
-    }
 }
 
 fn pct(part: usize, total: usize) -> f64 {

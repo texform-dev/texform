@@ -64,8 +64,10 @@ Project design notes and internal planning documents live outside this repo in t
 ## Corpus Benchmarks & Regression Testing
 
 - The corpus bench in `crates/texform-bench` runs the parser against large real-world datasets. A full benchmark run takes less than 10 seconds.
+- Current bench binaries are `parse_corpus`, `counter_dump`, and `evaluate_flatten_groups`. The first is the parser corpus regression bench, `counter_dump` produces counter-map data products, and `evaluate_flatten_groups` writes fixed FlattenGroups impact summaries under `bench/results/flatten_groups/` while also printing a short console summary.
+- In the parent workspace vocabulary, "bench" means corpus regression with pass/regression semantics, while "eval" means repeatable corpus comparison without pass/fail semantics.
 - Any significant change to `texform-core` should be benchmarked before and after to check for regressions in error rate and performance.
-- Historical results are tracked in git under `bench/results/`. There is no need to record baselines manually; diff the error rates before and after your change.
+- Historical parser results are tracked in git under `bench/results/parse_corpus/`. There is no need to record baselines manually; diff the error rates before and after your change.
 - See `./bench/README.md` for dataset details and result format.
 
 ## Transform Engine

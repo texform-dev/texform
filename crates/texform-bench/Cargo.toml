@@ -26,9 +26,9 @@ name = "parse_corpus"
 path = "src/bin/parse_corpus.rs"
 
 [[bin]]
-name = "texform-counter-dump"
+name = "counter_dump"
 path = "src/bin/dump_counters.rs"
 
 [[bin]]
-name = "texform-evaluate-flatten-groups"
+name = "evaluate_flatten_groups"
 path = "src/bin/evaluate_flatten_groups.rs"
