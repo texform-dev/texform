@@ -1985,9 +1985,10 @@ fn command_head_parser<'src, 'parse>(
         }
         ModeLookup::NotFound => {
             if strict {
-                return Err(Rich::custom(
+                return Err(custom_error(
                     cmd_span,
                     format!("Unknown command: \\{}", name),
+                    ParseDiagnosticKind::UnknownCommand,
                 ));
             } else {
                 return Err(Rich::custom(cmd_span, "unknown"));
@@ -2015,6 +2016,21 @@ fn infix_guard<'a>(
                     .unwrap_or(false) => ()
     }
     .rewind()
+}
+
+fn source_has_buildrel_tail_before_over(src: &str, over_start: usize) -> bool {
+    let Some(prefix) = src.get(..over_start) else {
+        return false;
+    };
+    let Some(buildrel_index) = prefix.rfind(r"\buildrel") else {
+        return false;
+    };
+    let previous_infix_index = ["\\over", "\\choose", "\\atop", "\\above"]
+        .into_iter()
+        .filter_map(|needle| prefix.rfind(needle))
+        .max();
+
+    previous_infix_index.is_none_or(|index| buildrel_index > index)
 }
 
 /// Parse one math item node (with script handling) without outer spacing policy.
@@ -2159,7 +2175,11 @@ fn unknown_command_parser<'a>(
         }
 
         if strict {
-            Err(Rich::custom(span, format!("Unknown command: \\{}", name)))
+            Err(custom_error(
+                span,
+                format!("Unknown command: \\{}", name),
+                ParseDiagnosticKind::UnknownCommand,
+            ))
         } else {
             Ok(TrackedNode::leaf(
                 SyntaxNode::Command {
@@ -2627,43 +2647,23 @@ where
                 .or(ws.clone().ignore_then(control_seq("end")))
                 .rewind();
             let guarded_item = stop_boundary.clone().not().ignore_then(normal_item.clone());
+            let buildrel_over_tail =
+                name == "over" && source_has_buildrel_tail_before_over(state.src, cmd_start_byte);
             let mut right_items = Vec::new();
+            let mut trailing_items = Vec::new();
 
-            loop {
+            if buildrel_over_tail {
                 let checkpoint = input.save();
                 let _ = input.parse(ws.clone());
-                let token_start = input.cursor();
                 let natural_end = matches!(
                     input.peek().as_ref(),
                     None | Some(Token::RBrace) | Some(Token::MathShift)
                 );
-                if natural_end {
-                    input.rewind(checkpoint);
-                    break;
-                }
-
-                if input.parse(stop_boundary.clone()).is_ok() {
-                    break;
-                }
-
-                let ambiguous_infix = match input.peek() {
-                    Some(Token::ControlSeq(name))
-                        if input.parse(infix_guard(ctx, ContentMode::Math)).is_ok() =>
-                    {
-                        Some(name.clone())
-                    }
-                    _ => None,
-                };
-
-                if let Some(name) = ambiguous_infix {
-                    return Err(Rich::custom(
-                        input.span_from_cursor(&token_start),
-                        format!("Ambiguous use of \\{}", name),
-                    ));
+                if natural_end || input.parse(stop_boundary.clone()).is_ok() {
+                    input.rewind(checkpoint.clone());
                 }
 
                 input.rewind(checkpoint.clone());
-
                 match input.parse(guarded_item.clone()) {
                     Ok(item) => right_items.push(item),
                     Err(err) => {
@@ -2671,9 +2671,71 @@ where
                         return Err(err);
                     }
                 }
+
+                let checkpoint = input.save();
+                let _ = input.parse(ws.clone());
+                let natural_end = matches!(
+                    input.peek().as_ref(),
+                    None | Some(Token::RBrace) | Some(Token::MathShift)
+                );
+                if natural_end || input.parse(stop_boundary.clone()).is_ok() {
+                    input.rewind(checkpoint);
+                } else {
+                    input.rewind(checkpoint);
+                    trailing_items = input.parse(math_content_for_infix.clone())?;
+                }
+            } else {
+                loop {
+                    let checkpoint = input.save();
+                    let _ = input.parse(ws.clone());
+                    let token_start = input.cursor();
+                    let natural_end = matches!(
+                        input.peek().as_ref(),
+                        None | Some(Token::RBrace) | Some(Token::MathShift)
+                    );
+                    if natural_end {
+                        input.rewind(checkpoint);
+                        break;
+                    }
+
+                    if input.parse(stop_boundary.clone()).is_ok() {
+                        break;
+                    }
+
+                    let ambiguous_infix = match input.peek() {
+                        Some(Token::ControlSeq(name))
+                            if input.parse(infix_guard(ctx, ContentMode::Math)).is_ok() =>
+                        {
+                            Some(name.clone())
+                        }
+                        _ => None,
+                    };
+
+                    if let Some(name) = ambiguous_infix {
+                        return Err(custom_error(
+                            input.span_from_cursor(&token_start),
+                            format!("Ambiguous use of \\{}", name),
+                            ParseDiagnosticKind::AmbiguousInfix,
+                        ));
+                    }
+
+                    input.rewind(checkpoint.clone());
+
+                    match input.parse(guarded_item.clone()) {
+                        Ok(item) => right_items.push(item),
+                        Err(err) => {
+                            input.rewind(checkpoint);
+                            return Err(err);
+                        }
+                    }
+                }
             }
 
-            Ok(Some(((name, args, cmd_start_byte), right_items)))
+            Ok(Some((
+                (name, args, cmd_start_byte),
+                right_items,
+                trailing_items,
+            )))
         } else {
             Ok(None)
         }
@@ -2682,7 +2744,7 @@ where
     leading
         .then(optional_infix_tail)
         .try_map(|(leading, infix_tail), content_span| {
-            if let Some((infix_info, right_items)) = infix_tail {
+            if let Some((infix_info, right_items, trailing_items)) = infix_tail {
                 let (name, args, _cmd_start) = infix_info;
 
                 let left_span = items_span(&leading, content_span.start);
@@ -2710,7 +2772,9 @@ where
                     diagnostics,
                 };
 
-                Ok(vec![infix_node])
+                let mut items = vec![infix_node];
+                items.extend(trailing_items);
+                Ok(items)
             } else {
                 Ok(leading)
             }

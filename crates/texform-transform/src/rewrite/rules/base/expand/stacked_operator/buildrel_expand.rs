@@ -163,6 +163,12 @@ mod tests {
             input: r"P \buildrel {n+1} \over \equiv Q",
             expected: r"P \mathrel{\mathop{\equiv}\limits^{n+1}} Q",
         },
+        {
+            label: repeated_buildrel_keeps_chain_order,
+            packages: ["base"],
+            input: r"\cdots\to K\buildrel f\over\longrightarrow K\buildrel f\over\longrightarrow K",
+            expected: r"\cdots\to K\mathrel{\mathop{\longrightarrow}\limits^{f}} K\mathrel{\mathop{\longrightarrow}\limits^{f}} K",
+        },
         ]
     }
 

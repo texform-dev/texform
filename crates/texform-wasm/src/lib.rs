@@ -23,8 +23,10 @@ export type ParseConfigInput = {
 };
 
 export type ParseDiagnosticKind =
+    | "ambiguous-infix"
     | "argument-validation"
     | "command-mode-error"
+    | "comment-truncated-argument"
     | "environment-mode-error"
     | "environment-name-mismatch"
     | "left-right-delimiter"
@@ -32,6 +34,8 @@ export type ParseDiagnosticKind =
     | "raw-expected-found"
     | "text-script-error"
     | "unclosed-inline-math"
+    | "unexpected-math-shift"
+    | "unknown-command"
     | "unknown-environment";
 
 export type ArgSpecInfo = {

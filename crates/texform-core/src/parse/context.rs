@@ -44,8 +44,10 @@ const DIAGNOSTIC_KIND_MESSAGE_SEPARATOR: char = '\x1e';
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 #[serde(rename_all = "kebab-case")]
 pub enum ParseDiagnosticKind {
+    AmbiguousInfix,
     ArgumentValidation,
     CommandModeError,
+    CommentTruncatedArgument,
     EnvironmentModeError,
     EnvironmentNameMismatch,
     LeftRightDelimiter,
@@ -53,14 +55,18 @@ pub enum ParseDiagnosticKind {
     RawExpectedFound,
     TextScriptError,
     UnclosedInlineMath,
+    UnexpectedMathShift,
+    UnknownCommand,
     UnknownEnvironment,
 }
 
 impl ParseDiagnosticKind {
     pub const fn as_str(self) -> &'static str {
         match self {
+            ParseDiagnosticKind::AmbiguousInfix => "ambiguous-infix",
             ParseDiagnosticKind::ArgumentValidation => "argument-validation",
             ParseDiagnosticKind::CommandModeError => "command-mode-error",
+            ParseDiagnosticKind::CommentTruncatedArgument => "comment-truncated-argument",
             ParseDiagnosticKind::EnvironmentModeError => "environment-mode-error",
             ParseDiagnosticKind::EnvironmentNameMismatch => "environment-name-mismatch",
             ParseDiagnosticKind::LeftRightDelimiter => "left-right-delimiter",
@@ -68,14 +74,18 @@ impl ParseDiagnosticKind {
             ParseDiagnosticKind::RawExpectedFound => "raw-expected-found",
             ParseDiagnosticKind::TextScriptError => "text-script-error",
             ParseDiagnosticKind::UnclosedInlineMath => "unclosed-inline-math",
+            ParseDiagnosticKind::UnexpectedMathShift => "unexpected-math-shift",
+            ParseDiagnosticKind::UnknownCommand => "unknown-command",
             ParseDiagnosticKind::UnknownEnvironment => "unknown-environment",
         }
     }
 
     pub(crate) fn from_str(s: &str) -> Option<Self> {
         match s {
+            "ambiguous-infix" => Some(Self::AmbiguousInfix),
             "argument-validation" => Some(Self::ArgumentValidation),
             "command-mode-error" => Some(Self::CommandModeError),
+            "comment-truncated-argument" => Some(Self::CommentTruncatedArgument),
             "environment-mode-error" => Some(Self::EnvironmentModeError),
             "environment-name-mismatch" => Some(Self::EnvironmentNameMismatch),
             "left-right-delimiter" => Some(Self::LeftRightDelimiter),
@@ -83,6 +93,8 @@ impl ParseDiagnosticKind {
             "raw-expected-found" => Some(Self::RawExpectedFound),
             "text-script-error" => Some(Self::TextScriptError),
             "unclosed-inline-math" => Some(Self::UnclosedInlineMath),
+            "unexpected-math-shift" => Some(Self::UnexpectedMathShift),
+            "unknown-command" => Some(Self::UnknownCommand),
             "unknown-environment" => Some(Self::UnknownEnvironment),
             _ => None,
         }
@@ -893,10 +905,11 @@ pub(crate) fn parse_with_context(
         }
     });
 
-    let diagnostics = errors
+    let mut diagnostics: Vec<_> = errors
         .into_iter()
         .map(|err| convert_diagnostic(ctx, src, err))
         .collect();
+    diagnostics.sort_by_key(parse_diagnostic_priority);
 
     ParseOutput {
         result,
@@ -982,7 +995,8 @@ fn convert_diagnostic(ctx: &ParseContext, src: &str, err: Rich<'static, Token>) 
         }
     };
 
-    let kind = kind.or_else(|| infer_raw_diagnostic_kind(expected.as_slice(), found.as_deref()));
+    let mut kind =
+        kind.or_else(|| infer_raw_diagnostic_kind(expected.as_slice(), found.as_deref()));
 
     let mut diagnostic = ParseDiagnostic {
         kind,
@@ -993,8 +1007,33 @@ fn convert_diagnostic(ctx: &ParseContext, src: &str, err: Rich<'static, Token>) 
         contexts,
     };
 
+    supplement_comment_truncated_argument(src, &mut kind, &mut diagnostic);
     supplement_diagnostic_contexts(ctx, src, kind, &mut diagnostic);
     diagnostic
+}
+
+fn parse_diagnostic_priority(diagnostic: &ParseDiagnostic) -> u8 {
+    match diagnostic.kind {
+        Some(
+            ParseDiagnosticKind::UnknownCommand
+            | ParseDiagnosticKind::UnknownEnvironment
+            | ParseDiagnosticKind::CommentTruncatedArgument
+            | ParseDiagnosticKind::UnexpectedMathShift
+            | ParseDiagnosticKind::LeftRightDelimiter
+            | ParseDiagnosticKind::AmbiguousInfix,
+        ) => 1,
+        Some(ParseDiagnosticKind::ArgumentValidation) => 2,
+        Some(ParseDiagnosticKind::EnvironmentNameMismatch) => 2,
+        Some(ParseDiagnosticKind::RawExpectedFound)
+            if diagnostic
+                .message
+                .starts_with("found end of input expected ") =>
+        {
+            3
+        }
+        Some(ParseDiagnosticKind::RawExpectedFound) => 4,
+        Some(_) | None => 2,
+    }
 }
 
 /// Best-effort fallback for chumsky-generated `ExpectedFound` errors that carry
@@ -1012,6 +1051,7 @@ fn infer_raw_diagnostic_kind(
     }
 
     match found {
+        Some("$") => Some(ParseDiagnosticKind::UnexpectedMathShift),
         Some("}") => Some(ParseDiagnosticKind::EnvironmentNameMismatch),
         Some("\\begin") => Some(ParseDiagnosticKind::UnknownEnvironment),
         Some(_) if !expected.is_empty() => Some(ParseDiagnosticKind::RawExpectedFound),
@@ -1029,6 +1069,8 @@ fn supplement_diagnostic_contexts(
     let mut lexed = None;
 
     supplement_unclosed_inline_math_message(kind, src, diagnostic);
+    supplement_unexpected_math_shift_message(kind, src, diagnostic);
+    supplement_generic_unclosed_message(kind, src, diagnostic);
     supplement_environment_mode_error_message(kind, ctx, src, &mut lexed, diagnostic);
     supplement_environment_mismatch_message(kind, src, &mut lexed, diagnostic);
     supplement_unknown_environment_message(kind, ctx, src, &mut lexed, diagnostic);
@@ -1091,6 +1133,205 @@ fn supplement_unclosed_inline_math_message(
         diagnostic.span = span;
         diagnostic.found = Some("$".to_string());
     }
+}
+
+fn supplement_comment_truncated_argument(
+    src: &str,
+    kind: &mut Option<ParseDiagnosticKind>,
+    diagnostic: &mut ParseDiagnostic,
+) {
+    if !matches!(
+        *kind,
+        Some(ParseDiagnosticKind::ArgumentValidation | ParseDiagnosticKind::RawExpectedFound)
+            | None
+    ) {
+        return;
+    }
+
+    if !matches!(
+        diagnostic.message.as_str(),
+        "unclosed brace argument" | "unclosed bracket argument" | "unclosed delimited argument"
+    ) && !diagnostic
+        .message
+        .starts_with("found end of input expected ")
+    {
+        return;
+    }
+
+    let tail_span = Span {
+        start: diagnostic.span.start,
+        end: src.len(),
+    };
+    let candidate_spans = std::iter::once(diagnostic.span.clone())
+        .chain(std::iter::once(tail_span))
+        .chain(
+            diagnostic
+                .contexts
+                .iter()
+                .filter(|context| context.label.contains("argument"))
+                .map(|context| context.span.clone()),
+        );
+
+    if !candidate_spans
+        .filter_map(|span| src.get(span.start..span.end))
+        .any(has_unescaped_percent)
+    {
+        return;
+    }
+
+    *kind = Some(ParseDiagnosticKind::CommentTruncatedArgument);
+    diagnostic.kind = *kind;
+    diagnostic.message = "Unescaped % starts a comment inside this argument".to_string();
+    diagnostic.expected.clear();
+    diagnostic.found = None;
+}
+
+fn has_unescaped_percent(slice: &str) -> bool {
+    let mut escaped = false;
+    for ch in slice.chars() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '%' {
+            return true;
+        }
+    }
+    false
+}
+
+fn supplement_unexpected_math_shift_message(
+    kind: Option<ParseDiagnosticKind>,
+    src: &str,
+    diagnostic: &mut ParseDiagnostic,
+) {
+    if kind != Some(ParseDiagnosticKind::UnexpectedMathShift) {
+        return;
+    }
+
+    diagnostic.message = if src
+        .as_bytes()
+        .get(diagnostic.span.end)
+        .is_some_and(u8::is_ascii_digit)
+    {
+        "Unexpected $ inside a math formula; it looks like a currency marker".to_string()
+    } else {
+        "Unexpected $ inside a math formula".to_string()
+    };
+    diagnostic.expected.clear();
+    diagnostic.found = Some("$".to_string());
+}
+
+fn supplement_generic_unclosed_message(
+    kind: Option<ParseDiagnosticKind>,
+    src: &str,
+    diagnostic: &mut ParseDiagnostic,
+) {
+    if kind != Some(ParseDiagnosticKind::RawExpectedFound)
+        || !diagnostic
+            .message
+            .starts_with("found end of input expected ")
+    {
+        return;
+    }
+
+    if let Some(argument_context) = diagnostic
+        .contexts
+        .iter()
+        .find(|context| context.label.contains("argument"))
+        && let Some(command_name) = command_name_before(src, argument_context.span.start)
+    {
+        diagnostic.message = format!("Command \\{} has an unclosed argument", command_name);
+        return;
+    }
+
+    if let Some(env_name) = last_unclosed_environment_name(src) {
+        diagnostic.message = format!(
+            "Environment {} missing closing \\end{{{}}}",
+            env_name, env_name
+        );
+        return;
+    }
+
+    if diagnostic
+        .span
+        .start
+        .checked_sub(1)
+        .and_then(|index| src.as_bytes().get(index))
+        == Some(&b'{')
+    {
+        diagnostic.message = "Unclosed { ... } group".to_string();
+    }
+}
+
+fn command_name_before(src: &str, offset: usize) -> Option<&str> {
+    let prefix = src.get(..offset)?;
+    let slash = prefix.rfind('\\')?;
+    let rest = prefix.get(slash + 1..)?;
+    let end = rest
+        .char_indices()
+        .find_map(|(index, ch)| (!ch.is_ascii_alphabetic()).then_some(index))
+        .unwrap_or(rest.len());
+    (end > 0).then(|| &rest[..end])
+}
+
+fn last_unclosed_environment_name(src: &str) -> Option<String> {
+    let lexed = lex_source(src);
+    let mut stack = Vec::new();
+    let mut index = 0;
+
+    while index < lexed.len() {
+        let Token::ControlSeq(head) = &lexed[index].0 else {
+            index += 1;
+            continue;
+        };
+        if !matches!(head.as_str(), "begin" | "end") {
+            index += 1;
+            continue;
+        }
+
+        let mut next = index + 1;
+        while matches!(lexed.get(next), Some((Token::Whitespaces, _))) {
+            next += 1;
+        }
+        if !matches!(lexed.get(next), Some((Token::LBrace, _))) {
+            index += 1;
+            continue;
+        }
+        next += 1;
+
+        let mut env_name = String::new();
+        while let Some((token, _)) = lexed.get(next) {
+            match token {
+                Token::Char(ch) => env_name.push(*ch),
+                Token::Star => env_name.push('*'),
+                Token::RBrace => break,
+                _ => {
+                    env_name.clear();
+                    break;
+                }
+            }
+            next += 1;
+        }
+
+        if env_name.is_empty() {
+            index += 1;
+            continue;
+        }
+
+        if head == "begin" {
+            stack.push(env_name);
+        } else if let Some(pos) = stack.iter().rposition(|open| open == &env_name) {
+            stack.truncate(pos);
+        }
+        index += 1;
+    }
+
+    stack.pop()
 }
 
 /// Locate the `$` that immediately starts a braced inline-math argument after a command span.

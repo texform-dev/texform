@@ -4,7 +4,7 @@ use chumsky::error::RichReason;
 use texform_core::api::serialize_latex;
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
-    ParseConfig, ParseContext, ParseContextBuilder,
+    ParseConfig, ParseContext, ParseContextBuilder, ParseDiagnosticKind,
 };
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
@@ -1286,6 +1286,51 @@ fn test_unclosed_brace_argument_errors() {
 }
 
 #[test]
+fn test_comment_truncated_argument_reports_specific_kind() {
+    let output = test_context().parse(
+        r"\frac{%\ change \ in \ x}{%\ change \ in \ y}",
+        &ParseConfig::NONSTRICT_RECOVER,
+    );
+
+    let diagnostic = output
+        .diagnostics
+        .first()
+        .unwrap_or_else(|| panic!("expected diagnostic, got output: {:?}", output.result));
+    assert_eq!(
+        diagnostic.kind,
+        Some(ParseDiagnosticKind::CommentTruncatedArgument)
+    );
+    assert_eq!(
+        diagnostic.message,
+        "Unescaped % starts a comment inside this argument"
+    );
+}
+
+#[test]
+fn test_math_shift_inside_formula_reports_specific_kind() {
+    let output = test_context_with_items([environment_item(
+        "cases",
+        AllowedMode::Math,
+        ContentMode::Math,
+        "",
+    )])
+    .parse(
+        r"f_X(x) = \begin{cases}$1000 & 0.01\\$0 & 0.99\end{cases}",
+        &ParseConfig::NONSTRICT_RECOVER,
+    );
+
+    let diagnostic = output
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.kind == Some(ParseDiagnosticKind::UnexpectedMathShift))
+        .unwrap_or_else(|| panic!("diagnostics: {:?}", output.diagnostics));
+    assert_eq!(
+        diagnostic.message,
+        "Unexpected $ inside a math formula; it looks like a currency marker"
+    );
+}
+
+#[test]
 fn test_nested_commands() {
     // "\frac{a}{\sqrt{b}}"
     let (result, _) = parse(r"\frac{a}{\sqrt{b}}", false).unwrap();
@@ -1554,10 +1599,46 @@ fn test_ambiguous_over_reports_diagnostic() {
     assert!(
         messages
             .iter()
-            .any(|message| message == "Ambiguous use of \\over"),
+            .any(|message| message.ends_with("Ambiguous use of \\over")),
         "{:?}",
         messages
     );
+}
+
+#[test]
+fn test_repeated_over_still_reports_ambiguous_infix_kind() {
+    let output = test_context().parse(r"a \over b + 1 \over c", &ParseConfig::NONSTRICT_RECOVER);
+
+    let diagnostic = output
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.message == "Ambiguous use of \\over")
+        .unwrap_or_else(|| panic!("diagnostics: {:?}", output.diagnostics));
+    assert_eq!(diagnostic.kind, Some(ParseDiagnosticKind::AmbiguousInfix));
+}
+
+#[test]
+fn test_repeated_buildrel_over_parses_as_separate_infixes() {
+    let ctx = ParseContext::from_packages(&["base"]);
+    let src = r"\cdots\to K\buildrel f\over\longrightarrow K\buildrel f\over\longrightarrow K";
+
+    for config in [
+        ParseConfig::STRICT_NO_RECOVER,
+        ParseConfig::NONSTRICT_RECOVER,
+    ] {
+        let output = ctx.parse(src, &config);
+        assert!(
+            output.diagnostics.is_empty(),
+            "diagnostics for {:?}: {:?}",
+            config,
+            output.diagnostics
+        );
+        assert!(
+            output.result.is_some(),
+            "expected parse result for {:?}",
+            config
+        );
+    }
 }
 
 #[test]
