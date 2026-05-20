@@ -19,7 +19,6 @@ crates/                       # Rust workspace
 ├── texform-python/           # Python bindings (PyO3 -> pytexform)
 └── texform-wasm/             # WebAssembly bindings
 packages/                     # NPM/TypeScript packages
-├── playground/               # Interactive WASM playground
 ├── argspecs-validator/       # Argument spec validation & spec-test runner
 └── tex-renderers/            # MathJax / KaTeX / XeTeX rendering adapters
 python/pytexform/             # Python package source
