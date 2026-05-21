@@ -7,6 +7,12 @@ use texform_core::parse::{
     ParseContextBuildError, ParseOutput, ParseResult,
 };
 use texform_core::serialize::SerializeOptions;
+use texform_core::serialize::serialize as serialize_ast;
+use texform_transform::{
+    FlattenGroupsConfig as CoreFlattenGroupsConfig,
+    LowerAttributesConfig as CoreLowerAttributesConfig, RewriteConfig as CoreRewriteConfig,
+    RuleClassSet, RuleSelection, TransformConfig as CoreTransformConfig, run as transform_run,
+};
 use tsify_next::Tsify;
 use wasm_bindgen::prelude::*;
 
@@ -99,6 +105,33 @@ export type ContextItem =
           target: "delimiter";
           name: string;
       };
+
+export type TransformResult = {
+    normalized: string;
+    report: {
+        iterations: number;
+        applied: Array<{ key: string; count: number; skipped_count: number }>;
+        lower_attributes: {
+            eliminated_empty_segments: number;
+        };
+        flatten_groups: {
+            removed_empty: number;
+            replaced_single_child: number;
+            inlined_multi_child: number;
+            unwrapped_slot: number;
+            preserved_group_containing_declarative_command: number;
+            preserved_group_in_script_base_slot: number;
+            preserved_group_inside_env_body: number;
+            preserved_group_containing_infix: number;
+            preserved_group_adjacent_to_command_like: number;
+            preserved_group_after_scripted_command_like: number;
+            preserved_empty_group: number;
+            preserved_group_with_lone_atom_spacing_char: number;
+            preserved_group_starting_with_atom_spacing_char: number;
+            preserved_group_containing_delimited_pair: number;
+        };
+    };
+};
 "#;
 
 #[wasm_bindgen(typescript_custom_section)]
@@ -192,6 +225,543 @@ fn parse_config_input(value: Option<ParseConfigInput>) -> ParseConfig {
         Some(value) => value.into_config(),
         None => ParseConfig::default(),
     }
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+struct LowerAttributesConfigInput {
+    enabled: Option<bool>,
+}
+
+#[wasm_bindgen]
+pub struct LowerAttributesConfig {
+    enabled: bool,
+}
+
+#[wasm_bindgen]
+impl LowerAttributesConfig {
+    #[wasm_bindgen(constructor)]
+    pub fn new(args: Option<JsValue>) -> Result<LowerAttributesConfig, JsValue> {
+        let input = match args {
+            Some(value) if !value.is_null() && !value.is_undefined() => {
+                serde_wasm_bindgen::from_value::<LowerAttributesConfigInput>(value).map_err(
+                    |error| {
+                        JsValue::from_str(&format!("invalid lowerAttributes config: {}", error))
+                    },
+                )?
+            }
+            _ => LowerAttributesConfigInput::default(),
+        };
+        Ok(Self {
+            enabled: input.enabled.unwrap_or(true),
+        })
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+    }
+}
+
+impl LowerAttributesConfig {
+    fn from_core(config: CoreLowerAttributesConfig) -> Self {
+        Self {
+            enabled: config.enabled,
+        }
+    }
+
+    fn to_core(&self) -> CoreLowerAttributesConfig {
+        CoreLowerAttributesConfig {
+            enabled: self.enabled,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+struct RewriteConfigInput {
+    enabled: Option<bool>,
+    classes: Option<Vec<String>>,
+    max_iterations: Option<usize>,
+}
+
+#[wasm_bindgen]
+pub struct RewriteConfig {
+    enabled: bool,
+    classes: Vec<String>,
+    max_iterations: usize,
+}
+
+#[wasm_bindgen]
+impl RewriteConfig {
+    #[wasm_bindgen(constructor)]
+    pub fn new(args: Option<JsValue>) -> Result<RewriteConfig, JsValue> {
+        let input = match args {
+            Some(value) if !value.is_null() && !value.is_undefined() => {
+                serde_wasm_bindgen::from_value::<RewriteConfigInput>(value).map_err(|error| {
+                    JsValue::from_str(&format!("invalid rewrite config: {}", error))
+                })?
+            }
+            _ => RewriteConfigInput::default(),
+        };
+        Ok(Self {
+            enabled: input.enabled.unwrap_or(true),
+            classes: input.classes.unwrap_or_default(),
+            max_iterations: input.max_iterations.unwrap_or(100),
+        })
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn classes(&self) -> Vec<String> {
+        self.classes.clone()
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_classes(&mut self, classes: Vec<String>) {
+        self.classes = classes;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn max_iterations(&self) -> usize {
+        self.max_iterations
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_max_iterations(&mut self, max_iterations: usize) {
+        self.max_iterations = max_iterations;
+    }
+}
+
+impl RewriteConfig {
+    fn from_core(config: CoreRewriteConfig) -> Self {
+        Self {
+            enabled: config.enabled,
+            classes: class_names(config.classes),
+            max_iterations: config.max_iterations,
+        }
+    }
+
+    fn to_core(&self) -> Result<CoreRewriteConfig, JsValue> {
+        Ok(CoreRewriteConfig {
+            enabled: self.enabled,
+            classes: class_set_from_names(&self.classes)?,
+            max_iterations: self.max_iterations,
+            selection: RuleSelection::All,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+struct FlattenGroupsConfigInput {
+    enabled: Option<bool>,
+    preserve_group_containing_declarative_command: Option<bool>,
+    preserve_group_in_script_base_slot: Option<bool>,
+    preserve_group_inside_env_body: Option<bool>,
+    preserve_group_containing_infix: Option<bool>,
+    preserve_group_adjacent_to_command_like: Option<bool>,
+    preserve_group_after_scripted_command_like: Option<bool>,
+    preserve_empty_group: Option<bool>,
+    preserve_group_with_lone_atom_spacing_char: Option<bool>,
+    preserve_group_starting_with_atom_spacing_char: Option<bool>,
+    preserve_group_containing_delimited_pair: Option<bool>,
+}
+
+#[wasm_bindgen]
+pub struct FlattenGroupsConfig {
+    enabled: bool,
+    preserve_group_containing_declarative_command: bool,
+    preserve_group_in_script_base_slot: bool,
+    preserve_group_inside_env_body: bool,
+    preserve_group_containing_infix: bool,
+    preserve_group_adjacent_to_command_like: bool,
+    preserve_group_after_scripted_command_like: bool,
+    preserve_empty_group: bool,
+    preserve_group_with_lone_atom_spacing_char: bool,
+    preserve_group_starting_with_atom_spacing_char: bool,
+    preserve_group_containing_delimited_pair: bool,
+}
+
+#[wasm_bindgen]
+impl FlattenGroupsConfig {
+    #[wasm_bindgen(constructor)]
+    pub fn new(args: Option<JsValue>) -> Result<FlattenGroupsConfig, JsValue> {
+        let input = match args {
+            Some(value) if !value.is_null() && !value.is_undefined() => {
+                serde_wasm_bindgen::from_value::<FlattenGroupsConfigInput>(value).map_err(
+                    |error| JsValue::from_str(&format!("invalid flattenGroups config: {}", error)),
+                )?
+            }
+            _ => FlattenGroupsConfigInput::default(),
+        };
+        Ok(Self {
+            enabled: input.enabled.unwrap_or(true),
+            preserve_group_containing_declarative_command: input
+                .preserve_group_containing_declarative_command
+                .unwrap_or(true),
+            preserve_group_in_script_base_slot: input
+                .preserve_group_in_script_base_slot
+                .unwrap_or(true),
+            preserve_group_inside_env_body: input.preserve_group_inside_env_body.unwrap_or(true),
+            preserve_group_containing_infix: input.preserve_group_containing_infix.unwrap_or(true),
+            preserve_group_adjacent_to_command_like: input
+                .preserve_group_adjacent_to_command_like
+                .unwrap_or(true),
+            preserve_group_after_scripted_command_like: input
+                .preserve_group_after_scripted_command_like
+                .unwrap_or(true),
+            preserve_empty_group: input.preserve_empty_group.unwrap_or(true),
+            preserve_group_with_lone_atom_spacing_char: input
+                .preserve_group_with_lone_atom_spacing_char
+                .unwrap_or(true),
+            preserve_group_starting_with_atom_spacing_char: input
+                .preserve_group_starting_with_atom_spacing_char
+                .unwrap_or(true),
+            preserve_group_containing_delimited_pair: input
+                .preserve_group_containing_delimited_pair
+                .unwrap_or(true),
+        })
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_enabled(&mut self, value: bool) {
+        self.enabled = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn preserve_group_containing_declarative_command(&self) -> bool {
+        self.preserve_group_containing_declarative_command
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_preserve_group_containing_declarative_command(&mut self, value: bool) {
+        self.preserve_group_containing_declarative_command = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn preserve_group_in_script_base_slot(&self) -> bool {
+        self.preserve_group_in_script_base_slot
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_preserve_group_in_script_base_slot(&mut self, value: bool) {
+        self.preserve_group_in_script_base_slot = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn preserve_group_inside_env_body(&self) -> bool {
+        self.preserve_group_inside_env_body
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_preserve_group_inside_env_body(&mut self, value: bool) {
+        self.preserve_group_inside_env_body = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn preserve_group_containing_infix(&self) -> bool {
+        self.preserve_group_containing_infix
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_preserve_group_containing_infix(&mut self, value: bool) {
+        self.preserve_group_containing_infix = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn preserve_group_adjacent_to_command_like(&self) -> bool {
+        self.preserve_group_adjacent_to_command_like
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_preserve_group_adjacent_to_command_like(&mut self, value: bool) {
+        self.preserve_group_adjacent_to_command_like = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn preserve_group_after_scripted_command_like(&self) -> bool {
+        self.preserve_group_after_scripted_command_like
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_preserve_group_after_scripted_command_like(&mut self, value: bool) {
+        self.preserve_group_after_scripted_command_like = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn preserve_empty_group(&self) -> bool {
+        self.preserve_empty_group
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_preserve_empty_group(&mut self, value: bool) {
+        self.preserve_empty_group = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn preserve_group_with_lone_atom_spacing_char(&self) -> bool {
+        self.preserve_group_with_lone_atom_spacing_char
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_preserve_group_with_lone_atom_spacing_char(&mut self, value: bool) {
+        self.preserve_group_with_lone_atom_spacing_char = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn preserve_group_starting_with_atom_spacing_char(&self) -> bool {
+        self.preserve_group_starting_with_atom_spacing_char
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_preserve_group_starting_with_atom_spacing_char(&mut self, value: bool) {
+        self.preserve_group_starting_with_atom_spacing_char = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn preserve_group_containing_delimited_pair(&self) -> bool {
+        self.preserve_group_containing_delimited_pair
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_preserve_group_containing_delimited_pair(&mut self, value: bool) {
+        self.preserve_group_containing_delimited_pair = value;
+    }
+}
+
+impl FlattenGroupsConfig {
+    fn from_core(config: CoreFlattenGroupsConfig) -> Self {
+        Self {
+            enabled: config.enabled,
+            preserve_group_containing_declarative_command: config
+                .preserve_group_containing_declarative_command,
+            preserve_group_in_script_base_slot: config.preserve_group_in_script_base_slot,
+            preserve_group_inside_env_body: config.preserve_group_inside_env_body,
+            preserve_group_containing_infix: config.preserve_group_containing_infix,
+            preserve_group_adjacent_to_command_like: config.preserve_group_adjacent_to_command_like,
+            preserve_group_after_scripted_command_like: config
+                .preserve_group_after_scripted_command_like,
+            preserve_empty_group: config.preserve_empty_group,
+            preserve_group_with_lone_atom_spacing_char: config
+                .preserve_group_with_lone_atom_spacing_char,
+            preserve_group_starting_with_atom_spacing_char: config
+                .preserve_group_starting_with_atom_spacing_char,
+            preserve_group_containing_delimited_pair: config
+                .preserve_group_containing_delimited_pair,
+        }
+    }
+
+    fn to_core(&self) -> CoreFlattenGroupsConfig {
+        CoreFlattenGroupsConfig {
+            enabled: self.enabled,
+            preserve_group_containing_declarative_command: self
+                .preserve_group_containing_declarative_command,
+            preserve_group_in_script_base_slot: self.preserve_group_in_script_base_slot,
+            preserve_group_inside_env_body: self.preserve_group_inside_env_body,
+            preserve_group_containing_infix: self.preserve_group_containing_infix,
+            preserve_group_adjacent_to_command_like: self.preserve_group_adjacent_to_command_like,
+            preserve_group_after_scripted_command_like: self
+                .preserve_group_after_scripted_command_like,
+            preserve_empty_group: self.preserve_empty_group,
+            preserve_group_with_lone_atom_spacing_char: self
+                .preserve_group_with_lone_atom_spacing_char,
+            preserve_group_starting_with_atom_spacing_char: self
+                .preserve_group_starting_with_atom_spacing_char,
+            preserve_group_containing_delimited_pair: self.preserve_group_containing_delimited_pair,
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub struct TransformConfig {
+    lower_attributes: LowerAttributesConfig,
+    rewrite: RewriteConfig,
+    flatten_groups: FlattenGroupsConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+struct TransformConfigInput {
+    lower_attributes: Option<LowerAttributesConfigInput>,
+    rewrite: Option<RewriteConfigInput>,
+    flatten_groups: Option<FlattenGroupsConfigInput>,
+}
+
+#[wasm_bindgen]
+impl TransformConfig {
+    #[wasm_bindgen(constructor)]
+    pub fn new(args: Option<JsValue>) -> Result<TransformConfig, JsValue> {
+        let mut config = Self::from_core(CoreTransformConfig::AUTHORING.clone());
+        let input = match args {
+            Some(value) if !value.is_null() && !value.is_undefined() => {
+                serde_wasm_bindgen::from_value::<TransformConfigInput>(value).map_err(|error| {
+                    JsValue::from_str(&format!("invalid transform config: {}", error))
+                })?
+            }
+            _ => TransformConfigInput::default(),
+        };
+        if let Some(lower_attributes) = input.lower_attributes {
+            config.lower_attributes = LowerAttributesConfig {
+                enabled: lower_attributes.enabled.unwrap_or(true),
+            };
+        }
+        if let Some(rewrite) = input.rewrite {
+            config.rewrite = RewriteConfig {
+                enabled: rewrite.enabled.unwrap_or(true),
+                classes: rewrite.classes.unwrap_or_default(),
+                max_iterations: rewrite.max_iterations.unwrap_or(100),
+            };
+        }
+        if let Some(flatten_groups) = input.flatten_groups {
+            config.flatten_groups = FlattenGroupsConfig {
+                enabled: flatten_groups.enabled.unwrap_or(true),
+                preserve_group_containing_declarative_command: flatten_groups
+                    .preserve_group_containing_declarative_command
+                    .unwrap_or(true),
+                preserve_group_in_script_base_slot: flatten_groups
+                    .preserve_group_in_script_base_slot
+                    .unwrap_or(true),
+                preserve_group_inside_env_body: flatten_groups
+                    .preserve_group_inside_env_body
+                    .unwrap_or(true),
+                preserve_group_containing_infix: flatten_groups
+                    .preserve_group_containing_infix
+                    .unwrap_or(true),
+                preserve_group_adjacent_to_command_like: flatten_groups
+                    .preserve_group_adjacent_to_command_like
+                    .unwrap_or(true),
+                preserve_group_after_scripted_command_like: flatten_groups
+                    .preserve_group_after_scripted_command_like
+                    .unwrap_or(true),
+                preserve_empty_group: flatten_groups.preserve_empty_group.unwrap_or(true),
+                preserve_group_with_lone_atom_spacing_char: flatten_groups
+                    .preserve_group_with_lone_atom_spacing_char
+                    .unwrap_or(true),
+                preserve_group_starting_with_atom_spacing_char: flatten_groups
+                    .preserve_group_starting_with_atom_spacing_char
+                    .unwrap_or(true),
+                preserve_group_containing_delimited_pair: flatten_groups
+                    .preserve_group_containing_delimited_pair
+                    .unwrap_or(true),
+            };
+        }
+        Ok(config)
+    }
+
+    pub fn authoring() -> TransformConfig {
+        Self::from_core(CoreTransformConfig::AUTHORING.clone())
+    }
+
+    pub fn corpus() -> TransformConfig {
+        Self::from_core(CoreTransformConfig::CORPUS.clone())
+    }
+
+    pub fn corpus_drop() -> TransformConfig {
+        Self::from_core(CoreTransformConfig::CORPUS_DROP.clone())
+    }
+
+    pub fn equiv() -> TransformConfig {
+        Self::from_core(CoreTransformConfig::EQUIV.clone())
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn lower_attributes(&self) -> LowerAttributesConfig {
+        LowerAttributesConfig::from_core(self.lower_attributes.to_core())
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_lower_attributes(&mut self, lower_attributes: LowerAttributesConfig) {
+        self.lower_attributes = lower_attributes;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn rewrite(&self) -> RewriteConfig {
+        RewriteConfig::from_core(
+            self.rewrite
+                .to_core()
+                .expect("stored rewrite config is valid"),
+        )
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_rewrite(&mut self, rewrite: RewriteConfig) {
+        self.rewrite = rewrite;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn flatten_groups(&self) -> FlattenGroupsConfig {
+        FlattenGroupsConfig::from_core(self.flatten_groups.to_core())
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_flatten_groups(&mut self, flatten_groups: FlattenGroupsConfig) {
+        self.flatten_groups = flatten_groups;
+    }
+}
+
+impl TransformConfig {
+    fn from_core(config: CoreTransformConfig) -> Self {
+        Self {
+            lower_attributes: LowerAttributesConfig::from_core(config.lower_attributes),
+            rewrite: RewriteConfig::from_core(config.rewrite),
+            flatten_groups: FlattenGroupsConfig::from_core(config.flatten_groups),
+        }
+    }
+
+    fn to_core(&self) -> Result<CoreTransformConfig, JsValue> {
+        Ok(CoreTransformConfig {
+            lower_attributes: self.lower_attributes.to_core(),
+            rewrite: self.rewrite.to_core()?,
+            flatten_groups: self.flatten_groups.to_core(),
+        })
+    }
+}
+
+fn class_names(classes: RuleClassSet) -> Vec<String> {
+    classes
+        .iter()
+        .map(|class| class.as_str().to_string())
+        .collect()
+}
+
+fn class_set_from_names(names: &[String]) -> Result<RuleClassSet, JsValue> {
+    let mut set = RuleClassSet::empty();
+    for name in names {
+        let class = match name.as_str() {
+            "standard" => RuleClassSet::STANDARD,
+            "expand" => RuleClassSet::EXPAND,
+            "drop" => RuleClassSet::DROP,
+            "equiv" => RuleClassSet::EQUIV,
+            other => {
+                return Err(JsValue::from_str(&format!(
+                    "unknown rewrite rule class: {}",
+                    other
+                )));
+            }
+        };
+        set |= class;
+    }
+    Ok(set)
 }
 
 #[wasm_bindgen]
@@ -458,6 +1028,139 @@ pub fn serialize(
     };
 
     serialize_parse_output(output, parsed_options.as_ref())
+}
+
+#[wasm_bindgen]
+pub fn transform(src: &str, config: Option<TransformConfig>) -> Result<JsValue, JsValue> {
+    let ctx = texform_core::parse::ParseContext::shared();
+    let config = match config {
+        Some(config) => config.to_core()?,
+        None => CoreTransformConfig::AUTHORING.clone(),
+    };
+    let parse_config = ParseConfig::STRICT_NO_RECOVER;
+    let mut ast = ctx
+        .parse_to_ast(src, &parse_config)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let report = transform_run(&mut ast, ctx, &config)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let value = js_sys::Object::new();
+    js_sys::Reflect::set(&value, &"normalized".into(), &serialize_ast(&ast).into()).unwrap();
+    js_sys::Reflect::set(&value, &"report".into(), &transform_report_to_js(&report)).unwrap();
+    Ok(value.into())
+}
+
+fn transform_report_to_js(report: &texform_transform::TransformReport) -> JsValue {
+    let value = js_sys::Object::new();
+    set_number(&value, "iterations", report.rewrite.iterations);
+
+    let applied = js_sys::Array::new();
+    for stat in &report.rewrite.applied {
+        let item = js_sys::Object::new();
+        js_sys::Reflect::set(&item, &"key".into(), &stat.key.to_string().into()).unwrap();
+        set_number(&item, "count", stat.count);
+        set_number(&item, "skipped_count", stat.skipped_count);
+        applied.push(&item.into());
+    }
+    js_sys::Reflect::set(&value, &"applied".into(), &applied.into()).unwrap();
+
+    let lower = js_sys::Object::new();
+    set_number(
+        &lower,
+        "eliminated_empty_segments",
+        report.lower_attributes.eliminated_empty_segments,
+    );
+    js_sys::Reflect::set(&value, &"lower_attributes".into(), &lower.into()).unwrap();
+
+    let flatten = js_sys::Object::new();
+    set_number(
+        &flatten,
+        "removed_empty",
+        report.flatten_groups.removed_empty,
+    );
+    set_number(
+        &flatten,
+        "replaced_single_child",
+        report.flatten_groups.replaced_single_child,
+    );
+    set_number(
+        &flatten,
+        "inlined_multi_child",
+        report.flatten_groups.inlined_multi_child,
+    );
+    set_number(
+        &flatten,
+        "unwrapped_slot",
+        report.flatten_groups.unwrapped_slot,
+    );
+    set_number(
+        &flatten,
+        "preserved_group_containing_declarative_command",
+        report
+            .flatten_groups
+            .preserved_group_containing_declarative_command,
+    );
+    set_number(
+        &flatten,
+        "preserved_group_in_script_base_slot",
+        report.flatten_groups.preserved_group_in_script_base_slot,
+    );
+    set_number(
+        &flatten,
+        "preserved_group_inside_env_body",
+        report.flatten_groups.preserved_group_inside_env_body,
+    );
+    set_number(
+        &flatten,
+        "preserved_group_containing_infix",
+        report.flatten_groups.preserved_group_containing_infix,
+    );
+    set_number(
+        &flatten,
+        "preserved_group_adjacent_to_command_like",
+        report
+            .flatten_groups
+            .preserved_group_adjacent_to_command_like,
+    );
+    set_number(
+        &flatten,
+        "preserved_group_after_scripted_command_like",
+        report
+            .flatten_groups
+            .preserved_group_after_scripted_command_like,
+    );
+    set_number(
+        &flatten,
+        "preserved_empty_group",
+        report.flatten_groups.preserved_empty_group,
+    );
+    set_number(
+        &flatten,
+        "preserved_group_with_lone_atom_spacing_char",
+        report
+            .flatten_groups
+            .preserved_group_with_lone_atom_spacing_char,
+    );
+    set_number(
+        &flatten,
+        "preserved_group_starting_with_atom_spacing_char",
+        report
+            .flatten_groups
+            .preserved_group_starting_with_atom_spacing_char,
+    );
+    set_number(
+        &flatten,
+        "preserved_group_containing_delimited_pair",
+        report
+            .flatten_groups
+            .preserved_group_containing_delimited_pair,
+    );
+    js_sys::Reflect::set(&value, &"flatten_groups".into(), &flatten.into()).unwrap();
+
+    value.into()
+}
+
+fn set_number(value: &js_sys::Object, key: &str, number: usize) {
+    js_sys::Reflect::set(value, &key.into(), &JsValue::from_f64(number as f64)).unwrap();
 }
 
 fn serialize_parse_output(

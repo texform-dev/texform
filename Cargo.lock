@@ -1292,6 +1292,7 @@ dependencies = [
  "texform-argspec",
  "texform-core",
  "texform-specs",
+ "texform-transform",
  "tsify-next",
  "wasm-bindgen",
 ]
