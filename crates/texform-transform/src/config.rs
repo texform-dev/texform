@@ -73,7 +73,7 @@ impl TransformConfig {
             max_iterations: 100,
             selection: RuleSelection::All,
         },
-        flatten_groups: FlattenGroupsConfig::ENABLED,
+        flatten_groups: FlattenGroupsConfig::STRICT,
     };
 
     pub const CORPUS: Self = Self {
@@ -84,7 +84,7 @@ impl TransformConfig {
             max_iterations: 100,
             selection: RuleSelection::All,
         },
-        flatten_groups: FlattenGroupsConfig::ENABLED,
+        flatten_groups: FlattenGroupsConfig::STRICT,
     };
 
     pub const CORPUS_DROP: Self = Self {
@@ -97,7 +97,7 @@ impl TransformConfig {
             max_iterations: 100,
             selection: RuleSelection::All,
         },
-        flatten_groups: FlattenGroupsConfig::ENABLED,
+        flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
     };
 
     pub const EQUIV: Self = Self {
@@ -111,7 +111,7 @@ impl TransformConfig {
             max_iterations: 100,
             selection: RuleSelection::All,
         },
-        flatten_groups: FlattenGroupsConfig::ENABLED,
+        flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
     };
 }
 
@@ -151,6 +151,31 @@ mod tests {
                 .rewrite
                 .classes
                 .contains(RuleClass::Equiv)
+        );
+        assert!(
+            TransformConfig::AUTHORING
+                .flatten_groups
+                .preserve_group_adjacent_to_command_like
+        );
+        assert!(
+            TransformConfig::CORPUS
+                .flatten_groups
+                .preserve_group_adjacent_to_command_like
+        );
+        assert!(
+            !TransformConfig::CORPUS_DROP
+                .flatten_groups
+                .preserve_group_adjacent_to_command_like
+        );
+        assert!(
+            !TransformConfig::EQUIV
+                .flatten_groups
+                .preserve_group_adjacent_to_command_like
+        );
+        assert!(
+            TransformConfig::EQUIV
+                .flatten_groups
+                .preserve_group_containing_infix
         );
     }
 }

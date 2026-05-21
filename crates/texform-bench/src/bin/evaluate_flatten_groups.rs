@@ -65,8 +65,8 @@ struct ComparisonStats {
     changed: usize,
     removed_empty: usize,
     replaced_single_child: usize,
-    spliced: usize,
-    redirected_slot: usize,
+    inlined_multi_child: usize,
+    unwrapped_slot: usize,
     samples: TopSamples,
 }
 
@@ -109,8 +109,8 @@ struct Sample {
     after: String,
     removed_empty: usize,
     replaced_single_child: usize,
-    spliced: usize,
-    redirected_slot: usize,
+    inlined_multi_child: usize,
+    unwrapped_slot: usize,
 }
 
 #[derive(Default)]
@@ -172,8 +172,8 @@ struct ComparisonOutput {
     parsed_pct: f64,
     removed_empty: usize,
     replaced_single_child: usize,
-    spliced: usize,
-    redirected_slot: usize,
+    inlined_multi_child: usize,
+    unwrapped_slot: usize,
 }
 
 #[derive(Serialize)]
@@ -440,8 +440,8 @@ fn record_change(
     stats.changed += 1;
     stats.removed_empty += change.report.removed_empty;
     stats.replaced_single_child += change.report.replaced_single_child;
-    stats.spliced += change.report.spliced;
-    stats.redirected_slot += change.report.redirected_slot;
+    stats.inlined_multi_child += change.report.inlined_multi_child;
+    stats.unwrapped_slot += change.report.unwrapped_slot;
     stats.samples.push(
         Sample {
             impact: change.impact,
@@ -453,8 +453,8 @@ fn record_change(
             after: truncate(&change.after),
             removed_empty: change.report.removed_empty,
             replaced_single_child: change.report.replaced_single_child,
-            spliced: change.report.spliced,
-            redirected_slot: change.report.redirected_slot,
+            inlined_multi_child: change.report.inlined_multi_child,
+            unwrapped_slot: change.report.unwrapped_slot,
         },
         sample_limit,
     );
@@ -497,8 +497,8 @@ fn comparison_output(
         parsed_pct: pct(stats.changed, parsed),
         removed_empty: stats.removed_empty,
         replaced_single_child: stats.replaced_single_child,
-        spliced: stats.spliced,
-        redirected_slot: stats.redirected_slot,
+        inlined_multi_child: stats.inlined_multi_child,
+        unwrapped_slot: stats.unwrapped_slot,
     }
 }
 
@@ -559,15 +559,15 @@ fn print_comparison(
     let pct_records = pct(stats.changed, records);
     let pct_parsed = pct(stats.changed, parsed);
     println!(
-        "{}\tchanged={} ({:.2}% of records, {:.2}% of parsed)\tremoved_empty={}\treplaced_single_child={}\tspliced={}\tredirected_slot={}",
+        "{}\tchanged={} ({:.2}% of records, {:.2}% of parsed)\tremoved_empty={}\treplaced_single_child={}\tinlined_multi_child={}\tunwrapped_slot={}",
         comparison.label(),
         stats.changed,
         pct_records,
         pct_parsed,
         stats.removed_empty,
         stats.replaced_single_child,
-        stats.spliced,
-        stats.redirected_slot
+        stats.inlined_multi_child,
+        stats.unwrapped_slot
     );
 }
 
