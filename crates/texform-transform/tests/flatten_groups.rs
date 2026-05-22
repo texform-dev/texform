@@ -254,7 +254,7 @@ fn keeps_groups_that_scope_declarative_commands() {
 #[test]
 fn reports_actual_preserve_guard_blockers() {
     let outcome = run_flatten_groups(
-        r"{\cal M} + {x_i}^2 + {a \over b} + \cos{A} + {} + {+} + {-n} + f{\left(x\right)}",
+        r"{\cal M} + {x_i}^2 + {a \over b} + \cos{A} + \overline{{\sum}} + {} + {+} + {-n} + f{\left(x\right)}",
     );
 
     assert_eq!(
@@ -266,6 +266,7 @@ fn reports_actual_preserve_guard_blockers() {
     assert_eq!(outcome.report.preserved_group_in_script_base_slot, 1);
     assert_eq!(outcome.report.preserved_group_containing_infix, 1);
     assert_eq!(outcome.report.preserved_group_adjacent_to_command_like, 1);
+    assert_eq!(outcome.report.preserved_group_as_argument_of_command, 1);
     assert_eq!(outcome.report.preserved_empty_group, 1);
     assert_eq!(
         outcome.report.preserved_group_with_lone_atom_spacing_char,
@@ -333,6 +334,12 @@ fn individual_guard_toggles_affect_only_their_cases() {
     let outcome = run_flatten_groups_with_config(r"\cos{A} + {a}", cfg);
     assert_eq!(outcome.text, r"\cos A + a");
     assert_eq!(outcome.report.replaced_single_child, 2);
+
+    cfg = FlattenGroupsConfig::STRICT;
+    cfg.preserve_group_as_argument_of_command = false;
+    let outcome = run_flatten_groups_with_config(r"\overline{{\sum}} + {a}", cfg);
+    assert_eq!(outcome.text, r"\overline { \sum } + a");
+    assert_eq!(outcome.report.preserved_group_as_argument_of_command, 0);
 
     cfg = FlattenGroupsConfig::STRICT;
     cfg.preserve_empty_group = false;
@@ -410,10 +417,34 @@ fn preserve_guard_counters_short_circuit_on_first_match() {
 
 #[test]
 fn script_base_single_atom_groups_are_unwrapped() {
-    let outcome = run_flatten_groups(r"{x}^2 + {\frac{1}{2}}^2");
+    let outcome = run_flatten_groups(r"{x}^2 + {\alpha}^2");
 
-    assert_eq!(outcome.text, r"x ^ { 2 } + \frac { 1 } { 2 } ^ { 2 }");
+    assert_eq!(outcome.text, r"x ^ { 2 } + \alpha ^ { 2 }");
     assert_eq!(outcome.report.preserved_group_in_script_base_slot, 0);
+}
+
+#[test]
+fn script_base_command_like_groups_are_preserved() {
+    let outcome = run_flatten_groups(
+        r"{\det}^p + {\prod}_{i=0}^n + {\pmb{\beta}}_n + {\stackrel{\leftrightarrow}{\partial}}_{\alpha}",
+    );
+
+    assert_eq!(
+        outcome.text,
+        r"{ \det } ^ { p } + { \prod } _ { i = 0 } ^ { n } + { \pmb { \beta } } _ { n } + { \stackrel { \leftrightarrow } { \partial } } _ { \alpha }"
+    );
+    assert_eq!(outcome.report.preserved_group_in_script_base_slot, 4);
+}
+
+#[test]
+fn script_base_lone_atom_spacing_char_groups_are_preserved() {
+    let outcome = run_flatten_groups(r"{*}_N + {·}m + {x}_N");
+
+    assert_eq!(outcome.text, r"{ * } _ { N } + { · } m + x _ { N }");
+    assert_eq!(
+        outcome.report.preserved_group_with_lone_atom_spacing_char,
+        2
+    );
 }
 
 #[test]
@@ -435,6 +466,14 @@ fn script_base_guard_can_be_disabled() {
 
     assert_eq!(outcome.text, r"x _ { i } ^ { 2 }");
     assert_eq!(outcome.report.unwrapped_slot, 1);
+}
+
+#[test]
+fn groups_as_arguments_of_commands_preserve_one_spacing_boundary() {
+    let outcome = run_flatten_groups(r"\overline{{{{\sum}}}} + \overline{{x}}");
+
+    assert_eq!(outcome.text, r"\overline { { \sum } } + \overline { x }");
+    assert_eq!(outcome.report.preserved_group_as_argument_of_command, 1);
 }
 
 #[test]

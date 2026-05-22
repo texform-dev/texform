@@ -153,6 +153,8 @@ struct PyFlattenGroupsConfig {
     #[pyo3(get, set)]
     preserve_group_adjacent_to_command_like: bool,
     #[pyo3(get, set)]
+    preserve_group_as_argument_of_command: bool,
+    #[pyo3(get, set)]
     preserve_group_after_scripted_command_like: bool,
     #[pyo3(get, set)]
     preserve_empty_group: bool,
@@ -174,6 +176,7 @@ impl PyFlattenGroupsConfig {
         preserve_group_inside_env_body = true,
         preserve_group_containing_infix = true,
         preserve_group_adjacent_to_command_like = true,
+        preserve_group_as_argument_of_command = true,
         preserve_group_after_scripted_command_like = true,
         preserve_empty_group = true,
         preserve_group_with_lone_atom_spacing_char = true,
@@ -188,6 +191,7 @@ impl PyFlattenGroupsConfig {
         preserve_group_inside_env_body: bool,
         preserve_group_containing_infix: bool,
         preserve_group_adjacent_to_command_like: bool,
+        preserve_group_as_argument_of_command: bool,
         preserve_group_after_scripted_command_like: bool,
         preserve_empty_group: bool,
         preserve_group_with_lone_atom_spacing_char: bool,
@@ -201,6 +205,7 @@ impl PyFlattenGroupsConfig {
             preserve_group_inside_env_body,
             preserve_group_containing_infix,
             preserve_group_adjacent_to_command_like,
+            preserve_group_as_argument_of_command,
             preserve_group_after_scripted_command_like,
             preserve_empty_group,
             preserve_group_with_lone_atom_spacing_char,
@@ -211,13 +216,14 @@ impl PyFlattenGroupsConfig {
 
     fn __repr__(&self) -> String {
         format!(
-            "FlattenGroupsConfig(enabled={}, preserve_group_containing_declarative_command={}, preserve_group_in_script_base_slot={}, preserve_group_inside_env_body={}, preserve_group_containing_infix={}, preserve_group_adjacent_to_command_like={}, preserve_group_after_scripted_command_like={}, preserve_empty_group={}, preserve_group_with_lone_atom_spacing_char={}, preserve_group_starting_with_atom_spacing_char={}, preserve_group_containing_delimited_pair={})",
+            "FlattenGroupsConfig(enabled={}, preserve_group_containing_declarative_command={}, preserve_group_in_script_base_slot={}, preserve_group_inside_env_body={}, preserve_group_containing_infix={}, preserve_group_adjacent_to_command_like={}, preserve_group_as_argument_of_command={}, preserve_group_after_scripted_command_like={}, preserve_empty_group={}, preserve_group_with_lone_atom_spacing_char={}, preserve_group_starting_with_atom_spacing_char={}, preserve_group_containing_delimited_pair={})",
             self.enabled,
             self.preserve_group_containing_declarative_command,
             self.preserve_group_in_script_base_slot,
             self.preserve_group_inside_env_body,
             self.preserve_group_containing_infix,
             self.preserve_group_adjacent_to_command_like,
+            self.preserve_group_as_argument_of_command,
             self.preserve_group_after_scripted_command_like,
             self.preserve_empty_group,
             self.preserve_group_with_lone_atom_spacing_char,
@@ -237,6 +243,7 @@ impl PyFlattenGroupsConfig {
             preserve_group_inside_env_body: config.preserve_group_inside_env_body,
             preserve_group_containing_infix: config.preserve_group_containing_infix,
             preserve_group_adjacent_to_command_like: config.preserve_group_adjacent_to_command_like,
+            preserve_group_as_argument_of_command: config.preserve_group_as_argument_of_command,
             preserve_group_after_scripted_command_like: config
                 .preserve_group_after_scripted_command_like,
             preserve_empty_group: config.preserve_empty_group,
@@ -258,6 +265,7 @@ impl PyFlattenGroupsConfig {
             preserve_group_inside_env_body: self.preserve_group_inside_env_body,
             preserve_group_containing_infix: self.preserve_group_containing_infix,
             preserve_group_adjacent_to_command_like: self.preserve_group_adjacent_to_command_like,
+            preserve_group_as_argument_of_command: self.preserve_group_as_argument_of_command,
             preserve_group_after_scripted_command_like: self
                 .preserve_group_after_scripted_command_like,
             preserve_empty_group: self.preserve_empty_group,
@@ -519,6 +527,7 @@ fn transform_with_core_config(
                 "preserved_group_inside_env_body": report.flatten_groups.preserved_group_inside_env_body,
                 "preserved_group_containing_infix": report.flatten_groups.preserved_group_containing_infix,
                 "preserved_group_adjacent_to_command_like": report.flatten_groups.preserved_group_adjacent_to_command_like,
+                "preserved_group_as_argument_of_command": report.flatten_groups.preserved_group_as_argument_of_command,
                 "preserved_group_after_scripted_command_like": report.flatten_groups.preserved_group_after_scripted_command_like,
                 "preserved_empty_group": report.flatten_groups.preserved_empty_group,
                 "preserved_group_with_lone_atom_spacing_char": report.flatten_groups.preserved_group_with_lone_atom_spacing_char,

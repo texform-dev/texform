@@ -124,6 +124,7 @@ export type TransformResult = {
             preserved_group_inside_env_body: number;
             preserved_group_containing_infix: number;
             preserved_group_adjacent_to_command_like: number;
+            preserved_group_as_argument_of_command: number;
             preserved_group_after_scripted_command_like: number;
             preserved_empty_group: number;
             preserved_group_with_lone_atom_spacing_char: number;
@@ -375,6 +376,7 @@ struct FlattenGroupsConfigInput {
     preserve_group_inside_env_body: Option<bool>,
     preserve_group_containing_infix: Option<bool>,
     preserve_group_adjacent_to_command_like: Option<bool>,
+    preserve_group_as_argument_of_command: Option<bool>,
     preserve_group_after_scripted_command_like: Option<bool>,
     preserve_empty_group: Option<bool>,
     preserve_group_with_lone_atom_spacing_char: Option<bool>,
@@ -390,6 +392,7 @@ pub struct FlattenGroupsConfig {
     preserve_group_inside_env_body: bool,
     preserve_group_containing_infix: bool,
     preserve_group_adjacent_to_command_like: bool,
+    preserve_group_as_argument_of_command: bool,
     preserve_group_after_scripted_command_like: bool,
     preserve_empty_group: bool,
     preserve_group_with_lone_atom_spacing_char: bool,
@@ -421,6 +424,9 @@ impl FlattenGroupsConfig {
             preserve_group_containing_infix: input.preserve_group_containing_infix.unwrap_or(true),
             preserve_group_adjacent_to_command_like: input
                 .preserve_group_adjacent_to_command_like
+                .unwrap_or(true),
+            preserve_group_as_argument_of_command: input
+                .preserve_group_as_argument_of_command
                 .unwrap_or(true),
             preserve_group_after_scripted_command_like: input
                 .preserve_group_after_scripted_command_like
@@ -499,6 +505,16 @@ impl FlattenGroupsConfig {
     }
 
     #[wasm_bindgen(getter)]
+    pub fn preserve_group_as_argument_of_command(&self) -> bool {
+        self.preserve_group_as_argument_of_command
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_preserve_group_as_argument_of_command(&mut self, value: bool) {
+        self.preserve_group_as_argument_of_command = value;
+    }
+
+    #[wasm_bindgen(getter)]
     pub fn preserve_group_after_scripted_command_like(&self) -> bool {
         self.preserve_group_after_scripted_command_like
     }
@@ -559,6 +575,7 @@ impl FlattenGroupsConfig {
             preserve_group_inside_env_body: config.preserve_group_inside_env_body,
             preserve_group_containing_infix: config.preserve_group_containing_infix,
             preserve_group_adjacent_to_command_like: config.preserve_group_adjacent_to_command_like,
+            preserve_group_as_argument_of_command: config.preserve_group_as_argument_of_command,
             preserve_group_after_scripted_command_like: config
                 .preserve_group_after_scripted_command_like,
             preserve_empty_group: config.preserve_empty_group,
@@ -580,6 +597,7 @@ impl FlattenGroupsConfig {
             preserve_group_inside_env_body: self.preserve_group_inside_env_body,
             preserve_group_containing_infix: self.preserve_group_containing_infix,
             preserve_group_adjacent_to_command_like: self.preserve_group_adjacent_to_command_like,
+            preserve_group_as_argument_of_command: self.preserve_group_as_argument_of_command,
             preserve_group_after_scripted_command_like: self
                 .preserve_group_after_scripted_command_like,
             preserve_empty_group: self.preserve_empty_group,
@@ -649,6 +667,9 @@ impl TransformConfig {
                     .unwrap_or(true),
                 preserve_group_adjacent_to_command_like: flatten_groups
                     .preserve_group_adjacent_to_command_like
+                    .unwrap_or(true),
+                preserve_group_as_argument_of_command: flatten_groups
+                    .preserve_group_as_argument_of_command
                     .unwrap_or(true),
                 preserve_group_after_scripted_command_like: flatten_groups
                     .preserve_group_after_scripted_command_like
@@ -1120,6 +1141,11 @@ fn transform_report_to_js(report: &texform_transform::TransformReport) -> JsValu
         report
             .flatten_groups
             .preserved_group_adjacent_to_command_like,
+    );
+    set_number(
+        &flatten,
+        "preserved_group_as_argument_of_command",
+        report.flatten_groups.preserved_group_as_argument_of_command,
     );
     set_number(
         &flatten,

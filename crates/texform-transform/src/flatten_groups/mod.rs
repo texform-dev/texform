@@ -21,6 +21,10 @@ pub struct FlattenGroupsConfig {
     /// Spacing guard. Keep a `GroupChild` when its preceding sibling or its
     /// first child is command-like.
     pub preserve_group_adjacent_to_command_like: bool,
+    /// Spacing guard. Keep a risky group directly used as an argument of a
+    /// command to preserve one spacing boundary without preserving redundant
+    /// nesting.
+    pub preserve_group_as_argument_of_command: bool,
     /// Spacing guard (sub-flag). Recurse through `Scripted` bases when
     /// classifying "command-like" for the adjacency check above.
     pub preserve_group_after_scripted_command_like: bool,
@@ -47,6 +51,7 @@ impl FlattenGroupsConfig {
         preserve_group_inside_env_body: true,
         preserve_group_containing_infix: true,
         preserve_group_adjacent_to_command_like: true,
+        preserve_group_as_argument_of_command: true,
         preserve_group_after_scripted_command_like: true,
         preserve_empty_group: true,
         preserve_group_with_lone_atom_spacing_char: true,
@@ -61,6 +66,7 @@ impl FlattenGroupsConfig {
         preserve_group_inside_env_body: true,
         preserve_group_containing_infix: true,
         preserve_group_adjacent_to_command_like: false,
+        preserve_group_as_argument_of_command: false,
         preserve_group_after_scripted_command_like: false,
         preserve_empty_group: false,
         preserve_group_with_lone_atom_spacing_char: false,
@@ -86,6 +92,7 @@ pub struct FlattenGroupsReport {
     pub preserved_group_inside_env_body: usize,
     pub preserved_group_containing_infix: usize,
     pub preserved_group_adjacent_to_command_like: usize,
+    pub preserved_group_as_argument_of_command: usize,
     pub preserved_group_after_scripted_command_like: usize,
     pub preserved_empty_group: usize,
     pub preserved_group_with_lone_atom_spacing_char: usize,
@@ -215,12 +222,11 @@ fn try_unwrap(
             return;
         }
     }
+    let children = ast.children(node);
+    let first_is_atom = children
+        .first()
+        .is_some_and(|child| is_atom_spacing_char(ast, *child));
     if matches!(link.slot, Slot::GroupChild(_)) {
-        let children = ast.children(node);
-        let child_count = children.len();
-        let first_is_atom = children
-            .first()
-            .is_some_and(|child| is_atom_spacing_char(ast, *child));
         if config.preserve_empty_group && child_count == 0 {
             report.preserved_empty_group += 1;
             return;
@@ -234,6 +240,21 @@ fn try_unwrap(
             report.preserved_group_starting_with_atom_spacing_char += 1;
             return;
         }
+    }
+    if matches!(link.slot, Slot::ScriptBase)
+        && config.preserve_group_with_lone_atom_spacing_char
+        && child_count == 1
+        && first_is_atom
+    {
+        report.preserved_group_with_lone_atom_spacing_char += 1;
+        return;
+    }
+    if matches!(link.slot, Slot::Argument(_))
+        && config.preserve_group_as_argument_of_command
+        && group_as_argument_of_command_needs_boundary(ast, node)
+    {
+        report.preserved_group_as_argument_of_command += 1;
+        return;
     }
 
     let Some(parent_mode) = context_mode(ast, link) else {
@@ -337,7 +358,7 @@ fn is_atom_spacing_char(ast: &Ast, node: NodeId) -> bool {
     matches!(
         ast.node(node),
         Node::Char(
-            '=' | '<' | '>' | '+' | '-' | ',' | ':' | ';' | '.' | '/' | '*' | '!' | '?' | '|'
+            '=' | '<' | '>' | '+' | '-' | ',' | ':' | ';' | '.' | '/' | '*' | '!' | '?' | '|' | '·'
         )
     )
 }
@@ -353,9 +374,83 @@ fn is_command_like(ast: &Ast, node: NodeId, include_scripted: bool) -> bool {
 fn is_atomic_base(ast: &Ast, node: NodeId) -> bool {
     match ast.node(node) {
         Node::Char(_) => true,
-        Node::Command { .. } => !subtree_has_scripted(ast, node),
+        Node::Command { name, args, .. } => {
+            args.iter().all(Option::is_none)
+                && !subtree_has_scripted(ast, node)
+                && !is_script_placement_sensitive_command(name)
+        }
         _ => false,
     }
+}
+
+fn group_as_argument_of_command_needs_boundary(ast: &Ast, node: NodeId) -> bool {
+    let children = ast.children(node);
+    if children.len() != 1 {
+        return false;
+    }
+    subtree_has_command_like(ast, children[0])
+}
+
+fn subtree_has_command_like(ast: &Ast, node: NodeId) -> bool {
+    if is_command_like(ast, node, false) {
+        return true;
+    }
+    ast.edges(node)
+        .into_iter()
+        .any(|(child, _)| subtree_has_command_like(ast, child))
+}
+
+fn is_script_placement_sensitive_command(name: &str) -> bool {
+    matches!(
+        name,
+        "arccos"
+            | "arcsin"
+            | "arctan"
+            | "arg"
+            | "bigcap"
+            | "bigcup"
+            | "bigodot"
+            | "bigoplus"
+            | "bigotimes"
+            | "bigsqcup"
+            | "bigtriangledown"
+            | "bigtriangleup"
+            | "biguplus"
+            | "bigvee"
+            | "bigwedge"
+            | "cos"
+            | "cosh"
+            | "cot"
+            | "coth"
+            | "csc"
+            | "deg"
+            | "det"
+            | "dim"
+            | "exp"
+            | "gcd"
+            | "hom"
+            | "inf"
+            | "int"
+            | "ker"
+            | "lg"
+            | "lim"
+            | "liminf"
+            | "limsup"
+            | "ln"
+            | "log"
+            | "max"
+            | "min"
+            | "operatorname"
+            | "Pr"
+            | "prod"
+            | "sec"
+            | "sin"
+            | "sinh"
+            | "sup"
+            | "sum"
+            | "tan"
+            | "tanh"
+    )
 }
 
 fn subtree_has_scripted(ast: &Ast, node: NodeId) -> bool {

@@ -70,6 +70,7 @@ class FlattenGroupsConfig:
     preserve_group_inside_env_body: bool
     preserve_group_containing_infix: bool
     preserve_group_adjacent_to_command_like: bool
+    preserve_group_as_argument_of_command: bool
     preserve_group_after_scripted_command_like: bool
     preserve_empty_group: bool
     preserve_group_with_lone_atom_spacing_char: bool
@@ -84,6 +85,7 @@ class FlattenGroupsConfig:
         preserve_group_inside_env_body: bool = True,
         preserve_group_containing_infix: bool = True,
         preserve_group_adjacent_to_command_like: bool = True,
+        preserve_group_as_argument_of_command: bool = True,
         preserve_group_after_scripted_command_like: bool = True,
         preserve_empty_group: bool = True,
         preserve_group_with_lone_atom_spacing_char: bool = True,
