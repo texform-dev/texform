@@ -8,11 +8,8 @@ use rayon::prelude::*;
 use serde::Serialize;
 use texform_bench::{config, data, output};
 use texform_core::ast::Ast;
-use texform_core::parse::{ParseConfig, ParseContext};
+use texform_core::parse::ParseConfig;
 use texform_core::serialize::serialize;
-use texform_transform::{
-    FlattenGroupsConfig, LowerAttributesConfig, RewriteConfig, TransformConfig, TransformContext,
-};
 
 #[derive(Parser)]
 #[command(
@@ -203,11 +200,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .join("commits")
         .join(output::git_commit_info().commit_dir_name());
     let datasets = config::DatasetsConfig::load_from_yaml(&datasets_yaml)?;
-    let parse_ctx = ParseContext::shared();
     let parse_cfg = ParseConfig::NONSTRICT_NO_RECOVER;
-    let flatten_only_ctx = TransformContext::from_config(flatten_only_config(), parse_ctx)?;
-    let other_phases_ctx = TransformContext::from_config(other_phases_config(), parse_ctx)?;
-    let full_ctx = TransformContext::from_config(TransformConfig::EQUIV, parse_ctx)?;
+    let engine = texform::Engine::builder()
+        .profile(texform::Profile::Equiv)
+        .build()?;
 
     let start = Instant::now();
     let mut overall = DatasetStats::default();
@@ -239,16 +235,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let analyses = records
                 .par_iter()
-                .map(|record| {
-                    analyze_record(
-                        record,
-                        parse_ctx,
-                        &parse_cfg,
-                        &flatten_only_ctx,
-                        &other_phases_ctx,
-                        &full_ctx,
-                    )
-                })
+                .map(|record| analyze_record(record, &engine, &parse_cfg))
                 .collect::<Vec<_>>();
 
             for analysis in analyses {
@@ -329,29 +316,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn flatten_only_config() -> TransformConfig {
-    TransformConfig {
-        lower_attributes: LowerAttributesConfig::DISABLED,
-        rewrite: RewriteConfig::DISABLED,
-        flatten_groups: FlattenGroupsConfig::ENABLED,
+fn flatten_only_config() -> texform::TransformConfig {
+    texform::TransformConfig {
+        rewrite_enabled: false,
+        lower_attributes_enabled: false,
+        flatten_groups: texform::FlattenGroupsConfig::ENABLED,
+        max_iterations: 100,
     }
 }
 
-fn other_phases_config() -> TransformConfig {
-    let mut config = TransformConfig::EQUIV;
-    config.flatten_groups = FlattenGroupsConfig::DISABLED;
+fn other_phases_config(engine: &texform::Engine) -> texform::TransformConfig {
+    let mut config = *engine.default_transform_config();
+    config.flatten_groups = texform::FlattenGroupsConfig::DISABLED;
     config
 }
 
 fn analyze_record(
     record: &data::FormulaRecord,
-    parse_ctx: &ParseContext,
+    engine: &texform::Engine,
     parse_cfg: &ParseConfig,
-    flatten_only_ctx: &TransformContext,
-    other_phases_ctx: &TransformContext,
-    full_ctx: &TransformContext,
 ) -> RecordAnalysis {
-    let Ok(ast) = parse_ctx.parse_to_ast(&record.formula, parse_cfg) else {
+    let Ok(ast) = engine.parse_to_ast_with(&record.formula, parse_cfg) else {
         return RecordAnalysis::default();
     };
 
@@ -360,12 +345,12 @@ fn analyze_record(
         ..RecordAnalysis::default()
     };
 
-    match compare_flatten_only(record, &ast, flatten_only_ctx, parse_ctx) {
+    match compare_flatten_only(record, &ast, engine) {
         Ok(change) => analysis.flatten_only = change,
         Err(_) => analysis.transform_failures += 1,
     }
 
-    match compare_full_delta(record, &ast, other_phases_ctx, full_ctx, parse_ctx) {
+    match compare_full_delta(record, &ast, engine) {
         Ok(change) => analysis.full_delta = change,
         Err(_) => analysis.transform_failures += 1,
     }
@@ -376,13 +361,12 @@ fn analyze_record(
 fn compare_flatten_only(
     record: &data::FormulaRecord,
     ast: &Ast,
-    flatten_only_ctx: &TransformContext,
-    parse_ctx: &ParseContext,
-) -> Result<Option<ChangeRecord>, texform_transform::TransformError> {
+    engine: &texform::Engine,
+) -> Result<Option<ChangeRecord>, texform::Error> {
     let before = serialize(ast);
     let mut after_ast = ast.clone();
-    let report = flatten_only_ctx
-        .run(&mut after_ast, parse_ctx)?
+    let report = engine
+        .transform_ast_with(&mut after_ast, &flatten_only_config())?
         .flatten_groups;
     let after = serialize(&after_ast);
     if before != after {
@@ -403,16 +387,14 @@ fn compare_flatten_only(
 fn compare_full_delta(
     record: &data::FormulaRecord,
     ast: &Ast,
-    other_phases_ctx: &TransformContext,
-    full_ctx: &TransformContext,
-    parse_ctx: &ParseContext,
-) -> Result<Option<ChangeRecord>, texform_transform::TransformError> {
+    engine: &texform::Engine,
+) -> Result<Option<ChangeRecord>, texform::Error> {
     let mut other_ast = ast.clone();
-    other_phases_ctx.run(&mut other_ast, parse_ctx)?;
+    engine.transform_ast_with(&mut other_ast, &other_phases_config(engine))?;
     let before = serialize(&other_ast);
 
     let mut full_ast = ast.clone();
-    let report = full_ctx.run(&mut full_ast, parse_ctx)?.flatten_groups;
+    let report = engine.transform_ast(&mut full_ast)?.flatten_groups;
     let after = serialize(&full_ast);
 
     if before != after {

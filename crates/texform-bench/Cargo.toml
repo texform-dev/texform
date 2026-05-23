@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 texform-core.workspace = true
+texform.workspace = true
 texform-interface.workspace = true
 texform-specs.workspace = true
 texform-transform.workspace = true

@@ -1,13 +1,13 @@
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use pythonize::pythonize;
-use texform_core::parse::{ParseConfig as CoreParseConfig, ParseContext};
-use texform_core::serialize;
+use texform_core::parse::{ParseConfig as CoreParseConfig, Parser as CoreParser};
 use texform_core::target_counter::{TargetCounter, count_node};
 use texform_transform::{
     FlattenGroupsConfig as CoreFlattenGroupsConfig,
-    LowerAttributesConfig as CoreLowerAttributesConfig, RewriteConfig as CoreRewriteConfig,
-    RuleClassSet, RuleSelection, TransformConfig as CoreTransformConfig, run as transform_run,
+    LowerAttributesConfig as CoreLowerAttributesConfig, Profile as CoreProfile,
+    TransformConfig as CoreTransformConfig,
 };
 
 pyo3::create_exception!(texform, ParseError, PyException);
@@ -93,47 +93,34 @@ struct PyRewriteConfig {
     #[pyo3(get, set)]
     enabled: bool,
     #[pyo3(get, set)]
-    classes: Vec<String>,
-    #[pyo3(get, set)]
     max_iterations: usize,
 }
 
 #[pymethods]
 impl PyRewriteConfig {
     #[new]
-    #[pyo3(signature = (enabled = true, classes = None, max_iterations = 100))]
-    fn new(enabled: bool, classes: Option<Vec<String>>, max_iterations: usize) -> Self {
+    #[pyo3(signature = (enabled = true, max_iterations = 100))]
+    fn new(enabled: bool, max_iterations: usize) -> Self {
         Self {
             enabled,
-            classes: classes.unwrap_or_default(),
             max_iterations,
         }
     }
 
     fn __repr__(&self) -> String {
         format!(
-            "RewriteConfig(enabled={}, classes={:?}, max_iterations={})",
-            self.enabled, self.classes, self.max_iterations
+            "RewriteConfig(enabled={}, max_iterations={})",
+            self.enabled, self.max_iterations
         )
     }
 }
 
 impl PyRewriteConfig {
-    fn from_core(config: CoreRewriteConfig) -> Self {
+    fn from_core(enabled: bool, max_iterations: usize) -> Self {
         Self {
-            enabled: config.enabled,
-            classes: class_names(config.classes),
-            max_iterations: config.max_iterations,
+            enabled,
+            max_iterations,
         }
-    }
-
-    fn into_core(&self) -> PyResult<CoreRewriteConfig> {
-        Ok(CoreRewriteConfig {
-            enabled: self.enabled,
-            classes: class_set_from_names(&self.classes)?,
-            max_iterations: self.max_iterations,
-            selection: RuleSelection::All,
-        })
     }
 }
 
@@ -300,35 +287,43 @@ impl PyTransformConfig {
     ) -> Self {
         Self {
             lower_attributes: lower_attributes.unwrap_or_else(|| {
-                PyLowerAttributesConfig::from_core(CoreTransformConfig::AUTHORING.lower_attributes)
+                PyLowerAttributesConfig::from_core(CoreLowerAttributesConfig::ENABLED)
             }),
             rewrite: rewrite.unwrap_or_else(|| {
-                PyRewriteConfig::from_core(CoreTransformConfig::AUTHORING.rewrite.clone())
+                let profile = CoreProfile::Authoring;
+                PyRewriteConfig::from_core(
+                    profile.default_transform_config().rewrite_enabled,
+                    profile.default_transform_config().max_iterations,
+                )
             }),
             flatten_groups: flatten_groups.unwrap_or_else(|| {
-                PyFlattenGroupsConfig::from_core(CoreTransformConfig::AUTHORING.flatten_groups)
+                PyFlattenGroupsConfig::from_core(
+                    CoreProfile::Authoring
+                        .default_transform_config()
+                        .flatten_groups,
+                )
             }),
         }
     }
 
     #[classmethod]
     fn authoring(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        Self::from_core(CoreTransformConfig::AUTHORING.clone())
+        Self::from_profile(CoreProfile::Authoring)
     }
 
     #[classmethod]
     fn corpus(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        Self::from_core(CoreTransformConfig::CORPUS.clone())
+        Self::from_profile(CoreProfile::Corpus)
     }
 
     #[classmethod]
     fn corpus_drop(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        Self::from_core(CoreTransformConfig::CORPUS_DROP.clone())
+        Self::from_profile(CoreProfile::CorpusDrop)
     }
 
     #[classmethod]
     fn equiv(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        Self::from_core(CoreTransformConfig::EQUIV.clone())
+        Self::from_profile(CoreProfile::Equiv)
     }
 
     fn __repr__(&self) -> String {
@@ -340,20 +335,24 @@ impl PyTransformConfig {
 }
 
 impl PyTransformConfig {
-    fn from_core(config: CoreTransformConfig) -> Self {
+    fn from_profile(profile: CoreProfile) -> Self {
+        let config = profile.default_transform_config();
         Self {
-            lower_attributes: PyLowerAttributesConfig::from_core(config.lower_attributes),
-            rewrite: PyRewriteConfig::from_core(config.rewrite),
+            lower_attributes: PyLowerAttributesConfig {
+                enabled: config.lower_attributes_enabled,
+            },
+            rewrite: PyRewriteConfig::from_core(config.rewrite_enabled, config.max_iterations),
             flatten_groups: PyFlattenGroupsConfig::from_core(config.flatten_groups),
         }
     }
 
-    fn into_core(&self) -> PyResult<CoreTransformConfig> {
-        Ok(CoreTransformConfig {
-            lower_attributes: self.lower_attributes.into_core(),
-            rewrite: self.rewrite.into_core()?,
+    fn into_core(&self) -> CoreTransformConfig {
+        CoreTransformConfig {
+            lower_attributes_enabled: self.lower_attributes.enabled,
+            rewrite_enabled: self.rewrite.enabled,
             flatten_groups: self.flatten_groups.into_core(),
-        })
+            max_iterations: self.rewrite.max_iterations,
+        }
     }
 }
 
@@ -364,72 +363,180 @@ fn py_parse_config_to_core(config: Option<PyRef<'_, PyParseConfig>>) -> CorePars
         .unwrap_or_default()
 }
 
-fn parse_context(packages: Option<Vec<String>>) -> PyResult<ParseContext> {
+fn parse_context(packages: Option<Vec<String>>) -> PyResult<CoreParser> {
     match packages {
         Some(packages) => {
             let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
-            ParseContext::try_from_packages(refs.as_slice())
+            CoreParser::try_from_packages(refs.as_slice())
                 .map_err(|error| ParseError::new_err(error.to_string()))
         }
-        None => Ok(ParseContext::shared().clone()),
+        None => Ok(CoreParser::shared().clone()),
     }
 }
 
-fn config_from_profile_name(name: &str) -> PyResult<CoreTransformConfig> {
+fn profile_from_name(name: &str) -> PyResult<texform::Profile> {
     match name {
-        "authoring" => Ok(CoreTransformConfig::AUTHORING.clone()),
-        "corpus" => Ok(CoreTransformConfig::CORPUS.clone()),
-        "corpus-drop" => Ok(CoreTransformConfig::CORPUS_DROP.clone()),
-        "equiv" => Ok(CoreTransformConfig::EQUIV.clone()),
+        "authoring" => Ok(texform::Profile::Authoring),
+        "corpus" => Ok(texform::Profile::Corpus),
+        "corpus-drop" => Ok(texform::Profile::CorpusDrop),
+        "equiv" => Ok(texform::Profile::Equiv),
         other => Err(ParseError::new_err(format!(
             "unknown transform profile: {other}"
         ))),
     }
 }
 
-fn class_names(classes: RuleClassSet) -> Vec<String> {
-    classes
+fn rule_key_from_string(value: &str) -> PyResult<texform_transform::RuleKey> {
+    texform_transform::rewrite::all_rules()
         .iter()
-        .map(|class| class.as_str().to_string())
-        .collect()
+        .find_map(|rule| {
+            let key = rule.meta().key;
+            (key.to_string() == value).then_some(key)
+        })
+        .ok_or_else(|| ParseError::new_err(format!("unknown transform rule: {value}")))
 }
 
-fn class_set_from_names(names: &[String]) -> PyResult<RuleClassSet> {
-    let mut set = RuleClassSet::empty();
-    for name in names {
-        let class = match name.as_str() {
-            "standard" => RuleClassSet::STANDARD,
-            "expand" => RuleClassSet::EXPAND,
-            "drop" => RuleClassSet::DROP,
-            "equiv" => RuleClassSet::EQUIV,
-            other => {
-                return Err(ParseError::new_err(format!(
-                    "unknown rewrite rule class: {other}"
-                )));
-            }
-        };
-        set |= class;
+fn py_required_string(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<String> {
+    dict.get_item(key)?
+        .ok_or_else(|| ParseError::new_err(format!("context item missing `{key}`")))?
+        .extract::<String>()
+}
+
+fn py_optional_strings(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<Vec<String>> {
+    Ok(match dict.get_item(key)? {
+        Some(value) if !value.is_none() => value.extract::<Vec<String>>()?,
+        _ => Vec::new(),
+    })
+}
+
+fn py_command_kind(value: &str) -> PyResult<texform::CommandKind> {
+    match value {
+        "prefix" => Ok(texform::CommandKind::Prefix),
+        "infix" => Ok(texform::CommandKind::Infix),
+        "declarative" => Ok(texform::CommandKind::Declarative),
+        other => Err(ParseError::new_err(format!(
+            "unsupported command kind: {other}"
+        ))),
     }
-    Ok(set)
 }
 
-/// Parse a LaTeX formula.
-///
-/// Returns a dict with `node` and `span` keys on success.
-/// Raises `texform.ParseError` when diagnostics are present.
-/// The exception carries `diagnostics` (list[dict]) and `partial_result` (dict | None).
-#[pyfunction]
-#[pyo3(signature = (src, config = None, packages = None))]
-fn parse(
-    py: Python<'_>,
-    src: &str,
-    config: Option<PyRef<'_, PyParseConfig>>,
-    packages: Option<Vec<String>>,
-) -> PyResult<Py<PyAny>> {
-    let ctx = parse_context(packages)?;
-    let config = py_parse_config_to_core(config);
-    let output = ctx.parse(src, &config);
+fn py_allowed_mode(value: &str) -> PyResult<texform::AllowedMode> {
+    match value {
+        "math" => Ok(texform::AllowedMode::Math),
+        "text" => Ok(texform::AllowedMode::Text),
+        "both" => Ok(texform::AllowedMode::Both),
+        other => Err(ParseError::new_err(format!(
+            "unsupported allowed mode: {other}"
+        ))),
+    }
+}
 
+fn py_content_mode(value: &str) -> PyResult<texform::ContentMode> {
+    match value {
+        "math" => Ok(texform::ContentMode::Math),
+        "text" => Ok(texform::ContentMode::Text),
+        other => Err(ParseError::new_err(format!(
+            "unsupported content mode: {other}"
+        ))),
+    }
+}
+
+fn py_context_item(py: Python<'_>, item: &Py<PyAny>) -> PyResult<texform::ContextItem> {
+    let value = item.bind(py);
+    let dict = value
+        .downcast::<PyDict>()
+        .map_err(|_| ParseError::new_err("context item must be a dict"))?;
+    match py_required_string(dict, "target")?.as_str() {
+        "command" => Ok(texform::CommandItem::new(
+            py_required_string(dict, "name")?,
+            py_command_kind(&py_required_string(dict, "kind")?)?,
+            py_allowed_mode(&py_required_string(dict, "allowed_mode")?)?,
+            py_required_string(dict, "argspec")?,
+        )
+        .with_tags(py_optional_strings(dict, "tags")?)
+        .into()),
+        "environment" => Ok(texform::EnvironmentItem::new(
+            py_required_string(dict, "name")?,
+            py_allowed_mode(&py_required_string(dict, "allowed_mode")?)?,
+            py_content_mode(&py_required_string(dict, "body_mode")?)?,
+            py_required_string(dict, "argspec")?,
+        )
+        .with_tags(py_optional_strings(dict, "tags")?)
+        .into()),
+        "delimiter" => {
+            Ok(texform::DelimiterControlItem::new(py_required_string(dict, "name")?).into())
+        }
+        other => Err(ParseError::new_err(format!(
+            "unsupported context item target: {other}"
+        ))),
+    }
+}
+
+fn parser_builder_with_options(
+    py: Python<'_>,
+    packages: Option<Vec<String>>,
+    items: Option<Vec<Py<PyAny>>>,
+    remove_commands: Option<Vec<String>>,
+    remove_environments: Option<Vec<String>>,
+    remove_delimiter_controls: Option<Vec<String>>,
+) -> PyResult<texform::ParserBuilder> {
+    let mut builder = texform::Parser::builder();
+    if let Some(packages) = packages {
+        let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
+        builder = if refs.is_empty() {
+            builder.empty_knowledge()
+        } else {
+            builder.packages(refs.as_slice())
+        };
+    }
+    for item in items.unwrap_or_default() {
+        builder = builder.item(py_context_item(py, &item)?);
+    }
+    for name in remove_commands.unwrap_or_default() {
+        builder = builder.remove_command(name);
+    }
+    for name in remove_environments.unwrap_or_default() {
+        builder = builder.remove_environment(name);
+    }
+    for name in remove_delimiter_controls.unwrap_or_default() {
+        builder = builder.remove_delimiter_control(name);
+    }
+    Ok(builder)
+}
+
+fn engine_builder_with_options(
+    py: Python<'_>,
+    mut builder: texform::EngineBuilder,
+    packages: Option<Vec<String>>,
+    items: Option<Vec<Py<PyAny>>>,
+    remove_commands: Option<Vec<String>>,
+    remove_environments: Option<Vec<String>>,
+    remove_delimiter_controls: Option<Vec<String>>,
+) -> PyResult<texform::EngineBuilder> {
+    if let Some(packages) = packages {
+        let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
+        builder = if refs.is_empty() {
+            builder.empty_knowledge()
+        } else {
+            builder.packages(refs.as_slice())
+        };
+    }
+    for item in items.unwrap_or_default() {
+        builder = builder.item(py_context_item(py, &item)?);
+    }
+    for name in remove_commands.unwrap_or_default() {
+        builder = builder.remove_command(name);
+    }
+    for name in remove_environments.unwrap_or_default() {
+        builder = builder.remove_environment(name);
+    }
+    for name in remove_delimiter_controls.unwrap_or_default() {
+        builder = builder.remove_delimiter_control(name);
+    }
+    Ok(builder)
+}
+
+fn parse_output_to_python(py: Python<'_>, output: texform::ParseOutput) -> PyResult<Py<PyAny>> {
     if output.diagnostics.is_empty() {
         match output.result {
             Some(result) => Ok(pythonize(py, &result)?.unbind()),
@@ -454,48 +561,139 @@ fn parse(
     }
 }
 
-#[pyfunction]
-#[pyo3(signature = (src, profile = "authoring", packages = None))]
-fn normalize(
-    py: Python<'_>,
-    src: &str,
-    profile: &str,
-    packages: Option<Vec<String>>,
-) -> PyResult<Py<PyAny>> {
-    let config = config_from_profile_name(profile)?;
-    transform_with_core_config(py, src, &config, packages)
+#[pyclass(name = "Parser")]
+struct PyParser {
+    inner: texform::Parser,
 }
 
-#[pyfunction]
-#[pyo3(signature = (src, config = None, packages = None))]
-fn transform(
-    py: Python<'_>,
-    src: &str,
-    config: Option<PyRef<'_, PyTransformConfig>>,
-    packages: Option<Vec<String>>,
-) -> PyResult<Py<PyAny>> {
-    let config = config
-        .as_deref()
-        .map(PyTransformConfig::into_core)
-        .transpose()?
-        .unwrap_or_else(|| CoreTransformConfig::AUTHORING.clone());
-    transform_with_core_config(py, src, &config, packages)
+#[pymethods]
+impl PyParser {
+    #[new]
+    #[pyo3(signature = (
+        packages = None,
+        items = None,
+        remove_commands = None,
+        remove_environments = None,
+        remove_delimiter_controls = None,
+    ))]
+    fn new(
+        py: Python<'_>,
+        packages: Option<Vec<String>>,
+        items: Option<Vec<Py<PyAny>>>,
+        remove_commands: Option<Vec<String>>,
+        remove_environments: Option<Vec<String>>,
+        remove_delimiter_controls: Option<Vec<String>>,
+    ) -> PyResult<Self> {
+        let builder = parser_builder_with_options(
+            py,
+            packages,
+            items,
+            remove_commands,
+            remove_environments,
+            remove_delimiter_controls,
+        )?;
+        Ok(Self {
+            inner: builder
+                .build()
+                .map_err(|error| ParseError::new_err(error.to_string()))?,
+        })
+    }
+
+    #[pyo3(signature = (src, config = None))]
+    fn parse(
+        &self,
+        py: Python<'_>,
+        src: &str,
+        config: Option<PyRef<'_, PyParseConfig>>,
+    ) -> PyResult<Py<PyAny>> {
+        parse_output_to_python(
+            py,
+            self.inner.parse_with(src, &py_parse_config_to_core(config)),
+        )
+    }
+
+    fn knows_command_name(&self, name: &str) -> bool {
+        self.inner.knows_command_name(name)
+    }
 }
 
-fn transform_with_core_config(
+#[pyclass(name = "Engine")]
+struct PyEngine {
+    inner: texform::Engine,
+}
+
+#[pymethods]
+impl PyEngine {
+    #[new]
+    #[pyo3(signature = (
+        profile,
+        packages = None,
+        items = None,
+        remove_commands = None,
+        remove_environments = None,
+        remove_delimiter_controls = None,
+        disable_rules = None,
+    ))]
+    fn new(
+        py: Python<'_>,
+        profile: &str,
+        packages: Option<Vec<String>>,
+        items: Option<Vec<Py<PyAny>>>,
+        remove_commands: Option<Vec<String>>,
+        remove_environments: Option<Vec<String>>,
+        remove_delimiter_controls: Option<Vec<String>>,
+        disable_rules: Option<Vec<String>>,
+    ) -> PyResult<Self> {
+        let mut builder = engine_builder_with_options(
+            py,
+            texform::Engine::builder().profile(profile_from_name(profile)?),
+            packages,
+            items,
+            remove_commands,
+            remove_environments,
+            remove_delimiter_controls,
+        )?;
+        for rule in disable_rules.unwrap_or_default() {
+            builder = builder.disable_rule(rule_key_from_string(&rule)?);
+        }
+        Ok(Self {
+            inner: builder
+                .build()
+                .map_err(|error| ParseError::new_err(error.to_string()))?,
+        })
+    }
+
+    #[pyo3(signature = (src, config = None, parse_config = None))]
+    fn normalize(
+        &self,
+        py: Python<'_>,
+        src: &str,
+        config: Option<PyRef<'_, PyTransformConfig>>,
+        parse_config: Option<PyRef<'_, PyParseConfig>>,
+    ) -> PyResult<Py<PyAny>> {
+        let config = texform::NormalizeConfig {
+            parse: parse_config
+                .as_deref()
+                .map(PyParseConfig::into_core)
+                .unwrap_or(CoreParseConfig::STRICT_NO_RECOVER),
+            transform: config
+                .as_deref()
+                .map(PyTransformConfig::into_core)
+                .unwrap_or(*self.inner.default_transform_config()),
+        };
+        let result = self
+            .inner
+            .normalize_with(src, &config)
+            .map_err(|error| ParseError::new_err(error.to_string()))?;
+        transform_result_to_python(py, result.normalized, &result.report)
+    }
+}
+
+fn transform_result_to_python(
     py: Python<'_>,
-    src: &str,
-    config: &CoreTransformConfig,
-    packages: Option<Vec<String>>,
+    normalized: String,
+    report: &texform::TransformReport,
 ) -> PyResult<Py<PyAny>> {
-    let ctx = parse_context(packages)?;
-    let parse_config = CoreParseConfig::STRICT_NO_RECOVER;
-    let mut ast = ctx
-        .parse_to_ast(src, &parse_config)
-        .map_err(|error| ParseError::new_err(error.to_string()))?;
-    let report = transform_run(&mut ast, &ctx, config)
-        .map_err(|error| ParseError::new_err(error.to_string()))?;
-    let normalized = serialize::serialize(&ast);
     let applied = report
         .rewrite
         .applied
@@ -540,6 +738,11 @@ fn transform_with_core_config(
 }
 
 #[pyfunction]
+fn validate_argspec(py: Python<'_>, spec: &str) -> PyResult<Py<PyAny>> {
+    Ok(pythonize(py, &texform::validate_argspec(spec))?.unbind())
+}
+
+#[pyfunction]
 #[pyo3(signature = (src, config = None, packages = None))]
 fn count_targets(
     py: Python<'_>,
@@ -566,15 +769,15 @@ fn count_targets(
 /// Symbols are re-exported from the Python package's `__init__.py`.
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(parse, m)?)?;
-    m.add_function(wrap_pyfunction!(normalize, m)?)?;
-    m.add_function(wrap_pyfunction!(transform, m)?)?;
     m.add_function(wrap_pyfunction!(count_targets, m)?)?;
+    m.add_function(wrap_pyfunction!(validate_argspec, m)?)?;
     m.add_class::<PyParseConfig>()?;
     m.add_class::<PyLowerAttributesConfig>()?;
     m.add_class::<PyRewriteConfig>()?;
     m.add_class::<PyFlattenGroupsConfig>()?;
     m.add_class::<PyTransformConfig>()?;
+    m.add_class::<PyParser>()?;
+    m.add_class::<PyEngine>()?;
     m.add("ParseError", m.py().get_type::<ParseError>())?;
     Ok(())
 }
@@ -584,21 +787,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn python_module_normalizes_with_profile_and_packages() {
+    fn python_engine_normalizes_with_profile_and_packages() {
         Python::with_gil(|py| {
             let module = PyModule::new(py, "_native").expect("module");
             _native(&module).expect("init module");
 
+            let engine_cls = module.getattr("Engine").unwrap();
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs
                 .set_item("packages", vec!["base", "physics"])
                 .unwrap();
             kwargs.set_item("profile", "authoring").unwrap();
+            let engine = engine_cls.call((), Some(&kwargs)).unwrap();
 
-            let result = module
-                .getattr("normalize")
-                .unwrap()
-                .call((r"\quantity{x}",), Some(&kwargs))
+            let result = engine
+                .call_method1("normalize", (r"\quantity{x}",))
                 .unwrap();
             let dict = result.downcast::<pyo3::types::PyDict>().unwrap();
 
@@ -614,44 +817,53 @@ mod tests {
     }
 
     #[test]
-    fn python_module_transforms_with_per_guard_override() {
+    fn python_parser_empty_packages_means_empty_knowledge() {
         Python::with_gil(|py| {
             let module = PyModule::new(py, "_native").expect("module");
             _native(&module).expect("init module");
 
-            let flatten_groups_cls = module.getattr("FlattenGroupsConfig").unwrap();
-            let flatten_groups_kwargs = pyo3::types::PyDict::new(py);
-            flatten_groups_kwargs
-                .set_item("preserve_group_adjacent_to_command_like", false)
-                .unwrap();
-            let flatten_groups = flatten_groups_cls
-                .call((), Some(&flatten_groups_kwargs))
-                .unwrap();
+            let parser_cls = module.getattr("Parser").unwrap();
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("packages", Vec::<String>::new()).unwrap();
+            let parser = parser_cls.call((), Some(&kwargs)).unwrap();
 
-            let config_cls = module.getattr("TransformConfig").unwrap();
-            let config_kwargs = pyo3::types::PyDict::new(py);
-            config_kwargs
-                .set_item("flatten_groups", flatten_groups)
+            let knows_frac = parser
+                .call_method1("knows_command_name", ("frac",))
+                .unwrap()
+                .extract::<bool>()
                 .unwrap();
+            assert!(!knows_frac);
+        });
+    }
+
+    #[test]
+    fn python_parser_accepts_context_items() {
+        Python::with_gil(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let item = pyo3::types::PyDict::new(py);
+            item.set_item("target", "command").unwrap();
+            item.set_item("name", "probe").unwrap();
+            item.set_item("kind", "prefix").unwrap();
+            item.set_item("allowed_mode", "math").unwrap();
+            item.set_item("argspec", "m").unwrap();
+
+            let parser_cls = module.getattr("Parser").unwrap();
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("packages", Vec::<String>::new()).unwrap();
+            kwargs.set_item("items", vec![item]).unwrap();
+            let parser = parser_cls.call((), Some(&kwargs)).unwrap();
+
+            let config_cls = module.getattr("ParseConfig").unwrap();
+            let config_kwargs = pyo3::types::PyDict::new(py);
+            config_kwargs.set_item("strict", true).unwrap();
+            config_kwargs.set_item("recover", false).unwrap();
             let config = config_cls.call((), Some(&config_kwargs)).unwrap();
 
-            let kwargs = pyo3::types::PyDict::new(py);
-            kwargs.set_item("config", config).unwrap();
-            let result = module
-                .getattr("transform")
-                .unwrap()
-                .call((r"\cos{A}",), Some(&kwargs))
-                .unwrap();
-            let dict = result.downcast::<pyo3::types::PyDict>().unwrap();
-
-            assert_eq!(
-                dict.get_item("normalized")
-                    .unwrap()
-                    .unwrap()
-                    .extract::<String>()
-                    .unwrap(),
-                r"\cos A"
-            );
+            parser
+                .call_method1("parse", (r"\probe{x}", config))
+                .expect("custom command should parse");
         });
     }
 

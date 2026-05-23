@@ -63,7 +63,7 @@ define_rule! {
 mod tests {
     use super::*;
     use crate::ast::Node;
-    use crate::parse::ParseContext;
+    use crate::parse::Parser;
     use crate::rewrite::transform_examples;
     use crate::rewrite::{run_one_rule_for_test, RewriteRule as _, RuleClass};
 
@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn rewrites_implies_as_spaced_sibling_commands() {
-        let parse_ctx = ParseContext::from_packages(&["base", "ams"]);
+        let parse_ctx = Parser::from_packages(&["base", "ams"]);
         let mut ast = parse_ctx
             .parse_to_ast(r"a \implies b", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
             .expect("parse should succeed");
@@ -121,7 +121,7 @@ mod tests {
 
     #[test]
     fn groups_spaced_implies_when_used_as_script_base() {
-        let parse_ctx = ParseContext::from_packages(&["base", "ams"]);
+        let parse_ctx = Parser::from_packages(&["base", "ams"]);
         let mut ast = parse_ctx
             .parse_to_ast(r"\implies^2", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
             .expect("parse should succeed");

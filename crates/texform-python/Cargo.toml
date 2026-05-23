@@ -12,5 +12,6 @@ crate-type = ["cdylib"]
 pyo3 = { workspace = true, features = ["auto-initialize", "abi3-py310"] }
 pythonize.workspace = true
 serde_json.workspace = true
+texform.workspace = true
 texform-core.workspace = true
 texform-transform.workspace = true

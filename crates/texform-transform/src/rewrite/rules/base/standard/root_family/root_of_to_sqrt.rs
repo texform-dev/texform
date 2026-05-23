@@ -127,7 +127,7 @@ fn rewrite_root_of(
 mod tests {
     use super::*;
     use crate::ast::{ArgumentKind, ArgumentValue};
-    use crate::parse::ParseContext;
+    use crate::parse::Parser;
     use crate::rewrite::RewriteRule as _;
     use crate::rewrite::transform_examples;
     use crate::rewrite::{run_one_rule_for_test, RuleClass};
@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     fn rewrites_root_of_into_sqrt_with_optional_degree() {
-        let parse_ctx = ParseContext::from_packages(&["base"]);
+        let parse_ctx = Parser::from_packages(&["base"]);
         let mut ast = parse_ctx
             .parse_to_ast(r"\root 1+2 \of {x+y}", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
             .expect("parse should succeed");

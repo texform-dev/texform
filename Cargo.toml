@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "crates/texform",
   "crates/texform-argspec",
   "crates/texform-bench",
   "crates/texform-core",
@@ -38,6 +39,7 @@ wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6"
 
 texform-argspec = { path = "crates/texform-argspec" }
+texform = { path = "crates/texform" }
 texform-core = { path = "crates/texform-core" }
 texform-interface = { path = "crates/texform-interface" }
 texform-specs = { path = "crates/texform-specs" }

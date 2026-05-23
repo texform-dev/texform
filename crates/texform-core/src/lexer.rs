@@ -114,7 +114,7 @@ pub enum Token {
     /// Whitespace: spaces, tabs, newlines, form feeds, non-breaking space
     /// - catcode 10: Spacer
     /// - Multiple consecutive whitespace characters are merged
-    /// - Includes U+00A0 (non-breaking space) for copy-paste compatibility
+    /// - Includes U+00A0 (non-breaking space) for copy-paste behavior
     #[regex(r"[ \t\n\f\u{00A0}]+")]
     Whitespaces,
 

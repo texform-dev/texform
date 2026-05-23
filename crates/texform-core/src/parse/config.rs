@@ -3,7 +3,7 @@
 /// Parse-time configuration knobs.
 ///
 /// `ParseConfig` is plain data describing how a single parse call should
-/// behave. It is independent of [`ParseContext`](super::ParseContext), which
+/// behave. It is independent of [`Parser`](super::Parser), which
 /// owns the knowledge base; the same context can be reused across many calls
 /// with different configs.
 ///

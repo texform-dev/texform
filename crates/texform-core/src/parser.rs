@@ -32,7 +32,7 @@ use logos::Logos;
 
 use crate::knowledge::{ActiveCommandRecord, ActiveEnvironmentRecord, ArgSpec, CommandKind};
 use crate::lexer::Token;
-use crate::parse::{ParseConfig, ParseContext, ParseDiagnosticKind, ParserState};
+use crate::parse::{ParseConfig, ParseDiagnosticKind, Parser as ParseDriver, ParserState};
 use texform_interface::syntax_node::{ArgumentSlot, ContentMode, Delimiter, GroupKind, SyntaxNode};
 
 use self::arguments::{
@@ -701,7 +701,7 @@ where
 
 /// Parse a math delimiter token into a typed `Delimiter`.
 fn delimiter<'a>(
-    ctx: &'a ParseContext,
+    ctx: &'a ParseDriver,
 ) -> impl Parser<'a, TokenStream<'a>, Delimiter, ParserError<'a>> + Clone {
     select! {
         Token::Char(c) if ctx.lookup_delimiter(c.to_string().as_str(), false, ContentMode::Math).is_some() => {
@@ -737,7 +737,7 @@ fn escaped_symbol<'a>() -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserE
 
 /// Parse delimiter controls as visible math commands outside delimiter positions.
 fn delimiter_control_command_parser<'a>(
-    ctx: &'a ParseContext,
+    ctx: &'a ParseDriver,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     select! {
         Token::ControlSeq(name) if ctx.lookup_delimiter(name.as_str(), true, ContentMode::Math).is_some() => {
@@ -911,7 +911,7 @@ fn skip_to_matching_rbrace<'src, 'parse>(input: &mut ParserInput<'src, 'parse>) 
 /// `\left ( ... \right )` round-trips correctly through the canonical
 /// serializer's `Spaced` command spacing.
 fn delimited_group_parser<'a, P>(
-    ctx: &'a ParseContext,
+    ctx: &'a ParseDriver,
     math_content: P,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone
 where
@@ -1252,7 +1252,7 @@ where
 ///
 /// Returns the root [`SyntaxNode`] together with its byte span on success,
 /// or a list of rich diagnostics on failure. For partial-parse semantics
-/// (result + diagnostics), use [`ParseContext::parse`](crate::parse::ParseContext::parse)
+/// (result + diagnostics), use [`Parser::parse`](crate::parse::Parser::parse)
 /// instead.
 pub fn parse(src: &str, strict: bool) -> Result<Spanned<SyntaxNode>, Vec<Rich<'static, Token>>> {
     let token_stream = build_token_stream(src);
@@ -1261,7 +1261,7 @@ pub fn parse(src: &str, strict: bool) -> Result<Spanned<SyntaxNode>, Vec<Rich<'s
     } else {
         ParseConfig::NONSTRICT_RECOVER
     };
-    let state = ParserState::new(ParseContext::shared(), &config, src);
+    let state = ParserState::new(ParseDriver::shared(), &config, src);
     let parser = math_block_parser(&state)
         .map_with(|tracked, e| (promote_to_root(tracked.node), e.span()))
         .then_ignore(end());
@@ -1340,7 +1340,7 @@ fn other_mode(mode: ContentMode) -> ContentMode {
 }
 
 fn lookup_command_for_parse<'a>(
-    ctx: &'a ParseContext,
+    ctx: &'a ParseDriver,
     name: &str,
     mode: ContentMode,
 ) -> ModeLookup<'a, ActiveCommandRecord> {
@@ -1354,7 +1354,7 @@ fn lookup_command_for_parse<'a>(
 }
 
 fn lookup_env_for_parse<'a>(
-    ctx: &'a ParseContext,
+    ctx: &'a ParseDriver,
     name: &str,
     mode: ContentMode,
 ) -> ModeLookup<'a, ActiveEnvironmentRecord> {
@@ -1521,7 +1521,7 @@ fn leading_begin_environment_name(src: &str) -> Option<String> {
 }
 
 fn normalize_recovery_message(
-    ctx: &ParseContext,
+    ctx: &ParseDriver,
     current_mode: ContentMode,
     src: &str,
     message: String,
@@ -1662,7 +1662,7 @@ fn recovery_diagnostic_from_error(
 }
 
 fn invalid_left_recovery_diagnostic(
-    ctx: &ParseContext,
+    ctx: &ParseDriver,
     src: &str,
     search_start: usize,
     search_end: usize,
@@ -1953,7 +1953,7 @@ where
 /// it matches the `expected_kind` and is allowed in `current_mode`.
 fn command_head_parser<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
-    ctx: &'parse ParseContext,
+    ctx: &'parse ParseDriver,
     expected_kind: CommandKind,
     current_mode: ContentMode,
     strict: bool,
@@ -2004,7 +2004,7 @@ fn command_head_parser<'src, 'parse>(
 // ============================================================================
 
 fn infix_guard<'a>(
-    ctx: &'a ParseContext,
+    ctx: &'a ParseDriver,
     current_mode: ContentMode,
 ) -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
     select! {
@@ -2159,7 +2159,7 @@ fn declarative_command_parser<'a>(
 }
 
 fn unknown_command_parser<'a>(
-    ctx: &'a ParseContext,
+    ctx: &'a ParseDriver,
     strict: bool,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     select! {
@@ -2981,7 +2981,7 @@ fn mode_group_parsers_with_source<'a>(
 ///
 /// Returns a boxed parser that produces an implicit math-mode group
 /// wrapping all parsed items. This is the parser used by
-/// [`ParseContext::parse`](crate::parse::ParseContext::parse).
+/// [`Parser::parse`](crate::parse::Parser::parse).
 pub(crate) fn math_block_parser<'a>(state: &'a ParserState<'a>) -> NodeParser<'a> {
     let (math_parser, _) = mode_group_parsers(state);
     math_parser

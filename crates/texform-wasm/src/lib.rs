@@ -1,17 +1,13 @@
 use serde::Deserialize;
 use texform_argspec::{ArgForm, ArgSpec, DelimiterToken, ValueKind, parse_arg_specs};
-use texform_core::api;
 use texform_core::parse::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, AllowedMode, CommandItem,
     CommandKind, ContentMode, ContextItem, DelimiterControlItem, EnvironmentItem, ParseConfig,
-    ParseContextBuildError, ParseOutput, ParseResult,
+    ParseOutput, ParserBuildError,
 };
-use texform_core::serialize::SerializeOptions;
-use texform_core::serialize::serialize as serialize_ast;
 use texform_transform::{
     FlattenGroupsConfig as CoreFlattenGroupsConfig,
-    LowerAttributesConfig as CoreLowerAttributesConfig, RewriteConfig as CoreRewriteConfig,
-    RuleClassSet, RuleSelection, TransformConfig as CoreTransformConfig, run as transform_run,
+    LowerAttributesConfig as CoreLowerAttributesConfig, Profile as CoreProfile,
 };
 use tsify_next::Tsify;
 use wasm_bindgen::prelude::*;
@@ -129,14 +125,12 @@ impl LowerAttributesConfig {
 #[serde(default)]
 struct RewriteConfigInput {
     enabled: Option<bool>,
-    classes: Option<Vec<String>>,
     max_iterations: Option<usize>,
 }
 
 #[wasm_bindgen]
 pub struct RewriteConfig {
     enabled: bool,
-    classes: Vec<String>,
     max_iterations: usize,
 }
 
@@ -154,7 +148,6 @@ impl RewriteConfig {
         };
         Ok(Self {
             enabled: input.enabled.unwrap_or(true),
-            classes: input.classes.unwrap_or_default(),
             max_iterations: input.max_iterations.unwrap_or(100),
         })
     }
@@ -170,16 +163,6 @@ impl RewriteConfig {
     }
 
     #[wasm_bindgen(getter)]
-    pub fn classes(&self) -> Vec<String> {
-        self.classes.clone()
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_classes(&mut self, classes: Vec<String>) {
-        self.classes = classes;
-    }
-
-    #[wasm_bindgen(getter)]
     pub fn max_iterations(&self) -> usize {
         self.max_iterations
     }
@@ -191,21 +174,11 @@ impl RewriteConfig {
 }
 
 impl RewriteConfig {
-    fn from_core(config: CoreRewriteConfig) -> Self {
+    fn from_core(enabled: bool, max_iterations: usize) -> Self {
         Self {
-            enabled: config.enabled,
-            classes: class_names(config.classes),
-            max_iterations: config.max_iterations,
+            enabled,
+            max_iterations,
         }
-    }
-
-    fn to_core(&self) -> Result<CoreRewriteConfig, JsValue> {
-        Ok(CoreRewriteConfig {
-            enabled: self.enabled,
-            classes: class_set_from_names(&self.classes)?,
-            max_iterations: self.max_iterations,
-            selection: RuleSelection::All,
-        })
     }
 }
 
@@ -407,6 +380,39 @@ impl FlattenGroupsConfig {
     }
 }
 
+fn flatten_groups_input_to_core(input: FlattenGroupsConfigInput) -> CoreFlattenGroupsConfig {
+    CoreFlattenGroupsConfig {
+        enabled: input.enabled.unwrap_or(true),
+        preserve_group_containing_declarative_command: input
+            .preserve_group_containing_declarative_command
+            .unwrap_or(true),
+        preserve_group_in_script_base_slot: input
+            .preserve_group_in_script_base_slot
+            .unwrap_or(true),
+        preserve_group_inside_env_body: input.preserve_group_inside_env_body.unwrap_or(true),
+        preserve_group_containing_infix: input.preserve_group_containing_infix.unwrap_or(true),
+        preserve_group_adjacent_to_command_like: input
+            .preserve_group_adjacent_to_command_like
+            .unwrap_or(true),
+        preserve_group_as_argument_of_command: input
+            .preserve_group_as_argument_of_command
+            .unwrap_or(true),
+        preserve_group_after_scripted_command_like: input
+            .preserve_group_after_scripted_command_like
+            .unwrap_or(true),
+        preserve_empty_group: input.preserve_empty_group.unwrap_or(true),
+        preserve_group_with_lone_atom_spacing_char: input
+            .preserve_group_with_lone_atom_spacing_char
+            .unwrap_or(true),
+        preserve_group_starting_with_atom_spacing_char: input
+            .preserve_group_starting_with_atom_spacing_char
+            .unwrap_or(true),
+        preserve_group_containing_delimited_pair: input
+            .preserve_group_containing_delimited_pair
+            .unwrap_or(true),
+    }
+}
+
 impl FlattenGroupsConfig {
     fn from_core(config: CoreFlattenGroupsConfig) -> Self {
         Self {
@@ -467,11 +473,45 @@ struct TransformConfigInput {
     flatten_groups: Option<FlattenGroupsConfigInput>,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct EngineOptions {
+    packages: Option<Vec<String>>,
+    items: Option<Vec<ContextItemInput>>,
+    remove_commands: Option<Vec<String>>,
+    remove_environments: Option<Vec<String>>,
+    remove_delimiter_controls: Option<Vec<String>>,
+    disable_rules: Option<Vec<String>>,
+    profile: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct ParserOptions {
+    packages: Option<Vec<String>>,
+    items: Option<Vec<ContextItemInput>>,
+    remove_commands: Option<Vec<String>>,
+    remove_environments: Option<Vec<String>>,
+    remove_delimiter_controls: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct NormalizeOptions {
+    strict: Option<bool>,
+    recover: Option<bool>,
+    max_group_depth: Option<usize>,
+    flatten_groups: Option<FlattenGroupsConfigInput>,
+    rewrite_enabled: Option<bool>,
+    lower_attributes_enabled: Option<bool>,
+    max_iterations: Option<usize>,
+}
+
 #[wasm_bindgen]
 impl TransformConfig {
     #[wasm_bindgen(constructor)]
     pub fn new(args: Option<JsValue>) -> Result<TransformConfig, JsValue> {
-        let mut config = Self::from_core(CoreTransformConfig::AUTHORING.clone());
+        let mut config = Self::from_profile(CoreProfile::Authoring);
         let input = match args {
             Some(value) if !value.is_null() && !value.is_undefined() => {
                 serde_wasm_bindgen::from_value::<TransformConfigInput>(value).map_err(|error| {
@@ -488,7 +528,6 @@ impl TransformConfig {
         if let Some(rewrite) = input.rewrite {
             config.rewrite = RewriteConfig {
                 enabled: rewrite.enabled.unwrap_or(true),
-                classes: rewrite.classes.unwrap_or_default(),
                 max_iterations: rewrite.max_iterations.unwrap_or(100),
             };
         }
@@ -532,19 +571,19 @@ impl TransformConfig {
     }
 
     pub fn authoring() -> TransformConfig {
-        Self::from_core(CoreTransformConfig::AUTHORING.clone())
+        Self::from_profile(CoreProfile::Authoring)
     }
 
     pub fn corpus() -> TransformConfig {
-        Self::from_core(CoreTransformConfig::CORPUS.clone())
+        Self::from_profile(CoreProfile::Corpus)
     }
 
     pub fn corpus_drop() -> TransformConfig {
-        Self::from_core(CoreTransformConfig::CORPUS_DROP.clone())
+        Self::from_profile(CoreProfile::CorpusDrop)
     }
 
     pub fn equiv() -> TransformConfig {
-        Self::from_core(CoreTransformConfig::EQUIV.clone())
+        Self::from_profile(CoreProfile::Equiv)
     }
 
     #[wasm_bindgen(getter)]
@@ -559,11 +598,10 @@ impl TransformConfig {
 
     #[wasm_bindgen(getter)]
     pub fn rewrite(&self) -> RewriteConfig {
-        RewriteConfig::from_core(
-            self.rewrite
-                .to_core()
-                .expect("stored rewrite config is valid"),
-        )
+        RewriteConfig {
+            enabled: self.rewrite.enabled,
+            max_iterations: self.rewrite.max_iterations,
+        }
     }
 
     #[wasm_bindgen(setter)]
@@ -583,79 +621,84 @@ impl TransformConfig {
 }
 
 impl TransformConfig {
-    fn from_core(config: CoreTransformConfig) -> Self {
+    fn from_profile(profile: CoreProfile) -> Self {
+        let config = profile.default_transform_config();
         Self {
-            lower_attributes: LowerAttributesConfig::from_core(config.lower_attributes),
-            rewrite: RewriteConfig::from_core(config.rewrite),
+            lower_attributes: LowerAttributesConfig {
+                enabled: config.lower_attributes_enabled,
+            },
+            rewrite: RewriteConfig::from_core(config.rewrite_enabled, config.max_iterations),
             flatten_groups: FlattenGroupsConfig::from_core(config.flatten_groups),
         }
     }
+}
 
-    fn to_core(&self) -> Result<CoreTransformConfig, JsValue> {
-        Ok(CoreTransformConfig {
-            lower_attributes: self.lower_attributes.to_core(),
-            rewrite: self.rewrite.to_core()?,
-            flatten_groups: self.flatten_groups.to_core(),
-        })
+fn profile_from_name(name: &str) -> Result<texform::Profile, JsValue> {
+    match name {
+        "authoring" => Ok(texform::Profile::Authoring),
+        "corpus" => Ok(texform::Profile::Corpus),
+        "corpus-drop" => Ok(texform::Profile::CorpusDrop),
+        "equiv" => Ok(texform::Profile::Equiv),
+        other => Err(JsValue::from_str(&format!(
+            "unknown transform profile: {}",
+            other
+        ))),
     }
 }
 
-fn class_names(classes: RuleClassSet) -> Vec<String> {
-    classes
+fn rule_key_from_name(name: &str) -> Result<texform_transform::RuleKey, JsValue> {
+    texform_transform::rewrite::all_rules()
         .iter()
-        .map(|class| class.as_str().to_string())
-        .collect()
-}
-
-fn class_set_from_names(names: &[String]) -> Result<RuleClassSet, JsValue> {
-    let mut set = RuleClassSet::empty();
-    for name in names {
-        let class = match name.as_str() {
-            "standard" => RuleClassSet::STANDARD,
-            "expand" => RuleClassSet::EXPAND,
-            "drop" => RuleClassSet::DROP,
-            "equiv" => RuleClassSet::EQUIV,
-            other => {
-                return Err(JsValue::from_str(&format!(
-                    "unknown rewrite rule class: {}",
-                    other
-                )));
-            }
-        };
-        set |= class;
-    }
-    Ok(set)
+        .find_map(|rule| {
+            let key = rule.meta().key;
+            (key.to_string() == name).then_some(key)
+        })
+        .ok_or_else(|| JsValue::from_str(&format!("unknown transform rule: {}", name)))
 }
 
 #[wasm_bindgen]
-pub struct ParseContext {
-    inner: texform_core::parse::ParseContext,
+pub struct Parser {
+    inner: texform_core::parse::Parser,
 }
 
 #[wasm_bindgen]
-impl ParseContext {
+impl Parser {
     #[wasm_bindgen(constructor)]
-    pub fn new(
-        packages: Option<Vec<String>>,
-        items: Option<JsValue>,
-    ) -> Result<ParseContext, JsValue> {
-        let mut builder = match packages {
+    pub fn new(args: Option<JsValue>) -> Result<Parser, JsValue> {
+        let input = match args {
+            Some(value) if !value.is_null() && !value.is_undefined() => {
+                serde_wasm_bindgen::from_value::<ParserOptions>(value).map_err(|error| {
+                    JsValue::from_str(&format!("invalid parser options: {}", error))
+                })?
+            }
+            _ => ParserOptions::default(),
+        };
+        let mut builder = match input.packages {
             Some(pkgs) => {
                 let refs: Vec<&str> = pkgs.iter().map(String::as_str).collect();
-                texform_core::parse::ParseContextBuilder::empty().packages(refs.as_slice())
+                if refs.is_empty() {
+                    texform_core::parse::ParserBuilder::empty()
+                } else {
+                    texform_core::parse::ParserBuilder::empty().packages(refs.as_slice())
+                }
             }
-            _ => texform_core::parse::ParseContextBuilder::default(),
+            _ => texform_core::parse::ParserBuilder::default(),
         };
-        if let Some(items) = items {
-            let items: Vec<ContextItemInput> = serde_wasm_bindgen::from_value(items)
-                .map_err(|error| JsValue::from_str(&format!("invalid context items: {}", error)))?;
-            for item in items {
-                builder = builder.insert_item(parse_context_item_input(item)?);
-            }
+        for item in input.items.unwrap_or_default() {
+            builder = builder.insert_item(parse_context_item_input(item)?);
+        }
+        for name in input.remove_commands.unwrap_or_default() {
+            builder = builder.remove_command(name);
+        }
+        for name in input.remove_environments.unwrap_or_default() {
+            builder = builder.remove_environment(name);
+        }
+        for name in input.remove_delimiter_controls.unwrap_or_default() {
+            builder = builder.remove_delimiter_control(name);
         }
 
         let inner = builder.build().map_err(parse_context_build_error_to_js)?;
-        Ok(ParseContext { inner })
+        Ok(Parser { inner })
     }
 
     pub fn is_delimiter_control(&self, name: &str) -> bool {
@@ -665,26 +708,6 @@ impl ParseContext {
     pub fn parse(&self, src: &str, config: Option<ParseConfigInput>) -> Result<JsValue, JsValue> {
         let config = parse_config_input(config);
         parse_output_to_result(self.inner.parse(src, &config))
-    }
-
-    pub fn serialize(
-        &self,
-        src: &str,
-        config: Option<ParseConfigInput>,
-        options: Option<JsValue>,
-    ) -> Result<String, JsValue> {
-        let config = parse_config_input(config);
-        let output = self.inner.parse(src, &config);
-
-        let parsed_options = match options {
-            Some(opts_js) => Some(
-                serde_wasm_bindgen::from_value(opts_js)
-                    .map_err(|e| JsValue::from_str(&format!("invalid serialize options: {}", e)))?,
-            ),
-            None => None,
-        };
-
-        serialize_parse_output(output, parsed_options.as_ref())
     }
 
     pub fn lookup_command(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
@@ -724,7 +747,135 @@ impl ParseContext {
     }
 }
 
-impl ParseContext {
+#[wasm_bindgen]
+pub struct Engine {
+    inner: texform::Engine,
+}
+
+#[wasm_bindgen]
+impl Engine {
+    #[wasm_bindgen(constructor)]
+    pub fn new(args: Option<JsValue>) -> Result<Engine, JsValue> {
+        let input = match args {
+            Some(value) if !value.is_null() && !value.is_undefined() => {
+                serde_wasm_bindgen::from_value::<EngineOptions>(value).map_err(|error| {
+                    JsValue::from_str(&format!("invalid engine options: {}", error))
+                })?
+            }
+            _ => EngineOptions::default(),
+        };
+        let profile = input
+            .profile
+            .as_deref()
+            .ok_or_else(|| JsValue::from_str("profile is required"))?;
+        let mut builder = texform::Engine::builder().profile(profile_from_name(profile)?);
+        if let Some(packages) = input.packages {
+            let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
+            builder = if refs.is_empty() {
+                builder.empty_knowledge()
+            } else {
+                builder.packages(refs.as_slice())
+            };
+        }
+        for item in input.items.unwrap_or_default() {
+            builder = builder.item(parse_context_item_input(item)?);
+        }
+        for name in input.remove_commands.unwrap_or_default() {
+            builder = builder.remove_command(name);
+        }
+        for name in input.remove_environments.unwrap_or_default() {
+            builder = builder.remove_environment(name);
+        }
+        for name in input.remove_delimiter_controls.unwrap_or_default() {
+            builder = builder.remove_delimiter_control(name);
+        }
+        for name in input.disable_rules.unwrap_or_default() {
+            builder = builder.disable_rule(rule_key_from_name(&name)?);
+        }
+        Ok(Self {
+            inner: builder
+                .build()
+                .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        })
+    }
+
+    pub fn parse(&self, src: &str, config: Option<ParseConfigInput>) -> Result<JsValue, JsValue> {
+        let config = parse_config_input(config);
+        parse_output_to_result(self.inner.parse_with(src, &config))
+    }
+
+    pub fn normalize(&self, src: &str, options: Option<JsValue>) -> Result<JsValue, JsValue> {
+        let mut config = texform::NormalizeConfig {
+            parse: ParseConfig::STRICT_NO_RECOVER,
+            transform: *self.inner.default_transform_config(),
+        };
+        if let Some(value) = options {
+            if !value.is_null() && !value.is_undefined() {
+                let input =
+                    serde_wasm_bindgen::from_value::<NormalizeOptions>(value).map_err(|error| {
+                        JsValue::from_str(&format!("invalid normalize options: {}", error))
+                    })?;
+                if let Some(strict) = input.strict {
+                    config.parse.strict = strict;
+                }
+                if let Some(recover) = input.recover {
+                    config.parse.recover = recover;
+                }
+                if let Some(max_group_depth) = input.max_group_depth {
+                    config.parse.max_group_depth = max_group_depth;
+                }
+                if let Some(flatten_groups) = input.flatten_groups {
+                    config.transform.flatten_groups = flatten_groups_input_to_core(flatten_groups);
+                }
+                if let Some(rewrite_enabled) = input.rewrite_enabled {
+                    config.transform.rewrite_enabled = rewrite_enabled;
+                }
+                if let Some(lower_attributes_enabled) = input.lower_attributes_enabled {
+                    config.transform.lower_attributes_enabled = lower_attributes_enabled;
+                }
+                if let Some(max_iterations) = input.max_iterations {
+                    config.transform.max_iterations = max_iterations;
+                }
+            }
+        }
+        let result = self
+            .inner
+            .normalize_with(src, &config)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let value = js_sys::Object::new();
+        js_sys::Reflect::set(&value, &"normalized".into(), &result.normalized.into()).unwrap();
+        js_sys::Reflect::set(
+            &value,
+            &"report".into(),
+            &transform_report_to_js(&result.report),
+        )
+        .unwrap();
+        Ok(value.into())
+    }
+}
+
+impl Parser {
+    #[cfg(test)]
+    fn from_options(input: ParserOptions) -> Result<Parser, JsValue> {
+        let mut builder = match input.packages {
+            Some(pkgs) => {
+                let refs: Vec<&str> = pkgs.iter().map(String::as_str).collect();
+                if refs.is_empty() {
+                    texform_core::parse::ParserBuilder::empty()
+                } else {
+                    texform_core::parse::ParserBuilder::empty().packages(refs.as_slice())
+                }
+            }
+            _ => texform_core::parse::ParserBuilder::default(),
+        };
+        for item in input.items.unwrap_or_default() {
+            builder = builder.insert_item(parse_context_item_input(item)?);
+        }
+
+        let inner = builder.build().map_err(parse_context_build_error_to_js)?;
+        Ok(Parser { inner })
+    }
+
     fn lookup_command_meta(
         &self,
         name: &str,
@@ -762,50 +913,6 @@ impl ParseContext {
     }
 }
 
-/// Parse a LaTeX formula.
-///
-/// Returns a JS object with `node` and `span` on success.
-/// Throws an error object with `diagnostics` and `partial_result` when
-/// diagnostics are present.
-#[wasm_bindgen]
-pub fn parse(src: &str, config: Option<ParseConfigInput>) -> Result<JsValue, JsValue> {
-    let config = parse_config_input(config);
-    parse_output_to_result(api::parse_latex(src, &config))
-}
-
-/// Test one or more context items by injecting them and parsing one or more inputs.
-///
-/// Supported targets are command, environment, and delimiter control.
-#[wasm_bindgen]
-pub fn parse_with_context_items(
-    items: JsValue,
-    inputs: Vec<String>,
-    packages: Option<Vec<String>>,
-    config: Option<ParseConfigInput>,
-) -> Result<JsValue, JsValue> {
-    let config = parse_config_input(config);
-    let items: Vec<ContextItemInput> = serde_wasm_bindgen::from_value(items)
-        .map_err(|error| JsValue::from_str(&format!("invalid context items: {}", error)))?;
-
-    let input_refs: Vec<&str> = inputs.iter().map(String::as_str).collect();
-    let package_refs = packages
-        .as_ref()
-        .map(|values| values.iter().map(String::as_str).collect::<Vec<_>>());
-
-    let core_items: Vec<ContextItem> = items
-        .into_iter()
-        .map(parse_context_item_input)
-        .collect::<Result<_, _>>()?;
-
-    let output = api::parse_with_context_items(
-        &core_items,
-        input_refs.as_slice(),
-        package_refs.as_deref(),
-        &config,
-    );
-    parse_with_context_output_to_result(output)
-}
-
 fn parse_context_item_input(input: ContextItemInput) -> Result<ContextItem, JsValue> {
     match input {
         ContextItemInput::Command {
@@ -839,10 +946,10 @@ fn parse_context_item_input(input: ContextItemInput) -> Result<ContextItem, JsVa
 }
 
 #[wasm_bindgen]
-pub fn validate_spec(spec: &str) -> JsValue {
+pub fn validate_argspec(spec: &str) -> JsValue {
     let value = js_sys::Object::new();
 
-    match parse_arg_specs(spec, "validate_spec") {
+    match parse_arg_specs(spec, "validate_argspec") {
         Ok(args) => {
             let parsed = js_sys::Array::new();
             for arg in &args {
@@ -868,51 +975,7 @@ pub fn validate_spec(spec: &str) -> JsValue {
     value.into()
 }
 
-/// Parse a LaTeX formula and serialize the result back to canonical LaTeX text.
-///
-/// An optional `options` object may be passed to control formatting; fields
-/// that are omitted default to the canonical style. Returns the serialized
-/// string on success; throws when parsing produces no result at all.
-#[wasm_bindgen]
-pub fn serialize(
-    src: &str,
-    config: Option<ParseConfigInput>,
-    options: Option<JsValue>,
-) -> Result<String, JsValue> {
-    let config = parse_config_input(config);
-    let output = api::parse_latex(src, &config);
-
-    let parsed_options = match options {
-        Some(opts_js) => Some(
-            serde_wasm_bindgen::from_value(opts_js)
-                .map_err(|e| JsValue::from_str(&format!("invalid serialize options: {}", e)))?,
-        ),
-        None => None,
-    };
-
-    serialize_parse_output(output, parsed_options.as_ref())
-}
-
-#[wasm_bindgen]
-pub fn transform(src: &str, config: Option<TransformConfig>) -> Result<JsValue, JsValue> {
-    let ctx = texform_core::parse::ParseContext::shared();
-    let config = match config {
-        Some(config) => config.to_core()?,
-        None => CoreTransformConfig::AUTHORING.clone(),
-    };
-    let parse_config = ParseConfig::STRICT_NO_RECOVER;
-    let mut ast = ctx
-        .parse_to_ast(src, &parse_config)
-        .map_err(|error| JsValue::from_str(&error.to_string()))?;
-    let report = transform_run(&mut ast, ctx, &config)
-        .map_err(|error| JsValue::from_str(&error.to_string()))?;
-    let value = js_sys::Object::new();
-    js_sys::Reflect::set(&value, &"normalized".into(), &serialize_ast(&ast).into()).unwrap();
-    js_sys::Reflect::set(&value, &"report".into(), &transform_report_to_js(&report)).unwrap();
-    Ok(value.into())
-}
-
-fn transform_report_to_js(report: &texform_transform::TransformReport) -> JsValue {
+fn transform_report_to_js(report: &texform::TransformReport) -> JsValue {
     let value = js_sys::Object::new();
     set_number(&value, "iterations", report.rewrite.iterations);
 
@@ -955,73 +1018,6 @@ fn transform_report_to_js(report: &texform_transform::TransformReport) -> JsValu
         "unwrapped_slot",
         report.flatten_groups.unwrapped_slot,
     );
-    set_number(
-        &flatten,
-        "preserved_group_containing_declarative_command",
-        report
-            .flatten_groups
-            .preserved_group_containing_declarative_command,
-    );
-    set_number(
-        &flatten,
-        "preserved_group_in_script_base_slot",
-        report.flatten_groups.preserved_group_in_script_base_slot,
-    );
-    set_number(
-        &flatten,
-        "preserved_group_inside_env_body",
-        report.flatten_groups.preserved_group_inside_env_body,
-    );
-    set_number(
-        &flatten,
-        "preserved_group_containing_infix",
-        report.flatten_groups.preserved_group_containing_infix,
-    );
-    set_number(
-        &flatten,
-        "preserved_group_adjacent_to_command_like",
-        report
-            .flatten_groups
-            .preserved_group_adjacent_to_command_like,
-    );
-    set_number(
-        &flatten,
-        "preserved_group_as_argument_of_command",
-        report.flatten_groups.preserved_group_as_argument_of_command,
-    );
-    set_number(
-        &flatten,
-        "preserved_group_after_scripted_command_like",
-        report
-            .flatten_groups
-            .preserved_group_after_scripted_command_like,
-    );
-    set_number(
-        &flatten,
-        "preserved_empty_group",
-        report.flatten_groups.preserved_empty_group,
-    );
-    set_number(
-        &flatten,
-        "preserved_group_with_lone_atom_spacing_char",
-        report
-            .flatten_groups
-            .preserved_group_with_lone_atom_spacing_char,
-    );
-    set_number(
-        &flatten,
-        "preserved_group_starting_with_atom_spacing_char",
-        report
-            .flatten_groups
-            .preserved_group_starting_with_atom_spacing_char,
-    );
-    set_number(
-        &flatten,
-        "preserved_group_containing_delimited_pair",
-        report
-            .flatten_groups
-            .preserved_group_containing_delimited_pair,
-    );
     js_sys::Reflect::set(&value, &"flatten_groups".into(), &flatten.into()).unwrap();
 
     value.into()
@@ -1031,118 +1027,17 @@ fn set_number(value: &js_sys::Object, key: &str, number: usize) {
     js_sys::Reflect::set(value, &key.into(), &JsValue::from_f64(number as f64)).unwrap();
 }
 
-fn serialize_parse_output(
-    output: ParseOutput,
-    options: Option<&SerializeOptions>,
-) -> Result<String, JsValue> {
-    let result = match prepare_parse_output_for_serialize(&output) {
-        Ok(result) => result,
-        Err(SerializePrepareError::DiagnosticsPresent) => return Err(build_parse_error(&output)?),
-        Err(SerializePrepareError::NoResult) => {
-            return Err(JsValue::from_str("parse produced no result to serialize"));
-        }
-    };
-
-    let node = &result.node;
-
-    let result = match options {
-        Some(opts) => api::serialize_latex_with(node, opts),
-        None => api::serialize_latex(node),
-    };
-
-    Ok(result)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SerializePrepareError {
-    DiagnosticsPresent,
-    NoResult,
-}
-
-fn prepare_parse_output_for_serialize(
-    output: &ParseOutput,
-) -> Result<&ParseResult, SerializePrepareError> {
-    if !output.diagnostics.is_empty() {
-        return Err(SerializePrepareError::DiagnosticsPresent);
-    }
-
-    output
-        .result
-        .as_ref()
-        .ok_or(SerializePrepareError::NoResult)
-}
-
-fn format_parse_context_build_error(error: ParseContextBuildError) -> String {
+fn format_parse_context_build_error(error: ParserBuildError) -> String {
     match error {
-        ParseContextBuildError::PackageLoad(error) => format!("package loading failed: {}", error),
-        ParseContextBuildError::InvalidContextItem { name, source } => {
+        ParserBuildError::PackageLoad(error) => format!("package loading failed: {}", error),
+        ParserBuildError::InvalidContextItem { name, source } => {
             format!("spec validation failed for {}: {}", name, source)
         }
     }
 }
 
-fn parse_context_build_error_to_js(error: ParseContextBuildError) -> JsValue {
+fn parse_context_build_error_to_js(error: ParserBuildError) -> JsValue {
     JsValue::from_str(&format_parse_context_build_error(error))
-}
-
-fn parse_with_context_output_to_result(
-    output: api::ParseWithContextOutput,
-) -> Result<JsValue, JsValue> {
-    let results = js_sys::Array::new();
-    for item in &output {
-        results.push(&parse_output_to_batch_entry(&item.input, &item.output)?);
-    }
-    Ok(results.into())
-}
-
-fn parse_output_to_batch_entry(input: &str, output: &ParseOutput) -> Result<JsValue, JsValue> {
-    let value = js_sys::Object::new();
-    js_sys::Reflect::set(&value, &"input".into(), &input.into()).unwrap();
-
-    if output.diagnostics.is_empty() {
-        match &output.result {
-            Some(result) => {
-                let display = result.node.to_string();
-                let js = serde_wasm_bindgen::to_value(&result)
-                    .map_err(|e| JsValue::from_str(&e.to_string()))?;
-                js_sys::Reflect::set(&js, &"display".into(), &display.clone().into()).unwrap();
-                let diagnostics = js_sys::Array::new();
-
-                js_sys::Reflect::set(&value, &"success".into(), &JsValue::TRUE).unwrap();
-                js_sys::Reflect::set(&value, &"result".into(), &js).unwrap();
-                js_sys::Reflect::set(&value, &"display".into(), &display.into()).unwrap();
-                js_sys::Reflect::set(&value, &"diagnostics".into(), &diagnostics.into()).unwrap();
-                js_sys::Reflect::set(&value, &"partial_result".into(), &JsValue::NULL).unwrap();
-                Ok(value.into())
-            }
-            None => {
-                let diagnostics = js_sys::Array::new();
-                js_sys::Reflect::set(&value, &"success".into(), &JsValue::FALSE).unwrap();
-                js_sys::Reflect::set(&value, &"result".into(), &JsValue::NULL).unwrap();
-                js_sys::Reflect::set(&value, &"display".into(), &JsValue::NULL).unwrap();
-                js_sys::Reflect::set(&value, &"diagnostics".into(), &diagnostics.into()).unwrap();
-                js_sys::Reflect::set(&value, &"partial_result".into(), &JsValue::NULL).unwrap();
-                Ok(value.into())
-            }
-        }
-    } else {
-        let diagnostics = serde_wasm_bindgen::to_value(&output.diagnostics)
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
-
-        let partial_result = match &output.result {
-            Some(result) => serde_wasm_bindgen::to_value(result)
-                .map_err(|e| JsValue::from_str(&e.to_string()))?,
-            None => JsValue::NULL,
-        };
-
-        js_sys::Reflect::set(&value, &"success".into(), &JsValue::FALSE).unwrap();
-        js_sys::Reflect::set(&value, &"result".into(), &JsValue::NULL).unwrap();
-        js_sys::Reflect::set(&value, &"display".into(), &JsValue::NULL).unwrap();
-        js_sys::Reflect::set(&value, &"diagnostics".into(), &diagnostics).unwrap();
-        js_sys::Reflect::set(&value, &"partial_result".into(), &partial_result).unwrap();
-
-        Ok(value.into())
-    }
 }
 
 fn parse_output_to_result(output: ParseOutput) -> Result<JsValue, JsValue> {
@@ -1466,35 +1361,11 @@ fn delimiter_token_to_js(token: &DelimiterToken) -> JsValue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use texform_core::parse::{PackageLoadError, ParseContextBuildError};
-
-    fn custom_command_context() -> ParseContext {
-        ParseContext {
-            inner: texform_core::parse::ParseContextBuilder::default()
-                .insert_item(CommandItem::new(
-                    "probe",
-                    CommandKind::Prefix,
-                    AllowedMode::Math,
-                    "m",
-                ))
-                .build()
-                .expect("custom parse context should build"),
-        }
-    }
-
-    #[test]
-    fn serialize_rejects_diagnostics_bearing_parse_results() {
-        let config = ParseConfig::STRICT_NO_RECOVER;
-        let output = api::parse_latex(r"\unknowncmd", &config);
-
-        let err = prepare_parse_output_for_serialize(&output)
-            .expect_err("should reject diagnostics-bearing parse results");
-        assert_eq!(err, SerializePrepareError::DiagnosticsPresent);
-    }
+    use texform_core::parse::{PackageLoadError, ParserBuildError};
 
     #[test]
     fn package_load_build_errors_keep_package_loading_prefix() {
-        let error = format_parse_context_build_error(ParseContextBuildError::PackageLoad(
+        let error = format_parse_context_build_error(ParserBuildError::PackageLoad(
             PackageLoadError::UnknownPackage {
                 name: "missing".to_string(),
             },
@@ -1505,7 +1376,7 @@ mod tests {
 
     #[test]
     fn invalid_context_item_build_errors_include_item_name() {
-        let error = format_parse_context_build_error(ParseContextBuildError::InvalidContextItem {
+        let error = format_parse_context_build_error(ParserBuildError::InvalidContextItem {
             name: "foo".to_string(),
             source: texform_core::parse::ArgSpecParseError {
                 context: "foo".to_string(),
@@ -1523,11 +1394,23 @@ mod tests {
     #[test]
     fn empty_package_list_is_not_treated_like_default_packages() {
         let default_ctx =
-            ParseContext::new(None, None).expect("default parse context should build");
-        let empty_packages_ctx = ParseContext::new(Some(vec![]), None)
-            .expect("empty package list parse context should build");
-        let explicit_braket_ctx = ParseContext::new(Some(vec!["braket".into()]), None)
-            .expect("explicit braket parse context should build");
+            Parser::from_options(ParserOptions::default()).expect("default parser should build");
+        let empty_packages_ctx = Parser::from_options(ParserOptions {
+            packages: Some(vec![]),
+            items: None,
+            remove_commands: None,
+            remove_environments: None,
+            remove_delimiter_controls: None,
+        })
+        .expect("empty package list parser should build");
+        let explicit_braket_ctx = Parser::from_options(ParserOptions {
+            packages: Some(vec!["braket".into()]),
+            items: None,
+            remove_commands: None,
+            remove_environments: None,
+            remove_delimiter_controls: None,
+        })
+        .expect("explicit braket parse context should build");
 
         assert!(
             default_ctx
@@ -1556,26 +1439,15 @@ mod tests {
     }
 
     #[test]
-    fn parse_context_serialize_uses_context_items() {
-        let ctx = custom_command_context();
-        let config = ParseConfig::STRICT_NO_RECOVER;
-        let global_output = api::parse_latex(r"\probe{x}", &config);
-
-        let global_err = prepare_parse_output_for_serialize(&global_output)
-            .expect_err("global parse path should reject the custom command");
-        assert_eq!(global_err, SerializePrepareError::DiagnosticsPresent);
-
-        let output = ctx
-            .serialize(r"\probe{x}", None, None)
-            .expect("custom command should serialize with instance context");
-
-        assert_eq!(output, r"\probe { x }");
-    }
-
-    #[test]
     fn lookup_command_is_mode_specific() {
-        let ctx = ParseContext::new(Some(vec!["base".into(), "textmacros".into()]), None)
-            .expect("parse context should build");
+        let ctx = Parser::from_options(ParserOptions {
+            packages: Some(vec!["base".into(), "textmacros".into()]),
+            items: None,
+            remove_commands: None,
+            remove_environments: None,
+            remove_delimiter_controls: None,
+        })
+        .expect("parse context should build");
 
         let math = ctx
             .lookup_command_meta("underline", "math")

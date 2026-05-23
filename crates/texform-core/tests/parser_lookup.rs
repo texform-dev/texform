@@ -1,7 +1,6 @@
 use texform_core::parse::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, AllowedMode, CommandItem,
-    CommandKind, ContentMode, DelimiterControlItem, EnvironmentItem, ParseContext,
-    ParseContextBuilder,
+    CommandKind, ContentMode, DelimiterControlItem, EnvironmentItem, Parser, ParserBuilder,
 };
 
 fn assert_from_packages(actual: &[&str], expected: &[&str]) {
@@ -9,15 +8,15 @@ fn assert_from_packages(actual: &[&str], expected: &[&str]) {
 }
 
 #[test]
-fn empty_context_starts_empty() {
-    let ctx = ParseContext::empty();
+fn empty_parser_starts_empty() {
+    let ctx = Parser::empty();
     assert!(ctx.lookup_command("\\", ContentMode::Math).is_none());
     assert!(ctx.lookup_command("text", ContentMode::Math).is_none());
 }
 
 #[test]
-fn package_context_loads_linebreak_from_base_and_textmacros() {
-    let ctx = ParseContext::from_packages(&["base", "textmacros"]);
+fn package_parser_loads_linebreak_from_base_and_textmacros() {
+    let ctx = Parser::from_packages(&["base", "textmacros"]);
     let math_linebreak = ctx
         .lookup_command("\\", ContentMode::Math)
         .expect("expected math linebreak command from base knowledge");
@@ -40,18 +39,18 @@ fn package_context_loads_linebreak_from_base_and_textmacros() {
 }
 
 #[test]
-fn context_can_insert_and_remove_delimiter_controls() {
-    let ctx = ParseContextBuilder::empty()
+fn parser_builder_can_insert_and_remove_delimiter_controls() {
+    let ctx = ParserBuilder::empty()
         .insert_item(DelimiterControlItem::new("langle"))
         .remove_delimiter_control("langle")
         .build()
-        .expect("parse context should build");
+        .expect("parser should build");
     assert!(ctx.lookup_delimiter_control("langle").is_none());
 }
 
 #[test]
-fn context_builder_insert_then_remove_runtime_items_keeps_final_view_clean() {
-    let ctx = ParseContextBuilder::empty()
+fn parser_builder_insert_then_remove_items_keeps_final_view_clean() {
+    let ctx = ParserBuilder::empty()
         .insert_item(CommandItem::new(
             "tempcmd",
             CommandKind::Prefix,
@@ -67,15 +66,15 @@ fn context_builder_insert_then_remove_runtime_items_keeps_final_view_clean() {
         .remove_command("tempcmd")
         .remove_environment("tempenv")
         .build()
-        .expect("parse context should build");
+        .expect("parser should build");
 
     assert!(ctx.lookup_command("tempcmd", ContentMode::Math).is_none());
     assert!(ctx.lookup_env("tempenv", ContentMode::Math).is_none());
 }
 
 #[test]
-fn context_exposes_raw_character_and_explicit_command_views() {
-    let ctx = ParseContext::from_packages(&["base", "physics"]);
+fn parser_exposes_raw_character_and_explicit_command_views() {
+    let ctx = Parser::from_packages(&["base", "physics"]);
 
     let div: &ActiveCommandRecord = ctx
         .lookup_command("div", ContentMode::Math)
@@ -113,8 +112,8 @@ fn context_exposes_raw_character_and_explicit_command_views() {
 }
 
 #[test]
-fn context_lookup_env_returns_active_environment_record() {
-    let ctx = ParseContext::from_packages(&["ams"]);
+fn parser_lookup_env_returns_active_environment_record() {
+    let ctx = Parser::from_packages(&["ams"]);
 
     let matrix: &ActiveEnvironmentRecord = ctx
         .lookup_env("matrix", ContentMode::Math)

@@ -1,50 +1,72 @@
 //! User-facing transform configuration.
 
 use crate::flatten_groups::FlattenGroupsConfig;
-use crate::lower_attributes::LowerAttributesConfig;
-use crate::rewrite::{RuleClassSet, RuleKey, RuleSelection};
+use crate::rewrite::plan::RuleSelection;
+use crate::rewrite::{RuleClassSet, RuleKey};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TransformConfig {
-    pub lower_attributes: LowerAttributesConfig,
-    pub rewrite: RewriteConfig,
-    pub flatten_groups: FlattenGroupsConfig,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Profile {
+    Authoring,
+    Corpus,
+    CorpusDrop,
+    Equiv,
+}
+
+impl Profile {
+    pub const fn rule_classes(self) -> RuleClassSet {
+        match self {
+            Self::Authoring => RuleClassSet::STANDARD,
+            Self::Corpus => RuleClassSet::STANDARD.union(RuleClassSet::EXPAND),
+            Self::CorpusDrop => RuleClassSet::STANDARD
+                .union(RuleClassSet::EXPAND)
+                .union(RuleClassSet::DROP),
+            Self::Equiv => RuleClassSet::STANDARD
+                .union(RuleClassSet::EXPAND)
+                .union(RuleClassSet::DROP)
+                .union(RuleClassSet::EQUIV),
+        }
+    }
+
+    pub const fn default_transform_config(self) -> TransformConfig {
+        match self {
+            Self::Authoring | Self::Corpus => TransformConfig {
+                rewrite_enabled: true,
+                lower_attributes_enabled: true,
+                flatten_groups: FlattenGroupsConfig::STRICT,
+                max_iterations: 100,
+            },
+            Self::CorpusDrop | Self::Equiv => TransformConfig {
+                rewrite_enabled: true,
+                lower_attributes_enabled: true,
+                flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
+                max_iterations: 100,
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RewriteConfig {
-    pub enabled: bool,
-    pub classes: RuleClassSet,
-    pub max_iterations: usize,
-    pub selection: RuleSelection,
+pub struct BuildConfig {
+    pub(crate) classes: RuleClassSet,
+    pub(crate) selection: RuleSelection,
+    pub(crate) default_transform: TransformConfig,
 }
 
-impl RewriteConfig {
-    pub const DEFAULTS: Self = Self {
-        enabled: true,
-        classes: RuleClassSet::empty(),
-        max_iterations: 100,
-        selection: RuleSelection::All,
-    };
+impl BuildConfig {
+    pub fn profile(profile: Profile) -> Self {
+        Self {
+            classes: profile.rule_classes(),
+            selection: RuleSelection::All,
+            default_transform: profile.default_transform_config(),
+        }
+    }
 
-    pub const DISABLED: Self = Self {
-        enabled: false,
-        classes: RuleClassSet::empty(),
-        max_iterations: 100,
-        selection: RuleSelection::All,
-    };
-
-    pub fn only(&mut self, key: RuleKey) -> &mut Self {
-        self.selection = RuleSelection::Only(vec![key]);
+    pub fn rewrite_classes(mut self, classes: RuleClassSet) -> Self {
+        self.classes = classes;
         self
     }
 
-    pub fn only_many(&mut self, keys: &[RuleKey]) -> &mut Self {
-        self.selection = RuleSelection::Only(keys.to_vec());
-        self
-    }
-
-    pub fn disable(&mut self, key: RuleKey) -> &mut Self {
+    pub fn disable_rule(mut self, key: RuleKey) -> Self {
         match &mut self.selection {
             RuleSelection::Except(keys) => {
                 if !keys.contains(&key) {
@@ -56,63 +78,35 @@ impl RewriteConfig {
         self
     }
 
-    pub fn disable_many(&mut self, keys: &[RuleKey]) -> &mut Self {
-        for key in keys {
-            self.disable(*key);
-        }
+    #[doc(hidden)]
+    pub fn only_rule_for_tests(mut self, key: RuleKey) -> Self {
+        self.selection = RuleSelection::Only(vec![key]);
         self
+    }
+
+    #[doc(hidden)]
+    pub fn only_rules_for_tests(mut self, keys: Vec<RuleKey>) -> Self {
+        self.selection = RuleSelection::Only(keys);
+        self
+    }
+
+    pub(crate) fn default_transform(&self) -> TransformConfig {
+        self.default_transform
     }
 }
 
-impl TransformConfig {
-    pub const AUTHORING: Self = Self {
-        lower_attributes: LowerAttributesConfig::ENABLED,
-        rewrite: RewriteConfig {
-            enabled: true,
-            classes: RuleClassSet::STANDARD,
-            max_iterations: 100,
-            selection: RuleSelection::All,
-        },
-        flatten_groups: FlattenGroupsConfig::STRICT,
-    };
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TransformConfig {
+    pub rewrite_enabled: bool,
+    pub lower_attributes_enabled: bool,
+    pub flatten_groups: FlattenGroupsConfig,
+    pub max_iterations: usize,
+}
 
-    pub const CORPUS: Self = Self {
-        lower_attributes: LowerAttributesConfig::ENABLED,
-        rewrite: RewriteConfig {
-            enabled: true,
-            classes: RuleClassSet::STANDARD.union(RuleClassSet::EXPAND),
-            max_iterations: 100,
-            selection: RuleSelection::All,
-        },
-        flatten_groups: FlattenGroupsConfig::STRICT,
-    };
-
-    pub const CORPUS_DROP: Self = Self {
-        lower_attributes: LowerAttributesConfig::ENABLED,
-        rewrite: RewriteConfig {
-            enabled: true,
-            classes: RuleClassSet::STANDARD
-                .union(RuleClassSet::EXPAND)
-                .union(RuleClassSet::DROP),
-            max_iterations: 100,
-            selection: RuleSelection::All,
-        },
-        flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
-    };
-
-    pub const EQUIV: Self = Self {
-        lower_attributes: LowerAttributesConfig::ENABLED,
-        rewrite: RewriteConfig {
-            enabled: true,
-            classes: RuleClassSet::STANDARD
-                .union(RuleClassSet::EXPAND)
-                .union(RuleClassSet::DROP)
-                .union(RuleClassSet::EQUIV),
-            max_iterations: 100,
-            selection: RuleSelection::All,
-        },
-        flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
-    };
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NormalizeConfig {
+    pub parse: texform_core::parse::ParseConfig,
+    pub transform: TransformConfig,
 }
 
 #[cfg(test)]
@@ -121,59 +115,47 @@ mod tests {
     use crate::rewrite::RuleClass;
 
     #[test]
-    fn presets_compile_as_const_and_carry_expected_classes() {
+    fn profiles_compile_as_const_and_carry_expected_classes() {
         assert!(
-            TransformConfig::AUTHORING
-                .rewrite
-                .classes
+            Profile::Authoring
+                .rule_classes()
                 .contains(RuleClass::Standard)
         );
         assert!(
-            !TransformConfig::AUTHORING
-                .rewrite
-                .classes
+            !Profile::Authoring
+                .rule_classes()
                 .contains(RuleClass::Expand)
         );
+        assert!(Profile::Corpus.rule_classes().contains(RuleClass::Expand));
+        assert!(Profile::CorpusDrop.rule_classes().contains(RuleClass::Drop));
+        assert!(Profile::Equiv.rule_classes().contains(RuleClass::Equiv));
         assert!(
-            TransformConfig::CORPUS
-                .rewrite
-                .classes
-                .contains(RuleClass::Expand)
-        );
-        assert!(
-            TransformConfig::CORPUS_DROP
-                .rewrite
-                .classes
-                .contains(RuleClass::Drop)
-        );
-        assert!(
-            TransformConfig::EQUIV
-                .rewrite
-                .classes
-                .contains(RuleClass::Equiv)
-        );
-        assert!(
-            TransformConfig::AUTHORING
+            Profile::Authoring
+                .default_transform_config()
                 .flatten_groups
                 .preserve_group_adjacent_to_command_like
         );
         assert!(
-            TransformConfig::CORPUS
+            Profile::Corpus
+                .default_transform_config()
                 .flatten_groups
                 .preserve_group_adjacent_to_command_like
         );
         assert!(
-            !TransformConfig::CORPUS_DROP
+            !Profile::CorpusDrop
+                .default_transform_config()
                 .flatten_groups
                 .preserve_group_adjacent_to_command_like
         );
         assert!(
-            !TransformConfig::EQUIV
+            !Profile::Equiv
+                .default_transform_config()
                 .flatten_groups
                 .preserve_group_adjacent_to_command_like
         );
         assert!(
-            TransformConfig::EQUIV
+            Profile::Equiv
+                .default_transform_config()
                 .flatten_groups
                 .preserve_group_containing_infix
         );

@@ -365,22 +365,27 @@ macro_rules! transform_examples {
             #[test]
             fn $label() {
                 use $crate::rewrite::RewriteRule as _;
-                let parse_ctx = $crate::parse::ParseContext::from_packages(&[$($pkg),+]);
-                let mut cfg = $crate::TransformConfig {
-                    lower_attributes: $crate::LowerAttributesConfig::DISABLED,
-                    rewrite: $crate::RewriteConfig {
-                        classes: $crate::RuleClassSet::from($crate::RuleClass::$class),
-                        ..$crate::RewriteConfig::DEFAULTS
-                    },
+                let parse_ctx = $crate::parse::Parser::from_packages(&[$($pkg),+]);
+                let build_config = $crate::BuildConfig::profile($crate::Profile::Authoring)
+                    .rewrite_classes($crate::RuleClassSet::from($crate::RuleClass::$class))
+                    .only_rule_for_tests($rule.meta().key);
+                let transform_context = $crate::TransformContext::from_build_config(
+                    build_config,
+                    &parse_ctx,
+                )
+                .expect("transform context should build");
+                let cfg = $crate::TransformConfig {
+                    rewrite_enabled: true,
+                    lower_attributes_enabled: false,
                     flatten_groups: $crate::FlattenGroupsConfig::DISABLED,
+                    max_iterations: 100,
                 };
-                cfg.rewrite.only($rule.meta().key);
                 let parse_config = $crate::parse::ParseConfig::STRICT_NO_RECOVER;
 
                 let mut ast = parse_ctx
                     .parse_to_ast($input, &parse_config)
                     .expect("parse input should succeed");
-                $crate::run(&mut ast, &parse_ctx, &cfg)
+                transform_context.run_with(&mut ast, &parse_ctx, &cfg)
                     .expect("transform should succeed");
                 let actual = $crate::serialize::serialize(&ast);
 

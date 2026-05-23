@@ -2,11 +2,10 @@ mod support;
 
 use support::{
     assert_first_diagnostic_span_eq, collect_messages, command_item, contains_command_named,
-    contains_error_node, parse_single_via_public_api, parse_with_items,
+    contains_error_node, parse_many_with_items, parse_single_with_items, parse_with_items,
 };
-use texform_core::api::parse_with_context_items;
 use texform_core::parse::{
-    AllowedMode, CommandKind, ContextItem, ParseContext, ParseContextBuilder, ParseOutput,
+    AllowedMode, CommandKind, ContextItem, ParseOutput, Parser, ParserBuilder,
 };
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentValue, Delimiter, SyntaxNode,
@@ -28,8 +27,8 @@ fn underline_text_item() -> ContextItem {
     command_item("underline", CommandKind::Prefix, AllowedMode::Text, "m:T")
 }
 
-fn content_test_context() -> ParseContext {
-    ParseContextBuilder::empty()
+fn content_test_context() -> Parser {
+    ParserBuilder::empty()
         .insert_item(text_command_item())
         .insert_item(frac_command_item())
         .insert_item(underline_math_item())
@@ -58,7 +57,7 @@ fn first_command(output: &ParseOutput) -> (&str, &Vec<Option<Argument>>) {
 }
 
 #[test]
-fn integer_argument_is_verified_via_public_parser() {
+fn integer_argument_is_verified_by_parser() {
     let items = [command_item(
         "romannumeral",
         CommandKind::Prefix,
@@ -66,7 +65,7 @@ fn integer_argument_is_verified_via_public_parser() {
         "m:I",
     )];
 
-    let valid = parse_single_via_public_api(&items, r"\romannumeral+42", true);
+    let valid = parse_single_with_items(&items, r"\romannumeral+42", true);
     assert!(
         valid.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -79,7 +78,7 @@ fn integer_argument_is_verified_via_public_parser() {
         ArgumentValue::Integer("+42".to_string())
     );
 
-    let invalid = parse_single_via_public_api(&items, r"\romannumeral+", true);
+    let invalid = parse_single_with_items(&items, r"\romannumeral+", true);
     assert!(invalid.result.is_none(), "invalid integer should fail");
     assert!(
         !invalid.diagnostics.is_empty(),
@@ -96,7 +95,7 @@ fn non_nullable_integer_argument_rejects_empty_group() {
         "m:I",
     )];
 
-    let output = parse_single_via_public_api(&items, r"\romannumeral{}", true);
+    let output = parse_single_with_items(&items, r"\romannumeral{}", true);
     assert!(output.result.is_none(), "empty integer should fail");
     assert!(
         !output.diagnostics.is_empty(),
@@ -106,7 +105,7 @@ fn non_nullable_integer_argument_rejects_empty_group() {
 
 #[test]
 fn genfrac_accepts_empty_and_integer_style_arguments() {
-    let outputs = parse_with_context_items(
+    let outputs = parse_many_with_items(
         &[],
         &[
             r"\genfrac{}{}{0.0pt}{}{a}{b}",
@@ -133,7 +132,7 @@ fn genfrac_accepts_empty_and_integer_style_arguments() {
 }
 
 #[test]
-fn dimension_argument_is_verified_via_public_parser() {
+fn dimension_argument_is_verified_by_parser() {
     let items = [command_item(
         "hspace",
         CommandKind::Prefix,
@@ -141,7 +140,7 @@ fn dimension_argument_is_verified_via_public_parser() {
         "m:L",
     )];
 
-    let valid = parse_single_via_public_api(&items, r"\hspace{1,5 em}", true);
+    let valid = parse_single_with_items(&items, r"\hspace{1,5 em}", true);
     assert!(
         valid.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -154,7 +153,7 @@ fn dimension_argument_is_verified_via_public_parser() {
         ArgumentValue::Dimension("1.5em".to_string())
     );
 
-    let invalid = parse_single_via_public_api(&items, r"\hspaceabc", true);
+    let invalid = parse_single_with_items(&items, r"\hspaceabc", true);
     assert!(invalid.result.is_none(), "invalid dimension should fail");
     assert!(
         !invalid.diagnostics.is_empty(),
@@ -173,7 +172,7 @@ fn dimension_argument_accepts_shared_unit_set_and_rejects_unknown_units() {
 
     for unit in ["em", "ex", "pt", "pc", "px", "in", "cm", "mm", "mu"] {
         let src = format!(r"\hspace{{1{unit}}}");
-        let output = parse_single_via_public_api(&items, &src, true);
+        let output = parse_single_with_items(&items, &src, true);
         assert!(
             output.diagnostics.is_empty(),
             "unexpected diagnostics for {src}: {:?}",
@@ -186,7 +185,7 @@ fn dimension_argument_accepts_shared_unit_set_and_rejects_unknown_units() {
         );
     }
 
-    let invalid = parse_single_via_public_api(&items, r"\hspace{1zz}", true);
+    let invalid = parse_single_with_items(&items, r"\hspace{1zz}", true);
     assert!(invalid.result.is_none(), "unsupported unit should fail");
     assert!(
         !invalid.diagnostics.is_empty(),
@@ -203,7 +202,7 @@ fn keyval_argument_accepts_nested_and_escaped_shapes() {
         AllowedMode::Both,
         "o:K m:T",
     )];
-    let outputs = parse_with_context_items(
+    let outputs = parse_many_with_items(
         &items,
         &[
             r"\includegraphics[key=val]{file}",
@@ -239,7 +238,7 @@ fn keyval_argument_rejects_invalid_shapes() {
         AllowedMode::Both,
         "o:K m:T",
     )];
-    let outputs = parse_with_context_items(
+    let outputs = parse_many_with_items(
         &items,
         &[
             r"\includegraphics[key=]{file}",

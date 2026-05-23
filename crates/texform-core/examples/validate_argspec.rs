@@ -9,10 +9,10 @@ fn main() {
     }
 
     let spec = args[1].as_str();
-    println!("=== TeXForm validate_spec Example ===");
+    println!("=== TeXForm validate_argspec Example ===");
     println!("Spec: {}", spec);
 
-    match parse_arg_specs(spec, "validate_spec") {
+    match parse_arg_specs(spec, "validate_argspec") {
         Ok(parsed) => {
             println!("valid: true");
             println!("arg_count: {}", parsed.len());

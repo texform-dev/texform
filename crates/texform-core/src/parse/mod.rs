@@ -7,9 +7,9 @@ pub use config::ParseConfig;
 pub use context::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveDelimiterRecord, ActiveEnvironmentRecord,
     AllowedMode, ArgSpecParseError, CommandItem, CommandKind, ContentMode, ContextItem,
-    DelimiterControlItem, EnvironmentItem, PackageLoadError, ParseAstError, ParseContext,
-    ParseContextBuildError, ParseContextBuilder, ParseDiagnostic, ParseDiagnosticContext,
-    ParseDiagnosticKind, ParseOutput, ParseResult, Span,
+    DelimiterControlItem, EnvironmentItem, PackageLoadError, ParseAstError, ParseDiagnostic,
+    ParseDiagnosticContext, ParseDiagnosticKind, ParseOutput, ParseResult, Parser,
+    ParserBuildError, ParserBuilder, Span,
 };
 
 pub use context::MutationSummary;

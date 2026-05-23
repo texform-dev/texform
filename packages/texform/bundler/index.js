@@ -1,31 +1,16 @@
 import init, {
-  FlattenGroupsConfig,
-  LowerAttributesConfig,
-  ParseContext,
-  RewriteConfig,
-  TransformConfig,
-  parse,
-  parse_with_context_items,
-  serialize,
-  transform,
-  validate_spec,
+  Engine,
+  Parser,
+  validate_argspec,
 } from "../wasm/web/texform_wasm.js";
 import wasmUrl from "../wasm/web/texform_wasm_bg.wasm";
 
 await init({ module_or_path: new URL(wasmUrl, import.meta.url) });
 
 export {
-  FlattenGroupsConfig,
-  LowerAttributesConfig,
-  ParseContext,
-  RewriteConfig,
-  TransformConfig,
-  parse,
-  parse_with_context_items,
-  serialize,
-  transform,
-  validate_spec,
+  Engine,
+  Parser,
+  validate_argspec,
 };
 
-export { parse_with_context_items as parseWithContextItems };
-export { validate_spec as validateSpec };
+export { validate_argspec as validateArgspec };

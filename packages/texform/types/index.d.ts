@@ -246,7 +246,7 @@ export interface TransformResult {
   report: TransformReport;
 }
 
-export interface ValidateSpecResult {
+export interface ValidateArgspecResult {
   valid: boolean;
   parsed?: unknown[];
   error?: string;
@@ -266,62 +266,30 @@ export interface FlattenGroupsConfigInput {
   preserve_group_with_lone_atom_spacing_char?: boolean;
 }
 
-export class LowerAttributesConfig {
-  constructor(args?: { enabled?: boolean } | null);
-  free(): void;
-  [Symbol.dispose](): void;
-  enabled: boolean;
+export type Profile = "authoring" | "corpus" | "corpus-drop" | "equiv";
+
+export interface ParserOptions {
+  packages?: string[];
+  items?: ContextItem[];
+  removeCommands?: string[];
+  removeEnvironments?: string[];
+  removeDelimiterControls?: string[];
 }
 
-export class RewriteConfig {
-  constructor(args?: {
-    enabled?: boolean;
-    classes?: RewriteClass[];
-    max_iterations?: number;
-  } | null);
-  free(): void;
-  [Symbol.dispose](): void;
-  enabled: boolean;
-  classes: RewriteClass[];
-  max_iterations: number;
+export interface EngineOptions extends ParserOptions {
+  profile: Profile;
+  disableRules?: string[];
 }
 
-export class FlattenGroupsConfig {
-  constructor(args?: FlattenGroupsConfigInput | null);
-  free(): void;
-  [Symbol.dispose](): void;
-  enabled: boolean;
-  preserve_empty_group: boolean;
-  preserve_group_adjacent_to_command_like: boolean;
-  preserve_group_after_scripted_command_like: boolean;
-  preserve_group_containing_declarative_command: boolean;
-  preserve_group_containing_delimited_pair: boolean;
-  preserve_group_containing_infix: boolean;
-  preserve_group_in_script_base_slot: boolean;
-  preserve_group_inside_env_body: boolean;
-  preserve_group_starting_with_atom_spacing_char: boolean;
-  preserve_group_with_lone_atom_spacing_char: boolean;
+export interface NormalizeOptions extends ParseConfigInput {
+  flattenGroups?: FlattenGroupsConfigInput;
+  rewriteEnabled?: boolean;
+  lowerAttributesEnabled?: boolean;
+  maxIterations?: number;
 }
 
-export class TransformConfig {
-  constructor(args?: {
-    lower_attributes?: LowerAttributesConfig;
-    rewrite?: RewriteConfig;
-    flatten_groups?: FlattenGroupsConfig;
-  } | null);
-  free(): void;
-  [Symbol.dispose](): void;
-  static authoring(): TransformConfig;
-  static corpus(): TransformConfig;
-  static corpus_drop(): TransformConfig;
-  static equiv(): TransformConfig;
-  lower_attributes: LowerAttributesConfig;
-  rewrite: RewriteConfig;
-  flatten_groups: FlattenGroupsConfig;
-}
-
-export class ParseContext {
-  constructor(packages?: string[] | null, items?: ContextItem[] | null);
+export class Parser {
+  constructor(options?: ParserOptions | null);
   free(): void;
   [Symbol.dispose](): void;
   is_delimiter_control(name: string): boolean;
@@ -332,22 +300,15 @@ export class ParseContext {
   lookup_env(name: string, mode: AllowedMode): EnvInfo | undefined;
   lookup_explicit_command(name: string, mode: AllowedMode): CommandInfo | undefined;
   parse(src: string, config?: ParseConfigInput | null): ParseResult;
-  serialize(src: string, config?: ParseConfigInput | null, options?: SerializeOptions | null): string;
 }
 
-export function parse(src: string, config?: ParseConfigInput | null): ParseResult;
-export function parse_with_context_items(
-  items: ContextItem[],
-  inputs: string[],
-  packages?: string[] | null,
-  config?: ParseConfigInput | null,
-): ParseWithContextItem[];
-export { parse_with_context_items as parseWithContextItems };
-export function serialize(
-  src: string,
-  config?: ParseConfigInput | null,
-  options?: SerializeOptions | null,
-): string;
-export function transform(src: string, config?: TransformConfig | null): TransformResult;
-export function validate_spec(spec: string): ValidateSpecResult;
-export { validate_spec as validateSpec };
+export class Engine {
+  constructor(options: EngineOptions);
+  free(): void;
+  [Symbol.dispose](): void;
+  parse(src: string, config?: ParseConfigInput | null): ParseResult;
+  normalize(src: string, options?: NormalizeOptions | null): TransformResult;
+}
+
+export function validate_argspec(spec: string): ValidateArgspecResult;
+export { validate_argspec as validateArgspec };

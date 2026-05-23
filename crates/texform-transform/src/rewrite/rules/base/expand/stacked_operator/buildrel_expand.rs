@@ -130,7 +130,6 @@ fn split_operator_and_after(
 mod tests {
     use super::*;
     use crate::rewrite::transform_examples;
-    use crate::{run as transform, TransformConfig};
 
     // START: Generated examples; DO NOT modify
     transform_examples! {
@@ -176,13 +175,19 @@ mod tests {
     fn corpus_profile_uses_buildrel_rule_before_over_to_frac() {
         // CORPUS enables both Base and Expand rules. This locks in the contract
         // that buildrel-expand gets this TeX shape instead of over-to-frac.
-        let parse_ctx = crate::parse::ParseContext::from_packages(&["base"]);
+        let parse_ctx = crate::parse::Parser::from_packages(&["base"]);
         let mut ast = parse_ctx
             .parse_to_ast(r"A_n \buildrel n\to\infty \over = B_n", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
             .expect("parse input should succeed");
 
-        let report =
-            transform(&mut ast, &parse_ctx, &TransformConfig::CORPUS).expect("transform should succeed");
+        let context = crate::TransformContext::from_build_config(
+            crate::BuildConfig::profile(crate::Profile::Corpus),
+            &parse_ctx,
+        )
+        .expect("transform context should build");
+        let report = context
+            .run(&mut ast, &parse_ctx)
+            .expect("transform should succeed");
         let actual = crate::serialize::serialize(&ast);
         let expected_ast = parse_ctx
             .parse_to_ast(r"A_n \mathrel{\mathop{=}\limits^{n\to\infty}} B_n", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)

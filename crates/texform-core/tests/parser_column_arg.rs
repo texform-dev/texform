@@ -1,10 +1,8 @@
-use texform_core::parse::{
-    AllowedMode, CommandItem, CommandKind, ParseContextBuilder, ParseOutput,
-};
+use texform_core::parse::{AllowedMode, CommandItem, CommandKind, ParseOutput, ParserBuilder};
 use texform_interface::syntax_node::{ArgumentValue, SyntaxNode};
 
 fn parse_inline_column_command(src: &str) -> ParseOutput {
-    let ctx = ParseContextBuilder::empty()
+    let ctx = ParserBuilder::empty()
         .insert_item(CommandItem::new(
             "colspec",
             CommandKind::Prefix,

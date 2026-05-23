@@ -4,42 +4,35 @@ A LaTeX formula parser, formatter, and transform engine.
 
 ## Quick Start
 
+### Normalize Example
+
+```rust
+let engine = texform::Engine::builder()
+    .packages(&["base", "physics"])
+    .profile(texform::Profile::Authoring)
+    .build()?;
+
+let result = engine.normalize(r"\quantity{x}")?;
+assert_eq!(result.normalized, r"\qty { x }");
+```
+
 ### Parse Example
 
-Use the built-in CLI example to parse LaTeX formulas, inspect the syntax tree, and optionally inject
-custom command/environment/delimiter items into a temporary parse context:
+```rust
+let parser = texform::Parser::builder()
+    .packages(&["base"])
+    .build()?;
 
-```bash
-cargo run --example parse -p texform-core -- '<input>' [--strict true|false] [--verbose]
-cargo run --example parse -p texform-core -- '<input>' --command <name> <kind> <mode> <spec>
-cargo run --example parse -p texform-core -- '<input>' --environment <name> <mode> <body_mode> <spec>
-cargo run --example parse -p texform-core -- '<input>' --delimiter <name>
+let output = parser.parse(r"\frac{a}{b}");
+assert!(output.diagnostics.is_empty());
 ```
 
-**Examples:**
-
-```bash
-# Parse a simple fraction
-cargo run --example parse -p texform-core -- '\frac{a}{b}'
-
-# Parse with strict mode
-cargo run --example parse -p texform-core -- '\frac{a}{b}' --strict true
-
-# Inject a temporary command
-cargo run --example parse -p texform-core -- '\probe{a}' --command probe prefix math 'm'
-
-# Inject a temporary environment
-cargo run --example parse -p texform-core -- \
-  '\begin{probeenv}a\end{probeenv}' \
-  --environment probeenv math math ''
-```
-
-### validate_spec Example
+### validate_argspec Example
 
 Validate an argparse string:
 
 ```bash
-cargo run --example validate_spec -p texform-core -- '<spec>'
+cargo run --example validate_argspec -p texform-core -- '<spec>'
 ```
 
 ## Serialization
@@ -97,7 +90,9 @@ semantics per use case.
 
 ### Pipeline
 
-The engine runs the following ordered phases, all driven from `TransformConfig`:
+The engine runs the following ordered phases. `Profile` / `BuildConfig` decide
+which rewrite rules are compiled into the plan, while `TransformConfig` controls
+per-run switches such as phase gates, FlattenGroups behavior, and max iterations:
 
 1. **LowerAttributes (pre)** — canonicalize declarative-scope commands and registered prefix wrappers.
 2. **Rewrite** — apply rewrite rules in a fixed-point loop.
@@ -112,7 +107,7 @@ than its mechanism, and consumers choose which classes to apply by selecting a p
 
 | Class      | Intent |
 |------------|--------|
-| `Standard` | Uncontroversial author-facing standardization: deprecated-syntax modernization, typo fixes, alias canonicalization, cross-package anchor unification. Does not collapse stylistic choices that an author may legitimately make. |
+| `Standard` | Uncontroversial author-facing standardization: legacy-syntax modernization, typo fixes, alias canonicalization, cross-package anchor unification. Does not collapse stylistic choices that an author may legitimately make. |
 | `Expand`   | Corpus-oriented normal form: rewrites convenience commands, semantic macros, package-specific commands, and spacing primitives into more universal structures. Output remains readable LaTeX and preserves layout information. |
 | `Drop`     | Removes non-ink, metadata, and layout hints a corpus should not learn — linebreak preferences, invisible layout nodes, and similar caller-opt-in deletions. |
 | `Equiv`    | Aggressive normalization tuned for equivalence comparison; may sacrifice common idioms or author intent for higher recall. Rewrites rather than deletes. |
@@ -122,14 +117,14 @@ result.
 
 ### Profiles
 
-`TransformConfig` bundles classes for common downstream scenarios:
+`Profile` bundles rule classes for common downstream scenarios:
 
 | Profile       | Classes                                  | Target scenario                                              |
 |---------------|------------------------------------------|--------------------------------------------------------------|
-| `AUTHORING`   | `Standard`                               | Polished author-facing formatting; stylistic choices kept.   |
-| `CORPUS`      | `Standard` + `Expand`                    | MER input or LLM pretraining corpus; layout info preserved.  |
-| `CORPUS_DROP` | `Standard` + `Expand` + `Drop`           | Stronger corpus cleaning; drops linebreak/layout hints.      |
-| `EQUIV`       | `Standard` + `Expand` + `Drop` + `Equiv` | Aggressive normalization for formula equivalence comparison. |
+| `Authoring`   | `Standard`                               | Polished author-facing formatting; stylistic choices kept.   |
+| `Corpus`      | `Standard` + `Expand`                    | MER input or LLM pretraining corpus; layout info preserved.  |
+| `CorpusDrop`  | `Standard` + `Expand` + `Drop`           | Stronger corpus cleaning; drops linebreak/layout hints.      |
+| `Equiv`       | `Standard` + `Expand` + `Drop` + `Equiv` | Aggressive normalization for formula equivalence comparison. |
 
 See `crates/texform-transform/src/rewrite/rules/README.md` for rule authoring conventions.
 
@@ -137,8 +132,8 @@ See `crates/texform-transform/src/rewrite/rules/README.md` for rule authoring co
 
 TeXForm exposes two Rust-side entry layers:
 
-- `texform-core::context` — the stateful public API for building a parse context, injecting temporary knowledge, querying metadata, and parsing repeatedly
-- `texform-core::api` — convenience helpers for one-shot parsing and batch probing on top of the default/runtime context
+- `texform` — the user-facing facade with parse-only `Parser`, normalizing `Engine`, `serialize`, `validate_argspec`, and analysis helpers
+- `texform-core::parse::Parser` — the lower-level parser API for callers that need direct AST/parser access
 
 `texform-core::knowledge` is an internal implementation module and is not the intended public integration surface.
 
@@ -151,7 +146,9 @@ uv run maturin develop # build from repo root
 
 ```python
 import texform
-result = texform.parse(r'\frac{a}{b}')  # returns dict with node + span
+
+parser = texform.Parser(packages=["base"])
+result = parser.parse(r'\frac{a}{b}')  # returns dict with node + span
 ```
 
 ### WASM / JavaScript
@@ -161,9 +158,10 @@ npm install texform
 ```
 
 ```js
-import { parse } from "texform";
+import { Parser } from "texform";
 
-const result = parse("\\frac{a}{b}"); // returns object with node + span
+const parser = new Parser({ packages: ["base"] });
+const result = parser.parse("\\frac{a}{b}"); // returns object with node + span
 ```
 
 For local development, regenerate the underlying WASM package and sync it into

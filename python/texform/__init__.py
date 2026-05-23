@@ -2,26 +2,26 @@
 
 from ._native import (
     FlattenGroupsConfig,
+    Engine,
     LowerAttributesConfig,
     ParseConfig,
     ParseError,
+    Parser,
     RewriteConfig,
     TransformConfig,
     count_targets,
-    normalize,
-    parse,
-    transform,
+    validate_argspec,
 )
 
 __all__ = [
     "FlattenGroupsConfig",
+    "Engine",
     "LowerAttributesConfig",
     "ParseConfig",
     "ParseError",
+    "Parser",
     "RewriteConfig",
     "TransformConfig",
     "count_targets",
-    "normalize",
-    "parse",
-    "transform",
+    "validate_argspec",
 ]

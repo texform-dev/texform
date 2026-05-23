@@ -15,7 +15,7 @@ function getWasm() {
 
 export function parseArgSpec(spec: string): ParsedSlot[] | null {
   if (!spec || spec.trim() === "") return [];
-  const result = getWasm().validate_spec(spec);
+  const result = getWasm().validate_argspec(spec);
   if (!result.valid) return null;
   return result.parsed as ParsedSlot[];
 }

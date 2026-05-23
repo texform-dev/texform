@@ -1,8 +1,8 @@
 use texform_core::ast::{ArgumentValue, Ast, GroupKind, Node, Slot};
-use texform_core::parse::{ParseConfig, ParseContext};
+use texform_core::parse::{ParseConfig, Parser};
 use texform_core::serialize::serialize;
 use texform_transform::{
-    FlattenGroupsConfig, LowerAttributesConfig, RewriteConfig, TransformConfig, run as transform,
+    BuildConfig, FlattenGroupsConfig, Profile, TransformConfig, TransformContext,
 };
 
 struct Outcome {
@@ -16,16 +16,21 @@ fn run_flatten_groups(src: &str) -> Outcome {
 }
 
 fn run_flatten_groups_with_config(src: &str, flatten_groups: FlattenGroupsConfig) -> Outcome {
-    let parse_ctx = ParseContext::from_packages(&["base", "ams"]);
+    let parse_ctx = Parser::from_packages(&["base", "ams"]);
     let mut ast = parse_ctx
         .parse_to_ast(src, &ParseConfig::default())
         .expect("source should parse");
     let config = TransformConfig {
-        lower_attributes: LowerAttributesConfig::DISABLED,
-        rewrite: RewriteConfig::DISABLED,
+        rewrite_enabled: false,
+        lower_attributes_enabled: false,
         flatten_groups,
+        max_iterations: 100,
     };
-    let report = transform(&mut ast, &parse_ctx, &config)
+    let context =
+        TransformContext::from_build_config(BuildConfig::profile(Profile::Equiv), &parse_ctx)
+            .expect("transform context should build");
+    let report = context
+        .run_with(&mut ast, &parse_ctx, &config)
         .expect("transform should succeed")
         .flatten_groups;
     ast.assert_invariants();

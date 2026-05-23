@@ -1,8 +1,7 @@
 use crate::data::FormulaRecord;
 use rayon::prelude::*;
 use std::time::{Duration, Instant};
-use texform_core::api;
-use texform_core::parse::{ParseConfig, ParseDiagnostic};
+use texform_core::parse::{ParseConfig, ParseDiagnostic, Parser};
 
 #[derive(Debug, Clone)]
 pub struct ParseResult {
@@ -21,17 +20,18 @@ pub struct FormulaResults {
 pub fn run_bench(records: &[FormulaRecord]) -> Vec<FormulaResults> {
     let strict_cfg = ParseConfig::STRICT_NO_RECOVER;
     let nonstrict_cfg = ParseConfig::NONSTRICT_NO_RECOVER;
-    let _ = api::parse_latex("", &nonstrict_cfg);
+    let parser = Parser::shared();
+    let _ = parser.parse("", &nonstrict_cfg);
 
     records
         .par_iter()
         .map(|record| {
             let strict_start = Instant::now();
-            let strict_output = api::parse_latex(&record.formula, &strict_cfg);
+            let strict_output = parser.parse(&record.formula, &strict_cfg);
             let strict_duration = strict_start.elapsed();
 
             let nonstrict_start = Instant::now();
-            let nonstrict_output = api::parse_latex(&record.formula, &nonstrict_cfg);
+            let nonstrict_output = parser.parse(&record.formula, &nonstrict_cfg);
             let nonstrict_duration = nonstrict_start.elapsed();
 
             FormulaResults {

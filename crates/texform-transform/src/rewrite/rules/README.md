@@ -297,23 +297,26 @@ Preferred style:
 2. Import shared constructor helpers directly, such as `prefix_command_node` and `mandatory_content_slot`
 3. Prefer `RuleContext` match helpers and scoped shape helpers over open-coded `match` + repeated error construction
 
-## Transform Configs
+## Transform Profiles
 
-Use `TransformConfig` to select presets and narrow rules in tests and examples:
+Use `BuildConfig` to select a profile and narrow rules in tests and examples:
 
 ```rust
-let mut config = TransformConfig::AUTHORING;
-config.rewrite.only(OVER_TO_FRAC.meta().key);
-let report = texform_transform::run(&mut ast, &parse_ctx, &config)?;
+let context = TransformContext::from_build_config(
+    BuildConfig::profile(Profile::Authoring).only_rule_for_tests(OVER_TO_FRAC.meta().key),
+    &parse_ctx,
+)?;
+let report = context.run(&mut ast, &parse_ctx)?;
 ```
 
-Preset configs select rewrite rules by class before `only` or `disable` is applied:
+Profiles select rewrite rules by class before rule-specific filters are applied:
 
-- `AUTHORING` includes `RuleClass::Standard`
-- `CORPUS` includes `RuleClass::Standard` and `RuleClass::Expand`
-- `CORPUS_DROP` includes `RuleClass::Standard`, `RuleClass::Expand`, and
+- `Authoring` includes `RuleClass::Standard`
+- `Corpus` includes `RuleClass::Standard` and `RuleClass::Expand`
+- `CorpusDrop` includes `RuleClass::Standard`, `RuleClass::Expand`, and
   `RuleClass::Drop`
-- `EQUIV` includes all classes
+- `Equiv` includes all classes
 
-`only` is an allowlist inside the selected preset; it does not enable an
-`expand`, `drop`, or `equiv` rule when the configured class set excludes it.
+Rule-specific filters are allowlists or denylists inside the selected profile;
+they do not enable an `expand`, `drop`, or `equiv` rule when the profile class
+set excludes it.

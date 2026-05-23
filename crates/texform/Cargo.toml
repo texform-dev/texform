@@ -1,0 +1,13 @@
+[package]
+name = "texform"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+texform-argspec.workspace = true
+texform-core.workspace = true
+texform-interface.workspace = true
+texform-transform.workspace = true

@@ -1,20 +1,19 @@
-from collections.abc import Iterable
 from typing import Any, Literal
 
-RewriteClass = Literal["standard", "expand", "drop", "equiv"]
 TransformProfile = Literal["authoring", "corpus", "corpus-drop", "equiv"]
+ContextItem = dict[str, Any]
 
 __all__ = [
     "FlattenGroupsConfig",
+    "Engine",
     "LowerAttributesConfig",
     "ParseConfig",
     "ParseError",
+    "Parser",
     "RewriteConfig",
     "TransformConfig",
     "count_targets",
-    "normalize",
-    "parse",
-    "transform",
+    "validate_argspec",
 ]
 
 
@@ -29,6 +28,38 @@ class ParseError(Exception):
 
     diagnostics: list[dict[str, Any]]
     partial_result: dict[str, Any] | None
+
+
+class Parser:
+    def __init__(
+        self,
+        packages: list[str] | None = None,
+        items: list[ContextItem] | None = None,
+        remove_commands: list[str] | None = None,
+        remove_environments: list[str] | None = None,
+        remove_delimiter_controls: list[str] | None = None,
+    ) -> None: ...
+    def parse(self, src: str, config: ParseConfig | None = None) -> dict[str, Any]: ...
+    def knows_command_name(self, name: str) -> bool: ...
+
+
+class Engine:
+    def __init__(
+        self,
+        profile: TransformProfile,
+        packages: list[str] | None = None,
+        items: list[ContextItem] | None = None,
+        remove_commands: list[str] | None = None,
+        remove_environments: list[str] | None = None,
+        remove_delimiter_controls: list[str] | None = None,
+        disable_rules: list[str] | None = None,
+    ) -> None: ...
+    def normalize(
+        self,
+        src: str,
+        config: TransformConfig | None = None,
+        parse_config: ParseConfig | None = None,
+    ) -> dict[str, Any]: ...
 
 
 class ParseConfig:
@@ -52,13 +83,11 @@ class LowerAttributesConfig:
 
 class RewriteConfig:
     enabled: bool
-    classes: list[RewriteClass]
     max_iterations: int
 
     def __init__(
         self,
         enabled: bool = True,
-        classes: Iterable[RewriteClass] | None = None,
         max_iterations: int = 100,
     ) -> None: ...
 
@@ -116,45 +145,6 @@ class TransformConfig:
     def equiv(cls) -> "TransformConfig": ...
 
 
-def parse(
-    src: str,
-    config: ParseConfig | None = None,
-    packages: list[str] | None = None,
-) -> dict[str, Any]:
-    """Parse a LaTeX formula.
-
-    Args:
-        src: Source string of the LaTeX formula.
-        config: Parse configuration. Defaults to ``ParseConfig()``.
-
-    Returns:
-        A dict with ``node`` (root AST node) and ``span`` (byte range) keys.
-
-    Raises:
-        ParseError: If the parser emits any diagnostics. The exception
-            carries ``diagnostics`` and ``partial_result`` attributes.
-    """
-    ...
-
-
-def normalize(
-    src: str,
-    profile: TransformProfile = "authoring",
-    packages: list[str] | None = None,
-) -> dict[str, Any]:
-    """Normalize a LaTeX formula and return the normalized source plus report."""
-    ...
-
-
-def transform(
-    src: str,
-    config: TransformConfig | None = None,
-    packages: list[str] | None = None,
-) -> dict[str, Any]:
-    """Transform a LaTeX formula and return the normalized source plus report."""
-    ...
-
-
 def count_targets(
     src: str,
     config: ParseConfig | None = None,
@@ -162,3 +152,6 @@ def count_targets(
 ) -> dict[str, int]:
     """Count command, environment, and character targets in a LaTeX formula."""
     ...
+
+
+def validate_argspec(spec: str) -> dict[str, Any]: ...

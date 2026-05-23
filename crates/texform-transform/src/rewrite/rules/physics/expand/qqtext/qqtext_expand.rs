@@ -154,10 +154,10 @@ mod tests {
 
     #[test]
     fn groups_qq_expansion_when_not_a_sibling_node() {
-        use crate::parse::ParseContext;
+        use crate::parse::Parser;
         use crate::rewrite::{run_one_rule_for_test, RewriteRule as _, RuleClass};
 
-        let parse_ctx = ParseContext::from_packages(&["base", "physics"]);
+        let parse_ctx = Parser::from_packages(&["base", "physics"]);
         let mut ast = parse_ctx
             .parse_to_ast(r"\qq{if}^2", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
             .expect("parse should succeed");

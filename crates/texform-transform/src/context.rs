@@ -1,47 +1,54 @@
 //! Compiled transform execution context.
 
 use crate::ast::Ast;
-use crate::config::TransformConfig;
+use crate::config::{BuildConfig, TransformConfig};
 use crate::engine;
 use crate::error::{TransformBuildError, TransformError};
-use crate::parse::ParseContext;
+use crate::parse::Parser;
 use crate::report::TransformReport;
 use crate::rewrite;
 
 pub struct TransformContext {
-    config: TransformConfig,
-    rewrite: Option<rewrite::Plan>,
+    default_config: TransformConfig,
+    rewrite: rewrite::Plan,
 }
 
 impl TransformContext {
-    pub fn from_config(
-        config: TransformConfig,
-        parse_ctx: &ParseContext,
+    pub fn from_build_config(
+        config: BuildConfig,
+        parse_ctx: &Parser,
     ) -> Result<Self, TransformBuildError> {
-        let rewrite = if config.rewrite.enabled {
-            Some(
-                rewrite::Plan::build(&config.rewrite, parse_ctx)
-                    .map_err(TransformBuildError::Rewrite)?,
-            )
-        } else {
-            None
-        };
-        Ok(Self { config, rewrite })
+        let default_config = config.default_transform();
+        let rewrite =
+            rewrite::Plan::build(&config, parse_ctx).map_err(TransformBuildError::Rewrite)?;
+        Ok(Self {
+            default_config,
+            rewrite,
+        })
     }
 
     pub fn run(
         &self,
         ast: &mut Ast,
-        parse_ctx: &ParseContext,
+        parse_ctx: &Parser,
     ) -> Result<TransformReport, TransformError> {
-        engine::execute(self, ast, parse_ctx)
+        self.run_with(ast, parse_ctx, &self.default_config)
     }
 
-    pub fn config(&self) -> &TransformConfig {
-        &self.config
+    pub fn run_with(
+        &self,
+        ast: &mut Ast,
+        parse_ctx: &Parser,
+        config: &TransformConfig,
+    ) -> Result<TransformReport, TransformError> {
+        engine::execute(self, ast, parse_ctx, config)
     }
 
-    pub fn rewrite_plan(&self) -> Option<&rewrite::Plan> {
-        self.rewrite.as_ref()
+    pub fn default_config(&self) -> &TransformConfig {
+        &self.default_config
+    }
+
+    pub fn rewrite_plan(&self) -> &rewrite::Plan {
+        &self.rewrite
     }
 }

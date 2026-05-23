@@ -13,30 +13,47 @@
 //! eliminated-form contract derived into [`TransformContext`].
 
 use crate::ast::Ast;
+use crate::config::TransformConfig;
 use crate::context::TransformContext;
 use crate::error::TransformError;
-use crate::parse::ParseContext;
+use crate::lower_attributes::LowerAttributesConfig;
+use crate::parse::Parser;
 use crate::report::TransformReport;
 use crate::{flatten_groups, lower_attributes, rewrite};
 
 pub(crate) fn execute(
     tctx: &TransformContext,
     ast: &mut Ast,
-    parse_ctx: &ParseContext,
+    parse_ctx: &Parser,
+    cfg: &TransformConfig,
 ) -> Result<TransformReport, TransformError> {
-    let cfg = tctx.config();
     let mut report = TransformReport::default();
 
-    if cfg.lower_attributes.enabled {
-        lower_attributes::run(ast, &cfg.lower_attributes, &mut report.lower_attributes);
+    if cfg.lower_attributes_enabled {
+        lower_attributes::run(
+            ast,
+            &LowerAttributesConfig::ENABLED,
+            &mut report.lower_attributes,
+        );
     }
 
-    if let Some(plan) = tctx.rewrite_plan() {
-        rewrite::run(ast, parse_ctx, plan, &mut report.rewrite).map_err(TransformError::Rewrite)?;
+    if cfg.rewrite_enabled {
+        rewrite::run(
+            ast,
+            parse_ctx,
+            tctx.rewrite_plan(),
+            cfg.max_iterations,
+            &mut report.rewrite,
+        )
+        .map_err(TransformError::Rewrite)?;
     }
 
-    if cfg.lower_attributes.enabled {
-        lower_attributes::run(ast, &cfg.lower_attributes, &mut report.lower_attributes);
+    if cfg.lower_attributes_enabled {
+        lower_attributes::run(
+            ast,
+            &LowerAttributesConfig::ENABLED,
+            &mut report.lower_attributes,
+        );
     }
 
     if cfg.flatten_groups.enabled {

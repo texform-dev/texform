@@ -2,7 +2,7 @@ use ariadne::{Config, IndexType, Label, Report, ReportKind, Source};
 use std::env;
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContentMode, ContextItem, DelimiterControlItem,
-    EnvironmentItem, ParseConfig, ParseContextBuilder, ParseDiagnostic, ParseOutput,
+    EnvironmentItem, ParseConfig, ParseDiagnostic, ParseOutput, ParserBuilder,
 };
 
 struct CliOptions {
@@ -117,9 +117,9 @@ fn parse_with_options(options: &CliOptions) -> Result<ParseOutput, String> {
     let base_ctx = match options.packages.as_ref() {
         Some(packages) => {
             let refs: Vec<&str> = packages.iter().map(String::as_str).collect();
-            ParseContextBuilder::empty().packages(refs.as_slice())
+            ParserBuilder::empty().packages(refs.as_slice())
         }
-        None => ParseContextBuilder::default(),
+        None => ParserBuilder::default(),
     };
     let mut builder = base_ctx;
     for item in &options.items {

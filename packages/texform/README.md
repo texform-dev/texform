@@ -7,9 +7,10 @@ npm install texform
 ```
 
 ```ts
-import { parse } from "texform";
+import { Parser } from "texform";
 
-const result = parse("\\frac{a}{b}");
+const parser = new Parser();
+const result = parser.parse("\\frac{a}{b}");
 console.log(result.node);
 ```
 

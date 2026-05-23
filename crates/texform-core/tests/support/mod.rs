@@ -1,9 +1,8 @@
 #![allow(dead_code)]
 
-use texform_core::api::parse_with_context_items;
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
-    ParseConfig, ParseContextBuilder, ParseOutput,
+    ParseConfig, ParseDiagnostic, ParseOutput, ParserBuildError, ParserBuilder,
 };
 use texform_interface::syntax_node::{Argument, ArgumentValue, ContentMode, SyntaxNode};
 
@@ -30,7 +29,7 @@ pub(crate) fn delimiter_control_item(name: &str) -> ContextItem {
 }
 
 pub(crate) fn parse_with_items(items: &[ContextItem], src: &str, strict: bool) -> ParseOutput {
-    let mut builder = ParseContextBuilder::empty();
+    let mut builder = ParserBuilder::empty();
     for item in items {
         builder = builder.insert_item(item.clone());
     }
@@ -43,7 +42,7 @@ pub(crate) fn parse_with_items(items: &[ContextItem], src: &str, strict: bool) -
     ctx.parse(src, &config)
 }
 
-pub(crate) fn parse_single_via_public_api(
+pub(crate) fn parse_single_with_items(
     items: &[ContextItem],
     src: &str,
     strict: bool,
@@ -53,9 +52,76 @@ pub(crate) fn parse_single_via_public_api(
     } else {
         ParseConfig::NONSTRICT_RECOVER
     };
-    let mut outputs = parse_with_context_items(items, &[src], None, &config);
+    let mut outputs = parse_many_with_items(items, &[src], None, &config);
     assert_eq!(outputs.len(), 1);
     outputs.remove(0).output
+}
+
+pub(crate) struct ParseCaseOutput {
+    pub(crate) input: String,
+    pub(crate) output: ParseOutput,
+}
+
+pub(crate) type ParseManyOutput = Vec<ParseCaseOutput>;
+
+pub(crate) fn parse_many_with_items(
+    items: &[ContextItem],
+    inputs: &[&str],
+    packages: Option<&[&str]>,
+    config: &ParseConfig,
+) -> ParseManyOutput {
+    let mut builder = match packages {
+        Some(package_names) => ParserBuilder::empty().packages(package_names),
+        None => ParserBuilder::empty(),
+    };
+
+    for item in items {
+        builder = builder.insert_item(item.clone());
+    }
+
+    let parser = match builder.build() {
+        Ok(parser) => parser,
+        Err(ParserBuildError::PackageLoad(error)) => {
+            return invalid_inputs_output(inputs, format!("package loading failed: {error}"));
+        }
+        Err(ParserBuildError::InvalidContextItem { name, source }) => {
+            return invalid_inputs_output(
+                inputs,
+                format!("spec validation failed for {name}: {source}"),
+            );
+        }
+    };
+
+    inputs
+        .iter()
+        .map(|input| ParseCaseOutput {
+            input: (*input).to_string(),
+            output: parser.parse(input, config),
+        })
+        .collect()
+}
+
+fn invalid_input_output(message: String) -> ParseOutput {
+    ParseOutput {
+        result: None,
+        diagnostics: vec![ParseDiagnostic::new(
+            message,
+            texform_core::parse::Span { start: 0, end: 0 },
+            Vec::new(),
+            None,
+            Vec::new(),
+        )],
+    }
+}
+
+fn invalid_inputs_output(inputs: &[&str], message: String) -> ParseManyOutput {
+    inputs
+        .iter()
+        .map(|input| ParseCaseOutput {
+            input: (*input).to_string(),
+            output: invalid_input_output(message.clone()),
+        })
+        .collect()
 }
 
 pub(crate) fn collect_messages(output: &ParseOutput) -> Vec<&str> {

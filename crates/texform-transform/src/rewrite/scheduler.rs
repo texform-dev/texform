@@ -2,7 +2,7 @@
 
 use crate::ast::{Ast, NodeId, NodeKind};
 use crate::knowledge::{lookup_command_node_name, lookup_environment_node_name};
-use crate::parse::{ContentMode, ParseContext};
+use crate::parse::{ContentMode, Parser};
 use crate::rewrite::plan::Plan;
 use crate::rewrite::rule::{RuleEffect, RuleMeta, RuleTarget, RuleTargetKey, RuleTargetKind};
 use crate::rewrite::rule_context::RuleContext;
@@ -10,8 +10,9 @@ use crate::rewrite::{RewriteError, RewriteReport};
 
 pub(super) fn drive_fixed_point(
     ast: &mut Ast,
-    parse_ctx: &ParseContext,
+    parse_ctx: &Parser,
     plan: &Plan,
+    max_iterations: usize,
     report: &mut RewriteReport,
 ) -> Result<(), RewriteError> {
     let rules = plan.rules();
@@ -20,7 +21,7 @@ pub(super) fn drive_fixed_point(
         return Ok(());
     }
 
-    for iteration in 0..plan.max_iterations() {
+    for iteration in 0..max_iterations {
         let mut changed = false;
         let snapshot = preorder_snapshot(ast);
 
@@ -61,10 +62,8 @@ pub(super) fn drive_fixed_point(
             return Ok(());
         }
 
-        if iteration + 1 == plan.max_iterations() {
-            return Err(RewriteError::MaxIterationsExceeded {
-                max_iterations: plan.max_iterations(),
-            });
+        if iteration + 1 == max_iterations {
+            return Err(RewriteError::MaxIterationsExceeded { max_iterations });
         }
     }
 
@@ -103,7 +102,7 @@ pub(super) fn target_present(
     ast: &Ast,
     node_id: NodeId,
     target: RuleTargetKey,
-    parse_ctx: &ParseContext,
+    parse_ctx: &Parser,
 ) -> bool {
     match target.kind {
         RuleTargetKind::Command => lookup_command_node_name(ast.node(node_id))

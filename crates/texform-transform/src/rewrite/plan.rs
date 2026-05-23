@@ -1,9 +1,9 @@
-//! Compiled rewrite plan: filtered rules, eliminated forms, and iteration cap.
+//! Compiled rewrite plan: filtered rules and eliminated forms.
 
 use std::collections::VecDeque;
 
-use crate::config::RewriteConfig;
-use crate::parse::{MutationSummary, ParseContext};
+use crate::config::BuildConfig;
+use crate::parse::{MutationSummary, Parser};
 use crate::rewrite::registry;
 use crate::rewrite::rule::{
     PackageName, RewriteRule, RuleKey, RuleTarget, RuleTargetKey, RuleTargetKind,
@@ -13,18 +13,16 @@ use crate::rewrite::rule::{
 pub struct Plan {
     rules: Vec<&'static dyn RewriteRule>,
     eliminated_forms: Vec<RuleTargetKey>,
-    max_iterations: usize,
 }
 
 impl Plan {
-    pub fn build(config: &RewriteConfig, parse_ctx: &ParseContext) -> Result<Self, PlanBuildError> {
+    pub fn build(config: &BuildConfig, parse_ctx: &Parser) -> Result<Self, PlanBuildError> {
         let enabled = filter_rules(registry::all_rules(), config, parse_ctx)?;
         let ordered = topological_sort(enabled.as_slice())?;
         let eliminated_forms = derive_eliminated_forms(ordered.as_slice());
         Ok(Self {
             rules: ordered,
             eliminated_forms,
-            max_iterations: config.max_iterations,
         })
     }
 
@@ -35,14 +33,10 @@ impl Plan {
     pub fn eliminated_forms(&self) -> &[RuleTargetKey] {
         self.eliminated_forms.as_slice()
     }
-
-    pub fn max_iterations(&self) -> usize {
-        self.max_iterations
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum RuleSelection {
+pub(crate) enum RuleSelection {
     All,
     Only(Vec<RuleKey>),
     Except(Vec<RuleKey>),
@@ -130,8 +124,8 @@ fn package_names_for_message(packages: &[PackageName]) -> Vec<&'static str> {
 
 fn filter_rules(
     rules: &[&'static dyn RewriteRule],
-    config: &RewriteConfig,
-    parse_ctx: &ParseContext,
+    config: &BuildConfig,
+    parse_ctx: &Parser,
 ) -> Result<Vec<&'static dyn RewriteRule>, PlanBuildError> {
     let mut enabled = Vec::new();
 
@@ -212,7 +206,7 @@ fn validate_rule_metadata(rule: &'static dyn RewriteRule) -> Result<(), PlanBuil
 
 fn package_availability_failure(
     rule: &'static dyn RewriteRule,
-    parse_ctx: &ParseContext,
+    parse_ctx: &Parser,
 ) -> Option<RuleAvailabilityFailure> {
     let active = parse_ctx.enabled_packages();
     if rule
@@ -232,7 +226,7 @@ fn package_availability_failure(
 
 fn produced_target_availability_failure(
     rule: &'static dyn RewriteRule,
-    parse_ctx: &ParseContext,
+    parse_ctx: &Parser,
 ) -> Option<RuleAvailabilityFailure> {
     rule.meta()
         .produces
@@ -249,7 +243,7 @@ fn produced_target_availability_failure(
         )
 }
 
-fn parse_context_knows_target(parse_ctx: &ParseContext, target: RuleTargetKey) -> bool {
+fn parse_context_knows_target(parse_ctx: &Parser, target: RuleTargetKey) -> bool {
     match target.kind {
         RuleTargetKind::Command => parse_ctx.knows_command_name(target.name),
         RuleTargetKind::Environment => parse_ctx.knows_env_name(target.name),

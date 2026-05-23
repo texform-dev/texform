@@ -4,14 +4,12 @@
 //!
 //! | Module | Purpose |
 //! |---|---|
-//! | [`parse`] | [`ParseContext`](parse::ParseContext): the main public API for configuring knowledge and parsing |
-//! | [`api`] | High-level convenience functions ([`parse_latex`](api::parse_latex), batch probing) |
+//! | [`parse`] | [`Parser`](parse::Parser): the main public API for configuring knowledge and parsing |
 //! | [`ast`] | Mutable arena-backed AST for tree transforms |
 //! | [`parser`] | Chumsky-based parser producing [`SyntaxNode`](texform_interface::syntax_node::SyntaxNode) trees |
 //! | [`lexer`] | Logos-based lexer mapping LaTeX source to tokens |
 //! | [`column_parser`] | Standalone parser for `{lcc}` column specifications |
 
-pub mod api;
 pub mod ast;
 pub mod column_parser;
 pub mod lexer;

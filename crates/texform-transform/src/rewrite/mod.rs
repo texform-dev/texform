@@ -19,7 +19,7 @@ pub(crate) use macros::transform_examples;
 pub(crate) use macros::{alias_rule, char_targets, cmd_targets, define_rule, env_targets};
 
 pub use class_set::RuleClassSet;
-pub use plan::{Plan, PlanBuildError, RuleAvailabilityFailure, RuleSelection};
+pub use plan::{Plan, PlanBuildError, RuleAvailabilityFailure};
 pub use registry::all_rules;
 pub use rule::{
     PackageName, RewriteRule, RuleClass, RuleConsumes, RuleEffect, RuleKey, RuleMeta, RuleProduces,
@@ -125,16 +125,17 @@ impl std::fmt::Display for RewriteError {
 impl std::error::Error for RewriteError {}
 
 use crate::ast::Ast;
-use crate::parse::ParseContext;
+use crate::parse::Parser;
 
 /// Applies rewrite rules to an AST and records what changed.
 pub fn run(
     ast: &mut Ast,
-    parse_ctx: &ParseContext,
+    parse_ctx: &Parser,
     plan: &Plan,
+    max_iterations: usize,
     report: &mut RewriteReport,
 ) -> Result<(), RewriteError> {
-    scheduler::drive_fixed_point(ast, parse_ctx, plan, report)?;
+    scheduler::drive_fixed_point(ast, parse_ctx, plan, max_iterations, report)?;
     contract::assert_eliminated_forms(ast, parse_ctx, plan.eliminated_forms())?;
     Ok(())
 }
@@ -142,18 +143,23 @@ pub fn run(
 #[cfg(test)]
 pub(crate) fn run_one_rule_for_test(
     ast: &mut Ast,
-    parse_ctx: &ParseContext,
+    parse_ctx: &Parser,
     rule: &'static dyn RewriteRule,
     class: RuleClass,
 ) -> Result<crate::TransformReport, crate::TransformError> {
-    let mut config = crate::TransformConfig {
-        lower_attributes: crate::LowerAttributesConfig::DISABLED,
-        rewrite: crate::RewriteConfig {
-            classes: RuleClassSet::from(class),
-            ..crate::RewriteConfig::DEFAULTS
+    let build_config = crate::BuildConfig::profile(crate::Profile::Authoring)
+        .rewrite_classes(RuleClassSet::from(class))
+        .only_rule_for_tests(rule.meta().key);
+    let context = crate::TransformContext::from_build_config(build_config, parse_ctx)
+        .map_err(crate::TransformError::Build)?;
+    context.run_with(
+        ast,
+        parse_ctx,
+        &crate::TransformConfig {
+            rewrite_enabled: true,
+            lower_attributes_enabled: false,
+            flatten_groups: crate::FlattenGroupsConfig::DISABLED,
+            max_iterations: 100,
         },
-        flatten_groups: crate::FlattenGroupsConfig::DISABLED,
-    };
-    config.rewrite.only(rule.meta().key);
-    crate::run(ast, parse_ctx, &config)
+    )
 }

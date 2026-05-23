@@ -49,7 +49,7 @@ define_rule! {
 mod tests {
     use super::*;
     use crate::ast::{ArgumentKind, ArgumentValue, Node};
-    use crate::parse::ParseContext;
+    use crate::parse::Parser;
     use crate::rewrite::transform_examples;
     use crate::rewrite::{run_one_rule_for_test, RewriteRule as _, RuleClass};
 
@@ -70,7 +70,7 @@ mod tests {
 
     #[test]
     fn rewrites_break_to_parser_shaped_linebreak_command() {
-        let parse_ctx = ParseContext::from_packages(&["base"]);
+        let parse_ctx = Parser::from_packages(&["base"]);
         let mut ast = parse_ctx
             .parse_to_ast(r"\break", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
             .expect("parse should succeed");

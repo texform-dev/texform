@@ -1,28 +1,23 @@
-use texform_core::parse::{
-    AllowedMode, CommandItem, CommandKind, ParseContext, ParseContextBuilder,
-};
+use texform_core::parse::{AllowedMode, CommandItem, CommandKind, Parser, ParserBuilder};
 use texform_specs::builtin::MANAGED_PACKAGE_IMPORT_ORDER;
 use texform_transform::rewrite::{RuleAvailabilityFailure, all_rules};
 use texform_transform::{
-    PackageName, PlanBuildError, RuleClass, RuleClassSet, RuleKey, RuleMeta, RuleTarget,
-    TransformBuildError, TransformConfig, TransformContext,
+    BuildConfig, PackageName, PlanBuildError, Profile, RuleClass, RuleClassSet, RuleKey, RuleMeta,
+    RuleTarget, TransformBuildError, TransformContext,
 };
 
 fn active_rule_keys(context: &TransformContext) -> Vec<RuleKey> {
     context
         .rewrite_plan()
-        .map(|plan| {
-            plan.rules()
-                .iter()
-                .map(|rule| rule.meta().key)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default()
+        .rules()
+        .iter()
+        .map(|rule| rule.meta().key)
+        .collect::<Vec<_>>()
 }
 
 #[test]
 fn only_many_keeps_the_requested_rules() {
-    let parse_ctx = ParseContextBuilder::default()
+    let parse_ctx = ParserBuilder::default()
         .packages(&["physics"])
         .build()
         .expect("parse context should build");
@@ -39,10 +34,9 @@ fn only_many_keeps_the_requested_rules() {
         .collect::<Vec<_>>();
     assert_eq!(requested.len(), 2);
 
-    let mut config = TransformConfig::AUTHORING;
-    config.rewrite.only_many(requested.as_slice());
-    let transform_ctx =
-        TransformContext::from_config(config, &parse_ctx).expect("transform context should build");
+    let config = BuildConfig::profile(Profile::Authoring).only_rules_for_tests(requested.clone());
+    let transform_ctx = TransformContext::from_build_config(config, &parse_ctx)
+        .expect("transform context should build");
 
     let active_keys = active_rule_keys(&transform_ctx);
 
@@ -52,7 +46,7 @@ fn only_many_keeps_the_requested_rules() {
 
 #[test]
 fn build_with_disables_rules_touching_mutated_command_names() {
-    let parse_ctx = ParseContextBuilder::default()
+    let parse_ctx = ParserBuilder::default()
         .packages(&["physics"])
         .insert_item(CommandItem::new(
             "quantity",
@@ -63,12 +57,12 @@ fn build_with_disables_rules_touching_mutated_command_names() {
         .build()
         .expect("parse context should build");
 
-    let transform_ctx = TransformContext::from_config(TransformConfig::AUTHORING, &parse_ctx)
-        .expect("transform context should build");
+    let transform_ctx =
+        TransformContext::from_build_config(BuildConfig::profile(Profile::Authoring), &parse_ctx)
+            .expect("transform context should build");
 
     let active = transform_ctx
         .rewrite_plan()
-        .unwrap()
         .rules()
         .iter()
         .map(|rule| rule.meta().key.to_string())
@@ -79,25 +73,25 @@ fn build_with_disables_rules_touching_mutated_command_names() {
 
 #[test]
 fn disabling_all_rules_builds_empty_transform_context() {
-    let parse_ctx = ParseContextBuilder::default()
+    let parse_ctx = ParserBuilder::default()
         .packages(&["physics"])
         .build()
         .expect("parse context should build");
 
-    let mut config = TransformConfig::AUTHORING;
+    let mut config = BuildConfig::profile(Profile::Authoring);
     for rule in all_rules() {
-        config.rewrite.disable(rule.meta().key);
+        config = config.disable_rule(rule.meta().key);
     }
 
-    let transform_ctx = TransformContext::from_config(config, &parse_ctx)
+    let transform_ctx = TransformContext::from_build_config(config, &parse_ctx)
         .expect("empty transform context should be a valid no-op");
 
-    assert!(transform_ctx.rewrite_plan().unwrap().rules().is_empty());
+    assert!(transform_ctx.rewrite_plan().rules().is_empty());
 }
 
 #[test]
 fn only_does_not_bypass_profile_class_filter_and_can_return_empty_context() {
-    let parse_ctx = ParseContextBuilder::default()
+    let parse_ctx = ParserBuilder::default()
         .packages(&["physics"])
         .build()
         .expect("parse context should build");
@@ -108,36 +102,37 @@ fn only_does_not_bypass_profile_class_filter_and_can_return_empty_context() {
         .find(|meta| meta.class != RuleClass::Equiv)
         .expect("registry should contain a non-equiv rule")
         .key;
-    let mut config = TransformConfig::AUTHORING;
-    config.rewrite.classes = RuleClassSet::EQUIV;
-    config.rewrite.only(non_equiv_rule);
-    let transform_ctx = TransformContext::from_config(config, &parse_ctx)
+    let config = BuildConfig::profile(Profile::Authoring)
+        .rewrite_classes(RuleClassSet::EQUIV)
+        .only_rule_for_tests(non_equiv_rule);
+    let transform_ctx = TransformContext::from_build_config(config, &parse_ctx)
         .expect("empty transform context should be a valid no-op");
 
-    assert!(transform_ctx.rewrite_plan().unwrap().rules().is_empty());
+    assert!(transform_ctx.rewrite_plan().rules().is_empty());
 }
 
 #[test]
 fn build_with_all_rules_filtered_by_packages_returns_empty_context() {
-    let parse_ctx = ParseContext::empty();
-    let context = TransformContext::from_config(TransformConfig::AUTHORING, &parse_ctx)
-        .expect("empty package context should produce a no-op transform context");
+    let parse_ctx = Parser::empty();
+    let context =
+        TransformContext::from_build_config(BuildConfig::profile(Profile::Authoring), &parse_ctx)
+            .expect("empty package context should produce a no-op transform context");
 
-    let plan = context.rewrite_plan().unwrap();
+    let plan = context.rewrite_plan();
     assert!(plan.rules().is_empty());
     assert!(plan.eliminated_forms().is_empty());
 }
 
 #[test]
 fn build_with_keeps_only_rules_enabled_by_parse_context_packages() {
-    let parse_ctx = ParseContext::from_packages(&["base"]);
+    let parse_ctx = Parser::from_packages(&["base"]);
 
-    let transform_ctx = TransformContext::from_config(TransformConfig::AUTHORING, &parse_ctx)
-        .expect("transform context should build");
+    let transform_ctx =
+        TransformContext::from_build_config(BuildConfig::profile(Profile::Authoring), &parse_ctx)
+            .expect("transform context should build");
 
     let active = transform_ctx
         .rewrite_plan()
-        .unwrap()
         .rules()
         .iter()
         .map(|rule| rule.meta())
@@ -158,15 +153,15 @@ fn build_with_keeps_only_rules_enabled_by_parse_context_packages() {
 
 #[test]
 fn only_rule_reports_error_when_required_package_is_disabled() {
-    let parse_ctx = ParseContext::from_packages(&["base"]);
+    let parse_ctx = Parser::from_packages(&["base"]);
     let physics_rule = all_rules()
         .iter()
         .find(|rule| rule.meta().key.to_string() == "physics/quantity-to-qty")
         .expect("physics quantity rule should be registered");
 
-    let mut config = TransformConfig::AUTHORING;
-    config.rewrite.only(physics_rule.meta().key);
-    let error = match TransformContext::from_config(config, &parse_ctx) {
+    let config =
+        BuildConfig::profile(Profile::Authoring).only_rule_for_tests(physics_rule.meta().key);
+    let error = match TransformContext::from_build_config(config, &parse_ctx) {
         Ok(_) => panic!("only physics rule should be unavailable in base-only context"),
         Err(error) => error,
     };
