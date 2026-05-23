@@ -2,6 +2,7 @@
 name = "texform-argspec"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 texform-interface.workspace = true

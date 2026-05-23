@@ -2,13 +2,14 @@
 name = "texform-python"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [lib]
 name = "_native"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { workspace = true, features = ["auto-initialize"] }
+pyo3 = { workspace = true, features = ["auto-initialize", "abi3-py310"] }
 pythonize.workspace = true
 serde_json.workspace = true
 texform-core.workspace = true

@@ -2,6 +2,7 @@
 name = "texform-core"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 ariadne.workspace = true
