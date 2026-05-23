@@ -10,7 +10,7 @@ use texform_transform::{
     RuleClassSet, RuleSelection, TransformConfig as CoreTransformConfig, run as transform_run,
 };
 
-pyo3::create_exception!(pytexform, ParseError, PyException);
+pyo3::create_exception!(texform, ParseError, PyException);
 
 #[pyclass(name = "ParseConfig")]
 #[derive(Clone, Debug)]
@@ -416,7 +416,7 @@ fn class_set_from_names(names: &[String]) -> PyResult<RuleClassSet> {
 /// Parse a LaTeX formula.
 ///
 /// Returns a dict with `node` and `span` keys on success.
-/// Raises `pytexform.ParseError` when diagnostics are present.
+/// Raises `texform.ParseError` when diagnostics are present.
 /// The exception carries `diagnostics` (list[dict]) and `partial_result` (dict | None).
 #[pyfunction]
 #[pyo3(signature = (src, config = None, packages = None))]
@@ -562,7 +562,7 @@ fn count_targets(
     Ok(pythonize(py, &counter.logical_counts())?.unbind())
 }
 
-/// Native extension module loaded as `pytexform._native`.
+/// Native extension module loaded as `texform._native`.
 /// Symbols are re-exported from the Python package's `__init__.py`.
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {

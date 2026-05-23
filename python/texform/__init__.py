@@ -1,4 +1,4 @@
-"""pytexform — Python bindings for the TeXForm LaTeX parser."""
+"""texform — Python bindings for the TeXForm LaTeX parser."""
 
 from ._native import (
     FlattenGroupsConfig,

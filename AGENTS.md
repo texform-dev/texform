@@ -16,12 +16,12 @@ crates/                       # Rust workspace
 ├── texform-specs-macros/     # Procedural macros for specs
 ├── texform-interface/        # Public types (SyntaxNode, etc.)
 ├── texform-bench/            # Corpus benchmark harness
-├── texform-python/           # Python bindings (PyO3 -> pytexform)
+├── texform-python/           # Python bindings (PyO3)
 └── texform-wasm/             # WebAssembly bindings
 packages/                     # NPM/TypeScript packages
 ├── argspecs-validator/       # Argument spec validation & spec-test runner
 └── tex-renderers/            # MathJax / KaTeX / XeTeX rendering adapters
-python/pytexform/             # Python package source
+python/texform/               # Python package source
 resources/specs/              # Knowledge base YAML
 bench/                        # Corpus benchmark data & results
 ├── data/                     # Git LFS Parquet datasets

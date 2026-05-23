@@ -1375,7 +1375,7 @@ wheels = [
 ]
 
 [[package]]
-name = "pytexform"
+name = "texform"
 source = { editable = "." }
 
 [package.dev-dependencies]

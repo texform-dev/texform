@@ -19,6 +19,6 @@ __pycache__/
 /wheels/
 
 # Maturin artifacts (mixed layout)
-python/pytexform/_native*.so
-python/pytexform/_native*.pyd
-python/pytexform/_native*.dylib
+python/texform/_native*.so
+python/texform/_native*.pyd
+python/texform/_native*.dylib

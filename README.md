@@ -150,8 +150,8 @@ uv run maturin develop # build from repo root
 ```
 
 ```python
-import pytexform
-result = pytexform.parse(r'\frac{a}{b}')  # returns dict with node + span
+import texform
+result = texform.parse(r'\frac{a}{b}')  # returns dict with node + span
 ```
 
 ### WASM / JavaScript
