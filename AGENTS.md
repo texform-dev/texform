@@ -19,6 +19,7 @@ crates/                       # Rust workspace
 ├── texform-python/           # Python bindings (PyO3)
 └── texform-wasm/             # WebAssembly bindings
 packages/                     # NPM/TypeScript packages
+├── texform/                   # Public npm package wrapper around WASM bindings
 ├── argspecs-validator/       # Argument spec validation & spec-test runner
 └── tex-renderers/            # MathJax / KaTeX / XeTeX rendering adapters
 python/texform/               # Python package source
@@ -84,18 +85,20 @@ The transform subsystem (`crates/texform-core/src/transform/`) provides rule-bas
 
 ```bash
 wasm-pack build crates/texform-wasm --target nodejs
-wasm-pack build crates/texform-wasm --target bundler
+wasm-pack build crates/texform-wasm --target web
 ```
 
 ## Maintenance Notes
 
 ### TypeScript Type Declaration Sync
 
-`crates/texform-wasm/src/lib.rs` contains a manual `typescript_custom_section` for `SyntaxNode` types. When modifying types in `texform-interface/src/syntax_node.rs`, update this section to match.
+Public JavaScript/TypeScript API declarations are maintained in `packages/texform/types/index.d.ts`.
+When modifying exported WASM shapes or `texform-interface/src/syntax_node.rs`, update those public
+types and regenerate the WASM package before checking the npm wrapper.
 
 Verify after changes:
 
 ```bash
-wasm-pack build crates/texform-wasm --target nodejs
-cat crates/texform-wasm/pkg/texform_wasm.d.ts
+bun run --cwd packages/texform prepare:publish
+bun run --cwd packages/texform check
 ```

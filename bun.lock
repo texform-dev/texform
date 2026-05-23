@@ -33,6 +33,13 @@
         "typescript": "~5.9",
       },
     },
+    "packages/texform": {
+      "name": "texform",
+      "version": "0.1.0",
+      "devDependencies": {
+        "typescript": "~5.9",
+      },
+    },
   },
   "packages": {
     "@mathjax/mathjax-bboldx-font-extension": ["@mathjax/mathjax-bboldx-font-extension@4.1.1", "", {}, "sha512-yB9274GGhYD+nuwRYW+H7TWfwFi2gSfQki6/wraRUs6AZiCUIs+M2ferHfbRQculxs4Hou6rJhaBBmguybOLFA=="],
@@ -60,6 +67,8 @@
     "katex": ["katex@0.16.44", "", { "dependencies": { "commander": "^8.3.0" }, "bin": { "katex": "cli.js" } }, "sha512-EkxoDTk8ufHqHlf9QxGwcxeLkWRR3iOuYfRpfORgYfqc8s13bgb+YtRY59NK5ZpRaCwq1kqA6a5lpX8C/eLphQ=="],
 
     "mathjax": ["mathjax@4.1.1", "", { "dependencies": { "@mathjax/mathjax-newcm-font": "^4.1.1" } }, "sha512-NyvA8c39LUUM/m+oCg7sfA13hmw7yGkre5kiRWN9qzChCyhce39lecnbjgMA/oEUgq9Vyetk6u78apwcIXpW/A=="],
+
+    "texform": ["texform@workspace:packages/texform"],
 
     "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 

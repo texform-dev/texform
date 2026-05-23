@@ -1,0 +1,50 @@
+{
+  "name": "texform",
+  "version": "0.1.0",
+  "type": "module",
+  "sideEffects": [
+    "./bundler/index.js",
+    "./wasm/web/texform_wasm.js"
+  ],
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "browser": "./bundler/index.js",
+      "node": {
+        "import": "./node/index.js",
+        "require": "./node/index.cjs"
+      },
+      "import": "./bundler/index.js",
+      "default": "./bundler/index.js"
+    },
+    "./node": {
+      "types": "./types/index.d.ts",
+      "import": "./node/index.js",
+      "require": "./node/index.cjs"
+    },
+    "./bundler": {
+      "types": "./types/index.d.ts",
+      "import": "./bundler/index.js",
+      "default": "./bundler/index.js"
+    }
+  },
+  "main": "./node/index.cjs",
+  "module": "./bundler/index.js",
+  "types": "./types/index.d.ts",
+  "files": [
+    "bundler/",
+    "node/",
+    "types/",
+    "wasm/"
+  ],
+  "scripts": {
+    "build:wasm:node": "wasm-pack build ../../crates/texform-wasm --target nodejs --out-dir pkg",
+    "build:wasm:web": "wasm-pack build ../../crates/texform-wasm --target web --out-dir pkg-web",
+    "sync:wasm": "node scripts/sync-wasm.mjs",
+    "prepare:publish": "bun run build:wasm:node && bun run build:wasm:web && bun run sync:wasm",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "~5.9"
+  }
+}

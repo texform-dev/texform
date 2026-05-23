@@ -157,12 +157,20 @@ result = texform.parse(r'\frac{a}{b}')  # returns dict with node + span
 ### WASM / JavaScript
 
 ```bash
-wasm-pack build crates/texform-wasm --target nodejs
+npm install texform
 ```
 
 ```js
-const { parse } = require("./crates/texform-wasm/pkg");
+import { parse } from "texform";
+
 const result = parse("\\frac{a}{b}"); // returns object with node + span
+```
+
+For local development, regenerate the underlying WASM package and sync it into
+the npm package before publishing:
+
+```bash
+bun run --cwd packages/texform prepare:publish
 ```
 
 Both bindings raise/throw structured errors with `diagnostics` and `partial_result` when parsing fails.
