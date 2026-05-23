@@ -12,9 +12,9 @@ pub mod error;
 pub mod parser;
 pub mod serialize;
 
-pub use analysis::count_targets;
+pub use analysis::{count_targets, count_targets_with};
 pub use argspec::{ValidateArgspecResult, validate_argspec};
-pub use config::{NormalizeConfig, Profile, TransformConfig};
+pub use config::{NormalizeConfig, Profile, RuleKey, TransformConfig, rule_key_from_name};
 pub use engine::{Engine, EngineBuilder, NormalizeResult};
 pub use error::{Error, NormalizeError};
 pub use parser::{Parser, ParserBuildError, ParserBuilder};
@@ -29,5 +29,6 @@ pub use texform_core::parse::{
 };
 pub use texform_interface::syntax_node::SyntaxNode;
 pub use texform_transform::{
-    FlattenGroupsConfig, FlattenGroupsReport, LowerAttributesReport, RuleClassSet, TransformReport,
+    FlattenGroupsConfig, FlattenGroupsReport, LowerAttributesConfig, LowerAttributesReport,
+    RuleClassSet, TransformReport,
 };

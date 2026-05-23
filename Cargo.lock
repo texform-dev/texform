@@ -1259,8 +1259,6 @@ dependencies = [
  "pythonize",
  "serde_json",
  "texform",
- "texform-core",
- "texform-transform",
 ]
 
 [[package]]
@@ -1306,8 +1304,6 @@ dependencies = [
  "texform",
  "texform-argspec",
  "texform-core",
- "texform-specs",
- "texform-transform",
  "tsify-next",
  "wasm-bindgen",
 ]

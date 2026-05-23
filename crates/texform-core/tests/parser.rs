@@ -4,7 +4,7 @@ use chumsky::error::RichReason;
 use texform_core::ast::Ast;
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
-    ParseConfig, ParseDiagnosticKind, Parser, ParserBuilder,
+    ParseConfig, ParseContext, ParseContextBuilder, ParseDiagnosticKind,
 };
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
@@ -47,11 +47,11 @@ fn linebreak_test_items() -> [ContextItem; 2] {
     ]
 }
 
-fn test_context() -> Parser {
-    static BASE_CTX: OnceLock<Parser> = OnceLock::new();
+fn test_context() -> ParseContext {
+    static BASE_CTX: OnceLock<ParseContext> = OnceLock::new();
     BASE_CTX
         .get_or_init(|| {
-            let mut builder = ParserBuilder::empty().packages(&["base"]);
+            let mut builder = ParseContextBuilder::empty().packages(&["base"]);
             for item in shared_test_items() {
                 builder = builder.insert_item(item.clone());
             }
@@ -63,12 +63,12 @@ fn test_context() -> Parser {
         .clone()
 }
 
-fn test_context_with_items<I, T>(items: I) -> Parser
+fn test_context_with_items<I, T>(items: I) -> ParseContext
 where
     I: IntoIterator<Item = T>,
     T: Into<ContextItem>,
 {
-    let mut builder = ParserBuilder::empty().packages(&["base"]);
+    let mut builder = ParseContextBuilder::empty().packages(&["base"]);
     for item in shared_test_items() {
         builder = builder.insert_item(item.clone());
     }
@@ -580,7 +580,7 @@ fn disallowed_environment_does_not_rewrite_unrelated_generic_error() {
 
 #[test]
 fn test_text_argument_uses_text_content_variant_for_single_char_item() {
-    let output = Parser::shared().parse(r"\text{\%}", &ParseConfig::STRICT_NO_RECOVER);
+    let output = ParseContext::shared().parse(r"\text{\%}", &ParseConfig::STRICT_NO_RECOVER);
     let result = output.result.expect("expected parse result");
 
     match result.node {
@@ -1591,7 +1591,7 @@ fn test_infix_over_allows_empty_right_operand() {
 
 #[test]
 fn test_ambiguous_over_reports_diagnostic() {
-    let errors = texform_core::parser::parse(r"a \over b + 1 \over c", true)
+    let errors = texform_core::parse::grammar::parse(r"a \over b + 1 \over c", true)
         .expect_err("ambiguous repeated top-level infix should fail");
     let messages: Vec<_> = errors
         .iter()
@@ -1624,7 +1624,7 @@ fn test_repeated_over_still_reports_ambiguous_infix_kind() {
 
 #[test]
 fn test_repeated_buildrel_over_parses_as_separate_infixes() {
-    let ctx = Parser::from_packages(&["base"]);
+    let ctx = ParseContext::from_packages(&["base"]);
     let src = r"\cdots\to K\buildrel f\over\longrightarrow K\buildrel f\over\longrightarrow K";
 
     for config in [
@@ -3781,7 +3781,7 @@ fn test_no_leading_space_prefix_for_linebreak_command() {
 
 #[test]
 fn test_package_loaded_math_linebreak_supports_representative_forms() {
-    let ctx = Parser::from_packages(&["ams", "base"]);
+    let ctx = ParseContext::from_packages(&["ams", "base"]);
 
     for (src, expected_star, expected_dimension) in [
         (r"\begin{matrix}a\\b\end{matrix}", false, None),
@@ -3818,7 +3818,7 @@ fn test_package_loaded_math_linebreak_supports_representative_forms() {
 
 #[test]
 fn test_package_loaded_text_linebreak_supports_representative_forms() {
-    let ctx = Parser::from_packages(&["base", "textmacros"]);
+    let ctx = ParseContext::from_packages(&["base", "textmacros"]);
 
     for (src, expected_star, expected_dimension) in [
         (r"\text{a\\b}", false, None),
@@ -3855,7 +3855,7 @@ fn test_package_loaded_text_linebreak_supports_representative_forms() {
 
 #[test]
 fn test_package_loaded_non_alpha_math_commands_support_representative_forms() {
-    let ctx = Parser::from_packages(&["ams", "base", "braket", "physics"]);
+    let ctx = ParseContext::from_packages(&["ams", "base", "braket", "physics"]);
 
     for src in [
         r"a\,b", r"a\!b", r"a\;b", r"a\:b", r"a\>b", r"a\*b", r"a\ b",
@@ -3887,7 +3887,7 @@ fn test_package_loaded_non_alpha_math_commands_support_representative_forms() {
 
 #[test]
 fn test_package_loaded_non_alpha_text_commands_support_representative_forms() {
-    let ctx = Parser::from_packages(&["base", "textmacros"]);
+    let ctx = ParseContext::from_packages(&["base", "textmacros"]);
 
     for src in [r"\text{a\,b}", r"\text{a\ b}"] {
         let output = ctx.parse(src, &ParseConfig::STRICT_NO_RECOVER);

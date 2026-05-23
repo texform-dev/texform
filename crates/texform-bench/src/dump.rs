@@ -157,7 +157,7 @@ impl ParquetRowWriter {
 mod tests {
     use super::*;
     use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
-    use texform_core::parse::{ParseConfig, Parser};
+    use texform_core::parse::{ParseConfig, ParseContext};
 
     fn key(kind: Kind, mode: ContentMode, name: &str) -> TargetCounterKey {
         TargetCounterKey {
@@ -168,7 +168,7 @@ mod tests {
     }
 
     fn count_formula(src: &str) -> FormulaCounter {
-        let output = Parser::shared().parse(src, &ParseConfig::default());
+        let output = ParseContext::shared().parse(src, &ParseConfig::default());
         let result = output.result.expect("parser returned no result");
         let mut counter = FormulaCounter::default();
         count_node(&result.node, &mut counter);

@@ -7,12 +7,13 @@ use support::{
     contains_error_node, parse_with_items,
 };
 use texform_core::parse::{
-    AllowedMode, CommandKind, ContextItem, ParseConfig, ParseDiagnosticKind, ParseOutput, Parser,
+    AllowedMode, CommandKind, ContextItem, ParseConfig, ParseContext, ParseDiagnosticKind,
+    ParseOutput,
 };
 use texform_interface::syntax_node::{ArgumentValue, SyntaxNode};
 
 fn parse_shared(src: &str, config: &ParseConfig) -> ParseOutput {
-    Parser::shared().parse(src, config)
+    ParseContext::shared().parse(src, config)
 }
 
 fn text_command_item() -> ContextItem {

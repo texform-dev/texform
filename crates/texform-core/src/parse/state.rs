@@ -1,11 +1,11 @@
 //! Per-call parser state.
 //!
-//! [`ParserState`] is the runtime companion to [`Parser`] and
+//! [`ParserState`] is the runtime companion to [`ParseContext`] and
 //! [`ParseConfig`]: it bundles the immutable knowledge base reference, the
 //! user-facing config, and the source string with the *mutable* per-call
 //! counters that the parser needs (currently just brace-group depth).
 //!
-//! The split exists because `Parser` is meant to be reused across many
+//! The split exists because `ParseContext` is meant to be reused across many
 //! parse calls with different configs; it cannot own a mutable depth counter
 //! without either re-entrance hazards or interior-mutability footguns.
 //!
@@ -14,12 +14,12 @@
 
 use std::cell::{Cell, RefCell};
 
-use super::{ParseConfig, Parser};
+use super::{ParseConfig, ParseContext};
 use crate::lexer::Token;
 use chumsky::error::Rich;
 
 pub(crate) struct ParserState<'a> {
-    pub(crate) ctx: &'a Parser,
+    pub(crate) ctx: &'a ParseContext,
     pub(crate) config: &'a ParseConfig,
     pub(crate) src: &'a str,
     group_depth: Cell<usize>,
@@ -27,7 +27,7 @@ pub(crate) struct ParserState<'a> {
 }
 
 impl<'a> ParserState<'a> {
-    pub(crate) fn new(ctx: &'a Parser, config: &'a ParseConfig, src: &'a str) -> Self {
+    pub(crate) fn new(ctx: &'a ParseContext, config: &'a ParseConfig, src: &'a str) -> Self {
         Self {
             ctx,
             config,

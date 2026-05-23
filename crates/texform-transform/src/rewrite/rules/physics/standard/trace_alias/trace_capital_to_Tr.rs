@@ -33,7 +33,7 @@ alias_rule! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse::Parser;
+    use crate::parse::ParseContext;
     use crate::rewrite::transform_examples;
     use crate::rewrite::{run_one_rule_for_test, RuleClass, RewriteRule as _};
     use crate::serialize::serialize;
@@ -55,7 +55,7 @@ mod tests {
 
     #[test]
     fn leaves_existing_capital_tr_unchanged() {
-        let parse_ctx = Parser::from_packages(&["base", "physics"]);
+        let parse_ctx = ParseContext::from_packages(&["base", "physics"]);
         let mut ast = parse_ctx
             .parse_to_ast(r"\Tr(M^2)=1", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
             .expect("parse should succeed");

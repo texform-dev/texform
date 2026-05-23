@@ -1,14 +1,14 @@
 use serde::Deserialize;
-use texform_argspec::{ArgForm, ArgSpec, DelimiterToken, ValueKind, parse_arg_specs};
-use texform_core::parse::{
+use texform::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, AllowedMode, CommandItem,
     CommandKind, ContentMode, ContextItem, DelimiterControlItem, EnvironmentItem, ParseConfig,
     ParseOutput, ParserBuildError,
 };
-use texform_transform::{
+use texform::{
     FlattenGroupsConfig as CoreFlattenGroupsConfig,
     LowerAttributesConfig as CoreLowerAttributesConfig, Profile as CoreProfile,
 };
+use texform_argspec::{ArgForm, ArgSpec, DelimiterToken, ValueKind, parse_arg_specs};
 use tsify_next::Tsify;
 use wasm_bindgen::prelude::*;
 
@@ -56,13 +56,6 @@ impl ParseConfigInput {
             config.max_group_depth = max_group_depth;
         }
         config
-    }
-}
-
-fn parse_config_input(value: Option<ParseConfigInput>) -> ParseConfig {
-    match value {
-        Some(value) => value.into_config(),
-        None => ParseConfig::default(),
     }
 }
 
@@ -646,19 +639,14 @@ fn profile_from_name(name: &str) -> Result<texform::Profile, JsValue> {
     }
 }
 
-fn rule_key_from_name(name: &str) -> Result<texform_transform::RuleKey, JsValue> {
-    texform_transform::rewrite::all_rules()
-        .iter()
-        .find_map(|rule| {
-            let key = rule.meta().key;
-            (key.to_string() == name).then_some(key)
-        })
+fn rule_key_from_name(name: &str) -> Result<texform::RuleKey, JsValue> {
+    texform::rule_key_from_name(name)
         .ok_or_else(|| JsValue::from_str(&format!("unknown transform rule: {}", name)))
 }
 
 #[wasm_bindgen]
 pub struct Parser {
-    inner: texform_core::parse::Parser,
+    inner: texform::Parser,
 }
 
 #[wasm_bindgen]
@@ -677,12 +665,12 @@ impl Parser {
             Some(pkgs) => {
                 let refs: Vec<&str> = pkgs.iter().map(String::as_str).collect();
                 if refs.is_empty() {
-                    texform_core::parse::ParserBuilder::empty()
+                    texform::Parser::builder().empty_knowledge()
                 } else {
-                    texform_core::parse::ParserBuilder::empty().packages(refs.as_slice())
+                    texform::Parser::builder().packages(refs.as_slice())
                 }
             }
-            _ => texform_core::parse::ParserBuilder::default(),
+            _ => texform::Parser::builder(),
         };
         for item in input.items.unwrap_or_default() {
             builder = builder.insert_item(parse_context_item_input(item)?);
@@ -706,8 +694,11 @@ impl Parser {
     }
 
     pub fn parse(&self, src: &str, config: Option<ParseConfigInput>) -> Result<JsValue, JsValue> {
-        let config = parse_config_input(config);
-        parse_output_to_result(self.inner.parse(src, &config))
+        let output = match config {
+            Some(config) => self.inner.parse_with(src, &config.into_config()),
+            None => self.inner.parse(src),
+        };
+        parse_output_to_result(output)
     }
 
     pub fn lookup_command(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
@@ -800,8 +791,11 @@ impl Engine {
     }
 
     pub fn parse(&self, src: &str, config: Option<ParseConfigInput>) -> Result<JsValue, JsValue> {
-        let config = parse_config_input(config);
-        parse_output_to_result(self.inner.parse_with(src, &config))
+        let output = match config {
+            Some(config) => self.inner.parse_with(src, &config.into_config()),
+            None => self.inner.parse(src),
+        };
+        parse_output_to_result(output)
     }
 
     pub fn normalize(&self, src: &str, options: Option<JsValue>) -> Result<JsValue, JsValue> {
@@ -861,12 +855,12 @@ impl Parser {
             Some(pkgs) => {
                 let refs: Vec<&str> = pkgs.iter().map(String::as_str).collect();
                 if refs.is_empty() {
-                    texform_core::parse::ParserBuilder::empty()
+                    texform::Parser::builder().empty_knowledge()
                 } else {
-                    texform_core::parse::ParserBuilder::empty().packages(refs.as_slice())
+                    texform::Parser::builder().packages(refs.as_slice())
                 }
             }
-            _ => texform_core::parse::ParserBuilder::default(),
+            _ => texform::Parser::builder(),
         };
         for item in input.items.unwrap_or_default() {
             builder = builder.insert_item(parse_context_item_input(item)?);
@@ -1028,12 +1022,7 @@ fn set_number(value: &js_sys::Object, key: &str, number: usize) {
 }
 
 fn format_parse_context_build_error(error: ParserBuildError) -> String {
-    match error {
-        ParserBuildError::PackageLoad(error) => format!("package loading failed: {}", error),
-        ParserBuildError::InvalidContextItem { name, source } => {
-            format!("spec validation failed for {}: {}", name, source)
-        }
-    }
+    error.to_string()
 }
 
 fn parse_context_build_error_to_js(error: ParserBuildError) -> JsValue {
@@ -1361,34 +1350,34 @@ fn delimiter_token_to_js(token: &DelimiterToken) -> JsValue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use texform_core::parse::{PackageLoadError, ParserBuildError};
 
     #[test]
-    fn package_load_build_errors_keep_package_loading_prefix() {
-        let error = format_parse_context_build_error(ParserBuildError::PackageLoad(
-            PackageLoadError::UnknownPackage {
-                name: "missing".to_string(),
-            },
-        ));
+    fn package_load_build_errors_use_facade_error_text() {
+        let error = texform::Parser::builder()
+            .packages(&["missing"])
+            .build()
+            .expect_err("missing package should fail");
+        let error = format_parse_context_build_error(error);
 
-        assert_eq!(error, "package loading failed: unknown package: missing");
+        assert_eq!(error, "unknown package: missing");
     }
 
     #[test]
     fn invalid_context_item_build_errors_include_item_name() {
-        let error = format_parse_context_build_error(ParserBuildError::InvalidContextItem {
-            name: "foo".to_string(),
-            source: texform_core::parse::ArgSpecParseError {
-                context: "foo".to_string(),
-                char_index: 0,
-                message: "expected argument kind".to_string(),
-            },
-        });
+        let error = texform::Parser::builder()
+            .empty_knowledge()
+            .item(CommandItem::new(
+                "foo",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "s:T",
+            ))
+            .build()
+            .expect_err("invalid item should fail");
+        let error = format_parse_context_build_error(error);
 
-        assert_eq!(
-            error,
-            "spec validation failed for foo: invalid argspec (foo) at char 0: expected argument kind"
-        );
+        assert!(error.contains("foo"));
+        assert!(error.contains("invalid argspec"));
     }
 
     #[test]
@@ -1436,6 +1425,16 @@ mod tests {
                 .lookup_command("Bra", ContentMode::Math)
                 .is_some()
         );
+    }
+
+    #[test]
+    fn parser_none_config_uses_facade_default() {
+        let parser =
+            Parser::from_options(ParserOptions::default()).expect("default parser should build");
+
+        let output = parser.inner.parse(r"\unknowncmd");
+        assert!(output.result.is_some());
+        assert!(output.diagnostics.is_empty());
     }
 
     #[test]

@@ -133,7 +133,7 @@ See `crates/texform-transform/src/rewrite/rules/README.md` for rule authoring co
 TeXForm exposes two Rust-side entry layers:
 
 - `texform` — the user-facing facade with parse-only `Parser`, normalizing `Engine`, `serialize`, `validate_argspec`, and analysis helpers
-- `texform-core::parse::Parser` — the lower-level parser API for callers that need direct AST/parser access
+- `texform-core::parse::ParseContext` — the lower-level parser API for callers that need direct AST/parser access
 
 `texform-core::knowledge` is an internal implementation module and is not the intended public integration surface.
 

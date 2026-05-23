@@ -35,7 +35,7 @@ alias_rule! {
 mod tests {
     use super::*;
     use crate::ast::{ArgumentValue, Ast, Node, NodeId};
-    use crate::parse::Parser;
+    use crate::parse::ParseContext;
     use crate::rewrite::transform_examples;
     use crate::rewrite::{run_one_rule_for_test, RuleClass};
 
@@ -89,7 +89,7 @@ mod tests {
 
     #[test]
     fn rewrites_quantity_to_qty_and_preserves_argument_content() {
-        let parse_ctx = Parser::from_packages(&["physics"]);
+        let parse_ctx = ParseContext::from_packages(&["physics"]);
         let mut ast = parse_ctx
             .parse_to_ast(r"\quantity{a}", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
             .expect("parse should succeed");

@@ -163,10 +163,10 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::parse::{ParseConfig, Parser};
+    use crate::parse::{ParseConfig, ParseContext};
 
     fn count(src: &str) -> HashMap<String, u32> {
-        let output = Parser::shared().parse(src, &ParseConfig::default());
+        let output = ParseContext::shared().parse(src, &ParseConfig::default());
         let node = &output.result.expect("parse result").node;
         let mut counter = TargetCounter::default();
         count_node(node, &mut counter);

@@ -2,12 +2,10 @@ use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pythonize::pythonize;
-use texform_core::parse::{ParseConfig as CoreParseConfig, Parser as CoreParser};
-use texform_core::target_counter::{TargetCounter, count_node};
-use texform_transform::{
+use texform::{
     FlattenGroupsConfig as CoreFlattenGroupsConfig,
-    LowerAttributesConfig as CoreLowerAttributesConfig, Profile as CoreProfile,
-    TransformConfig as CoreTransformConfig,
+    LowerAttributesConfig as CoreLowerAttributesConfig, ParseConfig as CoreParseConfig,
+    Profile as CoreProfile, TransformConfig as CoreTransformConfig,
 };
 
 pyo3::create_exception!(texform, ParseError, PyException);
@@ -77,12 +75,6 @@ impl PyLowerAttributesConfig {
     fn from_core(config: CoreLowerAttributesConfig) -> Self {
         Self {
             enabled: config.enabled,
-        }
-    }
-
-    fn into_core(&self) -> CoreLowerAttributesConfig {
-        CoreLowerAttributesConfig {
-            enabled: self.enabled,
         }
     }
 }
@@ -356,22 +348,19 @@ impl PyTransformConfig {
     }
 }
 
-fn py_parse_config_to_core(config: Option<PyRef<'_, PyParseConfig>>) -> CoreParseConfig {
-    config
-        .as_deref()
-        .map(PyParseConfig::into_core)
-        .unwrap_or_default()
-}
-
-fn parse_context(packages: Option<Vec<String>>) -> PyResult<CoreParser> {
-    match packages {
-        Some(packages) => {
-            let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
-            CoreParser::try_from_packages(refs.as_slice())
-                .map_err(|error| ParseError::new_err(error.to_string()))
-        }
-        None => Ok(CoreParser::shared().clone()),
+fn parse_context(packages: Option<Vec<String>>) -> PyResult<texform::Parser> {
+    let mut builder = texform::Parser::builder();
+    if let Some(packages) = packages {
+        let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
+        builder = if refs.is_empty() {
+            builder.empty_knowledge()
+        } else {
+            builder.packages(refs.as_slice())
+        };
     }
+    builder
+        .build()
+        .map_err(|error| ParseError::new_err(error.to_string()))
 }
 
 fn profile_from_name(name: &str) -> PyResult<texform::Profile> {
@@ -386,13 +375,8 @@ fn profile_from_name(name: &str) -> PyResult<texform::Profile> {
     }
 }
 
-fn rule_key_from_string(value: &str) -> PyResult<texform_transform::RuleKey> {
-    texform_transform::rewrite::all_rules()
-        .iter()
-        .find_map(|rule| {
-            let key = rule.meta().key;
-            (key.to_string() == value).then_some(key)
-        })
+fn rule_key_from_string(value: &str) -> PyResult<texform::RuleKey> {
+    texform::rule_key_from_name(value)
         .ok_or_else(|| ParseError::new_err(format!("unknown transform rule: {value}")))
 }
 
@@ -606,10 +590,11 @@ impl PyParser {
         src: &str,
         config: Option<PyRef<'_, PyParseConfig>>,
     ) -> PyResult<Py<PyAny>> {
-        parse_output_to_python(
-            py,
-            self.inner.parse_with(src, &py_parse_config_to_core(config)),
-        )
+        let output = match config {
+            Some(config) => self.inner.parse_with(src, &config.into_core()),
+            None => self.inner.parse(src),
+        };
+        parse_output_to_python(py, output)
     }
 
     fn knows_command_name(&self, name: &str) -> bool {
@@ -751,18 +736,12 @@ fn count_targets(
     packages: Option<Vec<String>>,
 ) -> PyResult<Py<PyAny>> {
     let ctx = parse_context(packages)?;
-    let config = py_parse_config_to_core(config);
-    let output = ctx.parse(src, &config);
-    if !output.diagnostics.is_empty() {
-        let first_msg = output.diagnostics[0].message.clone();
-        return Err(ParseError::new_err(first_msg));
+    let counts = match config {
+        Some(config) => texform::count_targets_with(&ctx, src, &config.into_core()),
+        None => texform::count_targets(&ctx, src),
     }
-    let result = output
-        .result
-        .ok_or_else(|| ParseError::new_err("parse produced no output and no diagnostics"))?;
-    let mut counter = TargetCounter::default();
-    count_node(&result.node, &mut counter);
-    Ok(pythonize(py, &counter.logical_counts())?.unbind())
+    .map_err(|error| ParseError::new_err(error.to_string()))?;
+    Ok(pythonize(py, &counts)?.unbind())
 }
 
 /// Native extension module loaded as `texform._native`.
@@ -864,6 +843,21 @@ mod tests {
             parser
                 .call_method1("parse", (r"\probe{x}", config))
                 .expect("custom command should parse");
+        });
+    }
+
+    #[test]
+    fn python_parser_none_config_uses_facade_default() {
+        Python::with_gil(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let parser_cls = module.getattr("Parser").unwrap();
+            let parser = parser_cls.call0().unwrap();
+
+            parser
+                .call_method1("parse", (r"\unknowncmd",))
+                .expect("non-strict facade default should preserve unknown commands");
         });
     }
 

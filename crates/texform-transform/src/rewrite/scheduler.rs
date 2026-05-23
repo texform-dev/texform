@@ -2,7 +2,7 @@
 
 use crate::ast::{Ast, NodeId, NodeKind};
 use crate::knowledge::{lookup_command_node_name, lookup_environment_node_name};
-use crate::parse::{ContentMode, Parser};
+use crate::parse::{ContentMode, ParseContext};
 use crate::rewrite::plan::Plan;
 use crate::rewrite::rule::{RuleEffect, RuleMeta, RuleTarget, RuleTargetKey, RuleTargetKind};
 use crate::rewrite::rule_context::RuleContext;
@@ -10,7 +10,7 @@ use crate::rewrite::{RewriteError, RewriteReport};
 
 pub(super) fn drive_fixed_point(
     ast: &mut Ast,
-    parse_ctx: &Parser,
+    parse_ctx: &ParseContext,
     plan: &Plan,
     max_iterations: usize,
     report: &mut RewriteReport,
@@ -102,7 +102,7 @@ pub(super) fn target_present(
     ast: &Ast,
     node_id: NodeId,
     target: RuleTargetKey,
-    parse_ctx: &Parser,
+    parse_ctx: &ParseContext,
 ) -> bool {
     match target.kind {
         RuleTargetKind::Command => lookup_command_node_name(ast.node(node_id))

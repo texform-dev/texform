@@ -66,7 +66,7 @@ define_rule! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse::Parser;
+    use crate::parse::ParseContext;
     use crate::rewrite::transform_examples;
     use crate::rewrite::{run_one_rule_for_test, RewriteRule as _, RuleClass};
 
@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn groups_qcomma_expansion_when_not_a_sibling_node() {
-        let parse_ctx = Parser::from_packages(&["base", "physics"]);
+        let parse_ctx = ParseContext::from_packages(&["base", "physics"]);
         let mut ast = parse_ctx
             .parse_to_ast(r"\qc^2", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
             .expect("parse should succeed");

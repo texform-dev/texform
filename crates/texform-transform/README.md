@@ -7,10 +7,10 @@ The crate is a thin wrapper around four ordered phases. Callers choose a build-t
 ## Quick start
 
 ```rust
-use texform_core::parse::{ParseConfig, Parser};
+use texform_core::parse::{ParseConfig, ParseContext};
 use texform_transform::{BuildConfig, Profile, TransformContext};
 
-let parse_ctx = Parser::from_packages(&["base", "ams"]);
+let parse_ctx = ParseContext::from_packages(&["base", "ams"]);
 let mut ast = parse_ctx
     .parse_to_ast(r"\frac{a}{b}", &ParseConfig::default())
     .expect("source should parse");
@@ -219,14 +219,14 @@ Rules live under `src/rewrite/rules/{base, ams, braket, physics}/` and are auto-
 `RuleMeta` declares:
 
 - `key: RuleKey` (`package/name`) — the stable identifier used in reports and build-time filters.
-- `enabled_by_packages` — packages whose presence in the `Parser` enables the rule.
+- `enabled_by_packages` — packages whose presence in the `ParseContext` enables the rule.
 - `class` — see [`RuleClass`](#ruleclass).
 - `safety` — see [`RuleSafety`](#rulesafety).
 - `triggers` — `RuleTarget`s the scheduler watches to know when to attempt the rule.
 - `consumes` — forms the rule `eliminates` (must not appear in the output) and `touches` (may read or modify).
 - `produces` — forms the rule may introduce. The engine verifies every produced form is either accepted by the output contract or eliminated by another rule.
 
-`TransformContext::from_build_config` builds a `Plan` by filtering all registered rules through the selected profile classes, build-time disabled rules, and the `Parser`'s enabled packages. The plan is then driven by `scheduler::drive_fixed_point` until either no rule fires in an iteration or `max_iterations` is exceeded. After the loop, `contract::assert_eliminated_forms` verifies that no rule's `eliminates` set remains in the output AST; a violation is reported as `RewriteError::ContractViolation`.
+`TransformContext::from_build_config` builds a `Plan` by filtering all registered rules through the selected profile classes, build-time disabled rules, and the `ParseContext`'s enabled packages. The plan is then driven by `scheduler::drive_fixed_point` until either no rule fires in an iteration or `max_iterations` is exceeded. After the loop, `contract::assert_eliminated_forms` verifies that no rule's `eliminates` set remains in the output AST; a violation is reported as `RewriteError::ContractViolation`.
 
 See [`src/rewrite/rules/README.md`](src/rewrite/rules/README.md) for rule authoring conventions and the macro-based DSL used to define rules.
 

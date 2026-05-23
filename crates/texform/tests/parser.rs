@@ -21,12 +21,31 @@ fn parser_parse_returns_result_and_diagnostics() {
     assert!(json.get("node").is_some());
     assert!(json.get("span").is_some());
 
-    let failure = parser.parse(r"\unknowncmd");
+    let failure = parser.parse_with(r"\unknowncmd", &ParseConfig::STRICT_NO_RECOVER);
     assert!(
         failure.result.is_none(),
         "strict unknown command should fail"
     );
     assert!(!failure.diagnostics.is_empty(), "diagnostics expected");
+}
+
+#[test]
+fn parser_parse_uses_non_strict_recover_default() {
+    let parser = Parser::builder()
+        .packages(&["base"])
+        .build()
+        .expect("parser should build");
+
+    let output = parser.parse(r"\unknowncmd");
+
+    assert!(
+        output.result.is_some(),
+        "unknown command should be preserved"
+    );
+    assert!(
+        output.diagnostics.is_empty(),
+        "non-strict default should not report unknown commands"
+    );
 }
 
 #[test]

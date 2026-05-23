@@ -175,7 +175,7 @@ mod tests {
     fn corpus_profile_uses_buildrel_rule_before_over_to_frac() {
         // CORPUS enables both Base and Expand rules. This locks in the contract
         // that buildrel-expand gets this TeX shape instead of over-to-frac.
-        let parse_ctx = crate::parse::Parser::from_packages(&["base"]);
+        let parse_ctx = crate::parse::ParseContext::from_packages(&["base"]);
         let mut ast = parse_ctx
             .parse_to_ast(r"A_n \buildrel n\to\infty \over = B_n", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
             .expect("parse input should succeed");

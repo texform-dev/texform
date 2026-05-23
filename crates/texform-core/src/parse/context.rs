@@ -1,6 +1,6 @@
 //! Parse context that owns a per-instance immutable knowledge base.
 //!
-//! [`Parser`] is the primary public API surface for freezing a knowledge
+//! [`ParseContext`] is the primary public API surface for freezing a knowledge
 //! base and parsing LaTeX formulas with a stable package-backed view.
 //!
 //! The module also defines the shared output types ([`ParseOutput`],
@@ -9,7 +9,7 @@
 use std::collections::HashSet;
 use std::sync::{Arc, OnceLock};
 
-use chumsky::{Parser as ChumskyParser, prelude::*};
+use chumsky::prelude::*;
 use logos::Logos;
 use serde::Serialize;
 pub use texform_argspec::ArgSpecParseError;
@@ -27,8 +27,10 @@ pub use crate::knowledge::KnowledgeBase;
 pub use crate::knowledge::PackageLoadError;
 use crate::knowledge::default_package_names;
 use crate::lexer::Token;
+use crate::parse::grammar::{
+    self, RelativeSpanEntry, TokenStream, TrackedNode, build_token_stream,
+};
 use crate::parse::{ParseConfig, ParserState};
-use crate::parser::{self, RelativeSpanEntry, TokenStream, TrackedNode, build_token_stream};
 
 type LexedSource = Vec<(Token, std::ops::Range<usize>)>;
 
@@ -174,7 +176,7 @@ impl ContextItem {
     }
 }
 
-/// Runtime command definition to be injected into a [`Parser`].
+/// Runtime command definition to be injected into a [`ParseContext`].
 ///
 /// The `spec` field uses the xparse-style argument specification string
 /// (e.g. `"m m"` for two mandatory args, `"s o m"` for star + optional + mandatory).
@@ -220,7 +222,7 @@ impl CommandItem {
     }
 }
 
-/// Runtime environment definition to be injected into a [`Parser`].
+/// Runtime environment definition to be injected into a [`ParseContext`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnvironmentItem {
     /// Environment name (e.g. `"matrix"`, `"align"`)
@@ -327,7 +329,7 @@ fn record_insert(summary: &mut MutationSummary, item: &ContextItem) {
 }
 
 #[derive(Debug)]
-pub enum ParserBuildError {
+pub enum ParseContextBuildError {
     PackageLoad(PackageLoadError),
     InvalidContextItem {
         name: String,
@@ -341,12 +343,12 @@ enum KnowledgeBaseMode {
     Empty,
 }
 
-pub struct ParserBuilder {
+pub struct ParseContextBuilder {
     mode: KnowledgeBaseMode,
     ops: Vec<BuilderOp>,
 }
 
-impl ParserBuilder {
+impl ParseContextBuilder {
     pub fn empty() -> Self {
         Self {
             mode: KnowledgeBaseMode::Empty,
@@ -385,7 +387,7 @@ impl ParserBuilder {
         self
     }
 
-    pub fn build(self) -> Result<Parser, ParserBuildError> {
+    pub fn build(self) -> Result<ParseContext, ParseContextBuildError> {
         let (mut math_kb, mut text_kb, enabled_packages) = match self.mode {
             KnowledgeBaseMode::Empty => {
                 (KnowledgeBase::empty(), KnowledgeBase::empty(), Vec::new())
@@ -397,12 +399,12 @@ impl ParserBuilder {
                     refs.as_slice(),
                     ContentMode::Math,
                 )
-                .map_err(ParserBuildError::PackageLoad)?;
+                .map_err(ParseContextBuildError::PackageLoad)?;
                 let text_kb = KnowledgeBase::try_build_from_packages_for_mode(
                     refs.as_slice(),
                     ContentMode::Text,
                 )
-                .map_err(ParserBuildError::PackageLoad)?;
+                .map_err(ParseContextBuildError::PackageLoad)?;
 
                 (math_kb, text_kb, enabled_packages)
             }
@@ -414,12 +416,12 @@ impl ParserBuilder {
                         refs.as_slice(),
                         ContentMode::Math,
                     )
-                    .map_err(ParserBuildError::PackageLoad)?,
+                    .map_err(ParseContextBuildError::PackageLoad)?,
                     KnowledgeBase::try_build_from_packages_for_mode(
                         refs.as_slice(),
                         ContentMode::Text,
                     )
-                    .map_err(ParserBuildError::PackageLoad)?,
+                    .map_err(ParseContextBuildError::PackageLoad)?,
                     enabled_packages,
                 )
             }
@@ -432,13 +434,13 @@ impl ParserBuilder {
                 BuilderOp::Insert(item) => {
                     record_insert(&mut mutation_summary, &item);
                     insert_item_into_lane(&mut math_kb, &item, ContentMode::Math).map_err(
-                        |source| ParserBuildError::InvalidContextItem {
+                        |source| ParseContextBuildError::InvalidContextItem {
                             name: item.name().to_string(),
                             source,
                         },
                     )?;
                     insert_item_into_lane(&mut text_kb, &item, ContentMode::Text).map_err(
-                        |source| ParserBuildError::InvalidContextItem {
+                        |source| ParseContextBuildError::InvalidContextItem {
                             name: item.name().to_string(),
                             source,
                         },
@@ -462,7 +464,7 @@ impl ParserBuilder {
             }
         }
 
-        Ok(Parser::from_parts(
+        Ok(ParseContext::from_parts(
             math_kb,
             text_kb,
             mutation_summary,
@@ -473,7 +475,7 @@ impl ParserBuilder {
 
 fn canonical_enabled_package_names(
     requested: &[&str],
-) -> Result<Vec<PackageName>, ParserBuildError> {
+) -> Result<Vec<PackageName>, ParseContextBuildError> {
     let mut packages = Vec::new();
     for package in texform_specs::builtin::MANAGED_PACKAGE_IMPORT_ORDER {
         if requested.contains(&package.as_str()) {
@@ -483,7 +485,7 @@ fn canonical_enabled_package_names(
 
     for requested_name in requested {
         if PackageName::from_str(requested_name).is_none() {
-            return Err(ParserBuildError::PackageLoad(
+            return Err(ParseContextBuildError::PackageLoad(
                 PackageLoadError::UnknownPackage {
                     name: (*requested_name).to_string(),
                 },
@@ -516,7 +518,7 @@ fn insert_item_into_lane(
     }
 }
 
-impl Default for ParserBuilder {
+impl Default for ParseContextBuilder {
     fn default() -> Self {
         Self {
             mode: KnowledgeBaseMode::DefaultPackages,
@@ -651,7 +653,7 @@ impl std::error::Error for ParseAstError {}
 
 /// Immutable parse context owning an isolated knowledge base.
 ///
-/// A `Parser` is the main integration surface for callers that need to
+/// A `ParseContext` is the main integration surface for callers that need to
 /// freeze a fully-built knowledge base, query metadata, and parse LaTeX
 /// formulas repeatedly.
 ///
@@ -665,16 +667,16 @@ impl std::error::Error for ParseAstError {}
 /// | [`shared()`](Self::shared) | Same as above, lazily cached `&'static` ref |
 ///
 #[derive(Clone)]
-pub struct Parser {
+pub struct ParseContext {
     math_kb: Arc<KnowledgeBase>,
     text_kb: Arc<KnowledgeBase>,
     mutation_summary: MutationSummary,
     enabled_packages: Vec<PackageName>,
 }
 
-impl std::fmt::Debug for Parser {
+impl std::fmt::Debug for ParseContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Parser")
+        f.debug_struct("ParseContext")
             .field("math_kb", &self.math_kb)
             .field("text_kb", &self.text_kb)
             .field("enabled_packages", &self.enabled_packages)
@@ -682,17 +684,17 @@ impl std::fmt::Debug for Parser {
     }
 }
 
-impl Default for Parser {
+impl Default for ParseContext {
     fn default() -> Self {
-        ParserBuilder::default()
+        ParseContextBuilder::default()
             .build()
             .expect("default parse context should build")
     }
 }
 
-impl Parser {
-    pub fn builder() -> ParserBuilder {
-        ParserBuilder::default()
+impl ParseContext {
+    pub fn builder() -> ParseContextBuilder {
+        ParseContextBuilder::default()
     }
 
     pub(crate) fn from_parts(
@@ -701,7 +703,7 @@ impl Parser {
         mutation_summary: MutationSummary,
         enabled_packages: Vec<PackageName>,
     ) -> Self {
-        Parser {
+        ParseContext {
             math_kb: Arc::new(math_kb),
             text_kb: Arc::new(text_kb),
             mutation_summary,
@@ -725,7 +727,7 @@ impl Parser {
     ///
     /// Useful as a blank slate when every definition will be injected manually.
     pub fn empty() -> Self {
-        ParserBuilder::empty()
+        ParseContextBuilder::empty()
             .build()
             .expect("empty parse context should build")
     }
@@ -738,7 +740,7 @@ impl Parser {
     /// Panics if any package name is unrecognized. Use [`try_from_packages`](Self::try_from_packages)
     /// for fallible loading.
     pub fn from_packages(packages: &[&str]) -> Self {
-        ParserBuilder::empty()
+        ParseContextBuilder::empty()
             .packages(packages)
             .build()
             .expect("package parse context should build")
@@ -749,12 +751,12 @@ impl Parser {
     /// Returns [`PackageLoadError`] instead of panicking when a package name
     /// is unrecognized.
     pub fn try_from_packages(packages: &[&str]) -> Result<Self, PackageLoadError> {
-        ParserBuilder::empty()
+        ParseContextBuilder::empty()
             .packages(packages)
             .build()
             .map_err(|error| match error {
-                ParserBuildError::PackageLoad(error) => error,
-                ParserBuildError::InvalidContextItem { .. } => {
+                ParseContextBuildError::PackageLoad(error) => error,
+                ParseContextBuildError::InvalidContextItem { .. } => {
                     panic!("try_from_packages should not hit invalid context item")
                 }
             })
@@ -764,7 +766,7 @@ impl Parser {
     ///
     /// This is the cheapest way to parse with the default knowledge base: the
     /// context is built once on first call and shared for the process lifetime.
-    pub fn shared() -> &'static Parser {
+    pub fn shared() -> &'static ParseContext {
         shared_parser()
     }
 
@@ -885,12 +887,16 @@ impl Parser {
     }
 }
 
-fn shared_parser() -> &'static Parser {
-    static DEFAULT: OnceLock<Parser> = OnceLock::new();
-    DEFAULT.get_or_init(Parser::default)
+fn shared_parser() -> &'static ParseContext {
+    static DEFAULT: OnceLock<ParseContext> = OnceLock::new();
+    DEFAULT.get_or_init(ParseContext::default)
 }
 
-pub(crate) fn parse_with_context(ctx: &Parser, src: &str, config: &ParseConfig) -> ParseOutput {
+pub(crate) fn parse_with_context(
+    ctx: &ParseContext,
+    src: &str,
+    config: &ParseConfig,
+) -> ParseOutput {
     let token_stream = build_token_stream(src);
     let (output, mut errors) = parse_raw(ctx, src, token_stream, config);
 
@@ -922,13 +928,13 @@ pub(crate) fn parse_with_context(ctx: &Parser, src: &str, config: &ParseConfig) 
 }
 
 fn parse_raw(
-    ctx: &Parser,
+    ctx: &ParseContext,
     src: &str,
     token_stream: TokenStream<'_>,
     config: &ParseConfig,
 ) -> (Option<TrackedNode>, Vec<Rich<'static, Token>>) {
     let state = ParserState::new(ctx, config, src);
-    let (output, errors) = parser::math_block_parser_with_source(&state, src)
+    let (output, errors) = grammar::math_block_parser_with_source(&state, src)
         .then_ignore(end())
         .parse(token_stream)
         .into_output_errors();
@@ -949,7 +955,7 @@ fn node_span_entry(entry: RelativeSpanEntry) -> NodeSpanEntry {
     }
 }
 
-fn convert_diagnostic(ctx: &Parser, src: &str, err: Rich<'static, Token>) -> ParseDiagnostic {
+fn convert_diagnostic(ctx: &ParseContext, src: &str, err: Rich<'static, Token>) -> ParseDiagnostic {
     let span = {
         let s = err.span();
         Span {
@@ -1065,7 +1071,7 @@ fn infer_raw_diagnostic_kind(
 }
 
 fn supplement_diagnostic_contexts(
-    ctx: &Parser,
+    ctx: &ParseContext,
     src: &str,
     kind: Option<ParseDiagnosticKind>,
     diagnostic: &mut ParseDiagnostic,
@@ -1356,7 +1362,7 @@ fn find_inline_math_shift_after_command(src: &str, command_span: Span) -> Option
 
 fn supplement_environment_mode_error_message(
     kind: Option<ParseDiagnosticKind>,
-    ctx: &Parser,
+    ctx: &ParseContext,
     src: &str,
     lexed: &mut Option<LexedSource>,
     diagnostic: &mut ParseDiagnostic,
@@ -1425,7 +1431,7 @@ fn supplement_environment_mismatch_message(
 
 fn supplement_unknown_environment_message(
     kind: Option<ParseDiagnosticKind>,
-    ctx: &Parser,
+    ctx: &ParseContext,
     src: &str,
     lexed: &mut Option<LexedSource>,
     diagnostic: &mut ParseDiagnostic,
@@ -1602,7 +1608,10 @@ fn find_argument_surface_span(tokens: &LexedSource, after: usize) -> Option<Span
     }
 }
 
-fn find_invalid_left_context(ctx: &Parser, tokens: &LexedSource) -> Option<(Span, Option<Span>)> {
+fn find_invalid_left_context(
+    ctx: &ParseContext,
+    tokens: &LexedSource,
+) -> Option<(Span, Option<Span>)> {
     let mut environment_stack = Vec::new();
     let mut index = 0;
 
@@ -1751,7 +1760,7 @@ fn find_environment_name_mismatch(
 }
 
 fn find_unknown_environment_at_span(
-    ctx: &Parser,
+    ctx: &ParseContext,
     tokens: &LexedSource,
     target_span: Span,
 ) -> Option<(String, Span)> {
@@ -1817,7 +1826,7 @@ fn find_unknown_environment_at_span(
 }
 
 fn find_first_known_but_disallowed_environment(
-    ctx: &Parser,
+    ctx: &ParseContext,
     tokens: &LexedSource,
 ) -> Option<(String, ContentMode, Span)> {
     let mut index = 0;
@@ -1894,7 +1903,7 @@ fn find_first_known_but_disallowed_environment(
 }
 
 fn find_environment_mode_error_at_span(
-    ctx: &Parser,
+    ctx: &ParseContext,
     tokens: &LexedSource,
     target_span: Span,
 ) -> Option<(String, ContentMode, Span)> {
@@ -2009,7 +2018,7 @@ mod tests {
         };
 
         supplement_diagnostic_contexts(
-            &Parser::empty(),
+            &ParseContext::empty(),
             "$x",
             Some(ParseDiagnosticKind::UnclosedInlineMath),
             &mut diagnostic,
@@ -2035,7 +2044,7 @@ mod tests {
         };
 
         supplement_diagnostic_contexts(
-            &Parser::empty(),
+            &ParseContext::empty(),
             "\\hspace{bad}",
             Some(ParseDiagnosticKind::ArgumentValidation),
             &mut diagnostic,

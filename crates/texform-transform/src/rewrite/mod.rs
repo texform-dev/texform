@@ -125,12 +125,12 @@ impl std::fmt::Display for RewriteError {
 impl std::error::Error for RewriteError {}
 
 use crate::ast::Ast;
-use crate::parse::Parser;
+use crate::parse::ParseContext;
 
 /// Applies rewrite rules to an AST and records what changed.
 pub fn run(
     ast: &mut Ast,
-    parse_ctx: &Parser,
+    parse_ctx: &ParseContext,
     plan: &Plan,
     max_iterations: usize,
     report: &mut RewriteReport,
@@ -143,7 +143,7 @@ pub fn run(
 #[cfg(test)]
 pub(crate) fn run_one_rule_for_test(
     ast: &mut Ast,
-    parse_ctx: &Parser,
+    parse_ctx: &ParseContext,
     rule: &'static dyn RewriteRule,
     class: RuleClass,
 ) -> Result<crate::TransformReport, crate::TransformError> {

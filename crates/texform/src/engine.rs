@@ -141,7 +141,7 @@ impl EngineBuilder {
         self
     }
 
-    pub fn disable_rule(mut self, key: texform_transform::RuleKey) -> Self {
+    pub fn disable_rule(mut self, key: crate::RuleKey) -> Self {
         let config = self
             .build_config
             .take()

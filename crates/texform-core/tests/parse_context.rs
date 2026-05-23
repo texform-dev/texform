@@ -1,11 +1,12 @@
 use texform_core::parse::{
-    AllowedMode, CommandItem, CommandKind, ContentMode, EnvironmentItem, Parser, ParserBuilder,
+    AllowedMode, CommandItem, CommandKind, ContentMode, EnvironmentItem, ParseContext,
+    ParseContextBuilder,
 };
 use texform_specs::builtin::PackageName;
 
 #[test]
 fn builder_applies_insert_and_remove_before_freezing() {
-    let ctx = ParserBuilder::default()
+    let ctx = ParseContextBuilder::default()
         .packages(&["base"])
         .insert_item(CommandItem::new(
             "foo",
@@ -23,7 +24,7 @@ fn builder_applies_insert_and_remove_before_freezing() {
 
 #[test]
 fn builder_applies_insert_and_remove_environment_before_freezing() {
-    let ctx = ParserBuilder::empty()
+    let ctx = ParseContextBuilder::empty()
         .insert_item(EnvironmentItem::new(
             "tempenv",
             AllowedMode::Math,
@@ -38,8 +39,8 @@ fn builder_applies_insert_and_remove_environment_before_freezing() {
 }
 
 #[test]
-fn explicit_parser_exposes_enabled_packages_in_import_order() {
-    let ctx = Parser::from_packages(&["physics", "base", "braket"]);
+fn explicit_context_exposes_enabled_packages_in_import_order() {
+    let ctx = ParseContext::from_packages(&["physics", "base", "braket"]);
     assert_eq!(
         ctx.enabled_packages(),
         &[PackageName::Base, PackageName::Braket, PackageName::Physics]
@@ -49,24 +50,24 @@ fn explicit_parser_exposes_enabled_packages_in_import_order() {
 }
 
 #[test]
-fn empty_parser_exposes_no_enabled_packages() {
-    let ctx = Parser::empty();
+fn empty_context_exposes_no_enabled_packages() {
+    let ctx = ParseContext::empty();
     assert!(ctx.enabled_packages().is_empty());
     assert!(!ctx.has_enabled_package(PackageName::Base));
 }
 
 #[test]
-fn parser_debug_omits_mutation_summary() {
-    let debug = format!("{:?}", Parser::empty());
-    assert!(debug.contains("Parser"));
+fn parse_context_debug_omits_mutation_summary() {
+    let debug = format!("{:?}", ParseContext::empty());
+    assert!(debug.contains("ParseContext"));
     assert!(debug.contains("kb"));
     assert!(!debug.contains("mutation_summary"));
 }
 
 #[test]
 fn convenience_factories_use_default_runtime_packages() {
-    let default_ctx = Parser::default();
-    let shared = Parser::shared();
+    let default_ctx = ParseContext::default();
+    let shared = ParseContext::shared();
 
     let expected_packages = &[
         PackageName::Base,
@@ -95,21 +96,21 @@ fn convenience_factories_use_default_runtime_packages() {
 
 #[test]
 fn shared_returns_the_same_default_context_instance() {
-    let left = Parser::shared() as *const Parser;
-    let right = Parser::shared() as *const Parser;
+    let left = ParseContext::shared() as *const ParseContext;
+    let right = ParseContext::shared() as *const ParseContext;
     assert_eq!(left, right);
 }
 
 #[test]
 fn explicit_all_packages_include_braket() {
     let package_names = texform_specs::builtin::all_package_names();
-    let ctx = Parser::from_packages(package_names.as_slice());
+    let ctx = ParseContext::from_packages(package_names.as_slice());
     assert!(ctx.lookup_command("braket", ContentMode::Math).is_some());
 }
 
 #[test]
 fn builder_compiles_distinct_math_and_text_kbs() {
-    let ctx = ParserBuilder::default()
+    let ctx = ParseContextBuilder::default()
         .packages(&["base", "textmacros"])
         .build()
         .expect("builder should build parse context");
@@ -131,17 +132,17 @@ fn builder_compiles_distinct_math_and_text_kbs() {
 
 #[test]
 fn knows_character_name_checks_loaded_character_entries() {
-    let bboldx = Parser::from_packages(&["bboldx"]);
+    let bboldx = ParseContext::from_packages(&["bboldx"]);
     assert!(bboldx.knows_character_name("bbdotlessi"));
     assert!(bboldx.knows_character_name("txtbbdotlessi"));
 
-    let base = Parser::from_packages(&["base"]);
+    let base = ParseContext::from_packages(&["base"]);
     assert!(!base.knows_character_name("bbdotlessi"));
 }
 
 #[test]
 fn runtime_text_only_command_only_enters_text_lane() {
-    let ctx = ParserBuilder::empty()
+    let ctx = ParseContextBuilder::empty()
         .insert_item(CommandItem::new(
             "textonly",
             CommandKind::Prefix,
@@ -162,8 +163,8 @@ fn runtime_text_only_command_only_enters_text_lane() {
 }
 
 #[test]
-fn parser_uses_text_lane_for_nested_text_only_command() {
-    let ctx = ParserBuilder::empty()
+fn parse_context_uses_text_lane_for_nested_text_only_command() {
+    let ctx = ParseContextBuilder::empty()
         .insert_item(CommandItem::new(
             "text",
             CommandKind::Prefix,

@@ -1,4 +1,4 @@
-use texform_core::parse::{ParseConfig, Parser};
+use texform_core::parse::{ParseConfig, ParseContext};
 use texform_core::serialize;
 use texform_transform::{
     BuildConfig, FlattenGroupsConfig, Profile, TransformConfig, TransformContext,
@@ -6,7 +6,7 @@ use texform_transform::{
 
 #[test]
 fn context_always_builds_a_plan_even_when_runtime_rewrite_is_disabled() {
-    let parser = Parser::from_packages(&["base", "physics"]);
+    let parser = ParseContext::from_packages(&["base", "physics"]);
     let context =
         TransformContext::from_build_config(BuildConfig::profile(Profile::Equiv), &parser)
             .expect("transform context should build");

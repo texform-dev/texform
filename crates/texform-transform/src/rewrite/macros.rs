@@ -365,7 +365,7 @@ macro_rules! transform_examples {
             #[test]
             fn $label() {
                 use $crate::rewrite::RewriteRule as _;
-                let parse_ctx = $crate::parse::Parser::from_packages(&[$($pkg),+]);
+                let parse_ctx = $crate::parse::ParseContext::from_packages(&[$($pkg),+]);
                 let build_config = $crate::BuildConfig::profile($crate::Profile::Authoring)
                     .rewrite_classes($crate::RuleClassSet::from($crate::RuleClass::$class))
                     .only_rule_for_tests($rule.meta().key);

@@ -5,7 +5,7 @@ use support::{
     contains_error_node, parse_many_with_items, parse_single_with_items, parse_with_items,
 };
 use texform_core::parse::{
-    AllowedMode, CommandKind, ContextItem, ParseOutput, Parser, ParserBuilder,
+    AllowedMode, CommandKind, ContextItem, ParseContext, ParseContextBuilder, ParseOutput,
 };
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentValue, Delimiter, SyntaxNode,
@@ -27,8 +27,8 @@ fn underline_text_item() -> ContextItem {
     command_item("underline", CommandKind::Prefix, AllowedMode::Text, "m:T")
 }
 
-fn content_test_context() -> Parser {
-    ParserBuilder::empty()
+fn content_test_context() -> ParseContext {
+    ParseContextBuilder::empty()
         .insert_item(text_command_item())
         .insert_item(frac_command_item())
         .insert_item(underline_math_item())

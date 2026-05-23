@@ -480,7 +480,7 @@ impl<'a> RuleContext<'a> {
 mod tests {
     use super::*;
     use crate::ast::Argument;
-    use crate::parse::Parser;
+    use crate::parse::ParseContext;
     use crate::rewrite::{PackageName, RewriteReport, RuleKey};
 
     const TEST_RULE: RuleKey = RuleKey {
@@ -490,7 +490,7 @@ mod tests {
 
     #[test]
     fn extracts_common_prefix_argument_shapes() {
-        let parse_ctx = Parser::from_packages(&["base"]);
+        let parse_ctx = ParseContext::from_packages(&["base"]);
         let mut report = RewriteReport::default();
         let mut ast = Ast::new();
         let required = ast.new_node(Node::Char('x'));

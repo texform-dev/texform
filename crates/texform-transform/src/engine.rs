@@ -17,14 +17,14 @@ use crate::config::TransformConfig;
 use crate::context::TransformContext;
 use crate::error::TransformError;
 use crate::lower_attributes::LowerAttributesConfig;
-use crate::parse::Parser;
+use crate::parse::ParseContext;
 use crate::report::TransformReport;
 use crate::{flatten_groups, lower_attributes, rewrite};
 
 pub(crate) fn execute(
     tctx: &TransformContext,
     ast: &mut Ast,
-    parse_ctx: &Parser,
+    parse_ctx: &ParseContext,
     cfg: &TransformConfig,
 ) -> Result<TransformReport, TransformError> {
     let mut report = TransformReport::default();

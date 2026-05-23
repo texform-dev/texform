@@ -2,7 +2,7 @@
 
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
-    ParseConfig, ParseDiagnostic, ParseOutput, ParserBuildError, ParserBuilder,
+    ParseConfig, ParseContextBuildError, ParseContextBuilder, ParseDiagnostic, ParseOutput,
 };
 use texform_interface::syntax_node::{Argument, ArgumentValue, ContentMode, SyntaxNode};
 
@@ -29,7 +29,7 @@ pub(crate) fn delimiter_control_item(name: &str) -> ContextItem {
 }
 
 pub(crate) fn parse_with_items(items: &[ContextItem], src: &str, strict: bool) -> ParseOutput {
-    let mut builder = ParserBuilder::empty();
+    let mut builder = ParseContextBuilder::empty();
     for item in items {
         builder = builder.insert_item(item.clone());
     }
@@ -71,20 +71,20 @@ pub(crate) fn parse_many_with_items(
     config: &ParseConfig,
 ) -> ParseManyOutput {
     let mut builder = match packages {
-        Some(package_names) => ParserBuilder::empty().packages(package_names),
-        None => ParserBuilder::empty(),
+        Some(package_names) => ParseContextBuilder::empty().packages(package_names),
+        None => ParseContextBuilder::empty(),
     };
 
     for item in items {
         builder = builder.insert_item(item.clone());
     }
 
-    let parser = match builder.build() {
-        Ok(parser) => parser,
-        Err(ParserBuildError::PackageLoad(error)) => {
+    let parse_ctx = match builder.build() {
+        Ok(parse_ctx) => parse_ctx,
+        Err(ParseContextBuildError::PackageLoad(error)) => {
             return invalid_inputs_output(inputs, format!("package loading failed: {error}"));
         }
-        Err(ParserBuildError::InvalidContextItem { name, source }) => {
+        Err(ParseContextBuildError::InvalidContextItem { name, source }) => {
             return invalid_inputs_output(
                 inputs,
                 format!("spec validation failed for {name}: {source}"),
@@ -96,7 +96,7 @@ pub(crate) fn parse_many_with_items(
         .iter()
         .map(|input| ParseCaseOutput {
             input: (*input).to_string(),
-            output: parser.parse(input, config),
+            output: parse_ctx.parse(input, config),
         })
         .collect()
 }

@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 
 use crate::config::BuildConfig;
-use crate::parse::{MutationSummary, Parser};
+use crate::parse::{MutationSummary, ParseContext};
 use crate::rewrite::registry;
 use crate::rewrite::rule::{
     PackageName, RewriteRule, RuleKey, RuleTarget, RuleTargetKey, RuleTargetKind,
@@ -16,7 +16,7 @@ pub struct Plan {
 }
 
 impl Plan {
-    pub fn build(config: &BuildConfig, parse_ctx: &Parser) -> Result<Self, PlanBuildError> {
+    pub fn build(config: &BuildConfig, parse_ctx: &ParseContext) -> Result<Self, PlanBuildError> {
         let enabled = filter_rules(registry::all_rules(), config, parse_ctx)?;
         let ordered = topological_sort(enabled.as_slice())?;
         let eliminated_forms = derive_eliminated_forms(ordered.as_slice());
@@ -125,7 +125,7 @@ fn package_names_for_message(packages: &[PackageName]) -> Vec<&'static str> {
 fn filter_rules(
     rules: &[&'static dyn RewriteRule],
     config: &BuildConfig,
-    parse_ctx: &Parser,
+    parse_ctx: &ParseContext,
 ) -> Result<Vec<&'static dyn RewriteRule>, PlanBuildError> {
     let mut enabled = Vec::new();
 
@@ -206,7 +206,7 @@ fn validate_rule_metadata(rule: &'static dyn RewriteRule) -> Result<(), PlanBuil
 
 fn package_availability_failure(
     rule: &'static dyn RewriteRule,
-    parse_ctx: &Parser,
+    parse_ctx: &ParseContext,
 ) -> Option<RuleAvailabilityFailure> {
     let active = parse_ctx.enabled_packages();
     if rule
@@ -226,7 +226,7 @@ fn package_availability_failure(
 
 fn produced_target_availability_failure(
     rule: &'static dyn RewriteRule,
-    parse_ctx: &Parser,
+    parse_ctx: &ParseContext,
 ) -> Option<RuleAvailabilityFailure> {
     rule.meta()
         .produces
@@ -243,7 +243,7 @@ fn produced_target_availability_failure(
         )
 }
 
-fn parse_context_knows_target(parse_ctx: &Parser, target: RuleTargetKey) -> bool {
+fn parse_context_knows_target(parse_ctx: &ParseContext, target: RuleTargetKey) -> bool {
     match target.kind {
         RuleTargetKind::Command => parse_ctx.knows_command_name(target.name),
         RuleTargetKind::Environment => parse_ctx.knows_env_name(target.name),

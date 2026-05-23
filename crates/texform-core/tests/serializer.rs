@@ -1,6 +1,6 @@
 use texform_core::{
     ast::{Argument, ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node},
-    parse::{ParseAstError, Parser},
+    parse::{ParseAstError, ParseContext},
     serialize::{
         AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, InfixGrouping,
         MathGroupInnerSpacing, MathScriptOptions, ScriptOrder, ScriptSpacing, SerializeOptions,
@@ -9,14 +9,14 @@ use texform_core::{
 };
 
 fn parse_to_ast(src: &str) -> texform_core::ast::Ast {
-    Parser::shared()
+    ParseContext::shared()
         .parse_to_ast(src, &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
         .unwrap()
 }
 
 #[test]
 fn parse_to_ast_returns_diagnostics_present_when_partial_tree_has_errors() {
-    let error = Parser::shared()
+    let error = ParseContext::shared()
         .parse_to_ast(
             r"\text{\frac{a}{b}}",
             &texform_core::parse::ParseConfig::default(),
@@ -33,7 +33,7 @@ fn parse_to_ast_returns_diagnostics_present_when_partial_tree_has_errors() {
 
 #[test]
 fn parse_to_ast_returns_no_parse_result_when_strict_parse_fails() {
-    let error = Parser::shared()
+    let error = ParseContext::shared()
         .parse_to_ast(
             r"\unknowncmd",
             &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,

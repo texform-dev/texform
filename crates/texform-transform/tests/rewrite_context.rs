@@ -1,4 +1,6 @@
-use texform_core::parse::{AllowedMode, CommandItem, CommandKind, Parser, ParserBuilder};
+use texform_core::parse::{
+    AllowedMode, CommandItem, CommandKind, ParseContext, ParseContextBuilder,
+};
 use texform_specs::builtin::MANAGED_PACKAGE_IMPORT_ORDER;
 use texform_transform::rewrite::{RuleAvailabilityFailure, all_rules};
 use texform_transform::{
@@ -17,7 +19,7 @@ fn active_rule_keys(context: &TransformContext) -> Vec<RuleKey> {
 
 #[test]
 fn only_many_keeps_the_requested_rules() {
-    let parse_ctx = ParserBuilder::default()
+    let parse_ctx = ParseContextBuilder::default()
         .packages(&["physics"])
         .build()
         .expect("parse context should build");
@@ -46,7 +48,7 @@ fn only_many_keeps_the_requested_rules() {
 
 #[test]
 fn build_with_disables_rules_touching_mutated_command_names() {
-    let parse_ctx = ParserBuilder::default()
+    let parse_ctx = ParseContextBuilder::default()
         .packages(&["physics"])
         .insert_item(CommandItem::new(
             "quantity",
@@ -73,7 +75,7 @@ fn build_with_disables_rules_touching_mutated_command_names() {
 
 #[test]
 fn disabling_all_rules_builds_empty_transform_context() {
-    let parse_ctx = ParserBuilder::default()
+    let parse_ctx = ParseContextBuilder::default()
         .packages(&["physics"])
         .build()
         .expect("parse context should build");
@@ -91,7 +93,7 @@ fn disabling_all_rules_builds_empty_transform_context() {
 
 #[test]
 fn only_does_not_bypass_profile_class_filter_and_can_return_empty_context() {
-    let parse_ctx = ParserBuilder::default()
+    let parse_ctx = ParseContextBuilder::default()
         .packages(&["physics"])
         .build()
         .expect("parse context should build");
@@ -113,7 +115,7 @@ fn only_does_not_bypass_profile_class_filter_and_can_return_empty_context() {
 
 #[test]
 fn build_with_all_rules_filtered_by_packages_returns_empty_context() {
-    let parse_ctx = Parser::empty();
+    let parse_ctx = ParseContext::empty();
     let context =
         TransformContext::from_build_config(BuildConfig::profile(Profile::Authoring), &parse_ctx)
             .expect("empty package context should produce a no-op transform context");
@@ -125,7 +127,7 @@ fn build_with_all_rules_filtered_by_packages_returns_empty_context() {
 
 #[test]
 fn build_with_keeps_only_rules_enabled_by_parse_context_packages() {
-    let parse_ctx = Parser::from_packages(&["base"]);
+    let parse_ctx = ParseContext::from_packages(&["base"]);
 
     let transform_ctx =
         TransformContext::from_build_config(BuildConfig::profile(Profile::Authoring), &parse_ctx)
@@ -153,7 +155,7 @@ fn build_with_keeps_only_rules_enabled_by_parse_context_packages() {
 
 #[test]
 fn only_rule_reports_error_when_required_package_is_disabled() {
-    let parse_ctx = Parser::from_packages(&["base"]);
+    let parse_ctx = ParseContext::from_packages(&["base"]);
     let physics_rule = all_rules()
         .iter()
         .find(|rule| rule.meta().key.to_string() == "physics/quantity-to-qty")

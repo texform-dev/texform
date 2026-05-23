@@ -1,4 +1,4 @@
-use texform::{AllowedMode, CommandItem, CommandKind, Parser};
+use texform::{AllowedMode, CommandItem, CommandKind, ParseConfig, Parser};
 
 #[test]
 fn parser_empty_knowledge_preserves_probing_isolation() {
@@ -16,7 +16,7 @@ fn parser_empty_knowledge_preserves_probing_isolation() {
     let known = parser.parse(r"\probe{x}");
     assert!(known.diagnostics.is_empty());
 
-    let unknown = parser.parse(r"\frac{x}{y}");
+    let unknown = parser.parse_with(r"\frac{x}{y}", &ParseConfig::STRICT_NO_RECOVER);
     assert!(
         unknown
             .diagnostics

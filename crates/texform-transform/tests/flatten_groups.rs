@@ -1,5 +1,5 @@
 use texform_core::ast::{ArgumentValue, Ast, GroupKind, Node, Slot};
-use texform_core::parse::{ParseConfig, Parser};
+use texform_core::parse::{ParseConfig, ParseContext};
 use texform_core::serialize::serialize;
 use texform_transform::{
     BuildConfig, FlattenGroupsConfig, Profile, TransformConfig, TransformContext,
@@ -16,7 +16,7 @@ fn run_flatten_groups(src: &str) -> Outcome {
 }
 
 fn run_flatten_groups_with_config(src: &str, flatten_groups: FlattenGroupsConfig) -> Outcome {
-    let parse_ctx = Parser::from_packages(&["base", "ams"]);
+    let parse_ctx = ParseContext::from_packages(&["base", "ams"]);
     let mut ast = parse_ctx
         .parse_to_ast(src, &ParseConfig::default())
         .expect("source should parse");

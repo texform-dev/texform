@@ -4,7 +4,7 @@ use crate::ast::Ast;
 use crate::config::{BuildConfig, TransformConfig};
 use crate::engine;
 use crate::error::{TransformBuildError, TransformError};
-use crate::parse::Parser;
+use crate::parse::ParseContext;
 use crate::report::TransformReport;
 use crate::rewrite;
 
@@ -16,7 +16,7 @@ pub struct TransformContext {
 impl TransformContext {
     pub fn from_build_config(
         config: BuildConfig,
-        parse_ctx: &Parser,
+        parse_ctx: &ParseContext,
     ) -> Result<Self, TransformBuildError> {
         let default_config = config.default_transform();
         let rewrite =
@@ -30,7 +30,7 @@ impl TransformContext {
     pub fn run(
         &self,
         ast: &mut Ast,
-        parse_ctx: &Parser,
+        parse_ctx: &ParseContext,
     ) -> Result<TransformReport, TransformError> {
         self.run_with(ast, parse_ctx, &self.default_config)
     }
@@ -38,7 +38,7 @@ impl TransformContext {
     pub fn run_with(
         &self,
         ast: &mut Ast,
-        parse_ctx: &Parser,
+        parse_ctx: &ParseContext,
         config: &TransformConfig,
     ) -> Result<TransformReport, TransformError> {
         engine::execute(self, ast, parse_ctx, config)

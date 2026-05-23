@@ -24,7 +24,7 @@ use std::process::{Command, ExitCode};
 use std::time::Instant;
 use texform_bench::dump::{FormulaCounter, ParquetRowWriter, RowBuffer, count_node};
 use texform_bench::{config, data};
-use texform_core::parse::{ParseConfig, Parser as TexParser};
+use texform_core::parse::{ParseConfig, ParseContext};
 
 const FLUSH_ROW_THRESHOLD: usize = 250_000;
 const DEFAULT_CHUNK_SIZE: usize = 1_000_000;
@@ -304,11 +304,11 @@ fn run_direct(
     let data_path = config::resolve_dataset_file(datasets_yaml, entry);
     ensure_data_ready(&data_path, &entry.slug)?;
 
-    // Warm up the parser's lazy globals (avoids first-call cost showing up in
-    // the per-chunk timing breakdown).
+    // Warm up the parse context's lazy globals (avoids first-call cost showing
+    // up in the per-chunk timing breakdown).
     let config = ParseConfig::NONSTRICT_NO_RECOVER;
-    let parser = TexParser::shared();
-    let _ = parser.parse("", &config);
+    let parse_ctx = ParseContext::shared();
+    let _ = parse_ctx.parse("", &config);
 
     let dataset_slug = entry.slug.clone();
     eprintln!(
@@ -332,7 +332,7 @@ fn run_direct(
             .fold(
                 || (RowBuffer::new(), 0_usize, 0_usize, 0_usize),
                 |(mut buf, e, sp, se), record| {
-                    let output = parser.parse(&record.formula, &config);
+                    let output = parse_ctx.parse(&record.formula, &config);
                     if !output.diagnostics.is_empty() {
                         return (buf, e, sp + 1, se);
                     }

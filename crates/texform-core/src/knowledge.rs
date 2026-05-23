@@ -1,4 +1,4 @@
-//! Knowledge base: the backing store behind [`Parser`](crate::parse::Parser).
+//! Knowledge base: the backing store behind [`ParseContext`](crate::parse::ParseContext).
 //!
 //! A [`KnowledgeBase`] holds indexed command, environment, character, and
 //! delimiter-control metadata loaded from `texform-specs` package definitions.
