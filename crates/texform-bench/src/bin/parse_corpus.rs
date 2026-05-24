@@ -307,17 +307,16 @@ fn run_datasets(
             .last()
             .expect("summary was just pushed and must exist");
 
-        if options.write {
-            if let Some(ref commit) = commit_info
-                && let Some(writer) = commit_writer
-                && let Err(error) = writer.finish(summary, commit)
-            {
-                let message = format!("[{}] Failed to write commit results: {error}", entry.slug);
-                if options.strict_errors {
-                    return Err(message);
-                }
-                eprintln!("{message}");
+        if options.write
+            && let Some(ref commit) = commit_info
+            && let Some(writer) = commit_writer
+            && let Err(error) = writer.finish(summary, commit)
+        {
+            let message = format!("[{}] Failed to write commit results: {error}", entry.slug);
+            if options.strict_errors {
+                return Err(message);
             }
+            eprintln!("{message}");
         }
 
         println!(

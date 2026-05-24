@@ -12,7 +12,6 @@ pub mod error;
 pub mod parser;
 pub mod serialize;
 
-pub use analysis::{count_targets, count_targets_with};
 pub use argspec::{ValidateArgspecResult, validate_argspec};
 pub use config::{NormalizeConfig, Profile, RuleKey, TransformConfig, rule_key_from_name};
 pub use engine::{Engine, EngineBuilder, NormalizeResult};
@@ -27,7 +26,9 @@ pub use texform_core::parse::{
     EnvironmentItem, PackageLoadError, ParseAstError, ParseConfig, ParseDiagnostic,
     ParseDiagnosticContext, ParseDiagnosticKind, ParseOutput, ParseResult, Span,
 };
-pub use texform_interface::syntax_node::SyntaxNode;
+pub use texform_interface::syntax_node::{
+    Argument, ArgumentKind, ArgumentSlot, ArgumentValue, Delimiter, GroupKind, SyntaxNode,
+};
 pub use texform_transform::{
     FlattenGroupsConfig, FlattenGroupsReport, LowerAttributesConfig, LowerAttributesReport,
     RuleClassSet, TransformReport,

@@ -1,5 +1,8 @@
 use texform_core::ast::Ast;
-use texform_core::parse::{ParseConfig, ParseOutput};
+use texform_core::parse::{
+    ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, ContentMode, ParseConfig,
+    ParseOutput,
+};
 use texform_transform::{BuildConfig, Profile, TransformContext, TransformReport};
 
 use crate::config::{NormalizeConfig, TransformConfig};
@@ -91,16 +94,44 @@ impl Engine {
         self.transform.default_config()
     }
 
-    pub fn lookup_command(
+    pub fn lookup_command(&self, name: &str, mode: ContentMode) -> Option<&ActiveCommandRecord> {
+        self.parser.lookup_command(name, mode)
+    }
+
+    pub fn lookup_explicit_command(
         &self,
         name: &str,
-        mode: texform_core::parse::ContentMode,
-    ) -> Option<&texform_core::parse::ActiveCommandRecord> {
-        self.parser.lookup_command(name, mode)
+        mode: ContentMode,
+    ) -> Option<&ActiveCommandRecord> {
+        self.parser.lookup_explicit_command(name, mode)
+    }
+
+    pub fn lookup_character(
+        &self,
+        name: &str,
+        mode: ContentMode,
+    ) -> Option<&ActiveCharacterRecord> {
+        self.parser.lookup_character(name, mode)
+    }
+
+    pub fn lookup_env(&self, name: &str, mode: ContentMode) -> Option<&ActiveEnvironmentRecord> {
+        self.parser.lookup_env(name, mode)
+    }
+
+    pub fn is_delimiter_control(&self, name: &str) -> bool {
+        self.parser.is_delimiter_control(name)
     }
 
     pub fn knows_command_name(&self, name: &str) -> bool {
         self.parser.knows_command_name(name)
+    }
+
+    pub fn knows_env_name(&self, name: &str) -> bool {
+        self.parser.knows_env_name(name)
+    }
+
+    pub fn knows_character_name(&self, name: &str) -> bool {
+        self.parser.knows_character_name(name)
     }
 }
 
@@ -149,6 +180,13 @@ impl EngineBuilder {
             .expect("profile must be set before disabling rules");
         self.build_config = Some(config.disable_rule(key));
         self
+    }
+
+    pub fn disable_rule_by_name(self, name: impl AsRef<str>) -> Result<Self, Error> {
+        let name = name.as_ref();
+        let key =
+            crate::rule_key_from_name(name).ok_or_else(|| Error::UnknownRule(name.to_owned()))?;
+        Ok(self.disable_rule(key))
     }
 
     pub fn build(self) -> Result<Engine, Error> {

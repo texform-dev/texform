@@ -8,19 +8,17 @@ A LaTeX formula parser, formatter, and transform engine.
 
 ```rust
 let engine = texform::Engine::builder()
-    .packages(&["base", "physics"])
     .profile(texform::Profile::Authoring)
     .build()?;
 
-let result = engine.normalize(r"\quantity{x}")?;
-assert_eq!(result.normalized, r"\qty { x }");
+let result = engine.normalize(r"a \over b")?;
+assert_eq!(result.normalized, r"\frac { a } { b }");
 ```
 
 ### Parse Example
 
 ```rust
 let parser = texform::Parser::builder()
-    .packages(&["base"])
     .build()?;
 
 let output = parser.parse(r"\frac{a}{b}");
@@ -29,10 +27,11 @@ assert!(output.diagnostics.is_empty());
 
 ### validate_argspec Example
 
-Validate an argparse string:
+Validate an argspec string:
 
-```bash
-cargo run --example validate_argspec -p texform-core -- '<spec>'
+```rust
+let result = texform::validate_argspec("m o");
+assert!(result.ok);
 ```
 
 ## Serialization
@@ -147,8 +146,15 @@ uv run maturin develop # build from repo root
 ```python
 import texform
 
-parser = texform.Parser(packages=["base"])
-result = parser.parse(r'\frac{a}{b}')  # returns dict with node + span
+parser = texform.Parser()
+parsed = parser.parse(r"\frac{a}{b}")
+text = texform.serialize(parsed["node"])
+
+engine = texform.Engine(profile="authoring")
+result = engine.normalize(r"a \over b")
+
+assert text == r"\frac { a } { b }"
+assert result["normalized"] == r"\frac { a } { b }"
 ```
 
 ### WASM / JavaScript
@@ -157,11 +163,18 @@ result = parser.parse(r'\frac{a}{b}')  # returns dict with node + span
 npm install texform
 ```
 
-```js
-import { Parser } from "texform";
+```ts
+import { Engine, Parser, serialize, validateArgspec } from "texform";
 
-const parser = new Parser({ packages: ["base"] });
-const result = parser.parse("\\frac{a}{b}"); // returns object with node + span
+const parser = new Parser();
+const parsed = parser.parse("\\frac{a}{b}");
+const text = serialize(parsed.node);
+
+const engine = new Engine({ profile: "authoring" });
+const result = engine.normalize("a \\over b");
+
+console.assert(text === "\\frac { a } { b }");
+console.assert(result.normalized === "\\frac { a } { b }");
 ```
 
 For local development, regenerate the underlying WASM package and sync it into
@@ -171,7 +184,8 @@ the npm package before publishing:
 bun run --cwd packages/texform prepare:publish
 ```
 
-Both bindings raise/throw structured errors with `diagnostics` and `partial_result` when parsing fails.
+Python raises structured errors with `diagnostics` and `partial_result` when parsing fails.
+JavaScript throws `TexformParseError` with `diagnostics` and `partialResult`.
 
 ## Corpus Bench
 

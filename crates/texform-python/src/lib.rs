@@ -1,7 +1,7 @@
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use pythonize::pythonize;
+use pythonize::{depythonize, pythonize};
 use texform::{
     FlattenGroupsConfig as CoreFlattenGroupsConfig,
     LowerAttributesConfig as CoreLowerAttributesConfig, ParseConfig as CoreParseConfig,
@@ -42,7 +42,7 @@ impl PyParseConfig {
 }
 
 impl PyParseConfig {
-    fn into_core(&self) -> CoreParseConfig {
+    fn to_core(&self) -> CoreParseConfig {
         CoreParseConfig {
             strict: self.strict,
             recover: self.recover,
@@ -235,7 +235,7 @@ impl PyFlattenGroupsConfig {
         }
     }
 
-    fn into_core(&self) -> CoreFlattenGroupsConfig {
+    fn to_core(&self) -> CoreFlattenGroupsConfig {
         CoreFlattenGroupsConfig {
             enabled: self.enabled,
             preserve_group_containing_declarative_command: self
@@ -338,11 +338,11 @@ impl PyTransformConfig {
         }
     }
 
-    fn into_core(&self) -> CoreTransformConfig {
+    fn to_core(&self) -> CoreTransformConfig {
         CoreTransformConfig {
             lower_attributes_enabled: self.lower_attributes.enabled,
             rewrite_enabled: self.rewrite.enabled,
-            flatten_groups: self.flatten_groups.into_core(),
+            flatten_groups: self.flatten_groups.to_core(),
             max_iterations: self.rewrite.max_iterations,
         }
     }
@@ -375,9 +375,18 @@ fn profile_from_name(name: &str) -> PyResult<texform::Profile> {
     }
 }
 
-fn rule_key_from_string(value: &str) -> PyResult<texform::RuleKey> {
-    texform::rule_key_from_name(value)
-        .ok_or_else(|| ParseError::new_err(format!("unknown transform rule: {value}")))
+fn py_optional_bool(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<bool>> {
+    Ok(match dict.get_item(key)? {
+        Some(value) if !value.is_none() => Some(value.extract::<bool>()?),
+        _ => None,
+    })
+}
+
+fn py_optional_usize(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<usize>> {
+    Ok(match dict.get_item(key)? {
+        Some(value) if !value.is_none() => Some(value.extract::<usize>()?),
+        _ => None,
+    })
 }
 
 fn py_required_string(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<String> {
@@ -425,10 +434,77 @@ fn py_content_mode(value: &str) -> PyResult<texform::ContentMode> {
     }
 }
 
+fn allowed_mode_to_str(value: texform::AllowedMode) -> &'static str {
+    match value {
+        texform::AllowedMode::Math => "math",
+        texform::AllowedMode::Text => "text",
+        texform::AllowedMode::Both => "both",
+    }
+}
+
+fn command_kind_to_str(value: texform::CommandKind) -> &'static str {
+    match value {
+        texform::CommandKind::Prefix => "prefix",
+        texform::CommandKind::Infix => "infix",
+        texform::CommandKind::Declarative => "declarative",
+    }
+}
+
+fn content_mode_to_str(value: texform::ContentMode) -> &'static str {
+    match value {
+        texform::ContentMode::Math => "math",
+        texform::ContentMode::Text => "text",
+    }
+}
+
+fn command_record_to_json(record: &texform::ActiveCommandRecord) -> serde_json::Value {
+    serde_json::json!({
+        "name": record.name,
+        "kind": command_kind_to_str(record.kind),
+        "allowed_mode": allowed_mode_to_str(record.allowed_mode),
+        "spec_string": record.argspec.source,
+        "from_packages": record.from_packages,
+        "tags": record.tags,
+        "args": record.argspec.args.iter().map(|spec| serde_json::json!({
+            "required": spec.required,
+            "no_leading_space": spec.no_leading_space,
+            "nullable": spec.nullable,
+        })).collect::<Vec<_>>(),
+    })
+}
+
+fn env_record_to_json(record: &texform::ActiveEnvironmentRecord) -> serde_json::Value {
+    serde_json::json!({
+        "name": record.name,
+        "allowed_mode": allowed_mode_to_str(record.allowed_mode),
+        "body_mode": content_mode_to_str(record.body_mode),
+        "spec_string": record.argspec.source,
+        "from_packages": record.from_packages,
+        "tags": record.tags,
+        "args": record.argspec.args.iter().map(|spec| serde_json::json!({
+            "required": spec.required,
+            "no_leading_space": spec.no_leading_space,
+            "nullable": spec.nullable,
+        })).collect::<Vec<_>>(),
+    })
+}
+
+fn character_record_to_json(record: &texform::ActiveCharacterRecord) -> serde_json::Value {
+    serde_json::json!({
+        "name": record.name,
+        "allowed_mode": allowed_mode_to_str(record.allowed_mode),
+        "unicode_value": record.unicode_value,
+        "attributes": {
+            "mathvariant": record.attributes.mathvariant,
+        },
+        "package": record.package,
+    })
+}
+
 fn py_context_item(py: Python<'_>, item: &Py<PyAny>) -> PyResult<texform::ContextItem> {
     let value = item.bind(py);
     let dict = value
-        .downcast::<PyDict>()
+        .cast::<PyDict>()
         .map_err(|_| ParseError::new_err("context item must be a dict"))?;
     match py_required_string(dict, "target")?.as_str() {
         "command" => Ok(texform::CommandItem::new(
@@ -545,6 +621,154 @@ fn parse_output_to_python(py: Python<'_>, output: texform::ParseOutput) -> PyRes
     }
 }
 
+fn apply_parse_config_dict(config: &mut CoreParseConfig, dict: &Bound<'_, PyDict>) -> PyResult<()> {
+    if let Some(strict) = py_optional_bool(dict, "strict")? {
+        config.strict = strict;
+    }
+    if let Some(recover) = py_optional_bool(dict, "recover")? {
+        config.recover = recover;
+    }
+    if let Some(max_group_depth) = py_optional_usize(dict, "max_group_depth")? {
+        config.max_group_depth = max_group_depth;
+    }
+    Ok(())
+}
+
+fn parse_config_from_python(
+    config: Option<&Bound<'_, PyAny>>,
+    kwargs: Option<&Bound<'_, PyDict>>,
+    default: CoreParseConfig,
+) -> PyResult<Option<CoreParseConfig>> {
+    if config.is_none() && kwargs.map(|dict| dict.len()).unwrap_or(0) == 0 {
+        return Ok(None);
+    }
+
+    let mut parsed = default;
+    if let Some(value) = config {
+        if value.is_none() {
+            // Keep the default.
+        } else if let Ok(config) = value.extract::<PyRef<'_, PyParseConfig>>() {
+            parsed = config.to_core();
+        } else {
+            let dict = value
+                .cast::<PyDict>()
+                .map_err(|_| ParseError::new_err("config must be a ParseConfig or dict"))?;
+            apply_parse_config_dict(&mut parsed, dict)?;
+        }
+    }
+    if let Some(kwargs) = kwargs {
+        apply_parse_config_dict(&mut parsed, kwargs)?;
+    }
+    Ok(Some(parsed))
+}
+
+fn apply_flatten_groups_dict(
+    config: &mut CoreFlattenGroupsConfig,
+    dict: &Bound<'_, PyDict>,
+) -> PyResult<()> {
+    if let Some(value) = py_optional_bool(dict, "enabled")? {
+        config.enabled = value;
+    }
+    if let Some(value) = py_optional_bool(dict, "preserve_group_containing_declarative_command")? {
+        config.preserve_group_containing_declarative_command = value;
+    }
+    if let Some(value) = py_optional_bool(dict, "preserve_group_in_script_base_slot")? {
+        config.preserve_group_in_script_base_slot = value;
+    }
+    if let Some(value) = py_optional_bool(dict, "preserve_group_inside_env_body")? {
+        config.preserve_group_inside_env_body = value;
+    }
+    if let Some(value) = py_optional_bool(dict, "preserve_group_containing_infix")? {
+        config.preserve_group_containing_infix = value;
+    }
+    if let Some(value) = py_optional_bool(dict, "preserve_group_adjacent_to_command_like")? {
+        config.preserve_group_adjacent_to_command_like = value;
+    }
+    if let Some(value) = py_optional_bool(dict, "preserve_group_as_argument_of_command")? {
+        config.preserve_group_as_argument_of_command = value;
+    }
+    if let Some(value) = py_optional_bool(dict, "preserve_group_after_scripted_command_like")? {
+        config.preserve_group_after_scripted_command_like = value;
+    }
+    if let Some(value) = py_optional_bool(dict, "preserve_empty_group")? {
+        config.preserve_empty_group = value;
+    }
+    if let Some(value) = py_optional_bool(dict, "preserve_group_with_lone_atom_spacing_char")? {
+        config.preserve_group_with_lone_atom_spacing_char = value;
+    }
+    if let Some(value) = py_optional_bool(dict, "preserve_group_starting_with_atom_spacing_char")? {
+        config.preserve_group_starting_with_atom_spacing_char = value;
+    }
+    if let Some(value) = py_optional_bool(dict, "preserve_group_containing_delimited_pair")? {
+        config.preserve_group_containing_delimited_pair = value;
+    }
+    Ok(())
+}
+
+fn apply_normalize_config_dict(
+    config: &mut texform::NormalizeConfig,
+    dict: &Bound<'_, PyDict>,
+) -> PyResult<()> {
+    apply_parse_config_dict(&mut config.parse, dict)?;
+    if let Some(value) = py_optional_bool(dict, "rewrite_enabled")? {
+        config.transform.rewrite_enabled = value;
+    }
+    if let Some(value) = py_optional_bool(dict, "lower_attributes_enabled")? {
+        config.transform.lower_attributes_enabled = value;
+    }
+    if let Some(value) = py_optional_usize(dict, "max_iterations")? {
+        config.transform.max_iterations = value;
+    }
+    if let Some(flatten_groups) = dict.get_item("flatten_groups")?
+        && !flatten_groups.is_none()
+    {
+        if let Ok(flatten_groups) = flatten_groups.extract::<PyRef<'_, PyFlattenGroupsConfig>>() {
+            config.transform.flatten_groups = flatten_groups.to_core();
+        } else {
+            let dict = flatten_groups.cast::<PyDict>().map_err(|_| {
+                ParseError::new_err("flatten_groups must be a FlattenGroupsConfig or dict")
+            })?;
+            apply_flatten_groups_dict(&mut config.transform.flatten_groups, dict)?;
+        }
+    }
+    if let Some(parse_config) = dict.get_item("parse_config")?
+        && !parse_config.is_none()
+        && let Some(parsed) =
+            parse_config_from_python(Some(&parse_config), None, config.parse.clone())?
+    {
+        config.parse = parsed;
+    }
+    Ok(())
+}
+
+fn normalize_config_from_python(
+    config: Option<&Bound<'_, PyAny>>,
+    kwargs: Option<&Bound<'_, PyDict>>,
+    default: texform::NormalizeConfig,
+) -> PyResult<Option<texform::NormalizeConfig>> {
+    if config.is_none() && kwargs.map(|dict| dict.len()).unwrap_or(0) == 0 {
+        return Ok(None);
+    }
+
+    let mut parsed = default;
+    if let Some(value) = config {
+        if value.is_none() {
+            // Keep the default.
+        } else if let Ok(transform) = value.extract::<PyRef<'_, PyTransformConfig>>() {
+            parsed.transform = transform.to_core();
+        } else {
+            let dict = value
+                .cast::<PyDict>()
+                .map_err(|_| ParseError::new_err("config must be a TransformConfig or dict"))?;
+            apply_normalize_config_dict(&mut parsed, dict)?;
+        }
+    }
+    if let Some(kwargs) = kwargs {
+        apply_normalize_config_dict(&mut parsed, kwargs)?;
+    }
+    Ok(Some(parsed))
+}
+
 #[pyclass(name = "Parser")]
 struct PyParser {
     inner: texform::Parser,
@@ -560,6 +784,7 @@ impl PyParser {
         remove_environments = None,
         remove_delimiter_controls = None,
     ))]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         py: Python<'_>,
         packages: Option<Vec<String>>,
@@ -583,22 +808,77 @@ impl PyParser {
         })
     }
 
-    #[pyo3(signature = (src, config = None))]
+    #[pyo3(signature = (src, config = None, **kwargs))]
     fn parse(
         &self,
         py: Python<'_>,
         src: &str,
-        config: Option<PyRef<'_, PyParseConfig>>,
+        config: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
-        let output = match config {
-            Some(config) => self.inner.parse_with(src, &config.into_core()),
+        let output = match parse_config_from_python(config, kwargs, CoreParseConfig::default())? {
+            Some(config) => self.inner.parse_with(src, &config),
             None => self.inner.parse(src),
         };
         parse_output_to_python(py, output)
     }
 
+    fn lookup_command(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
+        Ok(
+            match self.inner.lookup_command(name, py_content_mode(mode)?) {
+                Some(record) => pythonize(py, &command_record_to_json(record))?.unbind(),
+                None => py.None(),
+            },
+        )
+    }
+
+    fn lookup_explicit_command(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        mode: &str,
+    ) -> PyResult<Py<PyAny>> {
+        Ok(
+            match self
+                .inner
+                .lookup_explicit_command(name, py_content_mode(mode)?)
+            {
+                Some(record) => pythonize(py, &command_record_to_json(record))?.unbind(),
+                None => py.None(),
+            },
+        )
+    }
+
+    fn lookup_character(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
+        Ok(
+            match self.inner.lookup_character(name, py_content_mode(mode)?) {
+                Some(record) => pythonize(py, &character_record_to_json(record))?.unbind(),
+                None => py.None(),
+            },
+        )
+    }
+
+    fn lookup_env(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
+        Ok(match self.inner.lookup_env(name, py_content_mode(mode)?) {
+            Some(record) => pythonize(py, &env_record_to_json(record))?.unbind(),
+            None => py.None(),
+        })
+    }
+
+    fn is_delimiter_control(&self, name: &str) -> bool {
+        self.inner.is_delimiter_control(name)
+    }
+
     fn knows_command_name(&self, name: &str) -> bool {
         self.inner.knows_command_name(name)
+    }
+
+    fn knows_env_name(&self, name: &str) -> bool {
+        self.inner.knows_env_name(name)
+    }
+
+    fn knows_character_name(&self, name: &str) -> bool {
+        self.inner.knows_character_name(name)
     }
 }
 
@@ -609,6 +889,7 @@ struct PyEngine {
 
 #[pymethods]
 impl PyEngine {
+    #[allow(clippy::too_many_arguments)]
     #[new]
     #[pyo3(signature = (
         profile,
@@ -639,7 +920,9 @@ impl PyEngine {
             remove_delimiter_controls,
         )?;
         for rule in disable_rules.unwrap_or_default() {
-            builder = builder.disable_rule(rule_key_from_string(&rule)?);
+            builder = builder
+                .disable_rule_by_name(&rule)
+                .map_err(|error| ParseError::new_err(error.to_string()))?;
         }
         Ok(Self {
             inner: builder
@@ -648,29 +931,97 @@ impl PyEngine {
         })
     }
 
-    #[pyo3(signature = (src, config = None, parse_config = None))]
+    #[pyo3(signature = (src, config = None, **kwargs))]
     fn normalize(
         &self,
         py: Python<'_>,
         src: &str,
-        config: Option<PyRef<'_, PyTransformConfig>>,
-        parse_config: Option<PyRef<'_, PyParseConfig>>,
+        config: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
-        let config = texform::NormalizeConfig {
-            parse: parse_config
-                .as_deref()
-                .map(PyParseConfig::into_core)
-                .unwrap_or(CoreParseConfig::STRICT_NO_RECOVER),
-            transform: config
-                .as_deref()
-                .map(PyTransformConfig::into_core)
-                .unwrap_or(*self.inner.default_transform_config()),
+        let default = texform::NormalizeConfig {
+            parse: CoreParseConfig::STRICT_NO_RECOVER,
+            transform: *self.inner.default_transform_config(),
         };
-        let result = self
-            .inner
-            .normalize_with(src, &config)
-            .map_err(|error| ParseError::new_err(error.to_string()))?;
+        let result = match normalize_config_from_python(config, kwargs, default)? {
+            Some(config) => self.inner.normalize_with(src, &config),
+            None => self.inner.normalize(src),
+        }
+        .map_err(|error| ParseError::new_err(error.to_string()))?;
         transform_result_to_python(py, result.normalized, &result.report)
+    }
+
+    #[pyo3(signature = (src, config = None, **kwargs))]
+    fn parse(
+        &self,
+        py: Python<'_>,
+        src: &str,
+        config: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Py<PyAny>> {
+        let output = match parse_config_from_python(config, kwargs, CoreParseConfig::default())? {
+            Some(config) => self.inner.parse_with(src, &config),
+            None => self.inner.parse(src),
+        };
+        parse_output_to_python(py, output)
+    }
+
+    fn lookup_command(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
+        Ok(
+            match self.inner.lookup_command(name, py_content_mode(mode)?) {
+                Some(record) => pythonize(py, &command_record_to_json(record))?.unbind(),
+                None => py.None(),
+            },
+        )
+    }
+
+    fn lookup_explicit_command(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        mode: &str,
+    ) -> PyResult<Py<PyAny>> {
+        Ok(
+            match self
+                .inner
+                .lookup_explicit_command(name, py_content_mode(mode)?)
+            {
+                Some(record) => pythonize(py, &command_record_to_json(record))?.unbind(),
+                None => py.None(),
+            },
+        )
+    }
+
+    fn lookup_character(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
+        Ok(
+            match self.inner.lookup_character(name, py_content_mode(mode)?) {
+                Some(record) => pythonize(py, &character_record_to_json(record))?.unbind(),
+                None => py.None(),
+            },
+        )
+    }
+
+    fn lookup_env(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
+        Ok(match self.inner.lookup_env(name, py_content_mode(mode)?) {
+            Some(record) => pythonize(py, &env_record_to_json(record))?.unbind(),
+            None => py.None(),
+        })
+    }
+
+    fn is_delimiter_control(&self, name: &str) -> bool {
+        self.inner.is_delimiter_control(name)
+    }
+
+    fn knows_command_name(&self, name: &str) -> bool {
+        self.inner.knows_command_name(name)
+    }
+
+    fn knows_env_name(&self, name: &str) -> bool {
+        self.inner.knows_env_name(name)
+    }
+
+    fn knows_character_name(&self, name: &str) -> bool {
+        self.inner.knows_character_name(name)
     }
 }
 
@@ -722,6 +1073,360 @@ fn transform_result_to_python(
     Ok(pythonize(py, &out)?.unbind())
 }
 
+fn value_object<'a>(
+    value: &'a serde_json::Value,
+    context: &str,
+) -> PyResult<&'a serde_json::Map<String, serde_json::Value>> {
+    value
+        .as_object()
+        .ok_or_else(|| ParseError::new_err(format!("{context} must be an object")))
+}
+
+fn single_variant<'a>(
+    value: &'a serde_json::Value,
+    context: &str,
+) -> PyResult<(&'a str, &'a serde_json::Value)> {
+    let object = value_object(value, context)?;
+    if object.len() != 1 {
+        return Err(ParseError::new_err(format!(
+            "{context} must contain exactly one variant"
+        )));
+    }
+    let (key, value) = object.iter().next().expect("object is non-empty");
+    Ok((key.as_str(), value))
+}
+
+fn json_string(value: &serde_json::Value, context: &str) -> PyResult<String> {
+    value
+        .as_str()
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| ParseError::new_err(format!("{context} must be a string")))
+}
+
+fn json_bool(value: &serde_json::Value, context: &str) -> PyResult<bool> {
+    value
+        .as_bool()
+        .ok_or_else(|| ParseError::new_err(format!("{context} must be a boolean")))
+}
+
+fn json_array<'a>(
+    value: &'a serde_json::Value,
+    context: &str,
+) -> PyResult<&'a Vec<serde_json::Value>> {
+    value
+        .as_array()
+        .ok_or_else(|| ParseError::new_err(format!("{context} must be an array")))
+}
+
+fn json_field<'a>(
+    object: &'a serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    context: &str,
+) -> PyResult<&'a serde_json::Value> {
+    object
+        .get(key)
+        .ok_or_else(|| ParseError::new_err(format!("{context} missing `{key}`")))
+}
+
+fn syntax_mode_from_json(value: &serde_json::Value) -> PyResult<texform::ContentMode> {
+    match json_string(value, "mode")?.as_str() {
+        "Math" | "math" => Ok(texform::ContentMode::Math),
+        "Text" | "text" => Ok(texform::ContentMode::Text),
+        other => Err(ParseError::new_err(format!(
+            "unsupported content mode: {other}"
+        ))),
+    }
+}
+
+fn delimiter_from_json(value: &serde_json::Value) -> PyResult<texform::Delimiter> {
+    if let Some(text) = value.as_str() {
+        return match text {
+            "None" => Ok(texform::Delimiter::None),
+            other => Err(ParseError::new_err(format!(
+                "unsupported delimiter: {other}"
+            ))),
+        };
+    }
+    let (variant, data) = single_variant(value, "delimiter")?;
+    match variant {
+        "Char" => {
+            let text = json_string(data, "delimiter char")?;
+            let ch = text
+                .chars()
+                .next()
+                .ok_or_else(|| ParseError::new_err("delimiter char cannot be empty"))?;
+            Ok(texform::Delimiter::Char(ch))
+        }
+        "Control" => {
+            let text = json_string(data, "delimiter control")?;
+            let leaked: &'static str = Box::leak(text.into_boxed_str());
+            Ok(texform::Delimiter::Control(leaked))
+        }
+        other => Err(ParseError::new_err(format!(
+            "unsupported delimiter: {other}"
+        ))),
+    }
+}
+
+fn group_kind_from_json(value: &serde_json::Value) -> PyResult<texform::GroupKind> {
+    if let Some(text) = value.as_str() {
+        return match text {
+            "Explicit" => Ok(texform::GroupKind::Explicit),
+            "Implicit" => Ok(texform::GroupKind::Implicit),
+            "InlineMath" => Ok(texform::GroupKind::InlineMath),
+            other => Err(ParseError::new_err(format!(
+                "unsupported group kind: {other}"
+            ))),
+        };
+    }
+    let (variant, data) = single_variant(value, "group kind")?;
+    match variant {
+        "Delimited" => {
+            let object = value_object(data, "delimited group kind")?;
+            Ok(texform::GroupKind::Delimited {
+                left: delimiter_from_json(json_field(object, "left", "delimited group kind")?)?,
+                right: delimiter_from_json(json_field(object, "right", "delimited group kind")?)?,
+            })
+        }
+        other => Err(ParseError::new_err(format!(
+            "unsupported group kind: {other}"
+        ))),
+    }
+}
+
+fn argument_kind_from_json(value: &serde_json::Value) -> PyResult<texform::ArgumentKind> {
+    if let Some(text) = value.as_str() {
+        return match text {
+            "Mandatory" => Ok(texform::ArgumentKind::Mandatory),
+            "Optional" => Ok(texform::ArgumentKind::Optional),
+            "Star" => Ok(texform::ArgumentKind::Star),
+            "Group" => Ok(texform::ArgumentKind::Group),
+            other => Err(ParseError::new_err(format!(
+                "unsupported argument kind: {other}"
+            ))),
+        };
+    }
+    let (variant, data) = single_variant(value, "argument kind")?;
+    let object = value_object(data, "argument delimiter kind")?;
+    match variant {
+        "Delimited" => Ok(texform::ArgumentKind::Delimited {
+            open: delimiter_from_json(json_field(object, "open", "argument kind")?)?,
+            close: delimiter_from_json(json_field(object, "close", "argument kind")?)?,
+        }),
+        "Paired" => Ok(texform::ArgumentKind::Paired {
+            open: delimiter_from_json(json_field(object, "open", "argument kind")?)?,
+            close: delimiter_from_json(json_field(object, "close", "argument kind")?)?,
+        }),
+        other => Err(ParseError::new_err(format!(
+            "unsupported argument kind: {other}"
+        ))),
+    }
+}
+
+fn argument_value_from_json(value: &serde_json::Value) -> PyResult<texform::ArgumentValue> {
+    let (variant, data) = single_variant(value, "argument value")?;
+    match variant {
+        "MathContent" => Ok(texform::ArgumentValue::MathContent(syntax_node_from_json(
+            data,
+        )?)),
+        "TextContent" => Ok(texform::ArgumentValue::TextContent(syntax_node_from_json(
+            data,
+        )?)),
+        "Delimiter" => Ok(texform::ArgumentValue::Delimiter(delimiter_from_json(
+            data,
+        )?)),
+        "CSName" => Ok(texform::ArgumentValue::CSName(json_string(data, "csname")?)),
+        "Dimension" => Ok(texform::ArgumentValue::Dimension(json_string(
+            data,
+            "dimension",
+        )?)),
+        "Integer" => Ok(texform::ArgumentValue::Integer(json_string(
+            data, "integer",
+        )?)),
+        "KeyVal" => Ok(texform::ArgumentValue::KeyVal(json_string(data, "keyval")?)),
+        "Column" => Ok(texform::ArgumentValue::Column(json_string(data, "column")?)),
+        "Boolean" => Ok(texform::ArgumentValue::Boolean(json_bool(data, "boolean")?)),
+        other => Err(ParseError::new_err(format!(
+            "unsupported argument value: {other}"
+        ))),
+    }
+}
+
+fn argument_from_json(value: &serde_json::Value) -> PyResult<texform::Argument> {
+    let object = value_object(value, "argument")?;
+    Ok(texform::Argument::from_value(
+        argument_kind_from_json(json_field(object, "kind", "argument")?)?,
+        argument_value_from_json(json_field(object, "value", "argument")?)?,
+    ))
+}
+
+fn argument_slots_from_json(value: &serde_json::Value) -> PyResult<Vec<texform::ArgumentSlot>> {
+    json_array(value, "argument slots")?
+        .iter()
+        .map(|slot| {
+            if slot.is_null() {
+                Ok(None)
+            } else {
+                Ok(Some(argument_from_json(slot)?))
+            }
+        })
+        .collect()
+}
+
+fn syntax_node_from_json(value: &serde_json::Value) -> PyResult<texform::SyntaxNode> {
+    if value.as_str() == Some("ActiveSpace") {
+        return Ok(texform::SyntaxNode::ActiveSpace);
+    }
+    let (variant, data) = single_variant(value, "syntax node")?;
+    match variant {
+        "Root" => {
+            let object = value_object(data, "root node")?;
+            Ok(texform::SyntaxNode::Root {
+                mode: syntax_mode_from_json(json_field(object, "mode", "root node")?)?,
+                children: json_array(json_field(object, "children", "root node")?, "children")?
+                    .iter()
+                    .map(syntax_node_from_json)
+                    .collect::<PyResult<_>>()?,
+            })
+        }
+        "Group" => {
+            let object = value_object(data, "group node")?;
+            Ok(texform::SyntaxNode::Group {
+                mode: syntax_mode_from_json(json_field(object, "mode", "group node")?)?,
+                kind: group_kind_from_json(json_field(object, "kind", "group node")?)?,
+                children: json_array(json_field(object, "children", "group node")?, "children")?
+                    .iter()
+                    .map(syntax_node_from_json)
+                    .collect::<PyResult<_>>()?,
+            })
+        }
+        "Command" => {
+            let object = value_object(data, "command node")?;
+            Ok(texform::SyntaxNode::Command {
+                name: json_string(json_field(object, "name", "command node")?, "command name")?,
+                args: argument_slots_from_json(json_field(object, "args", "command node")?)?,
+                known: json_bool(
+                    json_field(object, "known", "command node")?,
+                    "command known",
+                )?,
+            })
+        }
+        "Infix" => {
+            let object = value_object(data, "infix node")?;
+            Ok(texform::SyntaxNode::Infix {
+                name: json_string(json_field(object, "name", "infix node")?, "infix name")?,
+                args: argument_slots_from_json(json_field(object, "args", "infix node")?)?,
+                left: Box::new(syntax_node_from_json(json_field(
+                    object,
+                    "left",
+                    "infix node",
+                )?)?),
+                right: Box::new(syntax_node_from_json(json_field(
+                    object,
+                    "right",
+                    "infix node",
+                )?)?),
+            })
+        }
+        "Declarative" => {
+            let object = value_object(data, "declarative node")?;
+            Ok(texform::SyntaxNode::Declarative {
+                name: json_string(
+                    json_field(object, "name", "declarative node")?,
+                    "declarative name",
+                )?,
+                args: argument_slots_from_json(json_field(object, "args", "declarative node")?)?,
+            })
+        }
+        "Environment" => {
+            let object = value_object(data, "environment node")?;
+            Ok(texform::SyntaxNode::Environment {
+                name: json_string(
+                    json_field(object, "name", "environment node")?,
+                    "environment name",
+                )?,
+                args: argument_slots_from_json(json_field(object, "args", "environment node")?)?,
+                known: json_bool(
+                    json_field(object, "known", "environment node")?,
+                    "environment known",
+                )?,
+                body: Box::new(syntax_node_from_json(json_field(
+                    object,
+                    "body",
+                    "environment node",
+                )?)?),
+            })
+        }
+        "Scripted" => {
+            let object = value_object(data, "scripted node")?;
+            Ok(texform::SyntaxNode::Scripted {
+                base: Box::new(syntax_node_from_json(json_field(
+                    object,
+                    "base",
+                    "scripted node",
+                )?)?),
+                subscript: match object.get("subscript") {
+                    Some(value) if !value.is_null() => {
+                        Some(Box::new(syntax_node_from_json(value)?))
+                    }
+                    _ => None,
+                },
+                superscript: match object.get("superscript") {
+                    Some(value) if !value.is_null() => {
+                        Some(Box::new(syntax_node_from_json(value)?))
+                    }
+                    _ => None,
+                },
+            })
+        }
+        "Error" => {
+            let object = value_object(data, "error node")?;
+            Ok(texform::SyntaxNode::Error {
+                message: json_string(
+                    json_field(object, "message", "error node")?,
+                    "error message",
+                )?,
+                snippet: json_string(
+                    json_field(object, "snippet", "error node")?,
+                    "error snippet",
+                )?,
+            })
+        }
+        "Text" => Ok(texform::SyntaxNode::Text(json_string(data, "text node")?)),
+        "Char" => {
+            let text = json_string(data, "char node")?;
+            let ch = text
+                .chars()
+                .next()
+                .ok_or_else(|| ParseError::new_err("char node cannot be empty"))?;
+            Ok(texform::SyntaxNode::Char(ch))
+        }
+        other => Err(ParseError::new_err(format!(
+            "unsupported syntax node: {other}"
+        ))),
+    }
+}
+
+fn serialize_options_from_python(
+    options: Option<&Bound<'_, PyAny>>,
+) -> PyResult<texform::SerializeOptions> {
+    match options {
+        Some(value) if !value.is_none() => depythonize(value)
+            .map_err(|error| ParseError::new_err(format!("invalid serialize options: {error}"))),
+        _ => Ok(texform::SerializeOptions::default()),
+    }
+}
+
+#[pyfunction]
+#[pyo3(signature = (node, options = None))]
+fn serialize(node: &Bound<'_, PyAny>, options: Option<&Bound<'_, PyAny>>) -> PyResult<String> {
+    let value: serde_json::Value = depythonize(node)
+        .map_err(|error| ParseError::new_err(format!("invalid syntax node: {error}")))?;
+    let node = syntax_node_from_json(&value)?;
+    let options = serialize_options_from_python(options)?;
+    texform::serialize_with(&node, &options).map_err(|error| ParseError::new_err(error.to_string()))
+}
+
 #[pyfunction]
 fn validate_argspec(py: Python<'_>, spec: &str) -> PyResult<Py<PyAny>> {
     Ok(pythonize(py, &texform::validate_argspec(spec))?.unbind())
@@ -737,8 +1442,8 @@ fn count_targets(
 ) -> PyResult<Py<PyAny>> {
     let ctx = parse_context(packages)?;
     let counts = match config {
-        Some(config) => texform::count_targets_with(&ctx, src, &config.into_core()),
-        None => texform::count_targets(&ctx, src),
+        Some(config) => texform::analysis::count_targets_with(&ctx, src, &config.to_core()),
+        None => texform::analysis::count_targets(&ctx, src),
     }
     .map_err(|error| ParseError::new_err(error.to_string()))?;
     Ok(pythonize(py, &counts)?.unbind())
@@ -749,6 +1454,7 @@ fn count_targets(
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(count_targets, m)?)?;
+    m.add_function(wrap_pyfunction!(serialize, m)?)?;
     m.add_function(wrap_pyfunction!(validate_argspec, m)?)?;
     m.add_class::<PyParseConfig>()?;
     m.add_class::<PyLowerAttributesConfig>()?;
@@ -767,7 +1473,7 @@ mod tests {
 
     #[test]
     fn python_engine_normalizes_with_profile_and_packages() {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let module = PyModule::new(py, "_native").expect("module");
             _native(&module).expect("init module");
 
@@ -782,7 +1488,7 @@ mod tests {
             let result = engine
                 .call_method1("normalize", (r"\quantity{x}",))
                 .unwrap();
-            let dict = result.downcast::<pyo3::types::PyDict>().unwrap();
+            let dict = result.cast::<pyo3::types::PyDict>().unwrap();
 
             assert_eq!(
                 dict.get_item("normalized")
@@ -797,7 +1503,7 @@ mod tests {
 
     #[test]
     fn python_parser_empty_packages_means_empty_knowledge() {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let module = PyModule::new(py, "_native").expect("module");
             _native(&module).expect("init module");
 
@@ -817,7 +1523,7 @@ mod tests {
 
     #[test]
     fn python_parser_accepts_context_items() {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let module = PyModule::new(py, "_native").expect("module");
             _native(&module).expect("init module");
 
@@ -848,7 +1554,7 @@ mod tests {
 
     #[test]
     fn python_parser_none_config_uses_facade_default() {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let module = PyModule::new(py, "_native").expect("module");
             _native(&module).expect("init module");
 
@@ -862,8 +1568,222 @@ mod tests {
     }
 
     #[test]
+    fn python_parser_supports_dict_and_kwarg_config_overrides() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let parser_cls = module.getattr("Parser").unwrap();
+            let parser = parser_cls.call0().unwrap();
+
+            let config = pyo3::types::PyDict::new(py);
+            config.set_item("strict", true).unwrap();
+            let error = parser
+                .call_method1("parse", (r"\unknowncmd", config))
+                .expect_err("strict dict config should reject unknown command");
+            assert!(error.is_instance_of::<ParseError>(py));
+
+            let config = pyo3::types::PyDict::new(py);
+            config.set_item("strict", true).unwrap();
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("config", config).unwrap();
+            kwargs.set_item("strict", false).unwrap();
+            parser
+                .call_method("parse", (r"\unknowncmd",), Some(&kwargs))
+                .expect("kwargs should override config dict");
+        });
+    }
+
+    #[test]
+    fn python_parser_and_engine_expose_metadata_queries() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let parser = module.getattr("Parser").unwrap().call0().unwrap();
+            assert!(
+                parser
+                    .call_method1("lookup_command", ("frac", "math"))
+                    .unwrap()
+                    .cast::<pyo3::types::PyDict>()
+                    .is_ok()
+            );
+            assert!(
+                parser
+                    .call_method1("lookup_explicit_command", ("frac", "math"))
+                    .unwrap()
+                    .cast::<pyo3::types::PyDict>()
+                    .is_ok()
+            );
+            assert!(
+                parser
+                    .call_method1("lookup_character", ("le", "math"))
+                    .unwrap()
+                    .cast::<pyo3::types::PyDict>()
+                    .is_ok()
+            );
+            assert!(
+                parser
+                    .call_method1("lookup_env", ("array", "math"))
+                    .unwrap()
+                    .cast::<pyo3::types::PyDict>()
+                    .is_ok()
+            );
+            assert!(
+                parser
+                    .call_method1("is_delimiter_control", ("lbrace",))
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap()
+            );
+            assert!(
+                parser
+                    .call_method1("knows_env_name", ("array",))
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap()
+            );
+            assert!(
+                parser
+                    .call_method1("knows_character_name", ("le",))
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap()
+            );
+
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("profile", "authoring").unwrap();
+            let engine = module
+                .getattr("Engine")
+                .unwrap()
+                .call((), Some(&kwargs))
+                .unwrap();
+            assert!(
+                engine
+                    .call_method1("lookup_command", ("frac", "math"))
+                    .unwrap()
+                    .cast::<pyo3::types::PyDict>()
+                    .is_ok()
+            );
+            assert!(
+                engine
+                    .call_method1("knows_command_name", ("frac",))
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap()
+            );
+        });
+    }
+
+    #[test]
+    fn python_engine_parse_and_normalize_use_facade_defaults_without_config() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("profile", "authoring").unwrap();
+            kwargs
+                .set_item("packages", vec!["base", "physics"])
+                .unwrap();
+            let engine = module
+                .getattr("Engine")
+                .unwrap()
+                .call((), Some(&kwargs))
+                .unwrap();
+
+            engine
+                .call_method1("parse", (r"\unknowncmd",))
+                .expect("parse should use non-strict facade default");
+            let result = engine
+                .call_method1("normalize", (r"\quantity{x}",))
+                .expect("normalize should use facade default");
+            let dict = result.cast::<pyo3::types::PyDict>().unwrap();
+            assert_eq!(
+                dict.get_item("normalized")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                r"\qty { x }"
+            );
+        });
+    }
+
+    #[test]
+    fn python_engine_normalize_kwargs_override_config_dict() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("profile", "authoring").unwrap();
+            kwargs
+                .set_item("packages", vec!["base", "physics"])
+                .unwrap();
+            let engine = module
+                .getattr("Engine")
+                .unwrap()
+                .call((), Some(&kwargs))
+                .unwrap();
+
+            let config = pyo3::types::PyDict::new(py);
+            config.set_item("rewrite_enabled", true).unwrap();
+            let call_kwargs = pyo3::types::PyDict::new(py);
+            call_kwargs.set_item("config", config).unwrap();
+            call_kwargs.set_item("rewrite_enabled", false).unwrap();
+            call_kwargs
+                .set_item("lower_attributes_enabled", false)
+                .unwrap();
+            let flatten_groups = pyo3::types::PyDict::new(py);
+            flatten_groups.set_item("enabled", false).unwrap();
+            call_kwargs
+                .set_item("flatten_groups", flatten_groups)
+                .unwrap();
+
+            let result = engine
+                .call_method("normalize", (r"\quantity{x}",), Some(&call_kwargs))
+                .expect("normalize should accept kwargs");
+            let dict = result.cast::<pyo3::types::PyDict>().unwrap();
+            assert_eq!(
+                dict.get_item("normalized")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                r"\quantity { x }"
+            );
+        });
+    }
+
+    #[test]
+    fn python_module_serializes_parsed_node() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let parser = module.getattr("Parser").unwrap().call0().unwrap();
+            let parsed = parser.call_method1("parse", (r"\frac{a}{b}",)).unwrap();
+            let node = parsed
+                .cast::<pyo3::types::PyDict>()
+                .unwrap()
+                .get_item("node")
+                .unwrap()
+                .unwrap();
+            let text = module
+                .getattr("serialize")
+                .unwrap()
+                .call1((node,))
+                .unwrap()
+                .extract::<String>()
+                .unwrap();
+            assert_eq!(text, r"\frac { a } { b }");
+        });
+    }
+
+    #[test]
     fn python_module_corpus_drop_disables_spacing_guards() {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let module = PyModule::new(py, "_native").expect("module");
             _native(&module).expect("init module");
 
@@ -890,7 +1810,7 @@ mod tests {
 
     #[test]
     fn python_module_transform_config_repr_mentions_children() {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let module = PyModule::new(py, "_native").expect("module");
             _native(&module).expect("init module");
 
@@ -906,7 +1826,7 @@ mod tests {
 
     #[test]
     fn python_module_counts_targets() {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let module = PyModule::new(py, "_native").expect("module");
             _native(&module).expect("init module");
 
@@ -915,7 +1835,7 @@ mod tests {
                 .unwrap()
                 .call1((r"\frac{a}{b} \le c",))
                 .unwrap();
-            let dict = result.downcast::<pyo3::types::PyDict>().unwrap();
+            let dict = result.cast::<pyo3::types::PyDict>().unwrap();
 
             assert_eq!(
                 dict.get_item("cmd:frac")

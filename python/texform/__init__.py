@@ -10,6 +10,7 @@ from ._native import (
     RewriteConfig,
     TransformConfig,
     count_targets,
+    serialize,
     validate_argspec,
 )
 
@@ -23,5 +24,6 @@ __all__ = [
     "RewriteConfig",
     "TransformConfig",
     "count_targets",
+    "serialize",
     "validate_argspec",
 ]

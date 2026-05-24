@@ -1,6 +1,7 @@
 #[derive(Debug)]
 pub enum Error {
     MissingProfile,
+    UnknownRule(String),
     ParserBuild(crate::parser::ParserBuildError),
     TransformBuild(texform_transform::TransformBuildError),
     Parse(texform_core::parse::ParseAstError),
@@ -14,6 +15,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MissingProfile => f.write_str("engine profile is required"),
+            Self::UnknownRule(name) => write!(f, "unknown transform rule: {name}"),
             Self::ParserBuild(error) => write!(f, "failed to build parser: {error}"),
             Self::TransformBuild(error) => write!(f, "failed to build transform plan: {error}"),
             Self::Parse(error) => error.fmt(f),

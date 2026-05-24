@@ -128,7 +128,6 @@ mod tests {
     use super::*;
     use crate::ast::{ArgumentKind, ArgumentValue};
     use crate::parse::ParseContext;
-    use crate::rewrite::RewriteRule as _;
     use crate::rewrite::transform_examples;
     use crate::rewrite::{run_one_rule_for_test, RuleClass};
 

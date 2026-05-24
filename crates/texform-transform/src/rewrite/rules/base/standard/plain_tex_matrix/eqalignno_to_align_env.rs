@@ -121,7 +121,7 @@ fn text_node_from_math_nodes(
 mod tests {
     use super::*;
     use crate::rewrite::transform_examples;
-    use crate::rewrite::{run_one_rule_for_test, RewriteError, RewriteRule as _, RuleClass, RuleError};
+    use crate::rewrite::{run_one_rule_for_test, RewriteError, RuleClass, RuleError};
 
     // START: Generated examples; DO NOT modify
     transform_examples! {

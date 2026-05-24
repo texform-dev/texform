@@ -6,12 +6,12 @@
 //!
 //! After parsing, the syntax tree is converted to the slotmap-based AST.
 
-use serde::Serialize;
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Command or environment argument.
 ///
 /// Each argument contains an `ArgumentKind` + `ArgumentValue`.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub struct Argument {
     pub kind: ArgumentKind,
@@ -22,7 +22,7 @@ pub struct Argument {
 pub type ArgumentSlot = Option<Argument>;
 
 /// Argument type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub enum ArgumentKind {
     /// Standard mandatory argument (`m`).
@@ -54,7 +54,7 @@ impl ArgumentKind {
 }
 
 /// Parsed argument value.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub enum ArgumentValue {
     /// Parsed math-mode content subtree.
@@ -80,7 +80,7 @@ pub enum ArgumentValue {
 /// Content mode: math or text
 ///
 /// Determines how content is parsed and interpreted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub enum ContentMode {
     /// Math mode: default mode, supports formulas, scripts, infix commands
@@ -101,8 +101,30 @@ pub enum Delimiter {
     Control(&'static str),
 }
 
+impl<'de> Deserialize<'de> for Delimiter {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        enum DelimiterInput {
+            None,
+            Char(char),
+            Control(String),
+        }
+
+        match DelimiterInput::deserialize(deserializer)? {
+            DelimiterInput::None => Ok(Delimiter::None),
+            DelimiterInput::Char(ch) => Ok(Delimiter::Char(ch)),
+            DelimiterInput::Control(name) => {
+                Ok(Delimiter::Control(Box::leak(name.into_boxed_str())))
+            }
+        }
+    }
+}
+
 /// Group type for different grouping constructs
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub enum GroupKind {
     /// Explicit group: {...}
@@ -128,7 +150,7 @@ pub enum GroupKind {
 ///
 /// Represents the structure of parsed LaTeX source code.
 /// Each variant corresponds to a different syntactic construct.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub enum SyntaxNode {
     /// Parse-tree root node produced by the top-level parser.

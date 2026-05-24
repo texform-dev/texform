@@ -35,7 +35,7 @@ mod tests {
     use super::*;
     use crate::parse::ParseContext;
     use crate::rewrite::transform_examples;
-    use crate::rewrite::{run_one_rule_for_test, RuleClass, RewriteRule as _};
+    use crate::rewrite::{run_one_rule_for_test, RuleClass};
     use crate::serialize::serialize;
 
     // START: Generated examples; DO NOT modify

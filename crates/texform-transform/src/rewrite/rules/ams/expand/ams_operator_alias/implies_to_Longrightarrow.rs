@@ -65,7 +65,7 @@ mod tests {
     use crate::ast::Node;
     use crate::parse::ParseContext;
     use crate::rewrite::transform_examples;
-    use crate::rewrite::{run_one_rule_for_test, RewriteRule as _, RuleClass};
+    use crate::rewrite::{run_one_rule_for_test, RuleClass};
 
     // START: Generated examples; DO NOT modify
     transform_examples! {

@@ -7,11 +7,18 @@ npm install texform
 ```
 
 ```ts
-import { Parser } from "texform";
+import { Engine, Parser, serialize, validateArgspec } from "texform";
 
 const parser = new Parser();
-const result = parser.parse("\\frac{a}{b}");
-console.log(result.node);
+const parsed = parser.parse("\\frac{a}{b}");
+const text = serialize(parsed.node);
+
+const engine = new Engine({ profile: "authoring" });
+const result = engine.normalize("a \\over b");
+
+console.log(text);
+console.log(result.normalized);
+console.log(validateArgspec("m o"));
 ```
 
 The package exposes Node and bundler entry points:

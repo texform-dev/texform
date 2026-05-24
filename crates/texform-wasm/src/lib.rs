@@ -2,7 +2,7 @@ use serde::Deserialize;
 use texform::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, AllowedMode, CommandItem,
     CommandKind, ContentMode, ContextItem, DelimiterControlItem, EnvironmentItem, ParseConfig,
-    ParseOutput, ParserBuildError,
+    ParseOutput, ParserBuildError, SerializeOptions, SyntaxNode,
 };
 use texform::{
     FlattenGroupsConfig as CoreFlattenGroupsConfig,
@@ -639,11 +639,6 @@ fn profile_from_name(name: &str) -> Result<texform::Profile, JsValue> {
     }
 }
 
-fn rule_key_from_name(name: &str) -> Result<texform::RuleKey, JsValue> {
-    texform::rule_key_from_name(name)
-        .ok_or_else(|| JsValue::from_str(&format!("unknown transform rule: {}", name)))
-}
-
 #[wasm_bindgen]
 pub struct Parser {
     inner: texform::Parser,
@@ -736,6 +731,10 @@ impl Parser {
     pub fn knows_env_name(&self, name: &str) -> bool {
         self.inner.knows_env_name(name)
     }
+
+    pub fn knows_character_name(&self, name: &str) -> bool {
+        self.inner.knows_character_name(name)
+    }
 }
 
 #[wasm_bindgen]
@@ -781,7 +780,9 @@ impl Engine {
             builder = builder.remove_delimiter_control(name);
         }
         for name in input.disable_rules.unwrap_or_default() {
-            builder = builder.disable_rule(rule_key_from_name(&name)?);
+            builder = builder
+                .disable_rule_by_name(&name)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?;
         }
         Ok(Self {
             inner: builder
@@ -799,53 +800,116 @@ impl Engine {
     }
 
     pub fn normalize(&self, src: &str, options: Option<JsValue>) -> Result<JsValue, JsValue> {
+        let Some(value) = options else {
+            let result = self
+                .inner
+                .normalize(src)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?;
+            return Ok(normalize_result_to_js(result.normalized, &result.report));
+        };
         let mut config = texform::NormalizeConfig {
             parse: ParseConfig::STRICT_NO_RECOVER,
             transform: *self.inner.default_transform_config(),
         };
-        if let Some(value) = options {
-            if !value.is_null() && !value.is_undefined() {
-                let input =
-                    serde_wasm_bindgen::from_value::<NormalizeOptions>(value).map_err(|error| {
-                        JsValue::from_str(&format!("invalid normalize options: {}", error))
-                    })?;
-                if let Some(strict) = input.strict {
-                    config.parse.strict = strict;
-                }
-                if let Some(recover) = input.recover {
-                    config.parse.recover = recover;
-                }
-                if let Some(max_group_depth) = input.max_group_depth {
-                    config.parse.max_group_depth = max_group_depth;
-                }
-                if let Some(flatten_groups) = input.flatten_groups {
-                    config.transform.flatten_groups = flatten_groups_input_to_core(flatten_groups);
-                }
-                if let Some(rewrite_enabled) = input.rewrite_enabled {
-                    config.transform.rewrite_enabled = rewrite_enabled;
-                }
-                if let Some(lower_attributes_enabled) = input.lower_attributes_enabled {
-                    config.transform.lower_attributes_enabled = lower_attributes_enabled;
-                }
-                if let Some(max_iterations) = input.max_iterations {
-                    config.transform.max_iterations = max_iterations;
-                }
+        if !value.is_null() && !value.is_undefined() {
+            let input =
+                serde_wasm_bindgen::from_value::<NormalizeOptions>(value).map_err(|error| {
+                    JsValue::from_str(&format!("invalid normalize options: {}", error))
+                })?;
+            if let Some(strict) = input.strict {
+                config.parse.strict = strict;
+            }
+            if let Some(recover) = input.recover {
+                config.parse.recover = recover;
+            }
+            if let Some(max_group_depth) = input.max_group_depth {
+                config.parse.max_group_depth = max_group_depth;
+            }
+            if let Some(flatten_groups) = input.flatten_groups {
+                config.transform.flatten_groups = flatten_groups_input_to_core(flatten_groups);
+            }
+            if let Some(rewrite_enabled) = input.rewrite_enabled {
+                config.transform.rewrite_enabled = rewrite_enabled;
+            }
+            if let Some(lower_attributes_enabled) = input.lower_attributes_enabled {
+                config.transform.lower_attributes_enabled = lower_attributes_enabled;
+            }
+            if let Some(max_iterations) = input.max_iterations {
+                config.transform.max_iterations = max_iterations;
             }
         }
         let result = self
             .inner
             .normalize_with(src, &config)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let value = js_sys::Object::new();
-        js_sys::Reflect::set(&value, &"normalized".into(), &result.normalized.into()).unwrap();
-        js_sys::Reflect::set(
-            &value,
-            &"report".into(),
-            &transform_report_to_js(&result.report),
-        )
-        .unwrap();
-        Ok(value.into())
+        Ok(normalize_result_to_js(result.normalized, &result.report))
     }
+
+    pub fn is_delimiter_control(&self, name: &str) -> bool {
+        self.inner.is_delimiter_control(name)
+    }
+
+    pub fn lookup_command(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
+        Ok(match self.lookup_command_meta(name, mode)? {
+            Some(meta) => command_meta_to_js(meta),
+            None => JsValue::NULL,
+        })
+    }
+
+    pub fn lookup_explicit_command(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
+        Ok(match self.lookup_explicit_command_meta(name, mode)? {
+            Some(meta) => command_meta_to_js(meta),
+            None => JsValue::NULL,
+        })
+    }
+
+    pub fn lookup_character(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
+        Ok(match self.lookup_character_meta(name, mode)? {
+            Some(meta) => character_meta_to_js(meta),
+            None => JsValue::NULL,
+        })
+    }
+
+    pub fn lookup_env(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
+        Ok(match self.lookup_env_meta(name, mode)? {
+            Some(meta) => env_meta_to_js(meta),
+            None => JsValue::NULL,
+        })
+    }
+
+    pub fn knows_command_name(&self, name: &str) -> bool {
+        self.inner.knows_command_name(name)
+    }
+
+    pub fn knows_env_name(&self, name: &str) -> bool {
+        self.inner.knows_env_name(name)
+    }
+
+    pub fn knows_character_name(&self, name: &str) -> bool {
+        self.inner.knows_character_name(name)
+    }
+}
+
+fn normalize_result_to_js(normalized: String, report: &texform::TransformReport) -> JsValue {
+    let value = js_sys::Object::new();
+    js_sys::Reflect::set(&value, &"normalized".into(), &normalized.into()).unwrap();
+    js_sys::Reflect::set(&value, &"report".into(), &transform_report_to_js(report)).unwrap();
+    value.into()
+}
+
+#[wasm_bindgen]
+pub fn serialize(node: JsValue, options: Option<JsValue>) -> Result<String, JsValue> {
+    let node = serde_wasm_bindgen::from_value::<SyntaxNode>(node)
+        .map_err(|error| JsValue::from_str(&format!("invalid syntax node: {}", error)))?;
+    let options = match options {
+        Some(value) if !value.is_null() && !value.is_undefined() => {
+            serde_wasm_bindgen::from_value::<SerializeOptions>(value).map_err(|error| {
+                JsValue::from_str(&format!("invalid serialize options: {}", error))
+            })?
+        }
+        _ => SerializeOptions::default(),
+    };
+    texform::serialize_with(&node, &options).map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
 impl Parser {
@@ -870,6 +934,44 @@ impl Parser {
         Ok(Parser { inner })
     }
 
+    fn lookup_command_meta(
+        &self,
+        name: &str,
+        mode: &str,
+    ) -> Result<Option<&ActiveCommandRecord>, JsValue> {
+        let mode = parse_content_mode(mode)?;
+        Ok(self.inner.lookup_command(name, mode))
+    }
+
+    fn lookup_explicit_command_meta(
+        &self,
+        name: &str,
+        mode: &str,
+    ) -> Result<Option<&ActiveCommandRecord>, JsValue> {
+        let mode = parse_content_mode(mode)?;
+        Ok(self.inner.lookup_explicit_command(name, mode))
+    }
+
+    fn lookup_character_meta(
+        &self,
+        name: &str,
+        mode: &str,
+    ) -> Result<Option<&ActiveCharacterRecord>, JsValue> {
+        let mode = parse_content_mode(mode)?;
+        Ok(self.inner.lookup_character(name, mode))
+    }
+
+    fn lookup_env_meta(
+        &self,
+        name: &str,
+        mode: &str,
+    ) -> Result<Option<&ActiveEnvironmentRecord>, JsValue> {
+        let mode = parse_content_mode(mode)?;
+        Ok(self.inner.lookup_env(name, mode))
+    }
+}
+
+impl Engine {
     fn lookup_command_meta(
         &self,
         name: &str,
@@ -1062,6 +1164,7 @@ fn build_parse_error(output: &ParseOutput) -> Result<JsValue, JsValue> {
     let err = js_sys::Object::new();
     js_sys::Reflect::set(&err, &"diagnostics".into(), &diagnostics).unwrap();
     js_sys::Reflect::set(&err, &"partial_result".into(), &partial_result).unwrap();
+    js_sys::Reflect::set(&err, &"partialResult".into(), &partial_result).unwrap();
 
     Ok(err.into())
 }

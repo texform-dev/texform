@@ -1,6 +1,6 @@
 use texform::{
-    Engine, FlattenGroupsConfig, NormalizeConfig, ParseConfig, Parser, Profile, TransformConfig,
-    serialize,
+    ContentMode, Engine, FlattenGroupsConfig, NormalizeConfig, ParseConfig, Parser, Profile,
+    TransformConfig, serialize,
 };
 
 #[test]
@@ -85,4 +85,51 @@ fn parser_is_parse_only_and_needs_no_profile() {
 
     let output = parser.parse(r"\frac{a}{b}");
     assert!(output.diagnostics.is_empty());
+}
+
+#[test]
+fn engine_delegates_parser_metadata_queries() {
+    let engine = Engine::builder()
+        .packages(&["base"])
+        .profile(Profile::Authoring)
+        .build()
+        .expect("engine should build");
+
+    assert!(engine.lookup_command("frac", ContentMode::Math).is_some());
+    assert!(
+        engine
+            .lookup_explicit_command("frac", ContentMode::Math)
+            .is_some()
+    );
+    assert!(engine.lookup_env("array", ContentMode::Math).is_some());
+    assert!(engine.lookup_character("le", ContentMode::Math).is_some());
+    assert!(engine.is_delimiter_control("lbrace"));
+    assert!(engine.knows_command_name("frac"));
+    assert!(engine.knows_env_name("array"));
+    assert!(engine.knows_character_name("le"));
+}
+
+#[test]
+fn engine_builder_disables_rule_by_public_name() {
+    let engine = Engine::builder()
+        .packages(&["base", "physics"])
+        .profile(Profile::Authoring)
+        .disable_rule_by_name("physics/quantity-to-qty")
+        .expect("known rule should resolve")
+        .build()
+        .expect("engine should build");
+
+    let result = engine
+        .normalize(r"\quantity{x}")
+        .expect("normalize should succeed");
+
+    assert_eq!(result.normalized, r"\quantity { x }");
+
+    let unknown = Engine::builder()
+        .profile(Profile::Authoring)
+        .disable_rule_by_name("missing.rule");
+    assert!(
+        unknown.is_err(),
+        "unknown rule names should fail at the facade"
+    );
 }

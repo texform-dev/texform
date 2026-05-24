@@ -35,17 +35,12 @@ impl Plan {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) enum RuleSelection {
+    #[default]
     All,
     Only(Vec<RuleKey>),
     Except(Vec<RuleKey>),
-}
-
-impl Default for RuleSelection {
-    fn default() -> Self {
-        RuleSelection::All
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

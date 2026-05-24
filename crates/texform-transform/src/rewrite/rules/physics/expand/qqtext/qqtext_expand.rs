@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn groups_qq_expansion_when_not_a_sibling_node() {
         use crate::parse::ParseContext;
-        use crate::rewrite::{run_one_rule_for_test, RewriteRule as _, RuleClass};
+        use crate::rewrite::{run_one_rule_for_test, RuleClass};
 
         let parse_ctx = ParseContext::from_packages(&["base", "physics"]);
         let mut ast = parse_ctx

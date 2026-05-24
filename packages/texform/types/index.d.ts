@@ -106,13 +106,9 @@ export interface ParseOutput {
   diagnostics: ParseDiagnostic[];
 }
 
-export interface ParseWithContextItem {
-  input: string;
-  success: boolean;
-  result: ParseResult | null;
-  display: string | null;
+export class TexformParseError extends Error {
   diagnostics: ParseDiagnostic[];
-  partial_result: ParseResult | null;
+  partialResult: ParseResult | null;
 }
 
 export type AllowedMode = "math" | "text" | "both";
@@ -292,13 +288,14 @@ export class Parser {
   constructor(options?: ParserOptions | null);
   free(): void;
   [Symbol.dispose](): void;
-  is_delimiter_control(name: string): boolean;
-  knows_command_name(name: string): boolean;
-  knows_env_name(name: string): boolean;
-  lookup_character(name: string, mode: AllowedMode): CharacterInfo | undefined;
-  lookup_command(name: string, mode: AllowedMode): CommandInfo | undefined;
-  lookup_env(name: string, mode: AllowedMode): EnvInfo | undefined;
-  lookup_explicit_command(name: string, mode: AllowedMode): CommandInfo | undefined;
+  isDelimiterControl(name: string): boolean;
+  knowsCommandName(name: string): boolean;
+  knowsEnvName(name: string): boolean;
+  knowsCharacterName(name: string): boolean;
+  lookupCharacter(name: string, mode: "math" | "text"): CharacterInfo | undefined;
+  lookupCommand(name: string, mode: "math" | "text"): CommandInfo | undefined;
+  lookupEnv(name: string, mode: "math" | "text"): EnvInfo | undefined;
+  lookupExplicitCommand(name: string, mode: "math" | "text"): CommandInfo | undefined;
   parse(src: string, config?: ParseConfigInput | null): ParseResult;
 }
 
@@ -308,7 +305,15 @@ export class Engine {
   [Symbol.dispose](): void;
   parse(src: string, config?: ParseConfigInput | null): ParseResult;
   normalize(src: string, options?: NormalizeOptions | null): TransformResult;
+  isDelimiterControl(name: string): boolean;
+  knowsCommandName(name: string): boolean;
+  knowsEnvName(name: string): boolean;
+  knowsCharacterName(name: string): boolean;
+  lookupCharacter(name: string, mode: "math" | "text"): CharacterInfo | undefined;
+  lookupCommand(name: string, mode: "math" | "text"): CommandInfo | undefined;
+  lookupEnv(name: string, mode: "math" | "text"): EnvInfo | undefined;
+  lookupExplicitCommand(name: string, mode: "math" | "text"): CommandInfo | undefined;
 }
 
-export function validate_argspec(spec: string): ValidateArgspecResult;
-export { validate_argspec as validateArgspec };
+export function serialize(node: SyntaxNode, options?: SerializeOptions | null): string;
+export function validateArgspec(spec: string): ValidateArgspecResult;
