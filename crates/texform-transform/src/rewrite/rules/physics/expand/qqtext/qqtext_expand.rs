@@ -18,8 +18,8 @@
 //!   - {label: qq-star, from: '\qq*{#1}', to: '\text{#1}\quad'}
 //! ```
 
-use texform_specs::builtin::base;
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::physics;
 
 use crate::ast::{Argument, ArgumentKind, ArgumentSlot, ArgumentValue, Node};
 use crate::rewrite::RuleError;

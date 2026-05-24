@@ -1,4 +1,4 @@
-use texform_specs::builtin::base;
+use texform_knowledge::builtin::base;
 
 use crate::ast::{
     ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind, Node, NodeId,

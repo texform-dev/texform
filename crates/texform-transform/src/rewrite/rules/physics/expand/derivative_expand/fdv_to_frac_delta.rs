@@ -17,8 +17,8 @@
 //!   - {label: fdv-star, from: '\fdv*{#1}{#2}', to: '\flatfrac{\delta #1}{\delta #2}'}
 //! ```
 
-use texform_specs::builtin::base;
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::physics;
 
 use super::helpers::{
     delta_symbol, derivative_denominator, derivative_fraction, derivative_numerator,

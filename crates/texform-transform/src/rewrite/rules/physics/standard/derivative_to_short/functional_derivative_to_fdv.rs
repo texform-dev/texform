@@ -20,7 +20,7 @@
 //!   - {label: functionalderivative-single-arg, from: '\functionalderivative{#1}', to: '\fdv{#1}'}
 //! ```
 
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::physics;
 
 use crate::rewrite::alias_rule;
 

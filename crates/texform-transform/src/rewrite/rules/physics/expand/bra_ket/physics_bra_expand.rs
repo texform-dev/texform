@@ -15,8 +15,8 @@
 //!   - {label: bra-fixed-size, from: '\bra*{#1}', to: '\langle #1 \vert'}
 //! ```
 
-use texform_specs::builtin::base;
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::physics;
 
 use super::helpers::{BraketSize, required_math_arg, replace_with_bra};
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};

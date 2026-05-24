@@ -1,5 +1,5 @@
 [package]
-name = "texform-specs"
+name = "texform-knowledge"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,7 +10,7 @@ serde_yaml.workspace = true
 
 texform-argspec.workspace = true
 texform-interface.workspace = true
-texform-specs-macros.workspace = true
+texform-knowledge-macros.workspace = true
 
 [build-dependencies]
 serde.workspace = true

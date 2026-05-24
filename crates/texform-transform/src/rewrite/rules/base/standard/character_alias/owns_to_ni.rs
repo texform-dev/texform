@@ -12,7 +12,7 @@
 //!   - {from: \owns, to: \ni}
 //! ```
 
-use texform_specs::builtin::base;
+use texform_knowledge::builtin::base;
 
 use crate::ast::Node;
 use crate::rewrite::helpers::bare_command_node;

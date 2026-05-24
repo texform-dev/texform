@@ -15,8 +15,8 @@
 //!   - {from: '\begin{vmatrix} #1 \end{vmatrix}', to: '\left|\begin{matrix} #1 \end{matrix}\right|'}
 //! ```
 
-use texform_specs::builtin::ams;
-use texform_specs::builtin::base;
+use texform_knowledge::builtin::ams;
+use texform_knowledge::builtin::base;
 
 use super::helpers::replace_with_fenced_matrix_env;
 use crate::ast::Delimiter;

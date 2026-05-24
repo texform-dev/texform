@@ -14,8 +14,8 @@
 //!   - {from: '\eqalignno{#1&#2&(#3) \cr #4&#5&(#6)}', to: '\begin{align} #1&#2 \tag{#3}\\ #4&#5 \tag{#6} \end{align}'}
 //! ```
 
-use texform_specs::builtin::ams;
-use texform_specs::builtin::base;
+use texform_knowledge::builtin::ams;
+use texform_knowledge::builtin::base;
 
 use super::helpers::{
     cr_rows, linebreak_command, mandatory_math_body, replace_with_environment, tag_command,

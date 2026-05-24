@@ -14,8 +14,8 @@
 //!   - {from: '\ket{#1}', to: '\left| #1 \right\rangle'}
 //! ```
 
-use texform_specs::builtin::base;
-use texform_specs::builtin::braket;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::braket;
 
 use super::helpers::{replace_with_fixed_ket, required_math_arg};
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};

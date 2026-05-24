@@ -19,8 +19,8 @@
 //!   - {label: bracket-star, from: '\eval*[#1|#2', to: '\left[\smash{#1}\vphantom{\int}\right|#2'}
 //! ```
 
-use texform_specs::builtin::base;
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::physics;
 
 use super::helpers::replace_with_eval_fence;
 use crate::ast::{ArgumentKind, ArgumentSlot, ArgumentValue, Delimiter, NodeId};

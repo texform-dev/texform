@@ -22,7 +22,7 @@
 //!   - {label: pderivative-three-args, from: '\pderivative{#1}{#2}{#3}', to: '\pdv{#1}{#2}{#3}'}
 //! ```
 
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::physics;
 
 use crate::rewrite::alias_rule;
 

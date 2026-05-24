@@ -12,7 +12,7 @@
 //!   - {from: '\mdet{#1}', to: '\vmqty{#1}'}
 //! ```
 
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::physics;
 
 use crate::rewrite::helpers::prefix_command_node;
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};

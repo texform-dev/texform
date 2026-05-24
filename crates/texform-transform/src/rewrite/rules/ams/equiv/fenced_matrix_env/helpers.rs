@@ -1,4 +1,4 @@
-use texform_specs::builtin::ams;
+use texform_knowledge::builtin::ams;
 
 use crate::ast::{ContentMode, Delimiter, GroupKind, Node, NodeId};
 use crate::rewrite::rule_context::RuleContext;

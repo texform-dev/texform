@@ -12,8 +12,8 @@
 //!   - {from: '#1 \above #2 #3', to: '\genfrac{}{}{#2}{}{#1}{#3}'}
 //! ```
 
-use texform_specs::builtin::ams;
-use texform_specs::builtin::base;
+use texform_knowledge::builtin::ams;
+use texform_knowledge::builtin::base;
 
 use super::helpers::{dimension_arg, genfrac_args, replace_infix_with_command};
 use crate::ast::Delimiter;

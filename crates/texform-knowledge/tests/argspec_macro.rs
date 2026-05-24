@@ -1,5 +1,5 @@
 use texform_argspec::{ArgForm, ContentMode, DelimiterToken, ValueKind, parse_arg_specs};
-use texform_specs::argspec;
+use texform_knowledge::argspec;
 
 #[test]
 fn test_argspec_macro_matches_runtime_parse_for_empty_spec() {

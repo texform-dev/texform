@@ -19,8 +19,8 @@
 //!   - {label: expectation-state-middle-sized, from: '\ev**{#1}{#2}', to: '\left\langle #2 \middle\vert #1 \middle\vert #2 \right\rangle'}
 //! ```
 
-use texform_specs::builtin::base;
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::physics;
 
 use super::helpers::{
     BraketSize, optional_group_arg, required_math_arg, replace_with_expectation_body,

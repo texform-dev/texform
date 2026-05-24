@@ -14,8 +14,8 @@
 //!   - {from: '\displaylines{#1 \cr #2}', to: '\begin{gather} #1 \notag \\ #2 \notag \end{gather}'}
 //! ```
 
-use texform_specs::builtin::ams;
-use texform_specs::builtin::base;
+use texform_knowledge::builtin::ams;
+use texform_knowledge::builtin::base;
 
 use super::helpers::{
     cr_rows, mandatory_math_body, linebreak_command, notag_command, replace_with_environment,

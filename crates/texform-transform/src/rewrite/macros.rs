@@ -412,7 +412,7 @@ pub(crate) use transform_examples;
 
 #[cfg(test)]
 mod tests {
-    use texform_specs::builtin::{ams, base, bboldx};
+    use texform_knowledge::builtin::{ams, base, bboldx};
 
     use crate::rewrite::{RuleTarget, RuleTargetKind};
 

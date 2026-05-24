@@ -15,7 +15,7 @@
 //!   - {from: '\stackrel{#1}{#2}', to: '\mathrel{\mathop{#2}\limits^{#1}}'}
 //! ```
 
-use texform_specs::builtin::base;
+use texform_knowledge::builtin::base;
 
 use super::helpers::stacked_operator_command;
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};

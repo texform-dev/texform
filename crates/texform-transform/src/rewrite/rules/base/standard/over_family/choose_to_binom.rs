@@ -12,8 +12,8 @@
 //!   - {from: '#1 \choose #2', to: '\binom{#1}{#2}'}
 //! ```
 
-use texform_specs::builtin::ams;
-use texform_specs::builtin::base;
+use texform_knowledge::builtin::ams;
+use texform_knowledge::builtin::base;
 
 use super::helpers::replace_infix_with_command;
 use crate::ast::ContentMode;

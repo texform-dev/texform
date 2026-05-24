@@ -12,7 +12,7 @@
 //!   - {from: '\bmqty{#1}', to: '\mqty[#1]'}
 //! ```
 
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::physics;
 
 use super::helpers::matrix_quantity_command;
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};

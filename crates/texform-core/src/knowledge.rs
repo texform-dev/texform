@@ -1,7 +1,7 @@
 //! Knowledge base: the backing store behind [`ParseContext`](crate::parse::ParseContext).
 //!
 //! A [`KnowledgeBase`] holds indexed command, environment, character, and
-//! delimiter-control metadata loaded from `texform-specs` package definitions.
+//! delimiter-control metadata loaded from `texform-knowledge` package definitions.
 //! It is the single source of truth the parser consults when recognizing
 //! control sequences and environments.
 //!
@@ -29,21 +29,21 @@ use crate::ast::Node;
 use std::collections::{HashMap, HashSet};
 use texform_argspec::parse_arg_specs;
 use texform_interface::syntax_node::ContentMode;
-use texform_specs::builtin::{BuiltinPackage, PackageName};
+use texform_knowledge::builtin::{BuiltinPackage, PackageName};
 
 use crate::parse::{CommandItem, ContextItem, DelimiterControlItem, EnvironmentItem};
 
 pub use texform_argspec::{
     ArgForm, ArgSpec, ArgSpecParseError, DelimiterToken, ParsedArgSpec, ValueKind,
 };
-use texform_specs::specs::CharacterAttributes;
-pub use texform_specs::specs::{
+use texform_knowledge::specs::CharacterAttributes;
+pub use texform_knowledge::specs::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveDelimiterRecord, ActiveEnvironmentRecord,
     AllowedMode, BuiltinCharacterRecord, BuiltinCommandRecord, BuiltinDelimiterRecord,
     BuiltinEnvironmentRecord, CommandKind,
 };
 #[cfg(test)]
-use texform_specs::specs::{
+use texform_knowledge::specs::{
     CharacterSpec, CommandSpec, DelimiterSpec, EnvironmentSpec, PackageSpecs,
 };
 
@@ -69,7 +69,7 @@ pub fn default_package_names() -> &'static [&'static str] {
 /// Error returned when a requested package name is not found in the registry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PackageLoadError {
-    /// The named package does not exist in the `texform-specs` registry.
+    /// The named package does not exist in the `texform-knowledge` registry.
     UnknownPackage { name: String },
 }
 
@@ -392,7 +392,7 @@ impl KnowledgeBase {
             name: character.name,
             kind: CommandKind::Prefix,
             allowed_mode: character.allowed_mode,
-            argspec: texform_specs::argspec!(""),
+            argspec: texform_knowledge::argspec!(""),
             tags: &[],
             from_packages: leak_string_array(vec![package.to_string()]),
         });
@@ -768,7 +768,7 @@ fn dedup_names_in_request_order<'a>(requested: &[&'a str]) -> Vec<&'a str> {
 }
 
 fn managed_package_names() -> impl Iterator<Item = &'static str> {
-    texform_specs::builtin::MANAGED_PACKAGE_IMPORT_ORDER
+    texform_knowledge::builtin::MANAGED_PACKAGE_IMPORT_ORDER
         .iter()
         .map(|package| package.as_str())
 }
@@ -920,7 +920,7 @@ fn import_package_names(
     requested: &[&str],
 ) -> Result<(), PackageLoadError> {
     for &name in requested {
-        let pkg = texform_specs::builtin::lookup_package(name).ok_or_else(|| {
+        let pkg = texform_knowledge::builtin::lookup_package(name).ok_or_else(|| {
             PackageLoadError::UnknownPackage {
                 name: name.to_string(),
             }
@@ -936,7 +936,7 @@ fn import_package_names_for_mode(
     target_mode: ContentMode,
 ) -> Result<(), PackageLoadError> {
     for &name in requested {
-        let pkg = texform_specs::builtin::lookup_package(name).ok_or_else(|| {
+        let pkg = texform_knowledge::builtin::lookup_package(name).ok_or_else(|| {
             PackageLoadError::UnknownPackage {
                 name: name.to_string(),
             }
@@ -963,7 +963,7 @@ fn build_default_kb(packages: Option<&[&str]>) -> KnowledgeBase {
     match packages {
         Some(list) => KnowledgeBase::build_from_packages(list),
         None => {
-            let package_names = texform_specs::builtin::all_package_names();
+            let package_names = texform_knowledge::builtin::all_package_names();
             KnowledgeBase::build_from_packages(package_names.as_slice())
         }
     }

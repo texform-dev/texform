@@ -12,8 +12,8 @@
 //!   - {from: \rank, to: '\operatorname{rank}'}
 //! ```
 
-use texform_specs::builtin::ams;
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::ams;
+use texform_knowledge::builtin::physics;
 
 use crate::ast::{ContentMode, GroupKind, Node};
 use crate::rewrite::helpers::{mandatory_content_slot, prefix_command_node, star_slot};

@@ -1,4 +1,4 @@
-use texform_specs::argspec;
+use texform_knowledge::argspec;
 use texform_argspec::{ArgForm, ContentMode, ValueKind};
 
 fn main() {

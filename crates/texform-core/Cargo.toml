@@ -15,7 +15,7 @@ wasm-bindgen = { workspace = true, optional = true }
 
 texform-interface.workspace = true
 texform-argspec.workspace = true
-texform-specs.workspace = true
+texform-knowledge.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

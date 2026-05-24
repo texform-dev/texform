@@ -1,5 +1,5 @@
-use texform_specs::builtin::base;
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::physics;
 
 use crate::ast::{ContentMode, Node, NodeId};
 use crate::rewrite::helpers::{bare_command_node, mandatory_content_slot, prefix_command_node};

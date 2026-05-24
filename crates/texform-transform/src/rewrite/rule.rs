@@ -13,8 +13,8 @@
 //! - **Safety** ([`RuleSafety`]) — whether the transformation preserves full
 //!   information, only semantic meaning, or is destructive.
 
-pub use texform_specs::builtin::PackageName;
-use texform_specs::specs::{
+pub use texform_knowledge::builtin::PackageName;
+use texform_knowledge::specs::{
     BuiltinCharacterRecord, BuiltinCommandRecord, BuiltinEnvironmentRecord,
 };
 
@@ -81,11 +81,11 @@ impl std::fmt::Display for RuleKey {
 /// knowledge-base entries a rule interacts with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuleTarget {
-    /// A builtin command record from `texform-specs`.
+    /// A builtin command record from `texform-knowledge`.
     Command(&'static BuiltinCommandRecord),
-    /// A builtin environment record from `texform-specs`.
+    /// A builtin environment record from `texform-knowledge`.
     Environment(&'static BuiltinEnvironmentRecord),
-    /// A builtin character record from `texform-specs`.
+    /// A builtin character record from `texform-knowledge`.
     Character(&'static BuiltinCharacterRecord),
 }
 

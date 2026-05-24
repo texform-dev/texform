@@ -12,7 +12,7 @@
 //!   - {from: \newline, to: \\}
 //! ```
 
-use texform_specs::builtin::base;
+use texform_knowledge::builtin::base;
 
 use super::helpers::linebreak_command;
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};

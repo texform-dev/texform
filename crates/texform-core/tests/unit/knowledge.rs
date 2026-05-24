@@ -1,6 +1,6 @@
 use super::*;
 use texform_interface::syntax_node::ContentMode;
-use texform_specs::argspec;
+use texform_knowledge::argspec;
 
 fn assert_from_packages(actual: &[&str], expected: &[&str]) {
     assert_eq!(actual, expected);
@@ -115,9 +115,9 @@ fn test_builder_import_overrides_by_order() {
         tags: vec![],
     });
 
-    kb.import_package(texform_specs::specs::PackageSpecs {
+    kb.import_package(texform_knowledge::specs::PackageSpecs {
         characters: vec![],
-        commands: vec![texform_specs::specs::CommandSpec {
+        commands: vec![texform_knowledge::specs::CommandSpec {
             name: "foo".to_string(),
             kind: CommandKind::Prefix,
             allowed_mode: AllowedMode::Text,
@@ -137,8 +137,8 @@ fn test_builder_import_overrides_by_order() {
 #[test]
 fn test_character_import_preserves_allowed_mode() {
     let mut kb = KnowledgeBase::new();
-    kb.import_package(texform_specs::specs::PackageSpecs {
-        characters: vec![texform_specs::specs::CharacterSpec {
+    kb.import_package(texform_knowledge::specs::PackageSpecs {
+        characters: vec![texform_knowledge::specs::CharacterSpec {
             name: "alpha".to_string(),
             allowed_mode: AllowedMode::Text,
             unicode_value: "α".to_string(),
@@ -445,7 +445,7 @@ fn test_remove_environment_by_name_reports_presence() {
 
 #[test]
 fn test_all_packages_default_includes_registered_package_entries() {
-    let package_names = texform_specs::packages::all_package_names();
+    let package_names = texform_knowledge::packages::all_package_names();
     let kb = build_default_kb(Some(package_names.as_slice()));
     assert!(kb.lookup_command("\\").is_some());
     assert!(kb.lookup_command("over").is_some());

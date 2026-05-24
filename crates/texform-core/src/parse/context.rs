@@ -16,8 +16,8 @@ pub use texform_argspec::ArgSpecParseError;
 use texform_interface::syntax_node::SyntaxNode;
 
 pub use texform_interface::syntax_node::ContentMode;
-use texform_specs::builtin::PackageName;
-pub use texform_specs::specs::{
+use texform_knowledge::builtin::PackageName;
+pub use texform_knowledge::specs::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveDelimiterRecord, ActiveEnvironmentRecord,
     AllowedMode, CommandKind,
 };
@@ -477,7 +477,7 @@ fn canonical_enabled_package_names(
     requested: &[&str],
 ) -> Result<Vec<PackageName>, ParseContextBuildError> {
     let mut packages = Vec::new();
-    for package in texform_specs::builtin::MANAGED_PACKAGE_IMPORT_ORDER {
+    for package in texform_knowledge::builtin::MANAGED_PACKAGE_IMPORT_ORDER {
         if requested.contains(&package.as_str()) {
             packages.push(*package);
         }

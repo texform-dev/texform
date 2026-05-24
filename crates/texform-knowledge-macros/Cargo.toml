@@ -1,5 +1,5 @@
 [package]
-name = "texform-specs-macros"
+name = "texform-knowledge-macros"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

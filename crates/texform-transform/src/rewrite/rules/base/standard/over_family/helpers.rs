@@ -1,4 +1,4 @@
-use texform_specs::specs::BuiltinCommandRecord;
+use texform_knowledge::specs::BuiltinCommandRecord;
 
 use crate::ast::{ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind, Node, NodeId};
 use crate::rewrite::RuleError;

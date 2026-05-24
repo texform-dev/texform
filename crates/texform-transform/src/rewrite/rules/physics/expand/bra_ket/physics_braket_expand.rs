@@ -18,8 +18,8 @@
 //!   - {label: braket-single-arg-fixed-size, from: '\braket*{#1}', to: '\langle #1 \vert #1 \rangle'}
 //! ```
 
-use texform_specs::builtin::base;
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::physics;
 
 use super::helpers::{
     BraketSize, optional_group_arg, required_math_arg, replace_with_braket,

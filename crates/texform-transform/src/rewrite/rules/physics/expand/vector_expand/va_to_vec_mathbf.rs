@@ -16,9 +16,9 @@
 //!   - {label: va-star, from: '\va*{#1}', to: '\vec{\boldsymbol{#1}}'}
 //! ```
 
-use texform_specs::builtin::base;
-use texform_specs::builtin::boldsymbol;
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::boldsymbol;
+use texform_knowledge::builtin::physics;
 
 use super::helpers::{replace_with_wrapped_vector_style, vector_args};
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};

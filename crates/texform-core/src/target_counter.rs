@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use texform_interface::syntax_node::{Argument, ArgumentValue, ContentMode, SyntaxNode};
-use texform_specs::builtin::ALL_PACKAGES;
+use texform_knowledge::builtin::ALL_PACKAGES;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TargetKind {

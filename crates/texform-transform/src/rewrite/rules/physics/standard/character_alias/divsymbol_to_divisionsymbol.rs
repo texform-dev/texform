@@ -12,7 +12,7 @@
 //!   - {from: \divsymbol, to: \divisionsymbol}
 //! ```
 
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::physics;
 
 use crate::ast::Node;
 use crate::rewrite::helpers::bare_command_node;

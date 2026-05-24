@@ -15,8 +15,8 @@
 //!   - {label: ket-fixed-size, from: '\ket*{#1}', to: '\vert #1 \rangle'}
 //! ```
 
-use texform_specs::builtin::base;
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::physics;
 
 use super::helpers::{BraketSize, required_math_arg, replace_with_ket};
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};

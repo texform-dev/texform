@@ -13,7 +13,7 @@
 //!   - {label: antidiagonalmatrix-bare, from: \antidiagonalmatrix, to: \admat}
 //! ```
 
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::physics;
 
 use crate::rewrite::alias_rule;
 

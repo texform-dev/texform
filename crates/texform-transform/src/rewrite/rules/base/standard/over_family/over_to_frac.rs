@@ -12,7 +12,7 @@
 //!   - {from: '#1 \over #2', to: '\frac{#1}{#2}'}
 //! ```
 
-use texform_specs::builtin::base;
+use texform_knowledge::builtin::base;
 
 use super::helpers::replace_infix_with_command;
 use crate::ast::ContentMode;

@@ -1,6 +1,6 @@
-use texform_specs::builtin::base;
-use texform_specs::builtin::boldsymbol;
-use texform_specs::specs::BuiltinCommandRecord;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::boldsymbol;
+use texform_knowledge::specs::BuiltinCommandRecord;
 
 use crate::ast::{ContentMode, Node, NodeId};
 use crate::rewrite::RuleError;

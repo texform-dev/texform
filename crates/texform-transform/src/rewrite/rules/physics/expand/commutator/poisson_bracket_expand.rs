@@ -15,8 +15,8 @@
 //!   - {label: poisson-bracket-fixed-size, from: '\pb*{#1}{#2}', to: '\{#1,#2\}'}
 //! ```
 
-use texform_specs::builtin::base;
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::physics;
 
 use super::helpers::{
     BinaryFencePair, replace_with_binary_bracket_fence, required_braced_math_arg,

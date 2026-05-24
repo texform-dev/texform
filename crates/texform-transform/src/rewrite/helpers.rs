@@ -4,8 +4,8 @@
 //! The helpers here eliminate the boilerplate of constructing [`Argument`]
 //! wrappers by hand, keeping rule implementations focused on semantics.
 
-use texform_specs::builtin::base;
-use texform_specs::specs::BuiltinCommandRecord;
+use texform_knowledge::builtin::base;
+use texform_knowledge::specs::BuiltinCommandRecord;
 
 use crate::ast::{
     Argument, ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, Node, NodeId,

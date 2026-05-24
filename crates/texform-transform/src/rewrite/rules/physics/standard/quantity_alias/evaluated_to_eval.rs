@@ -15,7 +15,7 @@
 //!   - {label: bracket, from: '\evaluated[#1|#2', to: '\eval[#1|#2'}
 //! ```
 
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::physics;
 
 use crate::rewrite::alias_rule;
 

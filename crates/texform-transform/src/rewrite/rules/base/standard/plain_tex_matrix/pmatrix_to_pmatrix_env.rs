@@ -12,8 +12,8 @@
 //!   - {from: '\pmatrix{#1 \cr #2}', to: '\begin{pmatrix} #1 \\ #2 \end{pmatrix}'}
 //! ```
 
-use texform_specs::builtin::ams;
-use texform_specs::builtin::base;
+use texform_knowledge::builtin::ams;
+use texform_knowledge::builtin::base;
 
 use super::helpers::rewrite_cr_body_to_environment;
 use crate::rewrite::rule::{RuleConsumes, RuleProduces};

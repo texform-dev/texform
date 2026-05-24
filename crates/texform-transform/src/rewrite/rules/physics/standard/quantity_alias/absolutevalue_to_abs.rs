@@ -13,7 +13,7 @@
 //!   - {label: star, from: '\absolutevalue*{#1}', to: '\abs*{#1}'}
 //! ```
 
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::physics;
 
 use crate::rewrite::alias_rule;
 

@@ -15,7 +15,7 @@
 //!   - {label: vertical-bar, from: \quantity|#1|, to: \qty|#1|}
 //! ```
 
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::physics;
 
 use crate::rewrite::alias_rule;
 

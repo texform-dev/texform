@@ -1,5 +1,5 @@
-use texform_specs::builtin::base;
-use texform_specs::specs::BuiltinCommandRecord;
+use texform_knowledge::builtin::base;
+use texform_knowledge::specs::BuiltinCommandRecord;
 
 use crate::ast::{ContentMode, Node, NodeId};
 use crate::rewrite::helpers::{mandatory_content_slot, prefix_command_node};

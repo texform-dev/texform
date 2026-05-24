@@ -12,7 +12,7 @@
 //!   - {from: '\substack{#1\\#2}', to: '\begin{subarray}{c}#1\\#2\end{subarray}'}
 //! ```
 
-use texform_specs::builtin::ams;
+use texform_knowledge::builtin::ams;
 
 use crate::ast::{Argument, ArgumentKind, ArgumentValue, Node, NodeId};
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};

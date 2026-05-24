@@ -6,8 +6,8 @@ members = [
   "crates/texform-core",
   "crates/texform-interface",
   "crates/texform-python",
-  "crates/texform-specs",
-  "crates/texform-specs-macros",
+  "crates/texform-knowledge",
+  "crates/texform-knowledge-macros",
   "crates/texform-transform",
   "crates/texform-wasm",
 ]
@@ -42,6 +42,6 @@ texform-argspec = { path = "crates/texform-argspec" }
 texform = { path = "crates/texform" }
 texform-core = { path = "crates/texform-core" }
 texform-interface = { path = "crates/texform-interface" }
-texform-specs = { path = "crates/texform-specs" }
-texform-specs-macros = { path = "crates/texform-specs-macros" }
+texform-knowledge = { path = "crates/texform-knowledge" }
+texform-knowledge-macros = { path = "crates/texform-knowledge-macros" }
 texform-transform = { path = "crates/texform-transform" }

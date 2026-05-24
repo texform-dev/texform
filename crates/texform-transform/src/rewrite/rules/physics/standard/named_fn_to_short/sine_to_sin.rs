@@ -12,8 +12,8 @@
 //!   - {from: \sine, to: \sin}
 //! ```
 
-use texform_specs::builtin::base;
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::physics;
 
 use crate::rewrite::alias_rule;
 

@@ -26,7 +26,7 @@ pub fn argspec(input: TokenStream) -> TokenStream {
 fn render_parsed_arg_spec(specs: &[ArgSpec], source: &str) -> TokenStream2 {
     let rendered_specs = specs.iter().map(render_arg_spec);
     quote! {
-        ::texform_specs::specs::ParsedArgSpec {
+        ::texform_knowledge::specs::ParsedArgSpec {
             args: &[#(#rendered_specs),*],
             source: #source,
         }
@@ -41,7 +41,7 @@ fn render_arg_spec(spec: &ArgSpec) -> TokenStream2 {
     let form = render_arg_form(&spec.form);
 
     quote! {
-        ::texform_specs::specs::ArgSpec {
+        ::texform_knowledge::specs::ArgSpec {
             required: #required,
             no_leading_space: #no_leading_space,
             nullable: #nullable,
@@ -56,29 +56,29 @@ fn render_value_kind(kind: ValueKind) -> TokenStream2 {
         ValueKind::Content { mode } => {
             let mode = render_content_mode(mode);
             quote! {
-                ::texform_specs::specs::ValueKind::Content { mode: #mode }
+                ::texform_knowledge::specs::ValueKind::Content { mode: #mode }
             }
         }
-        ValueKind::Delimiter => quote!(::texform_specs::specs::ValueKind::Delimiter),
-        ValueKind::CSName => quote!(::texform_specs::specs::ValueKind::CSName),
-        ValueKind::Dimension => quote!(::texform_specs::specs::ValueKind::Dimension),
-        ValueKind::Integer => quote!(::texform_specs::specs::ValueKind::Integer),
-        ValueKind::KeyVal => quote!(::texform_specs::specs::ValueKind::KeyVal),
-        ValueKind::Column => quote!(::texform_specs::specs::ValueKind::Column),
-        ValueKind::Star => quote!(::texform_specs::specs::ValueKind::Star),
+        ValueKind::Delimiter => quote!(::texform_knowledge::specs::ValueKind::Delimiter),
+        ValueKind::CSName => quote!(::texform_knowledge::specs::ValueKind::CSName),
+        ValueKind::Dimension => quote!(::texform_knowledge::specs::ValueKind::Dimension),
+        ValueKind::Integer => quote!(::texform_knowledge::specs::ValueKind::Integer),
+        ValueKind::KeyVal => quote!(::texform_knowledge::specs::ValueKind::KeyVal),
+        ValueKind::Column => quote!(::texform_knowledge::specs::ValueKind::Column),
+        ValueKind::Star => quote!(::texform_knowledge::specs::ValueKind::Star),
     }
 }
 
 fn render_arg_form(form: &ArgForm) -> TokenStream2 {
     match form {
-        ArgForm::Standard => quote!(::texform_specs::specs::ArgForm::Standard),
-        ArgForm::Star => quote!(::texform_specs::specs::ArgForm::Star),
-        ArgForm::Group => quote!(::texform_specs::specs::ArgForm::Group),
+        ArgForm::Standard => quote!(::texform_knowledge::specs::ArgForm::Standard),
+        ArgForm::Star => quote!(::texform_knowledge::specs::ArgForm::Star),
+        ArgForm::Group => quote!(::texform_knowledge::specs::ArgForm::Group),
         ArgForm::Delimited { open, close } => {
             let open = render_delimiter_token(open);
             let close = render_delimiter_token(close);
             quote! {
-                ::texform_specs::specs::ArgForm::Delimited {
+                ::texform_knowledge::specs::ArgForm::Delimited {
                     open: #open,
                     close: #close,
                 }
@@ -91,7 +91,7 @@ fn render_arg_form(form: &ArgForm) -> TokenStream2 {
                 quote! { (#open, #close) }
             });
             quote! {
-                ::texform_specs::specs::ArgForm::Paired {
+                ::texform_knowledge::specs::ArgForm::Paired {
                     pairs: ::std::borrow::Cow::Borrowed(&[#(#rendered_pairs),*]),
                 }
             }
@@ -101,11 +101,11 @@ fn render_arg_form(form: &ArgForm) -> TokenStream2 {
 
 fn render_delimiter_token(token: &DelimiterToken) -> TokenStream2 {
     match token {
-        DelimiterToken::Char(ch) => quote!(::texform_specs::specs::DelimiterToken::Char(#ch)),
+        DelimiterToken::Char(ch) => quote!(::texform_knowledge::specs::DelimiterToken::Char(#ch)),
         DelimiterToken::ControlSeq(name) => {
             let name = name.as_ref();
             quote! {
-                ::texform_specs::specs::DelimiterToken::ControlSeq(
+                ::texform_knowledge::specs::DelimiterToken::ControlSeq(
                     ::std::borrow::Cow::Borrowed(#name)
                 )
             }
@@ -115,7 +115,7 @@ fn render_delimiter_token(token: &DelimiterToken) -> TokenStream2 {
 
 fn render_content_mode(mode: texform_argspec::ContentMode) -> TokenStream2 {
     match mode {
-        texform_argspec::ContentMode::Math => quote!(::texform_specs::specs::ContentMode::Math),
-        texform_argspec::ContentMode::Text => quote!(::texform_specs::specs::ContentMode::Text),
+        texform_argspec::ContentMode::Math => quote!(::texform_knowledge::specs::ContentMode::Math),
+        texform_argspec::ContentMode::Text => quote!(::texform_knowledge::specs::ContentMode::Text),
     }
 }

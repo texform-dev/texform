@@ -12,8 +12,8 @@
 //!   - {from: \naturallogarithm, to: \ln}
 //! ```
 
-use texform_specs::builtin::base;
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::physics;
 
 use crate::ast::Node;
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};

@@ -1,6 +1,6 @@
 use crate::ast::{Argument, ArgumentKind, ArgumentValue, Delimiter, Node, NodeId};
 use crate::rewrite::helpers::star_slot;
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::physics;
 
 pub(super) fn matrix_quantity_command(body: NodeId, open: char, close: char) -> Node {
     Node::Command {

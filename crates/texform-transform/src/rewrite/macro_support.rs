@@ -1,4 +1,4 @@
-use texform_specs::specs::{BuiltinCommandRecord, CommandKind};
+use texform_knowledge::specs::{BuiltinCommandRecord, CommandKind};
 
 use crate::ast::{Node, NodeId};
 use crate::rewrite::RuleError;
@@ -64,8 +64,8 @@ pub(crate) fn rename_prefix_command_alias(
 
 #[cfg(test)]
 mod tests {
-    use texform_specs::argspec;
-    use texform_specs::specs::{AllowedMode, BuiltinCommandRecord, CommandKind};
+    use texform_knowledge::argspec;
+    use texform_knowledge::specs::{AllowedMode, BuiltinCommandRecord, CommandKind};
 
     use super::*;
 

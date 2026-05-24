@@ -123,9 +123,9 @@ eliminated-form contract owned by `buildrel-expand`.
 Always import builtin records through an explicit package module:
 
 ```rust
-use texform_specs::builtin::base;
-use texform_specs::builtin::ams;
-use texform_specs::builtin::bboldx;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::ams;
+use texform_knowledge::builtin::bboldx;
 ```
 
 When referencing builtin records in consumes or produces, always use
@@ -148,7 +148,7 @@ Do not duplicate same-name package variants in rule metadata. `RuleConsumes`
 and `RuleProduces` are interpreted as `kind + name`, so each target appears once:
 
 ```rust
-use texform_specs::builtin::base;
+use texform_knowledge::builtin::base;
 
 consumes: RuleConsumes {
     eliminates: cmd_targets![&base::cmd::OVER],

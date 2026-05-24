@@ -9,7 +9,7 @@ publish = false
 texform-core.workspace = true
 texform.workspace = true
 texform-interface.workspace = true
-texform-specs.workspace = true
+texform-knowledge.workspace = true
 texform-transform.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -12,7 +12,7 @@
 //!   - {from: \goodbreak, to: ''}
 //! ```
 
-use texform_specs::builtin::base;
+use texform_knowledge::builtin::base;
 
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::rewrite::{cmd_targets, define_rule};

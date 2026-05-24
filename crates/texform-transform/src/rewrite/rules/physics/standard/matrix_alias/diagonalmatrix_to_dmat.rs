@@ -13,7 +13,7 @@
 //!   - {label: diagonalmatrix-bare, from: \diagonalmatrix, to: \dmat}
 //! ```
 
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::physics;
 
 use crate::rewrite::alias_rule;
 

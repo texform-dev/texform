@@ -14,8 +14,8 @@
 //!   - {from: '\bra{#1}', to: '\left\langle #1 \right|'}
 //! ```
 
-use texform_specs::builtin::base;
-use texform_specs::builtin::braket;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::braket;
 
 use super::helpers::{replace_with_fixed_bra, required_math_arg};
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};

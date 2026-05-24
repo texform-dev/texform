@@ -1,4 +1,4 @@
-use texform_specs::builtin::bboldx;
+use texform_knowledge::builtin::bboldx;
 use texform_transform::{PackageName, RuleClass, RuleKey, RuleTarget, RuleTargetKind};
 
 #[test]

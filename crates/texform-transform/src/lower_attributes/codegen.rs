@@ -20,8 +20,8 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
-use texform_specs::builtin::{self, BuiltinPackage};
-use texform_specs::specs::{
+use texform_knowledge::builtin::{self, BuiltinPackage};
+use texform_knowledge::specs::{
     AllowedMode, ArgForm, BuiltinCommandRecord, CommandKind, ContentMode, ValueKind,
 };
 

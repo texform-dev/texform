@@ -18,7 +18,7 @@ use crate::knowledge::{KnowledgeBase, lookup_command_node_name, lookup_environme
 use crate::parse::ContentMode;
 use crate::rewrite::rule::RuleKey;
 use crate::rewrite::{RewriteReport, RuleError};
-use texform_specs::specs::{
+use texform_knowledge::specs::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, BuiltinCommandRecord,
     BuiltinEnvironmentRecord,
 };

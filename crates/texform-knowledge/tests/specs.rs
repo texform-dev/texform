@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 
 use texform_argspec::{ArgForm, ArgSpec, ContentMode, DelimiterToken, ValueKind, parse_arg_specs};
-use texform_specs::builtin::{ALL_PACKAGES, MANAGED_PACKAGE_IMPORT_ORDER, PackageName};
-use texform_specs::specs::{AllowedMode, load_package_specs_from_str};
+use texform_knowledge::builtin::{ALL_PACKAGES, MANAGED_PACKAGE_IMPORT_ORDER, PackageName};
+use texform_knowledge::specs::{AllowedMode, load_package_specs_from_str};
 
 #[test]
 fn package_name_import_order_matches_transform_order() {
@@ -34,11 +34,11 @@ fn package_name_import_order_matches_transform_order() {
         ]
     );
     assert_eq!(
-        texform_specs::builtin::managed_package_import_order(),
+        texform_knowledge::builtin::managed_package_import_order(),
         MANAGED_PACKAGE_IMPORT_ORDER
     );
     assert_eq!(
-        texform_specs::packages::MANAGED_PACKAGE_IMPORT_ORDER,
+        texform_knowledge::packages::MANAGED_PACKAGE_IMPORT_ORDER,
         MANAGED_PACKAGE_IMPORT_ORDER
     );
 }
@@ -50,7 +50,7 @@ fn package_name_lookup_and_package_access_use_generated_registry() {
     assert_eq!(PackageName::Physics.import_order(), 3);
     assert_eq!(PackageName::Physics.package().name, "physics");
     assert_eq!(
-        texform_specs::packages::PackageName::Physics.as_str(),
+        texform_knowledge::packages::PackageName::Physics.as_str(),
         "physics"
     );
 }
@@ -58,7 +58,7 @@ fn package_name_lookup_and_package_access_use_generated_registry() {
 #[test]
 fn all_resource_specs_are_registered() {
     let names: Vec<&str> = ALL_PACKAGES.iter().map(|pkg| pkg.name).collect();
-    assert_eq!(texform_specs::packages::all_package_names(), names);
+    assert_eq!(texform_knowledge::packages::all_package_names(), names);
     assert_eq!(
         names,
         vec![
@@ -86,7 +86,7 @@ fn registered_packages_expose_builtin_records() {
 
 #[test]
 fn non_alpha_commands_have_stable_facades() {
-    use texform_specs::builtin::{base, braket, textmacros};
+    use texform_knowledge::builtin::{base, braket, textmacros};
 
     assert_eq!(base::cmd::_CONTROL_SPACE.name, " ");
     assert_eq!(base::cmd::_COMMA.name, ",");

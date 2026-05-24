@@ -17,8 +17,8 @@
 //!   - {label: matrixel-middle-sized, from: '\matrixel**{#1}{#2}{#3}', to: '\left\langle #1 \middle\vert #2 \middle\vert #3 \right\rangle'}
 //! ```
 
-use texform_specs::builtin::base;
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::physics;
 
 use super::helpers::{BraketSize, required_math_arg, replace_with_matrix_element};
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};

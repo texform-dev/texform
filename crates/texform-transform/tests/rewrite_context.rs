@@ -1,7 +1,7 @@
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ParseContext, ParseContextBuilder,
 };
-use texform_specs::builtin::MANAGED_PACKAGE_IMPORT_ORDER;
+use texform_knowledge::builtin::MANAGED_PACKAGE_IMPORT_ORDER;
 use texform_transform::rewrite::{RuleAvailabilityFailure, all_rules};
 use texform_transform::{
     BuildConfig, PackageName, PlanBuildError, Profile, RuleClass, RuleClassSet, RuleKey, RuleMeta,

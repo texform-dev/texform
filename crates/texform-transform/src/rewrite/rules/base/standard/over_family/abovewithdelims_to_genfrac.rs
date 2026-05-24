@@ -12,8 +12,8 @@
 //!   - {from: '#1 \abovewithdelims #2 #3 #4 #5', to: '\genfrac{#2}{#3}{#4}{}{#1}{#5}'}
 //! ```
 
-use texform_specs::builtin::ams;
-use texform_specs::builtin::base;
+use texform_knowledge::builtin::ams;
+use texform_knowledge::builtin::base;
 
 use super::helpers::{delimiter_arg, dimension_arg, genfrac_args, replace_infix_with_command};
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};

@@ -9,9 +9,9 @@ serde.workspace = true
 serde_yaml.workspace = true
 texform-core.workspace = true
 texform-interface.workspace = true
-texform-specs.workspace = true
+texform-knowledge.workspace = true
 
 [build-dependencies]
 serde.workspace = true
 serde_yaml.workspace = true
-texform-specs.workspace = true
+texform-knowledge.workspace = true

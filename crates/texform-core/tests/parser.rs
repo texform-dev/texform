@@ -9,7 +9,7 @@ use texform_core::parse::{
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
 };
-use texform_specs::specs::load_package_specs_from_str;
+use texform_knowledge::specs::load_package_specs_from_str;
 
 fn serialize_node(node: &SyntaxNode) -> String {
     let ast = Ast::from_syntax_root(node);

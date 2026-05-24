@@ -12,7 +12,7 @@
 //!   - {from: '\root #1 \of #2', to: '\sqrt[#1]{#2}'}
 //! ```
 
-use texform_specs::builtin::base;
+use texform_knowledge::builtin::base;
 
 use crate::ast::{Argument, ArgumentKind, ArgumentValue, ContentMode, GroupKind, Node, NodeId, Slot};
 use crate::rewrite::helpers::{mandatory_content_slot, prefix_command_node};

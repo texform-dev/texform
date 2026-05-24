@@ -12,7 +12,7 @@
 //!   - {label: trace-capital, from: \Trace, to: \Tr}
 //! ```
 
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::physics;
 
 use crate::rewrite::alias_rule;
 

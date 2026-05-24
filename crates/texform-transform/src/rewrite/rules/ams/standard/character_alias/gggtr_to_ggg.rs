@@ -12,7 +12,7 @@
 //!   - {from: \gggtr, to: \ggg}
 //! ```
 
-use texform_specs::builtin::ams;
+use texform_knowledge::builtin::ams;
 
 use crate::ast::Node;
 use crate::rewrite::helpers::bare_command_node;

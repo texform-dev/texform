@@ -13,7 +13,7 @@
 //!   - {label: vectorbold-star, from: '\vectorbold*{#1}', to: '\vb*{#1}'}
 //! ```
 
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::physics;
 
 use crate::rewrite::alias_rule;
 

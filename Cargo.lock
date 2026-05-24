@@ -1220,7 +1220,7 @@ dependencies = [
  "texform",
  "texform-core",
  "texform-interface",
- "texform-specs",
+ "texform-knowledge",
  "texform-transform",
 ]
 
@@ -1236,7 +1236,7 @@ dependencies = [
  "slotmap",
  "texform-argspec",
  "texform-interface",
- "texform-specs",
+ "texform-knowledge",
  "tsify-next",
  "wasm-bindgen",
 ]
@@ -1252,6 +1252,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "texform-knowledge"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_yaml",
+ "texform-argspec",
+ "texform-interface",
+ "texform-knowledge-macros",
+ "trybuild",
+]
+
+[[package]]
+name = "texform-knowledge-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+ "texform-argspec",
+]
+
+[[package]]
 name = "texform-python"
 version = "0.1.0"
 dependencies = [
@@ -1262,28 +1284,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "texform-specs"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_yaml",
- "texform-argspec",
- "texform-interface",
- "texform-specs-macros",
- "trybuild",
-]
-
-[[package]]
-name = "texform-specs-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
- "texform-argspec",
-]
-
-[[package]]
 name = "texform-transform"
 version = "0.1.0"
 dependencies = [
@@ -1291,7 +1291,7 @@ dependencies = [
  "serde_yaml",
  "texform-core",
  "texform-interface",
- "texform-specs",
+ "texform-knowledge",
 ]
 
 [[package]]

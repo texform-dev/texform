@@ -1,5 +1,5 @@
-use texform_specs::builtin::{ams, base};
-use texform_specs::specs::{BuiltinCommandRecord, BuiltinEnvironmentRecord};
+use texform_knowledge::builtin::{ams, base};
+use texform_knowledge::specs::{BuiltinCommandRecord, BuiltinEnvironmentRecord};
 
 use crate::ast::{ArgumentSlot, Node, NodeId};
 use crate::rewrite::RuleError;

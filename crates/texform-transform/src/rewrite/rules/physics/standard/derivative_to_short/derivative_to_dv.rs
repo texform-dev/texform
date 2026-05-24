@@ -15,7 +15,7 @@
 //!   - {label: derivative-single-arg, from: '\derivative{#1}', to: '\dv{#1}'}
 //! ```
 
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::physics;
 
 use crate::rewrite::alias_rule;
 

@@ -2,7 +2,7 @@ use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContentMode, EnvironmentItem, ParseContext,
     ParseContextBuilder,
 };
-use texform_specs::builtin::PackageName;
+use texform_knowledge::builtin::PackageName;
 
 #[test]
 fn builder_applies_insert_and_remove_before_freezing() {
@@ -103,7 +103,7 @@ fn shared_returns_the_same_default_context_instance() {
 
 #[test]
 fn explicit_all_packages_include_braket() {
-    let package_names = texform_specs::builtin::all_package_names();
+    let package_names = texform_knowledge::builtin::all_package_names();
     let ctx = ParseContext::from_packages(package_names.as_slice());
     assert!(ctx.lookup_command("braket", ContentMode::Math).is_some());
 }

@@ -18,8 +18,8 @@
 //!   - {label: dv-star, from: '\dv*{#1}{#2}', to: '\flatfrac{\mathrm{d} #1}{\mathrm{d} #2}'}
 //! ```
 
-use texform_specs::builtin::base;
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::physics;
 
 use super::helpers::{
     derivative_denominator, derivative_fraction, derivative_numerator, differential_d,

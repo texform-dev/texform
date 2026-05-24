@@ -19,8 +19,8 @@
 //! XeTeX's physics.sty starred branch uses \left...\smash{...}\right...\vphantom{...},
 //! so it is not byte-equivalent to this MathJax-aligned rewrite.
 
-use texform_specs::builtin::base;
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::base;
+use texform_knowledge::builtin::physics;
 
 use super::helpers::{FencePair, replace_with_delimiter_shorthand};
 use crate::ast::{ArgumentKind, ArgumentValue, Delimiter};

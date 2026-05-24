@@ -12,7 +12,7 @@
 //!   - {from: '\zmat{#1}{#2}', to: '\xmat{0}{#1}{#2}'}
 //! ```
 
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::physics;
 
 use crate::ast::{ArgumentSlot, ContentMode, Node};
 use crate::rewrite::helpers::{mandatory_content_slot, prefix_command_node, star_slot};

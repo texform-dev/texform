@@ -13,7 +13,7 @@
 //!   - {label: vectorunit-star, from: '\vectorunit*{#1}', to: '\vu*{#1}'}
 //! ```
 
-use texform_specs::builtin::physics;
+use texform_knowledge::builtin::physics;
 
 use crate::rewrite::alias_rule;
 
