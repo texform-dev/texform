@@ -9,7 +9,7 @@ fn serialize_accepts_ast_and_syntax_root() {
         .build()
         .expect("parser should build");
     let ast = parser
-        .parse_to_ast(r"\frac{a}{b}", &texform::ParseConfig::STRICT_NO_RECOVER)
+        .parse_to_ast(r"\frac{a}{b}")
         .expect("parse should produce an AST");
 
     assert_eq!(

@@ -129,9 +129,9 @@ fn parse_with_options(options: &CliOptions) -> Result<ParseOutput, String> {
         .build()
         .map_err(|error| format!("failed to build parse context: {error:?}"))?;
     let config = if options.strict {
-        ParseConfig::STRICT_NO_RECOVER
+        ParseConfig::STRICT
     } else {
-        ParseConfig::NONSTRICT_RECOVER
+        ParseConfig::LENIENT
     };
     Ok(ctx.parse(options.input.as_str(), &config))
 }

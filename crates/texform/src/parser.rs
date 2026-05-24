@@ -1,12 +1,15 @@
+use texform_core::ast::Ast;
 use texform_core::parse::{self, ContextItem, ParseConfig, ParseOutput};
 
 #[derive(Clone, Debug)]
 pub struct Parser {
     inner: parse::ParseContext,
+    default_config: ParseConfig,
 }
 
 pub struct ParserBuilder {
     inner: parse::ParseContextBuilder,
+    default_config: ParseConfig,
 }
 
 #[derive(Debug)]
@@ -29,27 +32,31 @@ impl Parser {
     pub fn builder() -> ParserBuilder {
         ParserBuilder {
             inner: parse::ParseContext::builder(),
+            default_config: ParseConfig::default(),
         }
     }
 
-    /// Parse a LaTeX formula with the facade default configuration.
+    /// Parse a LaTeX formula with this parser's default configuration.
     ///
-    /// The facade default is [`ParseConfig::default`], currently
-    /// [`ParseConfig::NONSTRICT_RECOVER`]. Use [`parse_with`](Self::parse_with)
-    /// when a caller needs strict parsing or recovery disabled.
+    /// The standalone [`Parser`] default is [`ParseConfig::LENIENT`]. Use
+    /// [`parse_with`](Self::parse_with) to override per call.
     pub fn parse(&self, src: &str) -> ParseOutput {
-        self.inner.parse(src, &ParseConfig::default())
+        self.inner.parse(src, &self.default_config)
     }
 
     pub fn parse_with(&self, src: &str, config: &ParseConfig) -> ParseOutput {
         self.inner.parse(src, config)
     }
 
-    pub fn parse_to_ast(
+    pub fn parse_to_ast(&self, src: &str) -> Result<Ast, parse::ParseAstError> {
+        self.inner.parse_to_ast(src, &self.default_config)
+    }
+
+    pub fn parse_to_ast_with(
         &self,
         src: &str,
         config: &ParseConfig,
-    ) -> Result<texform_core::ast::Ast, parse::ParseAstError> {
+    ) -> Result<Ast, parse::ParseAstError> {
         self.inner.parse_to_ast(src, config)
     }
 
@@ -104,6 +111,10 @@ impl Parser {
     pub(crate) fn inner(&self) -> &parse::ParseContext {
         &self.inner
     }
+
+    pub fn default_parse_config(&self) -> &ParseConfig {
+        &self.default_config
+    }
 }
 
 impl ParserBuilder {
@@ -114,6 +125,11 @@ impl ParserBuilder {
 
     pub fn empty_knowledge(mut self) -> Self {
         self.inner = parse::ParseContextBuilder::empty();
+        self
+    }
+
+    pub fn default_parse_config(mut self, config: ParseConfig) -> Self {
+        self.default_config = config;
         self
     }
 
@@ -144,6 +160,7 @@ impl ParserBuilder {
     pub fn build(self) -> Result<Parser, ParserBuildError> {
         Ok(Parser {
             inner: self.inner.build().map_err(ParserBuildError)?,
+            default_config: self.default_config,
         })
     }
 }

@@ -380,7 +380,7 @@ macro_rules! transform_examples {
                     flatten_groups: $crate::FlattenGroupsConfig::DISABLED,
                     max_iterations: 100,
                 };
-                let parse_config = $crate::parse::ParseConfig::STRICT_NO_RECOVER;
+                let parse_config = $crate::parse::ParseConfig::STRICT;
 
                 let mut ast = parse_ctx
                     .parse_to_ast($input, &parse_config)

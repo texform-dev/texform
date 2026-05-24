@@ -25,6 +25,38 @@ let output = parser.parse(r"\frac{a}{b}");
 assert!(output.diagnostics.is_empty());
 ```
 
+Standalone [`Parser`](crates/texform/src/parser.rs) defaults to [`ParseConfig::LENIENT`]:
+unknown commands are preserved as `known: false` nodes and diagnostics are collected across the
+whole input (suitable for playgrounds and exploration).
+
+### Parse Configuration
+
+[`ParseConfig`](crates/texform-core/src/parse/config.rs) has two orthogonal axes; **`true` means
+stricter** on both:
+
+| Field | `true` (strict) | `false` (lenient) |
+|-------|-----------------|-------------------|
+| `reject_unknown` | Unknown command/env names become diagnostics | Preserved as `known: false` nodes |
+| `abort_on_error` | Stop at the first error per item | Continue parsing to collect all diagnostics (slower) |
+
+Named extremes: [`ParseConfig::STRICT`](crates/texform-core/src/parse/config.rs) (both `true`) and
+[`ParseConfig::LENIENT`](crates/texform-core/src/parse/config.rs) (both `false`, also
+`Default::default()`). Mixed settings use struct-update syntax:
+
+```rust
+use texform::ParseConfig;
+
+// Reject unknown names but still collect every diagnostic.
+let cfg = ParseConfig { reject_unknown: true, ..Default::default() };
+```
+
+[`Engine`](crates/texform/src/engine.rs) wraps the same internal [`Parser`](crates/texform/src/parser.rs)
+with a **strict default** (`ParseConfig::STRICT`) shared by `engine.parser().parse()` and
+`engine.normalize()`. Use a standalone `Parser` for lenient exploration; use
+`EngineBuilder::default_parse_config` to change the engine-wide default. `Engine` requires a
+[`Profile`](crates/texform-transform/src/config.rs) because normalization has no neutral canonical
+form — that choice is intentional and separate from parse strictness.
+
 ### validate_argspec Example
 
 Validate an argspec string:

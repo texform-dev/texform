@@ -159,7 +159,7 @@ mod tests {
 
         let parse_ctx = ParseContext::from_packages(&["base", "physics"]);
         let mut ast = parse_ctx
-            .parse_to_ast(r"\qq{if}^2", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
+            .parse_to_ast(r"\qq{if}^2", &texform_core::parse::ParseConfig::STRICT)
             .expect("parse should succeed");
 
         let output = run_one_rule_for_test(&mut ast, &parse_ctx, &QQTEXT_EXPAND, RuleClass::Expand)

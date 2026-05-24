@@ -1,8 +1,8 @@
 export type ArgumentSlot = Argument | null | undefined;
 
 export interface ParseConfigInput {
-  strict?: boolean;
-  recover?: boolean;
+  rejectUnknown?: boolean;
+  abortOnError?: boolean;
   maxGroupDepth?: number;
 }
 

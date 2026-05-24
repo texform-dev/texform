@@ -10,7 +10,7 @@ use texform_core::{
 
 fn parse_to_ast(src: &str) -> texform_core::ast::Ast {
     ParseContext::shared()
-        .parse_to_ast(src, &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
+        .parse_to_ast(src, &texform_core::parse::ParseConfig::STRICT)
         .unwrap()
 }
 
@@ -34,10 +34,7 @@ fn parse_to_ast_returns_diagnostics_present_when_partial_tree_has_errors() {
 #[test]
 fn parse_to_ast_returns_no_parse_result_when_strict_parse_fails() {
     let error = ParseContext::shared()
-        .parse_to_ast(
-            r"\unknowncmd",
-            &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
-        )
+        .parse_to_ast(r"\unknowncmd", &texform_core::parse::ParseConfig::STRICT)
         .expect_err("strict parse failures should not produce an AST");
 
     match error {

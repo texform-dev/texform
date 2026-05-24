@@ -268,7 +268,10 @@ fn generic_only_content_error_is_not_filtered_out() {
 
 #[test]
 fn recover_false_keeps_nonstrict_unknowns_without_partial_recovery() {
-    let config = ParseConfig::NONSTRICT_NO_RECOVER;
+    let config = ParseConfig {
+        abort_on_error: true,
+        ..Default::default()
+    };
     let output = parse_shared(r"\unknowncmd {", &config);
 
     assert!(
@@ -283,7 +286,7 @@ fn nonstrict_recover_handles_unclosed_nested_groups_without_exponential_retry() 
     let src = format!("{}x", "{".repeat(18));
 
     let started = Instant::now();
-    let output = parse_shared(&src, &ParseConfig::NONSTRICT_RECOVER);
+    let output = parse_shared(&src, &ParseConfig::LENIENT);
     let elapsed = started.elapsed();
 
     assert!(
@@ -304,7 +307,7 @@ fn nonstrict_recover_handles_unclosed_nested_groups_without_exponential_retry() 
 fn max_group_depth_exceeded_reports_public_kind() {
     let config = ParseConfig {
         max_group_depth: 1,
-        ..ParseConfig::NONSTRICT_RECOVER
+        ..ParseConfig::LENIENT
     };
     let output = parse_shared("{{x}}", &config);
 
@@ -331,7 +334,7 @@ fn max_group_depth_restored_between_sibling_groups() {
     // ParserState::enter_group's RAII drop.
     let config = ParseConfig {
         max_group_depth: 2,
-        ..ParseConfig::NONSTRICT_RECOVER
+        ..ParseConfig::LENIENT
     };
     let output = parse_shared("{a}{b}{c}", &config);
     assert!(
@@ -434,10 +437,7 @@ fn nonstrict_content_command_error_keeps_original_inner_span() {
 
 #[test]
 fn diagnostics_serialize_includes_contexts_field() {
-    let output = parse_shared(
-        r"\unknowncmd",
-        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
-    );
+    let output = parse_shared(r"\unknowncmd", &texform_core::parse::ParseConfig::STRICT);
     let json = serde_json::to_value(&output).unwrap();
     let diagnostics = json.get("diagnostics").unwrap().as_array().unwrap();
     assert!(!diagnostics.is_empty());

@@ -169,7 +169,7 @@ mod tests {
     fn rewrites_root_of_into_sqrt_with_optional_degree() {
         let parse_ctx = ParseContext::from_packages(&["base"]);
         let mut ast = parse_ctx
-            .parse_to_ast(r"\root 1+2 \of {x+y}", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
+            .parse_to_ast(r"\root 1+2 \of {x+y}", &texform_core::parse::ParseConfig::STRICT)
             .expect("parse should succeed");
 
         let output =

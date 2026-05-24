@@ -1254,12 +1254,18 @@ where
 /// or a list of rich diagnostics on failure. For partial-parse semantics
 /// (result + diagnostics), use [`ParseContext::parse`](crate::parse::ParseContext::parse)
 /// instead.
-pub fn parse(src: &str, strict: bool) -> Result<Spanned<SyntaxNode>, Vec<Rich<'static, Token>>> {
+pub fn parse(
+    src: &str,
+    reject_unknown: bool,
+) -> Result<Spanned<SyntaxNode>, Vec<Rich<'static, Token>>> {
     let token_stream = build_token_stream(src);
-    let config = if strict {
-        ParseConfig::STRICT_RECOVER
+    let config = if reject_unknown {
+        ParseConfig {
+            reject_unknown: true,
+            ..Default::default()
+        }
     } else {
-        ParseConfig::NONSTRICT_RECOVER
+        ParseConfig::LENIENT
     };
     let state = ParserState::new(ParseContext::shared(), &config, src);
     let parser = math_block_parser(&state)
@@ -1956,7 +1962,7 @@ fn command_head_parser<'src, 'parse>(
     ctx: &'parse ParseContext,
     expected_kind: CommandKind,
     current_mode: ContentMode,
-    strict: bool,
+    reject_unknown: bool,
 ) -> Result<(String, &'parse ActiveCommandRecord), Rich<'src, Token>> {
     let cmd_start = input.cursor();
     let token = input.next();
@@ -1984,7 +1990,7 @@ fn command_head_parser<'src, 'parse>(
             ));
         }
         ModeLookup::NotFound => {
-            if strict {
+            if reject_unknown {
                 return Err(custom_error(
                     cmd_span,
                     format!("Unknown command: \\{}", name),
@@ -2090,13 +2096,18 @@ fn prefix_command_parser<'a>(
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     custom(move |input| {
         let ctx = state.ctx;
-        let strict = state.config.strict;
+        let reject_unknown = state.config.reject_unknown;
         let cmd_start = input.cursor();
-        let (name, meta) =
-            match command_head_parser(input, ctx, CommandKind::Prefix, current_mode, strict) {
-                Ok(data) => data,
-                Err(err) => return Err(err),
-            };
+        let (name, meta) = match command_head_parser(
+            input,
+            ctx,
+            CommandKind::Prefix,
+            current_mode,
+            reject_unknown,
+        ) {
+            Ok(data) => data,
+            Err(err) => return Err(err),
+        };
 
         let cmd_args = parse_argument_slots(
             input,
@@ -2130,13 +2141,18 @@ fn declarative_command_parser<'a>(
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     custom(move |input| {
         let ctx = state.ctx;
-        let strict = state.config.strict;
+        let reject_unknown = state.config.reject_unknown;
         let cmd_start = input.cursor();
-        let (name, meta) =
-            match command_head_parser(input, ctx, CommandKind::Declarative, current_mode, strict) {
-                Ok(data) => data,
-                Err(err) => return Err(err),
-            };
+        let (name, meta) = match command_head_parser(
+            input,
+            ctx,
+            CommandKind::Declarative,
+            current_mode,
+            reject_unknown,
+        ) {
+            Ok(data) => data,
+            Err(err) => return Err(err),
+        };
 
         let cmd_args = parse_argument_slots(
             input,
@@ -2160,7 +2176,7 @@ fn declarative_command_parser<'a>(
 
 fn unknown_command_parser<'a>(
     ctx: &'a ParseContext,
-    strict: bool,
+    reject_unknown: bool,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     select! {
         Token::ControlSeq(name)
@@ -2174,7 +2190,7 @@ fn unknown_command_parser<'a>(
             ));
         }
 
-        if strict {
+        if reject_unknown {
             Err(custom_error(
                 span,
                 format!("Unknown command: \\{}", name),
@@ -2219,7 +2235,7 @@ fn environment_parser<'a>(
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     custom(move |input| {
         let ctx = state.ctx;
-        let strict = state.config.strict;
+        let reject_unknown = state.config.reject_unknown;
         let env_start = input.cursor();
         let ws = insignificant_whitespace();
 
@@ -2255,7 +2271,7 @@ fn environment_parser<'a>(
                     ));
                 }
                 ModeLookup::NotFound => {
-                    if strict {
+                    if reject_unknown {
                         return Err(custom_error(
                             name_span,
                             format!("Unknown environment: {}", name),
@@ -2358,7 +2374,7 @@ where
     P: Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone + 'a,
 {
     let ctx = state.ctx;
-    let strict = state.config.strict;
+    let reject_unknown = state.config.reject_unknown;
     let explicit_group = braced_group_parser(state, ContentMode::Math, group_content.clone());
     let delimited_group = delimited_group_parser(ctx, math_content.clone());
     let environment = environment_parser(
@@ -2376,7 +2392,7 @@ where
     let declarative_command =
         declarative_command_parser(state, math_content, text_content, ContentMode::Math);
     let delimiter_control_command = delimiter_control_command_parser(ctx);
-    let unknown_command = unknown_command_parser(ctx, strict);
+    let unknown_command = unknown_command_parser(ctx, reject_unknown);
     let fallback = choice((
         explicit_group,
         environment.clone(),
@@ -2471,7 +2487,7 @@ where
     P: Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone + 'a,
 {
     let ctx = state.ctx;
-    let strict = state.config.strict;
+    let reject_unknown = state.config.reject_unknown;
     let inline_math = just(Token::MathShift)
         .ignore_then(implicit_group_parser(
             ContentMode::Math,
@@ -2523,7 +2539,7 @@ where
     );
     let declarative_command =
         declarative_command_parser(state, math_content, text_content, ContentMode::Text);
-    let unknown_command = unknown_command_parser(ctx, strict);
+    let unknown_command = unknown_command_parser(ctx, reject_unknown);
 
     let control_seq_fallback = choice((
         environment.clone(),
@@ -2558,7 +2574,7 @@ where
     P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
 {
     let ctx = state.ctx;
-    let strict = state.config.strict;
+    let reject_unknown = state.config.reject_unknown;
     let ws = insignificant_whitespace();
     let stop_infix = infix_guard(ctx, ContentMode::Math);
     let stop_boundary = ws
@@ -2622,8 +2638,13 @@ where
             let ws = insignificant_whitespace();
             let cmd_start = input.cursor();
             let cmd_start_byte = input.span_from_cursor(&cmd_start).start;
-            let (name, meta) =
-                command_head_parser(input, ctx, CommandKind::Infix, ContentMode::Math, strict)?;
+            let (name, meta) = command_head_parser(
+                input,
+                ctx,
+                CommandKind::Infix,
+                ContentMode::Math,
+                reject_unknown,
+            )?;
 
             let args = parse_argument_slots(
                 input,
@@ -2890,7 +2911,9 @@ fn mode_content_parsers_with_source<'a>(
                     math_content.clone(),
                     text_content.clone(),
                 );
-                let normal_item = if state.config.recover {
+                let normal_item = if state.config.abort_on_error {
+                    base_item.boxed()
+                } else {
                     recoverable_content_item_parser(
                         state,
                         ContentMode::Text,
@@ -2899,8 +2922,6 @@ fn mode_content_parsers_with_source<'a>(
                         is_text_hard_stop,
                     )
                     .boxed()
-                } else {
-                    base_item.boxed()
                 };
                 text_group_content_parser(normal_item)
             }
@@ -2912,7 +2933,10 @@ fn mode_content_parsers_with_source<'a>(
             math_content.clone(),
             text_content.clone(),
         );
-        let normal_item = if state.config.recover {
+        let normal_item = if state.config.abort_on_error {
+            // Math items still need per-item whitespace so infix/declarative tails see the command head.
+            base_item.padded_by(ws.clone()).boxed()
+        } else {
             recoverable_content_item_parser(
                 state,
                 ContentMode::Math,
@@ -2921,9 +2945,6 @@ fn mode_content_parsers_with_source<'a>(
                 is_math_hard_stop,
             )
             .boxed()
-        } else {
-            // Math items still need per-item whitespace so infix/declarative tails see the command head.
-            base_item.padded_by(ws.clone()).boxed()
         };
         math_group_content_parser(state, normal_item, math_content, text_content).padded_by(ws)
     })
@@ -2939,7 +2960,9 @@ fn mode_content_parsers_with_source<'a>(
                 math_content.clone(),
                 text_content.clone(),
             );
-            let normal_item = if state.config.recover {
+            let normal_item = if state.config.abort_on_error {
+                base_item.boxed()
+            } else {
                 recoverable_content_item_parser(
                     state,
                     ContentMode::Text,
@@ -2948,8 +2971,6 @@ fn mode_content_parsers_with_source<'a>(
                     is_text_hard_stop,
                 )
                 .boxed()
-            } else {
-                base_item.boxed()
             };
             text_group_content_parser(normal_item)
         }

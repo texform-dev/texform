@@ -14,9 +14,9 @@ pyo3::create_exception!(texform, ParseError, PyException);
 #[derive(Clone, Debug)]
 struct PyParseConfig {
     #[pyo3(get, set)]
-    strict: bool,
+    reject_unknown: bool,
     #[pyo3(get, set)]
-    recover: bool,
+    abort_on_error: bool,
     #[pyo3(get, set)]
     max_group_depth: usize,
 }
@@ -24,19 +24,19 @@ struct PyParseConfig {
 #[pymethods]
 impl PyParseConfig {
     #[new]
-    #[pyo3(signature = (strict = false, recover = true, max_group_depth = 128))]
-    fn new(strict: bool, recover: bool, max_group_depth: usize) -> Self {
+    #[pyo3(signature = (reject_unknown = false, abort_on_error = false, max_group_depth = 128))]
+    fn new(reject_unknown: bool, abort_on_error: bool, max_group_depth: usize) -> Self {
         Self {
-            strict,
-            recover,
+            reject_unknown,
+            abort_on_error,
             max_group_depth,
         }
     }
 
     fn __repr__(&self) -> String {
         format!(
-            "ParseConfig(strict={}, recover={}, max_group_depth={})",
-            self.strict, self.recover, self.max_group_depth
+            "ParseConfig(reject_unknown={}, abort_on_error={}, max_group_depth={})",
+            self.reject_unknown, self.abort_on_error, self.max_group_depth
         )
     }
 }
@@ -44,8 +44,8 @@ impl PyParseConfig {
 impl PyParseConfig {
     fn to_core(&self) -> CoreParseConfig {
         CoreParseConfig {
-            strict: self.strict,
-            recover: self.recover,
+            reject_unknown: self.reject_unknown,
+            abort_on_error: self.abort_on_error,
             max_group_depth: self.max_group_depth,
         }
     }
@@ -622,11 +622,11 @@ fn parse_output_to_python(py: Python<'_>, output: texform::ParseOutput) -> PyRes
 }
 
 fn apply_parse_config_dict(config: &mut CoreParseConfig, dict: &Bound<'_, PyDict>) -> PyResult<()> {
-    if let Some(strict) = py_optional_bool(dict, "strict")? {
-        config.strict = strict;
+    if let Some(reject_unknown) = py_optional_bool(dict, "reject_unknown")? {
+        config.reject_unknown = reject_unknown;
     }
-    if let Some(recover) = py_optional_bool(dict, "recover")? {
-        config.recover = recover;
+    if let Some(abort_on_error) = py_optional_bool(dict, "abort_on_error")? {
+        config.abort_on_error = abort_on_error;
     }
     if let Some(max_group_depth) = py_optional_usize(dict, "max_group_depth")? {
         config.max_group_depth = max_group_depth;
@@ -816,7 +816,8 @@ impl PyParser {
         config: Option<&Bound<'_, PyAny>>,
         kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
-        let output = match parse_config_from_python(config, kwargs, CoreParseConfig::default())? {
+        let default = self.inner.default_parse_config().clone();
+        let output = match parse_config_from_python(config, kwargs, default)? {
             Some(config) => self.inner.parse_with(src, &config),
             None => self.inner.parse(src),
         };
@@ -940,7 +941,7 @@ impl PyEngine {
         kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
         let default = texform::NormalizeConfig {
-            parse: CoreParseConfig::STRICT_NO_RECOVER,
+            parse: self.inner.parser().default_parse_config().clone(),
             transform: *self.inner.default_transform_config(),
         };
         let result = match normalize_config_from_python(config, kwargs, default)? {
@@ -959,16 +960,21 @@ impl PyEngine {
         config: Option<&Bound<'_, PyAny>>,
         kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
-        let output = match parse_config_from_python(config, kwargs, CoreParseConfig::default())? {
-            Some(config) => self.inner.parse_with(src, &config),
-            None => self.inner.parse(src),
+        let default = self.inner.parser().default_parse_config().clone();
+        let output = match parse_config_from_python(config, kwargs, default)? {
+            Some(config) => self.inner.parser().parse_with(src, &config),
+            None => self.inner.parser().parse(src),
         };
         parse_output_to_python(py, output)
     }
 
     fn lookup_command(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
         Ok(
-            match self.inner.lookup_command(name, py_content_mode(mode)?) {
+            match self
+                .inner
+                .parser()
+                .lookup_command(name, py_content_mode(mode)?)
+            {
                 Some(record) => pythonize(py, &command_record_to_json(record))?.unbind(),
                 None => py.None(),
             },
@@ -984,6 +990,7 @@ impl PyEngine {
         Ok(
             match self
                 .inner
+                .parser()
                 .lookup_explicit_command(name, py_content_mode(mode)?)
             {
                 Some(record) => pythonize(py, &command_record_to_json(record))?.unbind(),
@@ -994,7 +1001,11 @@ impl PyEngine {
 
     fn lookup_character(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
         Ok(
-            match self.inner.lookup_character(name, py_content_mode(mode)?) {
+            match self
+                .inner
+                .parser()
+                .lookup_character(name, py_content_mode(mode)?)
+            {
                 Some(record) => pythonize(py, &character_record_to_json(record))?.unbind(),
                 None => py.None(),
             },
@@ -1002,26 +1013,28 @@ impl PyEngine {
     }
 
     fn lookup_env(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
-        Ok(match self.inner.lookup_env(name, py_content_mode(mode)?) {
-            Some(record) => pythonize(py, &env_record_to_json(record))?.unbind(),
-            None => py.None(),
-        })
+        Ok(
+            match self.inner.parser().lookup_env(name, py_content_mode(mode)?) {
+                Some(record) => pythonize(py, &env_record_to_json(record))?.unbind(),
+                None => py.None(),
+            },
+        )
     }
 
     fn is_delimiter_control(&self, name: &str) -> bool {
-        self.inner.is_delimiter_control(name)
+        self.inner.parser().is_delimiter_control(name)
     }
 
     fn knows_command_name(&self, name: &str) -> bool {
-        self.inner.knows_command_name(name)
+        self.inner.parser().knows_command_name(name)
     }
 
     fn knows_env_name(&self, name: &str) -> bool {
-        self.inner.knows_env_name(name)
+        self.inner.parser().knows_env_name(name)
     }
 
     fn knows_character_name(&self, name: &str) -> bool {
-        self.inner.knows_character_name(name)
+        self.inner.parser().knows_character_name(name)
     }
 }
 
@@ -1542,8 +1555,8 @@ mod tests {
 
             let config_cls = module.getattr("ParseConfig").unwrap();
             let config_kwargs = pyo3::types::PyDict::new(py);
-            config_kwargs.set_item("strict", true).unwrap();
-            config_kwargs.set_item("recover", false).unwrap();
+            config_kwargs.set_item("reject_unknown", true).unwrap();
+            config_kwargs.set_item("abort_on_error", true).unwrap();
             let config = config_cls.call((), Some(&config_kwargs)).unwrap();
 
             parser
@@ -1577,17 +1590,17 @@ mod tests {
             let parser = parser_cls.call0().unwrap();
 
             let config = pyo3::types::PyDict::new(py);
-            config.set_item("strict", true).unwrap();
+            config.set_item("reject_unknown", true).unwrap();
             let error = parser
                 .call_method1("parse", (r"\unknowncmd", config))
-                .expect_err("strict dict config should reject unknown command");
+                .expect_err("reject_unknown dict config should reject unknown command");
             assert!(error.is_instance_of::<ParseError>(py));
 
             let config = pyo3::types::PyDict::new(py);
-            config.set_item("strict", true).unwrap();
+            config.set_item("reject_unknown", true).unwrap();
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs.set_item("config", config).unwrap();
-            kwargs.set_item("strict", false).unwrap();
+            kwargs.set_item("reject_unknown", false).unwrap();
             parser
                 .call_method("parse", (r"\unknowncmd",), Some(&kwargs))
                 .expect("kwargs should override config dict");
@@ -1692,9 +1705,10 @@ mod tests {
                 .call((), Some(&kwargs))
                 .unwrap();
 
-            engine
+            let error = engine
                 .call_method1("parse", (r"\unknowncmd",))
-                .expect("parse should use non-strict facade default");
+                .expect_err("engine parse should use strict default and reject unknown commands");
+            assert!(error.is_instance_of::<ParseError>(py));
             let result = engine
                 .call_method1("normalize", (r"\quantity{x}",))
                 .expect("normalize should use facade default");

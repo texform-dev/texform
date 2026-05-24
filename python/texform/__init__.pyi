@@ -94,14 +94,14 @@ class Engine:
 
 
 class ParseConfig:
-    strict: bool
-    recover: bool
+    reject_unknown: bool
+    abort_on_error: bool
     max_group_depth: int
 
     def __init__(
         self,
-        strict: bool = False,
-        recover: bool = True,
+        reject_unknown: bool = False,
+        abort_on_error: bool = False,
         max_group_depth: int = 128,
     ) -> None: ...
 

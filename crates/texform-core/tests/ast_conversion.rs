@@ -8,7 +8,7 @@ use texform_core::parse::{
 };
 use texform_interface::syntax_node::{ArgumentValue as SyntaxArgumentValue, SyntaxNode};
 
-fn parse_with_items(src: &str, strict: bool, items: Vec<ContextItem>) -> SyntaxNode {
+fn parse_with_items(src: &str, reject_unknown: bool, items: Vec<ContextItem>) -> SyntaxNode {
     let mut builder = ParseContextBuilder::empty().packages(&["base"]);
     for item in items {
         builder = builder.insert_item(item);
@@ -17,10 +17,10 @@ fn parse_with_items(src: &str, strict: bool, items: Vec<ContextItem>) -> SyntaxN
         .build()
         .expect("test items should have valid xparse specs");
 
-    let config = if strict {
-        ParseConfig::STRICT_NO_RECOVER
+    let config = if reject_unknown {
+        ParseConfig::STRICT
     } else {
-        ParseConfig::NONSTRICT_RECOVER
+        ParseConfig::LENIENT
     };
     let output = ctx.parse(src, &config);
     assert!(
@@ -138,10 +138,8 @@ fn test_ast_conversion_preserves_unknown_environment_known_flag() {
 
 #[test]
 fn test_ast_conversion_copies_text_content_variant() {
-    let output = ParseContext::shared().parse(
-        r"\text{\%}",
-        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
-    );
+    let output =
+        ParseContext::shared().parse(r"\text{\%}", &texform_core::parse::ParseConfig::STRICT);
     let syntax = output
         .result
         .as_ref()

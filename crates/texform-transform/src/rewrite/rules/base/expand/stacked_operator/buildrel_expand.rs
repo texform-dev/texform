@@ -177,7 +177,7 @@ mod tests {
         // that buildrel-expand gets this TeX shape instead of over-to-frac.
         let parse_ctx = crate::parse::ParseContext::from_packages(&["base"]);
         let mut ast = parse_ctx
-            .parse_to_ast(r"A_n \buildrel n\to\infty \over = B_n", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
+            .parse_to_ast(r"A_n \buildrel n\to\infty \over = B_n", &texform_core::parse::ParseConfig::STRICT)
             .expect("parse input should succeed");
 
         let context = crate::TransformContext::from_build_config(
@@ -190,7 +190,7 @@ mod tests {
             .expect("transform should succeed");
         let actual = crate::serialize::serialize(&ast);
         let expected_ast = parse_ctx
-            .parse_to_ast(r"A_n \mathrel{\mathop{=}\limits^{n\to\infty}} B_n", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
+            .parse_to_ast(r"A_n \mathrel{\mathop{=}\limits^{n\to\infty}} B_n", &texform_core::parse::ParseConfig::STRICT)
             .expect("parse expected should succeed");
         let expected = crate::serialize::serialize(&expected_ast);
 

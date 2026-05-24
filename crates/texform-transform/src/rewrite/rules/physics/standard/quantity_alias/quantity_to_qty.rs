@@ -91,7 +91,7 @@ mod tests {
     fn rewrites_quantity_to_qty_and_preserves_argument_content() {
         let parse_ctx = ParseContext::from_packages(&["physics"]);
         let mut ast = parse_ctx
-            .parse_to_ast(r"\quantity{a}", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
+            .parse_to_ast(r"\quantity{a}", &texform_core::parse::ParseConfig::STRICT)
             .expect("parse should succeed");
 
         let output =

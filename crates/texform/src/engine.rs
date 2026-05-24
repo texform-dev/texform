@@ -1,8 +1,5 @@
 use texform_core::ast::Ast;
-use texform_core::parse::{
-    ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, ContentMode, ParseConfig,
-    ParseOutput,
-};
+use texform_core::parse::ParseConfig;
 use texform_transform::{BuildConfig, Profile, TransformContext, TransformReport};
 
 use crate::config::{NormalizeConfig, TransformConfig};
@@ -12,14 +9,12 @@ use crate::parser::{Parser, ParserBuilder};
 pub struct Engine {
     parser: Parser,
     transform: TransformContext,
-    normalize_parse_config: ParseConfig,
 }
 
 pub struct EngineBuilder {
     parser: ParserBuilder,
     profile: Option<Profile>,
     build_config: Option<BuildConfig>,
-    normalize_parse_config: ParseConfig,
 }
 
 pub struct NormalizeResult {
@@ -30,29 +25,14 @@ pub struct NormalizeResult {
 impl Engine {
     pub fn builder() -> EngineBuilder {
         EngineBuilder {
-            parser: Parser::builder(),
+            parser: Parser::builder().default_parse_config(ParseConfig::STRICT),
             profile: None,
             build_config: None,
-            normalize_parse_config: ParseConfig::STRICT_NO_RECOVER,
         }
     }
 
-    pub fn parse(&self, src: &str) -> ParseOutput {
-        self.parser.parse(src)
-    }
-
-    pub fn parse_with(&self, src: &str, config: &ParseConfig) -> ParseOutput {
-        self.parser.parse_with(src, config)
-    }
-
-    pub fn parse_to_ast(&self, src: &str) -> Result<Ast, Error> {
-        Ok(self
-            .parser
-            .parse_to_ast(src, &self.normalize_parse_config)?)
-    }
-
-    pub fn parse_to_ast_with(&self, src: &str, config: &ParseConfig) -> Result<Ast, Error> {
-        Ok(self.parser.parse_to_ast(src, config)?)
+    pub fn parser(&self) -> &Parser {
+        &self.parser
     }
 
     pub fn transform_ast(&self, ast: &mut Ast) -> Result<TransformReport, Error> {
@@ -69,7 +49,7 @@ impl Engine {
 
     pub fn normalize(&self, src: &str) -> Result<NormalizeResult, Error> {
         let config = NormalizeConfig {
-            parse: self.normalize_parse_config.clone(),
+            parse: self.parser.default_parse_config().clone(),
             transform: *self.transform.default_config(),
         };
         self.normalize_with(src, &config)
@@ -80,7 +60,7 @@ impl Engine {
         src: &str,
         config: &NormalizeConfig,
     ) -> Result<NormalizeResult, Error> {
-        let mut ast = self.parser.parse_to_ast(src, &config.parse)?;
+        let mut ast = self.parser.parse_to_ast_with(src, &config.parse)?;
         let report = self
             .transform
             .run_with(&mut ast, self.parser.inner(), &config.transform)?;
@@ -93,46 +73,6 @@ impl Engine {
     pub fn default_transform_config(&self) -> &TransformConfig {
         self.transform.default_config()
     }
-
-    pub fn lookup_command(&self, name: &str, mode: ContentMode) -> Option<&ActiveCommandRecord> {
-        self.parser.lookup_command(name, mode)
-    }
-
-    pub fn lookup_explicit_command(
-        &self,
-        name: &str,
-        mode: ContentMode,
-    ) -> Option<&ActiveCommandRecord> {
-        self.parser.lookup_explicit_command(name, mode)
-    }
-
-    pub fn lookup_character(
-        &self,
-        name: &str,
-        mode: ContentMode,
-    ) -> Option<&ActiveCharacterRecord> {
-        self.parser.lookup_character(name, mode)
-    }
-
-    pub fn lookup_env(&self, name: &str, mode: ContentMode) -> Option<&ActiveEnvironmentRecord> {
-        self.parser.lookup_env(name, mode)
-    }
-
-    pub fn is_delimiter_control(&self, name: &str) -> bool {
-        self.parser.is_delimiter_control(name)
-    }
-
-    pub fn knows_command_name(&self, name: &str) -> bool {
-        self.parser.knows_command_name(name)
-    }
-
-    pub fn knows_env_name(&self, name: &str) -> bool {
-        self.parser.knows_env_name(name)
-    }
-
-    pub fn knows_character_name(&self, name: &str) -> bool {
-        self.parser.knows_character_name(name)
-    }
 }
 
 impl EngineBuilder {
@@ -142,7 +82,12 @@ impl EngineBuilder {
     }
 
     pub fn empty_knowledge(mut self) -> Self {
-        self.parser = Parser::builder().empty_knowledge();
+        self.parser = self.parser.empty_knowledge();
+        self
+    }
+
+    pub fn default_parse_config(mut self, config: ParseConfig) -> Self {
+        self.parser = self.parser.default_parse_config(config);
         self
     }
 
@@ -197,10 +142,6 @@ impl EngineBuilder {
         let parser = self.parser.build().map_err(Error::ParserBuild)?;
         let transform = TransformContext::from_build_config(build_config, parser.inner())
             .map_err(Error::TransformBuild)?;
-        Ok(Engine {
-            parser,
-            transform,
-            normalize_parse_config: self.normalize_parse_config,
-        })
+        Ok(Engine { parser, transform })
     }
 }

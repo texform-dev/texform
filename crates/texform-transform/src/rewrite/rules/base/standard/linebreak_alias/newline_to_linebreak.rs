@@ -72,7 +72,7 @@ mod tests {
     fn rewrites_newline_to_parser_shaped_linebreak_command() {
         let parse_ctx = ParseContext::from_packages(&["base"]);
         let mut ast = parse_ctx
-            .parse_to_ast(r"\newline", &texform_core::parse::ParseConfig::STRICT_NO_RECOVER)
+            .parse_to_ast(r"\newline", &texform_core::parse::ParseConfig::STRICT)
             .expect("parse should succeed");
 
         let output = run_one_rule_for_test(

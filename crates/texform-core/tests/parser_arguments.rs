@@ -112,7 +112,7 @@ fn genfrac_accepts_empty_and_integer_style_arguments() {
             r"\genfrac{}{}{0.0pt}{1}{a}{b}",
         ],
         Some(&["base", "ams"]),
-        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
+        &texform_core::parse::ParseConfig::STRICT,
     );
     assert_eq!(outputs.len(), 2);
 
@@ -210,7 +210,7 @@ fn keyval_argument_accepts_nested_and_escaped_shapes() {
             r"\includegraphics[key=\{,other=c]{file}",
         ],
         None,
-        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
+        &texform_core::parse::ParseConfig::STRICT,
     );
 
     let expected = ["key=val", "key={a,b},other=c", r"key=\{,other=c"];
@@ -246,7 +246,7 @@ fn keyval_argument_rejects_invalid_shapes() {
             r"\includegraphics[key={a]{file}",
         ],
         None,
-        &texform_core::parse::ParseConfig::STRICT_NO_RECOVER,
+        &texform_core::parse::ParseConfig::STRICT,
     );
 
     for item in &outputs {

@@ -431,7 +431,7 @@ fn parse_tokens_as_content<'src, 'parse>(
         });
 
     if let Some(generic_error) = generic_error {
-        if state.config.strict {
+        if state.config.reject_unknown {
             return Err(rebuild_owned_rich(generic_error));
         }
 

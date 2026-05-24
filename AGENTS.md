@@ -79,7 +79,7 @@ The transform subsystem (`crates/texform-core/src/transform/`) provides rule-bas
 - **Rust**: `cargo test`, `cargo check`, `cargo clippy`; pre-commit hooks run `cargo fmt`, `cargo clippy`, spec validation, and the bench regression check.
 - **TypeScript**: use `bun` as package manager.
 - **Python**: use `uv` for dependency management and `maturin` for native extension builds.
-- **Commit messages**: use Conventional Commits, such as `feat(rule): add root-family rule`, `fix(core): generate standard transform rule modules`, or `test(core): restore brace transform examples`. Mark breaking changes with `!`, for example `feat(api)!: replace one-shot parse helpers`. Prefer an existing scope like `core`, `rule`, `specs`, `bench`, `wasm`, or `python`; omit the scope only when a change spans multiple areas. Keep the subject short, imperative, and lower-case after the type/scope prefix.
+- **Commit messages**: use Conventional Commits, such as `feat(rule): add root-family rule`, `fix(core): generate standard transform rule modules`, or `test(core): restore brace transform examples`. Prefer an existing scope like `core`, `rule`, `specs`, `bench`, `wasm`, or `python`; omit the scope only when a change spans multiple areas. Keep the subject short, imperative, and lower-case after the type/scope prefix.
 
 ### WASM Binding
 

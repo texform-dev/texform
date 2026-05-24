@@ -200,7 +200,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .join("commits")
         .join(output::git_commit_info().commit_dir_name());
     let datasets = config::DatasetsConfig::load_from_yaml(&datasets_yaml)?;
-    let parse_cfg = ParseConfig::NONSTRICT_NO_RECOVER;
+    let parse_cfg = ParseConfig {
+        abort_on_error: true,
+        ..Default::default()
+    };
     let engine = texform::Engine::builder()
         .profile(texform::Profile::Equiv)
         .build()?;
@@ -336,7 +339,10 @@ fn analyze_record(
     engine: &texform::Engine,
     parse_cfg: &ParseConfig,
 ) -> RecordAnalysis {
-    let Ok(ast) = engine.parse_to_ast_with(&record.formula, parse_cfg) else {
+    let Ok(ast) = engine
+        .parser()
+        .parse_to_ast_with(&record.formula, parse_cfg)
+    else {
         return RecordAnalysis::default();
     };
 

@@ -31,7 +31,7 @@ fn normalize_with_can_disable_rewrite_without_rebuilding_plan() {
         .normalize_with(
             r"\quantity{x}",
             &NormalizeConfig {
-                parse: ParseConfig::STRICT_NO_RECOVER,
+                parse: ParseConfig::STRICT,
                 transform: TransformConfig {
                     rewrite_enabled: false,
                     lower_attributes_enabled: false,
@@ -55,6 +55,7 @@ fn ast_level_transform_preserves_parse_once_workflow() {
         .expect("engine should build");
 
     let ast = engine
+        .parser()
         .parse_to_ast("{{x}}")
         .expect("parse_to_ast should succeed");
     let before = serialize(&ast).expect("ast should serialize");
@@ -88,25 +89,59 @@ fn parser_is_parse_only_and_needs_no_profile() {
 }
 
 #[test]
-fn engine_delegates_parser_metadata_queries() {
+fn engine_exposes_parser_metadata_queries() {
     let engine = Engine::builder()
         .packages(&["base"])
         .profile(Profile::Authoring)
         .build()
         .expect("engine should build");
 
-    assert!(engine.lookup_command("frac", ContentMode::Math).is_some());
+    let parser = engine.parser();
+    assert!(parser.lookup_command("frac", ContentMode::Math).is_some());
     assert!(
-        engine
+        parser
             .lookup_explicit_command("frac", ContentMode::Math)
             .is_some()
     );
-    assert!(engine.lookup_env("array", ContentMode::Math).is_some());
-    assert!(engine.lookup_character("le", ContentMode::Math).is_some());
-    assert!(engine.is_delimiter_control("lbrace"));
-    assert!(engine.knows_command_name("frac"));
-    assert!(engine.knows_env_name("array"));
-    assert!(engine.knows_character_name("le"));
+    assert!(parser.lookup_env("array", ContentMode::Math).is_some());
+    assert!(parser.lookup_character("le", ContentMode::Math).is_some());
+    assert!(parser.is_delimiter_control("lbrace"));
+    assert!(parser.knows_command_name("frac"));
+    assert!(parser.knows_env_name("array"));
+    assert!(parser.knows_character_name("le"));
+}
+
+#[test]
+fn engine_empty_knowledge_preserves_strict_parse_default() {
+    let engine = Engine::builder()
+        .empty_knowledge()
+        .profile(Profile::Equiv)
+        .build()
+        .expect("engine should build");
+
+    let output = engine.parser().parse(r"\unknowncmd");
+
+    assert!(
+        !output.diagnostics.is_empty(),
+        "empty_knowledge should not reset Engine parser default to lenient"
+    );
+}
+
+#[test]
+fn engine_empty_knowledge_preserves_explicit_parse_default() {
+    let engine = Engine::builder()
+        .default_parse_config(ParseConfig::LENIENT)
+        .empty_knowledge()
+        .profile(Profile::Equiv)
+        .build()
+        .expect("engine should build");
+
+    let output = engine.parser().parse(r"\unknowncmd");
+
+    assert!(
+        output.diagnostics.is_empty(),
+        "empty_knowledge should preserve default_parse_config set earlier"
+    );
 }
 
 #[test]

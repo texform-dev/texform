@@ -38,19 +38,19 @@ enum ContextItemInput {
 #[tsify(from_wasm_abi)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ParseConfigInput {
-    strict: Option<bool>,
-    recover: Option<bool>,
+    reject_unknown: Option<bool>,
+    abort_on_error: Option<bool>,
     max_group_depth: Option<usize>,
 }
 
 impl ParseConfigInput {
-    fn into_config(self) -> ParseConfig {
-        let mut config = ParseConfig::default();
-        if let Some(strict) = self.strict {
-            config.strict = strict;
+    fn into_config(self, base: ParseConfig) -> ParseConfig {
+        let mut config = base;
+        if let Some(reject_unknown) = self.reject_unknown {
+            config.reject_unknown = reject_unknown;
         }
-        if let Some(recover) = self.recover {
-            config.recover = recover;
+        if let Some(abort_on_error) = self.abort_on_error {
+            config.abort_on_error = abort_on_error;
         }
         if let Some(max_group_depth) = self.max_group_depth {
             config.max_group_depth = max_group_depth;
@@ -491,8 +491,8 @@ struct ParserOptions {
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 struct NormalizeOptions {
-    strict: Option<bool>,
-    recover: Option<bool>,
+    reject_unknown: Option<bool>,
+    abort_on_error: Option<bool>,
     max_group_depth: Option<usize>,
     flatten_groups: Option<FlattenGroupsConfigInput>,
     rewrite_enabled: Option<bool>,
@@ -689,8 +689,9 @@ impl Parser {
     }
 
     pub fn parse(&self, src: &str, config: Option<ParseConfigInput>) -> Result<JsValue, JsValue> {
+        let base = self.inner.default_parse_config().clone();
         let output = match config {
-            Some(config) => self.inner.parse_with(src, &config.into_config()),
+            Some(config) => self.inner.parse_with(src, &config.into_config(base)),
             None => self.inner.parse(src),
         };
         parse_output_to_result(output)
@@ -792,9 +793,13 @@ impl Engine {
     }
 
     pub fn parse(&self, src: &str, config: Option<ParseConfigInput>) -> Result<JsValue, JsValue> {
+        let base = self.inner.parser().default_parse_config().clone();
         let output = match config {
-            Some(config) => self.inner.parse_with(src, &config.into_config()),
-            None => self.inner.parse(src),
+            Some(config) => self
+                .inner
+                .parser()
+                .parse_with(src, &config.into_config(base)),
+            None => self.inner.parser().parse(src),
         };
         parse_output_to_result(output)
     }
@@ -808,7 +813,7 @@ impl Engine {
             return Ok(normalize_result_to_js(result.normalized, &result.report));
         };
         let mut config = texform::NormalizeConfig {
-            parse: ParseConfig::STRICT_NO_RECOVER,
+            parse: self.inner.parser().default_parse_config().clone(),
             transform: *self.inner.default_transform_config(),
         };
         if !value.is_null() && !value.is_undefined() {
@@ -816,11 +821,11 @@ impl Engine {
                 serde_wasm_bindgen::from_value::<NormalizeOptions>(value).map_err(|error| {
                     JsValue::from_str(&format!("invalid normalize options: {}", error))
                 })?;
-            if let Some(strict) = input.strict {
-                config.parse.strict = strict;
+            if let Some(reject_unknown) = input.reject_unknown {
+                config.parse.reject_unknown = reject_unknown;
             }
-            if let Some(recover) = input.recover {
-                config.parse.recover = recover;
+            if let Some(abort_on_error) = input.abort_on_error {
+                config.parse.abort_on_error = abort_on_error;
             }
             if let Some(max_group_depth) = input.max_group_depth {
                 config.parse.max_group_depth = max_group_depth;
@@ -846,7 +851,7 @@ impl Engine {
     }
 
     pub fn is_delimiter_control(&self, name: &str) -> bool {
-        self.inner.is_delimiter_control(name)
+        self.inner.parser().is_delimiter_control(name)
     }
 
     pub fn lookup_command(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
@@ -878,15 +883,15 @@ impl Engine {
     }
 
     pub fn knows_command_name(&self, name: &str) -> bool {
-        self.inner.knows_command_name(name)
+        self.inner.parser().knows_command_name(name)
     }
 
     pub fn knows_env_name(&self, name: &str) -> bool {
-        self.inner.knows_env_name(name)
+        self.inner.parser().knows_env_name(name)
     }
 
     pub fn knows_character_name(&self, name: &str) -> bool {
-        self.inner.knows_character_name(name)
+        self.inner.parser().knows_character_name(name)
     }
 }
 
@@ -978,7 +983,7 @@ impl Engine {
         mode: &str,
     ) -> Result<Option<&ActiveCommandRecord>, JsValue> {
         let mode = parse_content_mode(mode)?;
-        Ok(self.inner.lookup_command(name, mode))
+        Ok(self.inner.parser().lookup_command(name, mode))
     }
 
     fn lookup_explicit_command_meta(
@@ -987,7 +992,7 @@ impl Engine {
         mode: &str,
     ) -> Result<Option<&ActiveCommandRecord>, JsValue> {
         let mode = parse_content_mode(mode)?;
-        Ok(self.inner.lookup_explicit_command(name, mode))
+        Ok(self.inner.parser().lookup_explicit_command(name, mode))
     }
 
     fn lookup_character_meta(
@@ -996,7 +1001,7 @@ impl Engine {
         mode: &str,
     ) -> Result<Option<&ActiveCharacterRecord>, JsValue> {
         let mode = parse_content_mode(mode)?;
-        Ok(self.inner.lookup_character(name, mode))
+        Ok(self.inner.parser().lookup_character(name, mode))
     }
 
     fn lookup_env_meta(
@@ -1005,7 +1010,7 @@ impl Engine {
         mode: &str,
     ) -> Result<Option<&ActiveEnvironmentRecord>, JsValue> {
         let mode = parse_content_mode(mode)?;
-        Ok(self.inner.lookup_env(name, mode))
+        Ok(self.inner.parser().lookup_env(name, mode))
     }
 }
 
@@ -1538,6 +1543,14 @@ mod tests {
         let output = parser.inner.parse(r"\unknowncmd");
         assert!(output.result.is_some());
         assert!(output.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn parse_config_input_uses_supplied_base_config() {
+        let config = ParseConfigInput::default().into_config(ParseConfig::STRICT);
+
+        assert!(config.reject_unknown);
+        assert!(config.abort_on_error);
     }
 
     #[test]

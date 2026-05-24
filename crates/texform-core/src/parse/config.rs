@@ -7,19 +7,29 @@
 /// owns the knowledge base; the same context can be reused across many calls
 /// with different configs.
 ///
-/// Four named presets cover every legal `strict` × `recover` combination at
-/// the default `max_group_depth`. Prefer these at call sites to avoid
-/// re-spelling the field set, and fall back to a struct literal only when
-/// `max_group_depth` needs to deviate from the default (e.g.
-/// `ParseConfig { max_group_depth: 256, ..ParseConfig::STRICT_NO_RECOVER }`).
+/// Two orthogonal axes control parsing, both with **`true` = stricter**:
+///
+/// - [`reject_unknown`](Self::reject_unknown): unknown command/environment names
+///   become diagnostics (`true`) or `known: false` nodes (`false`).
+/// - [`abort_on_error`](Self::abort_on_error): stop at the first error (`true`)
+///   or continue parsing to collect every diagnostic (`false`, slower).
+///
+/// Named extremes [`STRICT`](Self::STRICT) and [`LENIENT`](Self::LENIENT) cover
+/// the two corners where both axes agree. For mixed settings, use struct-update
+/// syntax, e.g. `ParseConfig { reject_unknown: true, ..Default::default() }`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ParseConfig {
     /// When `true`, unknown command/environment names become diagnostics
     /// instead of being preserved as `known: false` nodes.
-    pub strict: bool,
-    /// When `true`, the parser wraps content items with a recovery fallback
-    /// so one malformed item does not abort the rest of the parse.
-    pub recover: bool,
+    ///
+    /// This controls **unknown-name handling only**, not general error strictness.
+    pub reject_unknown: bool,
+    /// When `true`, parsing stops at the first error in each content item.
+    ///
+    /// When `false`, the parser uses recovery fallbacks to collect every
+    /// diagnostic (useful for IDEs and playgrounds, but slower on large corpora).
+    /// This does not repair input or change correctness semantics.
+    pub abort_on_error: bool,
     /// Hard upper bound on nested `{ ... }` brace group depth.
     pub max_group_depth: usize,
 }
@@ -28,46 +38,27 @@ impl ParseConfig {
     /// Default hard upper bound on nested `{ ... }` brace group depth.
     pub const DEFAULT_MAX_GROUP_DEPTH: usize = 128;
 
-    /// `strict = true`, `recover = true` — strict mode that still collects
-    /// every diagnostic via recovery. Rarely useful; intended for dev tools
-    /// that want both unknown-as-error and a full error list.
-    pub const STRICT_RECOVER: Self = Self {
-        strict: true,
-        recover: true,
+    /// Both axes strict: `reject_unknown = true`, `abort_on_error = true`.
+    ///
+    /// Used by normalization and other correctness-sensitive paths.
+    pub const STRICT: Self = Self {
+        reject_unknown: true,
+        abort_on_error: true,
         max_group_depth: Self::DEFAULT_MAX_GROUP_DEPTH,
     };
 
-    /// `strict = true`, `recover = false` — strict mode that aborts at the
-    /// first error in each item. Used by transform / dev / tests where
-    /// unknown commands must fail and the extra diagnostics from recovery
-    /// are unused.
-    pub const STRICT_NO_RECOVER: Self = Self {
-        strict: true,
-        recover: false,
-        max_group_depth: Self::DEFAULT_MAX_GROUP_DEPTH,
-    };
-
-    /// `strict = false`, `recover = true` — preserve unknown commands as
-    /// `known: false` nodes and collect every diagnostic via recovery.
-    /// Default for interactive tools (playground, IDE error highlighting).
-    pub const NONSTRICT_RECOVER: Self = Self {
-        strict: false,
-        recover: true,
-        max_group_depth: Self::DEFAULT_MAX_GROUP_DEPTH,
-    };
-
-    /// `strict = false`, `recover = false` — preserve unknown commands but
-    /// abort at the first error. Used by bench / batch pipelines that only
-    /// need a pass/fail signal and pay no cost for recovery.
-    pub const NONSTRICT_NO_RECOVER: Self = Self {
-        strict: false,
-        recover: false,
+    /// Both axes lenient: `reject_unknown = false`, `abort_on_error = false`.
+    ///
+    /// Default for standalone parse-only entry points and interactive tools.
+    pub const LENIENT: Self = Self {
+        reject_unknown: false,
+        abort_on_error: false,
         max_group_depth: Self::DEFAULT_MAX_GROUP_DEPTH,
     };
 }
 
 impl Default for ParseConfig {
     fn default() -> Self {
-        Self::NONSTRICT_RECOVER
+        Self::LENIENT
     }
 }

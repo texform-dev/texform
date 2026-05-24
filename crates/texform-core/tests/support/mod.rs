@@ -28,16 +28,20 @@ pub(crate) fn delimiter_control_item(name: &str) -> ContextItem {
     DelimiterControlItem::new(name).into()
 }
 
-pub(crate) fn parse_with_items(items: &[ContextItem], src: &str, strict: bool) -> ParseOutput {
+pub(crate) fn parse_with_items(
+    items: &[ContextItem],
+    src: &str,
+    reject_unknown: bool,
+) -> ParseOutput {
     let mut builder = ParseContextBuilder::empty();
     for item in items {
         builder = builder.insert_item(item.clone());
     }
     let ctx = builder.build().expect("context items should be valid");
-    let config = if strict {
-        ParseConfig::STRICT_NO_RECOVER
+    let config = if reject_unknown {
+        ParseConfig::STRICT
     } else {
-        ParseConfig::NONSTRICT_RECOVER
+        ParseConfig::LENIENT
     };
     ctx.parse(src, &config)
 }
@@ -45,12 +49,12 @@ pub(crate) fn parse_with_items(items: &[ContextItem], src: &str, strict: bool) -
 pub(crate) fn parse_single_with_items(
     items: &[ContextItem],
     src: &str,
-    strict: bool,
+    reject_unknown: bool,
 ) -> ParseOutput {
-    let config = if strict {
-        ParseConfig::STRICT_NO_RECOVER
+    let config = if reject_unknown {
+        ParseConfig::STRICT
     } else {
-        ParseConfig::NONSTRICT_RECOVER
+        ParseConfig::LENIENT
     };
     let mut outputs = parse_many_with_items(items, &[src], None, &config);
     assert_eq!(outputs.len(), 1);

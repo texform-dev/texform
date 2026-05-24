@@ -306,7 +306,10 @@ fn run_direct(
 
     // Warm up the parse context's lazy globals (avoids first-call cost showing
     // up in the per-chunk timing breakdown).
-    let config = ParseConfig::NONSTRICT_NO_RECOVER;
+    let config = ParseConfig {
+        abort_on_error: true,
+        ..Default::default()
+    };
     let parse_ctx = ParseContext::shared();
     let _ = parse_ctx.parse("", &config);
 

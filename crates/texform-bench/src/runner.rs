@@ -18,8 +18,11 @@ pub struct FormulaResults {
 }
 
 pub fn run_bench(records: &[FormulaRecord]) -> Vec<FormulaResults> {
-    let strict_cfg = ParseConfig::STRICT_NO_RECOVER;
-    let nonstrict_cfg = ParseConfig::NONSTRICT_NO_RECOVER;
+    let strict_cfg = ParseConfig::STRICT;
+    let nonstrict_cfg = ParseConfig {
+        abort_on_error: true,
+        ..Default::default()
+    };
     let parser = ParseContext::shared();
     let _ = parser.parse("", &nonstrict_cfg);
 

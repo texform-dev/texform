@@ -16,11 +16,14 @@ fn serialize_node(node: &SyntaxNode) -> String {
     texform_core::serialize::serialize(&ast)
 }
 
-fn parse(src: &str, strict: bool) -> Result<(SyntaxNode, chumsky::span::SimpleSpan), Vec<String>> {
-    let config = if strict {
-        ParseConfig::STRICT_NO_RECOVER
+fn parse(
+    src: &str,
+    reject_unknown: bool,
+) -> Result<(SyntaxNode, chumsky::span::SimpleSpan), Vec<String>> {
+    let config = if reject_unknown {
+        ParseConfig::STRICT
     } else {
-        ParseConfig::NONSTRICT_RECOVER
+        ParseConfig::LENIENT
     };
     let output = test_context().parse(src, &config);
     if output.diagnostics.is_empty() {
@@ -417,12 +420,12 @@ fn underline_uses_math_and_text_variants_in_matching_modes() {
     ]);
 
     let math = ctx
-        .parse(r"\underline{x}", &ParseConfig::NONSTRICT_RECOVER)
+        .parse(r"\underline{x}", &ParseConfig::LENIENT)
         .result
         .expect("expected math parse result")
         .node;
     let text = ctx
-        .parse(r"\text{a \underline{b}}", &ParseConfig::NONSTRICT_RECOVER)
+        .parse(r"\text{a \underline{b}}", &ParseConfig::LENIENT)
         .result
         .expect("expected text parse result")
         .node;
@@ -474,7 +477,7 @@ fn known_but_disallowed_command_is_mode_error_even_when_non_strict() {
         "m:T",
     )]);
 
-    let output = ctx.parse(r"\textonly{x}", &ParseConfig::NONSTRICT_RECOVER);
+    let output = ctx.parse(r"\textonly{x}", &ParseConfig::LENIENT);
     let messages = output
         .diagnostics
         .into_iter()
@@ -498,9 +501,9 @@ fn known_but_disallowed_environment_is_mode_error_in_both_strictness_modes() {
 
     for strict in [false, true] {
         let config = if strict {
-            ParseConfig::STRICT_NO_RECOVER
+            ParseConfig::STRICT
         } else {
-            ParseConfig::NONSTRICT_RECOVER
+            ParseConfig::LENIENT
         };
         let output = ctx.parse(r"a \begin{textenv}b\end{textenv} c", &config);
         let messages = output
@@ -559,10 +562,7 @@ fn disallowed_environment_does_not_rewrite_unrelated_generic_error() {
         "",
     )]);
 
-    let output = ctx.parse(
-        r"a \begin{textenv}b\end{textenv} }",
-        &ParseConfig::NONSTRICT_RECOVER,
-    );
+    let output = ctx.parse(r"a \begin{textenv}b\end{textenv} }", &ParseConfig::LENIENT);
     let messages = output
         .diagnostics
         .into_iter()
@@ -580,7 +580,7 @@ fn disallowed_environment_does_not_rewrite_unrelated_generic_error() {
 
 #[test]
 fn test_text_argument_uses_text_content_variant_for_single_char_item() {
-    let output = ParseContext::shared().parse(r"\text{\%}", &ParseConfig::STRICT_NO_RECOVER);
+    let output = ParseContext::shared().parse(r"\text{\%}", &ParseConfig::STRICT);
     let result = output.result.expect("expected parse result");
 
     match result.node {
@@ -816,7 +816,7 @@ fn invalid_left_delimiter_reports_root_cause_and_contexts() {
             "o",
         )),
     ])
-    .parse(src, &ParseConfig::NONSTRICT_RECOVER);
+    .parse(src, &ParseConfig::LENIENT);
 
     assert!(
         output.result.is_some(),
@@ -1151,7 +1151,7 @@ fn test_csname_argument() {
 fn test_csname_argument_rejects_escape_sequence() {
     let ctx = test_context_with_items([label_command_item()]);
 
-    let command = ctx.parse(r"\label{\alpha}", &ParseConfig::STRICT_NO_RECOVER);
+    let command = ctx.parse(r"\label{\alpha}", &ParseConfig::STRICT);
     assert!(
         command.result.is_none(),
         "control sequence inside CSName should fail"
@@ -1162,7 +1162,7 @@ fn test_csname_argument_rejects_escape_sequence() {
         command.diagnostics
     );
 
-    let escaped_symbol = ctx.parse(r"\label{sec\_a}", &ParseConfig::STRICT_NO_RECOVER);
+    let escaped_symbol = ctx.parse(r"\label{sec\_a}", &ParseConfig::STRICT);
     assert!(
         escaped_symbol.result.is_none(),
         "escaped symbol inside CSName should fail"
@@ -1294,7 +1294,7 @@ fn test_unclosed_brace_argument_errors() {
 fn test_comment_truncated_argument_reports_specific_kind() {
     let output = test_context().parse(
         r"\frac{%\ change \ in \ x}{%\ change \ in \ y}",
-        &ParseConfig::NONSTRICT_RECOVER,
+        &ParseConfig::LENIENT,
     );
 
     let diagnostic = output
@@ -1321,7 +1321,7 @@ fn test_math_shift_inside_formula_reports_specific_kind() {
     )])
     .parse(
         r"f_X(x) = \begin{cases}$1000 & 0.01\\$0 & 0.99\end{cases}",
-        &ParseConfig::NONSTRICT_RECOVER,
+        &ParseConfig::LENIENT,
     );
 
     let diagnostic = output
@@ -1612,7 +1612,7 @@ fn test_ambiguous_over_reports_diagnostic() {
 
 #[test]
 fn test_repeated_over_still_reports_ambiguous_infix_kind() {
-    let output = test_context().parse(r"a \over b + 1 \over c", &ParseConfig::NONSTRICT_RECOVER);
+    let output = test_context().parse(r"a \over b + 1 \over c", &ParseConfig::LENIENT);
 
     let diagnostic = output
         .diagnostics
@@ -1627,10 +1627,7 @@ fn test_repeated_buildrel_over_parses_as_separate_infixes() {
     let ctx = ParseContext::from_packages(&["base"]);
     let src = r"\cdots\to K\buildrel f\over\longrightarrow K\buildrel f\over\longrightarrow K";
 
-    for config in [
-        ParseConfig::STRICT_NO_RECOVER,
-        ParseConfig::NONSTRICT_RECOVER,
-    ] {
+    for config in [ParseConfig::STRICT, ParseConfig::LENIENT] {
         let output = ctx.parse(src, &config);
         assert!(
             output.diagnostics.is_empty(),
@@ -1654,7 +1651,7 @@ fn test_infix_over_allows_declarative_before_command() {
         AllowedMode::Math,
         "",
     )])
-    .parse(r"\displaystyle \over x", &ParseConfig::NONSTRICT_RECOVER);
+    .parse(r"\displaystyle \over x", &ParseConfig::LENIENT);
 
     assert!(
         output.diagnostics.is_empty(),
@@ -1802,7 +1799,7 @@ fn test_declarative_nested_textstyle() {
     ]);
     let output = ctx.parse(
         r"\textstyle f(x) = \textstyle \sum_{i=0}^{n}",
-        &ParseConfig::NONSTRICT_RECOVER,
+        &ParseConfig::LENIENT,
     );
     assert!(
         output.diagnostics.is_empty(),
@@ -1981,7 +1978,7 @@ fn test_text_mode_scripted_syntax_reports_explicit_error() {
     ]);
 
     let errors = ctx
-        .parse(r"\text{\underline{a^2}}", &ParseConfig::STRICT_NO_RECOVER)
+        .parse(r"\text{\underline{a^2}}", &ParseConfig::STRICT)
         .diagnostics
         .into_iter()
         .map(|diag| diag.message)
@@ -2003,7 +2000,7 @@ fn test_text_mode_declarative_is_flat() {
         "",
     )]);
 
-    let output = ctx.parse(r"\text{\tiny{FP}}", &ParseConfig::NONSTRICT_RECOVER);
+    let output = ctx.parse(r"\text{\tiny{FP}}", &ParseConfig::LENIENT);
     assert!(
         output.diagnostics.is_empty(),
         "expected flat text declarative parse without diagnostics, got {:?}",
@@ -3196,7 +3193,7 @@ fn test_infix_over_with_declarative_right_operand() {
         AllowedMode::Math,
         "",
     )]);
-    let output = ctx.parse(r"a \over \displaystyle b", &ParseConfig::NONSTRICT_RECOVER);
+    let output = ctx.parse(r"a \over \displaystyle b", &ParseConfig::LENIENT);
     assert!(
         output.diagnostics.is_empty(),
         "Expected declarative denominator parse without diagnostics, got {:?}",
@@ -3256,10 +3253,7 @@ fn test_infix_left_collects_flat_declarative_items() {
         AllowedMode::Math,
         "",
     )])
-    .parse(
-        r"a \displaystyle b \over c",
-        &ParseConfig::NONSTRICT_RECOVER,
-    );
+    .parse(r"a \displaystyle b \over c", &ParseConfig::LENIENT);
 
     assert!(
         output.diagnostics.is_empty(),
@@ -3788,7 +3782,7 @@ fn test_package_loaded_math_linebreak_supports_representative_forms() {
         (r"\begin{matrix}a\\*b\end{matrix}", true, None),
         (r"\begin{matrix}a\\[5pt]b\end{matrix}", false, Some("5pt")),
     ] {
-        let output = ctx.parse(src, &ParseConfig::STRICT_NO_RECOVER);
+        let output = ctx.parse(src, &ParseConfig::STRICT);
         assert!(
             output.diagnostics.is_empty(),
             "unexpected diagnostics for {src}: {:?}",
@@ -3825,7 +3819,7 @@ fn test_package_loaded_text_linebreak_supports_representative_forms() {
         (r"\text{a\\*b}", true, None),
         (r"\text{a\\[5pt]b}", false, Some("5pt")),
     ] {
-        let output = ctx.parse(src, &ParseConfig::STRICT_NO_RECOVER);
+        let output = ctx.parse(src, &ParseConfig::STRICT);
         assert!(
             output.diagnostics.is_empty(),
             "unexpected diagnostics for {src}: {:?}",
@@ -3860,7 +3854,7 @@ fn test_package_loaded_non_alpha_math_commands_support_representative_forms() {
     for src in [
         r"a\,b", r"a\!b", r"a\;b", r"a\:b", r"a\>b", r"a\*b", r"a\ b",
     ] {
-        let output = ctx.parse(src, &ParseConfig::STRICT_NO_RECOVER);
+        let output = ctx.parse(src, &ParseConfig::STRICT);
         assert!(
             output.diagnostics.is_empty(),
             "unexpected diagnostics for {src}: {:?}",
@@ -3869,7 +3863,7 @@ fn test_package_loaded_non_alpha_math_commands_support_representative_forms() {
         assert!(output.result.is_some(), "expected parse result for {src}");
     }
 
-    let output = ctx.parse(r"\bra{x}\|\ket{y}", &ParseConfig::STRICT_NO_RECOVER);
+    let output = ctx.parse(r"\bra{x}\|\ket{y}", &ParseConfig::STRICT);
     assert!(
         output.diagnostics.is_empty(),
         "unexpected diagnostics for braket sample: {:?}",
@@ -3890,7 +3884,7 @@ fn test_package_loaded_non_alpha_text_commands_support_representative_forms() {
     let ctx = ParseContext::from_packages(&["base", "textmacros"]);
 
     for src in [r"\text{a\,b}", r"\text{a\ b}"] {
-        let output = ctx.parse(src, &ParseConfig::STRICT_NO_RECOVER);
+        let output = ctx.parse(src, &ParseConfig::STRICT);
         assert!(
             output.diagnostics.is_empty(),
             "unexpected diagnostics for {src}: {:?}",
@@ -3904,7 +3898,7 @@ fn test_package_loaded_non_alpha_text_commands_support_representative_forms() {
         (r"\text{\~n}", "~"),
         (r#"\text{\"o}"#, "\""),
     ] {
-        let output = ctx.parse(src, &ParseConfig::STRICT_NO_RECOVER);
+        let output = ctx.parse(src, &ParseConfig::STRICT);
         assert!(
             output.diagnostics.is_empty(),
             "unexpected diagnostics for {src}: {:?}",
@@ -3930,7 +3924,7 @@ fn test_no_leading_space_after_single_token_m_for_optional_brackets() {
         "m !o",
     )]);
 
-    let spaced = ctx.parse(r"\probe a [b]", &ParseConfig::STRICT_NO_RECOVER);
+    let spaced = ctx.parse(r"\probe a [b]", &ParseConfig::STRICT);
     assert!(
         spaced.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -3965,7 +3959,7 @@ fn test_no_leading_space_after_single_token_m_for_optional_brackets() {
         other => panic!("Expected root node, got {:?}", other),
     }
 
-    let tight = ctx.parse(r"\probe a[b]", &ParseConfig::STRICT_NO_RECOVER);
+    let tight = ctx.parse(r"\probe a[b]", &ParseConfig::STRICT);
     assert!(
         tight.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4010,7 +4004,7 @@ fn test_no_leading_space_after_single_token_m_for_group_slot() {
         "s o m !g",
     )]);
 
-    let spaced = ctx.parse(r"\probe*[n]f {x}", &ParseConfig::STRICT_NO_RECOVER);
+    let spaced = ctx.parse(r"\probe*[n]f {x}", &ParseConfig::STRICT);
     assert!(
         spaced.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4058,7 +4052,7 @@ fn test_no_leading_space_after_single_token_m_for_group_slot() {
         other => panic!("Expected root node, got {:?}", other),
     }
 
-    let tight = ctx.parse(r"\probe*[n]f{x}", &ParseConfig::STRICT_NO_RECOVER);
+    let tight = ctx.parse(r"\probe*[n]f{x}", &ParseConfig::STRICT);
     assert!(
         tight.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4109,7 +4103,7 @@ fn test_required_group_form_enforces_braces() {
         "m{}",
     )]);
 
-    let present = ctx.parse(r"\reqgrp{x}", &ParseConfig::STRICT_NO_RECOVER);
+    let present = ctx.parse(r"\reqgrp{x}", &ParseConfig::STRICT);
     assert!(
         present.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4137,7 +4131,7 @@ fn test_required_group_form_enforces_braces() {
         other => panic!("Expected root node, got {:?}", other),
     }
 
-    let missing = ctx.parse(r"\reqgrp x", &ParseConfig::STRICT_NO_RECOVER);
+    let missing = ctx.parse(r"\reqgrp x", &ParseConfig::STRICT);
     assert!(
         missing.result.is_none(),
         "missing required group should fail"
@@ -4148,7 +4142,7 @@ fn test_required_group_form_enforces_braces() {
         missing.diagnostics
     );
 
-    let wrong_form = ctx.parse(r"\reqgrp|x|", &ParseConfig::STRICT_NO_RECOVER);
+    let wrong_form = ctx.parse(r"\reqgrp|x|", &ParseConfig::STRICT);
     assert!(
         wrong_form.result.is_none(),
         "non-braced required group should fail"
@@ -4169,7 +4163,7 @@ fn test_group_form_supports_dimension_kind() {
         "g:L",
     )]);
 
-    let missing = ctx.parse(r"\gdim", &ParseConfig::STRICT_NO_RECOVER);
+    let missing = ctx.parse(r"\gdim", &ParseConfig::STRICT);
     assert!(
         missing.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4193,7 +4187,7 @@ fn test_group_form_supports_dimension_kind() {
         other => panic!("Expected root node, got {:?}", other),
     }
 
-    let present = ctx.parse(r"\gdim{1.5em}", &ParseConfig::STRICT_NO_RECOVER);
+    let present = ctx.parse(r"\gdim{1.5em}", &ParseConfig::STRICT);
     assert!(
         present.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4231,7 +4225,7 @@ fn test_required_group_form_composes_with_star_and_standard_slots() {
         "s m{} m",
     )]);
 
-    let basic = ctx.parse(r"\probe{A}B", &ParseConfig::STRICT_NO_RECOVER);
+    let basic = ctx.parse(r"\probe{A}B", &ParseConfig::STRICT);
     assert!(
         basic.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4260,7 +4254,7 @@ fn test_required_group_form_composes_with_star_and_standard_slots() {
         ArgumentValue::MathContent(SyntaxNode::Char('B'))
     );
 
-    let starred = ctx.parse(r"\probe*{A}B", &ParseConfig::STRICT_NO_RECOVER);
+    let starred = ctx.parse(r"\probe*{A}B", &ParseConfig::STRICT);
     assert!(
         starred.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4281,7 +4275,7 @@ fn test_required_group_form_composes_with_star_and_standard_slots() {
     assert_eq!(expect_arg(&starred_args[1]).kind, ArgumentKind::Group);
     assert_eq!(expect_arg(&starred_args[2]).kind, ArgumentKind::Mandatory);
 
-    let missing = ctx.parse(r"\probe B", &ParseConfig::STRICT_NO_RECOVER);
+    let missing = ctx.parse(r"\probe B", &ParseConfig::STRICT);
     assert!(
         missing.result.is_none(),
         "missing required group slot should fail"
@@ -4302,7 +4296,7 @@ fn test_group_form_supports_delimiter_kind() {
         "g:D",
     )]);
 
-    let output = ctx.parse(r"\gdelim{|}", &ParseConfig::STRICT_NO_RECOVER);
+    let output = ctx.parse(r"\gdelim{|}", &ParseConfig::STRICT);
     assert!(
         output.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4349,7 +4343,7 @@ fn test_nullable_delimiter_argument_accepts_empty_required_group() {
         ContextItem::from(DelimiterControlItem::new("langle")),
     ]);
 
-    let empty = ctx.parse(r"\ndelim{}", &ParseConfig::STRICT_NO_RECOVER);
+    let empty = ctx.parse(r"\ndelim{}", &ParseConfig::STRICT);
     assert!(
         empty.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4368,7 +4362,7 @@ fn test_nullable_delimiter_argument_accepts_empty_required_group() {
         ArgumentValue::Delimiter(Delimiter::None)
     );
 
-    let explicit = ctx.parse(r"\ndelim\langle", &ParseConfig::STRICT_NO_RECOVER);
+    let explicit = ctx.parse(r"\ndelim\langle", &ParseConfig::STRICT);
     assert!(
         explicit.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4387,7 +4381,7 @@ fn test_nullable_delimiter_argument_accepts_empty_required_group() {
         ArgumentValue::Delimiter(Delimiter::Control("langle"))
     );
 
-    let strict_empty = ctx.parse(r"\strictdelim{}", &ParseConfig::STRICT_NO_RECOVER);
+    let strict_empty = ctx.parse(r"\strictdelim{}", &ParseConfig::STRICT);
     assert!(
         strict_empty.result.is_none(),
         "non-nullable delimiter should reject empty braces"
@@ -4407,7 +4401,7 @@ fn test_nullable_delimiter_group_accepts_empty_group() {
         "m{}:D?",
     )]);
 
-    let output = ctx.parse(r"\gdelimnull{}", &ParseConfig::STRICT_NO_RECOVER);
+    let output = ctx.parse(r"\gdelimnull{}", &ParseConfig::STRICT);
     assert!(
         output.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4435,7 +4429,7 @@ fn test_required_group_and_delimited_forms_have_distinct_ast_kinds() {
         command_item("reqdelim", CommandKind::Prefix, AllowedMode::Math, "r{}"),
     ]);
 
-    let group = ctx.parse(r"\reqgrp{x}", &ParseConfig::STRICT_NO_RECOVER);
+    let group = ctx.parse(r"\reqgrp{x}", &ParseConfig::STRICT);
     assert!(
         group.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4451,7 +4445,7 @@ fn test_required_group_and_delimited_forms_have_distinct_ast_kinds() {
     );
     assert_eq!(expect_arg(&group_args[0]).kind, ArgumentKind::Group);
 
-    let delimited = ctx.parse(r"\reqdelim{x}", &ParseConfig::STRICT_NO_RECOVER);
+    let delimited = ctx.parse(r"\reqdelim{x}", &ParseConfig::STRICT);
     assert!(
         delimited.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4568,7 +4562,7 @@ fn test_paired_form_required_vs_optional_semantics() {
         ),
     ]);
 
-    let required_ok = ctx.parse(r"\mustpair(x)", &ParseConfig::STRICT_NO_RECOVER);
+    let required_ok = ctx.parse(r"\mustpair(x)", &ParseConfig::STRICT);
     assert!(
         required_ok.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4579,7 +4573,7 @@ fn test_paired_form_required_vs_optional_semantics() {
         "required paired arg should parse"
     );
 
-    let required_missing = ctx.parse(r"\mustpair", &ParseConfig::STRICT_NO_RECOVER);
+    let required_missing = ctx.parse(r"\mustpair", &ParseConfig::STRICT);
     assert!(
         required_missing.result.is_none(),
         "missing required paired arg should fail"
@@ -4590,7 +4584,7 @@ fn test_paired_form_required_vs_optional_semantics() {
         required_missing.diagnostics
     );
 
-    let optional_unmatched = ctx.parse(r"\maybepair[x]", &ParseConfig::STRICT_NO_RECOVER);
+    let optional_unmatched = ctx.parse(r"\maybepair[x]", &ParseConfig::STRICT);
     assert!(
         optional_unmatched.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4625,7 +4619,7 @@ fn test_paired_form_required_vs_optional_semantics() {
 fn test_newline_command_preserves_no_leading_space_behavior() {
     let ctx = test_context();
 
-    let immediate = ctx.parse(r"\newline*[1cm]", &ParseConfig::STRICT_NO_RECOVER);
+    let immediate = ctx.parse(r"\newline*[1cm]", &ParseConfig::STRICT);
     assert!(
         immediate.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4653,7 +4647,7 @@ fn test_newline_command_preserves_no_leading_space_behavior() {
         other => panic!("Expected root node, got {:?}", other),
     }
 
-    let spaced = ctx.parse(r"\newline * [1cm]", &ParseConfig::STRICT_NO_RECOVER);
+    let spaced = ctx.parse(r"\newline * [1cm]", &ParseConfig::STRICT);
     assert!(
         spaced.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4698,10 +4692,7 @@ fn test_environment_star_in_name_is_independent_from_s_arg_slot() {
         environment_item("probenv*", AllowedMode::Math, ContentMode::Math, "s"),
     ]);
 
-    let starred_name = ctx.parse(
-        r"\begin{probenv*}x\end{probenv*}",
-        &ParseConfig::STRICT_NO_RECOVER,
-    );
+    let starred_name = ctx.parse(r"\begin{probenv*}x\end{probenv*}", &ParseConfig::STRICT);
     assert!(
         starred_name.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4729,10 +4720,7 @@ fn test_environment_star_in_name_is_independent_from_s_arg_slot() {
         other => panic!("Expected root node, got {:?}", other),
     }
 
-    let star_arg = ctx.parse(
-        r"\begin{probenv}*x\end{probenv}",
-        &ParseConfig::STRICT_NO_RECOVER,
-    );
+    let star_arg = ctx.parse(r"\begin{probenv}*x\end{probenv}", &ParseConfig::STRICT);
     assert!(
         star_arg.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4824,7 +4812,7 @@ fn test_delimited_content_argument_reparse_keeps_known_command() {
         command_item("frac", CommandKind::Prefix, AllowedMode::Math, "mm"),
     ]);
 
-    let output = ctx.parse(r"\probe(\frac{1}{2})", &ParseConfig::STRICT_NO_RECOVER);
+    let output = ctx.parse(r"\probe(\frac{1}{2})", &ParseConfig::STRICT);
     assert!(
         output.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
@@ -4864,11 +4852,11 @@ fn test_parser_isolation_for_custom_commands() {
         "m",
     )]);
 
-    let out1_foo = ctx1.parse(r"\fooisolated{a}", &ParseConfig::STRICT_NO_RECOVER);
+    let out1_foo = ctx1.parse(r"\fooisolated{a}", &ParseConfig::STRICT);
     assert!(out1_foo.diagnostics.is_empty());
     assert!(out1_foo.result.is_some());
 
-    let out1_bar = ctx1.parse(r"\barisolated{a}", &ParseConfig::STRICT_NO_RECOVER);
+    let out1_bar = ctx1.parse(r"\barisolated{a}", &ParseConfig::STRICT);
     assert!(!out1_bar.diagnostics.is_empty());
     assert!(out1_bar.result.is_none());
 
@@ -4879,11 +4867,11 @@ fn test_parser_isolation_for_custom_commands() {
         "m",
     )]);
 
-    let out2_bar = ctx2.parse(r"\barisolated{a}", &ParseConfig::STRICT_NO_RECOVER);
+    let out2_bar = ctx2.parse(r"\barisolated{a}", &ParseConfig::STRICT);
     assert!(out2_bar.diagnostics.is_empty());
     assert!(out2_bar.result.is_some());
 
-    let out2_foo = ctx2.parse(r"\fooisolated{a}", &ParseConfig::STRICT_NO_RECOVER);
+    let out2_foo = ctx2.parse(r"\fooisolated{a}", &ParseConfig::STRICT);
     assert!(!out2_foo.diagnostics.is_empty());
     assert!(out2_foo.result.is_none());
 }

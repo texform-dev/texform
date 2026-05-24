@@ -21,7 +21,7 @@ fn parser_parse_returns_result_and_diagnostics() {
     assert!(json.get("node").is_some());
     assert!(json.get("span").is_some());
 
-    let failure = parser.parse_with(r"\unknowncmd", &ParseConfig::STRICT_NO_RECOVER);
+    let failure = parser.parse_with(r"\unknowncmd", &ParseConfig::STRICT);
     assert!(
         failure.result.is_none(),
         "strict unknown command should fail"
@@ -55,7 +55,13 @@ fn parser_parse_with_accepts_runtime_config() {
         .build()
         .expect("parser should build");
 
-    let output = parser.parse_with(r"\unknowncmd {", &ParseConfig::NONSTRICT_NO_RECOVER);
+    let output = parser.parse_with(
+        r"\unknowncmd {",
+        &ParseConfig {
+            abort_on_error: true,
+            ..Default::default()
+        },
+    );
 
     assert!(
         output.result.is_none(),
