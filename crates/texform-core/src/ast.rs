@@ -21,6 +21,12 @@
 //!
 //! Detached roots let transforms stage or preserve subtrees without silently
 //! creating invisible orphans in the arena.
+//!
+//! # Structural Invariants Only
+//!
+//! [`Ast`] validates tree ownership, parent links, detached roots, and slot
+//! shape. It does not validate command signatures or argument semantics such as
+//! whether an [`ArgumentKind`] matches a particular [`ArgumentValue`].
 
 use std::collections::HashSet;
 
@@ -366,17 +372,23 @@ impl Ast {
 
     /// Return the parent link for `id`, if the node is attached.
     ///
-    /// Root and detached roots return `None`.
+    /// Root, detached roots, and invalid or removed IDs return `None`. Callers
+    /// that need to distinguish a valid detached root from an invalid ID should
+    /// check [`Ast::contains`] first.
     pub fn parent(&self, id: NodeId) -> Option<ParentLink> {
         self.parent.get(id).copied()
     }
 
     /// Return the parent node ID for `id`, if attached.
+    ///
+    /// See [`Ast::parent`] for the `None` cases.
     pub fn parent_id(&self, id: NodeId) -> Option<NodeId> {
         self.parent(id).map(|link| link.parent)
     }
 
     /// Return the slot occupied by `id` in its parent, if attached.
+    ///
+    /// See [`Ast::parent`] for the `None` cases.
     pub fn slot(&self, id: NodeId) -> Option<Slot> {
         self.parent(id).map(|link| link.slot)
     }
@@ -447,7 +459,8 @@ impl Ast {
 
     /// Return the next sibling of `id` when it is attached as a group child.
     ///
-    /// Nodes in non-`GroupChild` slots return `None`.
+    /// Nodes in non-`GroupChild` slots and invalid or removed IDs return
+    /// `None`.
     pub fn next_sibling(&self, id: NodeId) -> Option<NodeId> {
         let parent_link = self.parent(id)?;
         let Slot::GroupChild(index) = parent_link.slot else {
@@ -459,7 +472,8 @@ impl Ast {
 
     /// Return the previous sibling of `id` when it is attached as a group child.
     ///
-    /// Nodes in non-`GroupChild` slots return `None`.
+    /// Nodes in non-`GroupChild` slots and invalid or removed IDs return
+    /// `None`.
     pub fn prev_sibling(&self, id: NodeId) -> Option<NodeId> {
         let parent_link = self.parent(id)?;
         let Slot::GroupChild(index) = parent_link.slot else {
@@ -531,6 +545,9 @@ impl Ast {
     ///
     /// # Panics
     ///
+    /// These panics indicate a caller-side structural invariant violation. The
+    /// AST is not guaranteed to be reusable after such a panic.
+    ///
     /// Panics if:
     ///
     /// - the same child is referenced more than once
@@ -552,14 +569,13 @@ impl Ast {
             self.assert_child_is_detached_root(child);
             self.assert_no_cycle(child, id);
             self.assert_slot_shape(slot, child);
-            self.detached_roots.remove(&child);
-            self.parent.insert(child, ParentLink { parent: id, slot });
+            self.adopt_child(id, child, slot);
         }
 
         id
     }
 
-    /// Append `child` to the end of a group's child list.
+    /// Append `child` to the end of a root/group child list.
     ///
     /// `child` must currently be a detached root.
     ///
@@ -567,7 +583,7 @@ impl Ast {
     ///
     /// Panics if:
     ///
-    /// - `parent` is not a group
+    /// - `parent` is not a root/group node
     /// - `child` is invalid
     /// - `child` is already attached
     /// - `child` is not tracked as a detached root
@@ -582,20 +598,13 @@ impl Ast {
                 children.push(child);
                 index
             }
-            _ => panic!("Parent is not a Group node"),
+            _ => panic!("Parent is not a root/group node"),
         };
 
-        self.detached_roots.remove(&child);
-        self.parent.insert(
-            child,
-            ParentLink {
-                parent,
-                slot: Slot::GroupChild(index),
-            },
-        );
+        self.adopt_child(parent, child, Slot::GroupChild(index));
     }
 
-    /// Insert `child` at `index` within a group's child list.
+    /// Insert `child` at `index` within a root/group child list.
     ///
     /// `child` must currently be a detached root.
     ///
@@ -603,7 +612,7 @@ impl Ast {
     ///
     /// Panics if:
     ///
-    /// - `parent` is not a group
+    /// - `parent` is not a root/group node
     /// - `index` is out of bounds for `Vec::insert`
     /// - `child` is invalid
     /// - `child` is already attached
@@ -617,7 +626,7 @@ impl Ast {
             Node::Root { children, .. } | Node::Group { children, .. } => {
                 children.insert(index, child);
             }
-            _ => panic!("Parent is not a Group node"),
+            _ => panic!("Parent is not a root/group node"),
         }
 
         self.detached_roots.remove(&child);
@@ -651,14 +660,17 @@ impl Ast {
 
         match self.node_mut(parent_link.parent) {
             Node::Root { children, .. } | Node::Group { children, .. } => {
-                let removed = children.remove(index);
-                assert_eq!(removed, id, "Group child index must match detached node");
+                assert_eq!(
+                    children.get(index).copied(),
+                    Some(id),
+                    "Group child index must match detached node"
+                );
+                children.remove(index);
             }
-            _ => panic!("Parent is not a Group node"),
+            _ => panic!("Parent is not a root/group node"),
         }
 
-        self.parent.remove(id);
-        self.detached_roots.insert(id);
+        self.release_child_as_detached_root(id);
         self.reindex_group_children(parent_link.parent, index);
         id
     }
@@ -670,7 +682,7 @@ impl Ast {
     pub fn replace_children(&mut self, parent: NodeId, children: Vec<NodeId>) -> Vec<NodeId> {
         let old_children = match self.node(parent) {
             Node::Root { children, .. } | Node::Group { children, .. } => children.clone(),
-            _ => panic!("Parent is not a Group node"),
+            _ => panic!("Parent is not a root/group node"),
         };
         let old_child_set: HashSet<NodeId> = old_children.iter().copied().collect();
 
@@ -711,8 +723,7 @@ impl Ast {
             .collect();
 
         for child in &removed {
-            self.parent.remove(*child);
-            self.detached_roots.insert(*child);
+            self.release_child_as_detached_root(*child);
         }
         for child in &children {
             self.detached_roots.remove(child);
@@ -727,13 +738,18 @@ impl Ast {
                 children: old_children,
                 ..
             } => *old_children = children,
-            _ => panic!("Parent is not a Group node"),
+            _ => panic!("Parent is not a root/group node"),
         }
         self.reindex_group_children(parent, 0);
         removed
     }
 
     /// Detach a contiguous range of direct children from a root/group node.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `parent` is not a root/group node or `range` is out of bounds
+    /// for `Vec::drain`.
     pub fn detach_children_range(
         &mut self,
         parent: NodeId,
@@ -743,12 +759,11 @@ impl Ast {
             Node::Root { children, .. } | Node::Group { children, .. } => {
                 children.drain(range.clone()).collect::<Vec<_>>()
             }
-            _ => panic!("Parent is not a Group node"),
+            _ => panic!("Parent is not a root/group node"),
         };
 
         for child in &removed {
-            self.parent.remove(*child);
-            self.detached_roots.insert(*child);
+            self.release_child_as_detached_root(*child);
         }
         self.reindex_group_children(parent, range.start);
         removed
@@ -827,16 +842,8 @@ impl Ast {
             _ => panic!("Parent does not have replaceable content children"),
         }
 
-        self.parent.remove(old);
-        self.detached_roots.insert(old);
-        self.detached_roots.remove(&replacement);
-        self.parent.insert(
-            replacement,
-            ParentLink {
-                parent: parent_link.parent,
-                slot: parent_link.slot,
-            },
-        );
+        self.release_child_as_detached_root(old);
+        self.adopt_child(parent_link.parent, replacement, parent_link.slot);
     }
 
     /// Remove an attached node and its entire subtree from the arena.
@@ -864,6 +871,9 @@ impl Ast {
     /// detached roots so transforms can keep or inspect them explicitly.
     ///
     /// # Panics
+    ///
+    /// These panics indicate a caller-side structural invariant violation. The
+    /// AST is not guaranteed to be reusable after such a panic.
     ///
     /// Panics if:
     ///
@@ -912,8 +922,7 @@ impl Ast {
         // roots instead of being silently orphaned or recursively deleted.
         for &(child, _) in &old_edges {
             if !new_edges.iter().any(|(new_child, _)| *new_child == child) {
-                self.parent.remove(child);
-                self.detached_roots.insert(child);
+                self.release_child_as_detached_root(child);
             }
         }
 
@@ -988,10 +997,12 @@ impl Ast {
 
     /// Replaces a node with a math-mode sequence.
     ///
-    /// `replacement` must be a detached root. If `id` is a group child,
-    /// `before` and `after` are inserted as real siblings around the
-    /// replacement payload. In single-child slots, the sequence is wrapped in
-    /// an implicit math group because those slots cannot hold siblings.
+    /// Every node in `before`, `replacement`, and `after` must be a unique
+    /// detached root. If `id` is a group child, `before` and `after` are
+    /// inserted as real siblings around the replacement payload, and
+    /// `replacement` is consumed into `id`. In single-child slots, the sequence
+    /// is wrapped in an implicit math group because those slots cannot hold
+    /// siblings.
     pub fn replace_with_math_sequence(
         &mut self,
         id: NodeId,
@@ -999,6 +1010,14 @@ impl Ast {
         replacement: NodeId,
         after: Vec<NodeId>,
     ) {
+        self.assert_detached_root_sequence(
+            before
+                .iter()
+                .copied()
+                .chain(std::iter::once(replacement))
+                .chain(after.iter().copied()),
+        );
+
         match self.parent(id).map(|link| link.slot) {
             Some(Slot::GroupChild(index)) => {
                 let parent = self
@@ -1034,6 +1053,9 @@ impl Ast {
     /// Replaces a node with a math-mode sequence, moving scripts from a
     /// parent [`Node::Scripted`] onto the final emitted node when `id` is the
     /// scripted base.
+    ///
+    /// Every node in `before`, `first`, and `after` must be a unique detached
+    /// root.
     pub fn replace_with_math_sequence_preserving_scripts(
         &mut self,
         id: NodeId,
@@ -1041,6 +1063,14 @@ impl Ast {
         first: NodeId,
         mut after: Vec<NodeId>,
     ) {
+        self.assert_detached_root_sequence(
+            before
+                .iter()
+                .copied()
+                .chain(std::iter::once(first))
+                .chain(after.iter().copied()),
+        );
+
         if self.slot(id) != Some(Slot::ScriptBase) {
             self.replace_with_math_sequence(id, before, first, after);
             return;
@@ -1229,6 +1259,27 @@ impl Ast {
         }
     }
 
+    fn assert_detached_root_sequence(&self, nodes: impl IntoIterator<Item = NodeId>) {
+        let mut seen = HashSet::new();
+        for node in nodes {
+            assert!(
+                seen.insert(node),
+                "Node cannot appear in a replacement sequence twice"
+            );
+            self.assert_child_is_detached_root(node);
+        }
+    }
+
+    fn adopt_child(&mut self, parent: NodeId, child: NodeId, slot: Slot) {
+        self.detached_roots.remove(&child);
+        self.parent.insert(child, ParentLink { parent, slot });
+    }
+
+    fn release_child_as_detached_root(&mut self, child: NodeId) {
+        self.parent.remove(child);
+        self.detached_roots.insert(child);
+    }
+
     fn take_detached_root_node(&mut self, id: NodeId) -> Node {
         if id == self.root {
             panic!("Cannot consume root node as detached replacement");
@@ -1253,7 +1304,7 @@ impl Ast {
                 link.parent, id,
                 "Detached replacement child must point at the consumed root"
             );
-            self.detached_roots.insert(child);
+            self.release_child_as_detached_root(child);
         }
         node
     }
@@ -1261,7 +1312,7 @@ impl Ast {
     fn reindex_group_children(&mut self, parent: NodeId, start: usize) {
         let children = match self.node(parent) {
             Node::Root { children, .. } | Node::Group { children, .. } => children.clone(),
-            _ => panic!("Parent is not a Group node"),
+            _ => panic!("Parent is not a root/group node"),
         };
 
         // Group child slots store indices, so every insertion / removal requires
@@ -1718,6 +1769,16 @@ impl Default for Ast {
 mod tests {
     use super::{Argument, ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node, Slot};
 
+    fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
+        match payload.downcast::<String>() {
+            Ok(message) => *message,
+            Err(payload) => match payload.downcast::<&'static str>() {
+                Ok(message) => message.to_string(),
+                Err(_) => "non-string panic payload".to_string(),
+            },
+        }
+    }
+
     #[test]
     #[should_panic(expected = "Only ast.root() may be Node::Root")]
     fn assert_invariants_rejects_additional_root_nodes() {
@@ -1933,6 +1994,32 @@ mod tests {
     }
 
     #[test]
+    fn detach_panics_without_removing_wrong_child_when_parent_link_index_is_stale() {
+        let mut ast = Ast::new();
+        let root = ast.root();
+        let a = ast.new_node(Node::Char('a'));
+        let b = ast.new_node(Node::Char('b'));
+        ast.append_child(root, a);
+        ast.append_child(root, b);
+        ast.parent.insert(
+            b,
+            super::ParentLink {
+                parent: root,
+                slot: Slot::GroupChild(0),
+            },
+        );
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| ast.detach(b)));
+
+        let message = panic_message(result.expect_err("detach should reject stale child index"));
+        assert!(
+            message.contains("Group child index must match detached node"),
+            "unexpected panic: {message}"
+        );
+        assert_eq!(ast.children(root), &[a, b]);
+    }
+
+    #[test]
     fn replace_content_child_replaces_script_slot() {
         let mut ast = Ast::new();
         let base = ast.new_node(Node::Char('x'));
@@ -2090,6 +2177,90 @@ mod tests {
         assert_eq!(ast.parent_id(replacement), Some(target));
         assert_eq!(ast.parent_id(after), Some(target));
         ast.assert_invariants();
+    }
+
+    #[test]
+    fn replace_with_math_sequence_rejects_duplicate_sequence_node_before_replacement() {
+        let mut ast = Ast::new();
+        let root = ast.root();
+        let target = ast.new_node(Node::Char('x'));
+        ast.append_child(root, target);
+        let replacement = ast.new_node(Node::Char('y'));
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            ast.replace_with_math_sequence(target, vec![replacement], replacement, Vec::new());
+        }));
+
+        let message = panic_message(result.expect_err("duplicate sequence node should panic"));
+        assert!(
+            message.contains("Node cannot appear in a replacement sequence twice"),
+            "unexpected panic: {message}"
+        );
+        assert_eq!(ast.node(target), &Node::Char('x'));
+        assert_eq!(ast.children(root), &[target]);
+        assert!(ast.contains(replacement));
+        assert_eq!(ast.parent(replacement), None);
+        assert!(ast.detached_roots.contains(&replacement));
+    }
+
+    #[test]
+    fn replace_with_math_sequence_rejects_attached_before_node_before_replacement() {
+        let mut ast = Ast::new();
+        let root = ast.root();
+        let target = ast.new_node(Node::Char('x'));
+        let attached = ast.new_node(Node::Char('a'));
+        ast.append_child(root, attached);
+        ast.append_child(root, target);
+        let replacement = ast.new_node(Node::Char('y'));
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            ast.replace_with_math_sequence(target, vec![attached], replacement, Vec::new());
+        }));
+
+        let message = panic_message(result.expect_err("attached sequence node should panic"));
+        assert!(
+            message.contains("Cannot attach child that already has a parent"),
+            "unexpected panic: {message}"
+        );
+        assert_eq!(ast.node(target), &Node::Char('x'));
+        assert_eq!(ast.children(root), &[attached, target]);
+        assert!(ast.contains(replacement));
+        assert_eq!(ast.parent(replacement), None);
+        assert!(ast.detached_roots.contains(&replacement));
+    }
+
+    #[test]
+    fn replace_with_math_sequence_preserving_scripts_rejects_duplicate_before_staging() {
+        let mut ast = Ast::new();
+        let base = ast.new_node(Node::Char('x'));
+        let superscript = ast.new_node(Node::Char('2'));
+        let scripted = ast.new_node(Node::Scripted {
+            base,
+            subscript: None,
+            superscript: Some(superscript),
+        });
+        ast.append_child(ast.root(), scripted);
+        let first = ast.new_node(Node::Char('['));
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            ast.replace_with_math_sequence_preserving_scripts(base, vec![first], first, Vec::new());
+        }));
+
+        let message = panic_message(result.expect_err("duplicate sequence node should panic"));
+        assert!(
+            message.contains("Node cannot appear in a replacement sequence twice"),
+            "unexpected panic: {message}"
+        );
+        assert_eq!(
+            ast.node(scripted),
+            &Node::Scripted {
+                base,
+                subscript: None,
+                superscript: Some(superscript),
+            }
+        );
+        assert_eq!(ast.parent(first), None);
+        assert!(ast.detached_roots.contains(&first));
     }
 
     #[test]
