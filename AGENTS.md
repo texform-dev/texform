@@ -48,6 +48,7 @@ Project design notes and internal planning documents live outside this repo in t
 
 2. **Open-Source API Quality**
 
+- `texform` is the only crate with a public stability guarantee. All other crates (`texform-core`, `texform-transform`, etc.) are internal: their APIs may change without notice, and external integration must go through the `texform` facade.
 - Public APIs should have stable names, predictable behavior, clear error types, and runnable examples.
 - Keep private workspace assumptions, unfinished design notes, and internal workflows out of this repo.
 
@@ -58,7 +59,8 @@ Project design notes and internal planning documents live outside this repo in t
 
 4. **Testing and Validation**
 
-- Put public-API tests in `tests/` and focused implementation tests inline.
+- See [`TESTING.md`](TESTING.md) for the full testing guide: the contract/implementation two-layer model, test layout, authoring conventions, and coverage policy.
+- Contract tests (the public-API behavior we guarantee) live in the `texform` facade; internal crates carry implementation tests, inline or in `tests/`, with no external guarantee.
 - Cover the happy path, important edge cases, and regressions introduced by the change.
 
 ## Corpus Benchmarks & Regression Testing

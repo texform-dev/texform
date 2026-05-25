@@ -161,12 +161,14 @@ See `crates/texform-transform/src/rewrite/rules/README.md` for rule authoring co
 
 ## Language Bindings
 
-TeXForm exposes two Rust-side entry layers:
+`texform` is the single public, stability-guaranteed Rust entry point. The facade exposes a
+parse-only `Parser`, a normalizing `Engine`, `serialize`, `validate_argspec`, and analysis
+helpers — integrate against `texform` only.
 
-- `texform` — the user-facing facade with parse-only `Parser`, normalizing `Engine`, `serialize`, `validate_argspec`, and analysis helpers
-- `texform-core::parse::ParseContext` — the lower-level parser API for callers that need direct AST/parser access
-
-`texform-core::knowledge` is an internal implementation module and is not the intended public integration surface.
+All other crates (`texform-core`, `texform-transform`, `texform-knowledge`, ...) are internal
+implementation details with no stability guarantee; their APIs may change without notice. In
+particular, the facade's `Parser` is the stable wrapper around the lower-level
+`texform-core::parse::ParseContext` — depend on the wrapper, not the internals.
 
 ### Python
 

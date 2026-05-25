@@ -47,7 +47,8 @@ for mut ast in batch {
 
 ## Public API
 
-The crate's public surface is intentionally small:
+This is an internal crate with no external stability guarantee; integrate through the `texform`
+facade rather than depending on it directly. The crate's public surface is intentionally small:
 
 | Item | Purpose |
 |------|---------|
