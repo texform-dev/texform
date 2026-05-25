@@ -22,3 +22,5 @@ __pycache__/
 python/texform/_native*.so
 python/texform/_native*.pyd
 python/texform/_native*.dylib
+
+*.profraw

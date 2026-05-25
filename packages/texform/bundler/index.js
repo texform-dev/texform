@@ -4,7 +4,7 @@ import init, {
   serialize as wasmSerialize,
   validate_argspec,
 } from "../wasm/web/texform_wasm.js";
-import wasmUrl from "../wasm/web/texform_wasm_bg.wasm";
+import wasmUrl from "../wasm/web/texform_wasm_bg.wasm?url";
 
 await init({ module_or_path: new URL(wasmUrl, import.meta.url) });
 
