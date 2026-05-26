@@ -61,7 +61,7 @@ fn ast_level_transform_preserves_parse_once_workflow() {
     let before = serialize(&ast).expect("ast should serialize");
 
     let mut transformed = ast.clone();
-    engine
+    let report = engine
         .transform_ast_with(
             &mut transformed,
             &TransformConfig {
@@ -74,7 +74,9 @@ fn ast_level_transform_preserves_parse_once_workflow() {
         .expect("transform should succeed");
     let after = serialize(&transformed).expect("ast should serialize");
 
-    assert_ne!(before, after);
+    assert_eq!(before, "{ { x } }");
+    assert_eq!(after, "x");
+    assert_eq!(report.flatten_groups.replaced_single_child, 2);
 }
 
 #[test]
@@ -113,6 +115,7 @@ fn engine_exposes_parser_metadata_queries() {
 
 #[test]
 fn engine_empty_knowledge_preserves_strict_parse_default() {
+    // Empty knowledge must not loosen the Engine parser's strict default.
     let engine = Engine::builder()
         .empty_knowledge()
         .profile(Profile::Equiv)
@@ -129,6 +132,8 @@ fn engine_empty_knowledge_preserves_strict_parse_default() {
 
 #[test]
 fn engine_empty_knowledge_preserves_explicit_parse_default() {
+    // Empty knowledge should only change loaded knowledge, not caller-selected
+    // parse defaults.
     let engine = Engine::builder()
         .default_parse_config(ParseConfig::LENIENT)
         .empty_knowledge()
@@ -142,6 +147,16 @@ fn engine_empty_knowledge_preserves_explicit_parse_default() {
         output.diagnostics.is_empty(),
         "empty_knowledge should preserve default_parse_config set earlier"
     );
+}
+
+#[test]
+fn engine_builder_requires_profile() {
+    let error = match Engine::builder().packages(&["base"]).build() {
+        Ok(_) => panic!("engine profile is required"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(error, texform::Error::MissingProfile));
 }
 
 #[test]

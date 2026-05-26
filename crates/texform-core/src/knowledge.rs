@@ -970,5 +970,5 @@ fn build_default_kb(packages: Option<&[&str]>) -> KnowledgeBase {
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/knowledge.rs"]
+#[path = "knowledge/tests.rs"]
 mod tests;

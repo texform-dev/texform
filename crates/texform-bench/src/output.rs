@@ -1103,8 +1103,10 @@ mod tests {
     use super::*;
     use crate::data::FormulaRecord;
     use crate::runner::{FormulaResults, ParseResult};
+    use std::ops::Deref;
+    use std::path::Path;
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime};
     use texform_core::parse::Span;
 
     #[test]
@@ -1130,14 +1132,22 @@ mod tests {
 
         write_run_summary(&dir, &summaries, &overall).unwrap();
 
-        let summary_json = std::fs::read_to_string(dir.join("summary.json")).unwrap();
-        assert!(summary_json.contains("\"datasets\""));
-        assert!(summary_json.contains("\"overall\""));
-        assert!(!summary_json.contains("timing_ms"));
-        assert!(!summary_json.contains("max_formula_id"));
+        let summary_json: serde_json::Value =
+            serde_json::from_reader(std::fs::File::open(dir.join("summary.json")).unwrap())
+                .unwrap();
+        assert!(summary_json.get("datasets").is_some());
+        assert!(summary_json.get("overall").is_some());
+        assert!(
+            summary_json["datasets"][0]["strict"]
+                .get("timing_ms")
+                .is_none()
+        );
+        assert!(
+            summary_json["datasets"][0]["strict"]
+                .get("max_formula_id")
+                .is_none()
+        );
         assert!(!dir.join("overall.json").exists());
-
-        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
@@ -1148,8 +1158,6 @@ mod tests {
         let status = stored_summary_status(&dir, "demo", &summary).unwrap();
 
         assert_eq!(status, StoredSummaryStatus::Missing);
-
-        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
@@ -1164,8 +1172,6 @@ mod tests {
         let status = stored_summary_status(&dir, "demo", &summary).unwrap();
 
         assert_eq!(status, StoredSummaryStatus::Match);
-
-        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
@@ -1184,8 +1190,6 @@ mod tests {
         let status = stored_summary_status(&dir, "demo", &changed).unwrap();
 
         assert_eq!(status, StoredSummaryStatus::Different);
-
-        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
@@ -1201,8 +1205,6 @@ mod tests {
         let needs_refresh = summaries_need_refresh(&dir, &[first, second]).unwrap();
 
         assert!(!needs_refresh);
-
-        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
@@ -1221,8 +1223,6 @@ mod tests {
         let needs_refresh = summaries_need_refresh(&dir, &[matching, different]).unwrap();
 
         assert!(needs_refresh);
-
-        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
@@ -1294,19 +1294,24 @@ mod tests {
         assert!(commit_dir.join("results.parquet").exists());
         assert!(commit_dir.join("errors.jsonl").exists());
 
-        let summary_json = std::fs::read_to_string(commit_dir.join("summary.json")).unwrap();
-        assert!(summary_json.contains("\"timing_ms\""));
-        assert!(summary_json.contains("\"max_formula_id\": \"beta\""));
+        let summary_json: serde_json::Value =
+            serde_json::from_reader(std::fs::File::open(commit_dir.join("summary.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            summary_json["strict"]["timing_ms"]["max_formula_id"],
+            "beta"
+        );
 
         let errors = std::fs::read_to_string(commit_dir.join("errors.jsonl")).unwrap();
-        assert_eq!(errors.lines().count(), 2);
-        assert!(errors.contains("\"diagnostics\""));
-        assert!(errors.contains("\"strict\":true"));
-        assert!(errors.contains("\"strict\":false"));
-        assert!(errors.contains("strict failed"));
-        assert!(errors.contains("nonstrict failed"));
-
-        std::fs::remove_dir_all(dir).unwrap();
+        let errors: Vec<serde_json::Value> = errors
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(errors.len(), 2);
+        assert_eq!(errors[0]["strict"], true);
+        assert_eq!(errors[0]["diagnostics"][0]["message"], "strict failed");
+        assert_eq!(errors[1]["strict"], false);
+        assert_eq!(errors[1]["diagnostics"][0]["message"], "nonstrict failed");
     }
 
     #[test]
@@ -1324,8 +1329,6 @@ mod tests {
 
         assert!(dir.join("abc12345full-dirty").join("demo").exists());
         assert!(!dir.join("abc12345full").exists());
-
-        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
@@ -1347,8 +1350,6 @@ mod tests {
         assert_eq!(baseline.commit_hash, "newer");
         assert_eq!(baseline.summaries.len(), 1);
         assert_eq!(baseline.summaries[0].dataset, "demo");
-
-        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
@@ -1376,8 +1377,6 @@ mod tests {
 
         let refreshed = latest_commit_baseline(&dir).unwrap().unwrap();
         assert_eq!(refreshed.commit_hash, "older");
-
-        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
@@ -1521,13 +1520,22 @@ mod tests {
         .unwrap();
     }
 
-    fn make_temp_dir(name: &str) -> std::path::PathBuf {
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("texform-bench-{name}-{unique}"));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
+    struct TestDir(tempfile::TempDir);
+
+    impl Deref for TestDir {
+        type Target = Path;
+
+        fn deref(&self) -> &Self::Target {
+            self.0.path()
+        }
+    }
+
+    fn make_temp_dir(name: &str) -> TestDir {
+        TestDir(
+            tempfile::Builder::new()
+                .prefix(&format!("texform-bench-{name}-"))
+                .tempdir()
+                .unwrap(),
+        )
     }
 }

@@ -269,6 +269,28 @@ mod tests {
         let mut buf = RowBuffer::new();
         buf.extend_from_counter("linxy", "abc123def456", &counter);
         assert_eq!(buf.len(), 2);
+
+        let frac_row = buf
+            .name
+            .iter()
+            .position(|name| name == "frac")
+            .expect("expected frac row");
+        assert_eq!(buf.dataset[frac_row], "linxy");
+        assert_eq!(buf.formula_id[frac_row], "abc123def456");
+        assert_eq!(buf.kind[frac_row], "cmd");
+        assert_eq!(buf.mode[frac_row], "math");
+        assert_eq!(buf.count[frac_row], 2);
+
+        let matrix_row = buf
+            .name
+            .iter()
+            .position(|name| name == "matrix")
+            .expect("expected matrix row");
+        assert_eq!(buf.dataset[matrix_row], "linxy");
+        assert_eq!(buf.formula_id[matrix_row], "abc123def456");
+        assert_eq!(buf.kind[matrix_row], "env");
+        assert_eq!(buf.mode[matrix_row], "math");
+        assert_eq!(buf.count[matrix_row], 1);
     }
 
     #[test]

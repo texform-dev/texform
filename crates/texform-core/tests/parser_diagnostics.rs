@@ -679,3 +679,223 @@ fn environment_mismatch_rewrite_does_not_capture_later_generic_errors() {
     assert_eq!(trailing_brace.expected, ["something else", "end of input"]);
     assert_eq!(trailing_brace.found.as_deref(), Some("}"));
 }
+
+mod parser_diagnostic_regressions {
+    use super::support::parser::*;
+    use chumsky::error::RichReason;
+    use texform_core::parse::{
+        AllowedMode, CommandKind, ContextItem, ParseConfig, ParseDiagnosticKind,
+    };
+    use texform_interface::syntax_node::ContentMode;
+
+    #[test]
+    fn test_bare_left_reports_invalid_left_delimiter() {
+        let diagnostics = parse(r"\left\foo x \right)", false).unwrap_err();
+        assert_eq!(diagnostics[0], "invalid \\left delimiter");
+    }
+
+    #[test]
+    fn invalid_left_delimiter_reports_root_cause_and_contexts() {
+        let src = r"\begin{aligned}\probe[\left\foo x]\end{aligned}";
+        let output = test_context_with_items([
+            ContextItem::from(environment_item(
+                "aligned",
+                AllowedMode::Math,
+                ContentMode::Math,
+                "",
+            )),
+            ContextItem::from(command_item(
+                "probe",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "o",
+            )),
+        ])
+        .parse(src, &ParseConfig::LENIENT);
+
+        assert!(
+            output.result.is_some(),
+            "recoverable subparse should keep a partial result"
+        );
+
+        let diagnostic = output
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.message == "invalid \\left delimiter")
+            .unwrap_or_else(|| panic!("diagnostics: {:?}", output.diagnostics));
+        assert_eq!(diagnostic.contexts.len(), 3);
+
+        let environment_context = diagnostic
+            .contexts
+            .iter()
+            .find(|context| context.label == "environment body")
+            .expect("missing environment body context");
+
+        let argument_context = diagnostic
+            .contexts
+            .iter()
+            .find(|context| context.label == "command argument")
+            .expect("missing command argument context");
+
+        let left_context = diagnostic
+            .contexts
+            .iter()
+            .find(|context| context.label == "left-delimited group")
+            .expect("missing left-delimited group context");
+
+        assert_eq!(
+            &src[argument_context.span.start..argument_context.span.end],
+            r"[\left\foo x]"
+        );
+        assert_eq!(
+            &src[environment_context.span.start..environment_context.span.end],
+            r"\probe[\left\foo"
+        );
+
+        assert_eq!(
+            &src[left_context.span.start..left_context.span.end],
+            r"\left\foo"
+        );
+    }
+
+    #[test]
+    fn test_later_left_item_reports_invalid_left_delimiter() {
+        let diagnostics = parse(r"\left( x \right) + \left\foo y \right)", false).unwrap_err();
+        assert_eq!(diagnostics[0], "invalid \\left delimiter");
+    }
+
+    #[test]
+    fn test_comment_truncated_argument_reports_specific_kind() {
+        let output = test_context().parse(
+            r"\frac{%\ change \ in \ x}{%\ change \ in \ y}",
+            &ParseConfig::LENIENT,
+        );
+
+        let diagnostic = output
+            .diagnostics
+            .first()
+            .unwrap_or_else(|| panic!("expected diagnostic, got output: {:?}", output.result));
+        assert_eq!(
+            diagnostic.kind,
+            Some(ParseDiagnosticKind::CommentTruncatedArgument)
+        );
+        assert_eq!(
+            diagnostic.message,
+            "Unescaped % starts a comment inside this argument"
+        );
+    }
+
+    #[test]
+    fn test_math_shift_inside_formula_reports_specific_kind() {
+        let output = test_context_with_items([environment_item(
+            "cases",
+            AllowedMode::Math,
+            ContentMode::Math,
+            "",
+        )])
+        .parse(
+            r"f_X(x) = \begin{cases}$1000 & 0.01\\$0 & 0.99\end{cases}",
+            &ParseConfig::LENIENT,
+        );
+
+        let diagnostic = output
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.kind == Some(ParseDiagnosticKind::UnexpectedMathShift))
+            .unwrap_or_else(|| panic!("diagnostics: {:?}", output.diagnostics));
+        assert_eq!(
+            diagnostic.message,
+            "Unexpected $ inside a math formula; it looks like a currency marker"
+        );
+    }
+
+    #[test]
+    fn test_unknown_command_strict() {
+        // "\unknown{x}" in strict mode should error
+        let result = parse(r"\unknown{x}", true);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_unknown_environment_strict() {
+        let result = parse(r"\begin{foo}a\end{foo}", true);
+        assert_eq!(result.unwrap_err(), vec!["Unknown environment: foo"]);
+    }
+
+    #[test]
+    fn test_ambiguous_over_reports_diagnostic() {
+        let errors = texform_core::parse::grammar::parse(r"a \over b + 1 \over c", true)
+            .expect_err("ambiguous repeated top-level infix should fail");
+        let messages: Vec<_> = errors
+            .iter()
+            .map(|error| match error.reason() {
+                RichReason::Custom(message) => message.clone(),
+                RichReason::ExpectedFound { .. } => format!("{error}"),
+            })
+            .collect();
+
+        assert!(
+            messages
+                .iter()
+                .any(|message| message.ends_with("Ambiguous use of \\over")),
+            "{:?}",
+            messages
+        );
+    }
+
+    #[test]
+    fn test_repeated_over_still_reports_ambiguous_infix_kind() {
+        let output = test_context().parse(r"a \over b + 1 \over c", &ParseConfig::LENIENT);
+
+        let diagnostic = output
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.message == "Ambiguous use of \\over")
+            .unwrap_or_else(|| panic!("diagnostics: {:?}", output.diagnostics));
+        assert_eq!(diagnostic.kind, Some(ParseDiagnosticKind::AmbiguousInfix));
+    }
+
+    #[test]
+    fn test_environment_name_mismatch() {
+        let result = parse(r"\begin{matrix}a\end{align}", false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_environment_missing_end_errors() {
+        let errors = parse(r"\begin{matrix}", false).expect_err("expected missing end error");
+        let debug = format!("{errors:?}");
+        assert!(
+            debug.contains("\\end{matrix}"),
+            "Unexpected errors: {debug}"
+        );
+    }
+
+    #[test]
+    fn test_bare_prime_superscript_still_errors() {
+        let diagnostics = parse(r"f^'", false).unwrap_err();
+
+        assert_eq!(diagnostics, vec!["not a command"]);
+    }
+
+    #[test]
+    fn test_double_superscript_error() {
+        assert!(parse(r"x^2^3", false).is_err());
+    }
+
+    #[test]
+    fn test_double_subscript_error() {
+        assert!(parse(r"x_2_3", false).is_err());
+    }
+
+    #[test]
+    fn test_prime_after_superscript_error() {
+        assert!(parse(r"x^a'", false).is_err());
+    }
+
+    #[test]
+    fn test_prime_brace_superscript_error() {
+        // x'^' should fail because ^ expects a superscript atom, not a prime marker
+        assert!(parse(r"x'^'", false).is_err());
+    }
+}

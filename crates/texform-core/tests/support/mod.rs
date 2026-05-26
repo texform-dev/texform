@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+pub(crate) mod parser;
+
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
     ParseConfig, ParseContextBuildError, ParseContextBuilder, ParseDiagnostic, ParseOutput,

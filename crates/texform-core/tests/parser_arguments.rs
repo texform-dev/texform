@@ -463,3 +463,384 @@ fn nonstrict_text_content_direct_error_survives_trailing_generic() {
     assert!(contains_command_named(&result.node, "underline"));
     assert!(contains_error_node(&result.node));
 }
+
+mod migrated_argument_regressions {
+    use super::support::parser::{
+        expect_arg, label_command_item, parse, test_context_with_items, unwrap_content,
+    };
+    use texform_core::parse::ParseConfig;
+    use texform_interface::syntax_node::{ArgumentKind, ArgumentValue, SyntaxNode};
+
+    #[test]
+
+    fn test_dimension_argument() {
+        // "\hspace1em"
+
+        let (result, _) = parse(r"\hspace1em", false).unwrap();
+
+        match result {
+            SyntaxNode::Root { children, .. } => match &children[0] {
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "hspace");
+
+                    assert_eq!(args.len(), 1);
+
+                    assert_eq!(
+                        expect_arg(&args[0]).value,
+                        ArgumentValue::Dimension("1em".to_string())
+                    );
+                }
+
+                _ => panic!("Expected Command node"),
+            },
+
+            _ => panic!("Expected root Group"),
+        }
+    }
+
+    #[test]
+
+    fn test_integer_argument() {
+        // "\romannumeral12"
+
+        let (result, _) = parse(r"\romannumeral12", false).unwrap();
+
+        match result {
+            SyntaxNode::Root { children, .. } => match &children[0] {
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "romannumeral");
+
+                    assert_eq!(args.len(), 1);
+
+                    assert_eq!(
+                        expect_arg(&args[0]).value,
+                        ArgumentValue::Integer("12".to_string())
+                    );
+                }
+
+                _ => panic!("Expected Command node"),
+            },
+
+            _ => panic!("Expected root Group"),
+        }
+    }
+
+    #[test]
+
+    fn test_keyval_argument() {
+        // "\includegraphics[width=1em,height=2pt]{file}"
+
+        let (result, _) = parse(r"\includegraphics[width=1em,height=2pt]{file}", false).unwrap();
+
+        match result {
+            SyntaxNode::Root { children, .. } => match &children[0] {
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "includegraphics");
+
+                    assert_eq!(args.len(), 2);
+
+                    assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Optional);
+
+                    assert_eq!(
+                        expect_arg(&args[0]).value,
+                        ArgumentValue::KeyVal("width=1em,height=2pt".to_string())
+                    );
+
+                    assert_eq!(
+                        unwrap_content(&args[1]),
+                        &SyntaxNode::Text("file".to_string())
+                    );
+                }
+
+                _ => panic!("Expected Command node"),
+            },
+
+            _ => panic!("Expected root Group"),
+        }
+    }
+
+    #[test]
+
+    fn test_csname_argument() {
+        let (result, _) = parse(r"\label{sec:intro}", false).unwrap();
+
+        match result {
+            SyntaxNode::Root { children, .. } => match &children[0] {
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "label");
+
+                    assert_eq!(args.len(), 1);
+
+                    assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Mandatory);
+
+                    assert_eq!(
+                        expect_arg(&args[0]).value,
+                        ArgumentValue::CSName("sec:intro".to_string())
+                    );
+                }
+
+                _ => panic!("Expected Command node"),
+            },
+
+            _ => panic!("Expected root Group"),
+        }
+    }
+
+    #[test]
+
+    fn test_csname_argument_rejects_escape_sequence() {
+        let ctx = test_context_with_items([label_command_item()]);
+
+        let command = ctx.parse(r"\label{\alpha}", &ParseConfig::STRICT);
+
+        assert!(
+            command.result.is_none(),
+            "control sequence inside CSName should fail"
+        );
+
+        assert!(
+            !command.diagnostics.is_empty(),
+            "expected CSName diagnostics, got {:?}",
+            command.diagnostics
+        );
+
+        let escaped_symbol = ctx.parse(r"\label{sec\_a}", &ParseConfig::STRICT);
+
+        assert!(
+            escaped_symbol.result.is_none(),
+            "escaped symbol inside CSName should fail"
+        );
+
+        assert!(
+            !escaped_symbol.diagnostics.is_empty(),
+            "expected CSName diagnostics, got {:?}",
+            escaped_symbol.diagnostics
+        );
+    }
+
+    #[test]
+
+    fn test_delimiter_argument_braced_matches_inline() {
+        let (inline, _) = parse(r"\delim\langle", false).unwrap();
+
+        let (braced, _) = parse(r"\delim{\langle}", false).unwrap();
+
+        let inline_value = match inline {
+            SyntaxNode::Root { children, .. } => match &children[0] {
+                SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
+
+                _ => panic!("Expected Command node"),
+            },
+
+            _ => panic!("Expected root Group"),
+        };
+
+        let braced_value = match braced {
+            SyntaxNode::Root { children, .. } => match &children[0] {
+                SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
+
+                _ => panic!("Expected Command node"),
+            },
+
+            _ => panic!("Expected root Group"),
+        };
+
+        assert_eq!(inline_value, braced_value);
+    }
+
+    #[test]
+
+    fn test_integer_argument_braced_matches_inline() {
+        let (inline, _) = parse(r"\romannumeral12", false).unwrap();
+
+        let (braced, _) = parse(r"\romannumeral{ 12 }", false).unwrap();
+
+        let inline_value = match inline {
+            SyntaxNode::Root { children, .. } => match &children[0] {
+                SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
+
+                _ => panic!("Expected Command node"),
+            },
+
+            _ => panic!("Expected root Group"),
+        };
+
+        let braced_value = match braced {
+            SyntaxNode::Root { children, .. } => match &children[0] {
+                SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
+
+                _ => panic!("Expected Command node"),
+            },
+
+            _ => panic!("Expected root Group"),
+        };
+
+        assert_eq!(inline_value, braced_value);
+    }
+
+    #[test]
+
+    fn test_dimension_argument_braced_matches_inline() {
+        let (inline, _) = parse(r"\hspace1.5em", false).unwrap();
+
+        let (braced, _) = parse(r"\hspace{ 1,5 em }", false).unwrap();
+
+        let inline_value = match inline {
+            SyntaxNode::Root { children, .. } => match &children[0] {
+                SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
+
+                _ => panic!("Expected Command node"),
+            },
+
+            _ => panic!("Expected root Group"),
+        };
+
+        let braced_value = match braced {
+            SyntaxNode::Root { children, .. } => match &children[0] {
+                SyntaxNode::Command { args, .. } => expect_arg(&args[0]).value.clone(),
+
+                _ => panic!("Expected Command node"),
+            },
+
+            _ => panic!("Expected root Group"),
+        };
+
+        assert_eq!(inline_value, braced_value);
+
+        assert_eq!(inline_value, ArgumentValue::Dimension("1.5em".to_string()));
+    }
+
+    #[test]
+
+    fn test_optional_bracket_closes_at_top_level() {
+        let (result, _) = parse(r"\includegraphics[key={[[},width=1em]{file}", false).unwrap();
+
+        match result {
+            SyntaxNode::Root { children, .. } => match &children[0] {
+                SyntaxNode::Command { args, .. } => {
+                    assert_eq!(args.len(), 2);
+
+                    assert_eq!(
+                        expect_arg(&args[0]).value,
+                        ArgumentValue::KeyVal("key={[[},width=1em".to_string())
+                    );
+                }
+
+                _ => panic!("Expected Command node"),
+            },
+
+            _ => panic!("Expected root Group"),
+        }
+    }
+
+    #[test]
+
+    fn test_dimension_with_spaces() {
+        // "\hspace{1.5 cm}" - dimension with spaces between number and unit
+
+        let (result, _) = parse(r"\hspace{1.5 cm}", false).unwrap();
+
+        match result {
+            SyntaxNode::Root { children, .. } => match &children[0] {
+                SyntaxNode::Command { name, args, .. } => {
+                    assert_eq!(name, "hspace");
+
+                    assert_eq!(args.len(), 1);
+
+                    // Should be normalized to "1.5cm" (no space)
+
+                    assert_eq!(
+                        expect_arg(&args[0]).value,
+                        ArgumentValue::Dimension("1.5cm".to_string())
+                    );
+                }
+
+                _ => panic!("Expected Command node"),
+            },
+
+            _ => panic!("Expected root Group"),
+        }
+    }
+
+    #[test]
+
+    fn test_keyval_empty() {
+        // "\includegraphics[{}]{file}" - empty braces in optional keyval argument
+
+        // This should error because keyval requires at least one key=value pair
+
+        let result = parse(r"\includegraphics[{}]{file}", false);
+
+        assert!(result.is_err(), "Expected error for empty keyval");
+    }
+
+    #[test]
+
+    fn test_keyval_empty_brackets() {
+        // "\includegraphics[]{file}" - empty optional argument brackets
+
+        // This should also error because the brackets exist but contain no valid keyval
+
+        let result = parse(r"\includegraphics[]{file}", false);
+
+        assert!(
+            result.is_err(),
+            "Expected error for empty optional keyval brackets"
+        );
+    }
+
+    #[test]
+
+    fn test_optional_bracket_missing_closer_errors() {
+        let result = parse(r"\includegraphics[width=1em{file}", false);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+
+    fn test_invalid_integer_argument_errors() {
+        let result = parse(r"\romannumeral{12.5}", false);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+
+    fn test_invalid_dimension_argument_errors() {
+        let result = parse(r"\hspace{abc}", false);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+
+    fn test_unclosed_brace_argument_errors() {
+        let result = parse(r"\frac{a", false);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+
+    fn test_dimension_missing_number() {
+        // "\hspace{cm}" - dimension missing number should error
+
+        let result = parse(r"\hspace{cm}", false);
+
+        assert!(
+            result.is_err(),
+            "Expected error for dimension missing number"
+        );
+    }
+
+    #[test]
+
+    fn test_dimension_missing_unit() {
+        // "\hspace{1.5}" - dimension missing unit should error
+
+        let result = parse(r"\hspace{1.5}", false);
+
+        assert!(result.is_err(), "Expected error for dimension missing unit");
+    }
+}

@@ -4,7 +4,7 @@ use texform::{
 };
 
 #[test]
-fn parser_parse_returns_result_and_diagnostics() {
+fn parser_parse_returns_result_on_success() {
     let parser = Parser::builder()
         .packages(&["base"])
         .build()
@@ -17,9 +17,44 @@ fn parser_parse_returns_result_and_diagnostics() {
     let result = success.result.unwrap();
     assert_eq!(result.span.start, 0);
     assert_eq!(result.span.end, r"\frac{a}{b}".len());
+}
+
+#[test]
+fn parser_parse_result_serializes_for_consumers() {
+    let parser = Parser::builder()
+        .packages(&["base"])
+        .build()
+        .expect("parser should build");
+
+    let output = parser.parse(r"\frac{a}{b}");
+    let result = output.result.expect("expected parse result");
     let json = serde_json::to_value(&result).expect("parse result should serialize");
     assert!(json.get("node").is_some());
     assert!(json.get("span").is_some());
+    assert_eq!(json["span"]["start"], 0);
+}
+
+#[test]
+fn parser_parse_exposes_diagnostics_to_callers() {
+    let parser = Parser::builder()
+        .packages(&["base"])
+        .build()
+        .expect("parser should build");
+
+    let output = parser.parse_with("{", &ParseConfig::LENIENT);
+    assert!(
+        output.result.is_some(),
+        "lenient parse keeps a partial tree"
+    );
+    assert!(!output.diagnostics.is_empty(), "diagnostics expected");
+}
+
+#[test]
+fn parser_parse_with_strict_unknown_command_fails() {
+    let parser = Parser::builder()
+        .packages(&["base"])
+        .build()
+        .expect("parser should build");
 
     let failure = parser.parse_with(r"\unknowncmd", &ParseConfig::STRICT);
     assert!(
@@ -107,6 +142,34 @@ fn parser_builder_items_cover_commands_environments_and_delimiters() {
 }
 
 #[test]
+fn parser_builder_remove_methods_hide_runtime_items() {
+    let parser = Parser::builder()
+        .empty_knowledge()
+        .item(CommandItem::new(
+            "probe",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "",
+        ))
+        .item(EnvironmentItem::new(
+            "probeenv",
+            AllowedMode::Math,
+            ContentMode::Math,
+            "",
+        ))
+        .item(DelimiterControlItem::new("langle"))
+        .remove_command("probe")
+        .remove_environment("probeenv")
+        .remove_delimiter_control("langle")
+        .build()
+        .expect("parser should build");
+
+    assert!(parser.lookup_command("probe", ContentMode::Math).is_none());
+    assert!(parser.lookup_env("probeenv", ContentMode::Math).is_none());
+    assert!(!parser.is_delimiter_control("langle"));
+}
+
+#[test]
 fn parser_builder_reports_invalid_items_and_packages() {
     let invalid_item = Parser::builder()
         .empty_knowledge()
@@ -128,6 +191,8 @@ fn parser_builder_reports_invalid_items_and_packages() {
 
 #[test]
 fn parser_builder_packages_use_canonical_loading_order() {
+    // This protects the facade builder contract: callers can pass packages in
+    // any order and still get canonical package merge behavior.
     let parser = Parser::builder()
         .packages(&["physics", "base"])
         .build()
@@ -155,5 +220,23 @@ fn parser_builder_packages_use_canonical_loading_order() {
             );
         }
         other => panic!("expected command node, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_to_ast_with_returns_error_for_strict_failures() {
+    let parser = Parser::builder()
+        .packages(&["base"])
+        .build()
+        .expect("parser should build");
+
+    let error = parser
+        .parse_to_ast_with(r"\unknowncmd", &ParseConfig::STRICT)
+        .expect_err("strict parse should fail");
+    match error {
+        texform::ParseAstError::NoParseResult { diagnostics }
+        | texform::ParseAstError::DiagnosticsPresent { diagnostics } => {
+            assert!(!diagnostics.is_empty());
+        }
     }
 }
