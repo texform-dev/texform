@@ -13,14 +13,16 @@ fn underline_uses_math_and_text_variants_in_matching_modes() {
 
     let math = ctx
         .parse(r"\underline{x}", &ParseConfig::LENIENT)
-        .result
+        .try_into_document()
         .expect("expected math parse result")
-        .node;
+        .0
+        .to_syntax();
     let text = ctx
         .parse(r"\text{a \underline{b}}", &ParseConfig::LENIENT)
-        .result
+        .try_into_document()
         .expect("expected text parse result")
-        .node;
+        .0
+        .to_syntax();
 
     match math {
         SyntaxNode::Root { children, .. } => match &children[0] {
@@ -148,11 +150,11 @@ fn test_parser_isolation_for_custom_commands() {
 
     let out1_foo = ctx1.parse(r"\fooisolated{a}", &ParseConfig::STRICT);
     assert!(out1_foo.diagnostics.is_empty());
-    assert!(out1_foo.result.is_some());
+    assert!(out1_foo.document().is_some());
 
     let out1_bar = ctx1.parse(r"\barisolated{a}", &ParseConfig::STRICT);
     assert!(!out1_bar.diagnostics.is_empty());
-    assert!(out1_bar.result.is_none());
+    assert!(out1_bar.document().is_none());
 
     let ctx2 = test_context_with_items([command_item(
         "barisolated",
@@ -163,9 +165,9 @@ fn test_parser_isolation_for_custom_commands() {
 
     let out2_bar = ctx2.parse(r"\barisolated{a}", &ParseConfig::STRICT);
     assert!(out2_bar.diagnostics.is_empty());
-    assert!(out2_bar.result.is_some());
+    assert!(out2_bar.document().is_some());
 
     let out2_foo = ctx2.parse(r"\fooisolated{a}", &ParseConfig::STRICT);
     assert!(!out2_foo.diagnostics.is_empty());
-    assert!(out2_foo.result.is_none());
+    assert!(out2_foo.document().is_none());
 }

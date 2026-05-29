@@ -4,7 +4,7 @@
 
 TeXForm is a LaTeX formula parser, formatter, and transform engine. This repository is intended to be open source, so code, documentation, comments, examples, and user-facing text must be clear, polished, and written in English.
 
-See @README.md for more about this project.
+See @README.md for usage, and @ARCHITECTURE.md for the architectural overview: crate layout, the processing pipeline, the three tree representations, and the public API guarantees.
 
 ## Repository Structure
 
@@ -91,6 +91,10 @@ wasm-pack build crates/texform-wasm --target web
 ```
 
 ## Maintenance Notes
+
+### Architecture Document
+
+[`ARCHITECTURE.md`](ARCHITECTURE.md) is the public architectural overview. Keep it current: whenever you change the crate layout, the public API surface, the processing pipeline, or the tree representations and their invariants, update `ARCHITECTURE.md` in the same change.
 
 ### TypeScript Type Declaration Sync
 

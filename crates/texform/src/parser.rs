@@ -1,5 +1,6 @@
-use texform_core::ast::Ast;
-use texform_core::parse::{self, ContextItem, ParseConfig, ParseOutput};
+use texform_core::parse::{self, ContextItem, ParseConfig};
+
+use crate::parse_result::ParseResult;
 
 #[derive(Clone, Debug)]
 pub struct Parser {
@@ -40,24 +41,12 @@ impl Parser {
     ///
     /// The standalone [`Parser`] default is [`ParseConfig::LENIENT`]. Use
     /// [`parse_with`](Self::parse_with) to override per call.
-    pub fn parse(&self, src: &str) -> ParseOutput {
-        self.inner.parse(src, &self.default_config)
+    pub fn parse(&self, src: &str) -> ParseResult {
+        ParseResult::from_core(self.inner.parse(src, &self.default_config))
     }
 
-    pub fn parse_with(&self, src: &str, config: &ParseConfig) -> ParseOutput {
-        self.inner.parse(src, config)
-    }
-
-    pub fn parse_to_ast(&self, src: &str) -> Result<Ast, parse::ParseAstError> {
-        self.inner.parse_to_ast(src, &self.default_config)
-    }
-
-    pub fn parse_to_ast_with(
-        &self,
-        src: &str,
-        config: &ParseConfig,
-    ) -> Result<Ast, parse::ParseAstError> {
-        self.inner.parse_to_ast(src, config)
+    pub fn parse_with(&self, src: &str, config: &ParseConfig) -> ParseResult {
+        ParseResult::from_core(self.inner.parse(src, config))
     }
 
     pub fn lookup_command(

@@ -1,8 +1,8 @@
-use texform_core::ast::Ast;
 use texform_core::parse::ParseConfig;
 use texform_transform::{BuildConfig, Profile, TransformContext, TransformReport};
 
 use crate::config::{NormalizeConfig, TransformConfig};
+use crate::document::Document;
 use crate::error::Error;
 use crate::parser::{Parser, ParserBuilder};
 
@@ -35,16 +35,24 @@ impl Engine {
         &self.parser
     }
 
-    pub fn transform_ast(&self, ast: &mut Ast) -> Result<TransformReport, Error> {
-        Ok(self.transform.run(ast, self.parser.inner())?)
+    pub fn transform(&self, document: &mut Document) -> Result<TransformReport, Error> {
+        self.transform_with(document, self.transform.default_config())
     }
 
-    pub fn transform_ast_with(
+    pub fn transform_with(
         &self,
-        ast: &mut Ast,
+        document: &mut Document,
         config: &TransformConfig,
     ) -> Result<TransformReport, Error> {
-        Ok(self.transform.run_with(ast, self.parser.inner(), config)?)
+        if document.has_errors() {
+            return Err(Error::IncompleteTree);
+        }
+
+        Ok(self.transform.run_with(
+            document.core_mut().__texform_engine_ast_mut(),
+            self.parser.inner(),
+            config,
+        )?)
     }
 
     pub fn normalize(&self, src: &str) -> Result<NormalizeResult, Error> {
@@ -60,12 +68,13 @@ impl Engine {
         src: &str,
         config: &NormalizeConfig,
     ) -> Result<NormalizeResult, Error> {
-        let mut ast = self.parser.parse_to_ast_with(src, &config.parse)?;
-        let report = self
-            .transform
-            .run_with(&mut ast, self.parser.inner(), &config.transform)?;
+        let (mut document, _) = self
+            .parser
+            .parse_with(src, &config.parse)
+            .try_into_document()?;
+        let report = self.transform_with(&mut document, &config.transform)?;
         Ok(NormalizeResult {
-            normalized: crate::serialize::serialize(&ast)?,
+            normalized: document.to_latex()?,
             report,
         })
     }

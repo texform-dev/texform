@@ -339,11 +339,11 @@ fn run_direct(
                     if !output.diagnostics.is_empty() {
                         return (buf, e, sp + 1, se);
                     }
-                    let Some(parsed) = output.result else {
+                    let Some(parsed) = output.document() else {
                         return (buf, e, sp + 1, se);
                     };
                     let mut counter = FormulaCounter::default();
-                    count_node(&parsed.node, &mut counter);
+                    count_node(&parsed.to_syntax(), &mut counter);
                     if counter.is_empty() {
                         return (buf, e, sp, se + 1);
                     }

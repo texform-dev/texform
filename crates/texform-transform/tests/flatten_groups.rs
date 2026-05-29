@@ -17,9 +17,7 @@ fn run_flatten_groups(src: &str) -> Outcome {
 
 fn run_flatten_groups_with_config(src: &str, flatten_groups: FlattenGroupsConfig) -> Outcome {
     let parse_ctx = ParseContext::from_packages(&["base", "ams"]);
-    let mut ast = parse_ctx
-        .parse_to_ast(src, &ParseConfig::default())
-        .expect("source should parse");
+    let mut ast = parse_to_ast(&parse_ctx, src, &ParseConfig::default());
     let config = TransformConfig {
         rewrite_enabled: false,
         lower_attributes_enabled: false,
@@ -37,6 +35,15 @@ fn run_flatten_groups_with_config(src: &str, flatten_groups: FlattenGroupsConfig
     let text = serialize(&ast);
 
     Outcome { ast, report, text }
+}
+
+fn parse_to_ast(parse_ctx: &ParseContext, src: &str, config: &ParseConfig) -> Ast {
+    let document = parse_ctx
+        .parse(src, config)
+        .try_into_document()
+        .expect("source should parse")
+        .0;
+    Ast::from_syntax_root(&document.to_syntax())
 }
 
 #[test]

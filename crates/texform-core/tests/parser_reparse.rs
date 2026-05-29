@@ -179,10 +179,9 @@ fn test_delimited_content_argument_reparse_keeps_known_command() {
     );
 
     let node = output
-        .result
-        .as_ref()
+        .document()
         .unwrap_or_else(|| panic!("expected parse result"))
-        .node
+        .to_syntax()
         .clone();
 
     match node {

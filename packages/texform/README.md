@@ -7,19 +7,30 @@ npm install texform
 ```
 
 ```ts
-import { Engine, Parser, serialize, validateArgspec } from "texform";
+import { Document, Engine, Parser, validateArgspec } from "texform";
 
 const parser = new Parser();
-const parsed = parser.parse("\\frac{a}{b}");
-const text = serialize(parsed.node);
+const result = parser.parse(String.raw`\frac{x}{y}`);
+
+if (result.document) {
+  console.log(result.document.toLatex());
+}
+
+const document = new Document();
+const root = document.root();
+const x = document.createChar("x");
+document.appendChild(root, x);
+
+console.log(document.toLatex());
 
 const engine = new Engine({ profile: "authoring" });
-const result = engine.normalize("a \\over b");
+const normalized = engine.normalize("a \\over b");
 
-console.log(text);
-console.log(result.normalized);
+console.log(normalized.normalized);
 console.log(validateArgspec("m o"));
 ```
+
+`serialize(node, options)` remains as a compatibility helper for `SyntaxNode` snapshots. New code should use `Document.fromSyntax(node).toLatex(options)` or `document.toLatex(options)`.
 
 The package exposes Node and bundler entry points:
 
@@ -27,8 +38,7 @@ The package exposes Node and bundler entry points:
 - `texform/node` forces the Node entry.
 - `texform/bundler` forces the bundler entry.
 
-The bundler entry initializes the WebAssembly module during module loading and
-expects a modern bundler that supports top-level `await` and `.wasm` assets.
+The bundler entry initializes the WebAssembly module during module loading and expects a modern bundler that supports top-level `await` and `.wasm` assets.
 
 Before publishing, rebuild and sync the underlying WebAssembly bindings:
 

@@ -3,8 +3,8 @@
 //! [`ParseContext`] is the primary public API surface for freezing a knowledge
 //! base and parsing LaTeX formulas with a stable package-backed view.
 //!
-//! The module also defines the shared output types ([`ParseOutput`],
-//! [`ParseResult`], [`ParseDiagnostic`]) used by every parse entry point.
+//! The module also defines the shared output types ([`ParseResult`],
+//! [`ParseDiagnostic`]) used by every parse entry point.
 
 use std::collections::HashSet;
 use std::sync::{Arc, OnceLock};
@@ -13,8 +13,6 @@ use chumsky::prelude::*;
 use logos::Logos;
 use serde::Serialize;
 pub use texform_argspec::ArgSpecParseError;
-use texform_interface::syntax_node::SyntaxNode;
-
 pub use texform_interface::syntax_node::ContentMode;
 use texform_knowledge::builtin::PackageName;
 pub use texform_knowledge::specs::{
@@ -22,14 +20,12 @@ pub use texform_knowledge::specs::{
     AllowedMode, CommandKind,
 };
 
-use crate::ast::Ast;
+use crate::document::Document;
 pub use crate::knowledge::KnowledgeBase;
 pub use crate::knowledge::PackageLoadError;
 use crate::knowledge::default_package_names;
 use crate::lexer::Token;
-use crate::parse::grammar::{
-    self, RelativeSpanEntry, TokenStream, TrackedNode, build_token_stream,
-};
+use crate::parse::grammar::{self, TokenStream, TrackedNode, build_token_stream};
 use crate::parse::{ParseConfig, ParserState};
 
 type LexedSource = Vec<(Token, std::ops::Range<usize>)>;
@@ -547,35 +543,54 @@ pub struct ParseDiagnosticContext {
     pub span: Span,
 }
 
-/// Successful (possibly partial) parse result.
+/// Unified parse result carrying an optional document and zero or more diagnostics.
 ///
-/// Even when diagnostics are present, a partial syntax tree may still be
-/// available here, allowing consumers to inspect whatever the parser managed
-/// to produce.
-#[derive(Debug, Clone, Serialize)]
-#[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
-pub struct NodeSpanEntry {
-    pub id: String,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
-#[cfg_attr(feature = "tsify", tsify(into_wasm_abi))]
+/// The design mirrors chumsky's `output + errors` semantics: a partial document
+/// may coexist with diagnostics, so consumers always receive as much
+/// information as the parser could extract.
+#[derive(Debug, Clone)]
 pub struct ParseResult {
-    /// The syntax tree produced by parsing
-    pub node: SyntaxNode,
-    /// Byte range of the parsed input
-    pub span: Span,
-    pub node_spans: Vec<NodeSpanEntry>,
+    /// Parsed document, present even when diagnostics exist for recovered input.
+    pub document: Option<Document>,
+    /// Zero or more diagnostics; empty on full success.
+    pub diagnostics: Vec<ParseDiagnostic>,
 }
 
 impl ParseResult {
-    pub fn span_for(&self, id: &str) -> Option<&Span> {
-        self.node_spans
-            .iter()
-            .find(|entry| entry.id == id)
-            .map(|entry| &entry.span)
+    /// Borrow the parsed document, if one was produced.
+    pub fn document(&self) -> Option<&Document> {
+        self.document.as_ref()
+    }
+
+    /// Borrow parse diagnostics.
+    pub fn diagnostics(&self) -> &[ParseDiagnostic] {
+        self.diagnostics.as_slice()
+    }
+
+    /// Consume the result and return only diagnostics.
+    pub fn into_diagnostics(self) -> Vec<ParseDiagnostic> {
+        self.diagnostics
+    }
+
+    /// `true` when a recovered document contains one or more `Error` nodes.
+    pub fn has_errors(&self) -> bool {
+        self.document.as_ref().is_some_and(Document::has_errors)
+    }
+
+    /// Return the document and diagnostics when the document is editable.
+    pub fn try_into_document(self) -> Result<(Document, Vec<ParseDiagnostic>), ParseError> {
+        match (self.document, self.diagnostics) {
+            (Some(document), diagnostics) if !document.has_errors() => Ok((document, diagnostics)),
+            (document, diagnostics) => Err(ParseError {
+                diagnostics,
+                document: document.map(Box::new),
+            }),
+        }
+    }
+
+    /// Consume the result into its two public parts.
+    pub fn into_parts(self) -> (Option<Document>, Vec<ParseDiagnostic>) {
+        (self.document, self.diagnostics)
     }
 }
 
@@ -620,36 +635,41 @@ impl ParseDiagnostic {
     }
 }
 
-/// Unified parse output carrying an optional result and zero or more diagnostics.
-///
-/// The design mirrors chumsky's `output + errors` semantics: a partial tree
-/// may coexist with diagnostics, so consumers always receive as much
-/// information as the parser could extract.
-#[derive(Debug, Clone, Serialize)]
-#[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
-pub struct ParseOutput {
-    /// Parse result, present even when diagnostics exist (partial parse)
-    pub result: Option<ParseResult>,
-    /// Zero or more diagnostics; empty on full success
-    pub diagnostics: Vec<ParseDiagnostic>,
-}
-
 #[derive(Debug, Clone)]
-pub enum ParseAstError {
-    NoParseResult { diagnostics: Vec<ParseDiagnostic> },
-    DiagnosticsPresent { diagnostics: Vec<ParseDiagnostic> },
+pub struct ParseError {
+    pub diagnostics: Vec<ParseDiagnostic>,
+    pub document: Option<Box<Document>>,
 }
 
-impl std::fmt::Display for ParseAstError {
+impl ParseError {
+    pub fn diagnostics(&self) -> &[ParseDiagnostic] {
+        self.diagnostics.as_slice()
+    }
+
+    pub fn document(&self) -> Option<&Document> {
+        self.document.as_deref()
+    }
+
+    pub fn into_diagnostics(self) -> Vec<ParseDiagnostic> {
+        self.diagnostics
+    }
+
+    pub fn into_parts(self) -> (Option<Document>, Vec<ParseDiagnostic>) {
+        (self.document.map(|document| *document), self.diagnostics)
+    }
+}
+
+impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ParseAstError::NoParseResult { .. } => f.write_str("parse produced no syntax tree"),
-            ParseAstError::DiagnosticsPresent { .. } => f.write_str("parse produced diagnostics"),
+        if self.document.is_some() {
+            f.write_str("parse produced an incomplete document")
+        } else {
+            f.write_str("parse produced no document")
         }
     }
 }
 
-impl std::error::Error for ParseAstError {}
+impl std::error::Error for ParseError {}
 
 /// Immutable parse context owning an isolated knowledge base.
 ///
@@ -796,19 +816,8 @@ impl ParseContext {
     ///
     /// Uses chumsky's output+errors semantics so that a partial syntax tree
     /// can coexist with diagnostics.
-    pub fn parse(&self, src: &str, config: &ParseConfig) -> ParseOutput {
+    pub fn parse(&self, src: &str, config: &ParseConfig) -> ParseResult {
         parse_with_context(self, src, config)
-    }
-
-    pub fn parse_to_ast(&self, src: &str, config: &ParseConfig) -> Result<Ast, ParseAstError> {
-        let output = self.parse(src, config);
-        match (output.result, output.diagnostics) {
-            (Some(result), diagnostics) if diagnostics.is_empty() => {
-                Ok(Ast::from_syntax_root(&result.node))
-            }
-            (Some(_), diagnostics) => Err(ParseAstError::DiagnosticsPresent { diagnostics }),
-            (None, diagnostics) => Err(ParseAstError::NoParseResult { diagnostics }),
-        }
     }
 
     /// Look up the active command metadata for `name`.
@@ -896,23 +905,27 @@ pub(crate) fn parse_with_context(
     ctx: &ParseContext,
     src: &str,
     config: &ParseConfig,
-) -> ParseOutput {
+) -> ParseResult {
     let token_stream = build_token_stream(src);
     let (output, mut errors) = parse_raw(ctx, src, token_stream, config);
 
-    let result = output.map(|tracked| {
-        let (node, span, records, diagnostics) = tracked.finish_root();
+    let document = output.map(|tracked| {
+        let (node, _span, records, diagnostics) = tracked.finish_root();
         errors.extend(diagnostics);
-        let span = Span {
-            start: span.start,
-            end: span.end,
-        };
-
-        ParseResult {
-            node,
-            span: span.clone(),
-            node_spans: records.into_iter().map(node_span_entry).collect(),
-        }
+        let path_spans: Vec<_> = records
+            .into_iter()
+            .map(|entry| {
+                (
+                    entry.path,
+                    Span {
+                        start: entry.span.start,
+                        end: entry.span.end,
+                    },
+                )
+            })
+            .collect();
+        Document::from_syntax_with_spans(&node, &path_spans)
+            .expect("parser must produce a syntax root accepted by Document")
     });
 
     let mut diagnostics: Vec<_> = errors
@@ -921,8 +934,8 @@ pub(crate) fn parse_with_context(
         .collect();
     diagnostics.sort_by_key(parse_diagnostic_priority);
 
-    ParseOutput {
-        result,
+    ParseResult {
+        document,
         diagnostics,
     }
 }
@@ -943,16 +956,6 @@ fn parse_raw(
     let mut collected_errors = state.take_recovery_diagnostics();
     collected_errors.extend(errors.into_iter().map(|e| e.into_owned()));
     (output, collected_errors)
-}
-
-fn node_span_entry(entry: RelativeSpanEntry) -> NodeSpanEntry {
-    NodeSpanEntry {
-        id: entry.path,
-        span: Span {
-            start: entry.span.start,
-            end: entry.span.end,
-        },
-    }
 }
 
 fn convert_diagnostic(ctx: &ParseContext, src: &str, err: Rich<'static, Token>) -> ParseDiagnostic {

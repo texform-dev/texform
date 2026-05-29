@@ -44,13 +44,27 @@ export interface ParseDiagnostic {
   contexts: ParseDiagnosticContext[];
 }
 
-export type ContentMode = "Math" | "Text";
+export type ContentMode = "Math" | "Text" | "math" | "text";
+export type SyntaxContentMode = "Math" | "Text";
+export type RuntimeContentMode = "math" | "text";
+
 export type Delimiter = "None" | { Char: string } | { Control: string };
+export type DelimiterValue =
+  | { kind: "None" }
+  | { kind: "Char"; value: string }
+  | { kind: "Control"; value: string };
+
 export type GroupKind =
   | "Explicit"
   | "Implicit"
   | { Delimited: { left: Delimiter; right: Delimiter } }
   | "InlineMath";
+
+export type GroupKindRef =
+  | { kind: "Explicit" }
+  | { kind: "Implicit" }
+  | { kind: "Delimited"; left: DelimiterValue; right: DelimiterValue }
+  | { kind: "InlineMath" };
 
 export type ArgumentKind =
   | "Mandatory"
@@ -61,8 +75,8 @@ export type ArgumentKind =
   | { Paired: { open: Delimiter; close: Delimiter } };
 
 export type SyntaxNode =
-  | { Root: { mode: ContentMode; children: SyntaxNode[] } }
-  | { Group: { mode: ContentMode; kind: GroupKind; children: SyntaxNode[] } }
+  | { Root: { mode: SyntaxContentMode; children: SyntaxNode[] } }
+  | { Group: { mode: SyntaxContentMode; kind: GroupKind; children: SyntaxNode[] } }
   | { Command: { name: string; args: ArgumentSlot[]; known: boolean } }
   | { Infix: { name: string; args: ArgumentSlot[]; left: SyntaxNode; right: SyntaxNode } }
   | { Declarative: { name: string; args: ArgumentSlot[] } }
@@ -89,26 +103,107 @@ export type ArgumentValue =
   | { Column: string }
   | { Boolean: boolean };
 
-export interface NodeSpanEntry {
-  id: string;
-  span: Span;
-}
+export type NodeKind =
+  | "root"
+  | "group"
+  | "command"
+  | "infix"
+  | "declarative"
+  | "environment"
+  | "scripted"
+  | "text"
+  | "char"
+  | "activeSpace"
+  | "error";
+
+export type ArgRef =
+  | { kind: "Math"; node: Node }
+  | { kind: "Text"; node: Node }
+  | { kind: "Delimiter"; value: DelimiterValue }
+  | { kind: "CSName"; value: string }
+  | { kind: "Dimension"; value: string }
+  | { kind: "Integer"; value: string }
+  | { kind: "KeyVal"; value: string }
+  | { kind: "Column"; value: string }
+  | { kind: "Boolean"; value: boolean };
+
+export type ArgValueInput = ArgRef;
 
 export interface ParseResult {
-  node: SyntaxNode;
-  span: Span;
-  node_spans: NodeSpanEntry[];
-  display: string;
+  document: Document | null;
+  diagnostics: ParseDiagnostic[];
 }
 
-export interface ParseOutput {
-  result?: ParseResult;
-  diagnostics: ParseDiagnostic[];
+export class Document {
+  constructor();
+  static fromSyntax(node: SyntaxNode): Document;
+  free(): void;
+  [Symbol.dispose](): void;
+  root(): Node;
+  hasErrors(): boolean;
+  isReadOnly(): boolean;
+  errors(): Node[];
+  findCommands(name: string): Node[];
+  findEnvironments(name: string): Node[];
+  createChar(value: string): Node;
+  createText(value: string): Node;
+  createActiveSpace(): Node;
+  createGroup(mode: RuntimeContentMode): Node;
+  createCommand(name: string, args?: ArgValueInput[] | null): Node;
+  createDeclarative(name: string, args?: ArgValueInput[] | null): Node;
+  createEnvironment(name: string, args: ArgValueInput[] | null | undefined, body: Node): Node;
+  appendChild(parent: Node, child: Node): void;
+  insertChild(parent: Node, index: number, child: Node): void;
+  insertBefore(anchor: Node, node: Node): void;
+  insertAfter(anchor: Node, node: Node): void;
+  replaceWith(target: Node, replacement: Node): void;
+  wrap(target: Node, wrapper: Node): Node;
+  unwrap(group: Node): Node[];
+  extract(node: Node): Node;
+  remove(node: Node): void;
+  clear(node: Node): void;
+  setText(node: Node, value: string): void;
+  setChar(node: Node, value: string): void;
+  setCommandName(node: Node, name: string): void;
+  setArg(node: Node, index: number, value: ArgValueInput): void;
+  toSyntax(): SyntaxNode;
+  toLatex(options?: SerializeOptions | null): string;
+}
+
+export class Node {
+  free(): void;
+  [Symbol.dispose](): void;
+  readonly kind: NodeKind;
+  isCommand(name?: string | null): boolean;
+  isChar(value?: string | null): boolean;
+  isError(): boolean;
+  parent(): Node | null;
+  readonly children: Node[];
+  nextSibling(): Node | null;
+  prevSibling(): Node | null;
+  ancestors(): Node[];
+  descendants(): Node[];
+  readonly commandName?: string;
+  readonly envName?: string;
+  readonly text?: string;
+  readonly char?: string;
+  errorParts(): { message: string; snippet: string } | null;
+  contentMode(): RuntimeContentMode | undefined;
+  groupKind(): GroupKindRef | null;
+  argCount(): number;
+  arg(index: number): ArgRef | null;
+  argSlots(): Array<ArgRef | null>;
+  scriptBase(): Node | null;
+  subscript(): Node | null;
+  superscript(): Node | null;
+  infixLeft(): Node | null;
+  infixRight(): Node | null;
+  envBody(): Node | null;
+  span(): Span | null;
 }
 
 export class TexformParseError extends Error {
   diagnostics: ParseDiagnostic[];
-  partialResult: ParseResult | null;
 }
 
 export type AllowedMode = "math" | "text" | "both";
@@ -135,7 +230,7 @@ export interface CommandInfo {
 export interface EnvInfo {
   name: string;
   allowed_mode: AllowedMode;
-  body_mode: "math" | "text";
+  body_mode: RuntimeContentMode;
   spec_string: string;
   from_packages: string[];
   tags: string[];
@@ -167,7 +262,7 @@ export type ContextItem =
       target: "environment";
       name: string;
       allowed_mode: AllowedMode;
-      body_mode: "math" | "text";
+      body_mode: RuntimeContentMode;
       argspec: string;
       tags?: string[];
     }
@@ -244,22 +339,38 @@ export interface TransformResult {
 
 export interface ValidateArgspecResult {
   valid: boolean;
-  parsed?: unknown[];
-  error?: string;
+  parsed?: unknown[] | null;
+  error?: string | null;
+  arg_count?: number;
+}
+
+export interface LowerAttributesConfigInput {
+  enabled?: boolean;
+}
+
+export interface RewriteConfigInput {
+  enabled?: boolean;
+  maxIterations?: number;
 }
 
 export interface FlattenGroupsConfigInput {
   enabled?: boolean;
-  preserve_empty_group?: boolean;
-  preserve_group_adjacent_to_command_like?: boolean;
-  preserve_group_after_scripted_command_like?: boolean;
-  preserve_group_containing_declarative_command?: boolean;
-  preserve_group_containing_delimited_pair?: boolean;
-  preserve_group_containing_infix?: boolean;
-  preserve_group_in_script_base_slot?: boolean;
-  preserve_group_inside_env_body?: boolean;
-  preserve_group_starting_with_atom_spacing_char?: boolean;
-  preserve_group_with_lone_atom_spacing_char?: boolean;
+  preserveEmptyGroup?: boolean;
+  preserveGroupAdjacentToCommandLike?: boolean;
+  preserveGroupAfterScriptedCommandLike?: boolean;
+  preserveGroupContainingDeclarativeCommand?: boolean;
+  preserveGroupContainingDelimitedPair?: boolean;
+  preserveGroupContainingInfix?: boolean;
+  preserveGroupInScriptBaseSlot?: boolean;
+  preserveGroupInsideEnvBody?: boolean;
+  preserveGroupStartingWithAtomSpacingChar?: boolean;
+  preserveGroupWithLoneAtomSpacingChar?: boolean;
+}
+
+export interface TransformConfigInput {
+  lowerAttributes?: LowerAttributesConfigInput;
+  rewrite?: RewriteConfigInput;
+  flattenGroups?: FlattenGroupsConfigInput;
 }
 
 export type Profile = "authoring" | "corpus" | "corpus-drop" | "equiv";
@@ -292,10 +403,10 @@ export class Parser {
   knowsCommandName(name: string): boolean;
   knowsEnvName(name: string): boolean;
   knowsCharacterName(name: string): boolean;
-  lookupCharacter(name: string, mode: "math" | "text"): CharacterInfo | undefined;
-  lookupCommand(name: string, mode: "math" | "text"): CommandInfo | undefined;
-  lookupEnv(name: string, mode: "math" | "text"): EnvInfo | undefined;
-  lookupExplicitCommand(name: string, mode: "math" | "text"): CommandInfo | undefined;
+  lookupCharacter(name: string, mode: RuntimeContentMode): CharacterInfo | undefined;
+  lookupCommand(name: string, mode: RuntimeContentMode): CommandInfo | undefined;
+  lookupEnv(name: string, mode: RuntimeContentMode): EnvInfo | undefined;
+  lookupExplicitCommand(name: string, mode: RuntimeContentMode): CommandInfo | undefined;
   parse(src: string, config?: ParseConfigInput | null): ParseResult;
 }
 
@@ -309,11 +420,16 @@ export class Engine {
   knowsCommandName(name: string): boolean;
   knowsEnvName(name: string): boolean;
   knowsCharacterName(name: string): boolean;
-  lookupCharacter(name: string, mode: "math" | "text"): CharacterInfo | undefined;
-  lookupCommand(name: string, mode: "math" | "text"): CommandInfo | undefined;
-  lookupEnv(name: string, mode: "math" | "text"): EnvInfo | undefined;
-  lookupExplicitCommand(name: string, mode: "math" | "text"): CommandInfo | undefined;
+  lookupCharacter(name: string, mode: RuntimeContentMode): CharacterInfo | undefined;
+  lookupCommand(name: string, mode: RuntimeContentMode): CommandInfo | undefined;
+  lookupEnv(name: string, mode: RuntimeContentMode): EnvInfo | undefined;
+  lookupExplicitCommand(name: string, mode: RuntimeContentMode): CommandInfo | undefined;
 }
 
+/**
+ * @deprecated Prefer `Document.fromSyntax(node).toLatex(options)` or
+ * `document.toLatex(options)`.
+ */
 export function serialize(node: SyntaxNode, options?: SerializeOptions | null): string;
+
 export function validateArgspec(spec: string): ValidateArgspecResult;

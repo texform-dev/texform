@@ -29,3 +29,17 @@ pub use rewrite::{
     RuleError, RuleKey, RuleMeta, RuleProduces, RuleSafety, RuleTarget, RuleTargetKey,
     RuleTargetKind,
 };
+
+#[cfg(test)]
+pub(crate) fn parse_to_ast_for_test(
+    parse_ctx: &parse::ParseContext,
+    src: &str,
+    config: &parse::ParseConfig,
+) -> ast::Ast {
+    let document = parse_ctx
+        .parse(src, config)
+        .try_into_document()
+        .expect("test input should parse")
+        .0;
+    ast::Ast::from_syntax_root(&document.to_syntax())
+}

@@ -228,10 +228,9 @@ fn test_no_leading_space_after_single_token_m_for_optional_brackets() {
         spaced.diagnostics
     );
     let spaced_node = spaced
-        .result
-        .as_ref()
+        .document()
         .unwrap_or_else(|| panic!("expected parse result"))
-        .node
+        .to_syntax()
         .clone();
 
     match spaced_node {
@@ -263,10 +262,9 @@ fn test_no_leading_space_after_single_token_m_for_optional_brackets() {
         tight.diagnostics
     );
     let tight_node = tight
-        .result
-        .as_ref()
+        .document()
         .unwrap_or_else(|| panic!("expected parse result"))
-        .node
+        .to_syntax()
         .clone();
 
     match tight_node {
@@ -308,10 +306,9 @@ fn test_no_leading_space_after_single_token_m_for_group_slot() {
         spaced.diagnostics
     );
     let spaced_node = spaced
-        .result
-        .as_ref()
+        .document()
         .unwrap_or_else(|| panic!("expected parse result"))
-        .node
+        .to_syntax()
         .clone();
 
     match spaced_node {
@@ -356,10 +353,9 @@ fn test_no_leading_space_after_single_token_m_for_group_slot() {
         tight.diagnostics
     );
     let tight_node = tight
-        .result
-        .as_ref()
+        .document()
         .unwrap_or_else(|| panic!("expected parse result"))
-        .node
+        .to_syntax()
         .clone();
 
     match tight_node {
@@ -407,10 +403,9 @@ fn test_required_group_form_enforces_braces() {
         present.diagnostics
     );
     let present_node = present
-        .result
-        .as_ref()
+        .document()
         .unwrap_or_else(|| panic!("expected parse result"))
-        .node
+        .to_syntax()
         .clone();
     match present_node {
         SyntaxNode::Root { children, .. } => match &children[0] {
@@ -430,7 +425,7 @@ fn test_required_group_form_enforces_braces() {
 
     let missing = ctx.parse(r"\reqgrp x", &ParseConfig::STRICT);
     assert!(
-        missing.result.is_none(),
+        missing.document().is_none(),
         "missing required group should fail"
     );
     assert!(
@@ -441,7 +436,7 @@ fn test_required_group_form_enforces_braces() {
 
     let wrong_form = ctx.parse(r"\reqgrp|x|", &ParseConfig::STRICT);
     assert!(
-        wrong_form.result.is_none(),
+        wrong_form.document().is_none(),
         "non-braced required group should fail"
     );
     assert!(
@@ -467,10 +462,9 @@ fn test_group_form_supports_dimension_kind() {
         missing.diagnostics
     );
     let missing_node = missing
-        .result
-        .as_ref()
+        .document()
         .unwrap_or_else(|| panic!("expected parse result"))
-        .node
+        .to_syntax()
         .clone();
     match missing_node {
         SyntaxNode::Root { children, .. } => match &children[0] {
@@ -491,10 +485,9 @@ fn test_group_form_supports_dimension_kind() {
         present.diagnostics
     );
     let present_node = present
-        .result
-        .as_ref()
+        .document()
         .unwrap_or_else(|| panic!("expected parse result"))
-        .node
+        .to_syntax()
         .clone();
     match present_node {
         SyntaxNode::Root { children, .. } => match &children[0] {
@@ -530,10 +523,9 @@ fn test_required_group_form_composes_with_star_and_standard_slots() {
     );
     let (name, args) = extract_first_command(
         basic
-            .result
-            .as_ref()
+            .document()
             .unwrap_or_else(|| panic!("expected parse result"))
-            .node
+            .to_syntax()
             .clone(),
     );
     assert_eq!(name, "probe");
@@ -559,10 +551,9 @@ fn test_required_group_form_composes_with_star_and_standard_slots() {
     );
     let (_, starred_args) = extract_first_command(
         starred
-            .result
-            .as_ref()
+            .document()
             .unwrap_or_else(|| panic!("expected parse result"))
-            .node
+            .to_syntax()
             .clone(),
     );
     assert_eq!(
@@ -574,7 +565,7 @@ fn test_required_group_form_composes_with_star_and_standard_slots() {
 
     let missing = ctx.parse(r"\probe B", &ParseConfig::STRICT);
     assert!(
-        missing.result.is_none(),
+        missing.document().is_none(),
         "missing required group slot should fail"
     );
     assert!(
@@ -600,10 +591,9 @@ fn test_group_form_supports_delimiter_kind() {
         output.diagnostics
     );
     let node = output
-        .result
-        .as_ref()
+        .document()
         .unwrap_or_else(|| panic!("expected parse result"))
-        .node
+        .to_syntax()
         .clone();
     match node {
         SyntaxNode::Root { children, .. } => match &children[0] {
@@ -648,10 +638,9 @@ fn test_nullable_delimiter_argument_accepts_empty_required_group() {
     );
     let (_, empty_args) = extract_first_command(
         empty
-            .result
-            .as_ref()
+            .document()
             .unwrap_or_else(|| panic!("expected parse result"))
-            .node
+            .to_syntax()
             .clone(),
     );
     assert_eq!(
@@ -667,10 +656,9 @@ fn test_nullable_delimiter_argument_accepts_empty_required_group() {
     );
     let (_, explicit_args) = extract_first_command(
         explicit
-            .result
-            .as_ref()
+            .document()
             .unwrap_or_else(|| panic!("expected parse result"))
-            .node
+            .to_syntax()
             .clone(),
     );
     assert_eq!(
@@ -680,7 +668,7 @@ fn test_nullable_delimiter_argument_accepts_empty_required_group() {
 
     let strict_empty = ctx.parse(r"\strictdelim{}", &ParseConfig::STRICT);
     assert!(
-        strict_empty.result.is_none(),
+        strict_empty.document().is_none(),
         "non-nullable delimiter should reject empty braces"
     );
     assert!(
@@ -706,10 +694,9 @@ fn test_nullable_delimiter_group_accepts_empty_group() {
     );
     let (_, args) = extract_first_command(
         output
-            .result
-            .as_ref()
+            .document()
             .unwrap_or_else(|| panic!("expected parse result"))
-            .node
+            .to_syntax()
             .clone(),
     );
     assert_eq!(expect_arg(&args[0]).kind, ArgumentKind::Group);
@@ -734,10 +721,9 @@ fn test_required_group_and_delimited_forms_have_distinct_ast_kinds() {
     );
     let (_, group_args) = extract_first_command(
         group
-            .result
-            .as_ref()
+            .document()
             .unwrap_or_else(|| panic!("expected parse result"))
-            .node
+            .to_syntax()
             .clone(),
     );
     assert_eq!(expect_arg(&group_args[0]).kind, ArgumentKind::Group);
@@ -750,10 +736,9 @@ fn test_required_group_and_delimited_forms_have_distinct_ast_kinds() {
     );
     let (_, delimited_args) = extract_first_command(
         delimited
-            .result
-            .as_ref()
+            .document()
             .unwrap_or_else(|| panic!("expected parse result"))
-            .node
+            .to_syntax()
             .clone(),
     );
     match expect_arg(&delimited_args[0]).kind {
@@ -866,13 +851,13 @@ fn test_paired_form_required_vs_optional_semantics() {
         required_ok.diagnostics
     );
     assert!(
-        required_ok.result.is_some(),
+        required_ok.document().is_some(),
         "required paired arg should parse"
     );
 
     let required_missing = ctx.parse(r"\mustpair", &ParseConfig::STRICT);
     assert!(
-        required_missing.result.is_none(),
+        required_missing.document().is_none(),
         "missing required paired arg should fail"
     );
     assert!(
@@ -888,10 +873,9 @@ fn test_paired_form_required_vs_optional_semantics() {
         optional_unmatched.diagnostics
     );
     let node = optional_unmatched
-        .result
-        .as_ref()
+        .document()
         .unwrap_or_else(|| panic!("expected parse result"))
-        .node
+        .to_syntax()
         .clone();
     match node {
         SyntaxNode::Root { children, .. } => {
@@ -926,10 +910,9 @@ fn test_environment_star_in_name_is_independent_from_s_arg_slot() {
         starred_name.diagnostics
     );
     let starred_name_node = starred_name
-        .result
-        .as_ref()
+        .document()
         .unwrap_or_else(|| panic!("expected parse result"))
-        .node
+        .to_syntax()
         .clone();
     assert!(
         matches!(starred_name_node, SyntaxNode::Root { .. }),
@@ -954,10 +937,9 @@ fn test_environment_star_in_name_is_independent_from_s_arg_slot() {
         star_arg.diagnostics
     );
     let node = star_arg
-        .result
-        .as_ref()
+        .document()
         .unwrap_or_else(|| panic!("expected parse result"))
-        .node
+        .to_syntax()
         .clone();
     match node {
         SyntaxNode::Root { children, .. } => match &children[0] {

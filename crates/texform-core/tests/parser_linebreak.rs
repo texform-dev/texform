@@ -72,10 +72,10 @@ fn test_package_loaded_math_linebreak_supports_representative_forms() {
             output.diagnostics
         );
         let result = output
-            .result
-            .as_ref()
+            .document()
             .unwrap_or_else(|| panic!("expected parse result for {src}"));
-        let args = extract_command_args(&result.node, "\\")
+        let syntax = result.to_syntax();
+        let args = extract_command_args(&syntax, "\\")
             .unwrap_or_else(|| panic!("expected linebreak command in {src}"));
 
         assert_eq!(args.len(), 2, "expected star + optional length slots");
@@ -109,10 +109,10 @@ fn test_package_loaded_text_linebreak_supports_representative_forms() {
             output.diagnostics
         );
         let result = output
-            .result
-            .as_ref()
+            .document()
             .unwrap_or_else(|| panic!("expected parse result for {src}"));
-        let args = extract_command_args(&result.node, "\\")
+        let syntax = result.to_syntax();
+        let args = extract_command_args(&syntax, "\\")
             .unwrap_or_else(|| panic!("expected linebreak command in {src}"));
 
         assert_eq!(args.len(), 2, "expected star + optional length slots");
@@ -141,10 +141,9 @@ fn test_newline_command_preserves_no_leading_space_behavior() {
         immediate.diagnostics
     );
     let immediate_node = immediate
-        .result
-        .as_ref()
+        .document()
         .unwrap_or_else(|| panic!("expected parse result"))
-        .node
+        .to_syntax()
         .clone();
     match immediate_node {
         SyntaxNode::Root { children, .. } => match &children[0] {
@@ -169,10 +168,9 @@ fn test_newline_command_preserves_no_leading_space_behavior() {
         spaced.diagnostics
     );
     let spaced_node = spaced
-        .result
-        .as_ref()
+        .document()
         .unwrap_or_else(|| panic!("expected parse result"))
-        .node
+        .to_syntax()
         .clone();
     match spaced_node {
         SyntaxNode::Root { children, .. } => {

@@ -169,9 +169,12 @@ mod tests {
 
     fn count_formula(src: &str) -> FormulaCounter {
         let output = ParseContext::shared().parse(src, &ParseConfig::default());
-        let result = output.result.expect("parser returned no result");
+        let result = output
+            .try_into_document()
+            .expect("parser returned no result")
+            .0;
         let mut counter = FormulaCounter::default();
-        count_node(&result.node, &mut counter);
+        count_node(&result.to_syntax(), &mut counter);
         counter
     }
 

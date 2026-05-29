@@ -11,6 +11,7 @@
 
 pub mod ast;
 pub mod column_parser;
+pub mod document;
 pub mod lexer;
 pub mod parse;
 pub mod serialize;

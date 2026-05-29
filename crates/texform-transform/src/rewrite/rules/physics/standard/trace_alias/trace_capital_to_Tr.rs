@@ -56,9 +56,7 @@ mod tests {
     #[test]
     fn leaves_existing_capital_tr_unchanged() {
         let parse_ctx = ParseContext::from_packages(&["base", "physics"]);
-        let mut ast = parse_ctx
-            .parse_to_ast(r"\Tr(M^2)=1", &texform_core::parse::ParseConfig::STRICT)
-            .expect("parse should succeed");
+        let mut ast = crate::parse_to_ast_for_test(&parse_ctx, r"\Tr(M^2)=1", &texform_core::parse::ParseConfig::STRICT);
         let output = run_one_rule_for_test(
             &mut ast,
             &parse_ctx,
@@ -66,9 +64,7 @@ mod tests {
             RuleClass::Standard,
         )
             .expect("transform should succeed");
-        let expected_ast = parse_ctx
-            .parse_to_ast(r"\Tr(M^2)=1", &texform_core::parse::ParseConfig::STRICT)
-            .expect("parse expected should succeed");
+        let expected_ast = crate::parse_to_ast_for_test(&parse_ctx, r"\Tr(M^2)=1", &texform_core::parse::ParseConfig::STRICT);
 
         assert!(output.rewrite.applied.is_empty());
         assert_eq!(serialize(&ast), serialize(&expected_ast));

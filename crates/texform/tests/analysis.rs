@@ -24,10 +24,6 @@ fn count_targets_with_uses_supplied_parse_config() {
         texform::analysis::count_targets_with(&parser, r"\unknowncmd", &ParseConfig::STRICT)
             .expect_err("strict unknown command should fail");
 
-    match error {
-        texform::ParseAstError::NoParseResult { diagnostics }
-        | texform::ParseAstError::DiagnosticsPresent { diagnostics } => {
-            assert!(!diagnostics.is_empty());
-        }
-    }
+    assert!(error.document().is_none());
+    assert!(!error.diagnostics().is_empty());
 }

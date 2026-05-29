@@ -25,11 +25,16 @@ pub(crate) fn parse(
     let output = test_context().parse(src, &config);
     if output.diagnostics.is_empty() {
         let result = output
-            .result
-            .expect("parse succeeded without diagnostics but produced no result");
+            .try_into_document()
+            .expect("parse succeeded without diagnostics but produced no document")
+            .0;
+        let root_span = result
+            .root()
+            .span()
+            .expect("parsed document root should have a span");
         Ok((
-            result.node,
-            chumsky::span::SimpleSpan::from(result.span.start..result.span.end),
+            result.to_syntax(),
+            chumsky::span::SimpleSpan::from(root_span.start..root_span.end),
         ))
     } else {
         Err(output

@@ -11,27 +11,43 @@ fn parser_parse_returns_result_on_success() {
         .expect("parser should build");
 
     let success = parser.parse(r"\frac{a}{b}");
-    assert!(success.result.is_some(), "expected a parse result");
-    assert!(success.diagnostics.is_empty(), "no diagnostics expected");
+    assert!(success.document().is_some(), "expected a parse result");
+    assert!(success.diagnostics().is_empty(), "no diagnostics expected");
 
-    let result = success.result.unwrap();
-    assert_eq!(result.span.start, 0);
-    assert_eq!(result.span.end, r"\frac{a}{b}".len());
+    let document = success.try_into_document().expect("expected document").0;
+    assert_eq!(
+        document
+            .root()
+            .span()
+            .expect("root should have a span")
+            .start,
+        0
+    );
+    assert_eq!(
+        document.root().span().expect("root should have a span").end,
+        r"\frac{a}{b}".len()
+    );
 }
 
 #[test]
-fn parser_parse_result_serializes_for_consumers() {
+fn parser_parse_document_serializes_syntax_for_consumers() {
     let parser = Parser::builder()
         .packages(&["base"])
         .build()
         .expect("parser should build");
 
     let output = parser.parse(r"\frac{a}{b}");
-    let result = output.result.expect("expected parse result");
-    let json = serde_json::to_value(&result).expect("parse result should serialize");
-    assert!(json.get("node").is_some());
-    assert!(json.get("span").is_some());
-    assert_eq!(json["span"]["start"], 0);
+    let document = output.try_into_document().expect("expected parse result").0;
+    let json = serde_json::to_value(document.to_syntax()).expect("syntax should serialize");
+    assert_eq!(
+        document
+            .root()
+            .span()
+            .expect("root should have a span")
+            .start,
+        0
+    );
+    assert!(json.get("Command").is_some() || json.get("Root").is_some());
 }
 
 #[test]
@@ -43,10 +59,10 @@ fn parser_parse_exposes_diagnostics_to_callers() {
 
     let output = parser.parse_with("{", &ParseConfig::LENIENT);
     assert!(
-        output.result.is_some(),
+        output.document().is_some(),
         "lenient parse keeps a partial tree"
     );
-    assert!(!output.diagnostics.is_empty(), "diagnostics expected");
+    assert!(!output.diagnostics().is_empty(), "diagnostics expected");
 }
 
 #[test]
@@ -58,10 +74,10 @@ fn parser_parse_with_strict_unknown_command_fails() {
 
     let failure = parser.parse_with(r"\unknowncmd", &ParseConfig::STRICT);
     assert!(
-        failure.result.is_none(),
+        failure.document().is_none(),
         "strict unknown command should fail"
     );
-    assert!(!failure.diagnostics.is_empty(), "diagnostics expected");
+    assert!(!failure.diagnostics().is_empty(), "diagnostics expected");
 }
 
 #[test]
@@ -74,11 +90,11 @@ fn parser_parse_uses_non_strict_recover_default() {
     let output = parser.parse(r"\unknowncmd");
 
     assert!(
-        output.result.is_some(),
+        output.document().is_some(),
         "unknown command should be preserved"
     );
     assert!(
-        output.diagnostics.is_empty(),
+        output.diagnostics().is_empty(),
         "non-strict default should not report unknown commands"
     );
 }
@@ -99,10 +115,10 @@ fn parser_parse_with_accepts_runtime_config() {
     );
 
     assert!(
-        output.result.is_none(),
+        output.document().is_none(),
         "recover=false should not keep a partial tree for malformed input"
     );
-    assert!(!output.diagnostics.is_empty(), "diagnostics expected");
+    assert!(!output.diagnostics().is_empty(), "diagnostics expected");
 }
 
 #[test]
@@ -133,11 +149,14 @@ fn parser_builder_items_cover_commands_environments_and_delimiters() {
     ] {
         let output = parser.parse(src);
         assert!(
-            output.diagnostics.is_empty(),
+            output.diagnostics().is_empty(),
             "unexpected diagnostics for {src}: {:?}",
-            output.diagnostics
+            output.diagnostics()
         );
-        assert!(output.result.is_some(), "expected parse result for {src}");
+        assert!(
+            output.document().is_some(),
+            "expected parse result for {src}"
+        );
     }
 }
 
@@ -200,13 +219,13 @@ fn parser_builder_packages_use_canonical_loading_order() {
 
     let output = parser.parse(r"\div{a}");
     assert!(
-        output.diagnostics.is_empty(),
+        output.diagnostics().is_empty(),
         "unexpected diagnostics: {:?}",
-        output.diagnostics
+        output.diagnostics()
     );
 
-    let result = output.result.expect("expected parse result");
-    let children = match result.node {
+    let result = output.try_into_document().expect("expected parse result").0;
+    let children = match result.to_syntax() {
         SyntaxNode::Root { children, .. } => children,
         other => panic!("expected root node, got {:?}", other),
     };
@@ -224,19 +243,16 @@ fn parser_builder_packages_use_canonical_loading_order() {
 }
 
 #[test]
-fn parse_to_ast_with_returns_error_for_strict_failures() {
+fn try_into_document_returns_error_for_strict_failures() {
     let parser = Parser::builder()
         .packages(&["base"])
         .build()
         .expect("parser should build");
 
     let error = parser
-        .parse_to_ast_with(r"\unknowncmd", &ParseConfig::STRICT)
+        .parse_with(r"\unknowncmd", &ParseConfig::STRICT)
+        .try_into_document()
         .expect_err("strict parse should fail");
-    match error {
-        texform::ParseAstError::NoParseResult { diagnostics }
-        | texform::ParseAstError::DiagnosticsPresent { diagnostics } => {
-            assert!(!diagnostics.is_empty());
-        }
-    }
+    assert!(error.document().is_none());
+    assert!(!error.diagnostics().is_empty());
 }

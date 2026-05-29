@@ -8,11 +8,11 @@ use support::{
 };
 use texform_core::parse::{
     AllowedMode, CommandKind, ContextItem, ParseConfig, ParseContext, ParseDiagnosticKind,
-    ParseOutput,
+    ParseResult,
 };
 use texform_interface::syntax_node::{ArgumentValue, SyntaxNode};
 
-fn parse_shared(src: &str, config: &ParseConfig) -> ParseOutput {
+fn parse_shared(src: &str, config: &ParseConfig) -> ParseResult {
     ParseContext::shared().parse(src, config)
 }
 
@@ -25,7 +25,7 @@ fn frac_command_item() -> ContextItem {
 }
 
 fn assert_first_diagnostic_expected_found(
-    output: &ParseOutput,
+    output: &ParseResult,
     expected: &[&str],
     found: Option<&str>,
 ) {
@@ -50,12 +50,10 @@ fn content_argument_partial_result_keeps_outer_text_command() {
         vec![r"Command \frac is not allowed in text mode"]
     );
 
-    let result = output
-        .result
-        .as_ref()
-        .expect("should produce a partial result");
+    let result = output.document().expect("should produce a partial result");
 
-    let root_children = match &result.node {
+    let syntax = result.to_syntax();
+    let root_children = match &syntax {
         SyntaxNode::Root { children, .. } => children,
         other => panic!("expected root node, got {:?}", other),
     };
@@ -90,7 +88,10 @@ fn nested_recoverable_content_keeps_inner_diagnostics() {
         false,
     );
 
-    assert!(output.result.is_some(), "should produce a partial result");
+    assert!(
+        output.document().is_some(),
+        "should produce a partial result"
+    );
     assert!(
         collect_messages(&output).contains(&r"Command \frac is not allowed in text mode"),
         "nested recoverable content should keep the inner mode diagnostic"
@@ -115,11 +116,11 @@ fn text_scripted_content_reports_only_direct_error() {
     );
 
     let result = output
-        .result
-        .as_ref()
+        .document()
         .expect("scripted text should still keep a partial result");
 
-    let root_children = match &result.node {
+    let syntax = result.to_syntax();
+    let root_children = match &syntax {
         SyntaxNode::Root { children, .. } => children,
         other => panic!("expected root node, got {:?}", other),
     };
@@ -169,14 +170,13 @@ fn nonstrict_direct_error_survives_trailing_outer_generic() {
         collect_messages(&output),
         vec!["Scripted syntax is not allowed in Text mode"]
     );
-    assert!(output.result.is_some(), "should keep a partial result");
+    assert!(output.document().is_some(), "should keep a partial result");
 
     let result = output
-        .result
-        .as_ref()
+        .document()
         .expect("mixed direct/generic error should keep a partial result");
-    assert!(contains_command_named(&result.node, "underline"));
-    assert!(contains_error_node(&result.node));
+    assert!(contains_command_named(&result.to_syntax(), "underline"));
+    assert!(contains_error_node(&result.to_syntax()));
 }
 
 #[test]
@@ -191,15 +191,15 @@ fn nonstrict_command_direct_error_survives_trailing_outer_generic() {
         collect_messages(&output),
         vec![r"Command \frac is not allowed in text mode"]
     );
-    assert!(output.result.is_some(), "should keep a partial result");
+    assert!(output.document().is_some(), "should keep a partial result");
 
     let result = output
-        .result
-        .as_ref()
+        .document()
         .expect("command mixed error should keep a partial result");
-    assert!(contains_command_named(&result.node, "text"));
+    assert!(contains_command_named(&result.to_syntax(), "text"));
 
-    let root_children = match &result.node {
+    let syntax = result.to_syntax();
+    let root_children = match &syntax {
         SyntaxNode::Root { children, .. } => children,
         other => panic!("expected root node, got {:?}", other),
     };
@@ -229,15 +229,15 @@ fn generic_only_content_error_is_not_filtered_out() {
         vec!["found '$' expected something else, or end of input"]
     );
     assert!(
-        output.result.is_some(),
+        output.document().is_some(),
         "generic-only content error should still keep outer text shell"
     );
 
     let result = output
-        .result
-        .as_ref()
+        .document()
         .expect("generic-only content error should keep a partial result");
-    let root_children = match &result.node {
+    let syntax = result.to_syntax();
+    let root_children = match &syntax {
         SyntaxNode::Root { children, .. } => children,
         other => panic!("expected root node, got {:?}", other),
     };
@@ -275,7 +275,7 @@ fn recover_false_keeps_nonstrict_unknowns_without_partial_recovery() {
     let output = parse_shared(r"\unknowncmd {", &config);
 
     assert!(
-        output.result.is_none(),
+        output.document().is_none(),
         "recover=false should not keep a partial tree for malformed input"
     );
     assert_eq!(collect_messages(&output), vec!["not a command"]);
@@ -290,7 +290,7 @@ fn nonstrict_recover_handles_unclosed_nested_groups_without_exponential_retry() 
     let elapsed = started.elapsed();
 
     assert!(
-        output.result.is_some(),
+        output.document().is_some(),
         "recovery should keep a partial tree"
     );
     assert!(
@@ -319,9 +319,11 @@ fn max_group_depth_exceeded_reports_public_kind() {
         "expected max depth diagnostic, got {:?}",
         output.diagnostics
     );
-    let result = output.result.expect("max depth should keep an error node");
+    let result = output
+        .document()
+        .expect("max depth should keep an error node");
     assert!(
-        contains_error_node(&result.node),
+        contains_error_node(&result.to_syntax()),
         "max depth should produce an Error node"
     );
 }
@@ -363,13 +365,12 @@ fn nested_content_arguments_merge_inner_direct_error_once() {
     );
 
     let result = output
-        .result
-        .as_ref()
+        .document()
         .expect("nested content arguments should still keep a partial result");
 
-    assert!(contains_command_named(&result.node, "text"));
-    assert!(contains_command_named(&result.node, "fbox"));
-    assert!(contains_error_node(&result.node));
+    assert!(contains_command_named(&result.to_syntax(), "text"));
+    assert!(contains_command_named(&result.to_syntax(), "fbox"));
+    assert!(contains_error_node(&result.to_syntax()));
 }
 
 #[test]
@@ -379,11 +380,11 @@ fn empty_text_content_argument_stays_on_success_path() {
     assert!(output.diagnostics.is_empty());
 
     let result = output
-        .result
-        .as_ref()
+        .document()
         .expect("empty text content should stay on the success path");
 
-    let root_children = match &result.node {
+    let syntax = result.to_syntax();
+    let root_children = match &syntax {
         SyntaxNode::Root { children, .. } => children,
         other => panic!("expected root node, got {:?}", other),
     };
@@ -438,8 +439,8 @@ fn nonstrict_content_command_error_keeps_original_inner_span() {
 #[test]
 fn diagnostics_serialize_includes_contexts_field() {
     let output = parse_shared(r"\unknowncmd", &texform_core::parse::ParseConfig::STRICT);
-    let json = serde_json::to_value(&output).unwrap();
-    let diagnostics = json.get("diagnostics").unwrap().as_array().unwrap();
+    let json = serde_json::to_value(output.diagnostics()).unwrap();
+    let diagnostics = json.as_array().unwrap();
     assert!(!diagnostics.is_empty());
     let diagnostic = &diagnostics[0];
     assert!(diagnostic.get("message").is_some());
@@ -497,12 +498,10 @@ fn partial_result_keeps_outer_delimited_group_and_following_siblings() {
     );
     assert!(!output.diagnostics.is_empty(), "should have diagnostics");
 
-    let result = output
-        .result
-        .as_ref()
-        .expect("should produce a partial result");
+    let result = output.document().expect("should produce a partial result");
 
-    let root_children = match &result.node {
+    let syntax = result.to_syntax();
+    let root_children = match &syntax {
         SyntaxNode::Root { children, .. } => children,
         other => panic!("expected root node, got {:?}", other),
     };
@@ -547,22 +546,25 @@ fn partial_result_json_contains_error_node() {
     );
     assert!(!output.diagnostics.is_empty(), "should have diagnostics");
 
-    let json = serde_json::to_value(&output).expect("parse output should serialize to JSON");
-    let node_json = json
-        .get("result")
-        .and_then(|result| result.get("node"))
-        .expect("partial result JSON should contain result.node");
-    let node_text = serde_json::to_string(node_json).expect("result.node JSON should stringify");
+    let node_json = serde_json::to_value(
+        output
+            .document()
+            .expect("partial result should contain a document")
+            .to_syntax(),
+    )
+    .expect("partial document should serialize to JSON");
+    let node_text =
+        serde_json::to_string(&node_json).expect("result.to_syntax() JSON should stringify");
 
     assert!(
         node_text.contains("\"Error\""),
-        "result.node JSON should expose the recovered Error node: {node_text}"
+        "result.to_syntax() JSON should expose the recovered Error node: {node_text}"
     );
     assert!(
         node_text.contains("Environment name mismatch")
             && node_text.contains("\\end{matrix}")
             && node_text.contains("\\end{align}"),
-        "result.node JSON should preserve the normalized recovered environment mismatch message: {node_text}"
+        "result.to_syntax() JSON should preserve the normalized recovered environment mismatch message: {node_text}"
     );
 }
 
@@ -579,12 +581,10 @@ fn partial_result_keeps_outer_environment_on_inner_environment_error() {
     assert_first_diagnostic_span_eq(&output, src, r"\end{matrix}");
     assert_first_diagnostic_expected_found(&output, &[r"\end{align}"], Some(r"\end{matrix}"));
 
-    let result = output
-        .result
-        .as_ref()
-        .expect("should produce a partial result");
+    let result = output.document().expect("should produce a partial result");
 
-    let root_children = match &result.node {
+    let syntax = result.to_syntax();
+    let root_children = match &syntax {
         SyntaxNode::Root { children, .. } => children,
         other => panic!("expected root node, got {:?}", other),
     };
@@ -620,12 +620,10 @@ fn partial_result_keeps_following_siblings_after_environment_mismatch() {
     assert_first_diagnostic_span_eq(&output, src, r"\end{align}");
     assert_first_diagnostic_expected_found(&output, &[r"\end{matrix}"], Some(r"\end{align}"));
 
-    let result = output
-        .result
-        .as_ref()
-        .expect("should produce a partial result");
+    let result = output.document().expect("should produce a partial result");
 
-    let root_children = match &result.node {
+    let syntax = result.to_syntax();
+    let root_children = match &syntax {
         SyntaxNode::Root { children, .. } => children,
         other => panic!("expected root node, got {:?}", other),
     };
@@ -714,7 +712,7 @@ mod parser_diagnostic_regressions {
         .parse(src, &ParseConfig::LENIENT);
 
         assert!(
-            output.result.is_some(),
+            output.document().is_some(),
             "recoverable subparse should keep a partial result"
         );
 
@@ -774,7 +772,7 @@ mod parser_diagnostic_regressions {
         let diagnostic = output
             .diagnostics
             .first()
-            .unwrap_or_else(|| panic!("expected diagnostic, got output: {:?}", output.result));
+            .unwrap_or_else(|| panic!("expected diagnostic, got output: {:?}", output.document()));
         assert_eq!(
             diagnostic.kind,
             Some(ParseDiagnosticKind::CommentTruncatedArgument)

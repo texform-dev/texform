@@ -4,7 +4,7 @@ pub(crate) mod parser;
 
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
-    ParseConfig, ParseContextBuildError, ParseContextBuilder, ParseDiagnostic, ParseOutput,
+    ParseConfig, ParseContextBuildError, ParseContextBuilder, ParseDiagnostic, ParseResult,
 };
 use texform_interface::syntax_node::{Argument, ArgumentValue, ContentMode, SyntaxNode};
 
@@ -34,7 +34,7 @@ pub(crate) fn parse_with_items(
     items: &[ContextItem],
     src: &str,
     reject_unknown: bool,
-) -> ParseOutput {
+) -> ParseResult {
     let mut builder = ParseContextBuilder::empty();
     for item in items {
         builder = builder.insert_item(item.clone());
@@ -52,7 +52,7 @@ pub(crate) fn parse_single_with_items(
     items: &[ContextItem],
     src: &str,
     reject_unknown: bool,
-) -> ParseOutput {
+) -> ParseResult {
     let config = if reject_unknown {
         ParseConfig::STRICT
     } else {
@@ -65,7 +65,7 @@ pub(crate) fn parse_single_with_items(
 
 pub(crate) struct ParseCaseOutput {
     pub(crate) input: String,
-    pub(crate) output: ParseOutput,
+    pub(crate) output: ParseResult,
 }
 
 pub(crate) type ParseManyOutput = Vec<ParseCaseOutput>;
@@ -107,9 +107,9 @@ pub(crate) fn parse_many_with_items(
         .collect()
 }
 
-fn invalid_input_output(message: String) -> ParseOutput {
-    ParseOutput {
-        result: None,
+fn invalid_input_output(message: String) -> ParseResult {
+    ParseResult {
+        document: None,
         diagnostics: vec![ParseDiagnostic::new(
             message,
             texform_core::parse::Span { start: 0, end: 0 },
@@ -130,7 +130,7 @@ fn invalid_inputs_output(inputs: &[&str], message: String) -> ParseManyOutput {
         .collect()
 }
 
-pub(crate) fn collect_messages(output: &ParseOutput) -> Vec<&str> {
+pub(crate) fn collect_messages(output: &ParseResult) -> Vec<&str> {
     output
         .diagnostics
         .iter()
@@ -138,7 +138,7 @@ pub(crate) fn collect_messages(output: &ParseOutput) -> Vec<&str> {
         .collect()
 }
 
-pub(crate) fn assert_first_diagnostic_span_eq(output: &ParseOutput, src: &str, expected: &str) {
+pub(crate) fn assert_first_diagnostic_span_eq(output: &ParseResult, src: &str, expected: &str) {
     let diagnostic = output
         .diagnostics
         .first()

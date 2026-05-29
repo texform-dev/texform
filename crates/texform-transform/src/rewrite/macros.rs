@@ -382,16 +382,13 @@ macro_rules! transform_examples {
                 };
                 let parse_config = $crate::parse::ParseConfig::STRICT;
 
-                let mut ast = parse_ctx
-                    .parse_to_ast($input, &parse_config)
-                    .expect("parse input should succeed");
+                let mut ast = $crate::parse_to_ast_for_test(&parse_ctx, $input, &parse_config);
                 transform_context.run_with(&mut ast, &parse_ctx, &cfg)
                     .expect("transform should succeed");
                 let actual = $crate::serialize::serialize(&ast);
 
-                let expected_ast = parse_ctx
-                    .parse_to_ast($expected, &parse_config)
-                    .expect("parse expected should succeed");
+                let expected_ast =
+                    $crate::parse_to_ast_for_test(&parse_ctx, $expected, &parse_config);
                 let canonical_expected = $crate::serialize::serialize(&expected_ast);
 
                 assert_eq!(actual, canonical_expected,

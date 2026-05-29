@@ -13,6 +13,9 @@
 ///   become diagnostics (`true`) or `known: false` nodes (`false`).
 /// - [`abort_on_error`](Self::abort_on_error): stop at the first error (`true`)
 ///   or continue parsing to collect every diagnostic (`false`, slower).
+///   Recovery may return a read-only document containing `Error` nodes; use
+///   [`ParseResult::try_into_document`](super::ParseResult::try_into_document)
+///   when downstream code requires a complete tree.
 ///
 /// Named extremes [`STRICT`](Self::STRICT) and [`LENIENT`](Self::LENIENT) cover
 /// the two corners where both axes agree. For mixed settings, use struct-update
@@ -24,11 +27,13 @@ pub struct ParseConfig {
     ///
     /// This controls **unknown-name handling only**, not general error strictness.
     pub reject_unknown: bool,
-    /// When `true`, parsing stops at the first error in each content item.
+    /// When `true`, parsing stops at the first error in each content item and
+    /// may return no document for that item.
     ///
     /// When `false`, the parser uses recovery fallbacks to collect every
-    /// diagnostic (useful for IDEs and playgrounds, but slower on large corpora).
-    /// This does not repair input or change correctness semantics.
+    /// diagnostic (useful for IDEs and playgrounds, but slower on large corpora)
+    /// and may attach `Error` nodes to the returned document. A document with
+    /// error nodes is read-only and cannot be used by transform entry points.
     pub abort_on_error: bool,
     /// Hard upper bound on nested `{ ... }` brace group depth.
     pub max_group_depth: usize,

@@ -94,9 +94,7 @@ mod tests {
     #[test]
     fn groups_qcomma_expansion_when_not_a_sibling_node() {
         let parse_ctx = ParseContext::from_packages(&["base", "physics"]);
-        let mut ast = parse_ctx
-            .parse_to_ast(r"\qc^2", &texform_core::parse::ParseConfig::STRICT)
-            .expect("parse should succeed");
+        let mut ast = crate::parse_to_ast_for_test(&parse_ctx, r"\qc^2", &texform_core::parse::ParseConfig::STRICT);
 
         let output = run_one_rule_for_test(&mut ast, &parse_ctx, &QCOMMA_EXPAND, RuleClass::Expand)
             .expect("qcomma-expand transform should succeed");

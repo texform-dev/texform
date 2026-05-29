@@ -5,7 +5,7 @@
 //! with the Rewrite phase.
 
 use texform_core::ast::Ast;
-use texform_core::parse::ParseContext;
+use texform_core::parse::{ParseConfig, ParseContext};
 use texform_core::serialize::serialize;
 use texform_transform::{BuildConfig, Profile, RuleClass, RuleClassSet, TransformContext};
 
@@ -20,9 +20,7 @@ fn run_with_packages(src: &str, packages: &[&str]) -> Outcome {
 
 fn run_with_packages_and_classes(src: &str, packages: &[&str], classes: &[RuleClass]) -> Outcome {
     let parse_ctx = ParseContext::from_packages(packages);
-    let mut ast = parse_ctx
-        .parse_to_ast(src, &texform_core::parse::ParseConfig::default())
-        .expect("source should parse");
+    let mut ast = parse_to_ast(&parse_ctx, src);
     let classes = classes
         .iter()
         .copied()
@@ -51,9 +49,7 @@ fn serialized_with_packages(src: &str, expected: &str, packages: &[&str]) {
     actual.ast.assert_invariants();
 
     let parse_ctx = ParseContext::from_packages(packages);
-    let expected_ast = parse_ctx
-        .parse_to_ast(expected, &texform_core::parse::ParseConfig::default())
-        .expect("expected output should parse");
+    let expected_ast = parse_to_ast(&parse_ctx, expected);
     expected_ast.assert_invariants();
 
     assert_eq!(actual.text, serialize(&expected_ast));
@@ -65,6 +61,15 @@ fn serialized(src: &str, expected: &str) {
 
 fn serialized_text(src: &str, expected: &str) {
     assert_eq!(run(src).text, expected);
+}
+
+fn parse_to_ast(parse_ctx: &ParseContext, src: &str) -> Ast {
+    let document = parse_ctx
+        .parse(src, &ParseConfig::default())
+        .try_into_document()
+        .expect("source should parse")
+        .0;
+    Ast::from_syntax_root(&document.to_syntax())
 }
 
 #[test]

@@ -1,6 +1,6 @@
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyList};
 use pythonize::{depythonize, pythonize};
 use texform::{
     FlattenGroupsConfig as CoreFlattenGroupsConfig,
@@ -596,28 +596,906 @@ fn engine_builder_with_options(
     Ok(builder)
 }
 
-fn parse_output_to_python(py: Python<'_>, output: texform::ParseOutput) -> PyResult<Py<PyAny>> {
-    if output.diagnostics.is_empty() {
-        match output.result {
-            Some(result) => Ok(pythonize(py, &result)?.unbind()),
-            None => Err(ParseError::new_err(
-                "parse produced no output and no diagnostics",
-            )),
-        }
+fn borrow_error(error: impl std::fmt::Display) -> PyErr {
+    ParseError::new_err(format!("document borrow conflict: {error}"))
+}
+
+fn edit_error(error: impl std::fmt::Display) -> PyErr {
+    ParseError::new_err(error.to_string())
+}
+
+fn parse_result_to_python(py: Python<'_>, result: texform::ParseResult) -> PyResult<Py<PyAny>> {
+    let (document, diagnostics) = result.into_parts();
+    let out = PyDict::new(py);
+    let document = match document {
+        Some(inner) => Py::new(py, PyDocument { inner })?.into_any(),
+        None => py.None(),
+    };
+    out.set_item("document", document)?;
+    out.set_item("diagnostics", pythonize(py, &diagnostics)?)?;
+    Ok(out.unbind().into_any())
+}
+
+fn py_node(py: Python<'_>, doc: Py<PyDocument>, id: texform::NodeId) -> PyResult<Py<PyNode>> {
+    Py::new(py, PyNode { doc, id })
+}
+
+fn py_optional_node(
+    py: Python<'_>,
+    doc: Py<PyDocument>,
+    id: Option<texform::NodeId>,
+) -> PyResult<Py<PyAny>> {
+    match id {
+        Some(id) => Ok(py_node(py, doc, id)?.into_any()),
+        None => Ok(py.None()),
+    }
+}
+
+fn py_nodes_list(
+    py: Python<'_>,
+    doc: &Py<PyDocument>,
+    ids: Vec<texform::NodeId>,
+) -> PyResult<Py<PyAny>> {
+    let out = PyList::empty(py);
+    for id in ids {
+        out.append(py_node(py, doc.clone_ref(py), id)?)?;
+    }
+    Ok(out.unbind().into_any())
+}
+
+fn parse_char(value: &str) -> PyResult<char> {
+    let mut chars = value.chars();
+    let Some(ch) = chars.next() else {
+        return Err(ParseError::new_err("character cannot be empty"));
+    };
+    if chars.next().is_some() {
+        return Err(ParseError::new_err(
+            "character must contain exactly one scalar",
+        ));
+    }
+    Ok(ch)
+}
+
+fn same_py_document(py: Python<'_>, left: &Py<PyDocument>, right: &Py<PyDocument>) -> bool {
+    left.bind(py).is(right.bind(py))
+}
+
+fn ensure_same_py_document(
+    py: Python<'_>,
+    left: &Py<PyDocument>,
+    right: &Py<PyDocument>,
+) -> PyResult<()> {
+    if same_py_document(py, left, right) {
+        Ok(())
     } else {
-        let diagnostics = pythonize(py, &output.diagnostics)?.unbind();
-        let partial_result: Py<PyAny> = match &output.result {
-            Some(r) => pythonize(py, r)?.unbind(),
-            None => py.None(),
+        Err(ParseError::new_err("node belongs to a different document"))
+    }
+}
+
+fn ensure_node_owner(py: Python<'_>, owner: &Py<PyDocument>, node: &PyNode) -> PyResult<()> {
+    ensure_same_py_document(py, owner, &node.doc)
+}
+
+fn py_string_property(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<String> {
+    dict.get_item(key)?
+        .ok_or_else(|| ParseError::new_err(format!("ArgValue missing `{key}`")))?
+        .extract::<String>()
+}
+
+fn py_arg_values(
+    py: Python<'_>,
+    owner: &Py<PyDocument>,
+    args: Option<Vec<Py<PyAny>>>,
+) -> PyResult<Vec<texform::ArgValue>> {
+    args.unwrap_or_default()
+        .iter()
+        .map(|arg| py_arg_value(py, owner, arg.bind(py)))
+        .collect()
+}
+
+fn py_arg_value(
+    py: Python<'_>,
+    owner: &Py<PyDocument>,
+    value: &Bound<'_, PyAny>,
+) -> PyResult<texform::ArgValue> {
+    let dict = value
+        .cast::<PyDict>()
+        .map_err(|_| ParseError::new_err("ArgValue must be a dict"))?;
+    match py_string_property(dict, "kind")?.as_str() {
+        "Math" => Ok(texform::ArgValue::math(py_arg_node(py, owner, dict)?.id)),
+        "Text" => Ok(texform::ArgValue::text(py_arg_node(py, owner, dict)?.id)),
+        "Delimiter" => Ok(texform::ArgValue::delimiter(py_delimiter_value(
+            &dict
+                .get_item("value")?
+                .ok_or_else(|| ParseError::new_err("Delimiter ArgValue missing `value`"))?,
+        )?)),
+        "CSName" => Ok(texform::ArgValue::cs_name(py_string_property(
+            dict, "value",
+        )?)),
+        "Dimension" => Ok(texform::ArgValue::dimension(py_string_property(
+            dict, "value",
+        )?)),
+        "Integer" => Ok(texform::ArgValue::integer(py_string_property(
+            dict, "value",
+        )?)),
+        "KeyVal" => Ok(texform::ArgValue::key_val(py_string_property(
+            dict, "value",
+        )?)),
+        "Column" => Ok(texform::ArgValue::column(py_string_property(
+            dict, "value",
+        )?)),
+        "Boolean" => Ok(texform::ArgValue::boolean(
+            dict.get_item("value")?
+                .ok_or_else(|| ParseError::new_err("Boolean ArgValue missing `value`"))?
+                .extract::<bool>()?,
+        )),
+        other => Err(ParseError::new_err(format!(
+            "unsupported ArgValue kind: {other}"
+        ))),
+    }
+}
+
+fn py_arg_node<'py>(
+    py: Python<'py>,
+    owner: &Py<PyDocument>,
+    dict: &Bound<'py, PyDict>,
+) -> PyResult<PyRef<'py, PyNode>> {
+    let node = dict
+        .get_item("node")?
+        .ok_or_else(|| ParseError::new_err("content ArgValue missing `node`"))?;
+    let node = node.extract::<PyRef<'py, PyNode>>()?;
+    ensure_node_owner(py, owner, &node)?;
+    Ok(node)
+}
+
+fn py_delimiter_value(value: &Bound<'_, PyAny>) -> PyResult<texform::DelimiterValue> {
+    let dict = value
+        .cast::<PyDict>()
+        .map_err(|_| ParseError::new_err("Delimiter value must be a dict"))?;
+    match py_string_property(dict, "kind")?.as_str() {
+        "None" => Ok(texform::DelimiterValue::None),
+        "Char" => Ok(texform::DelimiterValue::Char(parse_char(
+            &py_string_property(dict, "value")?,
+        )?)),
+        "Control" => Ok(texform::DelimiterValue::Control(py_string_property(
+            dict, "value",
+        )?)),
+        other => Err(ParseError::new_err(format!(
+            "unsupported delimiter kind: {other}"
+        ))),
+    }
+}
+
+fn py_delimiter_ref(delimiter: texform::DelimiterRef<'_>) -> serde_json::Value {
+    match delimiter {
+        texform::DelimiterRef::None => serde_json::json!({ "kind": "None" }),
+        texform::DelimiterRef::Char(ch) => {
+            serde_json::json!({ "kind": "Char", "value": ch.to_string() })
+        }
+        texform::DelimiterRef::Control(name) => {
+            serde_json::json!({ "kind": "Control", "value": name })
+        }
+    }
+}
+
+fn py_group_kind(kind: texform::GroupKindRef<'_>) -> serde_json::Value {
+    match kind {
+        texform::GroupKindRef::Explicit => serde_json::json!({ "kind": "Explicit" }),
+        texform::GroupKindRef::Implicit => serde_json::json!({ "kind": "Implicit" }),
+        texform::GroupKindRef::Delimited { left, right } => serde_json::json!({
+            "kind": "Delimited",
+            "left": py_delimiter_ref(left),
+            "right": py_delimiter_ref(right),
+        }),
+        texform::GroupKindRef::InlineMath => serde_json::json!({ "kind": "InlineMath" }),
+    }
+}
+
+fn py_arg_ref(
+    py: Python<'_>,
+    owner: &Py<PyDocument>,
+    arg: texform::ArgRef<'_>,
+) -> PyResult<Py<PyAny>> {
+    let out = PyDict::new(py);
+    match arg {
+        texform::ArgRef::Math(node) => {
+            out.set_item("kind", "Math")?;
+            out.set_item("node", py_node(py, owner.clone_ref(py), node.id())?)?;
+        }
+        texform::ArgRef::Text(node) => {
+            out.set_item("kind", "Text")?;
+            out.set_item("node", py_node(py, owner.clone_ref(py), node.id())?)?;
+        }
+        texform::ArgRef::Delimiter(delimiter) => {
+            out.set_item("kind", "Delimiter")?;
+            out.set_item("value", pythonize(py, &py_delimiter_ref(delimiter))?)?;
+        }
+        texform::ArgRef::CSName(value) => {
+            out.set_item("kind", "CSName")?;
+            out.set_item("value", value)?;
+        }
+        texform::ArgRef::Dimension(value) => {
+            out.set_item("kind", "Dimension")?;
+            out.set_item("value", value)?;
+        }
+        texform::ArgRef::Integer(value) => {
+            out.set_item("kind", "Integer")?;
+            out.set_item("value", value)?;
+        }
+        texform::ArgRef::KeyVal(value) => {
+            out.set_item("kind", "KeyVal")?;
+            out.set_item("value", value)?;
+        }
+        texform::ArgRef::Column(value) => {
+            out.set_item("kind", "Column")?;
+            out.set_item("value", value)?;
+        }
+        texform::ArgRef::Boolean(value) => {
+            out.set_item("kind", "Boolean")?;
+            out.set_item("value", value)?;
+        }
+    }
+    Ok(out.unbind().into_any())
+}
+
+#[pyclass(name = "Document")]
+struct PyDocument {
+    inner: texform::Document,
+}
+
+#[pymethods]
+impl PyDocument {
+    #[new]
+    fn new() -> Self {
+        Self {
+            inner: texform::Document::new(),
+        }
+    }
+
+    #[staticmethod]
+    fn from_syntax(node: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let node = depythonize::<texform::SyntaxNode>(node)
+            .map_err(|error| ParseError::new_err(format!("invalid syntax node: {error}")))?;
+        Ok(Self {
+            inner: texform::Document::from_syntax(&node)
+                .map_err(|error| ParseError::new_err(error.to_string()))?,
+        })
+    }
+
+    fn root(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyNode>> {
+        let id = {
+            let document = slf.try_borrow().map_err(borrow_error)?;
+            document.inner.root().id()
         };
+        py_node(py, slf.clone().unbind(), id)
+    }
 
-        let first_msg = output.diagnostics[0].message.clone();
-        let err = ParseError::new_err(first_msg);
-        let err_value = err.value(py);
-        err_value.setattr("diagnostics", diagnostics)?;
-        err_value.setattr("partial_result", partial_result)?;
+    fn has_errors(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        let document = slf.try_borrow().map_err(borrow_error)?;
+        Ok(document.inner.has_errors())
+    }
 
-        Err(err)
+    fn is_read_only(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        let document = slf.try_borrow().map_err(borrow_error)?;
+        Ok(document.inner.is_read_only())
+    }
+
+    fn errors(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let ids = {
+            let document = slf.try_borrow().map_err(borrow_error)?;
+            document
+                .inner
+                .errors()
+                .map(|node| node.id())
+                .collect::<Vec<_>>()
+        };
+        py_nodes_list(py, &slf.clone().unbind(), ids)
+    }
+
+    fn find_commands(slf: &Bound<'_, Self>, py: Python<'_>, name: &str) -> PyResult<Py<PyAny>> {
+        let ids = {
+            let document = slf.try_borrow().map_err(borrow_error)?;
+            document
+                .inner
+                .find_commands(name)
+                .map(|node| node.id())
+                .collect::<Vec<_>>()
+        };
+        py_nodes_list(py, &slf.clone().unbind(), ids)
+    }
+
+    fn find_environments(slf: &Bound<'_, Self>, py: Python<'_>, name: &str) -> PyResult<Py<PyAny>> {
+        let ids = {
+            let document = slf.try_borrow().map_err(borrow_error)?;
+            document
+                .inner
+                .find_environments(name)
+                .map(|node| node.id())
+                .collect::<Vec<_>>()
+        };
+        py_nodes_list(py, &slf.clone().unbind(), ids)
+    }
+
+    fn to_syntax(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let syntax = {
+            let document = slf.try_borrow().map_err(borrow_error)?;
+            document.inner.to_syntax()
+        };
+        Ok(pythonize(py, &syntax)?.unbind())
+    }
+
+    #[pyo3(signature = (options = None))]
+    fn to_latex(slf: &Bound<'_, Self>, options: Option<&Bound<'_, PyAny>>) -> PyResult<String> {
+        let options = serialize_options_from_python(options)?;
+        let document = slf.try_borrow().map_err(borrow_error)?;
+        document
+            .inner
+            .to_latex_with(&options)
+            .map_err(|error| ParseError::new_err(error.to_string()))
+    }
+
+    fn create_char(slf: &Bound<'_, Self>, py: Python<'_>, value: &str) -> PyResult<Py<PyNode>> {
+        let ch = parse_char(value)?;
+        let id = {
+            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+            document
+                .inner
+                .create_char(ch)
+                .map_err(|error| ParseError::new_err(error.to_string()))?
+        };
+        py_node(py, slf.clone().unbind(), id)
+    }
+
+    fn create_text(slf: &Bound<'_, Self>, py: Python<'_>, value: &str) -> PyResult<Py<PyNode>> {
+        let id = {
+            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+            document.inner.create_text(value).map_err(edit_error)?
+        };
+        py_node(py, slf.clone().unbind(), id)
+    }
+
+    fn create_active_space(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyNode>> {
+        let id = {
+            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+            document.inner.create_active_space().map_err(edit_error)?
+        };
+        py_node(py, slf.clone().unbind(), id)
+    }
+
+    fn create_group(slf: &Bound<'_, Self>, py: Python<'_>, mode: &str) -> PyResult<Py<PyNode>> {
+        let mode = py_content_mode(mode)?;
+        let id = {
+            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+            document.inner.create_group(mode).map_err(edit_error)?
+        };
+        py_node(py, slf.clone().unbind(), id)
+    }
+
+    #[pyo3(signature = (name, args = None))]
+    fn create_command(
+        slf: &Bound<'_, Self>,
+        py: Python<'_>,
+        name: &str,
+        args: Option<Vec<Py<PyAny>>>,
+    ) -> PyResult<Py<PyNode>> {
+        let owner = slf.clone().unbind();
+        let args = py_arg_values(py, &owner, args)?;
+        let id = {
+            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+            document
+                .inner
+                .create_command(name, args)
+                .map_err(edit_error)?
+        };
+        py_node(py, owner, id)
+    }
+
+    #[pyo3(signature = (name, args = None))]
+    fn create_declarative(
+        slf: &Bound<'_, Self>,
+        py: Python<'_>,
+        name: &str,
+        args: Option<Vec<Py<PyAny>>>,
+    ) -> PyResult<Py<PyNode>> {
+        let owner = slf.clone().unbind();
+        let args = py_arg_values(py, &owner, args)?;
+        let id = {
+            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+            document
+                .inner
+                .create_declarative(name, args)
+                .map_err(edit_error)?
+        };
+        py_node(py, owner, id)
+    }
+
+    #[pyo3(signature = (name, args, body))]
+    fn create_environment(
+        slf: &Bound<'_, Self>,
+        py: Python<'_>,
+        name: &str,
+        args: Option<Vec<Py<PyAny>>>,
+        body: PyRef<'_, PyNode>,
+    ) -> PyResult<Py<PyNode>> {
+        let owner = slf.clone().unbind();
+        ensure_node_owner(py, &owner, &body)?;
+        let args = py_arg_values(py, &owner, args)?;
+        let id = {
+            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+            document
+                .inner
+                .create_environment(name, args, body.id)
+                .map_err(edit_error)?
+        };
+        py_node(py, owner, id)
+    }
+
+    fn append_child(
+        slf: &Bound<'_, Self>,
+        py: Python<'_>,
+        parent: PyRef<'_, PyNode>,
+        child: PyRef<'_, PyNode>,
+    ) -> PyResult<()> {
+        let owner = slf.clone().unbind();
+        ensure_node_owner(py, &owner, &parent)?;
+        ensure_node_owner(py, &owner, &child)?;
+        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+        document
+            .inner
+            .append_child(parent.id, child.id)
+            .map_err(edit_error)
+    }
+
+    fn insert_before(
+        slf: &Bound<'_, Self>,
+        py: Python<'_>,
+        anchor: PyRef<'_, PyNode>,
+        new: PyRef<'_, PyNode>,
+    ) -> PyResult<()> {
+        let owner = slf.clone().unbind();
+        ensure_node_owner(py, &owner, &anchor)?;
+        ensure_node_owner(py, &owner, &new)?;
+        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+        document
+            .inner
+            .insert_before(anchor.id, new.id)
+            .map_err(edit_error)
+    }
+
+    fn insert_after(
+        slf: &Bound<'_, Self>,
+        py: Python<'_>,
+        anchor: PyRef<'_, PyNode>,
+        new: PyRef<'_, PyNode>,
+    ) -> PyResult<()> {
+        let owner = slf.clone().unbind();
+        ensure_node_owner(py, &owner, &anchor)?;
+        ensure_node_owner(py, &owner, &new)?;
+        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+        document
+            .inner
+            .insert_after(anchor.id, new.id)
+            .map_err(edit_error)
+    }
+
+    fn insert_child(
+        slf: &Bound<'_, Self>,
+        py: Python<'_>,
+        parent: PyRef<'_, PyNode>,
+        index: usize,
+        child: PyRef<'_, PyNode>,
+    ) -> PyResult<()> {
+        let owner = slf.clone().unbind();
+        ensure_node_owner(py, &owner, &parent)?;
+        ensure_node_owner(py, &owner, &child)?;
+        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+        document
+            .inner
+            .insert_child(parent.id, index, child.id)
+            .map_err(edit_error)
+    }
+
+    fn replace_with(
+        slf: &Bound<'_, Self>,
+        py: Python<'_>,
+        target: PyRef<'_, PyNode>,
+        replacement: PyRef<'_, PyNode>,
+    ) -> PyResult<()> {
+        let owner = slf.clone().unbind();
+        ensure_node_owner(py, &owner, &target)?;
+        ensure_node_owner(py, &owner, &replacement)?;
+        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+        document
+            .inner
+            .replace_with(target.id, replacement.id)
+            .map_err(edit_error)
+    }
+
+    fn wrap(
+        slf: &Bound<'_, Self>,
+        py: Python<'_>,
+        target: PyRef<'_, PyNode>,
+        wrapper: PyRef<'_, PyNode>,
+    ) -> PyResult<Py<PyNode>> {
+        let owner = slf.clone().unbind();
+        ensure_node_owner(py, &owner, &target)?;
+        ensure_node_owner(py, &owner, &wrapper)?;
+        let id = {
+            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+            document
+                .inner
+                .wrap(target.id, wrapper.id)
+                .map_err(edit_error)?
+        };
+        py_node(py, owner, id)
+    }
+
+    fn unwrap(
+        slf: &Bound<'_, Self>,
+        py: Python<'_>,
+        group: PyRef<'_, PyNode>,
+    ) -> PyResult<Py<PyAny>> {
+        let owner = slf.clone().unbind();
+        ensure_node_owner(py, &owner, &group)?;
+        let ids = {
+            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+            document.inner.unwrap(group.id).map_err(edit_error)?
+        };
+        py_nodes_list(py, &owner, ids)
+    }
+
+    fn extract(
+        slf: &Bound<'_, Self>,
+        py: Python<'_>,
+        node: PyRef<'_, PyNode>,
+    ) -> PyResult<Py<PyNode>> {
+        let owner = slf.clone().unbind();
+        ensure_node_owner(py, &owner, &node)?;
+        let id = {
+            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+            document.inner.extract(node.id).map_err(edit_error)?
+        };
+        py_node(py, owner, id)
+    }
+
+    fn remove(slf: &Bound<'_, Self>, py: Python<'_>, node: PyRef<'_, PyNode>) -> PyResult<()> {
+        let owner = slf.clone().unbind();
+        ensure_node_owner(py, &owner, &node)?;
+        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+        document.inner.remove(node.id).map_err(edit_error)
+    }
+
+    fn clear(slf: &Bound<'_, Self>, py: Python<'_>, container: PyRef<'_, PyNode>) -> PyResult<()> {
+        let owner = slf.clone().unbind();
+        ensure_node_owner(py, &owner, &container)?;
+        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+        document.inner.clear(container.id).map_err(edit_error)
+    }
+
+    fn set_command_name(
+        slf: &Bound<'_, Self>,
+        py: Python<'_>,
+        node: PyRef<'_, PyNode>,
+        name: &str,
+    ) -> PyResult<()> {
+        let owner = slf.clone().unbind();
+        ensure_node_owner(py, &owner, &node)?;
+        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+        document
+            .inner
+            .set_command_name(node.id, name)
+            .map_err(edit_error)
+    }
+
+    fn set_text(
+        slf: &Bound<'_, Self>,
+        py: Python<'_>,
+        node: PyRef<'_, PyNode>,
+        value: &str,
+    ) -> PyResult<()> {
+        let owner = slf.clone().unbind();
+        ensure_node_owner(py, &owner, &node)?;
+        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+        document.inner.set_text(node.id, value).map_err(edit_error)
+    }
+
+    fn set_char(
+        slf: &Bound<'_, Self>,
+        py: Python<'_>,
+        node: PyRef<'_, PyNode>,
+        value: &str,
+    ) -> PyResult<()> {
+        let owner = slf.clone().unbind();
+        ensure_node_owner(py, &owner, &node)?;
+        let ch = parse_char(value)?;
+        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+        document.inner.set_char(node.id, ch).map_err(edit_error)
+    }
+
+    fn set_arg(
+        slf: &Bound<'_, Self>,
+        py: Python<'_>,
+        node: PyRef<'_, PyNode>,
+        index: usize,
+        value: Py<PyAny>,
+    ) -> PyResult<()> {
+        let owner = slf.clone().unbind();
+        ensure_node_owner(py, &owner, &node)?;
+        let value = py_arg_value(py, &owner, value.bind(py))?;
+        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+        document
+            .inner
+            .set_arg(node.id, index, value)
+            .map_err(edit_error)
+    }
+}
+
+#[pyclass(name = "Node")]
+struct PyNode {
+    doc: Py<PyDocument>,
+    id: texform::NodeId,
+}
+
+#[pymethods]
+impl PyNode {
+    #[pyo3(signature = (name = None))]
+    fn is_command(&self, py: Python<'_>, name: Option<&str>) -> PyResult<bool> {
+        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+        let node = document.inner.node(self.id).map_err(edit_error)?;
+        Ok(match name {
+            Some(name) => node.is_command(name),
+            None => node.kind() == texform::NodeKind::Command,
+        })
+    }
+
+    #[pyo3(signature = (value = None))]
+    fn is_char(&self, py: Python<'_>, value: Option<&str>) -> PyResult<bool> {
+        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+        let node = document.inner.node(self.id).map_err(edit_error)?;
+        Ok(match value {
+            Some(value) => node.is_char(parse_char(value)?),
+            None => node.kind() == texform::NodeKind::Char,
+        })
+    }
+
+    fn is_error(&self, py: Python<'_>) -> PyResult<bool> {
+        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+        let node = document.inner.node(self.id).map_err(edit_error)?;
+        Ok(node.is_error())
+    }
+
+    fn kind(&self, py: Python<'_>) -> PyResult<String> {
+        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+        let node = document
+            .inner
+            .node(self.id)
+            .map_err(|error| ParseError::new_err(error.to_string()))?;
+        Ok(format!("{:?}", node.kind()))
+    }
+
+    fn parent(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let id = {
+            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+            let node = document.inner.node(self.id).map_err(edit_error)?;
+            node.parent().map(|node| node.id())
+        };
+        py_optional_node(py, self.doc.clone_ref(py), id)
+    }
+
+    fn children(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let ids = {
+            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+            let node = document.inner.node(self.id).map_err(edit_error)?;
+            node.children().map(|node| node.id()).collect::<Vec<_>>()
+        };
+        py_nodes_list(py, &self.doc, ids)
+    }
+
+    fn next_sibling(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let id = {
+            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+            let node = document.inner.node(self.id).map_err(edit_error)?;
+            node.next_sibling().map(|node| node.id())
+        };
+        py_optional_node(py, self.doc.clone_ref(py), id)
+    }
+
+    fn prev_sibling(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let id = {
+            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+            let node = document.inner.node(self.id).map_err(edit_error)?;
+            node.prev_sibling().map(|node| node.id())
+        };
+        py_optional_node(py, self.doc.clone_ref(py), id)
+    }
+
+    fn ancestors(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let ids = {
+            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+            let node = document.inner.node(self.id).map_err(edit_error)?;
+            node.ancestors().map(|node| node.id()).collect::<Vec<_>>()
+        };
+        py_nodes_list(py, &self.doc, ids)
+    }
+
+    fn descendants(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let ids = {
+            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+            let node = document.inner.node(self.id).map_err(edit_error)?;
+            node.descendants().map(|node| node.id()).collect::<Vec<_>>()
+        };
+        py_nodes_list(py, &self.doc, ids)
+    }
+
+    fn command_name(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+        let node = document
+            .inner
+            .node(self.id)
+            .map_err(|error| ParseError::new_err(error.to_string()))?;
+        Ok(node.command_name().map(ToOwned::to_owned))
+    }
+
+    fn env_name(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+        let node = document.inner.node(self.id).map_err(edit_error)?;
+        Ok(node.env_name().map(ToOwned::to_owned))
+    }
+
+    fn text(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+        let node = document
+            .inner
+            .node(self.id)
+            .map_err(|error| ParseError::new_err(error.to_string()))?;
+        Ok(node.text().map(ToOwned::to_owned))
+    }
+
+    fn char(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+        let node = document.inner.node(self.id).map_err(edit_error)?;
+        Ok(node.char().map(|ch| ch.to_string()))
+    }
+
+    fn error_parts(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let parts = {
+            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+            let node = document.inner.node(self.id).map_err(edit_error)?;
+            node.error_parts()
+                .map(|(message, snippet)| (message.to_string(), snippet.to_string()))
+        };
+        match parts {
+            Some((message, snippet)) => {
+                let out = PyDict::new(py);
+                out.set_item("message", message)?;
+                out.set_item("snippet", snippet)?;
+                Ok(out.unbind().into_any())
+            }
+            None => Ok(py.None()),
+        }
+    }
+
+    fn content_mode(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+        let node = document.inner.node(self.id).map_err(edit_error)?;
+        Ok(node
+            .content_mode()
+            .map(content_mode_to_str)
+            .map(str::to_owned))
+    }
+
+    fn group_kind(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let value = {
+            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+            let node = document.inner.node(self.id).map_err(edit_error)?;
+            node.group_kind().map(py_group_kind)
+        };
+        match value {
+            Some(value) => Ok(pythonize(py, &value)?.unbind()),
+            None => Ok(py.None()),
+        }
+    }
+
+    fn arg_count(&self, py: Python<'_>) -> PyResult<usize> {
+        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+        let node = document.inner.node(self.id).map_err(edit_error)?;
+        Ok(node.arg_count())
+    }
+
+    fn arg(&self, py: Python<'_>, index: usize) -> PyResult<Py<PyAny>> {
+        let arg = {
+            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+            let node = document.inner.node(self.id).map_err(edit_error)?;
+            node.arg(index)
+                .map(|arg| py_arg_ref(py, &self.doc, arg))
+                .transpose()?
+        };
+        Ok(arg.unwrap_or_else(|| py.None()))
+    }
+
+    fn arg_slots(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let args = {
+            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+            let node = document.inner.node(self.id).map_err(edit_error)?;
+            node.arg_slots()
+                .map(|arg| {
+                    arg.map(|arg| py_arg_ref(py, &self.doc, arg))
+                        .transpose()
+                        .map(|value| value.unwrap_or_else(|| py.None()))
+                })
+                .collect::<PyResult<Vec<_>>>()?
+        };
+        let out = PyList::empty(py);
+        for arg in args {
+            out.append(arg)?;
+        }
+        Ok(out.unbind().into_any())
+    }
+
+    fn script_base(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let id = {
+            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+            let node = document.inner.node(self.id).map_err(edit_error)?;
+            node.script_base().map(|node| node.id())
+        };
+        py_optional_node(py, self.doc.clone_ref(py), id)
+    }
+
+    fn subscript(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let id = {
+            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+            let node = document.inner.node(self.id).map_err(edit_error)?;
+            node.subscript().map(|node| node.id())
+        };
+        py_optional_node(py, self.doc.clone_ref(py), id)
+    }
+
+    fn superscript(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let id = {
+            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+            let node = document.inner.node(self.id).map_err(edit_error)?;
+            node.superscript().map(|node| node.id())
+        };
+        py_optional_node(py, self.doc.clone_ref(py), id)
+    }
+
+    fn infix_left(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let id = {
+            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+            let node = document.inner.node(self.id).map_err(edit_error)?;
+            node.infix_left().map(|node| node.id())
+        };
+        py_optional_node(py, self.doc.clone_ref(py), id)
+    }
+
+    fn infix_right(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let id = {
+            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+            let node = document.inner.node(self.id).map_err(edit_error)?;
+            node.infix_right().map(|node| node.id())
+        };
+        py_optional_node(py, self.doc.clone_ref(py), id)
+    }
+
+    fn env_body(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let id = {
+            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+            let node = document.inner.node(self.id).map_err(edit_error)?;
+            node.env_body().map(|node| node.id())
+        };
+        py_optional_node(py, self.doc.clone_ref(py), id)
+    }
+
+    fn span(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let span = {
+            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+            let node = document.inner.node(self.id).map_err(edit_error)?;
+            node.span()
+        };
+        match span {
+            Some(span) => Ok(pythonize(py, &span)?.unbind()),
+            None => Ok(py.None()),
+        }
     }
 }
 
@@ -821,7 +1699,7 @@ impl PyParser {
             Some(config) => self.inner.parse_with(src, &config),
             None => self.inner.parse(src),
         };
-        parse_output_to_python(py, output)
+        parse_result_to_python(py, output)
     }
 
     fn lookup_command(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
@@ -965,7 +1843,7 @@ impl PyEngine {
             Some(config) => self.inner.parser().parse_with(src, &config),
             None => self.inner.parser().parse(src),
         };
-        parse_output_to_python(py, output)
+        parse_result_to_python(py, output)
     }
 
     fn lookup_command(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
@@ -1043,381 +1921,13 @@ fn transform_result_to_python(
     normalized: String,
     report: &texform::TransformReport,
 ) -> PyResult<Py<PyAny>> {
-    let applied = report
-        .rewrite
-        .applied
-        .iter()
-        .map(|stat| {
-            serde_json::json!({
-                "key": stat.key.to_string(),
-                "count": stat.count,
-                "skipped_count": stat.skipped_count,
-            })
-        })
-        .collect::<Vec<_>>();
-
-    let out = serde_json::json!({
-        "normalized": normalized,
-        "report": {
-            "iterations": report.rewrite.iterations,
-            "applied": applied,
-            "lower_attributes": {
-                "eliminated_empty_segments": report.lower_attributes.eliminated_empty_segments,
-            },
-            "flatten_groups": {
-                "removed_empty": report.flatten_groups.removed_empty,
-                "replaced_single_child": report.flatten_groups.replaced_single_child,
-                "inlined_multi_child": report.flatten_groups.inlined_multi_child,
-                "unwrapped_slot": report.flatten_groups.unwrapped_slot,
-                "preserved_group_containing_declarative_command": report.flatten_groups.preserved_group_containing_declarative_command,
-                "preserved_group_in_script_base_slot": report.flatten_groups.preserved_group_in_script_base_slot,
-                "preserved_group_inside_env_body": report.flatten_groups.preserved_group_inside_env_body,
-                "preserved_group_containing_infix": report.flatten_groups.preserved_group_containing_infix,
-                "preserved_group_adjacent_to_command_like": report.flatten_groups.preserved_group_adjacent_to_command_like,
-                "preserved_group_as_argument_of_command": report.flatten_groups.preserved_group_as_argument_of_command,
-                "preserved_group_after_scripted_command_like": report.flatten_groups.preserved_group_after_scripted_command_like,
-                "preserved_empty_group": report.flatten_groups.preserved_empty_group,
-                "preserved_group_with_lone_atom_spacing_char": report.flatten_groups.preserved_group_with_lone_atom_spacing_char,
-                "preserved_group_starting_with_atom_spacing_char": report.flatten_groups.preserved_group_starting_with_atom_spacing_char,
-                "preserved_group_containing_delimited_pair": report.flatten_groups.preserved_group_containing_delimited_pair,
-            },
-        },
-    });
-    Ok(pythonize(py, &out)?.unbind())
-}
-
-fn value_object<'a>(
-    value: &'a serde_json::Value,
-    context: &str,
-) -> PyResult<&'a serde_json::Map<String, serde_json::Value>> {
-    value
-        .as_object()
-        .ok_or_else(|| ParseError::new_err(format!("{context} must be an object")))
-}
-
-fn single_variant<'a>(
-    value: &'a serde_json::Value,
-    context: &str,
-) -> PyResult<(&'a str, &'a serde_json::Value)> {
-    let object = value_object(value, context)?;
-    if object.len() != 1 {
-        return Err(ParseError::new_err(format!(
-            "{context} must contain exactly one variant"
-        )));
-    }
-    let (key, value) = object.iter().next().expect("object is non-empty");
-    Ok((key.as_str(), value))
-}
-
-fn json_string(value: &serde_json::Value, context: &str) -> PyResult<String> {
-    value
-        .as_str()
-        .map(ToOwned::to_owned)
-        .ok_or_else(|| ParseError::new_err(format!("{context} must be a string")))
-}
-
-fn json_bool(value: &serde_json::Value, context: &str) -> PyResult<bool> {
-    value
-        .as_bool()
-        .ok_or_else(|| ParseError::new_err(format!("{context} must be a boolean")))
-}
-
-fn json_array<'a>(
-    value: &'a serde_json::Value,
-    context: &str,
-) -> PyResult<&'a Vec<serde_json::Value>> {
-    value
-        .as_array()
-        .ok_or_else(|| ParseError::new_err(format!("{context} must be an array")))
-}
-
-fn json_field<'a>(
-    object: &'a serde_json::Map<String, serde_json::Value>,
-    key: &str,
-    context: &str,
-) -> PyResult<&'a serde_json::Value> {
-    object
-        .get(key)
-        .ok_or_else(|| ParseError::new_err(format!("{context} missing `{key}`")))
-}
-
-fn syntax_mode_from_json(value: &serde_json::Value) -> PyResult<texform::ContentMode> {
-    match json_string(value, "mode")?.as_str() {
-        "Math" | "math" => Ok(texform::ContentMode::Math),
-        "Text" | "text" => Ok(texform::ContentMode::Text),
-        other => Err(ParseError::new_err(format!(
-            "unsupported content mode: {other}"
-        ))),
-    }
-}
-
-fn delimiter_from_json(value: &serde_json::Value) -> PyResult<texform::Delimiter> {
-    if let Some(text) = value.as_str() {
-        return match text {
-            "None" => Ok(texform::Delimiter::None),
-            other => Err(ParseError::new_err(format!(
-                "unsupported delimiter: {other}"
-            ))),
-        };
-    }
-    let (variant, data) = single_variant(value, "delimiter")?;
-    match variant {
-        "Char" => {
-            let text = json_string(data, "delimiter char")?;
-            let ch = text
-                .chars()
-                .next()
-                .ok_or_else(|| ParseError::new_err("delimiter char cannot be empty"))?;
-            Ok(texform::Delimiter::Char(ch))
-        }
-        "Control" => {
-            let text = json_string(data, "delimiter control")?;
-            let leaked: &'static str = Box::leak(text.into_boxed_str());
-            Ok(texform::Delimiter::Control(leaked))
-        }
-        other => Err(ParseError::new_err(format!(
-            "unsupported delimiter: {other}"
-        ))),
-    }
-}
-
-fn group_kind_from_json(value: &serde_json::Value) -> PyResult<texform::GroupKind> {
-    if let Some(text) = value.as_str() {
-        return match text {
-            "Explicit" => Ok(texform::GroupKind::Explicit),
-            "Implicit" => Ok(texform::GroupKind::Implicit),
-            "InlineMath" => Ok(texform::GroupKind::InlineMath),
-            other => Err(ParseError::new_err(format!(
-                "unsupported group kind: {other}"
-            ))),
-        };
-    }
-    let (variant, data) = single_variant(value, "group kind")?;
-    match variant {
-        "Delimited" => {
-            let object = value_object(data, "delimited group kind")?;
-            Ok(texform::GroupKind::Delimited {
-                left: delimiter_from_json(json_field(object, "left", "delimited group kind")?)?,
-                right: delimiter_from_json(json_field(object, "right", "delimited group kind")?)?,
-            })
-        }
-        other => Err(ParseError::new_err(format!(
-            "unsupported group kind: {other}"
-        ))),
-    }
-}
-
-fn argument_kind_from_json(value: &serde_json::Value) -> PyResult<texform::ArgumentKind> {
-    if let Some(text) = value.as_str() {
-        return match text {
-            "Mandatory" => Ok(texform::ArgumentKind::Mandatory),
-            "Optional" => Ok(texform::ArgumentKind::Optional),
-            "Star" => Ok(texform::ArgumentKind::Star),
-            "Group" => Ok(texform::ArgumentKind::Group),
-            other => Err(ParseError::new_err(format!(
-                "unsupported argument kind: {other}"
-            ))),
-        };
-    }
-    let (variant, data) = single_variant(value, "argument kind")?;
-    let object = value_object(data, "argument delimiter kind")?;
-    match variant {
-        "Delimited" => Ok(texform::ArgumentKind::Delimited {
-            open: delimiter_from_json(json_field(object, "open", "argument kind")?)?,
-            close: delimiter_from_json(json_field(object, "close", "argument kind")?)?,
-        }),
-        "Paired" => Ok(texform::ArgumentKind::Paired {
-            open: delimiter_from_json(json_field(object, "open", "argument kind")?)?,
-            close: delimiter_from_json(json_field(object, "close", "argument kind")?)?,
-        }),
-        other => Err(ParseError::new_err(format!(
-            "unsupported argument kind: {other}"
-        ))),
-    }
-}
-
-fn argument_value_from_json(value: &serde_json::Value) -> PyResult<texform::ArgumentValue> {
-    let (variant, data) = single_variant(value, "argument value")?;
-    match variant {
-        "MathContent" => Ok(texform::ArgumentValue::MathContent(syntax_node_from_json(
-            data,
-        )?)),
-        "TextContent" => Ok(texform::ArgumentValue::TextContent(syntax_node_from_json(
-            data,
-        )?)),
-        "Delimiter" => Ok(texform::ArgumentValue::Delimiter(delimiter_from_json(
-            data,
-        )?)),
-        "CSName" => Ok(texform::ArgumentValue::CSName(json_string(data, "csname")?)),
-        "Dimension" => Ok(texform::ArgumentValue::Dimension(json_string(
-            data,
-            "dimension",
-        )?)),
-        "Integer" => Ok(texform::ArgumentValue::Integer(json_string(
-            data, "integer",
-        )?)),
-        "KeyVal" => Ok(texform::ArgumentValue::KeyVal(json_string(data, "keyval")?)),
-        "Column" => Ok(texform::ArgumentValue::Column(json_string(data, "column")?)),
-        "Boolean" => Ok(texform::ArgumentValue::Boolean(json_bool(data, "boolean")?)),
-        other => Err(ParseError::new_err(format!(
-            "unsupported argument value: {other}"
-        ))),
-    }
-}
-
-fn argument_from_json(value: &serde_json::Value) -> PyResult<texform::Argument> {
-    let object = value_object(value, "argument")?;
-    Ok(texform::Argument::from_value(
-        argument_kind_from_json(json_field(object, "kind", "argument")?)?,
-        argument_value_from_json(json_field(object, "value", "argument")?)?,
-    ))
-}
-
-fn argument_slots_from_json(value: &serde_json::Value) -> PyResult<Vec<texform::ArgumentSlot>> {
-    json_array(value, "argument slots")?
-        .iter()
-        .map(|slot| {
-            if slot.is_null() {
-                Ok(None)
-            } else {
-                Ok(Some(argument_from_json(slot)?))
-            }
-        })
-        .collect()
-}
-
-fn syntax_node_from_json(value: &serde_json::Value) -> PyResult<texform::SyntaxNode> {
-    if value.as_str() == Some("ActiveSpace") {
-        return Ok(texform::SyntaxNode::ActiveSpace);
-    }
-    let (variant, data) = single_variant(value, "syntax node")?;
-    match variant {
-        "Root" => {
-            let object = value_object(data, "root node")?;
-            Ok(texform::SyntaxNode::Root {
-                mode: syntax_mode_from_json(json_field(object, "mode", "root node")?)?,
-                children: json_array(json_field(object, "children", "root node")?, "children")?
-                    .iter()
-                    .map(syntax_node_from_json)
-                    .collect::<PyResult<_>>()?,
-            })
-        }
-        "Group" => {
-            let object = value_object(data, "group node")?;
-            Ok(texform::SyntaxNode::Group {
-                mode: syntax_mode_from_json(json_field(object, "mode", "group node")?)?,
-                kind: group_kind_from_json(json_field(object, "kind", "group node")?)?,
-                children: json_array(json_field(object, "children", "group node")?, "children")?
-                    .iter()
-                    .map(syntax_node_from_json)
-                    .collect::<PyResult<_>>()?,
-            })
-        }
-        "Command" => {
-            let object = value_object(data, "command node")?;
-            Ok(texform::SyntaxNode::Command {
-                name: json_string(json_field(object, "name", "command node")?, "command name")?,
-                args: argument_slots_from_json(json_field(object, "args", "command node")?)?,
-                known: json_bool(
-                    json_field(object, "known", "command node")?,
-                    "command known",
-                )?,
-            })
-        }
-        "Infix" => {
-            let object = value_object(data, "infix node")?;
-            Ok(texform::SyntaxNode::Infix {
-                name: json_string(json_field(object, "name", "infix node")?, "infix name")?,
-                args: argument_slots_from_json(json_field(object, "args", "infix node")?)?,
-                left: Box::new(syntax_node_from_json(json_field(
-                    object,
-                    "left",
-                    "infix node",
-                )?)?),
-                right: Box::new(syntax_node_from_json(json_field(
-                    object,
-                    "right",
-                    "infix node",
-                )?)?),
-            })
-        }
-        "Declarative" => {
-            let object = value_object(data, "declarative node")?;
-            Ok(texform::SyntaxNode::Declarative {
-                name: json_string(
-                    json_field(object, "name", "declarative node")?,
-                    "declarative name",
-                )?,
-                args: argument_slots_from_json(json_field(object, "args", "declarative node")?)?,
-            })
-        }
-        "Environment" => {
-            let object = value_object(data, "environment node")?;
-            Ok(texform::SyntaxNode::Environment {
-                name: json_string(
-                    json_field(object, "name", "environment node")?,
-                    "environment name",
-                )?,
-                args: argument_slots_from_json(json_field(object, "args", "environment node")?)?,
-                known: json_bool(
-                    json_field(object, "known", "environment node")?,
-                    "environment known",
-                )?,
-                body: Box::new(syntax_node_from_json(json_field(
-                    object,
-                    "body",
-                    "environment node",
-                )?)?),
-            })
-        }
-        "Scripted" => {
-            let object = value_object(data, "scripted node")?;
-            Ok(texform::SyntaxNode::Scripted {
-                base: Box::new(syntax_node_from_json(json_field(
-                    object,
-                    "base",
-                    "scripted node",
-                )?)?),
-                subscript: match object.get("subscript") {
-                    Some(value) if !value.is_null() => {
-                        Some(Box::new(syntax_node_from_json(value)?))
-                    }
-                    _ => None,
-                },
-                superscript: match object.get("superscript") {
-                    Some(value) if !value.is_null() => {
-                        Some(Box::new(syntax_node_from_json(value)?))
-                    }
-                    _ => None,
-                },
-            })
-        }
-        "Error" => {
-            let object = value_object(data, "error node")?;
-            Ok(texform::SyntaxNode::Error {
-                message: json_string(
-                    json_field(object, "message", "error node")?,
-                    "error message",
-                )?,
-                snippet: json_string(
-                    json_field(object, "snippet", "error node")?,
-                    "error snippet",
-                )?,
-            })
-        }
-        "Text" => Ok(texform::SyntaxNode::Text(json_string(data, "text node")?)),
-        "Char" => {
-            let text = json_string(data, "char node")?;
-            let ch = text
-                .chars()
-                .next()
-                .ok_or_else(|| ParseError::new_err("char node cannot be empty"))?;
-            Ok(texform::SyntaxNode::Char(ch))
-        }
-        other => Err(ParseError::new_err(format!(
-            "unsupported syntax node: {other}"
-        ))),
-    }
+    let out = PyDict::new(py);
+    out.set_item("normalized", normalized)?;
+    out.set_item(
+        "report",
+        pythonize(py, &texform::bindings::transform_report_to_dto(report))?,
+    )?;
+    Ok(out.unbind().into_any())
 }
 
 fn serialize_options_from_python(
@@ -1433,11 +1943,18 @@ fn serialize_options_from_python(
 #[pyfunction]
 #[pyo3(signature = (node, options = None))]
 fn serialize(node: &Bound<'_, PyAny>, options: Option<&Bound<'_, PyAny>>) -> PyResult<String> {
-    let value: serde_json::Value = depythonize(node)
+    let node = depythonize::<texform::SyntaxNode>(node)
         .map_err(|error| ParseError::new_err(format!("invalid syntax node: {error}")))?;
-    let node = syntax_node_from_json(&value)?;
     let options = serialize_options_from_python(options)?;
-    texform::serialize_with(&node, &options).map_err(|error| ParseError::new_err(error.to_string()))
+    let document = texform::Document::from_syntax(&node).map_err(|error| match error {
+        texform::FromSyntaxError::NotARoot => {
+            ParseError::new_err("serialize expects a syntax root")
+        }
+        _ => ParseError::new_err(error.to_string()),
+    })?;
+    document
+        .to_latex_with(&options)
+        .map_err(|error| ParseError::new_err(error.to_string()))
 }
 
 #[pyfunction]
@@ -1474,6 +1991,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyRewriteConfig>()?;
     m.add_class::<PyFlattenGroupsConfig>()?;
     m.add_class::<PyTransformConfig>()?;
+    m.add_class::<PyDocument>()?;
+    m.add_class::<PyNode>()?;
     m.add_class::<PyParser>()?;
     m.add_class::<PyEngine>()?;
     m.add("ParseError", m.py().get_type::<ParseError>())?;
@@ -1483,6 +2002,150 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn python_parse_returns_document_and_diagnostics() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let parser = module.getattr("Parser").unwrap().call0().unwrap();
+            let result = parser.call_method1("parse", (r"\frac{a}{b}",)).unwrap();
+            let dict = result.cast::<pyo3::types::PyDict>().unwrap();
+            let document = dict.get_item("document").unwrap().unwrap();
+            let diagnostics = dict.get_item("diagnostics").unwrap().unwrap();
+
+            assert!(document.is_instance_of::<PyDocument>());
+            assert_eq!(diagnostics.len().unwrap(), 0);
+            assert_eq!(
+                document
+                    .call_method0("to_latex")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                r"\frac { a } { b }"
+            );
+            assert_eq!(
+                document
+                    .call_method0("root")
+                    .unwrap()
+                    .call_method0("kind")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                "Root"
+            );
+
+            let config = pyo3::types::PyDict::new(py);
+            config.set_item("reject_unknown", true).unwrap();
+            let result = parser
+                .call_method1("parse", (r"\unknowncmd", config))
+                .expect("diagnostics should be returned instead of raised");
+            let dict = result.cast::<pyo3::types::PyDict>().unwrap();
+            let document = dict.get_item("document").unwrap().unwrap();
+            let diagnostics = dict.get_item("diagnostics").unwrap().unwrap();
+
+            assert!(document.is_instance_of::<PyDocument>());
+            assert!(
+                document
+                    .call_method0("has_errors")
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap()
+            );
+            assert_eq!(diagnostics.len().unwrap(), 1);
+        });
+    }
+
+    #[test]
+    fn python_rejects_cross_document_nodes() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let document_cls = module.getattr("Document").unwrap();
+            let first = document_cls.call0().unwrap();
+            let second = document_cls.call0().unwrap();
+            let root = first.call_method0("root").unwrap();
+            let foreign = second.call_method1("create_char", ("x",)).unwrap();
+
+            let error = first
+                .call_method1("append_child", (root, foreign))
+                .expect_err("foreign child should be rejected");
+            assert!(error.to_string().contains("different document"));
+        });
+    }
+
+    #[test]
+    fn python_create_command_with_arg_roundtrips_latex() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let document = module.getattr("Document").unwrap().call0().unwrap();
+            let arg = document.call_method1("create_char", ("x",)).unwrap();
+            let arg_value = PyDict::new(py);
+            arg_value.set_item("kind", "Math").unwrap();
+            arg_value.set_item("node", arg).unwrap();
+
+            let command = document
+                .call_method1("create_command", ("sqrt", vec![arg_value]))
+                .unwrap();
+            let root = document.call_method0("root").unwrap();
+            document
+                .call_method1("append_child", (root, &command))
+                .unwrap();
+
+            let read_arg_value = command.call_method1("arg", (0usize,)).unwrap();
+            let read_arg = read_arg_value.cast::<PyDict>().unwrap();
+            assert_eq!(
+                read_arg
+                    .get_item("kind")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                "Math"
+            );
+            assert_eq!(
+                document
+                    .call_method0("to_latex")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                r"\sqrt { x }"
+            );
+        });
+    }
+
+    #[test]
+    fn python_rejects_read_only_error_document_editing() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let parser = module.getattr("Parser").unwrap().call0().unwrap();
+            let config = PyDict::new(py);
+            config.set_item("reject_unknown", true).unwrap();
+            let result = parser
+                .call_method1("parse", (r"\unknowncmd", config))
+                .unwrap();
+            let dict = result.cast::<PyDict>().unwrap();
+            let document = dict.get_item("document").unwrap().unwrap();
+
+            assert!(
+                document
+                    .call_method0("is_read_only")
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap()
+            );
+            let error = document
+                .call_method1("create_char", ("x",))
+                .expect_err("read-only document edits should fail");
+            assert!(error.to_string().contains("read-only"));
+        });
+    }
 
     #[test]
     fn python_engine_normalizes_with_profile_and_packages() {
@@ -1591,10 +2254,24 @@ mod tests {
 
             let config = pyo3::types::PyDict::new(py);
             config.set_item("reject_unknown", true).unwrap();
-            let error = parser
+            let result = parser
                 .call_method1("parse", (r"\unknowncmd", config))
-                .expect_err("reject_unknown dict config should reject unknown command");
-            assert!(error.is_instance_of::<ParseError>(py));
+                .expect("reject_unknown dict config should return diagnostics");
+            let dict = result.cast::<pyo3::types::PyDict>().unwrap();
+            assert!(
+                dict.get_item("document")
+                    .unwrap()
+                    .unwrap()
+                    .is_instance_of::<PyDocument>()
+            );
+            assert_eq!(
+                dict.get_item("diagnostics")
+                    .unwrap()
+                    .unwrap()
+                    .len()
+                    .unwrap(),
+                1
+            );
 
             let config = pyo3::types::PyDict::new(py);
             config.set_item("reject_unknown", true).unwrap();
@@ -1705,10 +2382,18 @@ mod tests {
                 .call((), Some(&kwargs))
                 .unwrap();
 
-            let error = engine
+            let result = engine
                 .call_method1("parse", (r"\unknowncmd",))
-                .expect_err("engine parse should use strict default and reject unknown commands");
-            assert!(error.is_instance_of::<ParseError>(py));
+                .expect("engine parse should return strict diagnostics");
+            let dict = result.cast::<pyo3::types::PyDict>().unwrap();
+            assert_eq!(
+                dict.get_item("diagnostics")
+                    .unwrap()
+                    .unwrap()
+                    .len()
+                    .unwrap(),
+                1
+            );
             let result = engine
                 .call_method1("normalize", (r"\quantity{x}",))
                 .expect("normalize should use facade default");
@@ -1778,12 +2463,13 @@ mod tests {
 
             let parser = module.getattr("Parser").unwrap().call0().unwrap();
             let parsed = parser.call_method1("parse", (r"\frac{a}{b}",)).unwrap();
-            let node = parsed
+            let document = parsed
                 .cast::<pyo3::types::PyDict>()
                 .unwrap()
-                .get_item("node")
+                .get_item("document")
                 .unwrap()
                 .unwrap();
+            let node = document.call_method0("to_syntax").unwrap();
             let text = module
                 .getattr("serialize")
                 .unwrap()

@@ -11,9 +11,12 @@ fn context_always_builds_a_plan_even_when_runtime_rewrite_is_disabled() {
         TransformContext::from_build_config(BuildConfig::profile(Profile::Equiv), &parser)
             .expect("transform context should build");
 
-    let mut ast = parser
-        .parse_to_ast(r"\quantity{x}", &ParseConfig::STRICT)
-        .expect("parse should succeed");
+    let document = parser
+        .parse(r"\quantity{x}", &ParseConfig::STRICT)
+        .try_into_document()
+        .expect("parse should succeed")
+        .0;
+    let mut ast = texform_core::ast::Ast::from_syntax_root(&document.to_syntax());
     let report = context
         .run_with(
             &mut ast,

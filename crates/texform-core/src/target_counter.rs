@@ -167,9 +167,9 @@ mod tests {
 
     fn count(src: &str) -> HashMap<String, u32> {
         let output = ParseContext::shared().parse(src, &ParseConfig::default());
-        let node = &output.result.expect("parse result").node;
+        let document = output.document().expect("parse result");
         let mut counter = TargetCounter::default();
-        count_node(node, &mut counter);
+        count_node(&document.to_syntax(), &mut counter);
         counter.logical_counts()
     }
 

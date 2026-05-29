@@ -1,10 +1,16 @@
-//! Immutable syntax tree for LaTeX parsing (Stage 1)
+//! Lossless syntax tree snapshots used for serde and transport.
 //!
-//! This module defines the intermediate representation produced by the parser (chumsky).
-//! Unlike the final AST (ast.rs), SyntaxNode uses standard Rust types (Vec, Box)
-//! and is optimized for top-down traversal rather than bidirectional navigation.
+//! `SyntaxNode` is the parser's immutable, lossless output shape. It is useful
+//! for JSON snapshots, Python dictionaries, JavaScript objects, and tests that
+//! need to inspect the parsed structure.
 //!
-//! After parsing, the syntax tree is converted to the slotmap-based AST.
+//! Editing is intentionally handled by `texform::Document`, not by
+//! `SyntaxNode`. Convert a syntax snapshot with `Document::from_syntax` when
+//! you need a live DOM-style tree, and call `Document::to_syntax` when you need
+//! to serialize or transport the current tree.
+//!
+//! `SyntaxNode::Error` represents a parser recovery placeholder. It can appear
+//! in partial parse trees and preserves the original source snippet.
 
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -218,9 +224,11 @@ pub enum SyntaxNode {
 
     /// Parser-produced error placeholder.
     ///
-    /// This keeps recovery output inspectable while making downstream
-    /// conversion and serialization fail fast if the caller tries to treat it
-    /// as a valid syntax tree.
+    /// Recovery inserts this node where the parser could not interpret a source
+    /// fragment. AST and document-style conversions preserve it so callers can
+    /// inspect partial trees or serialize the captured snippet. Callers that
+    /// require semantically complete trees should inspect parser diagnostics and
+    /// check for `Error` nodes before continuing.
     Error { message: String, snippet: String },
 
     /// Text string (Text mode only)

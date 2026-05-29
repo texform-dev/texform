@@ -63,10 +63,12 @@ fn parse_context_uses_text_lane_for_nested_text_only_command() {
         output.diagnostics
     );
 
-    let result = output.result.expect("expected parse result");
+    let result = output.try_into_document().expect("expected parse result").0;
     assert!(
         result
-            .span_for("root.child.0.arg.0.content.arg.0")
+            .find_commands("textonly")
+            .next()
+            .and_then(|node| node.span())
             .is_some()
     );
 }

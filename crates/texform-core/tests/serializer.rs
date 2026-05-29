@@ -1,6 +1,6 @@
 use texform_core::{
     ast::{Argument, ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node},
-    parse::{ParseAstError, ParseContext},
+    parse::ParseContext,
     serialize::{
         AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, InfixGrouping,
         MathGroupInnerSpacing, MathScriptOptions, ScriptOrder, ScriptSpacing, SerializeOptions,
@@ -9,40 +9,42 @@ use texform_core::{
 };
 
 fn parse_to_ast(src: &str) -> texform_core::ast::Ast {
-    ParseContext::shared()
-        .parse_to_ast(src, &texform_core::parse::ParseConfig::STRICT)
-        .unwrap()
+    let document = ParseContext::shared()
+        .parse(src, &texform_core::parse::ParseConfig::STRICT)
+        .try_into_document()
+        .unwrap();
+    Ast::from_syntax_root(&document.0.to_syntax())
 }
 
 #[test]
-fn parse_to_ast_returns_diagnostics_present_when_partial_tree_has_errors() {
+fn try_into_document_returns_diagnostics_present_when_partial_tree_has_errors() {
     let error = ParseContext::shared()
-        .parse_to_ast(
+        .parse(
             r"\text{\frac{a}{b}}",
             &texform_core::parse::ParseConfig::default(),
         )
-        .expect_err("partial parses with diagnostics should not produce an AST");
+        .try_into_document()
+        .expect_err("partial parses with diagnostics should not produce a document");
 
-    match error {
-        ParseAstError::DiagnosticsPresent { diagnostics } => {
-            assert!(!diagnostics.is_empty(), "expected parse diagnostics");
-        }
-        other => panic!("expected DiagnosticsPresent, got {other:?}"),
-    }
+    assert!(error.document().is_some(), "expected partial document");
+    assert!(
+        !error.diagnostics().is_empty(),
+        "expected parse diagnostics"
+    );
 }
 
 #[test]
-fn parse_to_ast_returns_no_parse_result_when_strict_parse_fails() {
+fn try_into_document_returns_no_document_when_strict_parse_fails() {
     let error = ParseContext::shared()
-        .parse_to_ast(r"\unknowncmd", &texform_core::parse::ParseConfig::STRICT)
-        .expect_err("strict parse failures should not produce an AST");
+        .parse(r"\unknowncmd", &texform_core::parse::ParseConfig::STRICT)
+        .try_into_document()
+        .expect_err("strict parse failures should not produce a document");
 
-    match error {
-        ParseAstError::NoParseResult { diagnostics } => {
-            assert!(!diagnostics.is_empty(), "expected parse diagnostics");
-        }
-        other => panic!("expected NoParseResult, got {other:?}"),
-    }
+    assert!(error.document().is_none(), "expected no document");
+    assert!(
+        !error.diagnostics().is_empty(),
+        "expected parse diagnostics"
+    );
 }
 
 #[test]

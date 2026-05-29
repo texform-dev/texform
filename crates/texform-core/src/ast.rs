@@ -87,6 +87,8 @@ pub enum NodeKind {
     Text,
     Char,
     ActiveSpace,
+    /// Parser-produced error placeholder; see [`Node::Error`].
+    Error,
 }
 
 /// Delimiter value used by groups and argument kinds.
@@ -247,6 +249,20 @@ pub enum Node {
     Char(char),
     /// Active `~` space node
     ActiveSpace,
+    /// Parser-produced error placeholder, mirroring
+    /// [`SyntaxNode::Error`].
+    ///
+    /// `Error` is a first-class structural leaf: a tree containing `Error`
+    /// nodes is still structurally valid. Semantic completeness (the absence of
+    /// `Error` nodes) is a separate property, not a structural invariant.
+    /// `Error` carries the original recovery message and the source snippet so
+    /// serialization can round-trip it losslessly.
+    Error {
+        /// Human-readable recovery message captured by the parser.
+        message: String,
+        /// Verbatim source slice the parser failed to interpret.
+        snippet: String,
+    },
 }
 
 impl Node {
@@ -263,6 +279,7 @@ impl Node {
             Node::Text(_) => NodeKind::Text,
             Node::Char(_) => NodeKind::Char,
             Node::ActiveSpace => NodeKind::ActiveSpace,
+            Node::Error { .. } => NodeKind::Error,
         }
     }
 }
@@ -285,10 +302,15 @@ pub struct Ast {
 impl Ast {
     /// Create an empty AST with a math-mode root node.
     pub fn new() -> Self {
+        Self::with_root_mode(ContentMode::Math)
+    }
+
+    /// Create an empty AST whose root uses the given content mode.
+    pub fn with_root_mode(mode: ContentMode) -> Self {
         let mut nodes = HopSlotMap::with_key();
         let root = nodes.insert(Node::Root {
             children: Vec::new(),
-            mode: ContentMode::Math,
+            mode,
         });
 
         Ast {
@@ -307,6 +329,8 @@ impl Ast {
     /// - single-node content is not wrapped in an implicit group
     /// - `Delimiter::Control(&'static str)` becomes [`Delimiter::Control`] with
     ///   owned `String` data
+    /// - [`SyntaxNode::Error`] is preserved losslessly as [`Node::Error`]; the
+    ///   resulting tree is structurally valid but semantically incomplete
     ///
     /// # Panics
     ///
@@ -342,6 +366,20 @@ impl Ast {
         ast
     }
 
+    /// Convert this AST back into a [`SyntaxNode`] tree.
+    pub fn to_syntax_root(&self) -> SyntaxNode {
+        let Node::Root { children, mode } = self.node(self.root) else {
+            unreachable!("root must be a Root node");
+        };
+        SyntaxNode::Root {
+            mode: *mode,
+            children: children
+                .iter()
+                .map(|child| self.to_syntax_node(*child))
+                .collect(),
+        }
+    }
+
     /// Return the main root node of the AST.
     pub fn root(&self) -> NodeId {
         self.root
@@ -368,6 +406,29 @@ impl Ast {
     /// Panics if `id` is invalid.
     pub fn node(&self, id: NodeId) -> &Node {
         self.nodes.get(id).expect("Invalid NodeId")
+    }
+
+    /// Non-panicking node borrow; returns `None` if `id` is invalid.
+    pub fn node_opt(&self, id: NodeId) -> Option<&Node> {
+        self.nodes.get(id)
+    }
+
+    /// Non-panicking mutable node borrow; returns `None` if `id` is invalid.
+    ///
+    /// Direct mutation through this helper must not change a node's edges.
+    /// Structural changes must keep using the edge-aware AST methods.
+    pub fn node_opt_mut(&mut self, id: NodeId) -> Option<&mut Node> {
+        self.nodes.get_mut(id)
+    }
+
+    /// Whether `id` is currently tracked as a detached root.
+    pub fn is_detached_root(&self, id: NodeId) -> bool {
+        self.detached_roots.contains(&id)
+    }
+
+    /// Whether `target` lies in the subtree rooted at `root`, inclusive.
+    pub fn subtree_contains_node(&self, root: NodeId, target: NodeId) -> bool {
+        self.subtree_contains(root, target)
     }
 
     /// Return the parent link for `id`, if the node is attached.
@@ -1394,6 +1455,149 @@ impl Ast {
         }
     }
 
+    fn to_syntax_node(&self, id: NodeId) -> SyntaxNode {
+        match self.node(id) {
+            Node::Root { .. } => unreachable!("nested Root is impossible"),
+            Node::Group {
+                children,
+                kind,
+                mode,
+            } => SyntaxNode::Group {
+                mode: *mode,
+                kind: self.to_syntax_group_kind(kind),
+                children: children
+                    .iter()
+                    .map(|child| self.to_syntax_node(*child))
+                    .collect(),
+            },
+            Node::Command { name, args, known } => SyntaxNode::Command {
+                name: name.clone(),
+                args: args
+                    .iter()
+                    .map(|slot| self.to_syntax_arg_slot(slot))
+                    .collect(),
+                known: *known,
+            },
+            Node::Infix {
+                name,
+                args,
+                left,
+                right,
+            } => SyntaxNode::Infix {
+                name: name.clone(),
+                args: args
+                    .iter()
+                    .map(|slot| self.to_syntax_arg_slot(slot))
+                    .collect(),
+                left: Box::new(self.to_syntax_node(*left)),
+                right: Box::new(self.to_syntax_node(*right)),
+            },
+            Node::Declarative { name, args } => SyntaxNode::Declarative {
+                name: name.clone(),
+                args: args
+                    .iter()
+                    .map(|slot| self.to_syntax_arg_slot(slot))
+                    .collect(),
+            },
+            Node::Environment {
+                name,
+                args,
+                known,
+                body,
+            } => SyntaxNode::Environment {
+                name: name.clone(),
+                args: args
+                    .iter()
+                    .map(|slot| self.to_syntax_arg_slot(slot))
+                    .collect(),
+                known: *known,
+                body: Box::new(self.to_syntax_node(*body)),
+            },
+            Node::Scripted {
+                base,
+                subscript,
+                superscript,
+            } => SyntaxNode::Scripted {
+                base: Box::new(self.to_syntax_node(*base)),
+                subscript: subscript.map(|node| Box::new(self.to_syntax_node(node))),
+                superscript: superscript.map(|node| Box::new(self.to_syntax_node(node))),
+            },
+            Node::Text(text) => SyntaxNode::Text(text.clone()),
+            Node::Char(ch) => SyntaxNode::Char(*ch),
+            Node::ActiveSpace => SyntaxNode::ActiveSpace,
+            Node::Error { message, snippet } => SyntaxNode::Error {
+                message: message.clone(),
+                snippet: snippet.clone(),
+            },
+        }
+    }
+
+    fn to_syntax_arg_slot(&self, slot: &ArgumentSlot) -> syntax_node::ArgumentSlot {
+        slot.as_ref().map(|argument| syntax_node::Argument {
+            kind: self.to_syntax_arg_kind(&argument.kind),
+            value: self.to_syntax_arg_value(&argument.value),
+        })
+    }
+
+    fn to_syntax_arg_kind(&self, kind: &ArgumentKind) -> syntax_node::ArgumentKind {
+        match kind {
+            ArgumentKind::Mandatory => syntax_node::ArgumentKind::Mandatory,
+            ArgumentKind::Optional => syntax_node::ArgumentKind::Optional,
+            ArgumentKind::Star => syntax_node::ArgumentKind::Star,
+            ArgumentKind::Group => syntax_node::ArgumentKind::Group,
+            ArgumentKind::Delimited { open, close } => syntax_node::ArgumentKind::Delimited {
+                open: self.to_syntax_delimiter(open),
+                close: self.to_syntax_delimiter(close),
+            },
+            ArgumentKind::Paired { open, close } => syntax_node::ArgumentKind::Paired {
+                open: self.to_syntax_delimiter(open),
+                close: self.to_syntax_delimiter(close),
+            },
+        }
+    }
+
+    fn to_syntax_arg_value(&self, value: &ArgumentValue) -> syntax_node::ArgumentValue {
+        match value {
+            ArgumentValue::MathContent(id) => {
+                syntax_node::ArgumentValue::MathContent(self.to_syntax_node(*id))
+            }
+            ArgumentValue::TextContent(id) => {
+                syntax_node::ArgumentValue::TextContent(self.to_syntax_node(*id))
+            }
+            ArgumentValue::Delimiter(delimiter) => {
+                syntax_node::ArgumentValue::Delimiter(self.to_syntax_delimiter(delimiter))
+            }
+            ArgumentValue::CSName(value) => syntax_node::ArgumentValue::CSName(value.clone()),
+            ArgumentValue::Dimension(value) => syntax_node::ArgumentValue::Dimension(value.clone()),
+            ArgumentValue::Integer(value) => syntax_node::ArgumentValue::Integer(value.clone()),
+            ArgumentValue::KeyVal(value) => syntax_node::ArgumentValue::KeyVal(value.clone()),
+            ArgumentValue::Column(value) => syntax_node::ArgumentValue::Column(value.clone()),
+            ArgumentValue::Boolean(value) => syntax_node::ArgumentValue::Boolean(*value),
+        }
+    }
+
+    fn to_syntax_group_kind(&self, kind: &GroupKind) -> syntax_node::GroupKind {
+        match kind {
+            GroupKind::Explicit => syntax_node::GroupKind::Explicit,
+            GroupKind::Implicit => syntax_node::GroupKind::Implicit,
+            GroupKind::Delimited { left, right } => syntax_node::GroupKind::Delimited {
+                left: self.to_syntax_delimiter(left),
+                right: self.to_syntax_delimiter(right),
+            },
+            GroupKind::InlineMath => syntax_node::GroupKind::InlineMath,
+        }
+    }
+
+    fn to_syntax_delimiter(&self, delimiter: &Delimiter) -> syntax_node::Delimiter {
+        match delimiter {
+            Delimiter::None => syntax_node::Delimiter::None,
+            Delimiter::Char(ch) => syntax_node::Delimiter::Char(*ch),
+            Delimiter::Control(name) => {
+                syntax_node::Delimiter::Control(Box::leak(name.clone().into_boxed_str()))
+            }
+        }
+    }
+
     fn clone_subtree_impl(&mut self, id: NodeId) -> NodeId {
         let cloned = match self.node(id).clone() {
             Node::Root { .. } => panic!("Cannot clone root node as a detached subtree"),
@@ -1452,6 +1656,7 @@ impl Ast {
             Node::Text(text) => Node::Text(text),
             Node::Char(ch) => Node::Char(ch),
             Node::ActiveSpace => Node::ActiveSpace,
+            Node::Error { message, snippet } => Node::Error { message, snippet },
         };
 
         self.new_node(cloned)
@@ -1538,7 +1743,7 @@ impl Ast {
                     edges.push((*superscript, Slot::ScriptSup));
                 }
             }
-            Node::Text(_) | Node::Char(_) | Node::ActiveSpace => {}
+            Node::Text(_) | Node::Char(_) | Node::ActiveSpace | Node::Error { .. } => {}
         }
 
         edges
@@ -1644,9 +1849,10 @@ impl Ast {
                     .as_ref()
                     .map(|node| Self::convert_syntax_node(node, nodes, parent)),
             },
-            SyntaxNode::Error { .. } => {
-                panic!("cannot convert SyntaxNode::Error into AST")
-            }
+            SyntaxNode::Error { message, snippet } => Node::Error {
+                message: message.clone(),
+                snippet: snippet.clone(),
+            },
             SyntaxNode::Text(text) => Node::Text(text.clone()),
             SyntaxNode::Char(ch) => Node::Char(*ch),
             SyntaxNode::ActiveSpace => Node::ActiveSpace,
@@ -1767,7 +1973,9 @@ impl Default for Ast {
 
 #[cfg(test)]
 mod tests {
-    use super::{Argument, ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node, Slot};
+    use super::{
+        Argument, ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeKind, Slot,
+    };
 
     fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
         match payload.downcast::<String>() {
@@ -1777,6 +1985,80 @@ mod tests {
                 Err(_) => "non-string panic payload".to_string(),
             },
         }
+    }
+
+    #[test]
+    fn error_node_reports_error_kind() {
+        let node = Node::Error {
+            message: "unexpected token".to_string(),
+            snippet: r"\frac".to_string(),
+        };
+
+        assert_eq!(node.kind(), NodeKind::Error);
+    }
+
+    #[test]
+    fn error_node_is_a_leaf() {
+        let mut ast = Ast::new();
+        let error = ast.new_node(Node::Error {
+            message: "bad".to_string(),
+            snippet: "x".to_string(),
+        });
+        ast.append_child(ast.root(), error);
+
+        assert!(ast.edges(error).is_empty());
+        ast.assert_invariants();
+    }
+
+    #[test]
+    fn clone_subtree_clones_error_node() {
+        let mut ast = Ast::new();
+        let error = ast.new_node(Node::Error {
+            message: "bad".to_string(),
+            snippet: "x".to_string(),
+        });
+
+        let cloned = ast.clone_subtree(error);
+
+        assert_ne!(cloned, error);
+        assert_eq!(
+            ast.node(cloned),
+            &Node::Error {
+                message: "bad".to_string(),
+                snippet: "x".to_string(),
+            }
+        );
+        ast.assert_invariants();
+    }
+
+    #[test]
+    fn from_syntax_root_converts_error_nodes() {
+        use texform_interface::syntax_node::{ContentMode as SynMode, SyntaxNode};
+
+        let syntax = SyntaxNode::Root {
+            mode: SynMode::Math,
+            children: vec![
+                SyntaxNode::Char('a'),
+                SyntaxNode::Error {
+                    message: "unexpected".to_string(),
+                    snippet: r"\bad".to_string(),
+                },
+            ],
+        };
+
+        let ast = Ast::from_syntax_root(&syntax);
+        let children = ast.children(ast.root());
+
+        assert_eq!(children.len(), 2);
+        assert_eq!(ast.node(children[0]), &Node::Char('a'));
+        assert_eq!(
+            ast.node(children[1]),
+            &Node::Error {
+                message: "unexpected".to_string(),
+                snippet: r"\bad".to_string(),
+            }
+        );
+        ast.assert_invariants();
     }
 
     #[test]

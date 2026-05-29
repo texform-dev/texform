@@ -1,9 +1,11 @@
 """texform — Python bindings for the TeXForm LaTeX parser."""
 
 from ._native import (
+    Document,
     FlattenGroupsConfig,
     Engine,
     LowerAttributesConfig,
+    Node,
     ParseConfig,
     ParseError,
     Parser,
@@ -15,9 +17,11 @@ from ._native import (
 )
 
 __all__ = [
+    "Document",
     "FlattenGroupsConfig",
     "Engine",
     "LowerAttributesConfig",
+    "Node",
     "ParseConfig",
     "ParseError",
     "Parser",

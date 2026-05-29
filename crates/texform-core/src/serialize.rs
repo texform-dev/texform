@@ -42,6 +42,28 @@ pub fn serialize_with(ast: &Ast, options: &SerializeOptions) -> String {
     serializer.finish()
 }
 
+/// Error type for fallible LaTeX serialization.
+///
+/// The current canonical serializer is infallible; this type exists so the
+/// public `Document::to_latex*` API can stay stable if serialization later
+/// grows validation or IO-free failure modes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SerializeError {
+    /// Reserved for future fallible serialization paths.
+    Unsupported,
+}
+
+impl std::fmt::Display for SerializeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SerializeError::Unsupported => f.write_str("unsupported serialization operation"),
+        }
+    }
+}
+
+impl std::error::Error for SerializeError {}
+
 /// Top-level serialization options, grouped by scope.
 ///
 /// `math.*` controls math-mode-specific behavior; `syntax.*` controls
@@ -379,6 +401,10 @@ impl<'a> Serializer<'a> {
             Node::ActiveSpace => self
                 .writer
                 .emit(mode, AtomKind::ActiveChar, "~", self.options),
+            Node::Error { snippet, .. } => {
+                self.writer
+                    .emit(mode, AtomKind::RawFragment, &snippet, self.options)
+            }
         }
     }
 
@@ -975,6 +1001,20 @@ fn serialized_char(ch: char, mode: ContentMode) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn serializes_error_node_as_snippet() {
+        use crate::ast::{Ast, Node};
+
+        let mut ast = Ast::new();
+        let error = ast.new_node(Node::Error {
+            message: "unexpected".to_string(),
+            snippet: r"\bad{".to_string(),
+        });
+        ast.append_child(ast.root(), error);
+
+        assert_eq!(serialize(&ast), r"\bad{");
+    }
 
     #[test]
     fn test_atom_writer_glues_star_to_control_sequence() {

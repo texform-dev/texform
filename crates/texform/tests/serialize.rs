@@ -1,22 +1,25 @@
-use texform::{
-    ContentMode, SerializeError, SerializeOptions, SyntaxNode, serialize, serialize_with,
-};
+use texform::{ContentMode, Document, SerializeOptions, SyntaxNode};
 
 #[test]
-fn serialize_accepts_ast_and_syntax_root() {
+fn document_serializes_parsed_latex() {
     let parser = texform::Parser::builder()
         .packages(&["base"])
         .build()
         .expect("parser should build");
-    let ast = parser
-        .parse_to_ast(r"\frac{a}{b}")
-        .expect("parse should produce an AST");
+    let document = parser
+        .parse(r"\frac{a}{b}")
+        .try_into_document()
+        .expect("parse should produce a document")
+        .0;
 
     assert_eq!(
-        serialize(&ast).expect("AST should serialize"),
+        document.to_latex().expect("document should serialize"),
         r"\frac { a } { b }"
     );
+}
 
+#[test]
+fn document_serializes_syntax_root() {
     let node = SyntaxNode::root(
         ContentMode::Math,
         vec![
@@ -25,22 +28,16 @@ fn serialize_accepts_ast_and_syntax_root() {
             SyntaxNode::Char('b'),
         ],
     );
+    let document = Document::from_syntax(&node).expect("syntax root should become a document");
+
     assert_eq!(
-        serialize(&node).expect("syntax root should serialize"),
+        document.to_latex().expect("document should serialize"),
         "a + b"
     );
-}
-
-#[test]
-fn serialize_rejects_non_root_syntax_node() {
-    let node = SyntaxNode::implicit_group(ContentMode::Math, vec![SyntaxNode::Char('x')]);
-
-    assert!(matches!(
-        serialize(&node),
-        Err(SerializeError::ExpectedRoot)
-    ));
-    assert!(matches!(
-        serialize_with(&node, &SerializeOptions::default()),
-        Err(SerializeError::ExpectedRoot)
-    ));
+    assert_eq!(
+        document
+            .to_latex_with(&SerializeOptions::default())
+            .expect("document should serialize with options"),
+        "a + b"
+    );
 }

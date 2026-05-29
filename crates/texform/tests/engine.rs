@@ -1,6 +1,6 @@
 use texform::{
     ContentMode, Engine, FlattenGroupsConfig, NormalizeConfig, ParseConfig, Parser, Profile,
-    TransformConfig, serialize,
+    TransformConfig,
 };
 
 #[test]
@@ -47,23 +47,24 @@ fn normalize_with_can_disable_rewrite_without_rebuilding_plan() {
 }
 
 #[test]
-fn ast_level_transform_preserves_parse_once_workflow() {
+fn document_transform_preserves_parse_once_workflow() {
     let engine = Engine::builder()
         .packages(&["base"])
         .profile(Profile::Equiv)
         .build()
         .expect("engine should build");
 
-    let ast = engine
+    let mut document = engine
         .parser()
-        .parse_to_ast("{{x}}")
-        .expect("parse_to_ast should succeed");
-    let before = serialize(&ast).expect("ast should serialize");
+        .parse("{{x}}")
+        .try_into_document()
+        .expect("parse should succeed")
+        .0;
+    let before = document.to_latex().expect("document should serialize");
 
-    let mut transformed = ast.clone();
     let report = engine
-        .transform_ast_with(
-            &mut transformed,
+        .transform_with(
+            &mut document,
             &TransformConfig {
                 rewrite_enabled: false,
                 lower_attributes_enabled: false,
@@ -72,7 +73,7 @@ fn ast_level_transform_preserves_parse_once_workflow() {
             },
         )
         .expect("transform should succeed");
-    let after = serialize(&transformed).expect("ast should serialize");
+    let after = document.to_latex().expect("document should serialize");
 
     assert_eq!(before, "{ { x } }");
     assert_eq!(after, "x");
@@ -87,7 +88,7 @@ fn parser_is_parse_only_and_needs_no_profile() {
         .expect("parser should build");
 
     let output = parser.parse(r"\frac{a}{b}");
-    assert!(output.diagnostics.is_empty());
+    assert!(output.diagnostics().is_empty());
 }
 
 #[test]
@@ -125,7 +126,7 @@ fn engine_empty_knowledge_preserves_strict_parse_default() {
     let output = engine.parser().parse(r"\unknowncmd");
 
     assert!(
-        !output.diagnostics.is_empty(),
+        !output.diagnostics().is_empty(),
         "empty_knowledge should not reset Engine parser default to lenient"
     );
 }
@@ -144,7 +145,7 @@ fn engine_empty_knowledge_preserves_explicit_parse_default() {
     let output = engine.parser().parse(r"\unknowncmd");
 
     assert!(
-        output.diagnostics.is_empty(),
+        output.diagnostics().is_empty(),
         "empty_knowledge should preserve default_parse_config set earlier"
     );
 }

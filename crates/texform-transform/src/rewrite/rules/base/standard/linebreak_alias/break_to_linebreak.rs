@@ -71,9 +71,7 @@ mod tests {
     #[test]
     fn rewrites_break_to_parser_shaped_linebreak_command() {
         let parse_ctx = ParseContext::from_packages(&["base"]);
-        let mut ast = parse_ctx
-            .parse_to_ast(r"\break", &texform_core::parse::ParseConfig::STRICT)
-            .expect("parse should succeed");
+        let mut ast = crate::parse_to_ast_for_test(&parse_ctx, r"\break", &texform_core::parse::ParseConfig::STRICT);
 
         let output =
             run_one_rule_for_test(&mut ast, &parse_ctx, &BREAK_TO_LINEBREAK, RuleClass::Standard)

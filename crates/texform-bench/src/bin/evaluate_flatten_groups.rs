@@ -7,9 +7,7 @@ use clap::Parser;
 use rayon::prelude::*;
 use serde::Serialize;
 use texform_bench::{config, data, output};
-use texform_core::ast::Ast;
 use texform_core::parse::ParseConfig;
-use texform_core::serialize::serialize;
 
 #[derive(Parser)]
 #[command(
@@ -339,9 +337,10 @@ fn analyze_record(
     engine: &texform::Engine,
     parse_cfg: &ParseConfig,
 ) -> RecordAnalysis {
-    let Ok(ast) = engine
+    let Ok((document, _)) = engine
         .parser()
-        .parse_to_ast_with(&record.formula, parse_cfg)
+        .parse_with(&record.formula, parse_cfg)
+        .try_into_document()
     else {
         return RecordAnalysis::default();
     };
@@ -351,12 +350,12 @@ fn analyze_record(
         ..RecordAnalysis::default()
     };
 
-    match compare_flatten_only(record, &ast, engine) {
+    match compare_flatten_only(record, &document, engine) {
         Ok(change) => analysis.flatten_only = change,
         Err(_) => analysis.transform_failures += 1,
     }
 
-    match compare_full_delta(record, &ast, engine) {
+    match compare_full_delta(record, &document, engine) {
         Ok(change) => analysis.full_delta = change,
         Err(_) => analysis.transform_failures += 1,
     }
@@ -366,15 +365,15 @@ fn analyze_record(
 
 fn compare_flatten_only(
     record: &data::FormulaRecord,
-    ast: &Ast,
+    document: &texform::Document,
     engine: &texform::Engine,
 ) -> Result<Option<ChangeRecord>, texform::Error> {
-    let before = serialize(ast);
-    let mut after_ast = ast.clone();
+    let before = document.to_latex()?;
+    let mut after_document = document.clone();
     let report = engine
-        .transform_ast_with(&mut after_ast, &flatten_only_config())?
+        .transform_with(&mut after_document, &flatten_only_config())?
         .flatten_groups;
-    let after = serialize(&after_ast);
+    let after = after_document.to_latex()?;
     if before != after {
         let impact = levenshtein(&before, &after);
         return Ok(Some(ChangeRecord {
@@ -392,16 +391,16 @@ fn compare_flatten_only(
 
 fn compare_full_delta(
     record: &data::FormulaRecord,
-    ast: &Ast,
+    document: &texform::Document,
     engine: &texform::Engine,
 ) -> Result<Option<ChangeRecord>, texform::Error> {
-    let mut other_ast = ast.clone();
-    engine.transform_ast_with(&mut other_ast, &other_phases_config(engine))?;
-    let before = serialize(&other_ast);
+    let mut other_document = document.clone();
+    engine.transform_with(&mut other_document, &other_phases_config(engine))?;
+    let before = other_document.to_latex()?;
 
-    let mut full_ast = ast.clone();
-    let report = engine.transform_ast(&mut full_ast)?.flatten_groups;
-    let after = serialize(&full_ast);
+    let mut full_document = document.clone();
+    let report = engine.transform(&mut full_document)?.flatten_groups;
+    let after = full_document.to_latex()?;
 
     if before != after {
         let impact = levenshtein(&before, &after);

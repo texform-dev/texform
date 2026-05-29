@@ -30,9 +30,10 @@ fn parse_with_items(src: &str, reject_unknown: bool, items: Vec<ContextItem>) ->
     );
 
     output
-        .result
-        .unwrap_or_else(|| panic!("expected parse result"))
-        .node
+        .try_into_document()
+        .unwrap_or_else(|_| panic!("expected parse result"))
+        .0
+        .to_syntax()
 }
 
 fn command_item(
@@ -141,10 +142,9 @@ fn test_ast_conversion_copies_text_content_variant() {
     let output =
         ParseContext::shared().parse(r"\text{\%}", &texform_core::parse::ParseConfig::STRICT);
     let syntax = output
-        .result
-        .as_ref()
+        .document()
         .expect("expected parse result")
-        .node
+        .to_syntax()
         .clone();
 
     match &syntax {
@@ -542,8 +542,7 @@ fn test_from_syntax_root_rejects_nested_root_node() {
 }
 
 #[test]
-#[should_panic(expected = "cannot convert SyntaxNode::Error into AST")]
-fn test_from_syntax_root_rejects_error_node() {
+fn test_from_syntax_root_preserves_error_node() {
     let node = SyntaxNode::root(
         ContentMode::Math,
         vec![SyntaxNode::Error {
@@ -552,5 +551,17 @@ fn test_from_syntax_root_rejects_error_node() {
         }],
     );
 
-    let _ = Ast::from_syntax_root(&node);
+    let ast = Ast::from_syntax_root(&node);
+    let children = ast.children(ast.root());
+
+    assert_eq!(children.len(), 1);
+    assert_eq!(
+        ast.node(children[0]),
+        &Node::Error {
+            message: "invalid \\left delimiter".to_string(),
+            snippet: "\\left\\foo x \\right)".to_string(),
+        }
+    );
+    assert!(ast.edges(children[0]).is_empty());
+    ast.assert_invariants();
 }

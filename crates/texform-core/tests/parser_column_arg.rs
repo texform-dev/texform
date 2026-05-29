@@ -1,9 +1,9 @@
 use texform_core::parse::{
-    AllowedMode, CommandItem, CommandKind, ParseContextBuilder, ParseOutput,
+    AllowedMode, CommandItem, CommandKind, ParseContextBuilder, ParseResult,
 };
 use texform_interface::syntax_node::{ArgumentValue, SyntaxNode};
 
-fn parse_inline_column_command(src: &str) -> ParseOutput {
+fn parse_inline_column_command(src: &str) -> ParseResult {
     let ctx = ParseContextBuilder::empty()
         .insert_item(CommandItem::new(
             "colspec",
@@ -26,11 +26,10 @@ fn parse_column_arg_success() {
     );
 
     let result = output
-        .result
-        .as_ref()
+        .document()
         .expect("column argument parse should succeed");
 
-    match &result.node {
+    match &result.to_syntax() {
         SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "colspec");
@@ -69,7 +68,7 @@ fn parse_column_arg_uses_shared_dimension_unit_set() {
 
     let invalid = parse_inline_column_command(r"\colspec{p{1zz}}");
     assert!(
-        invalid.result.is_none(),
+        invalid.document().is_none(),
         "column argument with unknown dimension unit should fail"
     );
     assert!(

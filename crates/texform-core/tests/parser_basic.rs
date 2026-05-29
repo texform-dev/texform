@@ -42,9 +42,9 @@ fn prime_then_explicit_superscript_stays_in_single_superscript_slot() {
 #[test]
 fn test_text_argument_uses_text_content_variant_for_single_char_item() {
     let output = ParseContext::shared().parse(r"\text{\%}", &ParseConfig::STRICT);
-    let result = output.result.expect("expected parse result");
+    let result = output.try_into_document().expect("expected parse result").0;
 
-    match result.node {
+    match result.to_syntax() {
         SyntaxNode::Root { children, .. } => match &children[0] {
             SyntaxNode::Command { args, .. } => {
                 let arg = args[0].as_ref().expect("expected text argument");
@@ -690,7 +690,7 @@ fn test_repeated_buildrel_over_parses_as_separate_infixes() {
             output.diagnostics
         );
         assert!(
-            output.result.is_some(),
+            output.document().is_some(),
             "expected parse result for {:?}",
             config
         );
@@ -713,9 +713,10 @@ fn test_infix_over_allows_declarative_before_command() {
         output.diagnostics
     );
     let result = output
-        .result
+        .try_into_document()
         .expect("parse without diagnostics should produce a result")
-        .node;
+        .0
+        .to_syntax();
 
     match result {
         SyntaxNode::Root { children, .. } => match &children[0] {
@@ -861,9 +862,10 @@ fn test_declarative_nested_textstyle() {
         output.diagnostics
     );
     let result = output
-        .result
+        .try_into_document()
         .expect("parse without diagnostics should produce a result")
-        .node;
+        .0
+        .to_syntax();
 
     match result {
         SyntaxNode::Root { children, .. } => {
@@ -951,9 +953,10 @@ fn test_text_mode_declarative_is_flat() {
         output.diagnostics
     );
     let result = output
-        .result
+        .try_into_document()
         .expect("parse without diagnostics should produce a result")
-        .node;
+        .0
+        .to_syntax();
 
     match result {
         SyntaxNode::Root { children, .. } => match &children[0] {
@@ -2096,9 +2099,10 @@ fn test_infix_over_with_declarative_right_operand() {
         output.diagnostics
     );
     let result = output
-        .result
+        .try_into_document()
         .expect("parse without diagnostics should produce a result")
-        .node;
+        .0
+        .to_syntax();
 
     match result {
         SyntaxNode::Root { children, .. } => {
@@ -2157,9 +2161,10 @@ fn test_infix_left_collects_flat_declarative_items() {
         output.diagnostics
     );
     let result = output
-        .result
+        .try_into_document()
         .expect("parse without diagnostics should produce a result")
-        .node;
+        .0
+        .to_syntax();
 
     match result {
         SyntaxNode::Root { children, .. } => match &children[0] {

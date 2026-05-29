@@ -118,8 +118,8 @@ impl TrackedNode {
     ///
     /// Promotes the tracked top-level implicit group into a real
     /// `SyntaxNode::Root` so downstream consumers never see the root as a
-    /// regular group. `node_spans` paths continue to start with `root` and
-    /// `root.child.N` so span consumers are unaffected.
+    /// regular group. Span paths continue to start with `root` and
+    /// `root.child.N` before they are attached to `Document` node handles.
     pub(crate) fn finish_root(
         self,
     ) -> (

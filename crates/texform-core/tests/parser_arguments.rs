@@ -5,7 +5,7 @@ use support::{
     contains_error_node, parse_many_with_items, parse_single_with_items, parse_with_items,
 };
 use texform_core::parse::{
-    AllowedMode, CommandKind, ContextItem, ParseContext, ParseContextBuilder, ParseOutput,
+    AllowedMode, CommandKind, ContextItem, ParseContext, ParseContextBuilder, ParseResult,
 };
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentValue, Delimiter, SyntaxNode,
@@ -42,14 +42,13 @@ fn expect_arg(slot: &Option<Argument>) -> &Argument {
         .unwrap_or_else(|| panic!("expected argument slot to be present"))
 }
 
-fn first_command(output: &ParseOutput) -> (&str, &Vec<Option<Argument>>) {
+fn first_command(output: &ParseResult) -> (String, Vec<Option<Argument>>) {
     let result = output
-        .result
-        .as_ref()
+        .document()
         .unwrap_or_else(|| panic!("expected parse result"));
-    match &result.node {
+    match result.to_syntax() {
         SyntaxNode::Root { children, .. } => match &children[0] {
-            SyntaxNode::Command { name, args, .. } => (name.as_str(), args),
+            SyntaxNode::Command { name, args, .. } => (name.clone(), args.clone()),
             other => panic!("expected command node, got {:?}", other),
         },
         other => panic!("expected root node, got {:?}", other),
@@ -79,7 +78,7 @@ fn integer_argument_is_verified_by_parser() {
     );
 
     let invalid = parse_single_with_items(&items, r"\romannumeral+", true);
-    assert!(invalid.result.is_none(), "invalid integer should fail");
+    assert!(invalid.document().is_none(), "invalid integer should fail");
     assert!(
         !invalid.diagnostics.is_empty(),
         "expected integer diagnostics"
@@ -96,7 +95,7 @@ fn non_nullable_integer_argument_rejects_empty_group() {
     )];
 
     let output = parse_single_with_items(&items, r"\romannumeral{}", true);
-    assert!(output.result.is_none(), "empty integer should fail");
+    assert!(output.document().is_none(), "empty integer should fail");
     assert!(
         !output.diagnostics.is_empty(),
         "expected integer diagnostics"
@@ -124,7 +123,7 @@ fn genfrac_accepts_empty_and_integer_style_arguments() {
             item.output.diagnostics
         );
         assert!(
-            item.output.result.is_some(),
+            item.output.document().is_some(),
             "expected parse result for {}",
             item.input
         );
@@ -154,7 +153,10 @@ fn dimension_argument_is_verified_by_parser() {
     );
 
     let invalid = parse_single_with_items(&items, r"\hspaceabc", true);
-    assert!(invalid.result.is_none(), "invalid dimension should fail");
+    assert!(
+        invalid.document().is_none(),
+        "invalid dimension should fail"
+    );
     assert!(
         !invalid.diagnostics.is_empty(),
         "expected dimension diagnostics"
@@ -186,7 +188,7 @@ fn dimension_argument_accepts_shared_unit_set_and_rejects_unknown_units() {
     }
 
     let invalid = parse_single_with_items(&items, r"\hspace{1zz}", true);
-    assert!(invalid.result.is_none(), "unsupported unit should fail");
+    assert!(invalid.document().is_none(), "unsupported unit should fail");
     assert!(
         !invalid.diagnostics.is_empty(),
         "expected diagnostics for unsupported unit, got {:?}",
@@ -250,7 +252,11 @@ fn keyval_argument_rejects_invalid_shapes() {
     );
 
     for item in &outputs {
-        assert!(item.output.result.is_none(), "{} should fail", item.input);
+        assert!(
+            item.output.document().is_none(),
+            "{} should fail",
+            item.input
+        );
         assert!(
             !item.output.diagnostics.is_empty(),
             "expected diagnostics for {}",
@@ -270,7 +276,7 @@ fn keyval_argument_diagnostic_span_covers_bracket_argument() {
     let src = r"\includegraphics[key=]{file}";
 
     let output = parse_with_items(&items, src, true);
-    assert!(output.result.is_none(), "invalid keyval should fail");
+    assert!(output.document().is_none(), "invalid keyval should fail");
 
     let diagnostic = output
         .diagnostics
@@ -396,7 +402,7 @@ fn text_content_generic_only_error_keeps_expected_found_diagnostic() {
     let output = parse_with_items(&items, r"\text{$x}", true);
 
     assert!(
-        output.result.is_none(),
+        output.document().is_none(),
         "strict mode should not keep a partial result"
     );
     assert_eq!(
@@ -434,7 +440,7 @@ fn strict_text_content_command_error_has_no_partial_result() {
     let output = parse_with_items(&items, r"\text{\frac{a}{b}}", true);
 
     assert!(
-        output.result.is_none(),
+        output.document().is_none(),
         "strict content argument errors should not keep a partial result"
     );
     assert_eq!(
@@ -456,12 +462,11 @@ fn nonstrict_text_content_direct_error_survives_trailing_generic() {
     assert_first_diagnostic_span_eq(&output, src, "^");
 
     let result = output
-        .result
-        .as_ref()
+        .document()
         .expect("non-strict direct error should keep a partial result");
-    assert!(contains_command_named(&result.node, "text"));
-    assert!(contains_command_named(&result.node, "underline"));
-    assert!(contains_error_node(&result.node));
+    assert!(contains_command_named(&result.to_syntax(), "text"));
+    assert!(contains_command_named(&result.to_syntax(), "underline"));
+    assert!(contains_error_node(&result.to_syntax()));
 }
 
 mod migrated_argument_regressions {
@@ -594,7 +599,7 @@ mod migrated_argument_regressions {
         let command = ctx.parse(r"\label{\alpha}", &ParseConfig::STRICT);
 
         assert!(
-            command.result.is_none(),
+            command.document().is_none(),
             "control sequence inside CSName should fail"
         );
 
@@ -607,7 +612,7 @@ mod migrated_argument_regressions {
         let escaped_symbol = ctx.parse(r"\label{sec\_a}", &ParseConfig::STRICT);
 
         assert!(
-            escaped_symbol.result.is_none(),
+            escaped_symbol.document().is_none(),
             "escaped symbol inside CSName should fail"
         );
 

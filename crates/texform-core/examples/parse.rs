@@ -2,7 +2,7 @@ use ariadne::{Config, IndexType, Label, Report, ReportKind, Source};
 use std::env;
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContentMode, ContextItem, DelimiterControlItem,
-    EnvironmentItem, ParseConfig, ParseContextBuilder, ParseDiagnostic, ParseOutput,
+    EnvironmentItem, ParseConfig, ParseContextBuilder, ParseDiagnostic, ParseResult,
 };
 
 struct CliOptions {
@@ -113,7 +113,7 @@ fn required_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a 
         .ok_or_else(|| format!("{flag} requires a value"))
 }
 
-fn parse_with_options(options: &CliOptions) -> Result<ParseOutput, String> {
+fn parse_with_options(options: &CliOptions) -> Result<ParseResult, String> {
     let base_ctx = match options.packages.as_ref() {
         Some(packages) => {
             let refs: Vec<&str> = packages.iter().map(String::as_str).collect();
@@ -159,18 +159,23 @@ fn print_summary(options: &CliOptions) {
     println!();
 }
 
-fn print_output(input: &str, output: &ParseOutput, verbose: bool) -> bool {
+fn print_output(input: &str, output: &ParseResult, verbose: bool) -> bool {
     if output.diagnostics.is_empty() {
-        match &output.result {
+        match output.document() {
             Some(result) => {
                 println!("Parse successful!");
-                println!("Root span: {}..{}", result.span.start, result.span.end);
+                if let Some(span) = result.root().span() {
+                    println!("Root span: {}..{}", span.start, span.end);
+                }
                 println!();
                 println!("--- Syntax Tree ---");
                 if verbose {
-                    println!("{}", serde_json::to_string_pretty(&result.node).unwrap());
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&result.to_syntax()).unwrap()
+                    );
                 } else {
-                    println!("{}", result.node);
+                    println!("{}", result.to_syntax());
                 }
                 true
             }
@@ -183,13 +188,16 @@ fn print_output(input: &str, output: &ParseOutput, verbose: bool) -> bool {
         eprintln!("Parse diagnostics:");
         render_diagnostics(input, output.diagnostics.as_slice());
 
-        if let Some(result) = &output.result {
+        if let Some(result) = output.document() {
             eprintln!();
             eprintln!("Partial parse available:");
             if verbose {
-                eprintln!("{}", serde_json::to_string_pretty(&result.node).unwrap());
+                eprintln!(
+                    "{}",
+                    serde_json::to_string_pretty(&result.to_syntax()).unwrap()
+                );
             } else {
-                eprintln!("{}", result.node);
+                eprintln!("{}", result.to_syntax());
             }
         }
 

@@ -90,9 +90,7 @@ mod tests {
     #[test]
     fn rewrites_quantity_to_qty_and_preserves_argument_content() {
         let parse_ctx = ParseContext::from_packages(&["physics"]);
-        let mut ast = parse_ctx
-            .parse_to_ast(r"\quantity{a}", &texform_core::parse::ParseConfig::STRICT)
-            .expect("parse should succeed");
+        let mut ast = crate::parse_to_ast_for_test(&parse_ctx, r"\quantity{a}", &texform_core::parse::ParseConfig::STRICT);
 
         let output =
             run_one_rule_for_test(&mut ast, &parse_ctx, &QUANTITY_TO_QTY, RuleClass::Standard)

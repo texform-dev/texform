@@ -9,7 +9,6 @@ export class TexformParseError extends Error {
     super(diagnostics[0]?.message ?? "parse failed");
     this.name = "TexformParseError";
     this.diagnostics = diagnostics;
-    this.partialResult = payload?.partialResult ?? null;
   }
 }
 
@@ -132,5 +131,7 @@ export class Engine {
   }
 }
 
+export const Document = wasm.Document;
+export const Node = wasm.Node;
 export const serialize = wasm.serialize;
 export const validateArgspec = wasm.validate_argspec;

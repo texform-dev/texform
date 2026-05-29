@@ -14,12 +14,12 @@ fn parser_empty_knowledge_preserves_probing_isolation() {
         .expect("parser should build");
 
     let known = parser.parse(r"\probe{x}");
-    assert!(known.diagnostics.is_empty());
+    assert!(known.diagnostics().is_empty());
 
     let unknown = parser.parse_with(r"\frac{x}{y}", &ParseConfig::STRICT);
     assert!(
         unknown
-            .diagnostics
+            .diagnostics()
             .iter()
             .any(|diagnostic| diagnostic.message.contains("frac"))
     );

@@ -1,5 +1,7 @@
 import init, {
+  Document,
   Engine as WasmEngine,
+  Node,
   Parser as WasmParser,
   serialize as wasmSerialize,
   validate_argspec,
@@ -14,7 +16,6 @@ export class TexformParseError extends Error {
     super(diagnostics[0]?.message ?? "parse failed");
     this.name = "TexformParseError";
     this.diagnostics = diagnostics;
-    this.partialResult = payload?.partialResult ?? null;
   }
 }
 
@@ -114,5 +115,6 @@ export class Engine {
   }
 }
 
+export { Document, Node };
 export const serialize = wasmSerialize;
 export { validate_argspec as validateArgspec };

@@ -4,7 +4,8 @@ pub enum Error {
     UnknownRule(String),
     ParserBuild(crate::parser::ParserBuildError),
     TransformBuild(texform_transform::TransformBuildError),
-    Parse(texform_core::parse::ParseAstError),
+    Parse(crate::parse_result::ParseError),
+    IncompleteTree,
     Transform(texform_transform::TransformError),
     Serialize(crate::serialize::SerializeError),
 }
@@ -19,6 +20,7 @@ impl std::fmt::Display for Error {
             Self::ParserBuild(error) => write!(f, "failed to build parser: {error}"),
             Self::TransformBuild(error) => write!(f, "failed to build transform plan: {error}"),
             Self::Parse(error) => error.fmt(f),
+            Self::IncompleteTree => f.write_str("cannot transform a document with parse errors"),
             Self::Transform(error) => error.fmt(f),
             Self::Serialize(error) => error.fmt(f),
         }
@@ -27,8 +29,8 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-impl From<texform_core::parse::ParseAstError> for Error {
-    fn from(error: texform_core::parse::ParseAstError) -> Self {
+impl From<crate::parse_result::ParseError> for Error {
+    fn from(error: crate::parse_result::ParseError) -> Self {
         Self::Parse(error)
     }
 }

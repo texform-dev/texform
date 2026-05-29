@@ -16,7 +16,10 @@ fn test_package_loaded_non_alpha_math_commands_support_representative_forms() {
             "unexpected diagnostics for {src}: {:?}",
             output.diagnostics
         );
-        assert!(output.result.is_some(), "expected parse result for {src}");
+        assert!(
+            output.document().is_some(),
+            "expected parse result for {src}"
+        );
     }
 
     let output = ctx.parse(r"\bra{x}\|\ket{y}", &ParseConfig::STRICT);
@@ -26,11 +29,10 @@ fn test_package_loaded_non_alpha_math_commands_support_representative_forms() {
         output.diagnostics
     );
     let result = output
-        .result
-        .as_ref()
+        .document()
         .expect("expected parse result for braket sample");
     assert!(
-        extract_command_args(&result.node, "|").is_some(),
+        extract_command_args(&result.to_syntax(), "|").is_some(),
         "expected package-backed \\| command"
     );
 }
@@ -46,7 +48,10 @@ fn test_package_loaded_non_alpha_text_commands_support_representative_forms() {
             "unexpected diagnostics for {src}: {:?}",
             output.diagnostics
         );
-        assert!(output.result.is_some(), "expected parse result for {src}");
+        assert!(
+            output.document().is_some(),
+            "expected parse result for {src}"
+        );
     }
 
     for (src, command_name) in [
@@ -61,11 +66,10 @@ fn test_package_loaded_non_alpha_text_commands_support_representative_forms() {
             output.diagnostics
         );
         let result = output
-            .result
-            .as_ref()
+            .document()
             .unwrap_or_else(|| panic!("expected parse result for {src}"));
         assert!(
-            extract_command_args(&result.node, command_name).is_some(),
+            extract_command_args(&result.to_syntax(), command_name).is_some(),
             "expected package-backed command {command_name:?} in {src}"
         );
     }
