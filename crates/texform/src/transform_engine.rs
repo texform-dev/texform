@@ -6,12 +6,12 @@ use crate::document::Document;
 use crate::error::Error;
 use crate::parser::{Parser, ParserBuilder};
 
-pub struct Engine {
+pub struct TransformEngine {
     parser: Parser,
     transform: TransformContext,
 }
 
-pub struct EngineBuilder {
+pub struct TransformEngineBuilder {
     parser: ParserBuilder,
     profile: Option<Profile>,
     build_config: Option<BuildConfig>,
@@ -22,9 +22,9 @@ pub struct NormalizeResult {
     pub report: TransformReport,
 }
 
-impl Engine {
-    pub fn builder() -> EngineBuilder {
-        EngineBuilder {
+impl TransformEngine {
+    pub fn builder() -> TransformEngineBuilder {
+        TransformEngineBuilder {
             parser: Parser::builder().default_parse_config(ParseConfig::STRICT),
             profile: None,
             build_config: None,
@@ -84,7 +84,7 @@ impl Engine {
     }
 }
 
-impl EngineBuilder {
+impl TransformEngineBuilder {
     pub fn packages(mut self, packages: &[&str]) -> Self {
         self.parser = self.parser.packages(packages);
         self
@@ -143,7 +143,7 @@ impl EngineBuilder {
         Ok(self.disable_rule(key))
     }
 
-    pub fn build(self) -> Result<Engine, Error> {
+    pub fn build(self) -> Result<TransformEngine, Error> {
         let build_config = self
             .build_config
             .or_else(|| self.profile.map(BuildConfig::profile))
@@ -151,6 +151,6 @@ impl EngineBuilder {
         let parser = self.parser.build().map_err(Error::ParserBuild)?;
         let transform = TransformContext::from_build_config(build_config, parser.inner())
             .map_err(Error::TransformBuild)?;
-        Ok(Engine { parser, transform })
+        Ok(TransformEngine { parser, transform })
     }
 }

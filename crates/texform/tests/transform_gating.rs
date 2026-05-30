@@ -1,7 +1,7 @@
-use texform::{Engine, Error, FlattenGroupsConfig, ParseConfig, Profile, TransformConfig};
+use texform::{Error, FlattenGroupsConfig, ParseConfig, Profile, TransformConfig, TransformEngine};
 
-fn engine() -> Engine {
-    Engine::builder()
+fn engine() -> TransformEngine {
+    TransformEngine::builder()
         .packages(&["base"])
         .profile(Profile::Equiv)
         .build()

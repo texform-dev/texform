@@ -7,7 +7,7 @@ npm install texform
 ```
 
 ```ts
-import { Document, Engine, Parser, validateArgspec } from "texform";
+import { Document, Parser, TransformEngine, validateArgspec } from "texform";
 
 const parser = new Parser();
 const result = parser.parse(String.raw`\frac{x}{y}`);
@@ -23,7 +23,7 @@ document.appendChild(root, x);
 
 console.log(document.toLatex());
 
-const engine = new Engine({ profile: "authoring" });
+const engine = new TransformEngine({ profile: "authoring" });
 const normalized = engine.normalize("a \\over b");
 
 console.log(normalized.normalized);

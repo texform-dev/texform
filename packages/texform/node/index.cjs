@@ -65,9 +65,9 @@ class Parser {
   }
 }
 
-class Engine {
+class TransformEngine {
   constructor(options) {
-    this.inner = new wasm.Engine(options);
+    this.inner = new wasm.TransformEngine(options);
   }
   free() {
     this.inner.free();
@@ -107,10 +107,10 @@ class Engine {
   }
 }
 
-exports.Engine = Engine;
 exports.Document = wasm.Document;
 exports.Node = wasm.Node;
 exports.Parser = Parser;
 exports.TexformParseError = TexformParseError;
+exports.TransformEngine = TransformEngine;
 exports.serialize = wasm.serialize;
 exports.validateArgspec = wasm.validate_argspec;

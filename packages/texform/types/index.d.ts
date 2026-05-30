@@ -383,7 +383,7 @@ export interface ParserOptions {
   removeDelimiterControls?: string[];
 }
 
-export interface EngineOptions extends ParserOptions {
+export interface TransformEngineOptions extends ParserOptions {
   profile: Profile;
   disableRules?: string[];
 }
@@ -410,8 +410,8 @@ export class Parser {
   parse(src: string, config?: ParseConfigInput | null): ParseResult;
 }
 
-export class Engine {
-  constructor(options: EngineOptions);
+export class TransformEngine {
+  constructor(options: TransformEngineOptions);
   free(): void;
   [Symbol.dispose](): void;
   parse(src: string, config?: ParseConfigInput | null): ParseResult;

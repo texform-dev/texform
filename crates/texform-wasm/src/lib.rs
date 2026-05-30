@@ -389,7 +389,7 @@ pub struct TransformConfig {
 
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
-struct EngineOptions {
+struct TransformEngineOptions {
     packages: Option<Vec<String>>,
     items: Option<Vec<ContextItemInput>>,
     remove_commands: Option<Vec<String>>,
@@ -1428,27 +1428,29 @@ impl Parser {
 }
 
 #[wasm_bindgen]
-pub struct Engine {
-    inner: texform::Engine,
+pub struct TransformEngine {
+    inner: texform::TransformEngine,
 }
 
 #[wasm_bindgen]
-impl Engine {
+impl TransformEngine {
     #[wasm_bindgen(constructor)]
-    pub fn new(args: Option<JsValue>) -> Result<Engine, JsValue> {
+    pub fn new(args: Option<JsValue>) -> Result<TransformEngine, JsValue> {
         let input = match args {
             Some(value) if !value.is_null() && !value.is_undefined() => {
-                serde_wasm_bindgen::from_value::<EngineOptions>(value).map_err(|error| {
-                    JsValue::from_str(&format!("invalid engine options: {}", error))
-                })?
+                serde_wasm_bindgen::from_value::<TransformEngineOptions>(value).map_err(
+                    |error| {
+                        JsValue::from_str(&format!("invalid transform engine options: {}", error))
+                    },
+                )?
             }
-            _ => EngineOptions::default(),
+            _ => TransformEngineOptions::default(),
         };
         let profile = input
             .profile
             .as_deref()
             .ok_or_else(|| JsValue::from_str("profile is required"))?;
-        let mut builder = texform::Engine::builder().profile(profile_from_name(profile)?);
+        let mut builder = texform::TransformEngine::builder().profile(profile_from_name(profile)?);
         if let Some(packages) = input.packages {
             let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
             builder = if refs.is_empty() {
@@ -1666,7 +1668,7 @@ impl Parser {
     }
 }
 
-impl Engine {
+impl TransformEngine {
     fn lookup_command_meta(
         &self,
         name: &str,

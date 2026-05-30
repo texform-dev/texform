@@ -3,7 +3,6 @@
 from ._native import (
     Document,
     FlattenGroupsConfig,
-    Engine,
     LowerAttributesConfig,
     Node,
     ParseConfig,
@@ -11,6 +10,7 @@ from ._native import (
     Parser,
     RewriteConfig,
     TransformConfig,
+    TransformEngine,
     count_targets,
     serialize,
     validate_argspec,
@@ -19,7 +19,6 @@ from ._native import (
 __all__ = [
     "Document",
     "FlattenGroupsConfig",
-    "Engine",
     "LowerAttributesConfig",
     "Node",
     "ParseConfig",
@@ -27,6 +26,7 @@ __all__ = [
     "Parser",
     "RewriteConfig",
     "TransformConfig",
+    "TransformEngine",
     "count_targets",
     "serialize",
     "validate_argspec",

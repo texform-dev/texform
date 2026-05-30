@@ -202,7 +202,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         abort_on_error: true,
         ..Default::default()
     };
-    let engine = texform::Engine::builder()
+    let engine = texform::TransformEngine::builder()
         .profile(texform::Profile::Equiv)
         .build()?;
 
@@ -326,7 +326,7 @@ fn flatten_only_config() -> texform::TransformConfig {
     }
 }
 
-fn other_phases_config(engine: &texform::Engine) -> texform::TransformConfig {
+fn other_phases_config(engine: &texform::TransformEngine) -> texform::TransformConfig {
     let mut config = *engine.default_transform_config();
     config.flatten_groups = texform::FlattenGroupsConfig::DISABLED;
     config
@@ -334,7 +334,7 @@ fn other_phases_config(engine: &texform::Engine) -> texform::TransformConfig {
 
 fn analyze_record(
     record: &data::FormulaRecord,
-    engine: &texform::Engine,
+    engine: &texform::TransformEngine,
     parse_cfg: &ParseConfig,
 ) -> RecordAnalysis {
     let Ok((document, _)) = engine
@@ -366,7 +366,7 @@ fn analyze_record(
 fn compare_flatten_only(
     record: &data::FormulaRecord,
     document: &texform::Document,
-    engine: &texform::Engine,
+    engine: &texform::TransformEngine,
 ) -> Result<Option<ChangeRecord>, texform::Error> {
     let before = document.to_latex()?;
     let mut after_document = document.clone();
@@ -392,7 +392,7 @@ fn compare_flatten_only(
 fn compare_full_delta(
     record: &data::FormulaRecord,
     document: &texform::Document,
-    engine: &texform::Engine,
+    engine: &texform::TransformEngine,
 ) -> Result<Option<ChangeRecord>, texform::Error> {
     let mut other_document = document.clone();
     engine.transform_with(&mut other_document, &other_phases_config(engine))?;

@@ -566,13 +566,13 @@ fn parser_builder_with_options(
 
 fn engine_builder_with_options(
     py: Python<'_>,
-    mut builder: texform::EngineBuilder,
+    mut builder: texform::TransformEngineBuilder,
     packages: Option<Vec<String>>,
     items: Option<Vec<Py<PyAny>>>,
     remove_commands: Option<Vec<String>>,
     remove_environments: Option<Vec<String>>,
     remove_delimiter_controls: Option<Vec<String>>,
-) -> PyResult<texform::EngineBuilder> {
+) -> PyResult<texform::TransformEngineBuilder> {
     if let Some(packages) = packages {
         let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
         builder = if refs.is_empty() {
@@ -1761,13 +1761,13 @@ impl PyParser {
     }
 }
 
-#[pyclass(name = "Engine")]
-struct PyEngine {
-    inner: texform::Engine,
+#[pyclass(name = "TransformEngine")]
+struct PyTransformEngine {
+    inner: texform::TransformEngine,
 }
 
 #[pymethods]
-impl PyEngine {
+impl PyTransformEngine {
     #[allow(clippy::too_many_arguments)]
     #[new]
     #[pyo3(signature = (
@@ -1791,7 +1791,7 @@ impl PyEngine {
     ) -> PyResult<Self> {
         let mut builder = engine_builder_with_options(
             py,
-            texform::Engine::builder().profile(profile_from_name(profile)?),
+            texform::TransformEngine::builder().profile(profile_from_name(profile)?),
             packages,
             items,
             remove_commands,
@@ -1994,7 +1994,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyDocument>()?;
     m.add_class::<PyNode>()?;
     m.add_class::<PyParser>()?;
-    m.add_class::<PyEngine>()?;
+    m.add_class::<PyTransformEngine>()?;
     m.add("ParseError", m.py().get_type::<ParseError>())?;
     Ok(())
 }
@@ -2153,7 +2153,7 @@ mod tests {
             let module = PyModule::new(py, "_native").expect("module");
             _native(&module).expect("init module");
 
-            let engine_cls = module.getattr("Engine").unwrap();
+            let engine_cls = module.getattr("TransformEngine").unwrap();
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs
                 .set_item("packages", vec!["base", "physics"])
@@ -2344,7 +2344,7 @@ mod tests {
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs.set_item("profile", "authoring").unwrap();
             let engine = module
-                .getattr("Engine")
+                .getattr("TransformEngine")
                 .unwrap()
                 .call((), Some(&kwargs))
                 .unwrap();
@@ -2377,7 +2377,7 @@ mod tests {
                 .set_item("packages", vec!["base", "physics"])
                 .unwrap();
             let engine = module
-                .getattr("Engine")
+                .getattr("TransformEngine")
                 .unwrap()
                 .call((), Some(&kwargs))
                 .unwrap();
@@ -2421,7 +2421,7 @@ mod tests {
                 .set_item("packages", vec!["base", "physics"])
                 .unwrap();
             let engine = module
-                .getattr("Engine")
+                .getattr("TransformEngine")
                 .unwrap()
                 .call((), Some(&kwargs))
                 .unwrap();

@@ -41,7 +41,7 @@ Arrows point from a crate to the crates it depends on. Everything below `texform
 
 | Crate | Responsibility |
 |-------|----------------|
-| `texform` | Public facade. Re-exports the stable surface: `Parser`, `Engine`, `Document`, `ParseResult`, serialization, `validate_argspec`, analysis helpers. The only crate other code should depend on. |
+| `texform` | Public facade. Re-exports the stable surface: `Parser`, `TransformEngine`, `Document`, `ParseResult`, serialization, `validate_argspec`, analysis helpers. The only crate other code should depend on. |
 | `texform-core` | The parser, the internal `Ast` arena, the canonical serializer, and the public `Document` DOM layer. |
 | `texform-transform` | The phase-oriented rewrite/normalization engine that operates on a parsed tree. |
 | `texform-knowledge` | The command and environment knowledge base: which names are known, and what argument shapes they take. |
@@ -66,7 +66,7 @@ SyntaxNode                  immutable, lossless parse snapshot (may contain Erro
 Document                    public, editable DOM; wraps an internal Ast arena
   │
   ├─ to_latex()             serialize back to LaTeX text (Error nodes round-trip their snippet)
-  ├─ Engine::transform()    normalize via the transform engine (gated on a complete tree)
+  ├─ TransformEngine::transform()    normalize via the transform engine (gated on a complete tree)
   └─ to_syntax()            convert back to a SyntaxNode for serde / transport
 ```
 
@@ -139,7 +139,7 @@ The serializer covers the full node vocabulary, including emitting an `Error` no
 
 `texform-transform` normalizes a parsed tree so downstream consumers — formula equivalence, MER tokenization, LLM pretraining corpora, polished authoring output — share a stable canonical form. The engine runs ordered phases (lower-attributes, a fixed-point rewrite loop, post lowering, then group flattening); a `Profile` selects which rule classes are compiled into the plan, and `TransformConfig` controls per-run switches. See the README and the rule-authoring docs for the phase and profile catalog.
 
-Normalization is **gated on a complete tree**: `Engine::transform` and `Engine::normalize` return `Error::IncompleteTree` when `document.has_errors()`, because normalizing a tree with holes is meaningless. An empty document is complete (`!has_errors()`) and normalizes normally.
+Normalization is **gated on a complete tree**: `TransformEngine::transform` and `TransformEngine::normalize` return `Error::IncompleteTree` when `document.has_errors()`, because normalizing a tree with holes is meaningless. An empty document is complete (`!has_errors()`) and normalizes normally.
 
 ## Knowledge and Argument Specifications
 

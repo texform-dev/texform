@@ -9,7 +9,7 @@ For a high-level map of the crates, the processing pipeline, the three tree repr
 ### Normalize Example
 
 ```rust
-let engine = texform::Engine::builder()
+let engine = texform::TransformEngine::builder()
     .profile(texform::Profile::Authoring)
     .build()?;
 
@@ -72,7 +72,7 @@ use texform::ParseConfig;
 let cfg = ParseConfig { reject_unknown: true, ..Default::default() };
 ```
 
-[`Engine`](crates/texform/src/engine.rs) wraps the same internal [`Parser`](crates/texform/src/parser.rs) with a **strict default** (`ParseConfig::STRICT`) shared by `engine.parser().parse()` and `engine.normalize()`. Use a standalone `Parser` for lenient exploration; use `EngineBuilder::default_parse_config` to change the engine-wide default. `Engine` requires a [`Profile`](crates/texform-transform/src/config.rs) because normalization has no neutral canonical form — that choice is intentional and separate from parse strictness.
+[`TransformEngine`](crates/texform/src/transform_engine.rs) wraps the same internal [`Parser`](crates/texform/src/parser.rs) with a **strict default** (`ParseConfig::STRICT`) shared by `engine.parser().parse()` and `engine.normalize()`. Use a standalone `Parser` for lenient exploration; use `TransformEngineBuilder::default_parse_config` to change the engine-wide default. `TransformEngine` requires a [`Profile`](crates/texform-transform/src/config.rs) because normalization has no neutral canonical form — that choice is intentional and separate from parse strictness.
 
 ### validate_argspec Example
 
@@ -169,7 +169,7 @@ See `crates/texform-transform/src/rewrite/rules/README.md` for rule authoring co
 
 ## Language Bindings
 
-`texform` is the single public, stability-guaranteed Rust entry point. The facade exposes a parse-only `Parser`, an editable `Document`, a normalizing `Engine`, `validate_argspec`, and analysis helpers — integrate against `texform` only.
+`texform` is the single public, stability-guaranteed Rust entry point. The facade exposes a parse-only `Parser`, an editable `Document`, a normalizing `TransformEngine`, `validate_argspec`, and analysis helpers — integrate against `texform` only.
 
 All other crates (`texform-core`, `texform-transform`, `texform-knowledge`, ...) are internal implementation details with no stability guarantee; their APIs may change without notice. In particular, the facade's `Parser` is the stable wrapper around the lower-level `texform-core::parse::ParseContext` — depend on the wrapper, not the internals.
 
@@ -188,7 +188,7 @@ parsed = parser.parse(r"\frac{a}{b}")
 document = parsed["document"]
 text = document.to_latex() if document is not None else ""
 
-engine = texform.Engine(profile="authoring")
+engine = texform.TransformEngine(profile="authoring")
 result = engine.normalize(r"a \over b")
 
 assert text == r"\frac { a } { b }"
@@ -202,13 +202,13 @@ npm install texform
 ```
 
 ```ts
-import { Engine, Parser, validateArgspec } from "texform";
+import { Parser, TransformEngine, validateArgspec } from "texform";
 
 const parser = new Parser();
 const parsed = parser.parse("\\frac{a}{b}");
 const text = parsed.document?.toLatex() ?? "";
 
-const engine = new Engine({ profile: "authoring" });
+const engine = new TransformEngine({ profile: "authoring" });
 const result = engine.normalize("a \\over b");
 
 console.assert(text === "\\frac { a } { b }");

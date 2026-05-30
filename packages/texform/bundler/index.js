@@ -1,8 +1,8 @@
 import init, {
   Document,
-  Engine as WasmEngine,
   Node,
   Parser as WasmParser,
+  TransformEngine as WasmTransformEngine,
   serialize as wasmSerialize,
   validate_argspec,
 } from "../wasm/web/texform_wasm.js";
@@ -73,9 +73,9 @@ export class Parser {
   }
 }
 
-export class Engine {
+export class TransformEngine {
   constructor(options) {
-    this.inner = new WasmEngine(options);
+    this.inner = new WasmTransformEngine(options);
   }
   free() {
     this.inner.free();

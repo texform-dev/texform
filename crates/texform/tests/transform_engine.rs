@@ -1,11 +1,11 @@
 use texform::{
-    ContentMode, Engine, FlattenGroupsConfig, NormalizeConfig, ParseConfig, Parser, Profile,
-    TransformConfig,
+    ContentMode, FlattenGroupsConfig, NormalizeConfig, ParseConfig, Parser, Profile,
+    TransformConfig, TransformEngine,
 };
 
 #[test]
 fn engine_normalize_uses_build_time_profile_and_packages() {
-    let engine = Engine::builder()
+    let engine = TransformEngine::builder()
         .packages(&["base", "physics"])
         .profile(Profile::Authoring)
         .build()
@@ -21,7 +21,7 @@ fn engine_normalize_uses_build_time_profile_and_packages() {
 
 #[test]
 fn normalize_with_can_disable_rewrite_without_rebuilding_plan() {
-    let engine = Engine::builder()
+    let engine = TransformEngine::builder()
         .packages(&["base", "physics"])
         .profile(Profile::Equiv)
         .build()
@@ -48,7 +48,7 @@ fn normalize_with_can_disable_rewrite_without_rebuilding_plan() {
 
 #[test]
 fn document_transform_preserves_parse_once_workflow() {
-    let engine = Engine::builder()
+    let engine = TransformEngine::builder()
         .packages(&["base"])
         .profile(Profile::Equiv)
         .build()
@@ -93,7 +93,7 @@ fn parser_is_parse_only_and_needs_no_profile() {
 
 #[test]
 fn engine_exposes_parser_metadata_queries() {
-    let engine = Engine::builder()
+    let engine = TransformEngine::builder()
         .packages(&["base"])
         .profile(Profile::Authoring)
         .build()
@@ -116,8 +116,8 @@ fn engine_exposes_parser_metadata_queries() {
 
 #[test]
 fn engine_empty_knowledge_preserves_strict_parse_default() {
-    // Empty knowledge must not loosen the Engine parser's strict default.
-    let engine = Engine::builder()
+    // Empty knowledge must not loosen the TransformEngine parser's strict default.
+    let engine = TransformEngine::builder()
         .empty_knowledge()
         .profile(Profile::Equiv)
         .build()
@@ -127,7 +127,7 @@ fn engine_empty_knowledge_preserves_strict_parse_default() {
 
     assert!(
         !output.diagnostics().is_empty(),
-        "empty_knowledge should not reset Engine parser default to lenient"
+        "empty_knowledge should not reset TransformEngine parser default to lenient"
     );
 }
 
@@ -135,7 +135,7 @@ fn engine_empty_knowledge_preserves_strict_parse_default() {
 fn engine_empty_knowledge_preserves_explicit_parse_default() {
     // Empty knowledge should only change loaded knowledge, not caller-selected
     // parse defaults.
-    let engine = Engine::builder()
+    let engine = TransformEngine::builder()
         .default_parse_config(ParseConfig::LENIENT)
         .empty_knowledge()
         .profile(Profile::Equiv)
@@ -152,7 +152,7 @@ fn engine_empty_knowledge_preserves_explicit_parse_default() {
 
 #[test]
 fn engine_builder_requires_profile() {
-    let error = match Engine::builder().packages(&["base"]).build() {
+    let error = match TransformEngine::builder().packages(&["base"]).build() {
         Ok(_) => panic!("engine profile is required"),
         Err(error) => error,
     };
@@ -162,7 +162,7 @@ fn engine_builder_requires_profile() {
 
 #[test]
 fn engine_builder_disables_rule_by_public_name() {
-    let engine = Engine::builder()
+    let engine = TransformEngine::builder()
         .packages(&["base", "physics"])
         .profile(Profile::Authoring)
         .disable_rule_by_name("physics/quantity-to-qty")
@@ -176,7 +176,7 @@ fn engine_builder_disables_rule_by_public_name() {
 
     assert_eq!(result.normalized, r"\quantity { x }");
 
-    let unknown = Engine::builder()
+    let unknown = TransformEngine::builder()
         .profile(Profile::Authoring)
         .disable_rule_by_name("missing.rule");
     assert!(

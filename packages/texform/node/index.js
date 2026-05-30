@@ -77,9 +77,9 @@ export class Parser {
   }
 }
 
-export class Engine {
+export class TransformEngine {
   constructor(options) {
-    this.inner = new wasm.Engine(options);
+    this.inner = new wasm.TransformEngine(options);
   }
 
   free() {

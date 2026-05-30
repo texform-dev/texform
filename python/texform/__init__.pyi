@@ -156,7 +156,6 @@ ArgValueInput: TypeAlias = ArgRef
 __all__ = [
     "Document",
     "FlattenGroupsConfig",
-    "Engine",
     "LowerAttributesConfig",
     "Node",
     "ParseConfig",
@@ -164,6 +163,7 @@ __all__ = [
     "Parser",
     "RewriteConfig",
     "TransformConfig",
+    "TransformEngine",
     "count_targets",
     "serialize",
     "validate_argspec",
@@ -272,7 +272,7 @@ class Parser:
     def knows_character_name(self, name: str) -> bool: ...
 
 
-class Engine:
+class TransformEngine:
     def __init__(
         self,
         profile: TransformProfile,

@@ -25,7 +25,7 @@ document.append_child(root, x)
 
 print(document.to_latex())
 
-engine = texform.Engine(profile="authoring")
+engine = texform.TransformEngine(profile="authoring")
 normalized = engine.normalize(r"a \over b")
 
 print(normalized["normalized"])
