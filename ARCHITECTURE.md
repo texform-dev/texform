@@ -48,7 +48,7 @@ Arrows point from a crate to the crates it depends on. Everything below `texform
 | `texform-argspec` | An xparse-style argument-specification parser used to describe command signatures. |
 | `texform-interface` | Dependency-free shared types, most importantly `SyntaxNode`, the lossless parse snapshot. |
 | `texform-python`, `texform-wasm` | Language bindings layered strictly on top of the `texform` facade. |
-| `texform-bench` | Corpus benchmark harness (internal tooling, not part of the public API). |
+| `texform-regression` | Corpus regression and data-product tooling for parser regression and counter-map generation. Internal tooling, not part of the public API. |
 
 The facade deliberately does **not** re-export the internal `Ast`, `Node`, or arena types. Users get a single editable tree type — `Document` — and never touch the panic-contract arena underneath it.
 

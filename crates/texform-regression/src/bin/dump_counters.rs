@@ -22,9 +22,9 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::Instant;
-use texform_bench::dump::{FormulaCounter, ParquetRowWriter, RowBuffer, count_node};
-use texform_bench::{config, data};
 use texform_core::parse::{ParseConfig, ParseContext};
+use texform_regression::dump::{FormulaCounter, ParquetRowWriter, RowBuffer, count_node};
+use texform_regression::{config, data};
 
 const FLUSH_ROW_THRESHOLD: usize = 250_000;
 const DEFAULT_CHUNK_SIZE: usize = 1_000_000;
@@ -35,7 +35,7 @@ const DEFAULT_CHUNK_SIZE: usize = 1_000_000;
     about = "Dump per-formula rule target counter rows to parquet"
 )]
 struct Args {
-    /// Dataset configuration YAML. Defaults to the texform repo bench/datasets.yaml.
+    /// Dataset configuration YAML. Defaults to the texform repo regression/datasets.yaml.
     #[arg(long)]
     datasets_yaml: Option<PathBuf>,
 

@@ -1205,26 +1205,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "texform-bench"
-version = "0.1.0"
-dependencies = [
- "arrow-array",
- "arrow-schema",
- "clap",
- "parquet",
- "rayon",
- "serde",
- "serde_json",
- "serde_yaml",
- "tempfile",
- "texform",
- "texform-core",
- "texform-interface",
- "texform-knowledge",
- "texform-transform",
-]
-
-[[package]]
 name = "texform-core"
 version = "0.1.0"
 dependencies = [
@@ -1281,6 +1261,26 @@ dependencies = [
  "pythonize",
  "serde_json",
  "texform",
+]
+
+[[package]]
+name = "texform-regression"
+version = "0.1.0"
+dependencies = [
+ "arrow-array",
+ "arrow-schema",
+ "clap",
+ "parquet",
+ "rayon",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "texform",
+ "texform-core",
+ "texform-interface",
+ "texform-knowledge",
+ "texform-transform",
 ]
 
 [[package]]

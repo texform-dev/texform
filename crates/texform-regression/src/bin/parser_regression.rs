@@ -2,20 +2,20 @@ use clap::Parser;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
-use texform_bench::stats::ModeStats;
-use texform_bench::{config, data, output, runner};
+use texform_regression::stats::ModeStats;
+use texform_regression::{config, data, output, runner};
 
 #[derive(Parser)]
 #[command(
-    name = "parse_corpus",
-    about = "Benchmark texform parser on real-world corpora"
+    name = "parser_regression",
+    about = "Run the parser corpus regression suite across configured datasets."
 )]
 struct Args {
-    /// Dataset configuration YAML. Defaults to the texform repo bench/datasets.yaml.
+    /// Dataset configuration YAML. Defaults to the texform repo regression/datasets.yaml.
     #[arg(long)]
     datasets_yaml: Option<PathBuf>,
 
-    /// Result output directory. Defaults to results/parse_corpus next to datasets-yaml.
+    /// Result output directory. Defaults to results/parser_regression next to datasets-yaml.
     #[arg(long)]
     results_root: Option<PathBuf>,
 
@@ -36,12 +36,9 @@ struct Args {
 
     #[arg(
         long,
-        help = "Pre-commit probe for selected datasets; refresh all bench results if any summary changed"
+        help = "Pre-commit probe for selected datasets; refresh all regression results if any summary changed"
     )]
     check: bool,
-
-    #[arg(long, hide = true)]
-    bench: bool,
 }
 
 struct RunOptions {
@@ -78,7 +75,7 @@ fn run(args: Args) -> Result<(), String> {
     let results_root = args
         .results_root
         .clone()
-        .unwrap_or_else(|| config::default_results_root(&datasets_yaml).join("parse_corpus"));
+        .unwrap_or_else(|| config::default_results_root(&datasets_yaml).join("parser_regression"));
     let commits_root = results_root.join("commits");
 
     let config = match config::DatasetsConfig::load_from_yaml(&datasets_yaml) {
@@ -192,7 +189,7 @@ fn run_datasets(
         match output::latest_commit_baseline(commits_root) {
             Ok(baseline) => baseline,
             Err(error) => {
-                eprintln!("Failed to load latest benchmark baseline: {error}");
+                eprintln!("Failed to load latest regression baseline: {error}");
                 None
             }
         }
@@ -265,7 +262,7 @@ fn run_datasets(
             args.offset,
             args.limit,
             |records| {
-                let results = runner::run_bench(&records);
+                let results = runner::run_parser_regression(&records);
                 collect_slow_samples(&mut slow_nonstrict, &records, &results, false, 5, None);
                 collect_slow_samples(
                     &mut slow_strict,

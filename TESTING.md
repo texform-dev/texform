@@ -32,14 +32,21 @@ The practical consequence: interface-freezing assertions belong in the facade. A
 
 ## Where Confidence Comes From
 
-Coverage percentage is *not* our primary signal of quality. Confidence comes, in order, from:
+All TeXForm in-repo tests belong to the **Regression** role: they can fail a local test run, a hook, or CI because TeXForm itself regressed.
 
-1. **Corpus regression** — `texform-bench` runs the parser against large real-world datasets and tracks error rates over time. This is our closest analog to a conformance suite. See [`bench/README.md`](bench/README.md).
-2. **Facade contract tests** — the public behavior the project promises.
-3. **Snapshot tests** for parse/serialize/format output (recommended; see below).
-4. **Fuzz regression corpus** for the lexer/parser (recommended; see below).
+| Layer | What It Checks | Failure Meaning | Location |
+|-------|----------------|-----------------|----------|
+| Implementation tests | Internal crate logic | This implementation is wrong. | Internal crate `tests/` and inline tests |
+| Rule inline golden tests | Representative input-to-output examples for one rewrite rule | The implementation drifted from the verified rule definition. | `transform_examples!` in rule files |
+| Phase tests | Phase scheduling, multi-rule interaction, and guards | The phase behavior is wrong. | `tests/<phase>.rs` |
+| Facade contract tests | Public API behavior, wrapper fidelity, and error mapping | The public interface contract changed or broke. | `crates/texform/tests/` |
+| Corpus regression | Parser error-rate regression over real corpora | The parser regressed relative to the tracked baseline. | `crates/texform-regression` |
 
-Any significant change to `texform-core` should be benchmarked before and after to check for regressions, as described in `AGENTS.md`.
+Corpus regression is our closest analog to a conformance suite. `parser_regression` compares current parser error rates against tracked summaries; absolute parse failures are expected because real corpora are noisy, while a worse rate relative to baseline is a regression. See [`regression/README.md`](regression/README.md).
+
+`transform_examples!` golden tests are not an independent oracle. Their expected output comes from rule-forge proposal examples after validation, so they lock implementation-to-definition consistency. They catch "the rule implementation drifted from the verified proposal"; they do not prove that the proposal definition itself was correct. Proposal correctness is checked in workspace analysis and review workflows.
+
+Facade tests do not carry transform correctness. A facade failure means the public API contract, wrapper behavior, or error mapping broke. A single rewrite rule bug belongs in that rule's inline golden tests or the relevant phase tests.
 
 ## Recommended Techniques
 

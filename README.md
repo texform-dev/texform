@@ -223,30 +223,16 @@ bun run --cwd packages/texform prepare:publish
 
 Python and JavaScript parse calls return the same shape as Rust: a `document` value plus `diagnostics`. When recovery succeeds, the partial tree is the returned document itself.
 
-## Corpus Bench
+## Corpus Regression
 
-The corpus bench lives in `crates/texform-bench` and reads Parquet datasets from `bench/data/`.
+The corpus regression suite lives in `crates/texform-regression` and reads Parquet datasets from `regression/data/`.
 
 ```bash
 git lfs install && git lfs pull
 
-# run all datasets
-cargo run --release -p texform-bench --bin parse_corpus
-
-# run one dataset
-cargo run --release -p texform-bench --bin parse_corpus -- --dataset lf80m-benchmarks
-
-# pre-commit probe: check one dataset first, then refresh all results if it changed or is missing
-cargo run --release -p texform-bench --bin parse_corpus -- --dataset lf80m-benchmarks --check
-
-# dump per-dataset counter map shards
-cargo run --release -p texform-bench --bin counter_dump
-
-# evaluate FlattenGroups impact across bench datasets
-cargo run --release -p texform-bench --bin evaluate_flatten_groups
-
-# current summaries are written to bench/results/parse_corpus/summary.json
-# and bench/results/flatten_groups/summary.json
+cargo run --release -p texform-regression --bin parser_regression
 ```
 
-See [`bench/README.md`](bench/README.md) for dataset provenance and result locations.
+Current summaries are written to `regression/results/parser_regression/summary.json`.
+
+See [`regression/README.md`](regression/README.md) for dataset provenance and result locations.

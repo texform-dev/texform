@@ -15,7 +15,7 @@ crates/                       # Rust workspace
 ├── texform-argspec/          # xparse-style argument spec parser
 ├── texform-knowledge-macros/     # Procedural macros for specs
 ├── texform-interface/        # Public types (SyntaxNode, etc.)
-├── texform-bench/            # Corpus benchmark harness
+├── texform-regression/       # Corpus regression harness
 ├── texform-python/           # Python bindings (PyO3)
 └── texform-wasm/             # WebAssembly bindings
 packages/                     # NPM/TypeScript packages
@@ -24,10 +24,10 @@ packages/                     # NPM/TypeScript packages
 └── tex-renderers/            # MathJax / KaTeX / XeTeX rendering adapters
 python/texform/               # Python package source
 resources/specs/              # Knowledge base YAML
-bench/                        # Corpus benchmark data & results
+regression/                   # Corpus regression data & results
 ├── data/                     # Git LFS Parquet datasets
 ├── datasets.yaml             # Dataset configuration
-├── results/                  # Benchmark output
+├── results/                  # Regression output
 └── history/                  # Per-commit snapshots
 data/argspec-validate-results/  # Spec validation results
 ```
@@ -63,14 +63,14 @@ Project design notes and internal planning documents live outside this repo in t
 - Contract tests (the public-API behavior we guarantee) live in the `texform` facade; internal crates carry implementation tests, inline or in `tests/`, with no external guarantee.
 - Cover the happy path, important edge cases, and regressions introduced by the change.
 
-## Corpus Benchmarks & Regression Testing
+## Corpus Regression
 
-- The corpus bench in `crates/texform-bench` runs the parser against large real-world datasets. A full benchmark run takes less than 10 seconds.
-- Current bench binaries are `parse_corpus`, `counter_dump`, and `evaluate_flatten_groups`. The first is the parser corpus regression bench, `counter_dump` produces counter-map data products, and `evaluate_flatten_groups` writes fixed FlattenGroups impact summaries under `bench/results/flatten_groups/` while also printing a short console summary.
-- In the parent workspace vocabulary, "bench" means corpus regression with pass/regression semantics, while "eval" means repeatable corpus comparison without pass/fail semantics.
-- Any significant change to `texform-core` should be benchmarked before and after to check for regressions in error rate and performance.
-- Historical parser results are tracked in git under `bench/results/parse_corpus/`. There is no need to record baselines manually; diff the error rates before and after your change.
-- See `./bench/README.md` for dataset details and result format.
+- The corpus regression suite in `crates/texform-regression` runs TeXForm against large real-world datasets. A full parser regression run takes less than 10 seconds on the canonical corpus.
+- Current regression binaries are `parser_regression` and `counter_dump`. `parser_regression` checks parser error-rate regressions against tracked summaries; `counter_dump` produces counter-map data products consumed by the parent workspace.
+- `transform_contract` is the planned transform corpus contract entry point defined by the parent workspace's testing/evaluation redesign; its implementation is handled with the transform validation design, not this naming pass.
+- Any significant parser change should run `parser_regression` before and after to check for error-rate regressions.
+- Historical parser summaries are tracked in git under `regression/results/parser_regression/`. There is no need to record baselines manually; diff the error rates before and after your change.
+- See `./regression/README.md` for dataset details and result format.
 
 ## Transform Engine
 
@@ -78,10 +78,10 @@ The transform subsystem (`crates/texform-core/src/transform/`) provides rule-bas
 
 ## Tooling Conventions
 
-- **Rust**: `cargo test`, `cargo check`, `cargo clippy`; pre-commit hooks run `cargo fmt`, `cargo clippy`, spec validation, and the bench regression check.
+- **Rust**: `cargo test`, `cargo check`, `cargo clippy`; pre-commit hooks run `cargo fmt`, `cargo clippy`, spec validation, and the parser regression check.
 - **TypeScript**: use `bun` as package manager.
 - **Python**: use `uv` for dependency management and `maturin` for native extension builds.
-- **Commit messages**: use Conventional Commits, such as `feat(rule): add root-family rule`, `fix(core): generate standard transform rule modules`, or `test(core): restore brace transform examples`. Prefer an existing scope like `core`, `rule`, `specs`, `bench`, `wasm`, or `python`; omit the scope only when a change spans multiple areas. Keep the subject short, imperative, and lower-case after the type/scope prefix.
+- **Commit messages**: use Conventional Commits, such as `feat(rule): add root-family rule`, `fix(core): generate standard transform rule modules`, or `test(core): restore brace transform examples`. Prefer an existing scope like `core`, `rule`, `specs`, `regression`, `wasm`, or `python`; omit the scope only when a change spans multiple areas. Keep the subject short, imperative, and lower-case after the type/scope prefix. For large commits with several important changes, include a body after a blank line; format that body as a Markdown unordered list, with one bullet per important change.
 
 ### WASM Binding
 

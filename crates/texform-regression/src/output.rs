@@ -1533,7 +1533,7 @@ mod tests {
     fn make_temp_dir(name: &str) -> TestDir {
         TestDir(
             tempfile::Builder::new()
-                .prefix(&format!("texform-bench-{name}-"))
+                .prefix(&format!("texform-regression-{name}-"))
                 .tempdir()
                 .unwrap(),
         )

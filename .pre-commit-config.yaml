@@ -29,9 +29,9 @@ repos:
         pass_filenames: false
         entry: bun run packages/argspecs-validator/src/cli.ts --check
 
-      - id: bench-regression-check
-        name: bench regression check
+      - id: parser-regression-check
+        name: parser regression check
         language: system
         types: [rust]
         pass_filenames: false
-        entry: cargo run --release -p texform-bench --bin parse_corpus -- --dataset lf80m-benchmarks --check
+        entry: cargo run --release -p texform-regression --bin parser_regression -- --dataset lf80m-benchmarks --check

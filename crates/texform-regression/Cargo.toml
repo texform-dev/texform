@@ -1,5 +1,5 @@
 [package]
-name = "texform-bench"
+name = "texform-regression"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -24,13 +24,9 @@ clap = { version = "4.6.1", features = ["derive"] }
 tempfile = "3"
 
 [[bin]]
-name = "parse_corpus"
-path = "src/bin/parse_corpus.rs"
+name = "parser_regression"
+path = "src/bin/parser_regression.rs"
 
 [[bin]]
 name = "counter_dump"
 path = "src/bin/dump_counters.rs"
-
-[[bin]]
-name = "evaluate_flatten_groups"
-path = "src/bin/evaluate_flatten_groups.rs"

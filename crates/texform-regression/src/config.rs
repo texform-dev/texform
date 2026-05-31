@@ -41,7 +41,7 @@ pub fn default_repo_root() -> PathBuf {
 }
 
 pub fn default_datasets_yaml() -> PathBuf {
-    default_repo_root().join("bench").join("datasets.yaml")
+    default_repo_root().join("regression").join("datasets.yaml")
 }
 
 pub fn default_results_root(datasets_yaml: &Path) -> PathBuf {

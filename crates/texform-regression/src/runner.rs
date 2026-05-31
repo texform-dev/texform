@@ -17,7 +17,7 @@ pub struct FormulaResults {
     pub nonstrict: ParseResult,
 }
 
-pub fn run_bench(records: &[FormulaRecord]) -> Vec<FormulaResults> {
+pub fn run_parser_regression(records: &[FormulaRecord]) -> Vec<FormulaResults> {
     let strict_cfg = ParseConfig::STRICT;
     let nonstrict_cfg = ParseConfig {
         abort_on_error: true,
