@@ -83,21 +83,31 @@ impl FlattenGroupsConfig {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FlattenGroupsReport {
+    pub actions: FlattenGroupsActionCounts,
+    pub guards: FlattenGroupsGuardCounts,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FlattenGroupsActionCounts {
     pub removed_empty: usize,
     pub replaced_single_child: usize,
     pub inlined_multi_child: usize,
     pub unwrapped_slot: usize,
-    pub preserved_group_containing_declarative_command: usize,
-    pub preserved_group_in_script_base_slot: usize,
-    pub preserved_group_inside_env_body: usize,
-    pub preserved_group_containing_infix: usize,
-    pub preserved_group_adjacent_to_command_like: usize,
-    pub preserved_group_as_argument_of_command: usize,
-    pub preserved_group_after_scripted_command_like: usize,
-    pub preserved_empty_group: usize,
-    pub preserved_group_with_lone_atom_spacing_char: usize,
-    pub preserved_group_starting_with_atom_spacing_char: usize,
-    pub preserved_group_containing_delimited_pair: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FlattenGroupsGuardCounts {
+    pub preserve_group_containing_declarative_command: usize,
+    pub preserve_group_in_script_base_slot: usize,
+    pub preserve_group_inside_env_body: usize,
+    pub preserve_group_containing_infix: usize,
+    pub preserve_group_adjacent_to_command_like: usize,
+    pub preserve_group_as_argument_of_command: usize,
+    pub preserve_group_after_scripted_command_like: usize,
+    pub preserve_empty_group: usize,
+    pub preserve_group_with_lone_atom_spacing_char: usize,
+    pub preserve_group_starting_with_atom_spacing_char: usize,
+    pub preserve_group_containing_delimited_pair: usize,
 }
 
 pub fn run(ast: &mut Ast, config: &FlattenGroupsConfig, report: &mut FlattenGroupsReport) {
@@ -176,11 +186,11 @@ fn try_unwrap(
         return;
     }
     if config.preserve_group_containing_declarative_command && flags.has_declarative {
-        report.preserved_group_containing_declarative_command += 1;
+        report.guards.preserve_group_containing_declarative_command += 1;
         return;
     }
     if config.preserve_group_inside_env_body && in_env_body {
-        report.preserved_group_inside_env_body += 1;
+        report.guards.preserve_group_inside_env_body += 1;
         return;
     }
 
@@ -194,14 +204,14 @@ fn try_unwrap(
         && config.preserve_group_containing_infix
         && flags.has_infix
     {
-        report.preserved_group_containing_infix += 1;
+        report.guards.preserve_group_containing_infix += 1;
         return;
     }
     if matches!(link.slot, Slot::GroupChild(_))
         && config.preserve_group_containing_delimited_pair
         && flags.has_delimited
     {
-        report.preserved_group_containing_delimited_pair += 1;
+        report.guards.preserve_group_containing_delimited_pair += 1;
         return;
     }
     if let Slot::GroupChild(index) = link.slot
@@ -215,9 +225,9 @@ fn try_unwrap(
             config.preserve_group_after_scripted_command_like,
         );
         if command_contact.touches_command {
-            report.preserved_group_adjacent_to_command_like += 1;
+            report.guards.preserve_group_adjacent_to_command_like += 1;
             if command_contact.used_scripted_base {
-                report.preserved_group_after_scripted_command_like += 1;
+                report.guards.preserve_group_after_scripted_command_like += 1;
             }
             return;
         }
@@ -228,16 +238,16 @@ fn try_unwrap(
         .is_some_and(|child| is_atom_spacing_char(ast, *child));
     if matches!(link.slot, Slot::GroupChild(_)) {
         if config.preserve_empty_group && child_count == 0 {
-            report.preserved_empty_group += 1;
+            report.guards.preserve_empty_group += 1;
             return;
         }
         if config.preserve_group_with_lone_atom_spacing_char && child_count == 1 && first_is_atom {
-            report.preserved_group_with_lone_atom_spacing_char += 1;
+            report.guards.preserve_group_with_lone_atom_spacing_char += 1;
             return;
         }
         if config.preserve_group_starting_with_atom_spacing_char && child_count > 1 && first_is_atom
         {
-            report.preserved_group_starting_with_atom_spacing_char += 1;
+            report.guards.preserve_group_starting_with_atom_spacing_char += 1;
             return;
         }
     }
@@ -246,14 +256,14 @@ fn try_unwrap(
         && child_count == 1
         && first_is_atom
     {
-        report.preserved_group_with_lone_atom_spacing_char += 1;
+        report.guards.preserve_group_with_lone_atom_spacing_char += 1;
         return;
     }
     if matches!(link.slot, Slot::Argument(_))
         && config.preserve_group_as_argument_of_command
         && group_as_argument_of_command_needs_boundary(ast, node)
     {
-        report.preserved_group_as_argument_of_command += 1;
+        report.guards.preserve_group_as_argument_of_command += 1;
         return;
     }
 
@@ -268,7 +278,7 @@ fn try_unwrap(
         && config.preserve_group_in_script_base_slot
         && !is_atomic_base(ast, ast.children(node)[0])
     {
-        report.preserved_group_in_script_base_slot += 1;
+        report.guards.preserve_group_in_script_base_slot += 1;
         return;
     }
 
@@ -508,9 +518,9 @@ fn unwrap_group_child(
     ast.remove_detached(node);
 
     match child_count {
-        0 => report.removed_empty += 1,
-        1 => report.replaced_single_child += 1,
-        _ => report.inlined_multi_child += 1,
+        0 => report.actions.removed_empty += 1,
+        1 => report.actions.replaced_single_child += 1,
+        _ => report.actions.inlined_multi_child += 1,
     }
 }
 
@@ -521,5 +531,5 @@ fn redirect_single_child_slot(ast: &mut Ast, node: NodeId, report: &mut FlattenG
         .expect("single-child slot unwrap requires one child");
     ast.replace_content_child(node, child);
     ast.remove_detached(node);
-    report.unwrapped_slot += 1;
+    report.actions.unwrapped_slot += 1;
 }

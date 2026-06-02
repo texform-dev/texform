@@ -95,9 +95,9 @@ mod tests {
             .expect("over-to-frac transform should succeed");
 
         assert_eq!(output.rewrite.iterations, 2);
-        assert_eq!(output.rewrite.applied.len(), 1);
-        assert_eq!(output.rewrite.applied[0].count, 1);
-        assert_eq!(output.rewrite.applied[0].key.to_string(), "base/over-to-frac");
+        assert_eq!(output.rewrite.rules.len(), 1);
+        assert_eq!(output.rewrite.rules[0].applied_count, 1);
+        assert_eq!(output.rewrite.rules[0].key.to_string(), "base/over-to-frac");
 
         let root = ast.root();
         let children = ast.children(root);

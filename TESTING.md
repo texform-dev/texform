@@ -41,10 +41,13 @@ All TeXForm in-repo tests belong to the **Regression** role: they can fail a loc
 | Phase tests | Phase scheduling, multi-rule interaction, and guards | The phase behavior is wrong. | `tests/<phase>.rs` |
 | Facade contract tests | Public API behavior, wrapper fidelity, and error mapping | The public interface contract changed or broke. | `crates/texform/tests/` |
 | Corpus regression | Parser error-rate regression over real corpora | The parser regressed relative to the tracked baseline. | `crates/texform-regression` |
+| Transform contract regression | Full-pipeline eliminated-form contract over real corpora | A rewrite rule's declared eliminated form remains after normalization. | `crates/texform-regression` |
 
 Corpus regression is our closest analog to a conformance suite. `parser_regression` compares current parser error rates against tracked summaries; absolute parse failures are expected because real corpora are noisy, while a worse rate relative to baseline is a regression. See [`regression/README.md`](regression/README.md).
 
-`transform_examples!` golden tests are not an independent oracle. Their expected output comes from rule-forge proposal examples after validation, so they lock implementation-to-definition consistency. They catch "the rule implementation drifted from the verified proposal"; they do not prove that the proposal definition itself was correct. Proposal correctness is checked in workspace analysis and review workflows.
+`transform_contract` is the corpus gate for transform eliminated-form contracts. It parses and normalizes real formulas, then checks the same eliminated-form collector used by the runtime after the full pipeline has completed. Allow-listed exceptions live in `regression/contract_exceptions.yaml`; new unlisted violations should be triaged from the generated detail files before changing the allow-list.
+
+`transform_examples!` golden tests are not an independent oracle. Their expected output comes from validated rule proposal examples, so they lock implementation-to-definition consistency. They catch "the rule implementation drifted from the verified proposal"; they do not prove that the proposal definition itself was correct. Proposal correctness is checked by rule review and corpus validation workflows.
 
 Facade tests do not carry transform correctness. A facade failure means the public API contract, wrapper behavior, or error mapping broke. A single rewrite rule bug belongs in that rule's inline golden tests or the relevant phase tests.
 

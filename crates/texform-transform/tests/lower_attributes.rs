@@ -7,11 +7,16 @@
 use texform_core::ast::Ast;
 use texform_core::parse::{ParseConfig, ParseContext};
 use texform_core::serialize::serialize;
-use texform_transform::{BuildConfig, Profile, RuleClass, RuleClassSet, TransformContext};
+use texform_transform::lower_attributes::MathFontValue;
+use texform_transform::{
+    Attr, AttrValue, AttributeSet, BuildConfig, LowerAttributesConfig, LowerAttributesReport,
+    Profile, RuleClass, RuleClassSet, TransformContext, TransformReport,
+};
 
 struct Outcome {
     text: String,
     ast: Ast,
+    report: TransformReport,
 }
 
 fn run_with_packages(src: &str, packages: &[&str]) -> Outcome {
@@ -30,13 +35,14 @@ fn run_with_packages_and_classes(src: &str, packages: &[&str], classes: &[RuleCl
         &parse_ctx,
     )
     .expect("transform context should build");
-    context
+    let report = context
         .run(&mut ast, &parse_ctx)
         .expect("transform should succeed");
     ast.assert_invariants();
     Outcome {
         text: serialize(&ast),
         ast,
+        report,
     }
 }
 
@@ -152,4 +158,53 @@ fn post_pass_normalizes_prefixes_created_by_apply_rules() {
         &[RuleClass::Standard, RuleClass::Expand],
     );
     assert_eq!(actual.text, r"\mathrm { x }");
+}
+
+#[test]
+fn lower_attributes_report_counts_declarative_and_prefix_forms_for_same_attribute() {
+    let parse_ctx = ParseContext::from_packages(&["base", "textmacros"]);
+    let mut ast = parse_to_ast(&parse_ctx, r"\bf \mathbf{x}");
+    let mut report = LowerAttributesReport::default();
+    texform_transform::lower_attributes::run(
+        &mut ast,
+        &LowerAttributesConfig::ENABLED,
+        &mut report,
+    );
+    let bold = AttributeSet::new(
+        Attr::MathFont,
+        AttrValue::MathFont(MathFontValue("VARIANT.BOLD")),
+    );
+    let stat = report
+        .attributes
+        .get(&bold)
+        .expect("bold math font should be reported");
+
+    assert_eq!(stat.consumed.declaratives, 1);
+    assert_eq!(stat.consumed.prefixes, 1);
+    assert_eq!(stat.redundant.prefixes, 1);
+    assert_eq!(stat.emitted.prefixes, 1);
+}
+
+#[test]
+fn lower_attributes_report_counts_empty_prefix_body_as_redundant() {
+    let parse_ctx = ParseContext::from_packages(&["base", "textmacros"]);
+    let mut ast = parse_to_ast(&parse_ctx, r"\mathbf{}");
+    let mut report = LowerAttributesReport::default();
+    texform_transform::lower_attributes::run(
+        &mut ast,
+        &LowerAttributesConfig::ENABLED,
+        &mut report,
+    );
+    let bold = AttributeSet::new(
+        Attr::MathFont,
+        AttrValue::MathFont(MathFontValue("VARIANT.BOLD")),
+    );
+    let stat = report
+        .attributes
+        .get(&bold)
+        .expect("empty bold prefix should be reported");
+
+    assert_eq!(stat.consumed.prefixes, 1);
+    assert_eq!(stat.redundant.prefixes, 1);
+    assert_eq!(stat.emitted.prefixes, 0);
 }

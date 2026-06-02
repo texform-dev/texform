@@ -101,8 +101,8 @@ mod tests {
         )
             .expect("rank-to-operatorname-rank transform should succeed");
 
-        assert_eq!(output.rewrite.applied.len(), 1);
-        assert_eq!(output.rewrite.applied[0].count, 1);
+        assert_eq!(output.rewrite.rules.len(), 1);
+        assert_eq!(output.rewrite.rules[0].applied_count, 1);
 
         let children = ast.children(ast.root());
         let Node::Command { name, args, known } = ast.node(children[0]) else {

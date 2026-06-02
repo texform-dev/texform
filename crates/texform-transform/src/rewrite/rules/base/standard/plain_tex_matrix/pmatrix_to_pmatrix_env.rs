@@ -5,8 +5,8 @@
 //! triggers:
 //!   - cmd:pmatrix
 //! consumes:
-//!   eliminates: [cmd:pmatrix, cmd:cr]
-//!   touches: null
+//!   eliminates: cmd:pmatrix
+//!   touches: cmd:cr
 //! produces: env:pmatrix
 //! rewrite_patterns:
 //!   - {from: '\pmatrix{#1 \cr #2}', to: '\begin{pmatrix} #1 \\ #2 \end{pmatrix}'}
@@ -28,8 +28,8 @@ define_rule! {
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::PMATRIX],
         consumes: RuleConsumes {
-            eliminates: cmd_targets![&base::cmd::PMATRIX, &base::cmd::CR],
-            touches: &[],
+            eliminates: cmd_targets![&base::cmd::PMATRIX],
+            touches: cmd_targets![&base::cmd::CR],
         },
         produces: RuleProduces {
             targets: env_targets![&ams::env::PMATRIX],

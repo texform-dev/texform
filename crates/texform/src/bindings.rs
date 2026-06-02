@@ -2,6 +2,10 @@ use crate::{
     FlattenGroupsConfig, FlattenGroupsReport, LowerAttributesConfig, LowerAttributesReport,
     TransformConfig, TransformReport,
 };
+use texform_transform::{
+    Attr, AttrValue, AttributeFormCounts, MathFontValue, SizeValue, StyleValue, TextFamily,
+    TextSeries, TextShape,
+};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -166,87 +170,281 @@ impl TransformConfigInput {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct TransformReportDto {
     pub iterations: usize,
-    pub applied: Vec<AppliedRuleDto>,
-    pub lower_attributes: LowerAttributesReportDto,
+    pub rules: Vec<RewriteRuleDto>,
     pub flatten_groups: FlattenGroupsReportDto,
+    pub lower_attributes: LowerAttributesReportDto,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-pub struct AppliedRuleDto {
+pub struct RewriteRuleDto {
     pub key: String,
-    pub count: usize,
+    pub applied_count: usize,
     pub skipped_count: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct LowerAttributesReportDto {
+    pub attributes: Vec<LowerAttributeDto>,
     pub eliminated_empty_segments: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct LowerAttributeDto {
+    pub attr: String,
+    pub value: String,
+    pub consumed: AttributeFormCountsDto,
+    pub redundant: AttributeFormCountsDto,
+    pub emitted: AttributeFormCountsDto,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct AttributeFormCountsDto {
+    pub declaratives: usize,
+    pub prefixes: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct FlattenGroupsReportDto {
+    pub actions: FlattenGroupsActionCountsDto,
+    pub guards: FlattenGroupsGuardCountsDto,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct FlattenGroupsActionCountsDto {
     pub removed_empty: usize,
     pub replaced_single_child: usize,
     pub inlined_multi_child: usize,
     pub unwrapped_slot: usize,
-    pub preserved_group_containing_declarative_command: usize,
-    pub preserved_group_in_script_base_slot: usize,
-    pub preserved_group_inside_env_body: usize,
-    pub preserved_group_containing_infix: usize,
-    pub preserved_group_adjacent_to_command_like: usize,
-    pub preserved_group_as_argument_of_command: usize,
-    pub preserved_group_after_scripted_command_like: usize,
-    pub preserved_empty_group: usize,
-    pub preserved_group_with_lone_atom_spacing_char: usize,
-    pub preserved_group_starting_with_atom_spacing_char: usize,
-    pub preserved_group_containing_delimited_pair: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct FlattenGroupsGuardCountsDto {
+    pub preserve_group_containing_declarative_command: usize,
+    pub preserve_group_in_script_base_slot: usize,
+    pub preserve_group_inside_env_body: usize,
+    pub preserve_group_containing_infix: usize,
+    pub preserve_group_adjacent_to_command_like: usize,
+    pub preserve_group_as_argument_of_command: usize,
+    pub preserve_group_after_scripted_command_like: usize,
+    pub preserve_empty_group: usize,
+    pub preserve_group_with_lone_atom_spacing_char: usize,
+    pub preserve_group_starting_with_atom_spacing_char: usize,
+    pub preserve_group_containing_delimited_pair: usize,
 }
 
 pub fn transform_report_to_dto(report: &TransformReport) -> TransformReportDto {
+    let mut rules: Vec<_> = report
+        .rewrite
+        .rules
+        .iter()
+        .map(|stat| RewriteRuleDto {
+            key: stat.key.to_string(),
+            applied_count: stat.applied_count,
+            skipped_count: stat.skipped_count,
+        })
+        .collect();
+    rules.sort_by(|left, right| left.key.cmp(&right.key));
+
     TransformReportDto {
         iterations: report.rewrite.iterations,
-        applied: report
-            .rewrite
-            .applied
-            .iter()
-            .map(|stat| AppliedRuleDto {
-                key: stat.key.to_string(),
-                count: stat.count,
-                skipped_count: stat.skipped_count,
-            })
-            .collect(),
-        lower_attributes: lower_attributes_report_to_dto(&report.lower_attributes),
+        rules,
         flatten_groups: flatten_groups_report_to_dto(&report.flatten_groups),
+        lower_attributes: lower_attributes_report_to_dto(&report.lower_attributes),
     }
 }
 
 fn lower_attributes_report_to_dto(report: &LowerAttributesReport) -> LowerAttributesReportDto {
+    let mut attributes: Vec<_> = report
+        .attributes
+        .iter()
+        .map(|(set, stat)| LowerAttributeDto {
+            attr: attr_to_dto_key(set.attr()).to_string(),
+            value: attr_value_to_dto_key(set.attr(), set.value()),
+            consumed: attribute_form_counts_to_dto(&stat.consumed),
+            redundant: attribute_form_counts_to_dto(&stat.redundant),
+            emitted: attribute_form_counts_to_dto(&stat.emitted),
+        })
+        .collect();
+    attributes.sort_by(|left, right| {
+        left.attr
+            .cmp(&right.attr)
+            .then_with(|| left.value.cmp(&right.value))
+    });
+
     LowerAttributesReportDto {
+        attributes,
         eliminated_empty_segments: report.eliminated_empty_segments,
+    }
+}
+
+fn attribute_form_counts_to_dto(counts: &AttributeFormCounts) -> AttributeFormCountsDto {
+    AttributeFormCountsDto {
+        declaratives: counts.declaratives,
+        prefixes: counts.prefixes,
     }
 }
 
 fn flatten_groups_report_to_dto(report: &FlattenGroupsReport) -> FlattenGroupsReportDto {
     FlattenGroupsReportDto {
-        removed_empty: report.removed_empty,
-        replaced_single_child: report.replaced_single_child,
-        inlined_multi_child: report.inlined_multi_child,
-        unwrapped_slot: report.unwrapped_slot,
-        preserved_group_containing_declarative_command: report
-            .preserved_group_containing_declarative_command,
-        preserved_group_in_script_base_slot: report.preserved_group_in_script_base_slot,
-        preserved_group_inside_env_body: report.preserved_group_inside_env_body,
-        preserved_group_containing_infix: report.preserved_group_containing_infix,
-        preserved_group_adjacent_to_command_like: report.preserved_group_adjacent_to_command_like,
-        preserved_group_as_argument_of_command: report.preserved_group_as_argument_of_command,
-        preserved_group_after_scripted_command_like: report
-            .preserved_group_after_scripted_command_like,
-        preserved_empty_group: report.preserved_empty_group,
-        preserved_group_with_lone_atom_spacing_char: report
-            .preserved_group_with_lone_atom_spacing_char,
-        preserved_group_starting_with_atom_spacing_char: report
-            .preserved_group_starting_with_atom_spacing_char,
-        preserved_group_containing_delimited_pair: report.preserved_group_containing_delimited_pair,
+        actions: FlattenGroupsActionCountsDto {
+            removed_empty: report.actions.removed_empty,
+            replaced_single_child: report.actions.replaced_single_child,
+            inlined_multi_child: report.actions.inlined_multi_child,
+            unwrapped_slot: report.actions.unwrapped_slot,
+        },
+        guards: FlattenGroupsGuardCountsDto {
+            preserve_group_containing_declarative_command: report
+                .guards
+                .preserve_group_containing_declarative_command,
+            preserve_group_in_script_base_slot: report.guards.preserve_group_in_script_base_slot,
+            preserve_group_inside_env_body: report.guards.preserve_group_inside_env_body,
+            preserve_group_containing_infix: report.guards.preserve_group_containing_infix,
+            preserve_group_adjacent_to_command_like: report
+                .guards
+                .preserve_group_adjacent_to_command_like,
+            preserve_group_as_argument_of_command: report
+                .guards
+                .preserve_group_as_argument_of_command,
+            preserve_group_after_scripted_command_like: report
+                .guards
+                .preserve_group_after_scripted_command_like,
+            preserve_empty_group: report.guards.preserve_empty_group,
+            preserve_group_with_lone_atom_spacing_char: report
+                .guards
+                .preserve_group_with_lone_atom_spacing_char,
+            preserve_group_starting_with_atom_spacing_char: report
+                .guards
+                .preserve_group_starting_with_atom_spacing_char,
+            preserve_group_containing_delimited_pair: report
+                .guards
+                .preserve_group_containing_delimited_pair,
+        },
+    }
+}
+
+fn attr_to_dto_key(attr: Attr) -> &'static str {
+    match attr {
+        Attr::MathFont => "math_font",
+        Attr::MathSize => "math_size",
+        Attr::MathStyle => "math_style",
+        Attr::TextFamily => "text_family",
+        Attr::TextSeries => "text_series",
+        Attr::TextShape => "text_shape",
+        Attr::TextSize => "text_size",
+    }
+}
+
+fn attr_value_to_dto_key(attr: Attr, value: AttrValue) -> String {
+    match (attr, value) {
+        (Attr::MathFont, AttrValue::MathFont(value)) => math_font_value_to_dto_key(value),
+        (Attr::MathSize | Attr::TextSize, AttrValue::Size(value)) => size_value_to_dto_key(value),
+        (Attr::MathStyle, AttrValue::Style(value)) => style_value_to_dto_key(value),
+        (Attr::TextFamily, AttrValue::TextFamily(value)) => text_family_to_dto_key(value),
+        (Attr::TextSeries, AttrValue::TextSeries(value)) => text_series_to_dto_key(value),
+        (Attr::TextShape, AttrValue::TextShape(value)) => text_shape_to_dto_key(value),
+        (_, other) => fallback_attr_value_to_dto_key(other),
+    }
+}
+
+fn math_font_value_to_dto_key(value: MathFontValue) -> String {
+    match value.0 {
+        "VARIANT.BOLD" => "bold".to_string(),
+        "VARIANT.CALLIGRAPHIC" => "calligraphic".to_string(),
+        "VARIANT.MATHITALIC" => "mathitalic".to_string(),
+        "VARIANT.ITALIC" => "italic".to_string(),
+        "VARIANT.NORMAL" => "normal".to_string(),
+        "VARIANT.SANSSERIF" => "sans_serif".to_string(),
+        "VARIANT.MONOSPACE" => "monospace".to_string(),
+        "-tex-oldstyle" => "oldstyle".to_string(),
+        other => string_to_dto_token(other),
+    }
+}
+
+fn size_value_to_dto_key(value: SizeValue) -> String {
+    let scaled = value.0;
+    let sign = if scaled < 0 { "minus_" } else { "" };
+    let absolute = scaled.abs();
+    format!("{}scale_{}_{:02}", sign, absolute / 100, absolute % 100)
+}
+
+fn style_value_to_dto_key(value: StyleValue) -> String {
+    match (value.letter, value.display, value.level) {
+        ("D", true, 0) => "displaystyle".to_string(),
+        ("T", false, 0) => "textstyle".to_string(),
+        ("S", false, 1) => "scriptstyle".to_string(),
+        ("SS", false, 2) => "scriptscriptstyle".to_string(),
+        _ => format!(
+            "style_{}_{}_{}",
+            string_to_dto_token(value.letter),
+            if value.display { "display" } else { "inline" },
+            value.level
+        ),
+    }
+}
+
+fn text_family_to_dto_key(value: TextFamily) -> String {
+    match value {
+        TextFamily::Roman => "roman",
+        TextFamily::SansSerif => "sans_serif",
+        TextFamily::Typewriter => "typewriter",
+        TextFamily::Calligraphic => "calligraphic",
+        TextFamily::Italic => "italic",
+        TextFamily::Oldstyle => "oldstyle",
+    }
+    .to_string()
+}
+
+fn text_series_to_dto_key(value: TextSeries) -> String {
+    match value {
+        TextSeries::Medium => "medium",
+        TextSeries::Bold => "bold",
+    }
+    .to_string()
+}
+
+fn text_shape_to_dto_key(value: TextShape) -> String {
+    match value {
+        TextShape::Upright => "upright",
+        TextShape::Italic => "italic",
+        TextShape::Slanted => "slanted",
+        TextShape::SmallCaps => "small_caps",
+    }
+    .to_string()
+}
+
+fn fallback_attr_value_to_dto_key(value: AttrValue) -> String {
+    match value {
+        AttrValue::MathFont(value) => math_font_value_to_dto_key(value),
+        AttrValue::Size(value) => size_value_to_dto_key(value),
+        AttrValue::Style(value) => style_value_to_dto_key(value),
+        AttrValue::TextFamily(value) => text_family_to_dto_key(value),
+        AttrValue::TextSeries(value) => text_series_to_dto_key(value),
+        AttrValue::TextShape(value) => text_shape_to_dto_key(value),
+    }
+}
+
+fn string_to_dto_token(value: &str) -> String {
+    let mut token = String::new();
+    let mut last_was_separator = false;
+    let value = value.strip_prefix("VARIANT.").unwrap_or(value);
+
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() {
+            token.push(ch.to_ascii_lowercase());
+            last_was_separator = false;
+        } else if !last_was_separator && !token.is_empty() {
+            token.push('_');
+            last_was_separator = true;
+        }
+    }
+
+    if token.ends_with('_') {
+        token.pop();
+    }
+    if token.is_empty() {
+        "unknown".to_string()
+    } else {
+        token
     }
 }
 
@@ -327,19 +525,124 @@ mod tests {
         report.rewrite.iterations = 3;
         report
             .rewrite
-            .applied
-            .push(texform_transform::rewrite::AppliedRuleStat {
+            .rules
+            .push(texform_transform::rewrite::RewriteRuleStat {
                 key,
-                count: 2,
+                applied_count: 2,
                 skipped_count: 1,
             });
 
         let dto = transform_report_to_dto(&report);
 
         assert_eq!(dto.iterations, 3);
-        assert_eq!(dto.applied.len(), 1);
-        assert_eq!(dto.applied[0].key, key.to_string());
-        assert_eq!(dto.applied[0].count, 2);
-        assert_eq!(dto.applied[0].skipped_count, 1);
+        assert_eq!(dto.rules.len(), 1);
+        assert_eq!(dto.rules[0].key, key.to_string());
+        assert_eq!(dto.rules[0].applied_count, 2);
+        assert_eq!(dto.rules[0].skipped_count, 1);
+    }
+
+    #[test]
+    fn transform_report_to_dto_groups_flatten_groups_report() {
+        let mut report = crate::TransformReport::default();
+        report.flatten_groups.actions = texform_transform::FlattenGroupsActionCounts {
+            removed_empty: 1,
+            replaced_single_child: 2,
+            inlined_multi_child: 3,
+            unwrapped_slot: 4,
+        };
+        report.flatten_groups.guards = texform_transform::FlattenGroupsGuardCounts {
+            preserve_group_containing_declarative_command: 5,
+            preserve_group_in_script_base_slot: 6,
+            preserve_group_inside_env_body: 7,
+            preserve_group_containing_infix: 8,
+            preserve_group_adjacent_to_command_like: 9,
+            preserve_group_as_argument_of_command: 10,
+            preserve_group_after_scripted_command_like: 11,
+            preserve_empty_group: 12,
+            preserve_group_with_lone_atom_spacing_char: 13,
+            preserve_group_starting_with_atom_spacing_char: 14,
+            preserve_group_containing_delimited_pair: 15,
+        };
+
+        let dto = transform_report_to_dto(&report).flatten_groups;
+
+        assert_eq!(dto.actions.removed_empty, 1);
+        assert_eq!(dto.actions.replaced_single_child, 2);
+        assert_eq!(dto.actions.inlined_multi_child, 3);
+        assert_eq!(dto.actions.unwrapped_slot, 4);
+        assert_eq!(dto.guards.preserve_group_containing_declarative_command, 5);
+        assert_eq!(dto.guards.preserve_group_in_script_base_slot, 6);
+        assert_eq!(dto.guards.preserve_group_inside_env_body, 7);
+        assert_eq!(dto.guards.preserve_group_containing_infix, 8);
+        assert_eq!(dto.guards.preserve_group_adjacent_to_command_like, 9);
+        assert_eq!(dto.guards.preserve_group_as_argument_of_command, 10);
+        assert_eq!(dto.guards.preserve_group_after_scripted_command_like, 11);
+        assert_eq!(dto.guards.preserve_empty_group, 12);
+        assert_eq!(dto.guards.preserve_group_with_lone_atom_spacing_char, 13);
+        assert_eq!(
+            dto.guards.preserve_group_starting_with_atom_spacing_char,
+            14
+        );
+        assert_eq!(dto.guards.preserve_group_containing_delimited_pair, 15);
+    }
+
+    #[test]
+    fn transform_report_to_dto_reads_lower_attributes_report_in_stable_order() {
+        let mut report = crate::TransformReport::default();
+        report.lower_attributes.eliminated_empty_segments = 2;
+        report.lower_attributes.attributes.insert(
+            texform_transform::AttributeSet::new(
+                texform_transform::Attr::TextSize,
+                texform_transform::AttrValue::Size(texform_transform::SizeValue(120)),
+            ),
+            texform_transform::AttributeStat {
+                consumed: texform_transform::AttributeFormCounts {
+                    declaratives: 3,
+                    prefixes: 4,
+                },
+                redundant: texform_transform::AttributeFormCounts {
+                    declaratives: 5,
+                    prefixes: 6,
+                },
+                emitted: texform_transform::AttributeFormCounts {
+                    declaratives: 7,
+                    prefixes: 8,
+                },
+            },
+        );
+        report.lower_attributes.attributes.insert(
+            texform_transform::AttributeSet::new(
+                texform_transform::Attr::MathStyle,
+                texform_transform::AttrValue::Style(texform_transform::StyleValue {
+                    letter: "S",
+                    display: false,
+                    level: 1,
+                }),
+            ),
+            texform_transform::AttributeStat {
+                consumed: texform_transform::AttributeFormCounts {
+                    declaratives: 1,
+                    prefixes: 0,
+                },
+                redundant: texform_transform::AttributeFormCounts::default(),
+                emitted: texform_transform::AttributeFormCounts {
+                    declaratives: 1,
+                    prefixes: 0,
+                },
+            },
+        );
+
+        let dto = transform_report_to_dto(&report).lower_attributes;
+
+        assert_eq!(dto.eliminated_empty_segments, 2);
+        assert_eq!(dto.attributes.len(), 2);
+        assert_eq!(dto.attributes[0].attr, "math_style");
+        assert_eq!(dto.attributes[0].value, "scriptstyle");
+        assert_eq!(dto.attributes[0].consumed.declaratives, 1);
+        assert_eq!(dto.attributes[1].attr, "text_size");
+        assert_eq!(dto.attributes[1].value, "scale_1_20");
+        assert_eq!(dto.attributes[1].consumed.prefixes, 4);
+        assert_eq!(dto.attributes[1].redundant.declaratives, 5);
+        assert_eq!(dto.attributes[1].emitted.prefixes, 8);
     }
 }

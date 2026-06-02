@@ -96,8 +96,8 @@ mod tests {
             run_one_rule_for_test(&mut ast, &parse_ctx, &QUANTITY_TO_QTY, RuleClass::Standard)
             .expect("quantity-to-qty transform should succeed");
 
-        assert_eq!(output.rewrite.applied.len(), 1);
-        assert_eq!(output.rewrite.applied[0].key.to_string(), "physics/quantity-to-qty");
+        assert_eq!(output.rewrite.rules.len(), 1);
+        assert_eq!(output.rewrite.rules[0].key.to_string(), "physics/quantity-to-qty");
 
         let root = ast.root();
         let children = ast.children(root);

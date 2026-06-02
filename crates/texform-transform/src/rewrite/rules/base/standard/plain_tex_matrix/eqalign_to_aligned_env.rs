@@ -5,8 +5,8 @@
 //! triggers:
 //!   - cmd:eqalign
 //! consumes:
-//!   eliminates: [cmd:eqalign, cmd:cr]
-//!   touches: null
+//!   eliminates: cmd:eqalign
+//!   touches: cmd:cr
 //! produces: env:aligned
 //! rewrite_patterns:
 //!   - {from: '\eqalign{#1 \cr #2}', to: '\begin{aligned} #1 \\ #2 \end{aligned}'}
@@ -28,8 +28,8 @@ define_rule! {
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::EQALIGN],
         consumes: RuleConsumes {
-            eliminates: cmd_targets![&base::cmd::EQALIGN, &base::cmd::CR],
-            touches: &[],
+            eliminates: cmd_targets![&base::cmd::EQALIGN],
+            touches: cmd_targets![&base::cmd::CR],
         },
         produces: RuleProduces {
             targets: env_targets![&ams::env::ALIGNED],

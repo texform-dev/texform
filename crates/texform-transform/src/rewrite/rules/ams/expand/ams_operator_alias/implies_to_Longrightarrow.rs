@@ -101,10 +101,10 @@ mod tests {
         )
             .expect("implies-to-Longrightarrow transform should succeed");
 
-        assert_eq!(output.rewrite.applied.len(), 1);
-        assert_eq!(output.rewrite.applied[0].count, 1);
+        assert_eq!(output.rewrite.rules.len(), 1);
+        assert_eq!(output.rewrite.rules[0].applied_count, 1);
         assert_eq!(
-            output.rewrite.applied[0].key.to_string(),
+            output.rewrite.rules[0].key.to_string(),
             "ams/implies-to-Longrightarrow"
         );
 
@@ -130,8 +130,8 @@ mod tests {
         )
             .expect("implies-to-Longrightarrow transform should succeed");
 
-        assert_eq!(output.rewrite.applied.len(), 1);
-        assert_eq!(output.rewrite.applied[0].count, 1);
+        assert_eq!(output.rewrite.rules.len(), 1);
+        assert_eq!(output.rewrite.rules[0].applied_count, 1);
     }
 
     fn assert_command(node: &Node, expected_name: &str) {

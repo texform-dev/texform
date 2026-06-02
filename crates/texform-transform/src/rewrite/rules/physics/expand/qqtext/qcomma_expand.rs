@@ -99,7 +99,7 @@ mod tests {
         let output = run_one_rule_for_test(&mut ast, &parse_ctx, &QCOMMA_EXPAND, RuleClass::Expand)
             .expect("qcomma-expand transform should succeed");
 
-        assert_eq!(output.rewrite.applied.len(), 1);
-        assert_eq!(output.rewrite.applied[0].count, 1);
+        assert_eq!(output.rewrite.rules.len(), 1);
+        assert_eq!(output.rewrite.rules[0].applied_count, 1);
     }
 }

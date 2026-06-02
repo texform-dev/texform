@@ -19,6 +19,7 @@ pub(crate) use macros::transform_examples;
 pub(crate) use macros::{alias_rule, char_targets, cmd_targets, define_rule, env_targets};
 
 pub use class_set::RuleClassSet;
+pub use contract::{ContractViolation, collect_eliminated_violations};
 pub use plan::{Plan, PlanBuildError, RuleAvailabilityFailure};
 pub use registry::all_rules;
 pub use rule::{
@@ -31,40 +32,40 @@ pub use rule_context::{CommandView, DeclarativeView, EnvironmentView, InfixView,
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RewriteReport {
     /// Per-rule execution counts for rules that were attempted at least once.
-    pub applied: Vec<AppliedRuleStat>,
+    pub rules: Vec<RewriteRuleStat>,
     /// The number of fixed-point iterations the Rewrite phase completed.
     pub iterations: usize,
 }
 
 /// Tracks how often a specific rule changed the AST or skipped after a scheduling target match.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AppliedRuleStat {
+pub struct RewriteRuleStat {
     /// The identity of the rule.
     pub key: RuleKey,
     /// The total number of times this rule fired.
-    pub count: usize,
+    pub applied_count: usize,
     /// The total number of times this rule's scheduling target matched but `apply()` returned `Skipped`.
     pub skipped_count: usize,
 }
 
 impl RewriteReport {
-    pub(crate) fn stat_mut(&mut self, key: RuleKey) -> &mut AppliedRuleStat {
-        if let Some(index) = self.applied.iter().position(|entry| entry.key == key) {
-            return &mut self.applied[index];
+    pub(crate) fn stat_mut(&mut self, key: RuleKey) -> &mut RewriteRuleStat {
+        if let Some(index) = self.rules.iter().position(|entry| entry.key == key) {
+            return &mut self.rules[index];
         }
 
-        self.applied.push(AppliedRuleStat {
+        self.rules.push(RewriteRuleStat {
             key,
-            count: 0,
+            applied_count: 0,
             skipped_count: 0,
         });
-        self.applied
+        self.rules
             .last_mut()
             .expect("newly inserted rule stat must exist")
     }
 
     pub fn mark_rule_applied(&mut self, key: RuleKey) {
-        self.stat_mut(key).count += 1;
+        self.stat_mut(key).applied_count += 1;
     }
 
     pub fn mark_rule_skipped(&mut self, key: RuleKey) {
@@ -135,9 +136,7 @@ pub fn run(
     max_iterations: usize,
     report: &mut RewriteReport,
 ) -> Result<(), RewriteError> {
-    scheduler::drive_fixed_point(ast, parse_ctx, plan, max_iterations, report)?;
-    contract::assert_eliminated_forms(ast, parse_ctx, plan.eliminated_forms())?;
-    Ok(())
+    scheduler::drive_fixed_point(ast, parse_ctx, plan, max_iterations, report)
 }
 
 #[cfg(test)]

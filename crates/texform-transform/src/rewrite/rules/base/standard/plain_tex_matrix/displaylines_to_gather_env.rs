@@ -5,8 +5,8 @@
 //! triggers:
 //!   - cmd:displaylines
 //! consumes:
-//!   eliminates: [cmd:displaylines, cmd:cr]
-//!   touches: null
+//!   eliminates: cmd:displaylines
+//!   touches: cmd:cr
 //! produces:
 //!   - env:gather
 //!   - cmd:notag
@@ -32,8 +32,8 @@ define_rule! {
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::DISPLAYLINES],
         consumes: RuleConsumes {
-            eliminates: cmd_targets![&base::cmd::DISPLAYLINES, &base::cmd::CR],
-            touches: &[],
+            eliminates: cmd_targets![&base::cmd::DISPLAYLINES],
+            touches: cmd_targets![&base::cmd::CR],
         },
         produces: RuleProduces {
             targets: &[RuleTarget::Environment(&ams::env::GATHER), RuleTarget::Command(&ams::cmd::NOTAG)],

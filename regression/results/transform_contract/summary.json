@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "profile": "corpus",
+    "datasets": [
+      "linxy",
+      "unimer",
+      "wikipedia",
+      "lf80m-benchmarks"
+    ],
+    "limit": null,
+    "provenance": {
+      "texform_commit_short": "3adc39c0",
+      "texform_dirty": false,
+      "config_hash": "a4173405e116cd0e"
+    }
+  },
+  "checked_formulas": 1226621,
+  "parse_errors": 2008,
+  "transform_errors": 0,
+  "contract_errors": 0,
+  "violating_formulas": 0,
+  "violating_formulas_pct": 0.0,
+  "violations": 0,
+  "configured_exceptions": 0,
+  "matched_exceptions": 0,
+  "unmatched_exceptions": 0,
+  "allowed_exceptions": 0,
+  "unexpected_violations": 0,
+  "verdict": "pass"
+}

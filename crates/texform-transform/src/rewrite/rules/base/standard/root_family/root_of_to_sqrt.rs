@@ -174,9 +174,9 @@ mod tests {
             run_one_rule_for_test(&mut ast, &parse_ctx, &ROOT_OF_TO_SQRT, RuleClass::Standard)
             .expect("root-of-to-sqrt transform should succeed");
 
-        assert_eq!(output.rewrite.applied.len(), 1);
-        assert_eq!(output.rewrite.applied[0].count, 1);
-        assert_eq!(output.rewrite.applied[0].key.to_string(), "base/root-of-to-sqrt");
+        assert_eq!(output.rewrite.rules.len(), 1);
+        assert_eq!(output.rewrite.rules[0].applied_count, 1);
+        assert_eq!(output.rewrite.rules[0].key.to_string(), "base/root-of-to-sqrt");
 
         let children = ast.children(ast.root());
         assert_eq!(children.len(), 1);

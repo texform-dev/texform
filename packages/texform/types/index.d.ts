@@ -308,28 +308,51 @@ export interface SerializeOptions {
 }
 
 export interface TransformReport {
+  /** Fixed-point rewrite iterations for this normalization run. */
   iterations: number;
-  applied: Array<{ key: string; count: number; skipped_count: number }>;
+  /** Rewrite rules that were attempted, sorted by stable rule key. */
+  rules: Array<{ key: string; applied_count: number; skipped_count: number }>;
   lower_attributes: {
+    /** Use the `(attr, value)` pair as the stable lower-attribute unit key. */
+    attributes: Array<{
+      attr: string;
+      value: string;
+      /** Input forms consumed by LowerAttributes. */
+      consumed: AttributeFormCounts;
+      /** Consumed forms that did not change the emitted attribute state. */
+      redundant: AttributeFormCounts;
+      /** Canonical forms emitted by LowerAttributes. */
+      emitted: AttributeFormCounts;
+    }>;
     eliminated_empty_segments: number;
   };
   flatten_groups: {
-    removed_empty: number;
-    replaced_single_child: number;
-    inlined_multi_child: number;
-    unwrapped_slot: number;
-    preserved_group_containing_declarative_command: number;
-    preserved_group_in_script_base_slot: number;
-    preserved_group_inside_env_body: number;
-    preserved_group_containing_infix: number;
-    preserved_group_adjacent_to_command_like: number;
-    preserved_group_as_argument_of_command: number;
-    preserved_group_after_scripted_command_like: number;
-    preserved_empty_group: number;
-    preserved_group_with_lone_atom_spacing_char: number;
-    preserved_group_starting_with_atom_spacing_char: number;
-    preserved_group_containing_delimited_pair: number;
+    actions: {
+      removed_empty: number;
+      replaced_single_child: number;
+      inlined_multi_child: number;
+      unwrapped_slot: number;
+    };
+    /** Preserve-guard hit counters; each guard blocks a flatten action in a specific context. */
+    guards: {
+      preserve_group_containing_declarative_command: number;
+      preserve_group_in_script_base_slot: number;
+      preserve_group_inside_env_body: number;
+      preserve_group_containing_infix: number;
+      preserve_group_adjacent_to_command_like: number;
+      preserve_group_as_argument_of_command: number;
+      preserve_group_after_scripted_command_like: number;
+      preserve_empty_group: number;
+      preserve_group_with_lone_atom_spacing_char: number;
+      preserve_group_starting_with_atom_spacing_char: number;
+      preserve_group_containing_delimited_pair: number;
+    };
   };
+}
+
+export interface AttributeFormCounts {
+  declaratives: number;
+  prefixes: number;
 }
 
 export interface TransformResult {

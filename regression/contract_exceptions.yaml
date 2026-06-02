@@ -1,0 +1,4 @@
+# Transform contract allow-list.
+# Every exception must include an English reason explaining why the remaining form is intentional.
+# Match keys include dataset, formula_id, occurrence, target_kind, target, and optional node_name.
+exceptions: []

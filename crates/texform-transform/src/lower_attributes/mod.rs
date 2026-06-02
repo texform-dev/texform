@@ -21,24 +21,39 @@ use generated::{CommandRef, DeclarativeEntry, ModeTarget, PrefixEntry};
 // Public diagnostic surface
 // ---------------------------------------------------------------------------
 
-/// Per-phase statistics. Aggregated into [`crate::TransformReport`].
+/// Statistics accumulated across every LowerAttributes invocation in one
+/// transform run.
+///
+/// The engine can run LowerAttributes before and after Rewrite. This report
+/// intentionally aggregates both invocations instead of splitting pre/post
+/// counters.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LowerAttributesReport {
-    /// How many times each declarative or prefix command was removed from the AST.
-    pub consumed: HashMap<&'static str, usize>,
-    /// Of the consumed declaratives above, how many were redundant repeats of the active
-    /// value and therefore did not produce a changepoint.
-    pub collapsed: HashMap<&'static str, usize>,
-    /// Segments wrapped into a prefix command, keyed by attribute / value / mode.
-    pub wrapped: HashMap<(Attr, AttrValue, ContentMode), usize>,
-    /// Declaratives prepended to a segment because the attribute has no prefix
-    /// equivalent (e.g. `\large`, `\displaystyle`).
-    pub reinserted: HashMap<(Attr, AttrValue, ContentMode), usize>,
+    /// Per-attribute counters for consumed inputs and emitted canonical forms.
+    pub attributes: HashMap<AttributeSet, AttributeStat>,
     /// Trailing changepoints whose segment ended up empty (e.g. `{x \bf}` or
     /// `\sqrt{\bf}`).
     pub eliminated_empty_segments: usize,
-    /// Prefix wrappers whose effect was fully carried by inherited or inner state.
-    pub absorbed_prefixes: HashMap<&'static str, usize>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AttributeStat {
+    /// Declarative and prefix forms removed from the AST.
+    pub consumed: AttributeFormCounts,
+    /// Consumed forms whose attribute effect did not produce emitted output.
+    ///
+    /// For prefixes this includes both already-active outer prefixes and
+    /// prefixes whose body overrides or otherwise carries the effect.
+    pub redundant: AttributeFormCounts,
+    /// Canonical declarative and prefix forms emitted for the attribute.
+    pub emitted: AttributeFormCounts,
+}
+
+/// Declarative/prefix split for a single attribute statistic bucket.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AttributeFormCounts {
+    pub declaratives: usize,
+    pub prefixes: usize,
 }
 
 /// One of the attribute axes recognised by the phase.
@@ -104,9 +119,53 @@ pub enum TextShape {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct AttributeSet {
+pub struct AttributeSet {
     attr: Attr,
     value: AttrValue,
+}
+
+impl AttributeSet {
+    pub const fn new(attr: Attr, value: AttrValue) -> Self {
+        Self { attr, value }
+    }
+
+    pub const fn attr(self) -> Attr {
+        self.attr
+    }
+
+    pub const fn value(self) -> AttrValue {
+        self.value
+    }
+}
+
+impl LowerAttributesReport {
+    fn stat_mut(&mut self, set: AttributeSet) -> &mut AttributeStat {
+        self.attributes.entry(set).or_default()
+    }
+
+    fn record_consumed_declarative(&mut self, set: AttributeSet) {
+        self.stat_mut(set).consumed.declaratives += 1;
+    }
+
+    fn record_consumed_prefix(&mut self, set: AttributeSet) {
+        self.stat_mut(set).consumed.prefixes += 1;
+    }
+
+    fn record_redundant_declarative(&mut self, set: AttributeSet) {
+        self.stat_mut(set).redundant.declaratives += 1;
+    }
+
+    fn record_redundant_prefix(&mut self, set: AttributeSet) {
+        self.stat_mut(set).redundant.prefixes += 1;
+    }
+
+    fn record_emitted_declarative(&mut self, set: AttributeSet) {
+        self.stat_mut(set).emitted.declaratives += 1;
+    }
+
+    fn record_emitted_prefix(&mut self, set: AttributeSet) {
+        self.stat_mut(set).emitted.prefixes += 1;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -393,7 +452,7 @@ fn collect_detached_child(
         let previous = *state;
         let body_pairs = collect_prefix_body(ast, child, previous, entry, mode, report);
         if prefix_is_fully_absorbed(previous, entry.set, &body_pairs) {
-            *report.absorbed_prefixes.entry(entry.key).or_default() += 1;
+            report.record_redundant_prefix(entry.set);
         }
         pairs.extend(body_pairs);
         ast.remove_detached(child);
@@ -419,9 +478,9 @@ fn consume_declarative(
     entry: &'static DeclarativeEntry,
     report: &mut LowerAttributesReport,
 ) {
-    *report.consumed.entry(entry.key).or_default() += 1;
+    report.record_consumed_declarative(entry.set);
     if !state.set(entry.set) {
-        *report.collapsed.entry(entry.key).or_default() += 1;
+        report.record_redundant_declarative(entry.set);
     }
     ast.remove_detached(node);
 }
@@ -434,7 +493,7 @@ fn collect_prefix_body(
     mode: ContentMode,
     report: &mut LowerAttributesReport,
 ) -> Vec<Pair> {
-    *report.consumed.entry(entry.key).or_default() += 1;
+    report.record_consumed_prefix(entry.set);
     let body_state = previous.with(entry.set);
     let body = mandatory_content_child(ast, prefix).expect("registered prefix should have a body");
 
@@ -591,8 +650,8 @@ fn prefix_is_fully_absorbed(
         return true;
     }
 
-    !body_pairs.is_empty()
-        && body_pairs
+    body_pairs.is_empty()
+        || body_pairs
             .iter()
             .all(|pair| pair.state.get(set.attr) != Some(set.value))
 }
@@ -667,11 +726,11 @@ fn wrap_with_canonical(
                 args: vec![mandatory_content_slot(group, mode)],
                 known: true,
             });
-            *report.wrapped.entry((attr, value, mode)).or_default() += 1;
+            report.record_emitted_prefix(AttributeSet::new(attr, value));
             children = vec![command];
         } else {
             children.insert(0, new_declarative_node(ast, target.declarative));
-            *report.reinserted.entry((attr, value, mode)).or_default() += 1;
+            report.record_emitted_declarative(AttributeSet::new(attr, value));
         }
     }
 

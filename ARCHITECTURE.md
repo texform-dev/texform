@@ -141,6 +141,10 @@ The serializer covers the full node vocabulary, including emitting an `Error` no
 
 Normalization is **gated on a complete tree**: `TransformEngine::transform` and `TransformEngine::normalize` return `Error::IncompleteTree` when `document.has_errors()`, because normalizing a tree with holes is meaningless. An empty document is complete (`!has_errors()`) and normalizes normally.
 
+The Rust transform report returned by the `texform` facade is phase-oriented: `report.rewrite.iterations` / `report.rewrite.rules`, `report.flatten_groups.actions` / `report.flatten_groups.guards`, and `report.lower_attributes.attributes` plus `eliminated_empty_segments`. Python and WebAssembly expose the same data through a transport DTO with top-level `iterations` and `rules[]`, plus nested `flatten_groups` and `lower_attributes` objects.
+
+Rewrite rules may declare forms they eliminate. When Rewrite is enabled, the engine checks that eliminated-form contract only after the full pipeline has completed, including post-rewrite LowerAttributes and FlattenGroups. A remaining eliminated form is a hard transform error, surfaced as a contract violation rather than a warning.
+
 ## Knowledge and Argument Specifications
 
 The parser is not purely syntactic — it consults `texform-knowledge` to decide whether a command or environment name is *known* and what argument shape it takes. Argument shapes are described in an xparse-style signature language parsed by `texform-argspec` (mandatory, optional, delimited, starred, and similar argument kinds). Unknown names are handled per `ParseConfig::reject_unknown`: either turned into diagnostics, or preserved as `known: false` nodes for lenient exploration. This is why parsing depends on a knowledge layer beneath the core parser, and why the same source can parse differently under different configurations.

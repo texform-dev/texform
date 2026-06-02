@@ -5,8 +5,8 @@
 //! triggers:
 //!   - cmd:eqalignno
 //! consumes:
-//!   eliminates: [cmd:eqalignno, cmd:cr]
-//!   touches: null
+//!   eliminates: cmd:eqalignno
+//!   touches: cmd:cr
 //! produces:
 //!   - env:align
 //!   - cmd:tag
@@ -35,8 +35,8 @@ define_rule! {
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::EQALIGNNO],
         consumes: RuleConsumes {
-            eliminates: cmd_targets![&base::cmd::EQALIGNNO, &base::cmd::CR],
-            touches: &[],
+            eliminates: cmd_targets![&base::cmd::EQALIGNNO],
+            touches: cmd_targets![&base::cmd::CR],
         },
         produces: RuleProduces {
             targets: &[RuleTarget::Environment(&ams::env::ALIGN), RuleTarget::Command(&ams::cmd::TAG)],

@@ -51,4 +51,15 @@ impl TransformContext {
     pub fn rewrite_plan(&self) -> &rewrite::Plan {
         &self.rewrite
     }
+
+    #[cfg(test)]
+    pub(crate) fn from_rewrite_plan_for_tests(
+        default_config: TransformConfig,
+        rewrite: rewrite::Plan,
+    ) -> Self {
+        Self {
+            default_config,
+            rewrite,
+        }
+    }
 }

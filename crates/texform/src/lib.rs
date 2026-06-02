@@ -38,6 +38,8 @@ pub use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentSlot, ArgumentValue, Delimiter, GroupKind, SyntaxNode,
 };
 pub use texform_transform::{
-    FlattenGroupsConfig, FlattenGroupsReport, LowerAttributesConfig, LowerAttributesReport,
-    RuleClassSet, TransformReport,
+    Attr, AttrValue, AttributeFormCounts, AttributeSet, AttributeStat, FlattenGroupsActionCounts,
+    FlattenGroupsConfig, FlattenGroupsGuardCounts, FlattenGroupsReport, LowerAttributesConfig,
+    LowerAttributesReport, MathFontValue, RewriteReport, RewriteRuleStat, RuleClassSet, SizeValue,
+    StyleValue, TextFamily, TextSeries, TextShape, TransformReport,
 };

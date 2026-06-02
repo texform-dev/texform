@@ -28,7 +28,10 @@ let report = context
     .expect("transform should succeed");
 
 println!("rewrite iterations: {}", report.rewrite.iterations);
-println!("flatten removed_empty: {}", report.flatten_groups.removed_empty);
+println!(
+    "flatten removed_empty: {}",
+    report.flatten_groups.actions.removed_empty
+);
 ```
 
 For repeated transforms with the same configuration, build a context once and reuse it:
@@ -199,9 +202,32 @@ pub struct TransformReport {
 }
 ```
 
-- `LowerAttributesReport` — per-attribute counters: `consumed`, `collapsed`, `wrapped`, `reinserted`, `eliminated_empty_segments`, `absorbed_prefixes`.
-- `RewriteReport` — `iterations` (fixed-point iteration count) and `applied` (`Vec<AppliedRuleStat>` with `key`, `count`, `skipped_count` per rule that was attempted at least once).
-- `FlattenGroupsReport` — four action counters plus one hit counter per preserve guard. Hit counters are short-circuit: when several guards would apply to the same group, only the first one that matches in the internal evaluation order is incremented.
+- `LowerAttributesReport` — `attributes` (`HashMap<AttributeSet, AttributeStat>`) plus `eliminated_empty_segments`; each attribute stat has `consumed`, `redundant`, and `emitted` counts split into `declaratives` and `prefixes`. The report aggregates all LowerAttributes invocations in one transform run, so the default pipeline combines pre-Rewrite and post-Rewrite counts.
+- `RewriteReport` — `iterations` (fixed-point iteration count) and `rules` (`Vec<RewriteRuleStat>` with `key`, `applied_count`, `skipped_count` per rule that was attempted at least once).
+- `FlattenGroupsReport` — `actions` for the four action counters and `guards` for one hit counter per preserve guard. Hit counters are short-circuit: when several guards would apply to the same group, only the first one that matches in the internal evaluation order is incremented.
+
+The stable facade DTO used by the Python and WebAssembly bindings flattens the same information into a transport-safe shape:
+
+```text
+{
+  iterations,
+  rules: [{ key, applied_count, skipped_count }],
+  flatten_groups: {
+    actions: { removed_empty, replaced_single_child, inlined_multi_child, unwrapped_slot },
+    guards: { preserve_group_* }
+  },
+  lower_attributes: {
+    attributes: [{
+      attr,
+      value,
+      consumed: { declaratives, prefixes },
+      redundant: { declaratives, prefixes },
+      emitted: { declaratives, prefixes }
+    }],
+    eliminated_empty_segments
+  }
+}
+```
 
 ## Phase internals
 
@@ -209,9 +235,9 @@ pub struct TransformReport {
 
 Two sub-modules drive this phase: `lower_attributes/codegen.rs` and the build-time-generated `lower_attributes/generated.rs`. The phase scans the AST for declarative commands (e.g. `\bf`, `\large`, `\sf`) and registered prefix wrappers (e.g. `\mathbf{...}`, `\textbf{...}`), then normalizes both forms into a single canonical representation per attribute.
 
-Attributes are modeled as a structured `Attr` × `AttrValue` × `ContentMode` tuple covering math font, math size, math style, text family, text series, text shape, and text size. Inherited state is tracked across container boundaries so that nested declarations collapse when redundant and segments empty out cleanly.
+Attributes are modeled as a structured `AttributeSet` (`Attr` × `AttrValue`) covering math font, math size, math style, text family, text series, text shape, and text size. Inherited state is tracked across container boundaries so that nested declarations, prefix wrappers, and empty trailing segments normalize cleanly.
 
-The phase runs twice in the pipeline (pre and post Rewrite) under a single `enabled` switch because rewrite rules may emit prefix wrappers as their right-hand side; the post-pass re-canonicalizes those into the same normal form as the pre-pass.
+The phase runs twice in the pipeline (pre and post Rewrite) under a single `enabled` switch because rewrite rules may emit prefix wrappers as their right-hand side; the post-pass re-canonicalizes those into the same normal form as the pre-pass. `LowerAttributesReport` uses a single cumulative counter set for both invocations.
 
 ### Rewrite
 
@@ -227,7 +253,7 @@ Rules live under `src/rewrite/rules/{base, ams, braket, physics}/` and are auto-
 - `consumes` — forms the rule `eliminates` (must not appear in the output) and `touches` (may read or modify).
 - `produces` — forms the rule may introduce. The engine verifies every produced form is either accepted by the output contract or eliminated by another rule.
 
-`TransformContext::from_build_config` builds a `Plan` by filtering all registered rules through the selected profile classes, build-time disabled rules, and the `ParseContext`'s enabled packages. The plan is then driven by `scheduler::drive_fixed_point` until either no rule fires in an iteration or `max_iterations` is exceeded. After the loop, `contract::assert_eliminated_forms` verifies that no rule's `eliminates` set remains in the output AST; a violation is reported as `RewriteError::ContractViolation`.
+`TransformContext::from_build_config` builds a `Plan` by filtering all registered rules through the selected profile classes, build-time disabled rules, and the `ParseContext`'s enabled packages. The plan is then driven by `scheduler::drive_fixed_point` until either no rule fires in an iteration or `max_iterations` is exceeded. When Rewrite is enabled, after the full pipeline has run post-Rewrite LowerAttributes and FlattenGroups, the engine uses `collect_eliminated_violations` to verify that no rule's `eliminates` set remains in the output AST; a violation is reported as `RewriteError::ContractViolation`.
 
 See [`src/rewrite/rules/README.md`](src/rewrite/rules/README.md) for rule authoring conventions and the macro-based DSL used to define rules.
 
@@ -287,4 +313,3 @@ cargo test -p texform-transform
 
 - High-level overview: [`lib/texform/README.md`](../../README.md) (Transform section).
 - Rule authoring guide: [`src/rewrite/rules/README.md`](src/rewrite/rules/README.md).
-- FlattenGroups guard categorization and analysis design: internal design memo `2026-05-20-flatten-groups-guards-refactor-design.md` (workspace).

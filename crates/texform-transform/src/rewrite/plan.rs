@@ -33,6 +33,15 @@ impl Plan {
     pub fn eliminated_forms(&self) -> &[RuleTargetKey] {
         self.eliminated_forms.as_slice()
     }
+
+    #[cfg(test)]
+    pub(crate) fn from_rules_for_tests(rules: Vec<&'static dyn RewriteRule>) -> Self {
+        let eliminated_forms = derive_eliminated_forms(rules.as_slice());
+        Self {
+            rules,
+            eliminated_forms,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

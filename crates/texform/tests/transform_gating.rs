@@ -48,7 +48,7 @@ fn transform_updates_document_in_place() {
         .expect("transform should succeed");
 
     assert_eq!(document.to_latex().expect("document should serialize"), "x");
-    assert_eq!(report.flatten_groups.replaced_single_child, 2);
+    assert_eq!(report.flatten_groups.actions.replaced_single_child, 2);
 
     let y = document.create_char('y').expect("char should be created");
     document

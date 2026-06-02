@@ -5,8 +5,8 @@
 //! triggers:
 //!   - cmd:cases
 //! consumes:
-//!   eliminates: [cmd:cases, cmd:cr]
-//!   touches: null
+//!   eliminates: cmd:cases
+//!   touches: cmd:cr
 //! produces: env:cases
 //! rewrite_patterns:
 //!   - {from: '\cases{#1 \cr #2}', to: '\begin{cases} #1 \\ #2 \end{cases}'}
@@ -28,8 +28,8 @@ define_rule! {
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::CASES],
         consumes: RuleConsumes {
-            eliminates: cmd_targets![&base::cmd::CASES, &base::cmd::CR],
-            touches: &[],
+            eliminates: cmd_targets![&base::cmd::CASES],
+            touches: cmd_targets![&base::cmd::CR],
         },
         produces: RuleProduces {
             targets: env_targets![&ams::env::CASES],

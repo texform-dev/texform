@@ -1,6 +1,6 @@
 use texform::{
     ContentMode, FlattenGroupsConfig, NormalizeConfig, ParseConfig, Parser, Profile,
-    TransformConfig, TransformEngine,
+    TransformConfig, TransformEngine, bindings::transform_report_to_dto,
 };
 
 #[test]
@@ -16,7 +16,7 @@ fn engine_normalize_uses_build_time_profile_and_packages() {
         .expect("normalize should succeed");
 
     assert_eq!(result.normalized, r"\qty { x }");
-    assert!(!result.report.rewrite.applied.is_empty());
+    assert!(!result.report.rewrite.rules.is_empty());
 }
 
 #[test]
@@ -77,7 +77,7 @@ fn document_transform_preserves_parse_once_workflow() {
 
     assert_eq!(before, "{ { x } }");
     assert_eq!(after, "x");
-    assert_eq!(report.flatten_groups.replaced_single_child, 2);
+    assert_eq!(report.flatten_groups.actions.replaced_single_child, 2);
 }
 
 #[test]
@@ -183,4 +183,63 @@ fn engine_builder_disables_rule_by_public_name() {
         unknown.is_err(),
         "unknown rule names should fail at the facade"
     );
+}
+
+#[test]
+fn normalize_report_dto_exposes_stable_phase_shape() {
+    let engine = TransformEngine::builder()
+        .packages(&["base", "physics"])
+        .profile(Profile::Authoring)
+        .build()
+        .expect("engine should build");
+
+    let result = engine
+        .normalize(r"\quantity{{\bf x}}")
+        .expect("normalize should succeed");
+    let dto = transform_report_to_dto(&result.report);
+
+    let quantity_rule = dto
+        .rules
+        .iter()
+        .find(|rule| rule.key == "physics/quantity-to-qty")
+        .expect("rewrite rules should expose stable rule entries");
+    assert_eq!(quantity_rule.applied_count, 1);
+    assert_eq!(quantity_rule.skipped_count, 0);
+
+    assert_eq!(
+        dto.flatten_groups.actions.replaced_single_child,
+        result.report.flatten_groups.actions.replaced_single_child
+    );
+    assert_eq!(
+        dto.flatten_groups.guards.preserve_empty_group,
+        result.report.flatten_groups.guards.preserve_empty_group
+    );
+
+    let math_font = dto
+        .lower_attributes
+        .attributes
+        .iter()
+        .find(|attribute| attribute.attr == "math_font" && attribute.value == "bold")
+        .expect("lower attributes should expose stable attribute entries");
+    assert_eq!(math_font.consumed.declaratives, 1);
+    assert!(math_font.emitted.prefixes > 0);
+
+    let json = serde_json::to_value(&dto).expect("report DTO should serialize");
+    assert!(json.get("rules").is_some());
+    assert!(json.get("applied").is_none());
+    assert!(json["rules"][0].get("applied_count").is_some());
+    assert!(json["rules"][0].get("count").is_none());
+    assert!(json["flatten_groups"].get("actions").is_some());
+    assert!(json["flatten_groups"].get("guards").is_some());
+    assert!(
+        json["flatten_groups"]
+            .get("preserved_group_containing_declarative_command")
+            .is_none()
+    );
+    assert!(
+        json["flatten_groups"]["guards"]
+            .get("preserve_group_containing_declarative_command")
+            .is_some()
+    );
+    assert!(json["lower_attributes"].get("attributes").is_some());
 }

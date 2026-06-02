@@ -18,16 +18,19 @@ pub mod rewrite;
 pub use config::{BuildConfig, NormalizeConfig, Profile, TransformConfig};
 pub use context::TransformContext;
 pub use error::{TransformBuildError, TransformError};
-pub use flatten_groups::{FlattenGroupsConfig, FlattenGroupsReport};
+pub use flatten_groups::{
+    FlattenGroupsActionCounts, FlattenGroupsConfig, FlattenGroupsGuardCounts, FlattenGroupsReport,
+};
 pub use lower_attributes::{
-    Attr, AttrValue, LowerAttributesConfig, LowerAttributesReport, SizeValue, StyleValue,
+    Attr, AttrValue, AttributeFormCounts, AttributeSet, AttributeStat, LowerAttributesConfig,
+    LowerAttributesReport, MathFontValue, SizeValue, StyleValue, TextFamily, TextSeries, TextShape,
 };
 pub use report::TransformReport;
 pub use rewrite::{
-    AppliedRuleStat, PackageName, Plan as RewritePlan, PlanBuildError, RewriteError, RewriteReport,
-    RewriteRule, RuleAvailabilityFailure, RuleClass, RuleClassSet, RuleConsumes, RuleEffect,
-    RuleError, RuleKey, RuleMeta, RuleProduces, RuleSafety, RuleTarget, RuleTargetKey,
-    RuleTargetKind,
+    ContractViolation, PackageName, Plan as RewritePlan, PlanBuildError, RewriteError,
+    RewriteReport, RewriteRule, RewriteRuleStat, RuleAvailabilityFailure, RuleClass, RuleClassSet,
+    RuleConsumes, RuleEffect, RuleError, RuleKey, RuleMeta, RuleProduces, RuleSafety, RuleTarget,
+    RuleTargetKey, RuleTargetKind, collect_eliminated_violations,
 };
 
 #[cfg(test)]

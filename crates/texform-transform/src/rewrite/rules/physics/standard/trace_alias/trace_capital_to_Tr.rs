@@ -66,7 +66,7 @@ mod tests {
             .expect("transform should succeed");
         let expected_ast = crate::parse_to_ast_for_test(&parse_ctx, r"\Tr(M^2)=1", &texform_core::parse::ParseConfig::STRICT);
 
-        assert!(output.rewrite.applied.is_empty());
+        assert!(output.rewrite.rules.is_empty());
         assert_eq!(serialize(&ast), serialize(&expected_ast));
     }
 }

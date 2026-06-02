@@ -30,3 +30,7 @@ path = "src/bin/parser_regression.rs"
 [[bin]]
 name = "counter_dump"
 path = "src/bin/dump_counters.rs"
+
+[[bin]]
+name = "transform_contract"
+path = "src/bin/transform_contract.rs"

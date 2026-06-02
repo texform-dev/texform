@@ -9,8 +9,8 @@
 //! 3. **LowerAttributes** normalizes attribute prefixes created by Rewrite.
 //! 4. **FlattenGroups** removes redundant grouping once earlier phases are complete.
 //!
-//! After these steps, the Rewrite phase validates the resulting AST against the
-//! eliminated-form contract derived into [`TransformContext`].
+//! When Rewrite is enabled, after these steps the engine validates the resulting
+//! AST against the eliminated-form contract derived into [`TransformContext`].
 
 use crate::ast::Ast;
 use crate::config::TransformConfig;
@@ -60,5 +60,137 @@ pub(crate) fn execute(
         flatten_groups::run(ast, &cfg.flatten_groups, &mut report.flatten_groups);
     }
 
+    if cfg.rewrite_enabled {
+        if let Some(violation) = rewrite::collect_eliminated_violations(
+            ast,
+            parse_ctx,
+            tctx.rewrite_plan().eliminated_forms(),
+        )
+        .into_iter()
+        .next()
+        {
+            return Err(TransformError::Rewrite(
+                rewrite::RewriteError::ContractViolation {
+                    target: violation.target,
+                    node_name: violation.node_name,
+                },
+            ));
+        }
+    }
+
     Ok(report)
+}
+
+#[cfg(test)]
+mod tests {
+    use texform_knowledge::builtin::{base, physics};
+
+    use super::*;
+    use crate::ast::{Node, NodeId};
+    use crate::flatten_groups::FlattenGroupsConfig;
+    use crate::parse::{ParseConfig, ParseContext};
+    use crate::rewrite::rule_context::RuleContext;
+    use crate::rewrite::{
+        PackageName, Plan as RewritePlan, RewriteRule, RuleClass, RuleConsumes, RuleEffect,
+        RuleKey, RuleMeta, RuleProduces, RuleSafety, RuleTarget,
+    };
+    use crate::serialize::serialize;
+
+    #[test]
+    fn transform_contract_final_checkpoint_runs_after_post_lower_attributes() {
+        let parse_ctx =
+            ParseContext::from_packages(&["base", "textmacros", "physics", "boldsymbol"]);
+        let mut ast = parse_to_ast(&parse_ctx, r"\vb{\rm x}");
+        let plan = RewritePlan::from_rules_for_tests(vec![&VB_TO_MATHBF_FOR_CONTRACT_TEST]);
+        let context = TransformContext::from_rewrite_plan_for_tests(
+            TransformConfig {
+                rewrite_enabled: true,
+                lower_attributes_enabled: true,
+                flatten_groups: FlattenGroupsConfig::DISABLED,
+                max_iterations: 100,
+            },
+            plan,
+        );
+
+        let report = context.run(&mut ast, &parse_ctx).expect(
+            "post LowerAttributes should clear the generated bold prefix before contract check",
+        );
+
+        ast.assert_invariants();
+        assert_eq!(serialize(&ast), r"\mathrm { x }");
+        assert_eq!(report.rewrite.rules[0].applied_count, 1);
+        assert!(
+            rewrite::collect_eliminated_violations(
+                &ast,
+                &parse_ctx,
+                context.rewrite_plan().eliminated_forms(),
+            )
+            .is_empty()
+        );
+    }
+
+    fn parse_to_ast(parse_ctx: &ParseContext, src: &str) -> Ast {
+        let document = parse_ctx
+            .parse(src, &ParseConfig::default())
+            .try_into_document()
+            .expect("source should parse")
+            .0;
+        Ast::from_syntax_root(&document.to_syntax())
+    }
+
+    struct VbToMathbfForContractTest;
+
+    static VB_TO_MATHBF_FOR_CONTRACT_TEST: VbToMathbfForContractTest = VbToMathbfForContractTest;
+
+    impl VbToMathbfForContractTest {
+        const KEY: RuleKey = RuleKey {
+            package: PackageName::Physics,
+            name: "vb-to-mathbf-contract-test",
+        };
+    }
+
+    impl RewriteRule for VbToMathbfForContractTest {
+        fn meta(&self) -> &'static RuleMeta {
+            static META: RuleMeta = RuleMeta {
+                key: VbToMathbfForContractTest::KEY,
+                enabled_by_packages: &[PackageName::Physics],
+                class: RuleClass::Expand,
+                summary: "Create a bold prefix that the post LowerAttributes pass removes.",
+                safety: RuleSafety::Lossless,
+                triggers: &[RuleTarget::Command(&physics::cmd::VB)],
+                consumes: RuleConsumes {
+                    eliminates: &[RuleTarget::Command(&base::cmd::MATHBF)],
+                    touches: &[RuleTarget::Command(&physics::cmd::VB)],
+                },
+                produces: RuleProduces {
+                    targets: &[RuleTarget::Command(&base::cmd::MATHBF)],
+                },
+            };
+            &META
+        }
+
+        fn apply(
+            &self,
+            cx: &mut RuleContext<'_>,
+            node_id: NodeId,
+        ) -> Result<RuleEffect, rewrite::RuleError> {
+            let Some(command) = cx.match_command(node_id, &physics::cmd::VB) else {
+                return Ok(RuleEffect::Skipped);
+            };
+            cx.for_rule(Self::KEY)
+                .expect_arg_len(command.args, 2, r"\vb")?;
+            let body = command.args[1].clone();
+
+            cx.ast.replace_node(
+                node_id,
+                Node::Command {
+                    name: base::cmd::MATHBF.name.to_string(),
+                    args: vec![body],
+                    known: true,
+                },
+            );
+
+            Ok(RuleEffect::Applied)
+        }
+    }
 }

@@ -81,7 +81,7 @@ mod tests {
         )
             .expect("newline-to-linebreak transform should succeed");
 
-        assert_eq!(output.rewrite.applied.len(), 1);
+        assert_eq!(output.rewrite.rules.len(), 1);
         let children = ast.children(ast.root());
         assert_eq!(children.len(), 1);
         assert_linebreak_command(ast.node(children[0]));

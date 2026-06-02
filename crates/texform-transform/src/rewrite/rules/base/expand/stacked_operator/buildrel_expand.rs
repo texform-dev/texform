@@ -13,6 +13,7 @@
 //!   - cmd:limits
 //! rewrite_patterns:
 //!   - {from: '\buildrel #1 \over #2', to: '\mathrel{\mathop{#2}\limits^{#1}}'}
+//!   - {from: '\frac{\buildrel #1}{#2}', to: '\mathrel{\mathop{#2}\limits^{#1}}'}
 //! ```
 
 use texform_knowledge::builtin::base;
@@ -49,6 +50,9 @@ define_rule! {
                 return Ok(RuleEffect::Skipped);
             };
             let Slot::GroupChild(buildrel_index) = buildrel_link.slot else {
+                if buildrel_link.slot == Slot::Argument(0) {
+                    return expand_direct_frac_wrapped_buildrel(cx, buildrel_link.parent, above_head);
+                }
                 return Ok(RuleEffect::Skipped);
             };
             let left_group = buildrel_link.parent;
@@ -56,7 +60,7 @@ define_rule! {
                 return Ok(RuleEffect::Skipped);
             };
             if over_link.slot != Slot::InfixLeft {
-                return Ok(RuleEffect::Skipped);
+                return expand_frac_wrapped_buildrel(cx, buildrel_index, left_group, above_head);
             }
             let over_id = over_link.parent;
             let Some(infix) = cx.match_infix(over_id, &base::cmd::OVER) else {
@@ -102,6 +106,93 @@ define_rule! {
             Ok(RuleEffect::Applied)
         }
     }
+}
+
+fn expand_direct_frac_wrapped_buildrel(
+    cx: &mut crate::rewrite::rule_context::RuleContext<'_>,
+    frac_id: NodeId,
+    above_head: NodeId,
+) -> Result<RuleEffect, crate::rewrite::RuleError> {
+    let Some(frac) = cx.match_command(frac_id, &base::cmd::FRAC) else {
+        return Ok(RuleEffect::Skipped);
+    };
+    cx.for_rule(BuildrelExpandRule::KEY)
+        .expect_arg_len(frac.args, 2, r"\frac")?;
+    let right =
+        cx.for_rule(BuildrelExpandRule::KEY)
+            .mandatory_math_content(&frac.args[1], r"\frac", "denominator")?;
+
+    let mut above_parts = Vec::new();
+    cx.ast.append_cloned_math_content(&mut above_parts, above_head);
+    expand_frac_wrapped_parts(cx, frac_id, Vec::new(), above_parts, right)
+}
+
+fn expand_frac_wrapped_buildrel(
+    cx: &mut crate::rewrite::rule_context::RuleContext<'_>,
+    buildrel_index: usize,
+    left_group: NodeId,
+    above_head: NodeId,
+) -> Result<RuleEffect, crate::rewrite::RuleError> {
+    let Some(frac_link) = cx.ast.parent(left_group) else {
+        return Ok(RuleEffect::Skipped);
+    };
+    if frac_link.slot != Slot::Argument(0) {
+        return Ok(RuleEffect::Skipped);
+    }
+    let frac_id = frac_link.parent;
+    let Some(frac) = cx.match_command(frac_id, &base::cmd::FRAC) else {
+        return Ok(RuleEffect::Skipped);
+    };
+    cx.for_rule(BuildrelExpandRule::KEY)
+        .expect_arg_len(frac.args, 2, r"\frac")?;
+    let right =
+        cx.for_rule(BuildrelExpandRule::KEY)
+            .mandatory_math_content(&frac.args[1], r"\frac", "denominator")?;
+
+    let left_children = match cx.ast.node(left_group) {
+        Node::Group {
+            children,
+            mode: ContentMode::Math,
+            ..
+        } => children.clone(),
+        _ => return Ok(RuleEffect::Skipped),
+    };
+
+    let mut before = Vec::new();
+    for &child in &left_children[..buildrel_index] {
+        before.push(cx.ast.clone_subtree(child));
+    }
+
+    let mut above_parts = Vec::new();
+    cx.ast.append_cloned_math_content(&mut above_parts, above_head);
+    for &child in &left_children[buildrel_index + 1..] {
+        above_parts.push(cx.ast.clone_subtree(child));
+    }
+
+    expand_frac_wrapped_parts(cx, frac_id, before, above_parts, right)
+}
+
+fn expand_frac_wrapped_parts(
+    cx: &mut crate::rewrite::rule_context::RuleContext<'_>,
+    frac_id: NodeId,
+    before: Vec<NodeId>,
+    above_parts: Vec<NodeId>,
+    right: NodeId,
+) -> Result<RuleEffect, crate::rewrite::RuleError> {
+    let above = math_content_from_parts(cx, above_parts);
+
+    let (operator_source, after_sources) = split_operator_and_after(cx, right);
+    let operator = cx.ast.clone_subtree(operator_source);
+    let after = after_sources
+        .into_iter()
+        .map(|child| cx.ast.clone_subtree(child))
+        .collect();
+    let replacement = stacked_operator_command(cx, &base::cmd::MATHREL, operator, above);
+    let replacement = cx.ast.new_node(replacement);
+
+    cx.ast
+        .replace_with_math_sequence(frac_id, before, replacement, after);
+    Ok(RuleEffect::Applied)
 }
 
 fn math_content_from_parts(cx: &mut crate::rewrite::rule_context::RuleContext<'_>, mut parts: Vec<NodeId>) -> NodeId {
@@ -168,6 +259,18 @@ mod tests {
             input: r"\cdots\to K\buildrel f\over\longrightarrow K\buildrel f\over\longrightarrow K",
             expected: r"\cdots\to K\mathrel{\mathop{\longrightarrow}\limits^{f}} K\mathrel{\mathop{\longrightarrow}\limits^{f}} K",
         },
+        {
+            label: frac_wrapped_buildrel_relation,
+            packages: ["base"],
+            input: r"\frac{\buildrel Q}{\longrightarrow}",
+            expected: r"\mathrel{\mathop{\longrightarrow}\limits^{Q}}",
+        },
+        {
+            label: frac_wrapped_buildrel_keeps_surrounding_operands,
+            packages: ["base"],
+            input: r"\frac{P \buildrel{R\to\infty}}{= -E}",
+            expected: r"P \mathrel{\mathop{=}\limits^{R\to\infty}} -E",
+        },
         ]
     }
 
@@ -194,11 +297,11 @@ mod tests {
         assert!(!actual.contains(r"\frac"));
         let buildrel_stat = report
             .rewrite
-            .applied
+            .rules
             .iter()
             .find(|stat| stat.key.to_string() == "base/buildrel-expand")
             .expect("buildrel-expand should be attempted");
-        assert_eq!(buildrel_stat.count, 1);
+        assert_eq!(buildrel_stat.applied_count, 1);
         assert_eq!(buildrel_stat.skipped_count, 0);
     }
 }
