@@ -684,7 +684,7 @@ mod parser_diagnostic_regressions {
     use texform_core::parse::{
         AllowedMode, CommandKind, ContextItem, ParseConfig, ParseDiagnosticKind,
     };
-    use texform_interface::syntax_node::ContentMode;
+    use texform_interface::syntax_node::{ContentMode, GroupKind, SyntaxNode};
 
     #[test]
     fn test_bare_left_reports_invalid_left_delimiter() {
@@ -870,10 +870,21 @@ mod parser_diagnostic_regressions {
     }
 
     #[test]
-    fn test_bare_prime_superscript_still_errors() {
-        let diagnostics = parse(r"f^'", false).unwrap_err();
+    fn test_bare_prime_superscript_parses_as_prime_node() {
+        let (result, _) = parse(r"f^'", false).expect("expected prime superscript");
 
-        assert_eq!(diagnostics, vec!["not a command"]);
+        match result {
+            SyntaxNode::Root { children, .. } => match &children[0] {
+                SyntaxNode::Scripted { superscript, .. } => {
+                    assert_eq!(
+                        superscript.as_deref(),
+                        Some(&SyntaxNode::Prime { count: 1 })
+                    );
+                }
+                other => panic!("expected scripted node, got {other:?}"),
+            },
+            other => panic!("expected root node, got {other:?}"),
+        }
     }
 
     #[test]
@@ -892,8 +903,27 @@ mod parser_diagnostic_regressions {
     }
 
     #[test]
-    fn test_prime_brace_superscript_error() {
-        // x'^' should fail because ^ expects a superscript atom, not a prime marker
-        assert!(parse(r"x'^'", false).is_err());
+    fn test_prime_then_explicit_prime_superscript_stays_in_single_slot() {
+        let (result, _) = parse(r"x'^'", false).expect("expected combined prime superscript");
+
+        match result {
+            SyntaxNode::Root { children, .. } => match &children[0] {
+                SyntaxNode::Scripted { superscript, .. } => {
+                    assert_eq!(
+                        superscript.as_deref(),
+                        Some(&SyntaxNode::Group {
+                            mode: ContentMode::Math,
+                            kind: GroupKind::Implicit,
+                            children: vec![
+                                SyntaxNode::Prime { count: 1 },
+                                SyntaxNode::Prime { count: 1 },
+                            ],
+                        })
+                    );
+                }
+                other => panic!("expected scripted node, got {other:?}"),
+            },
+            other => panic!("expected root node, got {other:?}"),
+        }
     }
 }

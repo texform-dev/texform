@@ -231,6 +231,11 @@ pub enum SyntaxNode {
     /// check for `Error` nodes before continuing.
     Error { message: String, snippet: String },
 
+    /// Math prime shorthand represented by one or more consecutive prime marks.
+    ///
+    /// `count` must be greater than zero.
+    Prime { count: usize },
+
     /// Text string (Text mode only)
     ///
     /// Produced in Text mode or as content of Text-mode arguments/environments.
@@ -268,6 +273,7 @@ impl SyntaxNode {
             self,
             SyntaxNode::Char(_)
                 | SyntaxNode::Text(_)
+                | SyntaxNode::Prime { .. }
                 | SyntaxNode::ActiveSpace
                 | SyntaxNode::Error { .. }
         ) || matches!(self, SyntaxNode::Command { args, .. } if args.iter().all(|slot| {
@@ -316,6 +322,11 @@ impl SyntaxNode {
             kind: GroupKind::Implicit,
             children: Vec::new(),
         }
+    }
+
+    /// Create a math prime shorthand node.
+    pub fn prime(count: usize) -> Self {
+        SyntaxNode::Prime { count }
     }
 }
 
@@ -446,6 +457,7 @@ impl SyntaxNode {
                     prefix, message, snippet
                 )
             }
+            SyntaxNode::Prime { count } => writeln!(f, "{}Prime({})", prefix, count),
             SyntaxNode::Text(s) => writeln!(f, "{}Text(\"{}\")", prefix, s),
             SyntaxNode::Char(c) => writeln!(f, "{}Char('{}')", prefix, c),
             SyntaxNode::ActiveSpace => writeln!(f, "{}ActiveSpace", prefix),

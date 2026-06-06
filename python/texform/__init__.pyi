@@ -26,6 +26,7 @@ NodeKind = Literal[
     "Declarative",
     "Environment",
     "Scripted",
+    "Prime",
     "Text",
     "Char",
     "ActiveSpace",
@@ -53,6 +54,31 @@ class ParseResult(TypedDict):
 class ErrorParts(TypedDict):
     message: str
     snippet: str
+
+
+class FinalizeAstStepReport(TypedDict):
+    applied_count: int
+
+
+class FinalizeAstStepReports(TypedDict):
+    merge_adjacent_primes: FinalizeAstStepReport
+
+
+class FinalizeAstReport(TypedDict):
+    steps: FinalizeAstStepReports
+
+
+class TransformReport(TypedDict):
+    iterations: int
+    rules: list[dict[str, Any]]
+    finalize_ast: FinalizeAstReport
+    flatten_groups: dict[str, Any]
+    lower_attributes: dict[str, Any]
+
+
+class TransformResult(TypedDict):
+    normalized: str
+    report: TransformReport
 
 
 class DelimiterNone(TypedDict):
@@ -155,6 +181,7 @@ ArgValueInput: TypeAlias = ArgRef
 
 __all__ = [
     "Document",
+    "FinalizeAstConfig",
     "FlattenGroupsConfig",
     "LowerAttributesConfig",
     "Node",
@@ -230,6 +257,7 @@ class Node:
     def env_name(self) -> str | None: ...
     def text(self) -> str | None: ...
     def char(self) -> str | None: ...
+    def prime_count(self) -> int | None: ...
     def error_parts(self) -> ErrorParts | None: ...
     def content_mode(self) -> RuntimeContentMode | None: ...
     def group_kind(self) -> GroupKindRef | None: ...
@@ -288,7 +316,7 @@ class TransformEngine:
         src: str,
         config: TransformConfig | dict[str, Any] | None = None,
         **kwargs: Any,
-    ) -> dict[str, Any]: ...
+    ) -> TransformResult: ...
     def parse(
         self,
         src: str,
@@ -337,6 +365,12 @@ class RewriteConfig:
     ) -> None: ...
 
 
+class FinalizeAstConfig:
+    enabled: bool
+
+    def __init__(self, enabled: bool = True) -> None: ...
+
+
 class FlattenGroupsConfig:
     enabled: bool
     preserve_group_containing_declarative_command: bool
@@ -371,12 +405,14 @@ class FlattenGroupsConfig:
 class TransformConfig:
     lower_attributes: LowerAttributesConfig
     rewrite: RewriteConfig
+    finalize_ast: FinalizeAstConfig
     flatten_groups: FlattenGroupsConfig
 
     def __init__(
         self,
         lower_attributes: LowerAttributesConfig | None = None,
         rewrite: RewriteConfig | None = None,
+        finalize_ast: FinalizeAstConfig | None = None,
         flatten_groups: FlattenGroupsConfig | None = None,
     ) -> None: ...
 

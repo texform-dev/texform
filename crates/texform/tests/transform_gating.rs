@@ -1,4 +1,8 @@
-use texform::{Error, FlattenGroupsConfig, ParseConfig, Profile, TransformConfig, TransformEngine};
+use texform::{
+    Error, FlattenGroupsConfig, NormalizeConfig, ParseConfig, Profile, TransformConfig,
+    TransformEngine,
+};
+use texform_transform::FinalizeAstConfig;
 
 fn engine() -> TransformEngine {
     TransformEngine::builder()
@@ -41,6 +45,7 @@ fn transform_updates_document_in_place() {
             &TransformConfig {
                 rewrite_enabled: false,
                 lower_attributes_enabled: false,
+                finalize_ast: FinalizeAstConfig::ENABLED,
                 flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
                 max_iterations: 100,
             },
@@ -57,5 +62,57 @@ fn transform_updates_document_in_place() {
     assert_eq!(
         document.to_latex().expect("document should serialize"),
         "x y"
+    );
+}
+
+#[test]
+fn normalize_uses_finalize_ast_by_default() {
+    let engine = engine();
+
+    let result = engine
+        .normalize(r"f^{\prime\prime}")
+        .expect("normalize should succeed");
+
+    assert_eq!(result.normalized, "f''");
+    assert_eq!(
+        result
+            .report
+            .finalize_ast
+            .steps
+            .merge_adjacent_primes
+            .applied_count,
+        1
+    );
+}
+
+#[test]
+fn normalize_can_disable_finalize_ast_explicitly() {
+    let engine = engine();
+
+    let result = engine
+        .normalize_with(
+            r"f^{\prime\prime}",
+            &NormalizeConfig {
+                parse: ParseConfig::STRICT,
+                transform: TransformConfig {
+                    rewrite_enabled: true,
+                    lower_attributes_enabled: true,
+                    finalize_ast: FinalizeAstConfig::DISABLED,
+                    flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
+                    max_iterations: 100,
+                },
+            },
+        )
+        .expect("normalize should succeed");
+
+    assert_eq!(result.normalized, r"f ^ { '' }");
+    assert_eq!(
+        result
+            .report
+            .finalize_ast
+            .steps
+            .merge_adjacent_primes
+            .applied_count,
+        0
     );
 }

@@ -1,13 +1,14 @@
 //! Transform engine that applies configured phases to an AST.
 //!
-//! The engine executes in four ordered steps:
+//! The engine executes in five ordered steps:
 //!
 //! 1. **LowerAttributes** rewrites registered declarative-scope commands before
 //!    ordinary rewrite execution.
 //! 2. **Rewrite** runs transform rules in a fixed-point loop until the AST
 //!    stabilizes (no rule fires) or the iteration limit is reached.
 //! 3. **LowerAttributes** normalizes attribute prefixes created by Rewrite.
-//! 4. **FlattenGroups** removes redundant grouping once earlier phases are complete.
+//! 4. **FinalizeAst** performs local AST cleanup that does not need rewrite metadata.
+//! 5. **FlattenGroups** removes redundant grouping once earlier phases are complete.
 //!
 //! When Rewrite is enabled, after these steps the engine validates the resulting
 //! AST against the eliminated-form contract derived into [`TransformContext`].
@@ -19,7 +20,7 @@ use crate::error::TransformError;
 use crate::lower_attributes::LowerAttributesConfig;
 use crate::parse::ParseContext;
 use crate::report::TransformReport;
-use crate::{flatten_groups, lower_attributes, rewrite};
+use crate::{finalize_ast, flatten_groups, lower_attributes, rewrite};
 
 pub(crate) fn execute(
     tctx: &TransformContext,
@@ -55,6 +56,8 @@ pub(crate) fn execute(
             &mut report.lower_attributes,
         );
     }
+
+    finalize_ast::run(ast, &cfg.finalize_ast, &mut report.finalize_ast);
 
     if cfg.flatten_groups.enabled {
         flatten_groups::run(ast, &cfg.flatten_groups, &mut report.flatten_groups);
@@ -106,6 +109,7 @@ mod tests {
             TransformConfig {
                 rewrite_enabled: true,
                 lower_attributes_enabled: true,
+                finalize_ast: crate::FinalizeAstConfig::ENABLED,
                 flatten_groups: FlattenGroupsConfig::DISABLED,
                 max_iterations: 100,
             },

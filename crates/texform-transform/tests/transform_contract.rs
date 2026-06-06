@@ -1,5 +1,6 @@
 use texform_core::ast::Ast;
 use texform_core::parse::{ParseConfig, ParseContext};
+use texform_interface::syntax_node::{ContentMode, SyntaxNode};
 use texform_knowledge::builtin::base;
 use texform_transform::{
     BuildConfig, Profile, RewriteError, RewriteReport, RuleTarget, RuleTargetKey, TransformContext,
@@ -95,6 +96,27 @@ fn transform_contract_does_not_globally_eliminate_cr_line_breaks() {
     assert!(
         !eliminated_names.contains(&"cr"),
         "plain-TeX matrix rules only consume \\cr inside their wrapper command bodies"
+    );
+}
+
+#[test]
+fn transform_contract_accepts_prime_after_standard_rewrite() {
+    let parse_ctx = ParseContext::from_packages(&["base"]);
+    let mut ast = parse_to_ast(&parse_ctx, r"\prime");
+    let context =
+        TransformContext::from_build_config(BuildConfig::profile(Profile::Authoring), &parse_ctx)
+            .expect("transform context should build");
+
+    context
+        .run(&mut ast, &parse_ctx)
+        .expect("prime should be eliminated before the contract check");
+
+    assert_eq!(
+        ast.to_syntax_root(),
+        SyntaxNode::Root {
+            mode: ContentMode::Math,
+            children: vec![SyntaxNode::Prime { count: 1 }],
+        }
     );
 }
 

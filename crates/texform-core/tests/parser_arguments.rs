@@ -8,7 +8,7 @@ use texform_core::parse::{
     AllowedMode, CommandKind, ContextItem, ParseContext, ParseContextBuilder, ParseResult,
 };
 use texform_interface::syntax_node::{
-    Argument, ArgumentKind, ArgumentValue, Delimiter, SyntaxNode,
+    Argument, ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
 };
 
 fn text_command_item() -> ContextItem {
@@ -52,6 +52,75 @@ fn first_command(output: &ParseResult) -> (String, Vec<Option<Argument>>) {
             other => panic!("expected command node, got {:?}", other),
         },
         other => panic!("expected root node, got {:?}", other),
+    }
+}
+
+fn single_root_child(output: &ParseResult) -> SyntaxNode {
+    let result = output
+        .document()
+        .unwrap_or_else(|| panic!("expected parse result"));
+    match result.to_syntax() {
+        SyntaxNode::Root { children, .. } => {
+            assert_eq!(children.len(), 1, "expected a single root child");
+            children[0].clone()
+        }
+        other => panic!("expected root node, got {:?}", other),
+    }
+}
+
+fn expect_command_with_math_arg(
+    node: &SyntaxNode,
+    expected_name: &str,
+    arg_index: usize,
+) -> SyntaxNode {
+    match node {
+        SyntaxNode::Command { name, args, .. } => {
+            assert_eq!(name, expected_name);
+            match &expect_arg(&args[arg_index]).value {
+                ArgumentValue::MathContent(value) => value.clone(),
+                other => panic!("expected math content argument, got {:?}", other),
+            }
+        }
+        other => panic!("expected command node, got {:?}", other),
+    }
+}
+
+fn known_command(name: &str) -> SyntaxNode {
+    SyntaxNode::Command {
+        name: name.to_string(),
+        args: Vec::new(),
+        known: true,
+    }
+}
+
+fn assert_prefix_shorthand_keeps_script_outside(
+    src: &str,
+    command_name: &str,
+    expected_arg: SyntaxNode,
+    expected_subscript: Option<SyntaxNode>,
+    expected_superscript: Option<SyntaxNode>,
+) {
+    let output = ParseContext::shared().parse(src, &texform_core::parse::ParseConfig::STRICT);
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics for {src}: {:?}",
+        output.diagnostics
+    );
+
+    match single_root_child(&output) {
+        SyntaxNode::Scripted {
+            base,
+            subscript,
+            superscript,
+        } => {
+            assert_eq!(
+                expect_command_with_math_arg(&base, command_name, 0),
+                expected_arg
+            );
+            assert_eq!(subscript.map(|node| *node), expected_subscript);
+            assert_eq!(superscript.map(|node| *node), expected_superscript);
+        }
+        other => panic!("expected outer scripted command for {src}, got {:?}", other),
     }
 }
 
@@ -353,6 +422,318 @@ fn mandatory_argument_normalizes_single_explicit_group() {
         expect_arg(&args[0]).value,
         ArgumentValue::MathContent(SyntaxNode::Char('x'))
     );
+}
+
+#[test]
+fn non_braced_mandatory_math_argument_leaves_subscript_outside_prefix_command() {
+    assert_prefix_shorthand_keeps_script_outside(
+        r"\vec A_\mu",
+        "vec",
+        SyntaxNode::Char('A'),
+        Some(known_command("mu")),
+        None,
+    );
+}
+
+#[test]
+fn non_braced_mandatory_math_argument_leaves_superscript_outside_prefix_command() {
+    assert_prefix_shorthand_keeps_script_outside(
+        r"\bar C^\mu",
+        "bar",
+        SyntaxNode::Char('C'),
+        None,
+        Some(known_command("mu")),
+    );
+
+    assert_prefix_shorthand_keeps_script_outside(
+        r"\widehat \lambda^k",
+        "widehat",
+        known_command("lambda"),
+        None,
+        Some(SyntaxNode::Char('k')),
+    );
+}
+
+#[test]
+fn non_braced_mandatory_math_argument_leaves_prime_outside_prefix_command() {
+    let output =
+        ParseContext::shared().parse(r"\vec A'", &texform_core::parse::ParseConfig::STRICT);
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics for \\vec A': {:?}",
+        output.diagnostics
+    );
+
+    match single_root_child(&output) {
+        SyntaxNode::Scripted {
+            base,
+            subscript,
+            superscript,
+        } => {
+            assert_eq!(
+                expect_command_with_math_arg(&base, "vec", 0),
+                SyntaxNode::Char('A')
+            );
+            assert!(subscript.is_none());
+            assert_eq!(
+                superscript.as_deref(),
+                Some(&SyntaxNode::Prime { count: 1 }),
+                "prime should stay outside \\vec"
+            );
+        }
+        other => panic!("expected outer scripted command, got {:?}", other),
+    }
+
+    let output =
+        ParseContext::shared().parse(r"\bar C'", &texform_core::parse::ParseConfig::STRICT);
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics for \\bar C': {:?}",
+        output.diagnostics
+    );
+
+    match single_root_child(&output) {
+        SyntaxNode::Scripted {
+            base,
+            subscript,
+            superscript,
+        } => {
+            assert_eq!(
+                expect_command_with_math_arg(&base, "bar", 0),
+                SyntaxNode::Char('C')
+            );
+            assert!(subscript.is_none());
+            assert_eq!(
+                superscript.as_deref(),
+                Some(&SyntaxNode::Prime { count: 1 }),
+                "prime should stay outside \\bar"
+            );
+        }
+        other => panic!("expected outer scripted command, got {:?}", other),
+    }
+}
+
+#[test]
+fn non_braced_sqrt_and_frac_arguments_leave_following_scripts_outside() {
+    let sqrt =
+        ParseContext::shared().parse(r"\sqrt x^2", &texform_core::parse::ParseConfig::STRICT);
+    assert!(
+        sqrt.diagnostics.is_empty(),
+        "unexpected diagnostics for \\sqrt x^2: {:?}",
+        sqrt.diagnostics
+    );
+
+    match single_root_child(&sqrt) {
+        SyntaxNode::Scripted {
+            base,
+            subscript,
+            superscript,
+        } => {
+            assert_eq!(
+                expect_command_with_math_arg(&base, "sqrt", 1),
+                SyntaxNode::Char('x')
+            );
+            assert!(subscript.is_none());
+            assert_eq!(superscript.map(|node| *node), Some(SyntaxNode::Char('2')));
+        }
+        other => panic!("expected outer scripted sqrt command, got {:?}", other),
+    }
+
+    let frac =
+        ParseContext::shared().parse(r"\frac a b_c", &texform_core::parse::ParseConfig::STRICT);
+    assert!(
+        frac.diagnostics.is_empty(),
+        "unexpected diagnostics for \\frac a b_c: {:?}",
+        frac.diagnostics
+    );
+
+    match single_root_child(&frac) {
+        SyntaxNode::Scripted {
+            base,
+            subscript,
+            superscript,
+        } => {
+            assert_eq!(
+                expect_command_with_math_arg(&base, "frac", 0),
+                SyntaxNode::Char('a')
+            );
+            assert_eq!(
+                expect_command_with_math_arg(&base, "frac", 1),
+                SyntaxNode::Char('b')
+            );
+            assert_eq!(subscript.map(|node| *node), Some(SyntaxNode::Char('c')));
+            assert!(superscript.is_none());
+        }
+        other => panic!("expected outer scripted frac command, got {:?}", other),
+    }
+}
+
+#[test]
+fn non_braced_mandatory_math_argument_accepts_leading_subscript_argument() {
+    let output = ParseContext::shared().parse(
+        r"\mod _ { 2 \pi }",
+        &texform_core::parse::ParseConfig::STRICT,
+    );
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics for \\mod _ {{ 2 \\pi }}: {:?}",
+        output.diagnostics
+    );
+
+    match single_root_child(&output) {
+        SyntaxNode::Command { name, args, .. } => {
+            assert_eq!(name, "mod");
+            match &expect_arg(&args[0]).value {
+                ArgumentValue::MathContent(SyntaxNode::Scripted {
+                    base,
+                    subscript,
+                    superscript,
+                }) => {
+                    assert_eq!(
+                        **base,
+                        SyntaxNode::Group {
+                            mode: ContentMode::Math,
+                            kind: GroupKind::Implicit,
+                            children: Vec::new(),
+                        }
+                    );
+                    assert_eq!(
+                        subscript.as_deref(),
+                        Some(&SyntaxNode::Group {
+                            mode: ContentMode::Math,
+                            kind: GroupKind::Explicit,
+                            children: vec![SyntaxNode::Char('2'), known_command("pi")],
+                        })
+                    );
+                    assert!(superscript.is_none());
+                }
+                other => panic!("expected leading subscript math argument, got {:?}", other),
+            }
+        }
+        other => panic!("expected command node, got {:?}", other),
+    }
+}
+
+#[test]
+fn non_braced_skew_argument_accepts_leading_subscript_argument() {
+    let output = ParseContext::shared().parse(
+        r"\skew 5 \hat { \bar { \psi } } _ { - }",
+        &texform_core::parse::ParseConfig::STRICT,
+    );
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics for skew argument shorthand: {:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
+fn runtime_math_shorthand_argument_leaves_scripts_outside_custom_command() {
+    let items = [command_item(
+        "myvec",
+        CommandKind::Prefix,
+        AllowedMode::Math,
+        "m",
+    )];
+
+    let subscript = parse_with_items(&items, r"\myvec A_c", true);
+    assert!(
+        subscript.diagnostics.is_empty(),
+        "unexpected diagnostics for custom shorthand subscript: {:?}",
+        subscript.diagnostics
+    );
+    match single_root_child(&subscript) {
+        SyntaxNode::Scripted {
+            base,
+            subscript,
+            superscript,
+        } => {
+            assert_eq!(
+                expect_command_with_math_arg(&base, "myvec", 0),
+                SyntaxNode::Char('A')
+            );
+            assert_eq!(subscript.as_deref(), Some(&SyntaxNode::Char('c')));
+            assert!(superscript.is_none());
+        }
+        other => panic!("expected outer scripted custom command, got {:?}", other),
+    }
+
+    let superscript = parse_with_items(&items, r"\myvec A^d", true);
+    assert!(
+        superscript.diagnostics.is_empty(),
+        "unexpected diagnostics for custom shorthand superscript: {:?}",
+        superscript.diagnostics
+    );
+    match single_root_child(&superscript) {
+        SyntaxNode::Scripted {
+            base,
+            subscript,
+            superscript,
+        } => {
+            assert_eq!(
+                expect_command_with_math_arg(&base, "myvec", 0),
+                SyntaxNode::Char('A')
+            );
+            assert!(subscript.is_none());
+            assert_eq!(superscript.as_deref(), Some(&SyntaxNode::Char('d')));
+        }
+        other => panic!("expected outer scripted custom command, got {:?}", other),
+    }
+
+    let prime = parse_with_items(&items, r"\myvec A'", true);
+    assert!(
+        prime.diagnostics.is_empty(),
+        "unexpected diagnostics for custom shorthand prime: {:?}",
+        prime.diagnostics
+    );
+    match single_root_child(&prime) {
+        SyntaxNode::Scripted {
+            base,
+            subscript,
+            superscript,
+        } => {
+            assert_eq!(
+                expect_command_with_math_arg(&base, "myvec", 0),
+                SyntaxNode::Char('A')
+            );
+            assert!(subscript.is_none());
+            assert_eq!(
+                superscript.as_deref(),
+                Some(&SyntaxNode::Prime { count: 1 })
+            );
+        }
+        other => panic!("expected outer scripted custom command, got {:?}", other),
+    }
+}
+
+#[test]
+fn braced_mandatory_math_argument_keeps_scripts_inside_command_argument() {
+    let output =
+        ParseContext::shared().parse(r"\vec{A_\mu}", &texform_core::parse::ParseConfig::STRICT);
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics for \\vec{{A_\\mu}}: {:?}",
+        output.diagnostics
+    );
+
+    match single_root_child(&output) {
+        SyntaxNode::Command { name, args, .. } => {
+            assert_eq!(name, "vec");
+            match &expect_arg(&args[0]).value {
+                ArgumentValue::MathContent(SyntaxNode::Scripted {
+                    base,
+                    subscript,
+                    superscript,
+                }) => {
+                    assert_eq!(**base, SyntaxNode::Char('A'));
+                    assert_eq!(subscript.as_deref(), Some(&known_command("mu")));
+                    assert!(superscript.is_none());
+                }
+                other => panic!("expected scripted braced argument, got {:?}", other),
+            }
+        }
+        other => panic!("expected command node, got {:?}", other),
+    }
 }
 
 #[test]

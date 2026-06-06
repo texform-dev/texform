@@ -1,6 +1,6 @@
 use crate::{
-    FlattenGroupsConfig, FlattenGroupsReport, LowerAttributesConfig, LowerAttributesReport,
-    TransformConfig, TransformReport,
+    FinalizeAstConfig, FinalizeAstReport, FlattenGroupsConfig, FlattenGroupsReport,
+    LowerAttributesConfig, LowerAttributesReport, TransformConfig, TransformReport,
 };
 use texform_transform::{
     Attr, AttrValue, AttributeFormCounts, MathFontValue, SizeValue, StyleValue, TextFamily,
@@ -130,11 +130,28 @@ impl FlattenGroupsConfigInput {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct FinalizeAstConfigInput {
+    pub enabled: Option<bool>,
+}
+
+impl FinalizeAstConfigInput {
+    pub fn into_config(self, mut base: FinalizeAstConfig) -> FinalizeAstConfig {
+        if let Some(enabled) = self.enabled {
+            base.enabled = enabled;
+        }
+        base
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct TransformConfigInput {
     #[serde(alias = "lower_attributes")]
     pub lower_attributes: Option<LowerAttributesConfigInput>,
     pub rewrite: Option<RewriteConfigInput>,
+    #[serde(alias = "finalize_ast")]
+    pub finalize_ast: Option<FinalizeAstConfigInput>,
     #[serde(alias = "flatten_groups")]
     pub flatten_groups: Option<FlattenGroupsConfigInput>,
 }
@@ -160,6 +177,9 @@ impl TransformConfigInput {
                 base.max_iterations = max_iterations;
             }
         }
+        if let Some(finalize_ast) = self.finalize_ast {
+            base.finalize_ast = finalize_ast.into_config(base.finalize_ast);
+        }
         if let Some(flatten_groups) = self.flatten_groups {
             base.flatten_groups = flatten_groups.into_config(base.flatten_groups);
         }
@@ -171,6 +191,8 @@ impl TransformConfigInput {
 pub struct TransformReportDto {
     pub iterations: usize,
     pub rules: Vec<RewriteRuleDto>,
+    #[serde(rename = "finalizeAst")]
+    pub finalize_ast: FinalizeAstReportDto,
     pub flatten_groups: FlattenGroupsReportDto,
     pub lower_attributes: LowerAttributesReportDto,
 }
@@ -232,6 +254,21 @@ pub struct FlattenGroupsGuardCountsDto {
     pub preserve_group_containing_delimited_pair: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct FinalizeAstReportDto {
+    pub steps: FinalizeAstStepReportsDto,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct FinalizeAstStepReportsDto {
+    pub merge_adjacent_primes: FinalizeAstStepReportDto,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct FinalizeAstStepReportDto {
+    pub applied_count: usize,
+}
+
 pub fn transform_report_to_dto(report: &TransformReport) -> TransformReportDto {
     let mut rules: Vec<_> = report
         .rewrite
@@ -248,8 +285,19 @@ pub fn transform_report_to_dto(report: &TransformReport) -> TransformReportDto {
     TransformReportDto {
         iterations: report.rewrite.iterations,
         rules,
+        finalize_ast: finalize_ast_report_to_dto(&report.finalize_ast),
         flatten_groups: flatten_groups_report_to_dto(&report.flatten_groups),
         lower_attributes: lower_attributes_report_to_dto(&report.lower_attributes),
+    }
+}
+
+fn finalize_ast_report_to_dto(report: &FinalizeAstReport) -> FinalizeAstReportDto {
+    FinalizeAstReportDto {
+        steps: FinalizeAstStepReportsDto {
+            merge_adjacent_primes: FinalizeAstStepReportDto {
+                applied_count: report.steps.merge_adjacent_primes.applied_count,
+            },
+        },
     }
 }
 
@@ -474,6 +522,7 @@ mod tests {
                 enabled: Some(false),
             }),
             rewrite: None,
+            finalize_ast: None,
             flatten_groups: Some(FlattenGroupsConfigInput {
                 enabled: Some(true),
                 preserve_empty_group: Some(false),
@@ -488,6 +537,34 @@ mod tests {
         assert_eq!(config.max_iterations, 100);
         assert!(config.flatten_groups.enabled);
         assert!(!config.flatten_groups.preserve_empty_group);
+    }
+
+    #[test]
+    fn transform_config_input_deserializes_camel_case_finalize_ast() {
+        let input: TransformConfigInput = serde_json::from_value(serde_json::json!({
+            "finalizeAst": {
+                "enabled": false
+            }
+        }))
+        .unwrap();
+
+        let config = input.into_config();
+
+        assert!(!config.finalize_ast.enabled);
+    }
+
+    #[test]
+    fn transform_config_input_deserializes_snake_case_finalize_ast() {
+        let input: TransformConfigInput = serde_json::from_value(serde_json::json!({
+            "finalize_ast": {
+                "enabled": false
+            }
+        }))
+        .unwrap();
+
+        let config = input.into_config();
+
+        assert!(!config.finalize_ast.enabled);
     }
 
     #[test]
@@ -539,6 +616,28 @@ mod tests {
         assert_eq!(dto.rules[0].key, key.to_string());
         assert_eq!(dto.rules[0].applied_count, 2);
         assert_eq!(dto.rules[0].skipped_count, 1);
+    }
+
+    #[test]
+    fn transform_report_to_dto_reads_finalize_ast_report() {
+        let mut report = crate::TransformReport::default();
+        report
+            .finalize_ast
+            .steps
+            .merge_adjacent_primes
+            .applied_count = 4;
+
+        let dto = transform_report_to_dto(&report);
+        let json = serde_json::to_value(&dto).unwrap();
+
+        assert_eq!(
+            dto.finalize_ast.steps.merge_adjacent_primes.applied_count,
+            4
+        );
+        assert_eq!(
+            json["finalizeAst"]["steps"]["merge_adjacent_primes"]["applied_count"],
+            4
+        );
     }
 
     #[test]

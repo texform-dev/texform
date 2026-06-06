@@ -80,7 +80,9 @@ The same formula is modeled by three trees with deliberately separated roles. Co
 - **`Document`** (`texform-core`, re-exported by the facade) is the public, editable DOM-style tree. It is what users construct, query, mutate, serialize, and transform. Reads go through lightweight `NodeRef` handles; edits are fallible and return `Result<_, EditError>`.
 - **`Ast`** is the internal arena tree (`HopSlotMap` nodes plus a parent-link map) that the transform engine and serializer operate on. It is a *panic-contract* type: its methods panic on misuse because misuse means an internal invariant was violated, not that a user supplied bad input. It is **not** part of the public API. `Document` wraps it and exposes a fallible surface over it, so no arena panic can reach a caller on a user-input-driven path.
 
-`Document::from_syntax` / `Document::to_syntax` bridge the snapshot and the working tree in both directions, and the conversion is symmetric over every node kind, including `Error`.
+`Document::from_syntax` / `Document::to_syntax` bridge the snapshot and the working tree in both directions, and the conversion is symmetric over every node kind, including `Error` and `Prime`. `Prime { count }` represents one or more consecutive math prime marks from source-level quote shorthand. `count` must be greater than zero, and `Prime` is valid only in math-mode content; `Document::from_syntax` rejects invalid external syntax with `FromSyntaxError` instead of letting the internal arena panic.
+
+The parser keeps source-level prime forms distinct. Quote tokens such as `f'`, `f''`, and `f^{'}` become `Prime` nodes, while the control sequence `\prime` remains a normal `Command("prime")` after parsing. Normalization may rewrite that command into `Prime`, but the parser does not erase the difference by itself.
 
 ## Structural Validity vs. Semantic Completeness
 
@@ -133,17 +135,19 @@ All user-facing editing goes through `Document` and is fallible by design:
 - **`to_latex()` / `to_latex_with(&SerializeOptions)`** render the tree back to LaTeX *text* using the canonical serializer. There is intentionally no method named `serialize` on `Document`.
 - **`to_syntax()`** converts the tree to a `SyntaxNode`, which is the single serde DTO. `Document` and `Ast` do not implement serde directly; structured-data output always goes through `SyntaxNode`.
 
-The serializer covers the full node vocabulary, including emitting an `Error` node's snippet, and guarantees text idempotency (see the README's serialization section for the exact contract and the configurable style axes).
+The serializer covers the full node vocabulary, including emitting an `Error` node's snippet and writing `Prime` nodes back as quote shorthand. A pure prime superscript serializes compactly as `f'` or `f''`; mixed superscripts such as `f'^2` remain ordinary script groups. The serializer guarantees text idempotency (see the README's serialization section for the exact contract and the configurable style axes).
 
 ## Transform Engine
 
-`texform-transform` normalizes a parsed tree so downstream consumers — formula equivalence, MER tokenization, LLM pretraining corpora, polished authoring output — share a stable canonical form. The engine runs ordered phases (lower-attributes, a fixed-point rewrite loop, post lowering, then group flattening); a `Profile` selects which rule classes are compiled into the plan, and `TransformConfig` controls per-run switches. See the README and the rule-authoring docs for the phase and profile catalog.
+`texform-transform` normalizes a parsed tree so downstream consumers — formula equivalence, MER tokenization, LLM pretraining corpora, polished authoring output — share a stable canonical form. The engine runs ordered phases: pre-rewrite LowerAttributes, a fixed-point Rewrite loop, post-rewrite LowerAttributes, FinalizeAst, then FlattenGroups. A `Profile` selects which rule classes are compiled into the plan, and `TransformConfig` controls per-run switches. See the README and the rule-authoring docs for the phase and profile catalog.
+
+`FinalizeAst` is the phase for local AST cleanup that does not depend on rewrite metadata. Its first responsibility is merging adjacent `Prime` nodes produced by rewrite rules, so `f^{\prime\prime}` can normalize through `Prime(1), Prime(1)` into the same final shape as `f''`. It is enabled by default in every public profile and can be disabled with `TransformConfig.finalize_ast.enabled` in Rust, `finalize_ast` in Python, or `finalizeAst` in JavaScript options.
 
 Normalization is **gated on a complete tree**: `TransformEngine::transform` and `TransformEngine::normalize` return `Error::IncompleteTree` when `document.has_errors()`, because normalizing a tree with holes is meaningless. An empty document is complete (`!has_errors()`) and normalizes normally.
 
-The Rust transform report returned by the `texform` facade is phase-oriented: `report.rewrite.iterations` / `report.rewrite.rules`, `report.flatten_groups.actions` / `report.flatten_groups.guards`, and `report.lower_attributes.attributes` plus `eliminated_empty_segments`. Python and WebAssembly expose the same data through a transport DTO with top-level `iterations` and `rules[]`, plus nested `flatten_groups` and `lower_attributes` objects.
+The Rust transform report returned by the `texform` facade is phase-oriented: `report.rewrite.iterations` / `report.rewrite.rules`, `report.finalize_ast.steps.merge_adjacent_primes`, `report.flatten_groups.actions` / `report.flatten_groups.guards`, and `report.lower_attributes.attributes` plus `eliminated_empty_segments`. Python and WebAssembly expose the same data through a transport DTO with top-level `iterations` and `rules[]`; Python keeps snake_case fields such as `finalize_ast`, while JavaScript uses `finalizeAst` for the public option/report shape.
 
-Rewrite rules may declare forms they eliminate. When Rewrite is enabled, the engine checks that eliminated-form contract only after the full pipeline has completed, including post-rewrite LowerAttributes and FlattenGroups. A remaining eliminated form is a hard transform error, surfaced as a contract violation rather than a warning.
+Rewrite rules may declare forms they eliminate. When Rewrite is enabled, the engine checks that eliminated-form contract only after the full pipeline has completed, including post-rewrite LowerAttributes, FinalizeAst, and FlattenGroups. A remaining eliminated form is a hard transform error, surfaced as a contract violation rather than a warning.
 
 ## Knowledge and Argument Specifications
 

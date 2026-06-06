@@ -1,24 +1,29 @@
 //! Chumsky-based parser for LaTeX formulas.
 //!
-//! The parser is structured as a hierarchy of combinator parsers that mirror
-//! the LaTeX grammar. At the top level, the math block parser produces an
-//! implicit math-mode group wrapping all top-level items.
+//! This module builds the syntax parser around [`SyntaxNode`] while carrying
+//! parser-private span and diagnostic metadata in [`TrackedNode`]. Top-level
+//! math/text block parsers first produce implicit content groups, then promote
+//! those groups to [`SyntaxNode::Root`] before returning results to callers.
 //!
-//! # Parser layers (bottom-up)
+//! # Parser layers
 //!
-//! 1. **Atoms** — characters, escaped symbols, `~`, braced groups, delimited
-//!    groups (`\left…\right`), prefix commands, environments, unknown commands.
-//! 2. **Scripted atoms** — atoms wrapped with subscript / superscript / prime
-//!    handling.
-//! 3. **Group content** — a sequence of items optionally followed by infix and
-//!    declarative command tails. Math and text modes each have their own
-//!    content parser.
-//! 4. **Mode entry** — the math/text block parsers wrap the corresponding
-//!    content parser in an implicit group.
+//! 1. **Leaf and atom parsers** — math/text characters, escaped symbols,
+//!    active characters, prime atoms, explicit groups, `\left...\right` groups,
+//!    prefix/declarative/delimiter-control commands, environments, and unknown
+//!    commands.
+//! 2. **Script handling** — math atoms are wrapped with `_`, `^`, and prime
+//!    handling, including empty-base scripts and prime/exponent merge rules.
+//! 3. **Argument parsing** — command/environment argument slots are parsed in
+//!    `arguments.rs`; content arguments re-enter the math or text content
+//!    parsers.
+//! 4. **Content parsing** — math content parses item sequences with optional
+//!    infix tails; text content parses ordinary text-mode item sequences.
+//! 5. **Mode entry** — math/text block parsers wrap content in implicit groups,
+//!    and root promotion turns the outer group into [`SyntaxNode::Root`].
 //!
-//! Math and text content parsers are mutually recursive (a math-mode command
-//! may take a text-mode argument and vice versa). The recursion is resolved
-//! through [`chumsky::recursive`].
+//! Math and text content parsers are mutually recursive: math commands may
+//! contain text arguments, and text content may contain inline math. The
+//! recursion is resolved with [`chumsky::recursive`].
 
 #[path = "arguments.rs"]
 mod arguments;
@@ -772,6 +777,15 @@ fn math_char<'a>() -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<
     .tracked()
 }
 
+/// Parse bare math prime shorthand as a standalone atom.
+fn math_prime<'a>() -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
+    select! {
+        Token::Prime(count) => SyntaxNode::Prime { count },
+    }
+    .labelled("math prime")
+    .tracked()
+}
+
 /// Parse and coalesce consecutive text characters/whitespace into a single `Text` node.
 fn text_chunk<'a>() -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     select! {
@@ -1064,7 +1078,7 @@ fn braced_prime_group<'src, 'parse>(input: &mut ParserInput<'src, 'parse>) -> Op
         SyntaxNode::Group {
             mode: ContentMode::Math,
             kind: GroupKind::Explicit,
-            children: (0..count).map(|_| SyntaxNode::Char('\'')).collect(),
+            children: vec![SyntaxNode::Prime { count }],
         },
         span,
     ))
@@ -1095,7 +1109,7 @@ where
     let base = match base_opt {
         Some(base) => base,
         None => match input.peek() {
-            Some(Token::Superscript) | Some(Token::Subscript) | Some(Token::Prime(_)) => {
+            Some(Token::Superscript) | Some(Token::Subscript) => {
                 // Empty implicit group as base; use zero-width span at current byte position.
                 // Note: span_from_cursor with the same cursor is unreliable for zero-width spans
                 // in chumsky's MappedInput — the cursor's end field defaults to eoi.
@@ -1149,18 +1163,9 @@ where
                     _ => unreachable!("peek ensured prime token"),
                 };
                 let prime_span = input.span_from_cursor(&marker_start);
-                let prime_node = if count == 1 {
-                    SyntaxNode::Char('\'')
-                } else {
-                    SyntaxNode::Group {
-                        mode: ContentMode::Math,
-                        kind: GroupKind::Implicit,
-                        children: (0..count).map(|_| SyntaxNode::Char('\'')).collect(),
-                    }
-                };
                 Some((
                     ScriptMarker::Prime,
-                    TrackedNode::leaf(prime_node, prime_span),
+                    TrackedNode::leaf(SyntaxNode::Prime { count }, prime_span),
                 ))
             }
             _ => None,
@@ -2073,6 +2078,33 @@ fn math_item_parser<'a>(
         .ignore_then(item)
 }
 
+/// Parse a single math atom in argument shorthand contexts.
+///
+/// This keeps following `_`, `^`, and prime tokens available to the outer
+/// scripted parser instead of folding them into a mandatory `m` argument.
+/// If the argument itself begins with `_` or `^`, parse it as an empty-base
+/// scripted atom so legacy shorthands such as `\mod _{n}` remain valid.
+fn math_atom_argument_parser<'a>(
+    state: &'a ParserState<'a>,
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
+    let atom = math_atom_parser(state, math_content.clone(), math_content, text_content);
+    let scripted = scripted_atom_parser(atom.clone());
+    let leading_script_marker = insignificant_whitespace()
+        .ignore_then(select! {
+            Token::Superscript => (),
+            Token::Subscript => (),
+        })
+        .rewind();
+
+    infix_guard(state.ctx, ContentMode::Math)
+        .or(control_seq("right"))
+        .or(control_seq("end"))
+        .not()
+        .ignore_then(choice((leading_script_marker.ignore_then(scripted), atom)))
+}
+
 /// Parse a single text item (respecting stop guards).
 fn text_item_parser<'a>(
     state: &'a ParserState<'a>,
@@ -2402,6 +2434,7 @@ where
         delimiter_control_command,
         unknown_command,
         active_char(),
+        math_prime(),
         math_char(),
     ));
 

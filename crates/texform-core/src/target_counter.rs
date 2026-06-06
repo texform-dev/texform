@@ -114,7 +114,8 @@ fn count_node_in_mode(node: &SyntaxNode, inherited_mode: ContentMode, out: &mut 
                 count_node_in_mode(sup, inherited_mode, out);
             }
         }
-        SyntaxNode::Text(_)
+        SyntaxNode::Prime { .. }
+        | SyntaxNode::Text(_)
         | SyntaxNode::Char(_)
         | SyntaxNode::ActiveSpace
         | SyntaxNode::Error { .. } => {}

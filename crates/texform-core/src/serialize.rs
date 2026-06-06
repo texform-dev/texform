@@ -223,6 +223,8 @@ enum AtomKind {
     TextChunk,
     /// Single math-mode character atom
     MathChar,
+    /// Prime shorthand mark(s)
+    Prime,
     /// `{`, `}`, `[`, `]` — structural delimiters
     Brace,
     /// Delimiter token after `\left` / `\right` or in argument pairs
@@ -317,6 +319,22 @@ impl AtomWriter {
             );
         }
 
+        // Prime marks attach tightly to the preceding atom. A following atom
+        // still gets separated so a leading prime stays readable as its own
+        // item in canonical output.
+        if matches!(next, AtomKind::Prime) {
+            return !matches!(
+                prev,
+                AtomKind::ControlSequence | AtomKind::MathChar | AtomKind::Prime
+            );
+        }
+        if matches!(prev, AtomKind::Prime) && matches!(next, AtomKind::ScriptMark) {
+            return matches!(options.math.scripts.spacing, ScriptSpacing::Spaced);
+        }
+        if matches!(prev, AtomKind::Prime) {
+            return true;
+        }
+
         // `$` delimiters bind tightly to their content (`$x$`, not `$ x $`).
         if matches!(prev, AtomKind::Dollar) || matches!(next, AtomKind::Dollar) {
             return false;
@@ -394,6 +412,7 @@ impl<'a> Serializer<'a> {
                 superscript,
             } => self.visit_scripted(base, subscript, superscript),
             Node::Command { name, args, .. } => self.visit_command(&name, &args, mode),
+            Node::Prime { count } => self.visit_prime(count, mode),
             Node::Char(ch) => self.visit_char(ch, mode),
             Node::Text(text) => self
                 .writer
@@ -623,12 +642,12 @@ impl<'a> Serializer<'a> {
                     self.emit_script('_', node);
                 }
                 if let Some(node) = superscript {
-                    self.emit_script('^', node);
+                    self.emit_superscript(node);
                 }
             }
             ScriptOrder::SupFirst => {
                 if let Some(node) = superscript {
-                    self.emit_script('^', node);
+                    self.emit_superscript(node);
                 }
                 if let Some(node) = subscript {
                     self.emit_script('_', node);
@@ -665,6 +684,14 @@ impl<'a> Serializer<'a> {
             self.options,
         );
         self.emit_wrapped_content(node, ContentMode::Math, ContentMode::Math, "{", "}");
+    }
+
+    fn emit_superscript(&mut self, node: NodeId) {
+        if let Node::Prime { count } = self.ast.node(node) {
+            self.emit_prime_marks(*count);
+        } else {
+            self.emit_script('^', node);
+        }
     }
 
     /// Emit children surrounded by open/close delimiters.
@@ -978,6 +1005,21 @@ impl<'a> Serializer<'a> {
         };
         let text = serialized_char(ch, mode);
         self.writer.emit(mode, kind, &text, self.options);
+    }
+
+    fn visit_prime(&mut self, count: usize, mode: ContentMode) {
+        if matches!(mode, ContentMode::Math) {
+            self.writer
+                .emit(mode, AtomKind::Prime, &"'".repeat(count), self.options);
+        } else {
+            self.writer
+                .emit(mode, AtomKind::TextChunk, &"'".repeat(count), self.options);
+        }
+    }
+
+    fn emit_prime_marks(&mut self, count: usize) {
+        self.writer.output.push_str(&"'".repeat(count));
+        self.writer.previous = Some(AtomKind::Prime);
     }
 
     fn finish(self) -> String {

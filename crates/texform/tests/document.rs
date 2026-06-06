@@ -1,6 +1,9 @@
 //! Public Document API contract tests (facade-level).
 
-use texform::{ArgValue, DelimiterValue, Document, EditError, NodeKind};
+use texform::ContentMode as M;
+use texform::{
+    ArgValue, DelimiterValue, Document, EditError, FromSyntaxError, NodeKind, SyntaxNode,
+};
 
 #[test]
 fn new_document_is_empty_editable_and_serializes() {
@@ -35,6 +38,50 @@ fn document_node_lookup() {
     let other = Document::new();
     let other_root = other.root().id();
     assert!(matches!(doc.node(other_root), Err(EditError::ForeignNode)));
+}
+
+#[test]
+fn node_ref_exposes_prime_count() {
+    let syntax = SyntaxNode::Root {
+        mode: M::Math,
+        children: vec![SyntaxNode::Prime { count: 2 }],
+    };
+    let doc = Document::from_syntax(&syntax).expect("prime syntax should build a document");
+    let prime = doc
+        .root()
+        .children()
+        .next()
+        .expect("root should have a child");
+
+    assert_eq!(prime.kind(), NodeKind::Prime);
+    assert_eq!(prime.prime_count(), Some(2));
+    assert_eq!(prime.char(), None);
+}
+
+#[test]
+fn from_syntax_rejects_invalid_prime_count_without_panicking() {
+    let syntax = SyntaxNode::Root {
+        mode: M::Math,
+        children: vec![SyntaxNode::Prime { count: 0 }],
+    };
+
+    assert_eq!(
+        Document::from_syntax(&syntax).expect_err("zero-count prime should be rejected"),
+        FromSyntaxError::InvalidPrimeCount
+    );
+}
+
+#[test]
+fn from_syntax_rejects_text_mode_prime_without_panicking() {
+    let syntax = SyntaxNode::Root {
+        mode: M::Text,
+        children: vec![SyntaxNode::Prime { count: 1 }],
+    };
+
+    assert_eq!(
+        Document::from_syntax(&syntax).expect_err("text-mode prime should be rejected"),
+        FromSyntaxError::PrimeInTextMode
+    );
 }
 
 #[test]

@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use pythonize::{depythonize, pythonize};
 use texform::{
-    FlattenGroupsConfig as CoreFlattenGroupsConfig,
+    FinalizeAstConfig as CoreFinalizeAstConfig, FlattenGroupsConfig as CoreFlattenGroupsConfig,
     LowerAttributesConfig as CoreLowerAttributesConfig, ParseConfig as CoreParseConfig,
     Profile as CoreProfile, TransformConfig as CoreTransformConfig,
 };
@@ -112,6 +112,40 @@ impl PyRewriteConfig {
         Self {
             enabled,
             max_iterations,
+        }
+    }
+}
+
+#[pyclass(name = "FinalizeAstConfig")]
+#[derive(Clone, Debug)]
+struct PyFinalizeAstConfig {
+    #[pyo3(get, set)]
+    enabled: bool,
+}
+
+#[pymethods]
+impl PyFinalizeAstConfig {
+    #[new]
+    #[pyo3(signature = (enabled = true))]
+    fn new(enabled: bool) -> Self {
+        Self { enabled }
+    }
+
+    fn __repr__(&self) -> String {
+        format!("FinalizeAstConfig(enabled={})", self.enabled)
+    }
+}
+
+impl PyFinalizeAstConfig {
+    fn from_core(config: CoreFinalizeAstConfig) -> Self {
+        Self {
+            enabled: config.enabled,
+        }
+    }
+
+    fn to_core(&self) -> CoreFinalizeAstConfig {
+        CoreFinalizeAstConfig {
+            enabled: self.enabled,
         }
     }
 }
@@ -265,36 +299,33 @@ struct PyTransformConfig {
     #[pyo3(get, set)]
     rewrite: PyRewriteConfig,
     #[pyo3(get, set)]
+    finalize_ast: PyFinalizeAstConfig,
+    #[pyo3(get, set)]
     flatten_groups: PyFlattenGroupsConfig,
 }
 
 #[pymethods]
 impl PyTransformConfig {
     #[new]
-    #[pyo3(signature = (lower_attributes = None, rewrite = None, flatten_groups = None))]
+    #[pyo3(signature = (lower_attributes = None, rewrite = None, finalize_ast = None, flatten_groups = None))]
     fn new(
         lower_attributes: Option<PyLowerAttributesConfig>,
         rewrite: Option<PyRewriteConfig>,
+        finalize_ast: Option<PyFinalizeAstConfig>,
         flatten_groups: Option<PyFlattenGroupsConfig>,
     ) -> Self {
+        let default = CoreProfile::Authoring.default_transform_config();
         Self {
             lower_attributes: lower_attributes.unwrap_or_else(|| {
                 PyLowerAttributesConfig::from_core(CoreLowerAttributesConfig::ENABLED)
             }),
             rewrite: rewrite.unwrap_or_else(|| {
-                let profile = CoreProfile::Authoring;
-                PyRewriteConfig::from_core(
-                    profile.default_transform_config().rewrite_enabled,
-                    profile.default_transform_config().max_iterations,
-                )
+                PyRewriteConfig::from_core(default.rewrite_enabled, default.max_iterations)
             }),
-            flatten_groups: flatten_groups.unwrap_or_else(|| {
-                PyFlattenGroupsConfig::from_core(
-                    CoreProfile::Authoring
-                        .default_transform_config()
-                        .flatten_groups,
-                )
-            }),
+            finalize_ast: finalize_ast
+                .unwrap_or_else(|| PyFinalizeAstConfig::from_core(default.finalize_ast)),
+            flatten_groups: flatten_groups
+                .unwrap_or_else(|| PyFlattenGroupsConfig::from_core(default.flatten_groups)),
         }
     }
 
@@ -320,8 +351,8 @@ impl PyTransformConfig {
 
     fn __repr__(&self) -> String {
         format!(
-            "TransformConfig(lower_attributes={:?}, rewrite={:?}, flatten_groups={:?})",
-            self.lower_attributes, self.rewrite, self.flatten_groups
+            "TransformConfig(lower_attributes={:?}, rewrite={:?}, finalize_ast={:?}, flatten_groups={:?})",
+            self.lower_attributes, self.rewrite, self.finalize_ast, self.flatten_groups
         )
     }
 }
@@ -334,17 +365,19 @@ impl PyTransformConfig {
                 enabled: config.lower_attributes_enabled,
             },
             rewrite: PyRewriteConfig::from_core(config.rewrite_enabled, config.max_iterations),
+            finalize_ast: PyFinalizeAstConfig::from_core(config.finalize_ast),
             flatten_groups: PyFlattenGroupsConfig::from_core(config.flatten_groups),
         }
     }
 
     fn to_core(&self) -> CoreTransformConfig {
-        CoreTransformConfig {
-            lower_attributes_enabled: self.lower_attributes.enabled,
-            rewrite_enabled: self.rewrite.enabled,
-            flatten_groups: self.flatten_groups.to_core(),
-            max_iterations: self.rewrite.max_iterations,
-        }
+        let mut config = CoreProfile::Authoring.default_transform_config();
+        config.lower_attributes_enabled = self.lower_attributes.enabled;
+        config.rewrite_enabled = self.rewrite.enabled;
+        config.finalize_ast = self.finalize_ast.to_core();
+        config.flatten_groups = self.flatten_groups.to_core();
+        config.max_iterations = self.rewrite.max_iterations;
+        config
     }
 }
 
@@ -1357,6 +1390,12 @@ impl PyNode {
         Ok(node.char().map(|ch| ch.to_string()))
     }
 
+    fn prime_count(&self, py: Python<'_>) -> PyResult<Option<usize>> {
+        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+        let node = document.inner.node(self.id).map_err(edit_error)?;
+        Ok(node.prime_count())
+    }
+
     fn error_parts(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let parts = {
             let document = self.doc.try_borrow(py).map_err(borrow_error)?;
@@ -1583,6 +1622,16 @@ fn apply_flatten_groups_dict(
     Ok(())
 }
 
+fn apply_finalize_ast_dict(
+    config: &mut CoreFinalizeAstConfig,
+    dict: &Bound<'_, PyDict>,
+) -> PyResult<()> {
+    if let Some(value) = py_optional_bool(dict, "enabled")? {
+        config.enabled = value;
+    }
+    Ok(())
+}
+
 fn apply_normalize_config_dict(
     config: &mut texform::NormalizeConfig,
     dict: &Bound<'_, PyDict>,
@@ -1596,6 +1645,18 @@ fn apply_normalize_config_dict(
     }
     if let Some(value) = py_optional_usize(dict, "max_iterations")? {
         config.transform.max_iterations = value;
+    }
+    if let Some(finalize_ast) = dict.get_item("finalize_ast")?
+        && !finalize_ast.is_none()
+    {
+        if let Ok(finalize_ast) = finalize_ast.extract::<PyRef<'_, PyFinalizeAstConfig>>() {
+            config.transform.finalize_ast = finalize_ast.to_core();
+        } else {
+            let dict = finalize_ast.cast::<PyDict>().map_err(|_| {
+                ParseError::new_err("finalize_ast must be a FinalizeAstConfig or dict")
+            })?;
+            apply_finalize_ast_dict(&mut config.transform.finalize_ast, dict)?;
+        }
     }
     if let Some(flatten_groups) = dict.get_item("flatten_groups")?
         && !flatten_groups.is_none()
@@ -1923,10 +1984,13 @@ fn transform_result_to_python(
 ) -> PyResult<Py<PyAny>> {
     let out = PyDict::new(py);
     out.set_item("normalized", normalized)?;
-    out.set_item(
-        "report",
-        pythonize(py, &texform::bindings::transform_report_to_dto(report))?,
-    )?;
+    let report = pythonize(py, &texform::bindings::transform_report_to_dto(report))?;
+    let report = report.cast::<PyDict>()?;
+    if let Some(finalize_ast) = report.get_item("finalizeAst")? {
+        report.set_item("finalize_ast", finalize_ast)?;
+        report.del_item("finalizeAst")?;
+    }
+    out.set_item("report", report)?;
     Ok(out.unbind().into_any())
 }
 
@@ -1989,6 +2053,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyParseConfig>()?;
     m.add_class::<PyLowerAttributesConfig>()?;
     m.add_class::<PyRewriteConfig>()?;
+    m.add_class::<PyFinalizeAstConfig>()?;
     m.add_class::<PyFlattenGroupsConfig>()?;
     m.add_class::<PyTransformConfig>()?;
     m.add_class::<PyDocument>()?;
@@ -2434,6 +2499,9 @@ mod tests {
             call_kwargs
                 .set_item("lower_attributes_enabled", false)
                 .unwrap();
+            let finalize_ast = pyo3::types::PyDict::new(py);
+            finalize_ast.set_item("enabled", false).unwrap();
+            call_kwargs.set_item("finalize_ast", finalize_ast).unwrap();
             let flatten_groups = pyo3::types::PyDict::new(py);
             flatten_groups.set_item("enabled", false).unwrap();
             call_kwargs
@@ -2451,6 +2519,101 @@ mod tests {
                     .extract::<String>()
                     .unwrap(),
                 r"\quantity { x }"
+            );
+        });
+    }
+
+    #[test]
+    fn python_engine_reports_finalize_ast_and_can_disable_it() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("profile", "corpus").unwrap();
+            kwargs.set_item("packages", vec!["base"]).unwrap();
+            let engine = module
+                .getattr("TransformEngine")
+                .unwrap()
+                .call((), Some(&kwargs))
+                .unwrap();
+
+            let result = engine
+                .call_method1("normalize", (r"f^{\prime\prime}",))
+                .expect("normalize should use default FinalizeAst");
+            let dict = result.cast::<pyo3::types::PyDict>().unwrap();
+            assert_eq!(
+                dict.get_item("normalized")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                "f''"
+            );
+            let report_value = dict.get_item("report").unwrap().unwrap();
+            let report = report_value.cast::<pyo3::types::PyDict>().unwrap();
+            assert!(report.get_item("finalize_ast").unwrap().is_some());
+            assert!(report.get_item("finalizeAst").unwrap().is_none());
+
+            let finalize_ast = pyo3::types::PyDict::new(py);
+            finalize_ast.set_item("enabled", false).unwrap();
+            let call_kwargs = pyo3::types::PyDict::new(py);
+            call_kwargs.set_item("finalize_ast", finalize_ast).unwrap();
+            let disabled = engine
+                .call_method("normalize", (r"f^{\prime\prime}",), Some(&call_kwargs))
+                .expect("normalize should accept finalize_ast kwargs");
+            let disabled = disabled.cast::<pyo3::types::PyDict>().unwrap();
+            assert_eq!(
+                disabled
+                    .get_item("normalized")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                r"f ^ { '' }"
+            );
+        });
+    }
+
+    #[test]
+    fn python_node_exposes_prime_count() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let parser = module.getattr("Parser").unwrap().call0().unwrap();
+            let parsed = parser.call_method1("parse", ("f''",)).unwrap();
+            let document = parsed
+                .cast::<pyo3::types::PyDict>()
+                .unwrap()
+                .get_item("document")
+                .unwrap()
+                .unwrap();
+            let prime = document
+                .call_method0("root")
+                .unwrap()
+                .call_method0("children")
+                .unwrap()
+                .get_item(0)
+                .unwrap()
+                .call_method0("superscript")
+                .unwrap();
+
+            assert_eq!(
+                prime
+                    .call_method0("kind")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                "Prime"
+            );
+            assert_eq!(
+                prime
+                    .call_method0("prime_count")
+                    .unwrap()
+                    .extract::<usize>()
+                    .unwrap(),
+                2
             );
         });
     }
@@ -2520,6 +2683,7 @@ mod tests {
             let repr = repr.extract::<String>().unwrap();
 
             assert!(repr.contains("lower_attributes"));
+            assert!(repr.contains("finalize_ast"));
             assert!(repr.contains("flatten_groups"));
         });
     }

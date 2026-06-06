@@ -2,6 +2,7 @@ use texform::{
     ContentMode, FlattenGroupsConfig, NormalizeConfig, ParseConfig, Parser, Profile,
     TransformConfig, TransformEngine, bindings::transform_report_to_dto,
 };
+use texform_transform::FinalizeAstConfig;
 
 #[test]
 fn engine_normalize_uses_build_time_profile_and_packages() {
@@ -35,6 +36,7 @@ fn normalize_with_can_disable_rewrite_without_rebuilding_plan() {
                 transform: TransformConfig {
                     rewrite_enabled: false,
                     lower_attributes_enabled: false,
+                    finalize_ast: FinalizeAstConfig::ENABLED,
                     flatten_groups: FlattenGroupsConfig::DISABLED,
                     max_iterations: 100,
                 },
@@ -44,6 +46,49 @@ fn normalize_with_can_disable_rewrite_without_rebuilding_plan() {
 
     assert_eq!(result.normalized, r"\quantity { x }");
     assert_eq!(result.report.rewrite.iterations, 0);
+}
+
+#[test]
+fn corpus_normalize_preserves_prime_and_prefix_shorthand_contracts() {
+    let engine = TransformEngine::builder()
+        .packages(&["base"])
+        .profile(Profile::Corpus)
+        .build()
+        .expect("engine should build");
+
+    let cases = [
+        ("U'", "U'"),
+        ("H'", "H'"),
+        (r"A^{'\alpha}", r"A ^ { ' \alpha }"),
+        (r"\vec A_\mu", r"\vec { A } _ { \mu }"),
+        (r"\bar C^\mu", r"\bar { C } ^ { \mu }"),
+        (r"f^{\prime\prime}", "f''"),
+        (r"f^{'}", "f'"),
+        (r"f'^2", r"f ^ { ' 2 }"),
+        (r"\prime", "'"),
+    ];
+
+    for (input, expected) in cases {
+        let result = engine
+            .normalize(input)
+            .unwrap_or_else(|error| panic!("normalize should succeed for {input}: {error:?}"));
+        assert_eq!(result.normalized, expected, "input: {input}");
+    }
+}
+
+#[test]
+fn corpus_normalize_keeps_braced_prefix_argument_scope() {
+    let engine = TransformEngine::builder()
+        .packages(&["base"])
+        .profile(Profile::Corpus)
+        .build()
+        .expect("engine should build");
+
+    let result = engine
+        .normalize(r"\vec{A_\mu}")
+        .expect("normalize should succeed");
+
+    assert_eq!(result.normalized, r"\vec { A _ { \mu } }");
 }
 
 #[test]
@@ -68,6 +113,7 @@ fn document_transform_preserves_parse_once_workflow() {
             &TransformConfig {
                 rewrite_enabled: false,
                 lower_attributes_enabled: false,
+                finalize_ast: FinalizeAstConfig::ENABLED,
                 flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
                 max_iterations: 100,
             },

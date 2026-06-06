@@ -49,18 +49,46 @@ define_rule! {
             let Some(buildrel_link) = cx.ast.parent(node_id) else {
                 return Ok(RuleEffect::Skipped);
             };
-            let Slot::GroupChild(buildrel_index) = buildrel_link.slot else {
-                if buildrel_link.slot == Slot::Argument(0) {
-                    return expand_direct_frac_wrapped_buildrel(cx, buildrel_link.parent, above_head);
+
+            let mut above_parts = above_parts_from_head(cx, above_head);
+            let (buildrel_index, left_group) = match buildrel_link.slot {
+                Slot::GroupChild(index) => (index, buildrel_link.parent),
+                Slot::Argument(0) => {
+                    return expand_direct_frac_wrapped_buildrel_parts(
+                        cx,
+                        buildrel_link.parent,
+                        above_parts,
+                    );
                 }
-                return Ok(RuleEffect::Skipped);
+                Slot::ScriptBase => {
+                    let scripted = buildrel_link.parent;
+                    let Some(parts) = above_parts_from_scripted_buildrel(cx, above_head, scripted) else {
+                        return Ok(RuleEffect::Skipped);
+                    };
+                    above_parts = parts;
+
+                    let Some(scripted_link) = cx.ast.parent(scripted) else {
+                        return Ok(RuleEffect::Skipped);
+                    };
+                    match scripted_link.slot {
+                        Slot::GroupChild(index) => (index, scripted_link.parent),
+                        Slot::Argument(0) => {
+                            return expand_direct_frac_wrapped_buildrel_parts(
+                                cx,
+                                scripted_link.parent,
+                                above_parts,
+                            );
+                        }
+                        _ => return Ok(RuleEffect::Skipped),
+                    }
+                }
+                _ => return Ok(RuleEffect::Skipped),
             };
-            let left_group = buildrel_link.parent;
             let Some(over_link) = cx.ast.parent(left_group) else {
                 return Ok(RuleEffect::Skipped);
             };
             if over_link.slot != Slot::InfixLeft {
-                return expand_frac_wrapped_buildrel(cx, buildrel_index, left_group, above_head);
+                return expand_frac_wrapped_buildrel(cx, buildrel_index, left_group, above_parts);
             }
             let over_id = over_link.parent;
             let Some(infix) = cx.match_infix(over_id, &base::cmd::OVER) else {
@@ -85,8 +113,6 @@ define_rule! {
                 before.push(cx.ast.clone_subtree(child));
             }
 
-            let mut above_parts = Vec::new();
-            cx.ast.append_cloned_math_content(&mut above_parts, above_head);
             for &child in &left_children[buildrel_index + 1..] {
                 above_parts.push(cx.ast.clone_subtree(child));
             }
@@ -108,10 +134,10 @@ define_rule! {
     }
 }
 
-fn expand_direct_frac_wrapped_buildrel(
+fn expand_direct_frac_wrapped_buildrel_parts(
     cx: &mut crate::rewrite::rule_context::RuleContext<'_>,
     frac_id: NodeId,
-    above_head: NodeId,
+    above_parts: Vec<NodeId>,
 ) -> Result<RuleEffect, crate::rewrite::RuleError> {
     let Some(frac) = cx.match_command(frac_id, &base::cmd::FRAC) else {
         return Ok(RuleEffect::Skipped);
@@ -122,8 +148,6 @@ fn expand_direct_frac_wrapped_buildrel(
         cx.for_rule(BuildrelExpandRule::KEY)
             .mandatory_math_content(&frac.args[1], r"\frac", "denominator")?;
 
-    let mut above_parts = Vec::new();
-    cx.ast.append_cloned_math_content(&mut above_parts, above_head);
     expand_frac_wrapped_parts(cx, frac_id, Vec::new(), above_parts, right)
 }
 
@@ -131,7 +155,7 @@ fn expand_frac_wrapped_buildrel(
     cx: &mut crate::rewrite::rule_context::RuleContext<'_>,
     buildrel_index: usize,
     left_group: NodeId,
-    above_head: NodeId,
+    mut above_parts: Vec<NodeId>,
 ) -> Result<RuleEffect, crate::rewrite::RuleError> {
     let Some(frac_link) = cx.ast.parent(left_group) else {
         return Ok(RuleEffect::Skipped);
@@ -163,8 +187,6 @@ fn expand_frac_wrapped_buildrel(
         before.push(cx.ast.clone_subtree(child));
     }
 
-    let mut above_parts = Vec::new();
-    cx.ast.append_cloned_math_content(&mut above_parts, above_head);
     for &child in &left_children[buildrel_index + 1..] {
         above_parts.push(cx.ast.clone_subtree(child));
     }
@@ -201,6 +223,45 @@ fn math_content_from_parts(cx: &mut crate::rewrite::rule_context::RuleContext<'_
     } else {
         cx.ast.implicit_math_group(parts)
     }
+}
+
+fn above_parts_from_head(
+    cx: &mut crate::rewrite::rule_context::RuleContext<'_>,
+    above_head: NodeId,
+) -> Vec<NodeId> {
+    let mut parts = Vec::new();
+    cx.ast.append_cloned_math_content(&mut parts, above_head);
+    parts
+}
+
+fn above_parts_from_scripted_buildrel(
+    cx: &mut crate::rewrite::rule_context::RuleContext<'_>,
+    above_head: NodeId,
+    scripted: NodeId,
+) -> Option<Vec<NodeId>> {
+    let (subscript, superscript) = match cx.ast.node(scripted) {
+        Node::Scripted {
+            subscript,
+            superscript,
+            ..
+        } => (*subscript, *superscript),
+        _ => return None,
+    };
+
+    let base_parts = above_parts_from_head(cx, above_head);
+    let base = math_content_from_parts(cx, base_parts);
+    if subscript.is_none() && superscript.is_none() {
+        return Some(vec![base]);
+    }
+
+    let subscript = subscript.map(|node| cx.ast.clone_subtree(node));
+    let superscript = superscript.map(|node| cx.ast.clone_subtree(node));
+    let scripted_above = cx.ast.new_node(Node::Scripted {
+        base,
+        subscript,
+        superscript,
+    });
+    Some(vec![scripted_above])
 }
 
 fn split_operator_and_after(
@@ -264,6 +325,18 @@ mod tests {
             packages: ["base"],
             input: r"\frac{\buildrel Q}{\longrightarrow}",
             expected: r"\mathrel{\mathop{\longrightarrow}\limits^{Q}}",
+        },
+        {
+            label: frac_wrapped_buildrel_keeps_above_subscript,
+            packages: ["base"],
+            input: r"\frac{\buildrel T_\alpha}{\longrightarrow}",
+            expected: r"\mathrel{\mathop{\longrightarrow}\limits^{T_\alpha}}",
+        },
+        {
+            label: over_buildrel_keeps_above_superscript,
+            packages: ["base"],
+            input: r"P \buildrel T^4 \over \rightarrow Q",
+            expected: r"P \mathrel{\mathop{\rightarrow}\limits^{T^4}} Q",
         },
         {
             label: frac_wrapped_buildrel_keeps_surrounding_operands,

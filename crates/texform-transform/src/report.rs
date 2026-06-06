@@ -1,5 +1,6 @@
 //! Aggregate transform report.
 
+use crate::finalize_ast::FinalizeAstReport;
 use crate::flatten_groups::FlattenGroupsReport;
 use crate::lower_attributes::LowerAttributesReport;
 use crate::rewrite::RewriteReport;
@@ -8,5 +9,6 @@ use crate::rewrite::RewriteReport;
 pub struct TransformReport {
     pub lower_attributes: LowerAttributesReport,
     pub rewrite: RewriteReport,
+    pub finalize_ast: FinalizeAstReport,
     pub flatten_groups: FlattenGroupsReport,
 }

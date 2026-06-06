@@ -27,7 +27,7 @@ fn prime_then_explicit_superscript_stays_in_single_superscript_slot() {
                     } => {
                         assert_eq!(
                             children,
-                            &vec![SyntaxNode::Char('\''), SyntaxNode::Char('2')]
+                            &vec![SyntaxNode::Prime { count: 1 }, SyntaxNode::Char('2')]
                         );
                     }
                     other => panic!("expected implicit superscript group, got {:?}", other),
@@ -1375,7 +1375,10 @@ fn test_prime_single() {
                 } => {
                     assert_eq!(**base, SyntaxNode::Char('f'));
                     assert!(subscript.is_none());
-                    assert_eq!(**superscript.as_ref().unwrap(), SyntaxNode::Char('\''));
+                    assert_eq!(
+                        **superscript.as_ref().unwrap(),
+                        SyntaxNode::Prime { count: 1 }
+                    );
                 }
                 _ => panic!("Expected Scripted node"),
             }
@@ -1397,13 +1400,10 @@ fn test_prime_multiple() {
                     base, superscript, ..
                 } => {
                     assert_eq!(**base, SyntaxNode::Char('f'));
-                    match superscript.as_ref().unwrap().as_ref() {
-                        SyntaxNode::Group { children, .. } => {
-                            assert_eq!(children.len(), 3);
-                            assert!(children.iter().all(|c| *c == SyntaxNode::Char('\'')));
-                        }
-                        _ => panic!("Expected Group of primes"),
-                    }
+                    assert_eq!(
+                        **superscript.as_ref().unwrap(),
+                        SyntaxNode::Prime { count: 3 }
+                    );
                 }
                 _ => panic!("Expected Scripted node"),
             }
@@ -1429,7 +1429,7 @@ fn test_prime_with_superscript() {
                     match superscript.as_ref().unwrap().as_ref() {
                         SyntaxNode::Group { children, .. } => {
                             assert_eq!(children.len(), 2);
-                            assert_eq!(children[0], SyntaxNode::Char('\''));
+                            assert_eq!(children[0], SyntaxNode::Prime { count: 1 });
                             assert_eq!(children[1], SyntaxNode::Char('2'));
                         }
                         _ => panic!("Expected Group for combined superscript"),
@@ -1457,7 +1457,10 @@ fn test_prime_with_subscript() {
                     subscript,
                 } => {
                     assert_eq!(**base, SyntaxNode::Char('f'));
-                    assert_eq!(**superscript.as_ref().unwrap(), SyntaxNode::Char('\''));
+                    assert_eq!(
+                        **superscript.as_ref().unwrap(),
+                        SyntaxNode::Prime { count: 1 }
+                    );
                     assert_eq!(**subscript.as_ref().unwrap(), SyntaxNode::Char('n'));
                 }
                 _ => panic!("Expected Scripted node"),
@@ -1476,34 +1479,29 @@ fn test_prime_on_sub_grouped() {
         SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 1);
             match &children[0] {
-                SyntaxNode::Scripted { superscript, .. } => match superscript
-                    .as_ref()
-                    .unwrap()
-                    .as_ref()
-                {
-                    SyntaxNode::Group { children, .. } => {
-                        assert_eq!(children.len(), 1);
-                        match &children[0] {
-                            SyntaxNode::Scripted {
-                                superscript,
-                                subscript,
-                                base,
-                            } => {
-                                assert!(subscript.is_some());
-                                assert_eq!(**superscript.as_ref().unwrap(), SyntaxNode::Char('\''));
-                                match base.as_ref() {
-                                    SyntaxNode::Group { .. } => {}
-                                    _ => panic!("Expected nested empty base"),
+                SyntaxNode::Scripted { superscript, .. } => {
+                    match superscript.as_ref().unwrap().as_ref() {
+                        SyntaxNode::Group { children, .. } => {
+                            assert_eq!(children.len(), 1);
+                            match &children[0] {
+                                SyntaxNode::Scripted {
+                                    superscript,
+                                    subscript,
+                                    base,
+                                } => {
+                                    assert!(subscript.is_some());
+                                    assert!(superscript.is_none());
+                                    assert_eq!(**base, SyntaxNode::Prime { count: 1 });
                                 }
+                                other => panic!(
+                                    "Expected scripted prime inside superscript, got {:?}",
+                                    other
+                                ),
                             }
-                            other => panic!(
-                                "Expected scripted prime inside superscript, got {:?}",
-                                other
-                            ),
                         }
+                        other => panic!("Expected grouped superscript, got {:?}", other),
                     }
-                    other => panic!("Expected grouped superscript, got {:?}", other),
-                },
+                }
                 _ => panic!("Expected Scripted node"),
             }
         }
@@ -1531,7 +1529,7 @@ fn test_braced_prime_superscript_content() {
                         Some(&SyntaxNode::Group {
                             mode: ContentMode::Math,
                             kind: GroupKind::Explicit,
-                            children: vec![SyntaxNode::Char('\'')],
+                            children: vec![SyntaxNode::Prime { count: 1 }],
                         })
                     );
                 }
@@ -1631,30 +1629,13 @@ fn test_empty_base_subscript() {
 
 #[test]
 fn test_preprime() {
-    // "'x" -> prime with empty base then x
+    // "'x" -> leading prime atom then x
     let (result, _) = parse("'x", false).unwrap();
 
     match result {
         SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 2);
-            match &children[0] {
-                SyntaxNode::Scripted {
-                    base,
-                    superscript,
-                    subscript,
-                } => {
-                    assert!(subscript.is_none());
-                    match base.as_ref() {
-                        SyntaxNode::Group { children, kind, .. } => {
-                            assert_eq!(*kind, GroupKind::Implicit);
-                            assert!(children.is_empty());
-                        }
-                        _ => panic!("Expected empty group base"),
-                    }
-                    assert_eq!(**superscript.as_ref().unwrap(), SyntaxNode::Char('\''));
-                }
-                _ => panic!("Expected Scripted node"),
-            }
+            assert_eq!(children[0], SyntaxNode::Prime { count: 1 });
             assert_eq!(children[1], SyntaxNode::Char('x'));
         }
         _ => panic!("Expected root Group"),
@@ -1670,23 +1651,12 @@ fn test_prime_nested_shapes() {
                 mode: ContentMode::Math,
                 kind: GroupKind::Explicit,
                 children: vec![SyntaxNode::Scripted {
-                    base: Box::new(SyntaxNode::Group {
-                        mode: ContentMode::Math,
-                        kind: GroupKind::Implicit,
-                        children: vec![],
-                    }),
+                    base: Box::new(SyntaxNode::Prime { count: 1 }),
                     subscript: None,
                     superscript: Some(Box::new(SyntaxNode::Group {
                         mode: ContentMode::Math,
-                        kind: GroupKind::Implicit,
-                        children: vec![
-                            SyntaxNode::Char('\''),
-                            SyntaxNode::Group {
-                                mode: ContentMode::Math,
-                                kind: GroupKind::Explicit,
-                                children: vec![SyntaxNode::Char('\'')],
-                            },
-                        ],
+                        kind: GroupKind::Explicit,
+                        children: vec![SyntaxNode::Prime { count: 1 }],
                     })),
                 }],
             },
@@ -1702,7 +1672,7 @@ fn test_prime_nested_shapes() {
                     superscript: Some(Box::new(SyntaxNode::Group {
                         mode: ContentMode::Math,
                         kind: GroupKind::Explicit,
-                        children: vec![SyntaxNode::Char('\'')],
+                        children: vec![SyntaxNode::Prime { count: 1 }],
                     })),
                 }],
             },
@@ -1713,23 +1683,12 @@ fn test_prime_nested_shapes() {
                 mode: ContentMode::Math,
                 kind: GroupKind::Explicit,
                 children: vec![SyntaxNode::Scripted {
-                    base: Box::new(SyntaxNode::Group {
-                        mode: ContentMode::Math,
-                        kind: GroupKind::Implicit,
-                        children: vec![],
-                    }),
+                    base: Box::new(SyntaxNode::Prime { count: 1 }),
                     subscript: None,
                     superscript: Some(Box::new(SyntaxNode::Group {
                         mode: ContentMode::Math,
-                        kind: GroupKind::Implicit,
-                        children: vec![
-                            SyntaxNode::Char('\''),
-                            SyntaxNode::Group {
-                                mode: ContentMode::Math,
-                                kind: GroupKind::Explicit,
-                                children: vec![SyntaxNode::Char('a')],
-                            },
-                        ],
+                        kind: GroupKind::Explicit,
+                        children: vec![SyntaxNode::Char('a')],
                     })),
                 }],
             },
@@ -1770,7 +1729,7 @@ fn test_prime_then_superscript_merge() {
                     match superscript.as_ref().unwrap().as_ref() {
                         SyntaxNode::Group { children, .. } => {
                             assert_eq!(children.len(), 2);
-                            assert_eq!(children[0], SyntaxNode::Char('\''));
+                            assert_eq!(children[0], SyntaxNode::Prime { count: 1 });
                             assert_eq!(children[1], SyntaxNode::Char('a'));
                         }
                         other => panic!("Expected grouped superscript, got {:?}", other),
@@ -1795,17 +1754,7 @@ fn test_double_prime_then_superscript_merge() {
                     match superscript.as_ref().unwrap().as_ref() {
                         SyntaxNode::Group { children, .. } => {
                             assert_eq!(children.len(), 2);
-                            match &children[0] {
-                                SyntaxNode::Group {
-                                    children: prime_children,
-                                    ..
-                                } => {
-                                    assert_eq!(prime_children.len(), 2);
-                                    assert_eq!(prime_children[0], SyntaxNode::Char('\''));
-                                    assert_eq!(prime_children[1], SyntaxNode::Char('\''));
-                                }
-                                other => panic!("Expected grouped prime node, got {:?}", other),
-                            }
+                            assert_eq!(children[0], SyntaxNode::Prime { count: 2 });
                             assert_eq!(children[1], SyntaxNode::Char('a'));
                         }
                         other => panic!("Expected grouped superscript, got {:?}", other),

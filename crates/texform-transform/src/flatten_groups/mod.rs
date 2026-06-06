@@ -383,7 +383,7 @@ fn is_command_like(ast: &Ast, node: NodeId, include_scripted: bool) -> bool {
 
 fn is_atomic_base(ast: &Ast, node: NodeId) -> bool {
     match ast.node(node) {
-        Node::Char(_) => true,
+        Node::Char(_) | Node::Prime { .. } => true,
         Node::Command { name, args, .. } => {
             args.iter().all(Option::is_none)
                 && !subtree_has_scripted(ast, node)

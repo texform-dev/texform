@@ -1,5 +1,7 @@
+use texform_core::ast::NodeKind;
 use texform_core::document::{ArgRef, Document, NodeRef};
 use texform_core::parse::{ParseConfig, ParseContext, Span};
+use texform_interface::syntax_node::SyntaxNode;
 
 fn parse_ok(src: &str) -> Document {
     ParseContext::shared()
@@ -11,6 +13,31 @@ fn parse_ok(src: &str) -> Document {
 
 fn assert_span(node: NodeRef<'_>, start: usize, end: usize) {
     assert_eq!(node.span(), Some(Span { start, end }));
+}
+
+fn first_root_child(document: &Document) -> NodeRef<'_> {
+    document
+        .root()
+        .children()
+        .next()
+        .expect("expected a root child")
+}
+
+fn assert_scripted_superscript_prime_count(document: &Document, expected_count: usize) {
+    match document.to_syntax() {
+        SyntaxNode::Root { children, .. } => match &children[0] {
+            SyntaxNode::Scripted { superscript, .. } => {
+                assert_eq!(
+                    superscript.as_deref(),
+                    Some(&SyntaxNode::Prime {
+                        count: expected_count,
+                    })
+                );
+            }
+            other => panic!("expected scripted node, got {:?}", other),
+        },
+        other => panic!("expected root node, got {:?}", other),
+    }
 }
 
 #[test]
@@ -96,6 +123,57 @@ fn node_refs_expose_script_and_environment_spans() {
     assert_span(body, 14, 15);
     let body_children: Vec<_> = body.children().collect();
     assert_span(body_children[0], 14, 15);
+}
+
+#[test]
+fn node_refs_expose_prime_superscript_spans() {
+    let single = parse_ok("f'");
+    let scripted = first_root_child(&single);
+    let prime = scripted.superscript().expect("expected prime superscript");
+    assert_eq!(prime.kind(), NodeKind::Prime);
+    assert_span(prime, 1, 2);
+    assert_scripted_superscript_prime_count(&single, 1);
+
+    let double = parse_ok("f''");
+    let scripted = first_root_child(&double);
+    let prime = scripted.superscript().expect("expected prime superscript");
+    assert_eq!(prime.kind(), NodeKind::Prime);
+    assert_span(prime, 1, 3);
+    assert_scripted_superscript_prime_count(&double, 2);
+}
+
+#[test]
+fn node_refs_expose_unicode_prime_byte_span() {
+    let src = "f\u{2019}";
+    let document = parse_ok(src);
+    let scripted = first_root_child(&document);
+    let prime = scripted.superscript().expect("expected prime superscript");
+    assert_eq!(prime.kind(), NodeKind::Prime);
+    assert_span(prime, 1, src.len());
+    assert_scripted_superscript_prime_count(&document, 1);
+}
+
+#[test]
+fn node_refs_expose_prefix_shorthand_argument_and_outer_script_spans() {
+    let src = r"\vec A_\mu";
+    let document = parse_ok(src);
+    let scripted = first_root_child(&document);
+
+    assert_span(scripted, 0, src.len());
+
+    let vec_command = scripted
+        .script_base()
+        .expect("expected vec command as scripted base");
+    assert_eq!(vec_command.command_name(), Some("vec"));
+
+    let argument = vec_command
+        .arg(0)
+        .and_then(ArgRef::as_node)
+        .expect("expected vec math argument");
+    assert_span(argument, 5, 6);
+
+    let subscript = scripted.subscript().expect("expected outer subscript");
+    assert_span(subscript, 6, src.len());
 }
 
 #[test]

@@ -4,8 +4,8 @@ use std::rc::Rc;
 
 use serde::Deserialize;
 use texform::bindings::{
-    FlattenGroupsConfigInput, LowerAttributesConfigInput, ParseConfigInput, RewriteConfigInput,
-    TransformConfigInput, transform_report_to_dto,
+    FinalizeAstConfigInput, FlattenGroupsConfigInput, LowerAttributesConfigInput, ParseConfigInput,
+    RewriteConfigInput, TransformConfigInput, transform_report_to_dto,
 };
 use texform::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, AllowedMode, ArgRef,
@@ -14,7 +14,7 @@ use texform::{
     SyntaxNode,
 };
 use texform::{
-    FlattenGroupsConfig as CoreFlattenGroupsConfig,
+    FinalizeAstConfig as CoreFinalizeAstConfig, FlattenGroupsConfig as CoreFlattenGroupsConfig,
     LowerAttributesConfig as CoreLowerAttributesConfig, Profile as CoreProfile,
     TransformConfig as CoreTransformConfig,
 };
@@ -150,6 +150,53 @@ impl RewriteConfig {
         Self {
             enabled,
             max_iterations,
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub struct FinalizeAstConfig {
+    enabled: bool,
+}
+
+#[wasm_bindgen]
+impl FinalizeAstConfig {
+    #[wasm_bindgen(constructor)]
+    pub fn new(args: Option<JsValue>) -> Result<FinalizeAstConfig, JsValue> {
+        let input = match args {
+            Some(value) if !value.is_null() && !value.is_undefined() => {
+                serde_wasm_bindgen::from_value::<FinalizeAstConfigInput>(value).map_err(
+                    |error| JsValue::from_str(&format!("invalid finalizeAst config: {}", error)),
+                )?
+            }
+            _ => FinalizeAstConfigInput::default(),
+        };
+        Ok(Self {
+            enabled: input.enabled.unwrap_or(true),
+        })
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+    }
+}
+
+impl FinalizeAstConfig {
+    fn from_core(config: CoreFinalizeAstConfig) -> Self {
+        Self {
+            enabled: config.enabled,
+        }
+    }
+
+    fn to_core(&self) -> CoreFinalizeAstConfig {
+        CoreFinalizeAstConfig {
+            enabled: self.enabled,
         }
     }
 }
@@ -384,6 +431,7 @@ impl FlattenGroupsConfig {
 pub struct TransformConfig {
     lower_attributes: LowerAttributesConfig,
     rewrite: RewriteConfig,
+    finalize_ast: FinalizeAstConfig,
     flatten_groups: FlattenGroupsConfig,
 }
 
@@ -416,6 +464,7 @@ struct NormalizeOptions {
     abort_on_error: Option<bool>,
     max_group_depth: Option<usize>,
     flatten_groups: Option<FlattenGroupsConfigInput>,
+    finalize_ast: Option<FinalizeAstConfigInput>,
     rewrite_enabled: Option<bool>,
     lower_attributes_enabled: Option<bool>,
     max_iterations: Option<usize>,
@@ -475,6 +524,16 @@ impl TransformConfig {
         self.rewrite = rewrite;
     }
 
+    #[wasm_bindgen(getter, js_name = finalizeAst)]
+    pub fn finalize_ast(&self) -> FinalizeAstConfig {
+        FinalizeAstConfig::from_core(self.finalize_ast.to_core())
+    }
+
+    #[wasm_bindgen(setter, js_name = finalizeAst)]
+    pub fn set_finalize_ast(&mut self, finalize_ast: FinalizeAstConfig) {
+        self.finalize_ast = finalize_ast;
+    }
+
     #[wasm_bindgen(getter)]
     pub fn flatten_groups(&self) -> FlattenGroupsConfig {
         FlattenGroupsConfig::from_core(self.flatten_groups.to_core())
@@ -497,6 +556,7 @@ impl TransformConfig {
                 enabled: config.lower_attributes_enabled,
             },
             rewrite: RewriteConfig::from_core(config.rewrite_enabled, config.max_iterations),
+            finalize_ast: FinalizeAstConfig::from_core(config.finalize_ast),
             flatten_groups: FlattenGroupsConfig::from_core(config.flatten_groups),
         }
     }
@@ -884,6 +944,11 @@ impl Node {
         self.with_ref(|node| node.char().map(|ch| ch.to_string()))
     }
 
+    #[wasm_bindgen(js_name = primeCount)]
+    pub fn prime_count(&self) -> Result<Option<usize>, JsValue> {
+        self.with_ref(|node| node.prime_count())
+    }
+
     #[wasm_bindgen(js_name = errorParts)]
     pub fn error_parts(&self) -> Result<JsValue, JsValue> {
         let parts = self.with_ref(|node| {
@@ -1139,6 +1204,7 @@ fn node_kind_to_string(kind: texform::NodeKind) -> &'static str {
         texform::NodeKind::Declarative => "declarative",
         texform::NodeKind::Environment => "environment",
         texform::NodeKind::Scripted => "scripted",
+        texform::NodeKind::Prime => "prime",
         texform::NodeKind::Text => "text",
         texform::NodeKind::Char => "char",
         texform::NodeKind::ActiveSpace => "activeSpace",
@@ -1523,6 +1589,10 @@ impl TransformEngine {
             if let Some(flatten_groups) = input.flatten_groups {
                 config.transform.flatten_groups =
                     flatten_groups.into_config(CoreFlattenGroupsConfig::STRICT);
+            }
+            if let Some(finalize_ast) = input.finalize_ast {
+                config.transform.finalize_ast =
+                    finalize_ast.into_config(config.transform.finalize_ast);
             }
             if let Some(rewrite_enabled) = input.rewrite_enabled {
                 config.transform.rewrite_enabled = rewrite_enabled;
@@ -2203,6 +2273,26 @@ mod tests {
     }
 
     #[test]
+    fn transform_config_input_accepts_finalize_ast() {
+        let input = TransformConfigInput {
+            finalize_ast: Some(FinalizeAstConfigInput {
+                enabled: Some(false),
+            }),
+            ..Default::default()
+        };
+        let config = input.into_config();
+
+        assert!(!config.finalize_ast.enabled);
+    }
+
+    #[test]
+    fn wasm_transform_config_exposes_finalize_ast() {
+        let config = TransformConfig::corpus();
+
+        assert!(config.finalize_ast().enabled());
+    }
+
+    #[test]
     fn wasm_parse_result_parts_keep_document_and_diagnostics() {
         let parser =
             Parser::from_options(ParserOptions::default()).expect("default parser should build");
@@ -2261,6 +2351,52 @@ mod tests {
 
         assert_eq!(arg_kind, "Math");
         assert_eq!(document.to_latex(None).unwrap(), r"\sqrt { x }");
+    }
+
+    #[test]
+    fn wasm_node_exposes_prime_count() {
+        let document = Document::from_core(
+            texform::Parser::builder()
+                .packages(&["base"])
+                .build()
+                .expect("parser should build")
+                .parse("f''")
+                .try_into_document()
+                .expect("parse should produce a document")
+                .0,
+        );
+        let root = document.root().expect("root should be available");
+        let scripted_id = root
+            .with_ref(|node| node.children().next().expect("scripted child").id())
+            .expect("scripted child should be readable");
+        let scripted = Node::from_parts(Rc::clone(&document.inner), scripted_id);
+        let prime_id = scripted
+            .with_ref(|node| node.superscript().expect("prime superscript").id())
+            .expect("prime should be readable");
+        let prime = Node::from_parts(Rc::clone(&document.inner), prime_id);
+
+        assert_eq!(prime.kind().unwrap(), "prime");
+        assert_eq!(prime.prime_count().unwrap(), Some(2));
+    }
+
+    #[test]
+    fn normalize_options_can_disable_finalize_ast() {
+        let mut config = texform::NormalizeConfig {
+            parse: ParseConfig::LENIENT,
+            transform: CoreProfile::Corpus.default_transform_config(),
+        };
+        let input = NormalizeOptions {
+            finalize_ast: Some(FinalizeAstConfigInput {
+                enabled: Some(false),
+            }),
+            ..Default::default()
+        };
+
+        if let Some(finalize_ast) = input.finalize_ast {
+            config.transform.finalize_ast = finalize_ast.into_config(config.transform.finalize_ast);
+        }
+
+        assert!(!config.transform.finalize_ast.enabled);
     }
 
     #[test]

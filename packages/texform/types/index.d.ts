@@ -82,6 +82,7 @@ export type SyntaxNode =
   | { Declarative: { name: string; args: ArgumentSlot[] } }
   | { Environment: { name: string; args: ArgumentSlot[]; known: boolean; body: SyntaxNode } }
   | { Scripted: { base: SyntaxNode; subscript?: SyntaxNode; superscript?: SyntaxNode } }
+  | { Prime: { count: number } }
   | { Error: { message: string; snippet: string } }
   | { Text: string }
   | { Char: string }
@@ -111,6 +112,7 @@ export type NodeKind =
   | "declarative"
   | "environment"
   | "scripted"
+  | "prime"
   | "text"
   | "char"
   | "activeSpace"
@@ -187,6 +189,7 @@ export class Node {
   readonly envName?: string;
   readonly text?: string;
   readonly char?: string;
+  primeCount(): number | null;
   errorParts(): { message: string; snippet: string } | null;
   contentMode(): RuntimeContentMode | undefined;
   groupKind(): GroupKindRef | null;
@@ -312,6 +315,13 @@ export interface TransformReport {
   iterations: number;
   /** Rewrite rules that were attempted, sorted by stable rule key. */
   rules: Array<{ key: string; applied_count: number; skipped_count: number }>;
+  finalizeAst: {
+    steps: {
+      merge_adjacent_primes: {
+        applied_count: number;
+      };
+    };
+  };
   lower_attributes: {
     /** Use the `(attr, value)` pair as the stable lower-attribute unit key. */
     attributes: Array<{
@@ -376,6 +386,10 @@ export interface RewriteConfigInput {
   maxIterations?: number;
 }
 
+export interface FinalizeAstConfigInput {
+  enabled?: boolean;
+}
+
 export interface FlattenGroupsConfigInput {
   enabled?: boolean;
   preserveEmptyGroup?: boolean;
@@ -393,6 +407,7 @@ export interface FlattenGroupsConfigInput {
 export interface TransformConfigInput {
   lowerAttributes?: LowerAttributesConfigInput;
   rewrite?: RewriteConfigInput;
+  finalizeAst?: FinalizeAstConfigInput;
   flattenGroups?: FlattenGroupsConfigInput;
 }
 
@@ -413,6 +428,7 @@ export interface TransformEngineOptions extends ParserOptions {
 
 export interface NormalizeOptions extends ParseConfigInput {
   flattenGroups?: FlattenGroupsConfigInput;
+  finalizeAst?: FinalizeAstConfigInput;
   rewriteEnabled?: boolean;
   lowerAttributesEnabled?: boolean;
   maxIterations?: number;

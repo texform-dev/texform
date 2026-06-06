@@ -25,7 +25,7 @@ use texform_interface::syntax_node::{
 use super::{
     ArgumentParser, ContentParser, ParserError, ParserInput, ParserInputExt, TokenStream,
     TrackedNode, build_token_stream, content_block_parser_with_source, delimiter,
-    insignificant_whitespace, math_item_parser, maybe_braced, maybe_braced_or_empty,
+    insignificant_whitespace, math_atom_argument_parser, maybe_braced, maybe_braced_or_empty,
     optional_bracketed, optional_bracketed_or_empty, shift_owned_rich_span, text_item_parser,
 };
 
@@ -621,7 +621,7 @@ pub(super) fn argument_parser<'a>(
                             // Shorthand single item: \frac 1 2
                             let item: TrackedNode = match mode {
                                 ContentMode::Math => input.parse(
-                                    math_item_parser(
+                                    math_atom_argument_parser(
                                         state,
                                         math_content.clone(),
                                         text_content.clone(),

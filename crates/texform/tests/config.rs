@@ -10,3 +10,18 @@ fn rule_key_from_name_resolves_public_rule_names() {
 fn rule_key_from_name_rejects_unknown_names() {
     assert!(texform::rule_key_from_name("missing/rule").is_none());
 }
+
+#[test]
+fn public_profiles_enable_finalize_ast_by_default() {
+    for profile in [
+        texform::Profile::Authoring,
+        texform::Profile::Corpus,
+        texform::Profile::CorpusDrop,
+        texform::Profile::Equiv,
+    ] {
+        assert!(
+            profile.default_transform_config().finalize_ast.enabled,
+            "{profile:?} should enable FinalizeAst by default"
+        );
+    }
+}

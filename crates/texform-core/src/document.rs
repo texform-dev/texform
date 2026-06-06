@@ -68,12 +68,22 @@ impl NodeId {
 pub enum FromSyntaxError {
     /// The provided `SyntaxNode` was not a `Root`.
     NotARoot,
+    /// A `Prime` node had `count == 0`.
+    InvalidPrimeCount,
+    /// A `Prime` node appeared in text-mode content.
+    PrimeInTextMode,
 }
 
 impl std::fmt::Display for FromSyntaxError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             FromSyntaxError::NotARoot => f.write_str("from_syntax expects a SyntaxNode::Root"),
+            FromSyntaxError::InvalidPrimeCount => {
+                f.write_str("Prime count must be greater than zero")
+            }
+            FromSyntaxError::PrimeInTextMode => {
+                f.write_str("Prime nodes are only valid in math mode")
+            }
         }
     }
 }
@@ -213,9 +223,7 @@ impl Document {
 
     /// Build a document from a parsed syntax tree.
     pub fn from_syntax(node: &SyntaxNode) -> Result<Document, FromSyntaxError> {
-        if !matches!(node, SyntaxNode::Root { .. }) {
-            return Err(FromSyntaxError::NotARoot);
-        }
+        Self::validate_syntax(node, None, true)?;
         let ast = Ast::from_syntax_root(node);
         let has_errors = ast
             .find(ast.root(), |node| matches!(node, Node::Error { .. }))
@@ -794,9 +802,95 @@ impl Document {
                 children.extend(*subscript);
                 children.extend(*superscript);
             }
-            Node::Text(_) | Node::Char(_) | Node::ActiveSpace | Node::Error { .. } => {}
+            Node::Prime { .. }
+            | Node::Text(_)
+            | Node::Char(_)
+            | Node::ActiveSpace
+            | Node::Error { .. } => {}
         }
         children
+    }
+
+    fn validate_syntax(
+        node: &SyntaxNode,
+        current_mode: Option<ContentMode>,
+        is_top_level: bool,
+    ) -> Result<(), FromSyntaxError> {
+        if is_top_level && !matches!(node, SyntaxNode::Root { .. }) {
+            return Err(FromSyntaxError::NotARoot);
+        }
+
+        match node {
+            SyntaxNode::Root { mode, children } => {
+                if !is_top_level {
+                    return Err(FromSyntaxError::NotARoot);
+                }
+                for child in children {
+                    Self::validate_syntax(child, Some(*mode), false)?;
+                }
+            }
+            SyntaxNode::Group { mode, children, .. } => {
+                for child in children {
+                    Self::validate_syntax(child, Some(*mode), false)?;
+                }
+            }
+            SyntaxNode::Command { args, .. } | SyntaxNode::Declarative { args, .. } => {
+                Self::validate_syntax_args(args)?;
+            }
+            SyntaxNode::Infix {
+                args, left, right, ..
+            } => {
+                Self::validate_syntax_args(args)?;
+                Self::validate_syntax(left, current_mode, false)?;
+                Self::validate_syntax(right, current_mode, false)?;
+            }
+            SyntaxNode::Environment { args, body, .. } => {
+                Self::validate_syntax_args(args)?;
+                Self::validate_syntax(body, None, false)?;
+            }
+            SyntaxNode::Scripted {
+                base,
+                subscript,
+                superscript,
+            } => {
+                Self::validate_syntax(base, current_mode, false)?;
+                if let Some(subscript) = subscript {
+                    Self::validate_syntax(subscript, current_mode, false)?;
+                }
+                if let Some(superscript) = superscript {
+                    Self::validate_syntax(superscript, current_mode, false)?;
+                }
+            }
+            SyntaxNode::Prime { count } => {
+                if *count == 0 {
+                    return Err(FromSyntaxError::InvalidPrimeCount);
+                }
+                if current_mode != Some(ContentMode::Math) {
+                    return Err(FromSyntaxError::PrimeInTextMode);
+                }
+            }
+            SyntaxNode::Error { .. }
+            | SyntaxNode::Text(_)
+            | SyntaxNode::Char(_)
+            | SyntaxNode::ActiveSpace => {}
+        }
+
+        Ok(())
+    }
+
+    fn validate_syntax_args(args: &[syntax_node::ArgumentSlot]) -> Result<(), FromSyntaxError> {
+        for arg in args.iter().flatten() {
+            match &arg.value {
+                syntax_node::ArgumentValue::MathContent(node) => {
+                    Self::validate_syntax(node, Some(ContentMode::Math), false)?;
+                }
+                syntax_node::ArgumentValue::TextContent(node) => {
+                    Self::validate_syntax(node, Some(ContentMode::Text), false)?;
+                }
+                _ => {}
+            }
+        }
+        Ok(())
     }
 
     fn push_arg_children(args: &[ArgumentSlot], out: &mut Vec<RawNodeId>) {
@@ -1282,6 +1376,14 @@ impl<'a> NodeRef<'a> {
     pub fn char(&self) -> Option<char> {
         match self.node() {
             Node::Char(ch) => Some(*ch),
+            _ => None,
+        }
+    }
+
+    /// Prime mark count for a `Prime` node.
+    pub fn prime_count(&self) -> Option<usize> {
+        match self.node() {
+            Node::Prime { count } => Some(*count),
             _ => None,
         }
     }
@@ -1898,6 +2000,85 @@ mod tests {
         assert!(!doc.has_errors());
 
         assert_eq!(doc.to_syntax(), syntax);
+    }
+
+    #[test]
+    fn from_syntax_rejects_zero_count_prime() {
+        use texform_interface::syntax_node::{ContentMode as M, SyntaxNode};
+
+        let syntax = SyntaxNode::Root {
+            mode: M::Math,
+            children: vec![SyntaxNode::Prime { count: 0 }],
+        };
+
+        assert_eq!(
+            Document::from_syntax(&syntax).expect_err("expected invalid prime count"),
+            FromSyntaxError::InvalidPrimeCount
+        );
+    }
+
+    #[test]
+    fn from_syntax_rejects_text_mode_prime() {
+        use texform_interface::syntax_node::{ContentMode as M, SyntaxNode};
+
+        let syntax = SyntaxNode::Root {
+            mode: M::Text,
+            children: vec![SyntaxNode::Prime { count: 1 }],
+        };
+
+        assert_eq!(
+            Document::from_syntax(&syntax).expect_err("expected text-mode prime rejection"),
+            FromSyntaxError::PrimeInTextMode
+        );
+    }
+
+    #[test]
+    fn from_syntax_rejects_text_mode_scripted_prime() {
+        use texform_interface::syntax_node::{ContentMode as M, SyntaxNode};
+
+        let syntax = SyntaxNode::Root {
+            mode: M::Text,
+            children: vec![SyntaxNode::Scripted {
+                base: Box::new(SyntaxNode::Prime { count: 1 }),
+                subscript: None,
+                superscript: None,
+            }],
+        };
+
+        assert_eq!(
+            Document::from_syntax(&syntax)
+                .expect_err("expected text-mode scripted prime rejection"),
+            FromSyntaxError::PrimeInTextMode
+        );
+    }
+
+    #[test]
+    fn from_syntax_rejects_text_content_scripted_prime() {
+        use texform_interface::syntax_node::{
+            Argument, ArgumentKind, ArgumentValue, ContentMode as M, SyntaxNode,
+        };
+
+        let syntax = SyntaxNode::Root {
+            mode: M::Math,
+            children: vec![SyntaxNode::Command {
+                name: "text".to_string(),
+                args: vec![Some(Argument {
+                    kind: ArgumentKind::Mandatory,
+                    value: ArgumentValue::TextContent(SyntaxNode::Scripted {
+                        base: Box::new(SyntaxNode::Prime { count: 1 }),
+                        subscript: None,
+                        superscript: None,
+                    }),
+                })],
+                known: true,
+            }],
+        };
+
+        assert_eq!(
+            Document::from_syntax(&syntax)
+                .expect_err("expected text-content scripted prime rejection"),
+            FromSyntaxError::PrimeInTextMode
+        );
     }
 
     #[test]

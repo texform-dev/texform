@@ -84,6 +84,7 @@ pub enum NodeKind {
     Declarative,
     Environment,
     Scripted,
+    Prime,
     Text,
     Char,
     ActiveSpace,
@@ -243,6 +244,11 @@ pub enum Node {
         /// Optional superscript subtree
         superscript: Option<NodeId>,
     },
+    /// Math prime shorthand represented by one or more consecutive prime marks.
+    Prime {
+        /// Number of consecutive prime marks. Must be greater than zero.
+        count: usize,
+    },
     /// Text-mode text chunk
     Text(String),
     /// Single character node
@@ -276,6 +282,7 @@ impl Node {
             Node::Declarative { .. } => NodeKind::Declarative,
             Node::Environment { .. } => NodeKind::Environment,
             Node::Scripted { .. } => NodeKind::Scripted,
+            Node::Prime { .. } => NodeKind::Prime,
             Node::Text(_) => NodeKind::Text,
             Node::Char(_) => NodeKind::Char,
             Node::ActiveSpace => NodeKind::ActiveSpace,
@@ -1402,6 +1409,10 @@ impl Ast {
         expected_parent: Option<ParentLink>,
         visited: &mut HashSet<NodeId>,
     ) {
+        if let Node::Prime { count } = self.node(id) {
+            assert!(*count > 0, "Prime count must be greater than zero");
+        }
+
         assert!(visited.insert(id), "Node is reachable from multiple roots");
         assert_eq!(
             self.parent(id),
@@ -1522,6 +1533,7 @@ impl Ast {
                 subscript: subscript.map(|node| Box::new(self.to_syntax_node(node))),
                 superscript: superscript.map(|node| Box::new(self.to_syntax_node(node))),
             },
+            Node::Prime { count } => SyntaxNode::Prime { count: *count },
             Node::Text(text) => SyntaxNode::Text(text.clone()),
             Node::Char(ch) => SyntaxNode::Char(*ch),
             Node::ActiveSpace => SyntaxNode::ActiveSpace,
@@ -1653,6 +1665,7 @@ impl Ast {
                 subscript: subscript.map(|child| self.clone_subtree_impl(child)),
                 superscript: superscript.map(|child| self.clone_subtree_impl(child)),
             },
+            Node::Prime { count } => Node::Prime { count },
             Node::Text(text) => Node::Text(text),
             Node::Char(ch) => Node::Char(ch),
             Node::ActiveSpace => Node::ActiveSpace,
@@ -1743,7 +1756,11 @@ impl Ast {
                     edges.push((*superscript, Slot::ScriptSup));
                 }
             }
-            Node::Text(_) | Node::Char(_) | Node::ActiveSpace | Node::Error { .. } => {}
+            Node::Prime { .. }
+            | Node::Text(_)
+            | Node::Char(_)
+            | Node::ActiveSpace
+            | Node::Error { .. } => {}
         }
 
         edges
@@ -1853,6 +1870,7 @@ impl Ast {
                 message: message.clone(),
                 snippet: snippet.clone(),
             },
+            SyntaxNode::Prime { count } => Node::Prime { count: *count },
             SyntaxNode::Text(text) => Node::Text(text.clone()),
             SyntaxNode::Char(ch) => Node::Char(*ch),
             SyntaxNode::ActiveSpace => Node::ActiveSpace,

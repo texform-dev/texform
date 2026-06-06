@@ -179,6 +179,28 @@ fn test_serialize_scripted_nodes_use_sub_first_and_explicit_grouping() {
 }
 
 #[test]
+fn test_serialize_prime_superscript_uses_shorthand() {
+    assert_eq!(serialize(&parse_to_ast("f'")), "f'");
+    assert_eq!(serialize(&parse_to_ast("f''")), "f''");
+}
+
+#[test]
+fn test_serialize_prime_superscript_respects_script_order() {
+    assert_eq!(serialize(&parse_to_ast("f_n'")), "f _ { n }'");
+
+    let ast = parse_to_ast("f_n'");
+    let mut options = SerializeOptions::default();
+    options.math.scripts.order = ScriptOrder::SupFirst;
+
+    assert_eq!(serialize_with(&ast, &options), "f' _ { n }");
+}
+
+#[test]
+fn test_serialize_mixed_prime_superscript_keeps_script_group() {
+    assert_eq!(serialize(&parse_to_ast("f'^2")), "f ^ { ' 2 }");
+}
+
+#[test]
 fn test_serializer_option_surfaces_only_expose_live_fields() {
     let MathScriptOptions {
         spacing: _,

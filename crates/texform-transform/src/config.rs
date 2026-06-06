@@ -1,5 +1,6 @@
 //! User-facing transform configuration.
 
+use crate::finalize_ast::FinalizeAstConfig;
 use crate::flatten_groups::FlattenGroupsConfig;
 use crate::rewrite::plan::RuleSelection;
 use crate::rewrite::{RuleClassSet, RuleKey};
@@ -32,12 +33,14 @@ impl Profile {
             Self::Authoring | Self::Corpus => TransformConfig {
                 rewrite_enabled: true,
                 lower_attributes_enabled: true,
+                finalize_ast: FinalizeAstConfig::ENABLED,
                 flatten_groups: FlattenGroupsConfig::STRICT,
                 max_iterations: 100,
             },
             Self::CorpusDrop | Self::Equiv => TransformConfig {
                 rewrite_enabled: true,
                 lower_attributes_enabled: true,
+                finalize_ast: FinalizeAstConfig::ENABLED,
                 flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
                 max_iterations: 100,
             },
@@ -99,6 +102,7 @@ impl BuildConfig {
 pub struct TransformConfig {
     pub rewrite_enabled: bool,
     pub lower_attributes_enabled: bool,
+    pub finalize_ast: FinalizeAstConfig,
     pub flatten_groups: FlattenGroupsConfig,
     pub max_iterations: usize,
 }
@@ -129,6 +133,18 @@ mod tests {
         assert!(Profile::Corpus.rule_classes().contains(RuleClass::Expand));
         assert!(Profile::CorpusDrop.rule_classes().contains(RuleClass::Drop));
         assert!(Profile::Equiv.rule_classes().contains(RuleClass::Equiv));
+        assert!(
+            Profile::Authoring
+                .default_transform_config()
+                .finalize_ast
+                .enabled
+        );
+        assert!(
+            Profile::Equiv
+                .default_transform_config()
+                .finalize_ast
+                .enabled
+        );
         assert!(
             Profile::Authoring
                 .default_transform_config()

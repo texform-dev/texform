@@ -38,14 +38,14 @@
       "total_tasks": 492136,
       "completed": 492136,
       "strict": {
-        "ok": 480909,
-        "failed": 11227,
-        "failure_rate_pct": 2.28
+        "ok": 481022,
+        "failed": 11114,
+        "failure_rate_pct": 2.26
       },
       "nonstrict": {
-        "ok": 491567,
-        "failed": 569,
-        "failure_rate_pct": 0.12
+        "ok": 491683,
+        "failed": 453,
+        "failure_rate_pct": 0.09
       }
     },
     {
@@ -69,14 +69,14 @@
     "dataset_count": 4,
     "total_tasks": 1226621,
     "strict": {
-      "ok": 1198216,
-      "failed": 28405,
-      "failure_rate_pct": 2.32
+      "ok": 1198329,
+      "failed": 28292,
+      "failure_rate_pct": 2.31
     },
     "nonstrict": {
-      "ok": 1224613,
-      "failed": 2008,
-      "failure_rate_pct": 0.16
+      "ok": 1224729,
+      "failed": 1892,
+      "failure_rate_pct": 0.15
     }
   }
 }

@@ -377,6 +377,7 @@ macro_rules! transform_examples {
                 let cfg = $crate::TransformConfig {
                     rewrite_enabled: true,
                     lower_attributes_enabled: false,
+                    finalize_ast: $crate::FinalizeAstConfig::DISABLED,
                     flatten_groups: $crate::FlattenGroupsConfig::DISABLED,
                     max_iterations: 100,
                 };

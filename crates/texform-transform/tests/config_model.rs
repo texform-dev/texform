@@ -1,7 +1,7 @@
 use texform_core::parse::{ParseConfig, ParseContext};
 use texform_core::serialize;
 use texform_transform::{
-    BuildConfig, FlattenGroupsConfig, Profile, TransformConfig, TransformContext,
+    BuildConfig, FinalizeAstConfig, FlattenGroupsConfig, Profile, TransformConfig, TransformContext,
 };
 
 #[test]
@@ -24,6 +24,7 @@ fn context_always_builds_a_plan_even_when_runtime_rewrite_is_disabled() {
             &TransformConfig {
                 rewrite_enabled: false,
                 lower_attributes_enabled: false,
+                finalize_ast: FinalizeAstConfig::DISABLED,
                 flatten_groups: FlattenGroupsConfig::DISABLED,
                 max_iterations: 100,
             },
@@ -36,6 +37,12 @@ fn context_always_builds_a_plan_even_when_runtime_rewrite_is_disabled() {
 
 #[test]
 fn profile_supplies_runtime_defaults_without_changing_parse_config() {
+    assert!(
+        Profile::Corpus
+            .default_transform_config()
+            .finalize_ast
+            .enabled
+    );
     assert!(
         Profile::Authoring
             .default_transform_config()
