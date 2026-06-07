@@ -30,9 +30,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static POISSON_BRACKET_EXPAND: PoissonBracketExpandRule {
         key: Physics / "poisson-bracket-expand",
-        class: Expand,
+        level: Expand,
         summary: "Expand poisson brackets to explicit brace fences.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::PB],
         consumes: RuleConsumes {
@@ -80,7 +80,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: POISSON_BRACKET_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: poisson_bracket_canonical,
@@ -100,7 +100,7 @@ mod tests {
 
     transform_examples! {
         rule: POISSON_BRACKET_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: poisson_bracket_bare_second_operand,

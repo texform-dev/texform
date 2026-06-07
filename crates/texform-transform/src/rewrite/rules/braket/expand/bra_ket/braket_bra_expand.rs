@@ -24,9 +24,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static BRAKET_BRA_EXPAND: BraketBraExpandRule {
         key: Braket / "braket-bra-expand",
-        class: Expand,
+        level: Expand,
         summary: "Expand bra to an explicit angle-bracket and bar fence form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Braket],
         triggers: cmd_targets![&braket::cmd::BRA],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: BRAKET_BRA_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: bra_braket_package,

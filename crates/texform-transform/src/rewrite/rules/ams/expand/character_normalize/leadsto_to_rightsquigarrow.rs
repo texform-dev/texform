@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static LEADSTO_TO_RIGHTSQUIGARROW: LeadstoToRightsquigarrowRule {
         key: Ams / "leadsto-to-rightsquigarrow",
-        class: Expand,
+        level: Expand,
         summary: "Normalize leadsto to the more common rightsquigarrow corpus form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::LEADSTO],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: LEADSTO_TO_RIGHTSQUIGARROW,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: leadsto_character_alias,

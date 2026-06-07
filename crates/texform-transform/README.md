@@ -15,10 +15,11 @@ let mut ast = parse_ctx
     .parse_to_ast(r"\frac{a}{b}", &ParseConfig::default())
     .expect("source should parse");
 
-// Pick a profile. `Corpus` keeps layout information; use `Equiv` for
-// equivalence comparison, `Authoring` for author-facing output.
+// Pick a profile. `Faithful` preserves layout while expanding commands; use
+// `Corpus` to drop layout hints, `Equiv` for equivalence comparison, and
+// `Authoring` for author-facing output.
 let context = TransformContext::from_build_config(
-    BuildConfig::profile(Profile::Corpus),
+    BuildConfig::profile(Profile::Faithful),
     &parse_ctx,
 )
 .expect("transform context should build");
@@ -40,7 +41,7 @@ For repeated transforms with the same configuration, build a context once and re
 use texform_transform::{BuildConfig, Profile, TransformContext};
 
 let context = TransformContext::from_build_config(
-    BuildConfig::profile(Profile::Corpus),
+    BuildConfig::profile(Profile::Faithful),
     &parse_ctx,
 )?;
 for mut ast in batch {
@@ -55,7 +56,7 @@ facade rather than depending on it directly. The crate's public surface is inten
 
 | Item | Purpose |
 |------|---------|
-| `BuildConfig::profile(profile)` | Select build-time rewrite classes and default runtime config. |
+| `BuildConfig::profile(profile)` | Select build-time normalization levels and default runtime config. |
 | `TransformContext::from_build_config(config, parse_ctx) -> Result<Self, TransformBuildError>` | Precompile the rewrite plan once for reuse across many ASTs. |
 | `TransformContext::run(ast, parse_ctx)` | Execute the precompiled pipeline with the profile default runtime config. |
 | `TransformContext::run_with(ast, parse_ctx, config)` | Execute the precompiled pipeline with per-run overrides. |
@@ -63,11 +64,11 @@ facade rather than depending on it directly. The crate's public surface is inten
 | `TransformReport` | Per-phase reports aggregated across the run. |
 | `TransformError` / `TransformBuildError` | Build-time and run-time error types. |
 
-The rewrite phase additionally re-exports `RewriteRule`, `RuleClass`, `RuleClassSet`, `RuleKey`, `RuleMeta`, `RuleSafety`, `RuleTarget`, `RuleTargetKey`, `RuleTargetKind`, `Plan as RewritePlan` and related items for callers that need to introspect rules.
+The rewrite phase additionally re-exports `RewriteRule`, `NormalizationLevel`, `NormalizationLevelSet`, `RuleKey`, `RuleMeta`, `RuleFidelity`, `RuleTarget`, `RuleTargetKey`, `RuleTargetKind`, `Plan as RewritePlan` and related items for callers that need to introspect rules.
 
 ## Pipeline
 
-`TransformContext::run` executes a fixed sequence of phases. Rewrite classes are chosen when the context is built; each run may disable rewrite / lower attributes or choose different FlattenGroups and iteration settings through `TransformConfig`.
+`TransformContext::run` executes a fixed sequence of phases. Normalization levels are chosen when the context is built; each run may disable rewrite / lower attributes or choose different FlattenGroups and iteration settings through `TransformConfig`.
 
 1. **LowerAttributes (pre)** — canonicalize declarative-scope commands (e.g. `\bf x`) and registered prefix wrappers (e.g. `\mathbf{x}`) into a single normal form.
 2. **Rewrite** — apply the precompiled rewrite plan in a fixed-point loop, bounded by `max_iterations`.
@@ -91,39 +92,48 @@ pub struct TransformConfig {
 
 ### Profiles
 
-Each profile selects build-time rule classes and supplies a default runtime config.
+Each profile selects build-time normalization levels and supplies a default runtime config.
 
-| Profile       | Rule classes                              | `flatten_groups`    | Target scenario                                              |
-|---------------|-------------------------------------------|---------------------|--------------------------------------------------------------|
-| `Authoring`   | `Standard`                               | `STRICT`            | Polished author-facing formatting; stylistic choices kept.   |
-| `Corpus`      | `Standard` + `Expand`                    | `STRICT`            | MER input or LLM pretraining corpus; layout info preserved.  |
-| `CorpusDrop`  | `Standard` + `Expand` + `Drop`           | `STRUCTURAL_ONLY`   | Stronger corpus cleaning; drops linebreak/layout hints.      |
-| `Equiv`       | `Standard` + `Expand` + `Drop` + `Equiv` | `STRUCTURAL_ONLY`   | Aggressive normalization for formula equivalence comparison. |
+| Profile | Normalization levels | `flatten_groups` | Target scenario |
+| --- | --- | --- | --- |
+| `Authoring` | `Standard` | `STRICT` | Polished author-facing formatting; stylistic choices kept. |
+| `Faithful` | `Standard` + `Expand` | `STRICT` | Render-faithful corpus normalization and correctness analysis. |
+| `Corpus` | `Standard` + `Expand` + `Drop` | `STRUCTURAL_ONLY` | MER training data normalization; layout hints dropped. |
+| `Equiv` | `Standard` + `Expand` + `Drop` + `Equiv` | `STRUCTURAL_ONLY` | Formula equivalence comparison. |
 
-#### `RuleClass`
+#### `NormalizationLevel`
 
-Every rule belongs to exactly one class. The class captures the rule's intent, not its mechanism:
+Every rule belongs to exactly one ordered level. The level captures the rule's intent, not its mechanism:
 
-| Class      | Intent |
+| Level      | Intent |
 |------------|--------|
 | `Standard` | Uncontroversial author-facing standardization: legacy-syntax modernization, typo fixes, alias canonicalization, cross-package anchor unification. Does not collapse stylistic choices that an author may legitimately make. |
-| `Expand`   | Corpus-oriented normal form: rewrites convenience commands, semantic macros, package-specific commands, and spacing primitives into more universal structures. Output remains readable LaTeX and preserves layout information. |
-| `Drop`     | Removes non-ink, metadata, and layout hints a corpus should not learn — linebreak preferences, invisible layout nodes, and similar caller-opt-in deletions. |
-| `Equiv`    | Aggressive normalization tuned for equivalence comparison; may sacrifice common idioms or author intent for higher recall. Rewrites rather than deletes. |
+| `Expand`   | Render-faithful normal form: rewrites convenience commands, semantic macros, package-specific commands, and spacing primitives into more universal structures. Output remains readable LaTeX and preserves layout information. |
+| `Drop`     | Removes non-ink, metadata, and layout hints a corpus should not learn: linebreak preferences, invisible layout nodes, and similar caller-opt-in deletions. |
+| `Equiv`    | Aggressive normalization tuned for equivalence comparison; may sacrifice common idioms or author intent for higher recall. |
 
-A rule's class is decided by its immediate rewrite intent, not by what later rules might do to the result.
+A rule's level is decided by its immediate rewrite intent, not by what later rules might do to the result.
 
-#### `RuleSafety`
+#### `RuleFidelity`
 
-Orthogonal to class: how much information the rule preserves.
+Orthogonal to level: how faithfully the rewrite preserves rendering or semantics.
 
-| Safety        | Meaning                                                                   |
-|---------------|---------------------------------------------------------------------------|
-| `Lossless`    | Fully reversible; no information lost.                                    |
-| `Semantic`    | Mathematical meaning preserved; non-semantic detail may be discarded.     |
-| `Destructive` | May lose information that affects rendering or meaning.                   |
+| Fidelity | Meaning |
+| --- | --- |
+| `Lossless` | Pixel-identical rendering before and after the rewrite. |
+| `Semantic` | Mathematical meaning is preserved, but rendering may differ. |
+| `Lossy` | Even semantics may change; automatic render validation is skipped. |
 
-Safety is informational — it is not used by the scheduler but is exposed via `RuleMeta` for diagnostics, dependency analysis, and rule-set construction.
+`fidelity` must not fall below the rule's level floor (`Lossless` > `Semantic` > `Lossy`):
+
+| Level | Default fidelity | Min fidelity |
+| --- | --- | --- |
+| `Standard` | `Lossless` | `Semantic` |
+| `Expand` | `Lossless` | `Semantic` |
+| `Drop` | `Semantic` | `Lossy` |
+| `Equiv` | `Lossless` | `Lossy` |
+
+`Lossy` is currently unused by builtin rules.
 
 ### `FlattenGroupsConfig`
 
@@ -170,10 +180,10 @@ This sub-flag does not gate any group on its own; it only refines the classifica
 
 The preserve guards are wired to presets via two named constants:
 
-- `FlattenGroupsConfig::STRICT` — all guards on. Used by `AUTHORING` and `CORPUS`.
-- `FlattenGroupsConfig::STRUCTURAL_ONLY` — only semantic guards on; all spacing guards off. Used by `CORPUS_DROP` and `EQUIV`.
+- `FlattenGroupsConfig::STRICT` — all guards on. Used by `AUTHORING` and `FAITHFUL`.
+- `FlattenGroupsConfig::STRUCTURAL_ONLY` — only semantic guards on; all spacing guards off. Used by `CORPUS` and `EQUIV`.
 
-| Field                                              | Category | `AUTHORING` / `CORPUS` (STRICT) | `CORPUS_DROP` / `EQUIV` (STRUCTURAL_ONLY) |
+| Field                                              | Category | `AUTHORING` / `FAITHFUL` (STRICT) | `CORPUS` / `EQUIV` (STRUCTURAL_ONLY) |
 |----------------------------------------------------|----------|:-------------------------------:|:------------------------------------------:|
 | `enabled`                                          | –        | ✓                               | ✓                                          |
 | `preserve_group_containing_declarative_command`    | Semantic | ✓                               | ✓                                          |
@@ -247,13 +257,13 @@ Rules live under `src/rewrite/rules/{base, ams, braket, physics}/` and are auto-
 
 - `key: RuleKey` (`package/name`) — the stable identifier used in reports and build-time filters.
 - `enabled_by_packages` — packages whose presence in the `ParseContext` enables the rule.
-- `class` — see [`RuleClass`](#ruleclass).
-- `safety` — see [`RuleSafety`](#rulesafety).
+- `level` — see [`NormalizationLevel`](#normalizationlevel).
+- `fidelity` — see [`RuleFidelity`](#rulefidelity).
 - `triggers` — `RuleTarget`s the scheduler watches to know when to attempt the rule.
 - `consumes` — forms the rule `eliminates` (must not appear in the output) and `touches` (may read or modify).
 - `produces` — forms the rule may introduce. The engine verifies every produced form is either accepted by the output contract or eliminated by another rule.
 
-`TransformContext::from_build_config` builds a `Plan` by filtering all registered rules through the selected profile classes, build-time disabled rules, and the `ParseContext`'s enabled packages. The plan is then driven by `scheduler::drive_fixed_point` until either no rule fires in an iteration or `max_iterations` is exceeded. When Rewrite is enabled, after the full pipeline has run post-Rewrite LowerAttributes and FlattenGroups, the engine uses `collect_eliminated_violations` to verify that no rule's `eliminates` set remains in the output AST; a violation is reported as `RewriteError::ContractViolation`.
+`TransformContext::from_build_config` builds a `Plan` by filtering all registered rules through the selected profile levels, build-time disabled rules, and the `ParseContext`'s enabled packages. The plan is then driven by `scheduler::drive_fixed_point` until either no rule fires in an iteration or `max_iterations` is exceeded. When Rewrite is enabled, after the full pipeline has run post-Rewrite LowerAttributes and FlattenGroups, the engine uses `collect_eliminated_violations` to verify that no rule's `eliminates` set remains in the output AST; a violation is reported as `RewriteError::ContractViolation`.
 
 See [`src/rewrite/rules/README.md`](src/rewrite/rules/README.md) for rule authoring conventions and the macro-based DSL used to define rules.
 

@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static VARTRIANGLELEFT_TO_LHD: VartriangleleftToLhdRule {
         key: Ams / "vartriangleleft-to-lhd",
-        class: Standard,
+        level: Standard,
         summary: "Collapse vartriangleleft to the more common lhd character.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::VARTRIANGLELEFT],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: VARTRIANGLELEFT_TO_LHD,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: vartriangleleft_character_alias,

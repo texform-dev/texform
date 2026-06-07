@@ -5,8 +5,8 @@
 //! triggers:
 //!   - cmd:cases
 //! consumes:
-//!   eliminates: cmd:cases
-//!   touches: cmd:cr
+//!   eliminates: [cmd:cases, cmd:cr]
+//!   touches: null
 //! produces: env:cases
 //! rewrite_patterns:
 //!   - {from: '\cases{#1 \cr #2}', to: '\begin{cases} #1 \\ #2 \end{cases}'}
@@ -22,9 +22,9 @@ use crate::rewrite::{cmd_targets, define_rule, env_targets};
 define_rule! {
     pub static CASES_TO_CASES_ENV: CasesToCasesEnvRule {
         key: Base / "cases-to-cases-env",
-        class: Standard,
+        level: Standard,
         summary: "Rewrite plain-TeX cases to the standard cases environment with row breaks.",
-        safety: Semantic,
+        fidelity: Semantic,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::CASES],
         consumes: RuleConsumes {
@@ -55,7 +55,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: CASES_TO_CASES_ENV,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: three_branch_piecewise,

@@ -493,8 +493,8 @@ impl TransformConfig {
         Self::from_profile(CoreProfile::Corpus)
     }
 
-    pub fn corpus_drop() -> TransformConfig {
-        Self::from_profile(CoreProfile::CorpusDrop)
+    pub fn faithful() -> TransformConfig {
+        Self::from_profile(CoreProfile::Faithful)
     }
 
     pub fn equiv() -> TransformConfig {
@@ -565,8 +565,8 @@ impl TransformConfig {
 fn profile_from_name(name: &str) -> Result<texform::Profile, JsValue> {
     match name {
         "authoring" => Ok(texform::Profile::Authoring),
+        "faithful" => Ok(texform::Profile::Faithful),
         "corpus" => Ok(texform::Profile::Corpus),
-        "corpus-drop" => Ok(texform::Profile::CorpusDrop),
         "equiv" => Ok(texform::Profile::Equiv),
         other => Err(JsValue::from_str(&format!(
             "unknown transform profile: {}",

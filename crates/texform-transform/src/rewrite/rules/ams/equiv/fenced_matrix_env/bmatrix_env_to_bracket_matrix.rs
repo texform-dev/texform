@@ -26,9 +26,9 @@ use crate::rewrite::{define_rule, env_targets};
 define_rule! {
     pub static BMATRIX_ENV_TO_BRACKET_MATRIX: BmatrixEnvToBracketMatrixRule {
         key: Ams / "bmatrix-env-to-bracket-matrix",
-        class: Equiv,
+        level: Equiv,
         summary: "Rewrite the fenced bmatrix environment to explicit brackets around a core matrix environment.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: env_targets![&ams::env::BMATRIX],
         consumes: RuleConsumes {
@@ -67,7 +67,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: BMATRIX_ENV_TO_BRACKET_MATRIX,
-        class: Equiv,
+        level: Equiv,
         examples: [
         {
             label: bmatrix,

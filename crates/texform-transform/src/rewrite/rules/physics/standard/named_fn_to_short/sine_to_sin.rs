@@ -20,9 +20,9 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static SINE_TO_SIN: SineToSinRule {
         key: Physics / "sine-to-sin",
-        class: Standard,
+        level: Standard,
         summary: "Collapse the long sine helper to the standard sin operator.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &base::cmd::SIN,
         aliases: [&physics::cmd::SINE],
@@ -37,7 +37,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: SINE_TO_SIN,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: sine_in_trig_sum,

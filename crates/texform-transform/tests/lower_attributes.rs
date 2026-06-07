@@ -1,7 +1,7 @@
 //! End-to-end behavior of the LowerAttributes phase.
 //!
 //! Tests go through the public `run` entry point with the standard
-//! rule class, so they implicitly check that LowerAttributes composes cleanly
+//! normalization level, so they implicitly check that LowerAttributes composes cleanly
 //! with the Rewrite phase.
 
 use texform_core::ast::Ast;
@@ -10,39 +10,43 @@ use texform_core::serialize::serialize;
 use texform_transform::lower_attributes::MathFontValue;
 use texform_transform::{
     Attr, AttrValue, AttributeSet, BuildConfig, LowerAttributesConfig, LowerAttributesReport,
-    Profile, RuleClass, RuleClassSet, TransformContext, TransformReport,
+    NormalizationLevel, NormalizationLevelSet, Profile, TransformContext,
 };
 
 struct Outcome {
     text: String,
     ast: Ast,
-    report: TransformReport,
 }
 
 fn run_with_packages(src: &str, packages: &[&str]) -> Outcome {
-    run_with_packages_and_classes(src, packages, &[RuleClass::Standard])
+    run_with_packages_and_levels(src, packages, &[NormalizationLevel::Standard])
 }
 
-fn run_with_packages_and_classes(src: &str, packages: &[&str], classes: &[RuleClass]) -> Outcome {
+fn run_with_packages_and_levels(
+    src: &str,
+    packages: &[&str],
+    levels: &[NormalizationLevel],
+) -> Outcome {
     let parse_ctx = ParseContext::from_packages(packages);
     let mut ast = parse_to_ast(&parse_ctx, src);
-    let classes = classes
+    let levels = levels
         .iter()
         .copied()
-        .fold(RuleClassSet::empty(), |set, class| set | class.into());
+        .fold(NormalizationLevelSet::empty(), |set, level| {
+            set | level.into()
+        });
     let context = TransformContext::from_build_config(
-        BuildConfig::profile(Profile::Authoring).rewrite_classes(classes),
+        BuildConfig::profile(Profile::Authoring).rewrite_levels(levels),
         &parse_ctx,
     )
     .expect("transform context should build");
-    let report = context
+    context
         .run(&mut ast, &parse_ctx)
         .expect("transform should succeed");
     ast.assert_invariants();
     Outcome {
         text: serialize(&ast),
         ast,
-        report,
     }
 }
 
@@ -152,10 +156,10 @@ fn lower_attributes_is_idempotent_on_serialized_output() {
 
 #[test]
 fn post_pass_normalizes_prefixes_created_by_apply_rules() {
-    let actual = run_with_packages_and_classes(
+    let actual = run_with_packages_and_levels(
         r"\vb{\rm x}",
         &["base", "textmacros", "physics", "boldsymbol"],
-        &[RuleClass::Standard, RuleClass::Expand],
+        &[NormalizationLevel::Standard, NormalizationLevel::Expand],
     );
     assert_eq!(actual.text, r"\mathrm { x }");
 }

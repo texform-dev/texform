@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static SQUARE_TO_BOX: SquareToBoxRule {
         key: Ams / "square-to-Box",
-        class: Expand,
+        level: Expand,
         summary: "Normalize square to Box for corpus form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::SQUARE],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: SQUARE_TO_BOX,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: square_character_alias,

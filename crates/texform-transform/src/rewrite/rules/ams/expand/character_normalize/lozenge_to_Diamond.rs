@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static LOZENGE_TO_DIAMOND: LozengeToDiamondRule {
         key: Ams / "lozenge-to-Diamond",
-        class: Expand,
+        level: Expand,
         summary: "Normalize lozenge to Diamond for corpus form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::LOZENGE],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: LOZENGE_TO_DIAMOND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: lozenge_character_alias,

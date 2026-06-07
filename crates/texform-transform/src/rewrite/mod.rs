@@ -1,8 +1,8 @@
 //! AST rewrite phase: scheduling, rule application, and eliminated-form checks.
 
-pub mod class_set;
 mod contract;
 pub mod helpers;
+pub mod level_set;
 pub(crate) mod macro_support;
 mod macros;
 pub mod plan;
@@ -18,13 +18,13 @@ pub(crate) use macros::transform_examples;
 #[allow(unused_imports)]
 pub(crate) use macros::{alias_rule, char_targets, cmd_targets, define_rule, env_targets};
 
-pub use class_set::RuleClassSet;
 pub use contract::{ContractViolation, collect_eliminated_violations};
+pub use level_set::NormalizationLevelSet;
 pub use plan::{Plan, PlanBuildError, RuleAvailabilityFailure};
 pub use registry::all_rules;
 pub use rule::{
-    PackageName, RewriteRule, RuleClass, RuleConsumes, RuleEffect, RuleKey, RuleMeta, RuleProduces,
-    RuleSafety, RuleTarget, RuleTargetKey, RuleTargetKind,
+    NormalizationLevel, PackageName, RewriteRule, RuleConsumes, RuleEffect, RuleFidelity, RuleKey,
+    RuleMeta, RuleProduces, RuleTarget, RuleTargetKey, RuleTargetKind,
 };
 pub use rule_context::{CommandView, DeclarativeView, EnvironmentView, InfixView, RuleContext};
 
@@ -144,10 +144,10 @@ pub(crate) fn run_one_rule_for_test(
     ast: &mut Ast,
     parse_ctx: &ParseContext,
     rule: &'static dyn RewriteRule,
-    class: RuleClass,
+    level: NormalizationLevel,
 ) -> Result<crate::TransformReport, crate::TransformError> {
     let build_config = crate::BuildConfig::profile(crate::Profile::Authoring)
-        .rewrite_classes(RuleClassSet::from(class))
+        .rewrite_levels(NormalizationLevelSet::from(level))
         .only_rule_for_tests(rule.meta().key);
     let context = crate::TransformContext::from_build_config(build_config, parse_ctx)
         .map_err(crate::TransformError::Build)?;

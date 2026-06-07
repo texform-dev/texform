@@ -24,9 +24,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static STACKBIN_EXPAND: StackbinExpandRule {
         key: Base / "stackbin-expand",
-        class: Expand,
+        level: Expand,
         summary: "Expand stackbin to an explicit binary-class stacked operator form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::STACKBIN],
         consumes: RuleConsumes {
@@ -61,7 +61,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: STACKBIN_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: stackbin_binary_context,
@@ -75,7 +75,7 @@ mod tests {
 
     transform_examples! {
         rule: STACKBIN_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: stackbin_preserves_compound_operator,

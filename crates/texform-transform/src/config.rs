@@ -3,41 +3,41 @@
 use crate::finalize_ast::FinalizeAstConfig;
 use crate::flatten_groups::FlattenGroupsConfig;
 use crate::rewrite::plan::RuleSelection;
-use crate::rewrite::{RuleClassSet, RuleKey};
+use crate::rewrite::{NormalizationLevelSet, RuleKey};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Profile {
     Authoring,
+    Faithful,
     Corpus,
-    CorpusDrop,
     Equiv,
 }
 
 impl Profile {
-    pub const fn rule_classes(self) -> RuleClassSet {
+    pub const fn normalization_levels(self) -> NormalizationLevelSet {
         match self {
-            Self::Authoring => RuleClassSet::STANDARD,
-            Self::Corpus => RuleClassSet::STANDARD.union(RuleClassSet::EXPAND),
-            Self::CorpusDrop => RuleClassSet::STANDARD
-                .union(RuleClassSet::EXPAND)
-                .union(RuleClassSet::DROP),
-            Self::Equiv => RuleClassSet::STANDARD
-                .union(RuleClassSet::EXPAND)
-                .union(RuleClassSet::DROP)
-                .union(RuleClassSet::EQUIV),
+            Self::Authoring => NormalizationLevelSet::STANDARD,
+            Self::Faithful => NormalizationLevelSet::STANDARD.union(NormalizationLevelSet::EXPAND),
+            Self::Corpus => NormalizationLevelSet::STANDARD
+                .union(NormalizationLevelSet::EXPAND)
+                .union(NormalizationLevelSet::DROP),
+            Self::Equiv => NormalizationLevelSet::STANDARD
+                .union(NormalizationLevelSet::EXPAND)
+                .union(NormalizationLevelSet::DROP)
+                .union(NormalizationLevelSet::EQUIV),
         }
     }
 
     pub const fn default_transform_config(self) -> TransformConfig {
         match self {
-            Self::Authoring | Self::Corpus => TransformConfig {
+            Self::Authoring | Self::Faithful => TransformConfig {
                 rewrite_enabled: true,
                 lower_attributes_enabled: true,
                 finalize_ast: FinalizeAstConfig::ENABLED,
                 flatten_groups: FlattenGroupsConfig::STRICT,
                 max_iterations: 100,
             },
-            Self::CorpusDrop | Self::Equiv => TransformConfig {
+            Self::Corpus | Self::Equiv => TransformConfig {
                 rewrite_enabled: true,
                 lower_attributes_enabled: true,
                 finalize_ast: FinalizeAstConfig::ENABLED,
@@ -50,7 +50,7 @@ impl Profile {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BuildConfig {
-    pub(crate) classes: RuleClassSet,
+    pub(crate) levels: NormalizationLevelSet,
     pub(crate) selection: RuleSelection,
     pub(crate) default_transform: TransformConfig,
 }
@@ -58,14 +58,14 @@ pub struct BuildConfig {
 impl BuildConfig {
     pub fn profile(profile: Profile) -> Self {
         Self {
-            classes: profile.rule_classes(),
+            levels: profile.normalization_levels(),
             selection: RuleSelection::All,
             default_transform: profile.default_transform_config(),
         }
     }
 
-    pub fn rewrite_classes(mut self, classes: RuleClassSet) -> Self {
-        self.classes = classes;
+    pub fn rewrite_levels(mut self, levels: NormalizationLevelSet) -> Self {
+        self.levels = levels;
         self
     }
 
@@ -116,23 +116,45 @@ pub struct NormalizeConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rewrite::RuleClass;
+    use crate::rewrite::NormalizationLevel;
 
     #[test]
-    fn profiles_compile_as_const_and_carry_expected_classes() {
+    fn profiles_compile_as_const_and_carry_expected_levels() {
         assert!(
             Profile::Authoring
-                .rule_classes()
-                .contains(RuleClass::Standard)
+                .normalization_levels()
+                .contains(NormalizationLevel::Standard)
         );
         assert!(
             !Profile::Authoring
-                .rule_classes()
-                .contains(RuleClass::Expand)
+                .normalization_levels()
+                .contains(NormalizationLevel::Expand)
         );
-        assert!(Profile::Corpus.rule_classes().contains(RuleClass::Expand));
-        assert!(Profile::CorpusDrop.rule_classes().contains(RuleClass::Drop));
-        assert!(Profile::Equiv.rule_classes().contains(RuleClass::Equiv));
+        assert!(
+            Profile::Faithful
+                .normalization_levels()
+                .contains(NormalizationLevel::Expand)
+        );
+        assert!(
+            !Profile::Faithful
+                .normalization_levels()
+                .contains(NormalizationLevel::Drop)
+        );
+        assert!(
+            Profile::Corpus
+                .normalization_levels()
+                .contains(NormalizationLevel::Drop)
+        );
+        assert!(
+            !Profile::Corpus
+                .normalization_levels()
+                .contains(NormalizationLevel::Equiv)
+        );
+        assert!(
+            Profile::Equiv
+                .normalization_levels()
+                .contains(NormalizationLevel::Equiv)
+        );
         assert!(
             Profile::Authoring
                 .default_transform_config()
@@ -152,13 +174,13 @@ mod tests {
                 .preserve_group_adjacent_to_command_like
         );
         assert!(
-            Profile::Corpus
+            Profile::Faithful
                 .default_transform_config()
                 .flatten_groups
                 .preserve_group_adjacent_to_command_like
         );
         assert!(
-            !Profile::CorpusDrop
+            !Profile::Corpus
                 .default_transform_config()
                 .flatten_groups
                 .preserve_group_adjacent_to_command_like

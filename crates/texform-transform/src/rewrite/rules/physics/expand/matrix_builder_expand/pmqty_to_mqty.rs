@@ -21,9 +21,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static PMQTY_TO_MQTY: PmqtyToMqtyRule {
         key: Physics / "pmqty-to-mqty",
-        class: Expand,
+        level: Expand,
         summary: "Expand pmqty to the core mqty builder with paren fence syntax.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::PMQTY],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: PMQTY_TO_MQTY,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: pmqty_matrix_assignment,

@@ -11,9 +11,9 @@ macro_rules! define_rule {
         $(#[$attr:meta])*
         pub static $static_name:ident : $rule_ty:ident {
             key: $package:ident / $name:literal,
-            class: $class:ident,
+            level: $level:ident,
             summary: $summary:expr,
-            safety: $safety:ident,
+            fidelity: $fidelity:ident,
             enabled_by_packages: [$($enabled_package:ident),+ $(,)?],
             triggers: $triggers:expr,
             consumes: $consumes:expr,
@@ -29,9 +29,9 @@ macro_rules! define_rule {
             $rule_ty,
             $package,
             $name,
-            $class,
+            $level,
             $summary,
-            $safety,
+            $fidelity,
             [$($enabled_package),+],
             $triggers,
             $consumes,
@@ -46,9 +46,9 @@ macro_rules! define_rule {
         $(#[$attr:meta])*
         pub static $static_name:ident : $rule_ty:ident {
             key: $package:ident / $name:literal,
-            class: $class:ident,
+            level: $level:ident,
             summary: $summary:expr,
-            safety: $safety:ident,
+            fidelity: $fidelity:ident,
             enabled_by_packages: [$($enabled_package:ident),+ $(,)?],
             triggers: $triggers:expr,
             consumes: $consumes:expr,
@@ -63,9 +63,9 @@ macro_rules! define_rule {
             $rule_ty,
             $package,
             $name,
-            $class,
+            $level,
             $summary,
-            $safety,
+            $fidelity,
             [$($enabled_package),+],
             $triggers,
             $consumes,
@@ -79,9 +79,9 @@ macro_rules! define_rule {
         $(#[$attr:meta])*
         pub static $static_name:ident : $rule_ty:ident {
             key: $package:ident / $name:literal,
-            class: $class:ident,
+            level: $level:ident,
             summary: $summary:expr,
-            safety: $safety:ident,
+            fidelity: $fidelity:ident,
             enabled_by_packages: [$($enabled_package:ident),+ $(,)?],
             triggers: $triggers:expr,
             consumes: $consumes:expr,
@@ -98,9 +98,9 @@ macro_rules! define_rule {
             $rule_ty,
             $package,
             $name,
-            $class,
+            $level,
             $summary,
-            $safety,
+            $fidelity,
             [$($enabled_package),+],
             $triggers,
             $consumes,
@@ -116,9 +116,9 @@ macro_rules! define_rule {
         $(#[$attr:meta])*
         pub static $static_name:ident : $rule_ty:ident {
             key: $package:ident / $name:literal,
-            class: $class:ident,
+            level: $level:ident,
             summary: $summary:expr,
-            safety: $safety:ident,
+            fidelity: $fidelity:ident,
             enabled_by_packages: [$($enabled_package:ident),+ $(,)?],
             triggers: $triggers:expr,
             consumes: $consumes:expr,
@@ -134,9 +134,9 @@ macro_rules! define_rule {
             $rule_ty,
             $package,
             $name,
-            $class,
+            $level,
             $summary,
-            $safety,
+            $fidelity,
             [$($enabled_package),+],
             $triggers,
             $consumes,
@@ -153,9 +153,9 @@ macro_rules! define_rule {
         $rule_ty:ident,
         $package:ident,
         $name:literal,
-        $class:ident,
+        $level:ident,
         $summary:expr,
-        $safety:ident,
+        $fidelity:ident,
         [$($enabled_package:ident),+],
         $triggers:expr,
         $consumes:expr,
@@ -185,9 +185,9 @@ macro_rules! define_rule {
                     enabled_by_packages: &[
                         $($crate::rewrite::PackageName::$enabled_package),+
                     ],
-                    class: $crate::rewrite::RuleClass::$class,
+                    level: $crate::rewrite::NormalizationLevel::$level,
                     summary: $summary,
-                    safety: $crate::rewrite::RuleSafety::$safety,
+                    fidelity: $crate::rewrite::RuleFidelity::$fidelity,
                     triggers: $triggers,
                     consumes: $consumes,
                     produces: $produces,
@@ -215,9 +215,9 @@ macro_rules! define_rule {
         $rule_ty:ident,
         $package:ident,
         $name:literal,
-        $class:ident,
+        $level:ident,
         $summary:expr,
-        $safety:ident,
+        $fidelity:ident,
         [$($enabled_package:ident),+],
         $triggers:expr,
         $consumes:expr,
@@ -245,9 +245,9 @@ macro_rules! define_rule {
                     enabled_by_packages: &[
                         $($crate::rewrite::PackageName::$enabled_package),+
                     ],
-                    class: $crate::rewrite::RuleClass::$class,
+                    level: $crate::rewrite::NormalizationLevel::$level,
                     summary: $summary,
-                    safety: $crate::rewrite::RuleSafety::$safety,
+                    fidelity: $crate::rewrite::RuleFidelity::$fidelity,
                     triggers: $triggers,
                     consumes: $consumes,
                     produces: $produces,
@@ -300,9 +300,9 @@ macro_rules! alias_rule {
         $(#[$attr:meta])*
         pub static $static_name:ident : $rule_ty:ident {
             key: $package:ident / $name:literal,
-            class: $class:ident,
+            level: $level:ident,
             summary: $summary:expr,
-            safety: $safety:ident,
+            fidelity: $fidelity:ident,
             enabled_by_packages: [$($enabled_package:ident),+ $(,)?],
             canonical: $canonical:expr,
             aliases: [$($alias:expr),+ $(,)?],
@@ -313,9 +313,9 @@ macro_rules! alias_rule {
             $(#[$attr])*
             pub static $static_name: $rule_ty {
                 key: $package / $name,
-                class: $class,
+                level: $level,
                 summary: $summary,
-                safety: $safety,
+                fidelity: $fidelity,
                 enabled_by_packages: [$($enabled_package),+],
                 triggers: &[$($crate::rewrite::RuleTarget::Command($alias)),+],
                 consumes: $crate::rewrite::RuleConsumes {
@@ -351,7 +351,7 @@ macro_rules! alias_rule {
 macro_rules! transform_examples {
     (
         rule: $rule:expr,
-        class: $class:ident,
+        level: $level:ident,
         examples: [
             $({
                 label: $label:ident,
@@ -367,7 +367,9 @@ macro_rules! transform_examples {
                 use $crate::rewrite::RewriteRule as _;
                 let parse_ctx = $crate::parse::ParseContext::from_packages(&[$($pkg),+]);
                 let build_config = $crate::BuildConfig::profile($crate::Profile::Authoring)
-                    .rewrite_classes($crate::RuleClassSet::from($crate::RuleClass::$class))
+                    .rewrite_levels($crate::NormalizationLevelSet::from(
+                        $crate::NormalizationLevel::$level,
+                    ))
                     .only_rule_for_tests($rule.meta().key);
                 let transform_context = $crate::TransformContext::from_build_config(
                     build_config,

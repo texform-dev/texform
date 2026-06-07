@@ -27,9 +27,9 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static FUNCTIONAL_DERIVATIVE_TO_FDV: FunctionalDerivativeToFdvRule {
         key: Physics / "functional-derivative-to-fdv",
-        class: Standard,
+        level: Standard,
         summary: "Collapse long functional derivative names to the fdv command.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::FDV,
         aliases: [
@@ -47,7 +47,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: FUNCTIONAL_DERIVATIVE_TO_FDV,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: fdv_alias_stationary_action,

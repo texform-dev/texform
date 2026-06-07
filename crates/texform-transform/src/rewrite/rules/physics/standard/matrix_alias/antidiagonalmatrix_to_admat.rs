@@ -20,9 +20,9 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static ANTIDIAGONALMATRIX_TO_ADMAT: AntidiagonalmatrixToAdmatRule {
         key: Physics / "antidiagonalmatrix-to-admat",
-        class: Standard,
+        level: Standard,
         summary: "Collapse antidiagonalmatrix to the shorter admat helper.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::ADMAT,
         aliases: [&physics::cmd::ANTIDIAGONALMATRIX],
@@ -37,7 +37,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: ANTIDIAGONALMATRIX_TO_ADMAT,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: admat_sign_flip,

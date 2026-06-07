@@ -22,8 +22,8 @@ export type ParseDiagnosticKind =
   | "unknown-command"
   | "unknown-environment";
 
-export type RewriteClass = "standard" | "expand" | "drop" | "equiv";
-export type TransformProfile = "authoring" | "corpus" | "corpus-drop" | "equiv";
+export type NormalizationLevel = "standard" | "expand" | "drop" | "equiv";
+export type TransformProfile = "authoring" | "faithful" | "corpus" | "equiv";
 
 export interface Span {
   start: number;
@@ -411,7 +411,7 @@ export interface TransformConfigInput {
   flattenGroups?: FlattenGroupsConfigInput;
 }
 
-export type Profile = "authoring" | "corpus" | "corpus-drop" | "equiv";
+export type Profile = "authoring" | "faithful" | "corpus" | "equiv";
 
 export interface ParserOptions {
   packages?: string[];

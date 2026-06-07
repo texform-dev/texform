@@ -26,9 +26,9 @@ use crate::rewrite::{define_rule, env_targets};
 define_rule! {
     pub static VMATRIX_ENV_TO_VERT_MATRIX: VmatrixEnvToVertMatrixRule {
         key: Ams / "vmatrix-env-to-vert-matrix",
-        class: Equiv,
+        level: Equiv,
         summary: "Rewrite the fenced vmatrix environment to explicit vertical bars around a core matrix environment.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: env_targets![&ams::env::VMATRIX],
         consumes: RuleConsumes {
@@ -67,7 +67,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: VMATRIX_ENV_TO_VERT_MATRIX,
-        class: Equiv,
+        level: Equiv,
         examples: [
         {
             label: vmatrix,

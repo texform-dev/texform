@@ -5,8 +5,8 @@
 //! triggers:
 //!   - cmd:eqalign
 //! consumes:
-//!   eliminates: cmd:eqalign
-//!   touches: cmd:cr
+//!   eliminates: [cmd:eqalign, cmd:cr]
+//!   touches: null
 //! produces: env:aligned
 //! rewrite_patterns:
 //!   - {from: '\eqalign{#1 \cr #2}', to: '\begin{aligned} #1 \\ #2 \end{aligned}'}
@@ -22,9 +22,9 @@ use crate::rewrite::{cmd_targets, define_rule, env_targets};
 define_rule! {
     pub static EQALIGN_TO_ALIGNED_ENV: EqalignToAlignedEnvRule {
         key: Base / "eqalign-to-aligned-env",
-        class: Standard,
+        level: Standard,
         summary: "Rewrite eqalign to the standard aligned environment.",
-        safety: Semantic,
+        fidelity: Semantic,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::EQALIGN],
         consumes: RuleConsumes {
@@ -55,7 +55,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: EQALIGN_TO_ALIGNED_ENV,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: three_line_aligned_derivatives,

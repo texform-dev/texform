@@ -22,9 +22,9 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static QUANTITY_TO_QTY: QuantityToQtyRule {
         key: Physics / "quantity-to-qty",
-        class: Standard,
+        level: Standard,
         summary: "Collapse quantity to the shorter qty helper.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::QTY,
         aliases: [&physics::cmd::QUANTITY],
@@ -37,12 +37,12 @@ mod tests {
     use crate::ast::{ArgumentValue, Ast, Node, NodeId};
     use crate::parse::ParseContext;
     use crate::rewrite::transform_examples;
-    use crate::rewrite::{run_one_rule_for_test, RuleClass};
+    use crate::rewrite::{run_one_rule_for_test, NormalizationLevel};
 
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: QUANTITY_TO_QTY,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: qty_alias,
@@ -93,7 +93,7 @@ mod tests {
         let mut ast = crate::parse_to_ast_for_test(&parse_ctx, r"\quantity{a}", &texform_core::parse::ParseConfig::STRICT);
 
         let output =
-            run_one_rule_for_test(&mut ast, &parse_ctx, &QUANTITY_TO_QTY, RuleClass::Standard)
+            run_one_rule_for_test(&mut ast, &parse_ctx, &QUANTITY_TO_QTY, NormalizationLevel::Standard)
             .expect("quantity-to-qty transform should succeed");
 
         assert_eq!(output.rewrite.rules.len(), 1);

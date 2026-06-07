@@ -26,9 +26,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static SEMANTIC_DOTS_TO_CDOTS: SemanticDotsToCdotsRule {
         key: Base / "semantic-dots-to-cdots",
-        class: Expand,
+        level: Expand,
         summary: "Normalize semantic centered-dot ellipsis aliases to cdots for corpus form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::DOTSB, &base::chars::DOTSM, &base::chars::DOTSI],
         consumes: RuleConsumes {
@@ -62,7 +62,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: SEMANTIC_DOTS_TO_CDOTS,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: dotsb_character_alias,

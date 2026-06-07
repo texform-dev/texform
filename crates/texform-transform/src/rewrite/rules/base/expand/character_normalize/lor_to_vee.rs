@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static LOR_TO_VEE: LorToVeeRule {
         key: Base / "lor-to-vee",
-        class: Expand,
+        level: Expand,
         summary: "Normalize lor to vee for corpus form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::LOR],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: LOR_TO_VEE,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: lor_character_alias,

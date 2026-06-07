@@ -20,9 +20,9 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static VECTORARROW_TO_VA: VectorarrowToVaRule {
         key: Physics / "vectorarrow-to-va",
-        class: Standard,
+        level: Standard,
         summary: "Collapse vectorarrow to the short va helper.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::VA,
         aliases: [&physics::cmd::VECTORARROW],
@@ -37,7 +37,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: VECTORARROW_TO_VA,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: vectorarrow_trajectory,

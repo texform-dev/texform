@@ -28,9 +28,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static IDOTSINT_EXPAND: IdotsintExpandRule {
         key: Ams / "idotsint-expand",
-        class: Expand,
+        level: Expand,
         summary: "Expand idotsint to explicit repeated integral surfaces.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: cmd_targets![&ams::cmd::IDOTSINT],
         consumes: RuleConsumes {
@@ -222,7 +222,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: IDOTSINT_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: plain_multi_integral_domain,

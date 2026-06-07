@@ -33,9 +33,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static DV_TO_FRAC_D: DvToFracDRule {
         key: Physics / "dv-to-frac-d",
-        class: Expand,
+        level: Expand,
         summary: "Expand dv forms to explicit d-based derivative fractions.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::DV],
         consumes: RuleConsumes {
@@ -92,7 +92,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: DV_TO_FRAC_D,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: dv_kinematics,
@@ -124,7 +124,7 @@ mod tests {
 
     transform_examples! {
         rule: DV_TO_FRAC_D,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: dv_ordered_operator_form,

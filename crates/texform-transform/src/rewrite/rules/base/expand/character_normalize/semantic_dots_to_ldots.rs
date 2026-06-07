@@ -24,9 +24,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static SEMANTIC_DOTS_TO_LDOTS: SemanticDotsToLdotsRule {
         key: Base / "semantic-dots-to-ldots",
-        class: Expand,
+        level: Expand,
         summary: "Normalize semantic baseline ellipsis aliases to ldots for corpus form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::DOTSC, &base::chars::DOTSO],
         consumes: RuleConsumes {
@@ -60,7 +60,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: SEMANTIC_DOTS_TO_LDOTS,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: dotsc_character_alias,

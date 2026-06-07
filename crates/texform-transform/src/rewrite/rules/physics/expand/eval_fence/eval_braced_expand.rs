@@ -30,9 +30,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static EVAL_BRACED_EXPAND: EvalBracedExpandRule {
         key: Physics / "eval-braced-expand",
-        class: Expand,
+        level: Expand,
         summary: "Expand braced eval notation to the explicit fence-and-bar form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::EVAL],
         consumes: RuleConsumes {
@@ -106,7 +106,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: EVAL_BRACED_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: braced_eval_antiderivative,

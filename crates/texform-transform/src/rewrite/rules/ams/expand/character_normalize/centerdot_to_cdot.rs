@@ -23,9 +23,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static CENTERDOT_TO_CDOT: CenterdotToCdotRule {
         key: Ams / "centerdot-to-cdot",
-        class: Expand,
+        level: Expand,
         summary: "Normalize AMS centerdot to the base cdot character for corpus form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::CENTERDOT],
         consumes: RuleConsumes {
@@ -59,7 +59,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: CENTERDOT_TO_CDOT,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: centerdot_character_alias,

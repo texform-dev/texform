@@ -23,9 +23,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static VARTRIANGLE_TO_BIGTRIANGLEUP: VartriangleToBigtriangleupRule {
         key: Ams / "vartriangle-to-bigtriangleup",
-        class: Expand,
+        level: Expand,
         summary: "Normalize vartriangle to bigtriangleup for corpus form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::VARTRIANGLE],
         consumes: RuleConsumes {
@@ -59,7 +59,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: VARTRIANGLE_TO_BIGTRIANGLEUP,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: vartriangle_character_alias,

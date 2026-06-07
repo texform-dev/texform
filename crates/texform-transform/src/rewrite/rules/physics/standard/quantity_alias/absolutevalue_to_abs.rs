@@ -20,9 +20,9 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static ABSOLUTEVALUE_TO_ABS: AbsolutevalueToAbsRule {
         key: Physics / "absolutevalue-to-abs",
-        class: Standard,
+        level: Standard,
         summary: "Collapse absolutevalue to the shorter abs helper before fence expansion.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::ABS,
         aliases: [&physics::cmd::ABSOLUTEVALUE],
@@ -37,7 +37,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: ABSOLUTEVALUE_TO_ABS,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: abs_alias_power_context,

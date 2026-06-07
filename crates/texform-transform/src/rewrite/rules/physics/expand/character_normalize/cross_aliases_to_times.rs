@@ -27,9 +27,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static CROSS_ALIASES_TO_TIMES: CrossAliasesToTimesRule {
         key: Physics / "cross-aliases-to-times",
-        class: Expand,
+        level: Expand,
         summary: "Normalize physics cross-product glyph aliases to times for corpus form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: char_targets![&physics::chars::CP, &physics::chars::CROSS, &physics::chars::CROSSPRODUCT],
         consumes: RuleConsumes {
@@ -63,7 +63,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: CROSS_ALIASES_TO_TIMES,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: cp_character_alias,

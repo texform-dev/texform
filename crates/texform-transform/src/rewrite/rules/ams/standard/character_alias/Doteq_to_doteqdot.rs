@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static DOTEQ_TO_DOTEQDOT: DoteqToDoteqdotRule {
         key: Ams / "Doteq-to-doteqdot",
-        class: Standard,
+        level: Standard,
         summary: "Collapse Doteq to the descriptive doteqdot character.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::DOTEQ],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: DOTEQ_TO_DOTEQDOT,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: doteq_character_alias,

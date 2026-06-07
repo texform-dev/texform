@@ -32,9 +32,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static FDV_TO_FRAC_DELTA: FdvToFracDeltaRule {
         key: Physics / "fdv-to-frac-delta",
-        class: Expand,
+        level: Expand,
         summary: "Expand fdv forms to explicit delta-based derivative fractions.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::FDV],
         consumes: RuleConsumes {
@@ -90,7 +90,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: FDV_TO_FRAC_DELTA,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: fdv_euler_lagrange,
@@ -122,7 +122,7 @@ mod tests {
 
     transform_examples! {
         rule: FDV_TO_FRAC_DELTA,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: fdv_ordered_operator_form,

@@ -20,9 +20,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static GOODBREAK_DROP: GoodbreakDropRule {
         key: Base / "goodbreak-drop",
-        class: Drop,
+        level: Drop,
         summary: "Drop goodbreak as a pure linebreak hint during cleanup-oriented normalization.",
-        safety: Semantic,
+        fidelity: Semantic,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::GOODBREAK],
         consumes: RuleConsumes {
@@ -52,7 +52,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: GOODBREAK_DROP,
-        class: Drop,
+        level: Drop,
         examples: [
         {
             label: goodbreak_inside_polynomial,

@@ -5,8 +5,8 @@
 //! triggers:
 //!   - cmd:displaylines
 //! consumes:
-//!   eliminates: cmd:displaylines
-//!   touches: cmd:cr
+//!   eliminates: [cmd:displaylines, cmd:cr]
+//!   touches: null
 //! produces:
 //!   - env:gather
 //!   - cmd:notag
@@ -26,9 +26,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static DISPLAYLINES_TO_GATHER_ENV: DisplaylinesToGatherEnvRule {
         key: Base / "displaylines-to-gather-env",
-        class: Standard,
+        level: Standard,
         summary: "Rewrite displaylines to the standard gather environment.",
-        safety: Semantic,
+        fidelity: Semantic,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::DISPLAYLINES],
         consumes: RuleConsumes {
@@ -75,7 +75,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: DISPLAYLINES_TO_GATHER_ENV,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: multi_line_derivation,

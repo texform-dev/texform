@@ -16,7 +16,7 @@ have already been lowered to the canonical form for their current phase.
 
 ## Adding a New Rule
 
-1. Create a new `.rs` file under the package/class/group layout, for example
+1. Create a new `.rs` file under the package/level/group layout, for example
    `base/standard/over_family/over_to_frac.rs` or
    `physics/standard/trace_alias/trace_to_tr.rs`.
 2. Define and export exactly one `pub static MY_RULE: MyRuleType` where the
@@ -44,11 +44,11 @@ hand.
 Rules use this directory structure:
 
 ```text
-<package>/<class>/<directory_group>/<rule_file_stem>.rs
+<package>/<level>/<directory_group>/<rule_file_stem>.rs
 ```
 
 - `package` is the owning rule package, such as `base`, `ams`, or `physics`.
-- `class` is the preset selection class: `standard`, `expand`, `drop`, or
+- `level` is the normalization level: `standard`, `expand`, `drop`, or
   `equiv`.
 - `directory_group` is the Rust module path segment for a human-readable group.
   It must be snake_case. It is not part of `RuleMeta` and does not affect
@@ -185,9 +185,9 @@ still needs ordinary Rust code:
 define_rule! {
     pub static OVER_TO_FRAC: OverToFracRule {
         key: Base / "over-to-frac",
-        class: Standard,
+        level: Standard,
         summary: "Rewrite infix \\over into prefix \\frac",
-        safety: Semantic,
+        fidelity: Semantic,
         enabled_by_packages: [Base],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::OVER],
@@ -217,6 +217,17 @@ rule value.
 When IDE navigation matters more than keeping the body inline, use the
 `apply_fn: path` variant and move the rewrite code into a normal function.
 
+`fidelity` must not fall below the rule's level floor (`Lossless` > `Semantic` > `Lossy`):
+
+| Level | Default fidelity | Min fidelity |
+| --- | --- | --- |
+| `Standard` | `Lossless` | `Semantic` |
+| `Expand` | `Lossless` | `Semantic` |
+| `Drop` | `Semantic` | `Lossy` |
+| `Equiv` | `Lossless` | `Lossy` |
+
+`Lossy` skips automatic render validation and is currently unused by builtin rules.
+
 ## alias_rule!
 
 Use `alias_rule!` only for prefix-command canonicalization where aliases and
@@ -227,9 +238,9 @@ the rule only renames the command:
 alias_rule! {
     pub static TRACE_TO_TR: TraceToTrRule {
         key: Physics / "trace-to-tr",
-        class: Standard,
+        level: Standard,
         summary: "Canonicalize \\Tr, \\trace, and \\Trace into \\tr",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::TR,
         aliases: [
@@ -309,14 +320,14 @@ let context = TransformContext::from_build_config(
 let report = context.run(&mut ast, &parse_ctx)?;
 ```
 
-Profiles select rewrite rules by class before rule-specific filters are applied:
+Profiles select rewrite rules by normalization level before rule-specific filters are applied:
 
-- `Authoring` includes `RuleClass::Standard`
-- `Corpus` includes `RuleClass::Standard` and `RuleClass::Expand`
-- `CorpusDrop` includes `RuleClass::Standard`, `RuleClass::Expand`, and
-  `RuleClass::Drop`
-- `Equiv` includes all classes
+- `Authoring` includes `NormalizationLevel::Standard`
+- `Faithful` includes `NormalizationLevel::Standard` and `NormalizationLevel::Expand`
+- `Corpus` includes `NormalizationLevel::Standard`, `NormalizationLevel::Expand`, and
+  `NormalizationLevel::Drop`
+- `Equiv` includes all levels
 
 Rule-specific filters are allowlists or denylists inside the selected profile;
-they do not enable an `expand`, `drop`, or `equiv` rule when the profile class
+they do not enable an `expand`, `drop`, or `equiv` rule when the profile level
 set excludes it.

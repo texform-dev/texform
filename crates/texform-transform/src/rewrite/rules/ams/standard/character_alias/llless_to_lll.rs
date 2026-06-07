@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static LLLESS_TO_LLL: LllessToLllRule {
         key: Ams / "llless-to-lll",
-        class: Standard,
+        level: Standard,
         summary: "Collapse llless to the shorter lll character.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::LLLESS],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: LLLESS_TO_LLL,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: llless_character_alias,

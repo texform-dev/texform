@@ -41,6 +41,6 @@ pub use texform_transform::{
     Attr, AttrValue, AttributeFormCounts, AttributeSet, AttributeStat, FinalizeAstConfig,
     FinalizeAstReport, FinalizeAstStepReport, FinalizeAstStepReports, FlattenGroupsActionCounts,
     FlattenGroupsConfig, FlattenGroupsGuardCounts, FlattenGroupsReport, LowerAttributesConfig,
-    LowerAttributesReport, MathFontValue, RewriteReport, RewriteRuleStat, RuleClassSet, SizeValue,
-    StyleValue, TextFamily, TextSeries, TextShape, TransformReport,
+    LowerAttributesReport, MathFontValue, NormalizationLevelSet, RewriteReport, RewriteRuleStat,
+    SizeValue, StyleValue, TextFamily, TextSeries, TextShape, TransformReport,
 };

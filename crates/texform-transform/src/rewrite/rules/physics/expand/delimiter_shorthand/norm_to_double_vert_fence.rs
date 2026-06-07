@@ -31,9 +31,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static NORM_TO_DOUBLE_VERT_FENCE: NormToDoubleVertFenceRule {
         key: Physics / "norm-to-double-vert-fence",
-        class: Expand,
+        level: Expand,
         summary: "Rewrite norm to explicit double-vertical-bar fences.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::NORM],
         consumes: RuleConsumes {
@@ -85,7 +85,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: NORM_TO_DOUBLE_VERT_FENCE,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: norm,
@@ -111,7 +111,7 @@ mod tests {
 
     transform_examples! {
         rule: NORM_TO_DOUBLE_VERT_FENCE,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: norm_star_power_context,

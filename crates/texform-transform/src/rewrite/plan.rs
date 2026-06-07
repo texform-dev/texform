@@ -146,7 +146,7 @@ fn filter_rules(
         if !in_selection {
             continue;
         }
-        if !config.classes.contains(rule.meta().class) {
+        if !config.levels.contains(rule.meta().level) {
             continue;
         }
         if rule_touched_by_mutations(rule, parse_ctx.mutation_summary()) {
@@ -181,6 +181,12 @@ fn validate_rule_metadata(rule: &'static dyn RewriteRule) -> Result<(), PlanBuil
         return Err(PlanBuildError::InvalidRuleMetadata {
             rule: meta.key,
             message: "triggers must be non-empty",
+        });
+    }
+    if meta.fidelity < meta.level.min_fidelity() {
+        return Err(PlanBuildError::InvalidRuleMetadata {
+            rule: meta.key,
+            message: "fidelity must not be below the normalization level floor",
         });
     }
 

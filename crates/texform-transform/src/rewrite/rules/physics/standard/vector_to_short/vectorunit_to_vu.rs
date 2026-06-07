@@ -20,9 +20,9 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static VECTORUNIT_TO_VU: VectorunitToVuRule {
         key: Physics / "vectorunit-to-vu",
-        class: Standard,
+        level: Standard,
         summary: "Collapse vectorunit to the short vu helper.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::VU,
         aliases: [&physics::cmd::VECTORUNIT],
@@ -37,7 +37,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: VECTORUNIT_TO_VU,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: vectorunit_radial_basis,

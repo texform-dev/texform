@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static DOUBLECAP_TO_CAP: DoublecapToCapRule {
         key: Ams / "doublecap-to-Cap",
-        class: Standard,
+        level: Standard,
         summary: "Collapse doublecap to the more common Cap character.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::DOUBLECAP],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: DOUBLECAP_TO_CAP,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: doublecap_character_alias,

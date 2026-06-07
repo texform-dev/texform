@@ -21,9 +21,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static BMQTY_TO_MQTY: BmqtyToMqtyRule {
         key: Physics / "bmqty-to-mqty",
-        class: Expand,
+        level: Expand,
         summary: "Expand bmqty to the core mqty builder with bracket fence syntax.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::BMQTY],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: BMQTY_TO_MQTY,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: bmqty_gram_matrix,

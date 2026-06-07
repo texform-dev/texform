@@ -31,9 +31,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static PQTY_TO_PAREN_FENCE: PqtyToParenFenceRule {
         key: Physics / "pqty-to-paren-fence",
-        class: Expand,
+        level: Expand,
         summary: "Rewrite pqty to explicit parenthesis fences.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::PQTY],
         consumes: RuleConsumes {
@@ -85,7 +85,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: PQTY_TO_PAREN_FENCE,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: pqty,
@@ -105,7 +105,7 @@ mod tests {
 
     transform_examples! {
         rule: PQTY_TO_PAREN_FENCE,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: pqty_star_power_context,

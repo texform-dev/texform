@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static RIGHTARROW_TO_TO: RightarrowToToRule {
         key: Base / "rightarrow-to-to",
-        class: Expand,
+        level: Expand,
         summary: "Normalize rightarrow to the shorter to arrow character for corpus form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::RIGHTARROW],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: RIGHTARROW_TO_TO,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: rightarrow_character_alias,

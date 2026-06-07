@@ -27,9 +27,9 @@ fn zero_arg_command(name: &str) -> Node {
 define_rule! {
     pub static IMPLIES_TO_LONGRIGHTARROW: ImpliesToLongrightarrowRule {
         key: Ams / "implies-to-Longrightarrow",
-        class: Expand,
+        level: Expand,
         summary: "Collapse implies to the explicit AMS long-right-arrow spelling with source-backed spacing.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: cmd_targets![&ams::cmd::IMPLIES],
         consumes: RuleConsumes {
@@ -65,12 +65,12 @@ mod tests {
     use crate::ast::Node;
     use crate::parse::ParseContext;
     use crate::rewrite::transform_examples;
-    use crate::rewrite::{run_one_rule_for_test, RuleClass};
+    use crate::rewrite::{run_one_rule_for_test, NormalizationLevel};
 
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: IMPLIES_TO_LONGRIGHTARROW,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: implies_between_inequalities,
@@ -97,7 +97,7 @@ mod tests {
             &mut ast,
             &parse_ctx,
             &IMPLIES_TO_LONGRIGHTARROW,
-            RuleClass::Expand,
+            NormalizationLevel::Expand,
         )
             .expect("implies-to-Longrightarrow transform should succeed");
 
@@ -126,7 +126,7 @@ mod tests {
             &mut ast,
             &parse_ctx,
             &IMPLIES_TO_LONGRIGHTARROW,
-            RuleClass::Expand,
+            NormalizationLevel::Expand,
         )
             .expect("implies-to-Longrightarrow transform should succeed");
 

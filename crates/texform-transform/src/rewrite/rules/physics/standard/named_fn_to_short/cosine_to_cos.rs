@@ -20,9 +20,9 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static COSINE_TO_COS: CosineToCosRule {
         key: Physics / "cosine-to-cos",
-        class: Standard,
+        level: Standard,
         summary: "Collapse the long cosine helper to the standard cos operator.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &base::cmd::COS,
         aliases: [&physics::cmd::COSINE],
@@ -37,7 +37,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: COSINE_TO_COS,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: cosine_oscillation,

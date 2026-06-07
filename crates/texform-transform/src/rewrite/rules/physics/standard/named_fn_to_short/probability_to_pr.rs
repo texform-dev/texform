@@ -20,9 +20,9 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static PROBABILITY_TO_PR: ProbabilityToPrRule {
         key: Physics / "probability-to-pr",
-        class: Standard,
+        level: Standard,
         summary: "Collapse the long Probability helper to the standard Pr operator form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &base::cmd::PR,
         aliases: [&physics::cmd::PROBABILITY],
@@ -37,7 +37,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: PROBABILITY_TO_PR,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: probability_conditional,

@@ -5,8 +5,8 @@
 //! triggers:
 //!   - cmd:pmatrix
 //! consumes:
-//!   eliminates: cmd:pmatrix
-//!   touches: cmd:cr
+//!   eliminates: [cmd:pmatrix, cmd:cr]
+//!   touches: null
 //! produces: env:pmatrix
 //! rewrite_patterns:
 //!   - {from: '\pmatrix{#1 \cr #2}', to: '\begin{pmatrix} #1 \\ #2 \end{pmatrix}'}
@@ -22,9 +22,9 @@ use crate::rewrite::{cmd_targets, define_rule, env_targets};
 define_rule! {
     pub static PMATRIX_TO_PMATRIX_ENV: PmatrixToPmatrixEnvRule {
         key: Base / "pmatrix-to-pmatrix-env",
-        class: Standard,
+        level: Standard,
         summary: "Rewrite plain-TeX pmatrix to the standard pmatrix environment with row breaks.",
-        safety: Semantic,
+        fidelity: Semantic,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::PMATRIX],
         consumes: RuleConsumes {
@@ -55,7 +55,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: PMATRIX_TO_PMATRIX_ENV,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: three_by_three_parenthesized_matrix,

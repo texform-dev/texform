@@ -13,7 +13,6 @@
 //!   - cmd:limits
 //! rewrite_patterns:
 //!   - {from: '\buildrel #1 \over #2', to: '\mathrel{\mathop{#2}\limits^{#1}}'}
-//!   - {from: '\frac{\buildrel #1}{#2}', to: '\mathrel{\mathop{#2}\limits^{#1}}'}
 //! ```
 
 use texform_knowledge::builtin::base;
@@ -26,9 +25,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static BUILDREL_EXPAND: BuildrelExpandRule {
         key: Base / "buildrel-expand",
-        class: Expand,
+        level: Expand,
         summary: "Expand buildrel syntax to an explicit relation-class stacked operator form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::BUILDREL],
         consumes: RuleConsumes {
@@ -286,7 +285,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: BUILDREL_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: asymptotic_relation_stack,
@@ -306,7 +305,7 @@ mod tests {
 
     transform_examples! {
         rule: BUILDREL_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: braced_above_keeps_following_relation_operand,
@@ -348,14 +347,14 @@ mod tests {
     }
 
     #[test]
-    fn corpus_profile_uses_buildrel_rule_before_over_to_frac() {
-        // CORPUS enables both Base and Expand rules. This locks in the contract
+    fn faithful_profile_uses_buildrel_rule_before_over_to_frac() {
+        // Faithful enables both Standard and Expand rules. This locks in the contract
         // that buildrel-expand gets this TeX shape instead of over-to-frac.
         let parse_ctx = crate::parse::ParseContext::from_packages(&["base"]);
         let mut ast = crate::parse_to_ast_for_test(&parse_ctx, r"A_n \buildrel n\to\infty \over = B_n", &texform_core::parse::ParseConfig::STRICT);
 
         let context = crate::TransformContext::from_build_config(
-            crate::BuildConfig::profile(crate::Profile::Corpus),
+            crate::BuildConfig::profile(crate::Profile::Faithful),
             &parse_ctx,
         )
         .expect("transform context should build");

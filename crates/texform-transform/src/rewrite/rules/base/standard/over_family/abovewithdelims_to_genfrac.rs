@@ -22,9 +22,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static ABOVEWITHDELIMS_TO_GENFRAC: AbovewithdelimsToGenfracRule {
         key: Base / "abovewithdelims-to-genfrac",
-        class: Standard,
+        level: Standard,
         summary: "Rewrite abovewithdelims to an explicit genfrac with delimiters and thickness.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::ABOVEWITHDELIMS],
         consumes: RuleConsumes {
@@ -72,7 +72,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: ABOVEWITHDELIMS_TO_GENFRAC,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: delimited_thick_genfrac,

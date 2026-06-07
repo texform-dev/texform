@@ -23,9 +23,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static ZMAT_TO_XMAT: ZmatToXmatRule {
         key: Physics / "zmat-to-xmat",
-        class: Expand,
+        level: Expand,
         summary: "Expand zmat to the explicit xmat zero-filled builder.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::ZMAT],
         consumes: RuleConsumes {
@@ -66,7 +66,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: ZMAT_TO_XMAT,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: zmat_zero_matrix,

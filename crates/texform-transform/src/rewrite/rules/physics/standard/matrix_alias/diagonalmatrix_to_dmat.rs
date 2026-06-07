@@ -20,9 +20,9 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static DIAGONALMATRIX_TO_DMAT: DiagonalmatrixToDmatRule {
         key: Physics / "diagonalmatrix-to-dmat",
-        class: Standard,
+        level: Standard,
         summary: "Collapse diagonalmatrix to the shorter dmat helper.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::DMAT,
         aliases: [&physics::cmd::DIAGONALMATRIX],
@@ -37,7 +37,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: DIAGONALMATRIX_TO_DMAT,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: dmat_diagonal_spectrum,

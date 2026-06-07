@@ -23,9 +23,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static ATOP_TO_GENFRAC: AtopToGenfracRule {
         key: Base / "atop-to-genfrac",
-        class: Standard,
+        level: Standard,
         summary: "Rewrite infix atop to an explicit no-rule genfrac form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::ATOP],
         consumes: RuleConsumes {
@@ -67,7 +67,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: ATOP_TO_GENFRAC,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: no_rule_stacked_fraction,

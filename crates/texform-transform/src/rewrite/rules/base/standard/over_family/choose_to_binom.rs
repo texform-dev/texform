@@ -24,9 +24,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static CHOOSE_TO_BINOM: ChooseToBinomRule {
         key: Base / "choose-to-binom",
-        class: Standard,
+        level: Standard,
         summary: "Rewrite infix choose to an explicit binom command.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::CHOOSE],
         consumes: RuleConsumes {
@@ -60,7 +60,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: CHOOSE_TO_BINOM,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: offset_binomial,

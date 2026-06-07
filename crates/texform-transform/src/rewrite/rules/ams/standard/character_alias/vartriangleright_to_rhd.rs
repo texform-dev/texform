@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static VARTRIANGLERIGHT_TO_RHD: VartrianglerightToRhdRule {
         key: Ams / "vartriangleright-to-rhd",
-        class: Standard,
+        level: Standard,
         summary: "Collapse vartriangleright to the more common rhd character.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::VARTRIANGLERIGHT],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: VARTRIANGLERIGHT_TO_RHD,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: vartriangleright_character_alias,

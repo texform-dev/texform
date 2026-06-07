@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static LAND_TO_WEDGE: LandToWedgeRule {
         key: Base / "land-to-wedge",
-        class: Expand,
+        level: Expand,
         summary: "Normalize land to wedge for corpus form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::LAND],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: LAND_TO_WEDGE,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: land_character_alias,

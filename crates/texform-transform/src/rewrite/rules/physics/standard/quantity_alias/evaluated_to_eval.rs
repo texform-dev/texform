@@ -22,9 +22,9 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static EVALUATED_TO_EVAL: EvaluatedToEvalRule {
         key: Physics / "evaluated-to-eval",
-        class: Standard,
+        level: Standard,
         summary: "Collapse evaluated to the shorter eval helper before eval expansion.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::EVAL,
         aliases: [&physics::cmd::EVALUATED],
@@ -39,7 +39,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: EVALUATED_TO_EVAL,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: eval_alias_named_bounds,

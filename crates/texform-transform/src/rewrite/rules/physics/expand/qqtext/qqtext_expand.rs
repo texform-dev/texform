@@ -31,9 +31,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static QQTEXT_EXPAND: QqtextExpandRule {
         key: Physics / "qqtext-expand",
-        class: Expand,
+        level: Expand,
         summary: "Expand quick-quad prose helpers, including the star branch, to explicit text and quad spacing.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::QQTEXT, &physics::cmd::QQ],
         consumes: RuleConsumes {
@@ -122,7 +122,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: QQTEXT_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: qqtext_inline_clause,
@@ -155,12 +155,12 @@ mod tests {
     #[test]
     fn groups_qq_expansion_when_not_a_sibling_node() {
         use crate::parse::ParseContext;
-        use crate::rewrite::{run_one_rule_for_test, RuleClass};
+        use crate::rewrite::{run_one_rule_for_test, NormalizationLevel};
 
         let parse_ctx = ParseContext::from_packages(&["base", "physics"]);
         let mut ast = crate::parse_to_ast_for_test(&parse_ctx, r"\qq{if}^2", &texform_core::parse::ParseConfig::STRICT);
 
-        let output = run_one_rule_for_test(&mut ast, &parse_ctx, &QQTEXT_EXPAND, RuleClass::Expand)
+        let output = run_one_rule_for_test(&mut ast, &parse_ctx, &QQTEXT_EXPAND, NormalizationLevel::Expand)
             .expect("qqtext-expand transform should succeed");
 
         assert_eq!(output.rewrite.rules.len(), 1);

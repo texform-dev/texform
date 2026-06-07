@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static GGGTR_TO_GGG: GggtrToGggRule {
         key: Ams / "gggtr-to-ggg",
-        class: Standard,
+        level: Standard,
         summary: "Collapse gggtr to the shorter ggg character.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::GGGTR],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: GGGTR_TO_GGG,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: gggtr_character_alias,

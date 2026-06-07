@@ -23,9 +23,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static ROOT_OF_TO_SQRT: RootOfToSqrtRule {
         key: Base / "root-of-to-sqrt",
-        class: Standard,
+        level: Standard,
         summary: "Rewrite legacy root-of syntax to bracketed sqrt notation.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::ROOT],
         consumes: RuleConsumes {
@@ -129,12 +129,12 @@ mod tests {
     use crate::ast::{ArgumentKind, ArgumentValue};
     use crate::parse::ParseContext;
     use crate::rewrite::transform_examples;
-    use crate::rewrite::{run_one_rule_for_test, RuleClass};
+    use crate::rewrite::{run_one_rule_for_test, NormalizationLevel};
 
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: ROOT_OF_TO_SQRT,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: compound_root,
@@ -148,7 +148,7 @@ mod tests {
 
     transform_examples! {
         rule: ROOT_OF_TO_SQRT,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: braced_degree,
@@ -171,7 +171,7 @@ mod tests {
         let mut ast = crate::parse_to_ast_for_test(&parse_ctx, r"\root 1+2 \of {x+y}", &texform_core::parse::ParseConfig::STRICT);
 
         let output =
-            run_one_rule_for_test(&mut ast, &parse_ctx, &ROOT_OF_TO_SQRT, RuleClass::Standard)
+            run_one_rule_for_test(&mut ast, &parse_ctx, &ROOT_OF_TO_SQRT, NormalizationLevel::Standard)
             .expect("root-of-to-sqrt transform should succeed");
 
         assert_eq!(output.rewrite.rules.len(), 1);

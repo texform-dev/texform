@@ -21,9 +21,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static BREAK_TO_LINEBREAK: BreakToLinebreakRule {
         key: Base / "break-to-linebreak",
-        class: Standard,
+        level: Standard,
         summary: "Collapse break to the explicit linebreak command.",
-        safety: Semantic,
+        fidelity: Semantic,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::BREAK],
         consumes: RuleConsumes {
@@ -51,12 +51,12 @@ mod tests {
     use crate::ast::{ArgumentKind, ArgumentValue, Node};
     use crate::parse::ParseContext;
     use crate::rewrite::transform_examples;
-    use crate::rewrite::{run_one_rule_for_test, RuleClass};
+    use crate::rewrite::{run_one_rule_for_test, NormalizationLevel};
 
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: BREAK_TO_LINEBREAK,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: break_between_recurrence_lines,
@@ -74,7 +74,7 @@ mod tests {
         let mut ast = crate::parse_to_ast_for_test(&parse_ctx, r"\break", &texform_core::parse::ParseConfig::STRICT);
 
         let output =
-            run_one_rule_for_test(&mut ast, &parse_ctx, &BREAK_TO_LINEBREAK, RuleClass::Standard)
+            run_one_rule_for_test(&mut ast, &parse_ctx, &BREAK_TO_LINEBREAK, NormalizationLevel::Standard)
             .expect("break-to-linebreak transform should succeed");
 
         assert_eq!(output.rewrite.rules.len(), 1);

@@ -21,9 +21,9 @@ use crate::rewrite::{cmd_targets, define_rule, env_targets};
 define_rule! {
     pub static SUBSTACK_EXPAND: SubstackExpandRule {
         key: Ams / "substack-expand",
-        class: Expand,
+        level: Expand,
         summary: "Expand substack directly to the explicit centered subarray environment.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: cmd_targets![&ams::cmd::SUBSTACK],
         consumes: RuleConsumes {
@@ -76,7 +76,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: SUBSTACK_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: three_row_substack,
@@ -90,7 +90,7 @@ mod tests {
 
     transform_examples! {
         rule: SUBSTACK_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: preserves_linebreak_spacing_argument,

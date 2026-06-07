@@ -31,9 +31,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static BQTY_TO_BRACE_FENCE: BqtyToBraceFenceRule {
         key: Physics / "Bqty-to-brace-fence",
-        class: Expand,
+        level: Expand,
         summary: "Rewrite Bqty to explicit brace fences.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::BQTY_2],
         consumes: RuleConsumes {
@@ -85,7 +85,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: BQTY_TO_BRACE_FENCE,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: bqty,
@@ -105,7 +105,7 @@ mod tests {
 
     transform_examples! {
         rule: BQTY_TO_BRACE_FENCE,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: bqty_star_power_context,

@@ -100,6 +100,21 @@ fn transform_contract_does_not_globally_eliminate_cr_line_breaks() {
 }
 
 #[test]
+fn builtin_rule_fidelity_meets_level_floor() {
+    for rule in texform_transform::rewrite::all_rules() {
+        let meta = rule.meta();
+        assert!(
+            meta.fidelity >= meta.level.min_fidelity(),
+            "{} declares {:?} fidelity below {:?} floor ({:?})",
+            meta.key,
+            meta.fidelity,
+            meta.level,
+            meta.level.min_fidelity()
+        );
+    }
+}
+
+#[test]
 fn transform_contract_accepts_prime_after_standard_rewrite() {
     let parse_ctx = ParseContext::from_packages(&["base"]);
     let mut ast = parse_to_ast(&parse_ctx, r"\prime");

@@ -23,9 +23,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static JOIN_TO_BOWTIE: JoinToBowtieRule {
         key: Ams / "Join-to-bowtie",
-        class: Expand,
+        level: Expand,
         summary: "Normalize Join to bowtie for corpus form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::JOIN],
         consumes: RuleConsumes {
@@ -59,7 +59,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: JOIN_TO_BOWTIE,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: join_character_alias,

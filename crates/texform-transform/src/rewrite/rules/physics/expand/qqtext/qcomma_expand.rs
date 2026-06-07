@@ -27,9 +27,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static QCOMMA_EXPAND: QcommaExpandRule {
         key: Physics / "qcomma-expand",
-        class: Expand,
+        level: Expand,
         summary: "Expand quick-quad punctuation helpers to explicit text punctuation plus trailing quad spacing.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::QC, &physics::cmd::QCOMMA],
         consumes: RuleConsumes {
@@ -68,12 +68,12 @@ mod tests {
     use super::*;
     use crate::parse::ParseContext;
     use crate::rewrite::transform_examples;
-    use crate::rewrite::{run_one_rule_for_test, RuleClass};
+    use crate::rewrite::{run_one_rule_for_test, NormalizationLevel};
 
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: QCOMMA_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: qcomma_between_clauses,
@@ -96,7 +96,7 @@ mod tests {
         let parse_ctx = ParseContext::from_packages(&["base", "physics"]);
         let mut ast = crate::parse_to_ast_for_test(&parse_ctx, r"\qc^2", &texform_core::parse::ParseConfig::STRICT);
 
-        let output = run_one_rule_for_test(&mut ast, &parse_ctx, &QCOMMA_EXPAND, RuleClass::Expand)
+        let output = run_one_rule_for_test(&mut ast, &parse_ctx, &QCOMMA_EXPAND, NormalizationLevel::Expand)
             .expect("qcomma-expand transform should succeed");
 
         assert_eq!(output.rewrite.rules.len(), 1);

@@ -20,9 +20,9 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static VECTORBOLD_TO_VB: VectorboldToVbRule {
         key: Physics / "vectorbold-to-vb",
-        class: Standard,
+        level: Standard,
         summary: "Collapse vectorbold to the short vb helper.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::VB,
         aliases: [&physics::cmd::VECTORBOLD],
@@ -37,7 +37,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: VECTORBOLD_TO_VB,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: vectorbold_newton_law,

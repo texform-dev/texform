@@ -1,6 +1,6 @@
 from typing import Any, Literal, TypeAlias, TypedDict
 
-TransformProfile = Literal["authoring", "corpus", "corpus-drop", "equiv"]
+TransformProfile = Literal["authoring", "faithful", "corpus", "equiv"]
 RuntimeContentMode = Literal["math", "text"]
 ParseDiagnosticKind = Literal[
     "ambiguous-infix",
@@ -419,9 +419,9 @@ class TransformConfig:
     @classmethod
     def authoring(cls) -> "TransformConfig": ...
     @classmethod
-    def corpus(cls) -> "TransformConfig": ...
+    def faithful(cls) -> "TransformConfig": ...
     @classmethod
-    def corpus_drop(cls) -> "TransformConfig": ...
+    def corpus(cls) -> "TransformConfig": ...
     @classmethod
     def equiv(cls) -> "TransformConfig": ...
 

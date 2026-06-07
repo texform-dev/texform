@@ -24,9 +24,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static BRAKET_BRAKET_EXPAND: BraketBraketExpandRule {
         key: Braket / "braket-braket-expand",
-        class: Expand,
+        level: Expand,
         summary: "Expand braket to an explicit angle-bracket form with a middle bar.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Braket],
         triggers: cmd_targets![&braket::cmd::BRAKET],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: BRAKET_BRAKET_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: braket_package_single_argument,
@@ -72,7 +72,7 @@ mod tests {
 
     transform_examples! {
         rule: BRAKET_BRAKET_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: braket_package_overlap_without_bar,

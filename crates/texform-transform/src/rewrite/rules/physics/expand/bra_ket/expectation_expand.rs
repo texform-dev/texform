@@ -32,9 +32,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static EXPECTATION_EXPAND: ExpectationExpandRule {
         key: Physics / "expectation-expand",
-        class: Expand,
+        level: Expand,
         summary: "Expand expectation-value helpers to explicit angle brackets.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::EV],
         consumes: RuleConsumes {
@@ -91,7 +91,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: EXPECTATION_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: expectation_state_label,

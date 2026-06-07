@@ -15,8 +15,8 @@ fn rule_key_from_name_rejects_unknown_names() {
 fn public_profiles_enable_finalize_ast_by_default() {
     for profile in [
         texform::Profile::Authoring,
+        texform::Profile::Faithful,
         texform::Profile::Corpus,
-        texform::Profile::CorpusDrop,
         texform::Profile::Equiv,
     ] {
         assert!(

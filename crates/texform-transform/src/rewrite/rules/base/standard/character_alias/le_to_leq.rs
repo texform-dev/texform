@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static LE_TO_LEQ: LeToLeqRule {
         key: Base / "le-to-leq",
-        class: Standard,
+        level: Standard,
         summary: "Collapse le to the explicit leq relation character.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::LE],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: LE_TO_LEQ,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: le_character_alias,

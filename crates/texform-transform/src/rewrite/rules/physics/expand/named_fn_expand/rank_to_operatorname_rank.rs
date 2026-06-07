@@ -23,9 +23,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static RANK_TO_OPERATORNAME_RANK: RankToOperatornameRankRule {
         key: Physics / "rank-to-operatorname-rank",
-        class: Expand,
+        level: Expand,
         summary: "Rewrite rank to an explicit operatorname form instead of a package-local alias.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::RANK],
         consumes: RuleConsumes {
@@ -71,12 +71,12 @@ mod tests {
     use crate::ast::{ArgumentKind, ArgumentValue};
     use crate::parse::ParseContext;
     use crate::rewrite::transform_examples;
-    use crate::rewrite::{run_one_rule_for_test, RuleClass};
+    use crate::rewrite::{run_one_rule_for_test, NormalizationLevel};
 
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: RANK_TO_OPERATORNAME_RANK,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: rank_bare_operator,
@@ -97,7 +97,7 @@ mod tests {
             &mut ast,
             &parse_ctx,
             &RANK_TO_OPERATORNAME_RANK,
-            RuleClass::Expand,
+            NormalizationLevel::Expand,
         )
             .expect("rank-to-operatorname-rank transform should succeed");
 

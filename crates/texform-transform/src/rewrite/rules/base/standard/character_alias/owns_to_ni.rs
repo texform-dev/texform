@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static OWNS_TO_NI: OwnsToNiRule {
         key: Base / "owns-to-ni",
-        class: Standard,
+        level: Standard,
         summary: "Collapse owns to the shorter ni character.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::OWNS],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: OWNS_TO_NI,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: owns_character_alias,

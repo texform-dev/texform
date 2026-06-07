@@ -19,9 +19,9 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static TRACE_TO_TR: TraceToTrRule {
         key: Physics / "trace-to-tr",
-        class: Standard,
+        level: Standard,
         summary: "Collapse lowercase trace to the local tr anchor.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::TR,
         aliases: [
@@ -38,7 +38,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: TRACE_TO_TR,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: trace_density_operator,

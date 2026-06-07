@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static TRIANGLERIGHTEQ_TO_UNRHD: TrianglerighteqToUnrhdRule {
         key: Ams / "trianglerighteq-to-unrhd",
-        class: Standard,
+        level: Standard,
         summary: "Collapse trianglerighteq to the more common unrhd character.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::TRIANGLERIGHTEQ],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: TRIANGLERIGHTEQ_TO_UNRHD,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: trianglerighteq_character_alias,

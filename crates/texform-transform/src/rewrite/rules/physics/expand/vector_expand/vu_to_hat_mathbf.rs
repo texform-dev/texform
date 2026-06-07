@@ -27,9 +27,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static VU_TO_HAT_MATHBF: VuToHatMathbfRule {
         key: Physics / "vu-to-hat-mathbf",
-        class: Expand,
+        level: Expand,
         summary: "Canonicalize vu to an explicit hat-wrapped mathbf form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::VU],
         consumes: RuleConsumes {
@@ -61,7 +61,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: VU_TO_HAT_MATHBF,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: vu_boundary_normal,

@@ -22,9 +22,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static NATURALLOGARITHM_TO_LN: NaturallogarithmToLnRule {
         key: Physics / "naturallogarithm-to-ln",
-        class: Standard,
+        level: Standard,
         summary: "Collapse the long natural logarithm helper to the standard ln operator.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::NATURALLOGARITHM],
         consumes: RuleConsumes {
@@ -65,7 +65,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: NATURALLOGARITHM_TO_LN,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: naturallogarithm_entropy,

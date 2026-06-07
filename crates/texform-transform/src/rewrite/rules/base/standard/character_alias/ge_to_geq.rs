@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static GE_TO_GEQ: GeToGeqRule {
         key: Base / "ge-to-geq",
-        class: Standard,
+        level: Standard,
         summary: "Collapse ge to the explicit geq relation character.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::GE],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: GE_TO_GEQ,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: ge_character_alias,

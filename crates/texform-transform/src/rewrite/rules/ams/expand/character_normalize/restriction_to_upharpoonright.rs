@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static RESTRICTION_TO_UPHARPOONRIGHT: RestrictionToUpharpoonrightRule {
         key: Ams / "restriction-to-upharpoonright",
-        class: Expand,
+        level: Expand,
         summary: "Normalize restriction to upharpoonright for corpus form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::RESTRICTION],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: RESTRICTION_TO_UPHARPOONRIGHT,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: restriction_character_alias,

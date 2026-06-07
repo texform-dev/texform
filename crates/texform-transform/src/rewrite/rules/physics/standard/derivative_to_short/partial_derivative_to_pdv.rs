@@ -29,9 +29,9 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static PARTIAL_DERIVATIVE_TO_PDV: PartialDerivativeToPdvRule {
         key: Physics / "partial-derivative-to-pdv",
-        class: Standard,
+        level: Standard,
         summary: "Collapse long partial derivative names to the pdv command.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::PDV,
         aliases: [
@@ -49,7 +49,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: PARTIAL_DERIVATIVE_TO_PDV,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: pdv_alias_jacobian_entry,

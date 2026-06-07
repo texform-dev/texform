@@ -5,8 +5,8 @@
 //! triggers:
 //!   - cmd:eqalignno
 //! consumes:
-//!   eliminates: cmd:eqalignno
-//!   touches: cmd:cr
+//!   eliminates: [cmd:eqalignno, cmd:cr]
+//!   touches: null
 //! produces:
 //!   - env:align
 //!   - cmd:tag
@@ -29,9 +29,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static EQALIGNNO_TO_ALIGN_ENV: EqalignnoToAlignEnvRule {
         key: Base / "eqalignno-to-align-env",
-        class: Standard,
+        level: Standard,
         summary: "Rewrite eqalignno to the standard align environment.",
-        safety: Semantic,
+        fidelity: Semantic,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::EQALIGNNO],
         consumes: RuleConsumes {
@@ -121,12 +121,12 @@ fn text_node_from_math_nodes(
 mod tests {
     use super::*;
     use crate::rewrite::transform_examples;
-    use crate::rewrite::{run_one_rule_for_test, RewriteError, RuleClass, RuleError};
+    use crate::rewrite::{run_one_rule_for_test, RewriteError, NormalizationLevel, RuleError};
 
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: EQALIGNNO_TO_ALIGN_ENV,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: eqalignno_right_tag_branch,
@@ -147,7 +147,7 @@ mod tests {
             &mut ast,
             &parse_ctx,
             &EQALIGNNO_TO_ALIGN_ENV,
-            RuleClass::Standard,
+            NormalizationLevel::Standard,
         )
             .expect_err("scripted equation tags are not valid text-like tag content");
 

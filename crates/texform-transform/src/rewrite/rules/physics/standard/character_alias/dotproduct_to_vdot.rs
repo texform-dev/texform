@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static DOTPRODUCT_TO_VDOT: DotproductToVdotRule {
         key: Physics / "dotproduct-to-vdot",
-        class: Standard,
+        level: Standard,
         summary: "Collapse dotproduct to the shorter vdot character alias.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: char_targets![&physics::chars::DOTPRODUCT],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: DOTPRODUCT_TO_VDOT,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: dotproduct_character_alias,

@@ -141,29 +141,29 @@ The engine runs the following ordered phases. `Profile` / `BuildConfig` decide w
 3. **LowerAttributes (post)** — re-canonicalize attribute markers produced by rewrite rules.
 4. **FlattenGroups** — remove redundant explicit and implicit groups after earlier phases have finished producing canonical structure.
 
-### Rule Classes
+### Normalization Levels
 
-Every transform rule belongs to exactly one **class**. The class captures the rule's intent rather than its mechanism, and consumers choose which classes to apply by selecting a profile.
+Every transform rule belongs to exactly one ordered **normalization level**. Each step sacrifices a little more: `Standard` keeps author intent, `Expand` unfolds package and convenience forms while preserving layout, `Drop` removes layout hints for corpus data, and `Equiv` targets visual equivalence.
 
-| Class      | Intent |
+| Level      | Intent |
 |------------|--------|
 | `Standard` | Uncontroversial author-facing standardization: legacy-syntax modernization, typo fixes, alias canonicalization, cross-package anchor unification. Does not collapse stylistic choices that an author may legitimately make. |
-| `Expand`   | Corpus-oriented normal form: rewrites convenience commands, semantic macros, package-specific commands, and spacing primitives into more universal structures. Output remains readable LaTeX and preserves layout information. |
-| `Drop`     | Removes non-ink, metadata, and layout hints a corpus should not learn — linebreak preferences, invisible layout nodes, and similar caller-opt-in deletions. |
-| `Equiv`    | Aggressive normalization tuned for equivalence comparison; may sacrifice common idioms or author intent for higher recall. Rewrites rather than deletes. |
+| `Expand`   | Render-faithful normal form: rewrites convenience commands, semantic macros, package-specific commands, and spacing primitives into more universal structures. Output remains readable LaTeX and preserves layout information. |
+| `Drop`     | Removes non-ink, metadata, and layout hints a corpus should not learn: linebreak preferences, invisible layout nodes, and similar caller-opt-in deletions. |
+| `Equiv`    | Aggressive normalization tuned for equivalence comparison; may sacrifice common idioms or author intent for higher recall. |
 
-A rule's class is decided by its immediate rewrite intent, not by what later rules might do to the result.
+A rule's level is decided by its immediate rewrite intent, not by what later rules might do to the result.
 
 ### Profiles
 
-`Profile` bundles rule classes for common downstream scenarios:
+`Profile` bundles normalization levels and runtime defaults for common downstream scenarios:
 
-| Profile       | Classes                                  | Target scenario                                              |
-|---------------|------------------------------------------|--------------------------------------------------------------|
-| `Authoring`   | `Standard`                               | Polished author-facing formatting; stylistic choices kept.   |
-| `Corpus`      | `Standard` + `Expand`                    | MER input or LLM pretraining corpus; layout info preserved.  |
-| `CorpusDrop`  | `Standard` + `Expand` + `Drop`           | Stronger corpus cleaning; drops linebreak/layout hints.      |
-| `Equiv`       | `Standard` + `Expand` + `Drop` + `Equiv` | Aggressive normalization for formula equivalence comparison. |
+| Profile | Normalization levels | `flatten_groups` | Target scenario |
+| --- | --- | --- | --- |
+| `Authoring` | `Standard` | `STRICT` | Polished author-facing formatting; stylistic choices kept. |
+| `Faithful` | `Standard` + `Expand` | `STRICT` | Render-faithful corpus normalization and correctness analysis. |
+| `Corpus` | `Standard` + `Expand` + `Drop` | `STRUCTURAL_ONLY` | MER training data normalization; layout hints dropped. |
+| `Equiv` | `Standard` + `Expand` + `Drop` + `Equiv` | `STRUCTURAL_ONLY` | Formula equivalence comparison. |
 
 See `crates/texform-transform/src/rewrite/rules/README.md` for rule authoring conventions.
 

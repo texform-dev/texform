@@ -21,9 +21,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static NEWLINE_TO_LINEBREAK: NewlineToLinebreakRule {
         key: Base / "newline-to-linebreak",
-        class: Standard,
+        level: Standard,
         summary: "Collapse newline to the explicit linebreak command.",
-        safety: Semantic,
+        fidelity: Semantic,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::NEWLINE],
         consumes: RuleConsumes {
@@ -51,12 +51,12 @@ mod tests {
     use crate::ast::{ArgumentKind, ArgumentValue, Node};
     use crate::parse::ParseContext;
     use crate::rewrite::transform_examples;
-    use crate::rewrite::{run_one_rule_for_test, RuleClass};
+    use crate::rewrite::{run_one_rule_for_test, NormalizationLevel};
 
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: NEWLINE_TO_LINEBREAK,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: newline_between_equation_lines,
@@ -77,7 +77,7 @@ mod tests {
             &mut ast,
             &parse_ctx,
             &NEWLINE_TO_LINEBREAK,
-            RuleClass::Standard,
+            NormalizationLevel::Standard,
         )
             .expect("newline-to-linebreak transform should succeed");
 

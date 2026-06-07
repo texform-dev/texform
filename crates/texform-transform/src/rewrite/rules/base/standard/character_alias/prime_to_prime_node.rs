@@ -21,9 +21,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static PRIME_TO_PRIME_NODE: PrimeToPrimeNodeRule {
         key: Base / "prime-to-prime-node",
-        class: Standard,
+        level: Standard,
         summary: "Convert the prime control sequence to the Prime AST node.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::PRIME],
         consumes: RuleConsumes {
@@ -54,7 +54,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: PRIME_TO_PRIME_NODE,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: script_superscript_shorthand,

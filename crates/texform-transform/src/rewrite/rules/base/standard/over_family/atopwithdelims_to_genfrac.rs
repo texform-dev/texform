@@ -22,9 +22,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static ATOPWITHDELIMS_TO_GENFRAC: AtopwithdelimsToGenfracRule {
         key: Base / "atopwithdelims-to-genfrac",
-        class: Standard,
+        level: Standard,
         summary: "Rewrite atopwithdelims to an explicit delimited no-rule genfrac form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::ATOPWITHDELIMS],
         consumes: RuleConsumes {
@@ -70,7 +70,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: ATOPWITHDELIMS_TO_GENFRAC,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: delimited_no_rule_stack,

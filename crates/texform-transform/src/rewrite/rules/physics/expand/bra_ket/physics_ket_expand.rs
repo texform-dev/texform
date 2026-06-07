@@ -25,9 +25,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static PHYSICS_KET_EXPAND: PhysicsKetExpandRule {
         key: Physics / "physics-ket-expand",
-        class: Expand,
+        level: Expand,
         summary: "Expand ket to an explicit bar and angle-bracket fence form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::KET],
         consumes: RuleConsumes {
@@ -66,7 +66,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: PHYSICS_KET_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: ket_eigenvalue,

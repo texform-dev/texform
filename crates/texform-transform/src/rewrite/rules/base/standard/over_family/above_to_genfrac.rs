@@ -23,9 +23,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static ABOVE_TO_GENFRAC: AboveToGenfracRule {
         key: Base / "above-to-genfrac",
-        class: Standard,
+        level: Standard,
         summary: "Rewrite above to a thickness-preserving genfrac form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::ABOVE],
         consumes: RuleConsumes {
@@ -68,7 +68,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: ABOVE_TO_GENFRAC,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: rule_thickness_genfrac,

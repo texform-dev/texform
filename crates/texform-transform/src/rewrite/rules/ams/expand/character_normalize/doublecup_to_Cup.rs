@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static DOUBLECUP_TO_CUP: DoublecupToCupRule {
         key: Ams / "doublecup-to-Cup",
-        class: Expand,
+        level: Expand,
         summary: "Normalize doublecup to Cup for corpus form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::DOUBLECUP],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: DOUBLECUP_TO_CUP,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: doublecup_character_alias,

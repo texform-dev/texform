@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static LNOT_TO_NEG: LnotToNegRule {
         key: Base / "lnot-to-neg",
-        class: Standard,
+        level: Standard,
         summary: "Collapse lnot to the standard neg character.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::LNOT],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: LNOT_TO_NEG,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: lnot_character_alias,

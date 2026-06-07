@@ -26,9 +26,9 @@ use crate::rewrite::{define_rule, env_targets};
 define_rule! {
     pub static PMATRIX_ENV_TO_PAREN_MATRIX: PmatrixEnvToParenMatrixRule {
         key: Ams / "pmatrix-env-to-paren-matrix",
-        class: Equiv,
+        level: Equiv,
         summary: "Rewrite the fenced pmatrix environment to explicit parens around a core matrix environment.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Ams],
         triggers: env_targets![&ams::env::PMATRIX],
         consumes: RuleConsumes {
@@ -67,7 +67,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: PMATRIX_ENV_TO_PAREN_MATRIX,
-        class: Equiv,
+        level: Equiv,
         examples: [
         {
             label: pmatrix,

@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static GETS_TO_LEFTARROW: GetsToLeftarrowRule {
         key: Base / "gets-to-leftarrow",
-        class: Expand,
+        level: Expand,
         summary: "Normalize gets to leftarrow for corpus form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::GETS],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: GETS_TO_LEFTARROW,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: gets_character_alias,

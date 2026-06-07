@@ -23,9 +23,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static OVER_TO_FRAC: OverToFracRule {
         key: Base / "over-to-frac",
-        class: Standard,
+        level: Standard,
         summary: "Rewrite infix over to an explicit frac command.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::OVER],
         consumes: RuleConsumes {
@@ -62,12 +62,12 @@ mod tests {
     use crate::ast::{ArgumentKind, ArgumentValue, Node};
     use crate::parse::ParseContext;
     use crate::rewrite::transform_examples;
-    use crate::rewrite::{run_one_rule_for_test, RuleClass};
+    use crate::rewrite::{run_one_rule_for_test, NormalizationLevel};
 
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: OVER_TO_FRAC,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: stacked_over_fraction,
@@ -91,7 +91,7 @@ mod tests {
         let mut ast = crate::parse_to_ast_for_test(&parse_ctx, r"a \over b", &texform_core::parse::ParseConfig::STRICT);
 
         let output =
-            run_one_rule_for_test(&mut ast, &parse_ctx, &OVER_TO_FRAC, RuleClass::Standard)
+            run_one_rule_for_test(&mut ast, &parse_ctx, &OVER_TO_FRAC, NormalizationLevel::Standard)
             .expect("over-to-frac transform should succeed");
 
         assert_eq!(output.rewrite.iterations, 2);

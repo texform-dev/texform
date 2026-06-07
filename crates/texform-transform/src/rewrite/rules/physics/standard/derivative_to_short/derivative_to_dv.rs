@@ -22,9 +22,9 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static DERIVATIVE_TO_DV: DerivativeToDvRule {
         key: Physics / "derivative-to-dv",
-        class: Standard,
+        level: Standard,
         summary: "Collapse derivative to the compact dv command.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::DV,
         aliases: [&physics::cmd::DERIVATIVE],
@@ -39,7 +39,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: DERIVATIVE_TO_DV,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: dv_alias_embedded,

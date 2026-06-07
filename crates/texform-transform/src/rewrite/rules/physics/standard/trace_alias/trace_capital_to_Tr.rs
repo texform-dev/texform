@@ -19,9 +19,9 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static TRACE_CAPITAL_TO_TR: TraceCapitalToTrRule {
         key: Physics / "trace-capital-to-Tr",
-        class: Standard,
+        level: Standard,
         summary: "Collapse capital Trace to the local Tr anchor.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::TR_2,
         aliases: [
@@ -35,13 +35,13 @@ mod tests {
     use super::*;
     use crate::parse::ParseContext;
     use crate::rewrite::transform_examples;
-    use crate::rewrite::{run_one_rule_for_test, RuleClass};
+    use crate::rewrite::{run_one_rule_for_test, NormalizationLevel};
     use crate::serialize::serialize;
 
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: TRACE_CAPITAL_TO_TR,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: trace_matrix_square,
@@ -61,7 +61,7 @@ mod tests {
             &mut ast,
             &parse_ctx,
             &TRACE_CAPITAL_TO_TR,
-            RuleClass::Standard,
+            NormalizationLevel::Standard,
         )
             .expect("transform should succeed");
         let expected_ast = crate::parse_to_ast_for_test(&parse_ctx, r"\Tr(M^2)=1", &texform_core::parse::ParseConfig::STRICT);

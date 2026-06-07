@@ -5,8 +5,8 @@
 //! triggers:
 //!   - cmd:matrix
 //! consumes:
-//!   eliminates: cmd:matrix
-//!   touches: cmd:cr
+//!   eliminates: [cmd:matrix, cmd:cr]
+//!   touches: null
 //! produces: env:matrix
 //! rewrite_patterns:
 //!   - {from: '\matrix{#1 \cr #2}', to: '\begin{matrix} #1 \\ #2 \end{matrix}'}
@@ -22,9 +22,9 @@ use crate::rewrite::{cmd_targets, define_rule, env_targets};
 define_rule! {
     pub static MATRIX_TO_MATRIX_ENV: MatrixToMatrixEnvRule {
         key: Base / "matrix-to-matrix-env",
-        class: Standard,
+        level: Standard,
         summary: "Rewrite plain-TeX matrix to the standard matrix environment with row breaks.",
-        safety: Semantic,
+        fidelity: Semantic,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::MATRIX],
         consumes: RuleConsumes {
@@ -55,7 +55,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: MATRIX_TO_MATRIX_ENV,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: three_by_three_upper_triangular,

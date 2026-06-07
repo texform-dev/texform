@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static NE_TO_NEQ: NeToNeqRule {
         key: Base / "ne-to-neq",
-        class: Standard,
+        level: Standard,
         summary: "Collapse ne to the explicit neq relation character.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::NE],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: NE_TO_NEQ,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: ne_character_alias,

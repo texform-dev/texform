@@ -22,9 +22,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static OVERWITHDELIMS_TO_GENFRAC: OverwithdelimsToGenfracRule {
         key: Base / "overwithdelims-to-genfrac",
-        class: Standard,
+        level: Standard,
         summary: "Rewrite overwithdelims to an explicit genfrac with delimiters.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::OVERWITHDELIMS],
         consumes: RuleConsumes {
@@ -70,7 +70,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: OVERWITHDELIMS_TO_GENFRAC,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: parenthesized_genfrac,

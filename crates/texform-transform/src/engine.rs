@@ -63,22 +63,21 @@ pub(crate) fn execute(
         flatten_groups::run(ast, &cfg.flatten_groups, &mut report.flatten_groups);
     }
 
-    if cfg.rewrite_enabled {
-        if let Some(violation) = rewrite::collect_eliminated_violations(
+    if cfg.rewrite_enabled
+        && let Some(violation) = rewrite::collect_eliminated_violations(
             ast,
             parse_ctx,
             tctx.rewrite_plan().eliminated_forms(),
         )
         .into_iter()
         .next()
-        {
-            return Err(TransformError::Rewrite(
-                rewrite::RewriteError::ContractViolation {
-                    target: violation.target,
-                    node_name: violation.node_name,
-                },
-            ));
-        }
+    {
+        return Err(TransformError::Rewrite(
+            rewrite::RewriteError::ContractViolation {
+                target: violation.target,
+                node_name: violation.node_name,
+            },
+        ));
     }
 
     Ok(report)
@@ -94,8 +93,8 @@ mod tests {
     use crate::parse::{ParseConfig, ParseContext};
     use crate::rewrite::rule_context::RuleContext;
     use crate::rewrite::{
-        PackageName, Plan as RewritePlan, RewriteRule, RuleClass, RuleConsumes, RuleEffect,
-        RuleKey, RuleMeta, RuleProduces, RuleSafety, RuleTarget,
+        NormalizationLevel, PackageName, Plan as RewritePlan, RewriteRule, RuleConsumes,
+        RuleEffect, RuleFidelity, RuleKey, RuleMeta, RuleProduces, RuleTarget,
     };
     use crate::serialize::serialize;
 
@@ -158,9 +157,9 @@ mod tests {
             static META: RuleMeta = RuleMeta {
                 key: VbToMathbfForContractTest::KEY,
                 enabled_by_packages: &[PackageName::Physics],
-                class: RuleClass::Expand,
+                level: NormalizationLevel::Expand,
                 summary: "Create a bold prefix that the post LowerAttributes pass removes.",
-                safety: RuleSafety::Lossless,
+                fidelity: RuleFidelity::Lossless,
                 triggers: &[RuleTarget::Command(&physics::cmd::VB)],
                 consumes: RuleConsumes {
                     eliminates: &[RuleTarget::Command(&base::cmd::MATHBF)],

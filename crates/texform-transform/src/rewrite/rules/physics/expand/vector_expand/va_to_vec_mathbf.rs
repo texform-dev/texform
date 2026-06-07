@@ -27,9 +27,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static VA_TO_VEC_MATHBF: VaToVecMathbfRule {
         key: Physics / "va-to-vec-mathbf",
-        class: Expand,
+        level: Expand,
         summary: "Canonicalize va to an explicit vec-wrapped mathbf form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::VA],
         consumes: RuleConsumes {
@@ -61,7 +61,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: VA_TO_VEC_MATHBF,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: va_angular_momentum,

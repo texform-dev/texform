@@ -24,9 +24,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static STACKREL_EXPAND: StackrelExpandRule {
         key: Base / "stackrel-expand",
-        class: Expand,
+        level: Expand,
         summary: "Expand stackrel to an explicit relation-class stacked operator form.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::STACKREL],
         consumes: RuleConsumes {
@@ -61,7 +61,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: STACKREL_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: stackrel_relation_context,
@@ -75,7 +75,7 @@ mod tests {
 
     transform_examples! {
         rule: STACKREL_EXPAND,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: stackrel_preserves_grouped_above_content,

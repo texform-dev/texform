@@ -335,13 +335,13 @@ impl PyTransformConfig {
     }
 
     #[classmethod]
-    fn corpus(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        Self::from_profile(CoreProfile::Corpus)
+    fn faithful(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
+        Self::from_profile(CoreProfile::Faithful)
     }
 
     #[classmethod]
-    fn corpus_drop(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        Self::from_profile(CoreProfile::CorpusDrop)
+    fn corpus(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
+        Self::from_profile(CoreProfile::Corpus)
     }
 
     #[classmethod]
@@ -399,8 +399,8 @@ fn parse_context(packages: Option<Vec<String>>) -> PyResult<texform::Parser> {
 fn profile_from_name(name: &str) -> PyResult<texform::Profile> {
     match name {
         "authoring" => Ok(texform::Profile::Authoring),
+        "faithful" => Ok(texform::Profile::Faithful),
         "corpus" => Ok(texform::Profile::Corpus),
-        "corpus-drop" => Ok(texform::Profile::CorpusDrop),
         "equiv" => Ok(texform::Profile::Equiv),
         other => Err(ParseError::new_err(format!(
             "unknown transform profile: {other}"
@@ -2645,13 +2645,25 @@ mod tests {
     }
 
     #[test]
-    fn python_module_corpus_drop_disables_spacing_guards() {
+    fn python_module_profile_names_use_faithful_and_reject_corpus_drop() {
         Python::attach(|py| {
             let module = PyModule::new(py, "_native").expect("module");
             _native(&module).expect("init module");
 
             let config_cls = module.getattr("TransformConfig").unwrap();
-            let config = config_cls.call_method0("corpus_drop").unwrap();
+            assert!(config_cls.call_method0("corpus_drop").is_err());
+
+            let faithful = config_cls.call_method0("faithful").unwrap();
+            let faithful_flatten_groups = faithful.getattr("flatten_groups").unwrap();
+            assert!(
+                faithful_flatten_groups
+                    .getattr("preserve_group_adjacent_to_command_like")
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap()
+            );
+
+            let config = config_cls.call_method0("corpus").unwrap();
             let flatten_groups = config.getattr("flatten_groups").unwrap();
 
             assert!(

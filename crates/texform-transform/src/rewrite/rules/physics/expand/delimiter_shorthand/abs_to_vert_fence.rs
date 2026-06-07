@@ -31,9 +31,9 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static ABS_TO_VERT_FENCE: AbsToVertFenceRule {
         key: Physics / "abs-to-vert-fence",
-        class: Expand,
+        level: Expand,
         summary: "Rewrite abs to explicit vertical bar fences.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::ABS],
         consumes: RuleConsumes {
@@ -85,7 +85,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: ABS_TO_VERT_FENCE,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: abs_inequality,
@@ -111,7 +111,7 @@ mod tests {
 
     transform_examples! {
         rule: ABS_TO_VERT_FENCE,
-        class: Expand,
+        level: Expand,
         examples: [
         {
             label: abs_star_power_context,

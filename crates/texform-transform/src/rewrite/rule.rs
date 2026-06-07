@@ -8,10 +8,10 @@
 //!
 //! - **Package** ([`PackageName`]) — the owning package namespace (base, ams,
 //!   physics).
-//! - **Class** ([`RuleClass`]) — which preset selection class the rule belongs
-//!   to (standard, expand, drop, equiv).
-//! - **Safety** ([`RuleSafety`]) — whether the transformation preserves full
-//!   information, only semantic meaning, or is destructive.
+//! - **Normalization level** ([`NormalizationLevel`]) — the ordered strength
+//!   level where the rule becomes available (standard, expand, drop, equiv).
+//! - **Fidelity** ([`RuleFidelity`]) — how faithfully the rewrite preserves
+//!   the input for automatic render validation.
 
 pub use texform_knowledge::builtin::PackageName;
 use texform_knowledge::specs::{
@@ -23,37 +23,45 @@ use crate::rewrite::RuleError;
 use crate::rewrite::rule_context::RuleContext;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum RuleClass {
+pub enum NormalizationLevel {
     Standard,
     Expand,
     Drop,
     Equiv,
 }
 
-impl RuleClass {
+impl NormalizationLevel {
     pub const fn as_str(self) -> &'static str {
         match self {
-            RuleClass::Standard => "standard",
-            RuleClass::Expand => "expand",
-            RuleClass::Drop => "drop",
-            RuleClass::Equiv => "equiv",
+            NormalizationLevel::Standard => "standard",
+            NormalizationLevel::Expand => "expand",
+            NormalizationLevel::Drop => "drop",
+            NormalizationLevel::Equiv => "equiv",
+        }
+    }
+
+    /// Lowest fidelity a rule at this level may declare.
+    pub const fn min_fidelity(self) -> RuleFidelity {
+        match self {
+            NormalizationLevel::Standard | NormalizationLevel::Expand => RuleFidelity::Semantic,
+            NormalizationLevel::Drop | NormalizationLevel::Equiv => RuleFidelity::Lossy,
         }
     }
 }
 
-/// How much information a rule preserves when it transforms a node.
+/// How faithfully a rewrite preserves the input when re-rendered.
 ///
-/// Safety levels let callers and builders describe how aggressively a rule set
-/// may rewrite the AST, and they provide useful diagnostics when comparing
-/// rules with different tradeoffs.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum RuleSafety {
-    /// The transformation is fully reversible; no information is lost.
-    Lossless,
-    /// Mathematical meaning is preserved, but some non-semantic detail (e.g. spacing hints) may be discarded.
+/// Ordered least-to-most faithful. The value drives automatic render
+/// validation: `Lossless` uses exact pixels, `Semantic` uses SSIM, and `Lossy`
+/// skips render validation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RuleFidelity {
+    /// Even semantics may change; automatic render validation is skipped.
+    Lossy,
+    /// Meaning is preserved, but rendering may differ.
     Semantic,
-    /// The transformation may lose information that affects rendering or meaning.
-    Destructive,
+    /// Rendering is pixel-identical before and after the rewrite.
+    Lossless,
 }
 
 /// Unique identifier for a rule, composed of its package and a human-readable name.
@@ -183,19 +191,20 @@ pub struct RuleProduces {
 /// and dependency contract.
 ///
 /// The rewrite phase uses `triggers` and `consumes` to decide when to attempt a
-/// rule, `produces` to verify convergence, and `safety` for diagnostics.
+/// rule, `produces` to verify convergence, and `fidelity` for render
+/// validation policy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RuleMeta {
     /// Unique identifier for this rule.
     pub key: RuleKey,
     /// Packages that make this rule loadable when any one of them is enabled.
     pub enabled_by_packages: &'static [PackageName],
-    /// Preset selection class used by transform profiles.
-    pub class: RuleClass,
+    /// Ordered normalization level used by transform profiles.
+    pub level: NormalizationLevel,
     /// One-line human-readable description of what the rule does.
     pub summary: &'static str,
-    /// The information-preservation guarantee this rule provides.
-    pub safety: RuleSafety,
+    /// The render-fidelity guarantee this rule provides.
+    pub fidelity: RuleFidelity,
     /// Commands, environments, or characters that decide where the engine attempts this rule.
     ///
     /// Triggers must be non-empty. They only affect scheduling and do not

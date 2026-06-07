@@ -19,9 +19,9 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static MATRIXDETERMINANT_TO_MDET: MatrixdeterminantToMdetRule {
         key: Physics / "matrixdeterminant-to-mdet",
-        class: Standard,
+        level: Standard,
         summary: "Collapse matrixdeterminant to the shorter mdet determinant helper.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::MDET,
         aliases: [&physics::cmd::MATRIXDETERMINANT],
@@ -36,7 +36,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: MATRIXDETERMINANT_TO_MDET,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: matrixdeterminant_characteristic_polynomial,

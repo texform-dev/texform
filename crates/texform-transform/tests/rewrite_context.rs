@@ -4,8 +4,8 @@ use texform_core::parse::{
 use texform_knowledge::builtin::MANAGED_PACKAGE_IMPORT_ORDER;
 use texform_transform::rewrite::{RuleAvailabilityFailure, all_rules};
 use texform_transform::{
-    BuildConfig, PackageName, PlanBuildError, Profile, RuleClass, RuleClassSet, RuleKey, RuleMeta,
-    RuleTarget, TransformBuildError, TransformContext,
+    BuildConfig, NormalizationLevel, NormalizationLevelSet, PackageName, PlanBuildError, Profile,
+    RuleKey, RuleMeta, RuleTarget, TransformBuildError, TransformContext,
 };
 
 fn active_rule_keys(context: &TransformContext) -> Vec<RuleKey> {
@@ -28,7 +28,7 @@ fn only_many_keeps_the_requested_rules() {
         .iter()
         .map(|rule| rule.meta())
         .filter(|meta| {
-            meta.class == RuleClass::Standard
+            meta.level == NormalizationLevel::Standard
                 && meta.enabled_by_packages.contains(&PackageName::Physics)
         })
         .take(2)
@@ -101,11 +101,11 @@ fn only_does_not_bypass_profile_class_filter_and_can_return_empty_context() {
     let non_equiv_rule = all_rules()
         .iter()
         .map(|rule| rule.meta())
-        .find(|meta| meta.class != RuleClass::Equiv)
+        .find(|meta| meta.level != NormalizationLevel::Equiv)
         .expect("registry should contain a non-equiv rule")
         .key;
     let config = BuildConfig::profile(Profile::Authoring)
-        .rewrite_classes(RuleClassSet::EQUIV)
+        .rewrite_levels(NormalizationLevelSet::EQUIV)
         .only_rule_for_tests(non_equiv_rule);
     let transform_ctx = TransformContext::from_build_config(config, &parse_ctx)
         .expect("empty transform context should be a valid no-op");

@@ -31,10 +31,10 @@ pub use lower_attributes::{
 };
 pub use report::TransformReport;
 pub use rewrite::{
-    ContractViolation, PackageName, Plan as RewritePlan, PlanBuildError, RewriteError,
-    RewriteReport, RewriteRule, RewriteRuleStat, RuleAvailabilityFailure, RuleClass, RuleClassSet,
-    RuleConsumes, RuleEffect, RuleError, RuleKey, RuleMeta, RuleProduces, RuleSafety, RuleTarget,
-    RuleTargetKey, RuleTargetKind, collect_eliminated_violations,
+    ContractViolation, NormalizationLevel, NormalizationLevelSet, PackageName, Plan as RewritePlan,
+    PlanBuildError, RewriteError, RewriteReport, RewriteRule, RewriteRuleStat,
+    RuleAvailabilityFailure, RuleConsumes, RuleEffect, RuleError, RuleFidelity, RuleKey, RuleMeta,
+    RuleProduces, RuleTarget, RuleTargetKey, RuleTargetKind, collect_eliminated_violations,
 };
 
 #[cfg(test)]

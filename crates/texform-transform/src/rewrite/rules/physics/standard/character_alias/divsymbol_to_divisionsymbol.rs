@@ -22,9 +22,9 @@ use crate::rewrite::{char_targets, define_rule};
 define_rule! {
     pub static DIVSYMBOL_TO_DIVISIONSYMBOL: DivsymbolToDivisionsymbolRule {
         key: Physics / "divsymbol-to-divisionsymbol",
-        class: Standard,
+        level: Standard,
         summary: "Collapse divsymbol to the documented divisionsymbol character alias.",
-        safety: Lossless,
+        fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: char_targets![&physics::chars::DIVSYMBOL],
         consumes: RuleConsumes {
@@ -58,7 +58,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: DIVSYMBOL_TO_DIVISIONSYMBOL,
-        class: Standard,
+        level: Standard,
         examples: [
         {
             label: divsymbol_character_alias,
