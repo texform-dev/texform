@@ -1,7 +1,7 @@
-//! Expand paren-style eval notation to the explicit fence-and-bar form.
+//! Expand eval notation to the explicit fence-and-bar form.
 //!
 //! ```yaml
-//! proposal: eval-paren-expand
+//! proposal: eval-expand
 //! triggers:
 //!   - cmd:eval
 //! consumes:
@@ -13,6 +13,8 @@
 //!   - cmd:vphantom
 //!   - cmd:smash
 //! rewrite_patterns:
+//!   - {label: braced, from: '\eval{#1}#2', to: '\left.#1\vphantom{\int}\right|#2'}
+//!   - {label: braced-star, from: '\eval*{#1}#2', to: '\left.\smash{#1}\vphantom{\int}\right|#2'}
 //!   - {label: paren, from: \eval(#1|#2, to: '\left(#1\vphantom{\int}\right|#2'}
 //!   - {label: paren-star, from: \eval*(#1|#2, to: '\left(\smash{#1}\vphantom{\int}\right|#2'}
 //!   - {label: bracket, from: '\eval[#1|#2', to: '\left[#1\vphantom{\int}\right|#2'}
@@ -30,10 +32,10 @@ use crate::rewrite::rule_context::RuleContext;
 use crate::rewrite::{cmd_targets, define_rule};
 
 define_rule! {
-    pub static EVAL_PAREN_EXPAND: EvalParenExpandRule {
-        key: Physics / "eval-paren-expand",
+    pub static EVAL_EXPAND: EvalExpandRule {
+        key: Physics / "eval-expand",
         level: Expand,
-        summary: "Expand paren-style eval notation to the explicit fence-and-bar form.",
+        summary: "Expand eval notation to the explicit fence-and-bar form.",
         fidelity: Lossless,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::EVAL],
@@ -45,12 +47,12 @@ define_rule! {
             targets: cmd_targets![&base::cmd::LEFT, &base::cmd::RIGHT, &base::cmd::VPHANTOM, &base::cmd::SMASH],
         },
         apply(rule, cx, node_id) {
-            expand_paired_eval(Self::KEY, cx, node_id)
+            expand_eval(Self::KEY, cx, node_id)
         }
     }
 }
 
-fn expand_paired_eval(
+fn expand_eval(
     rule: RuleKey,
     cx: &mut RuleContext<'_>,
     node_id: NodeId,
@@ -63,7 +65,7 @@ fn expand_paired_eval(
 
     cx.for_rule(rule).expect_arg_len(&args, 2, &subject)?;
     let starred = cx.for_rule(rule).star_arg_value(&args[0], &subject)?;
-    let Some((body, left)) = paired_eval_body(rule, cx, &args[1], &subject)? else {
+    let Some((body, left)) = eval_body(rule, cx, &args[1], &subject)? else {
         return Ok(RuleEffect::Skipped);
     };
 
@@ -71,7 +73,7 @@ fn expand_paired_eval(
     Ok(RuleEffect::Applied)
 }
 
-fn paired_eval_body(
+fn eval_body(
     rule: RuleKey,
     cx: &RuleContext<'_>,
     slot: &ArgumentSlot,
@@ -82,12 +84,24 @@ fn paired_eval_body(
     };
     match &arg.kind {
         ArgumentKind::Paired { open, close }
+            if *open == Delimiter::Char('{') && *close == Delimiter::Char('}') =>
+        {
+            match arg.value {
+                ArgumentValue::MathContent(body) => Ok(Some((body, Delimiter::None))),
+                _ => Err(cx.for_rule(rule).invalid_shape(format!(
+                    "{subject} braced eval body should be math content"
+                ))),
+            }
+        }
+        ArgumentKind::Paired { open, close }
             if *close == Delimiter::Char('|')
                 && (*open == Delimiter::Char('(') || *open == Delimiter::Char('[')) =>
         {
             match arg.value {
                 ArgumentValue::MathContent(body) => Ok(Some((body, open.clone()))),
-                _ => Err(cx.for_rule(rule).invalid_shape(format!("{subject} paired eval body should be math content"))),
+                _ => Err(cx.for_rule(rule).invalid_shape(format!(
+                    "{subject} paired eval body should be math content"
+                ))),
             }
         }
         _ => Ok(None),
@@ -101,9 +115,21 @@ mod tests {
 
     // START: Generated examples; DO NOT modify
     transform_examples! {
-        rule: EVAL_PAREN_EXPAND,
+        rule: EVAL_EXPAND,
         level: Expand,
         examples: [
+        {
+            label: braced_eval_antiderivative,
+            packages: ["base", "physics"],
+            input: r"\eval{\frac{x^2}{2}}_0^1=\frac{1}{2}",
+            expected: r"\left.\frac{x^2}{2}\vphantom{\int}\right|_0^1=\frac{1}{2}",
+        },
+        {
+            label: braced_eval_star,
+            packages: ["base", "physics"],
+            input: r"\eval*{F(x)}_a^b",
+            expected: r"\left.\smash{F(x)}\vphantom{\int}\right|_a^b",
+        },
         {
             label: paren_eval_trig,
             packages: ["base", "physics"],

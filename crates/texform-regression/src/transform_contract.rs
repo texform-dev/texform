@@ -231,6 +231,7 @@ pub fn run(config: RunConfig) -> Result<RunOutcome, Box<dyn std::error::Error>> 
     let transform_ctx =
         TransformContext::from_build_config(BuildConfig::profile(Profile::Corpus), parse_ctx)?;
     let attribution = build_rule_attribution(&transform_ctx);
+    ensure_unique_eliminated_owners(&attribution)?;
     let commit_info = output::git_commit_info();
     let commit_results_root = config
         .results_root
@@ -689,6 +690,26 @@ fn build_rule_attribution(transform_ctx: &TransformContext) -> HashMap<String, V
     by_target
 }
 
+fn ensure_unique_eliminated_owners(
+    attribution: &HashMap<String, Vec<String>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let duplicates = attribution
+        .iter()
+        .filter(|(_, rule_keys)| rule_keys.len() > 1)
+        .map(|(target, rule_keys)| format!("{target}: {}", rule_keys.join(", ")))
+        .collect::<Vec<_>>();
+
+    if duplicates.is_empty() {
+        return Ok(());
+    }
+
+    Err(format!(
+        "Duplicate consumes.eliminates owner(s) in transform_contract profile:\n{}",
+        duplicates.join("\n")
+    )
+    .into())
+}
+
 fn target_key_string(target: RuleTargetKey) -> String {
     format!("{}:{}", target.kind_label(), target.name)
 }
@@ -940,6 +961,40 @@ mod tests {
         reversed.datasets.reverse();
 
         assert_eq!(config_hash(&base).unwrap(), config_hash(&reversed).unwrap());
+    }
+
+    #[test]
+    fn duplicate_eliminated_owners_are_rejected() {
+        let attribution = HashMap::from([(
+            "command:eval".to_string(),
+            vec!["physics/eval-a".to_string(), "physics/eval-b".to_string()],
+        )]);
+
+        let error = ensure_unique_eliminated_owners(&attribution).unwrap_err();
+        assert!(error.to_string().contains("command:eval"));
+        assert!(error.to_string().contains("physics/eval-a"));
+        assert!(error.to_string().contains("physics/eval-b"));
+    }
+
+    #[test]
+    fn single_eliminated_owner_is_accepted() {
+        let attribution = HashMap::from([(
+            "command:eval".to_string(),
+            vec!["physics/eval-expand".to_string()],
+        )]);
+
+        ensure_unique_eliminated_owners(&attribution).unwrap();
+    }
+
+    #[test]
+    fn corpus_profile_eliminated_owners_are_unique() {
+        let parse_ctx = ParseContext::shared();
+        let transform_ctx =
+            TransformContext::from_build_config(BuildConfig::profile(Profile::Corpus), parse_ctx)
+                .unwrap();
+        let attribution = build_rule_attribution(&transform_ctx);
+
+        ensure_unique_eliminated_owners(&attribution).unwrap();
     }
 
     #[test]

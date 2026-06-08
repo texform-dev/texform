@@ -5,8 +5,8 @@
 //! triggers:
 //!   - cmd:eqalignno
 //! consumes:
-//!   eliminates: [cmd:eqalignno, cmd:cr]
-//!   touches: null
+//!   eliminates: cmd:eqalignno
+//!   touches: cmd:cr
 //! produces:
 //!   - env:align
 //!   - cmd:tag

@@ -5,8 +5,8 @@
 //! triggers:
 //!   - cmd:pmatrix
 //! consumes:
-//!   eliminates: [cmd:pmatrix, cmd:cr]
-//!   touches: null
+//!   eliminates: cmd:pmatrix
+//!   touches: cmd:cr
 //! produces: env:pmatrix
 //! rewrite_patterns:
 //!   - {from: '\pmatrix{#1 \cr #2}', to: '\begin{pmatrix} #1 \\ #2 \end{pmatrix}'}

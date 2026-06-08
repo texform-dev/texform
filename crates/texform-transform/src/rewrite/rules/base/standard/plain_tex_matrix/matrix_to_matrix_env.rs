@@ -5,8 +5,8 @@
 //! triggers:
 //!   - cmd:matrix
 //! consumes:
-//!   eliminates: [cmd:matrix, cmd:cr]
-//!   touches: null
+//!   eliminates: cmd:matrix
+//!   touches: cmd:cr
 //! produces: env:matrix
 //! rewrite_patterns:
 //!   - {from: '\matrix{#1 \cr #2}', to: '\begin{matrix} #1 \\ #2 \end{matrix}'}

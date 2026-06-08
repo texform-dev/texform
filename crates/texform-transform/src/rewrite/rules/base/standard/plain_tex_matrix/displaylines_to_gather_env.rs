@@ -5,8 +5,8 @@
 //! triggers:
 //!   - cmd:displaylines
 //! consumes:
-//!   eliminates: [cmd:displaylines, cmd:cr]
-//!   touches: null
+//!   eliminates: cmd:displaylines
+//!   touches: cmd:cr
 //! produces:
 //!   - env:gather
 //!   - cmd:notag

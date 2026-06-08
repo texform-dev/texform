@@ -5,8 +5,8 @@
 //! triggers:
 //!   - cmd:eqalign
 //! consumes:
-//!   eliminates: [cmd:eqalign, cmd:cr]
-//!   touches: null
+//!   eliminates: cmd:eqalign
+//!   touches: cmd:cr
 //! produces: env:aligned
 //! rewrite_patterns:
 //!   - {from: '\eqalign{#1 \cr #2}', to: '\begin{aligned} #1 \\ #2 \end{aligned}'}

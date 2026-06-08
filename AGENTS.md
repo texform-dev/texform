@@ -66,9 +66,11 @@ Project design notes and internal planning documents live outside this repo in t
 ## Corpus Regression
 
 - The corpus regression suite in `crates/texform-regression` runs TeXForm against large real-world datasets. A full parser regression run takes less than 10 seconds on the canonical corpus.
-- Current regression binaries are `parser_regression` and `counter_dump`. `parser_regression` checks parser error-rate regressions against tracked summaries; `counter_dump` produces counter-map data products consumed by the parent workspace.
-- `transform_contract` is the planned transform corpus contract entry point defined by the parent workspace's testing/evaluation redesign; its implementation is handled with the transform validation design, not this naming pass.
+- Current regression binaries are `parser_regression`, `transform_contract`, and `counter_dump`. `parser_regression` checks parser error-rate regressions against tracked summaries; `transform_contract` checks full-pipeline eliminated-form contracts over real corpora; `counter_dump` produces counter-map data products consumed by the parent workspace.
 - Any significant parser change should run `parser_regression` before and after to check for error-rate regressions.
+- `transform_contract` is not part of the pre-commit hook. Run it manually when changing transform rules, `RuleMeta`, `consumes.eliminates`, `touches`, `produces`, transform profiles/build config, rewrite scheduling, shared transform helpers, or `regression/contract_exceptions.yaml`.
+- During development, a focused probe is acceptable first: `cargo run --release -p texform-regression --bin transform_contract -- --dataset lf80m-benchmarks --dry-run`. Before merging transform-related changes, run the full check: `cargo run --release -p texform-regression --bin transform_contract -- --dry-run`.
+- New unlisted `transform_contract` violations must be triaged from `regression/results/transform_contract/commits/<hash>[-dirty]/violations.jsonl` before changing the allow-list. Do not add broad or unexplained exceptions.
 - Historical parser summaries are tracked in git under `regression/results/parser_regression/`. There is no need to record baselines manually; diff the error rates before and after your change.
 - See `./regression/README.md` for dataset details and result format.
 
@@ -78,7 +80,7 @@ The transform subsystem (`crates/texform-core/src/transform/`) provides rule-bas
 
 ## Tooling Conventions
 
-- **Rust**: `cargo test`, `cargo check`, `cargo clippy`; pre-commit hooks run `cargo fmt`, `cargo clippy`, spec validation, and the parser regression check.
+- **Rust**: `cargo test`, `cargo check`, `cargo clippy`; pre-commit hooks run `cargo fmt`, `cargo clippy`, spec validation, and the parser regression check. Transform-related changes must run `transform_contract` manually as described above.
 - **TypeScript**: use `bun` as package manager.
 - **Python**: use `uv` for dependency management and `maturin` for native extension builds.
 - **Commit messages**: use Conventional Commits, such as `feat(rule): add root-family rule`, `fix(core): generate standard transform rule modules`, or `test(core): restore brace transform examples`. Prefer an existing scope like `core`, `rule`, `specs`, `regression`, `wasm`, or `python`; omit the scope only when a change spans multiple areas. Keep the subject short, imperative, and lower-case after the type/scope prefix. For large commits with several important changes, include a body after a blank line; format that body as a Markdown unordered list, with one bullet per important change.

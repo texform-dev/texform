@@ -5,8 +5,8 @@
 //! triggers:
 //!   - cmd:cases
 //! consumes:
-//!   eliminates: [cmd:cases, cmd:cr]
-//!   touches: null
+//!   eliminates: cmd:cases
+//!   touches: cmd:cr
 //! produces: env:cases
 //! rewrite_patterns:
 //!   - {from: '\cases{#1 \cr #2}', to: '\begin{cases} #1 \\ #2 \end{cases}'}
