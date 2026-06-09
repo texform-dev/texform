@@ -21,7 +21,7 @@ alias_rule! {
         key: Physics / "trace-to-tr",
         level: Standard,
         summary: "Collapse lowercase trace to the local tr anchor.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::TR,
         aliases: [

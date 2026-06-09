@@ -24,7 +24,7 @@ define_rule! {
         key: Base / "ge-to-geq",
         level: Standard,
         summary: "Collapse ge to the explicit geq relation character.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::GE],
         consumes: RuleConsumes {

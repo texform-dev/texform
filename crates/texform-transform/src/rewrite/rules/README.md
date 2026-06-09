@@ -187,7 +187,7 @@ define_rule! {
         key: Base / "over-to-frac",
         level: Standard,
         summary: "Rewrite infix \\over into prefix \\frac",
-        fidelity: Semantic,
+        fidelity: Approximate,
         enabled_by_packages: [Base],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::OVER],
@@ -217,16 +217,19 @@ rule value.
 When IDE navigation matters more than keeping the body inline, use the
 `apply_fn: path` variant and move the rewrite code into a normal function.
 
-`fidelity` must not fall below the rule's level floor (`Lossless` > `Semantic` > `Lossy`):
+## Choosing `level` and `fidelity`
 
-| Level | Default fidelity | Min fidelity |
-| --- | --- | --- |
-| `Standard` | `Lossless` | `Semantic` |
-| `Expand` | `Lossless` | `Semantic` |
-| `Drop` | `Semantic` | `Lossy` |
-| `Equiv` | `Lossless` | `Lossy` |
+Classify a rule by asking which profile first accepts its output as a suitable
+product, then declare the rule's fidelity independently. `fidelity` does not
+determine `level`: an `Equiv` rule may still be `Full` when its output is
+pixel-identical but too expanded to serve as a corpus label, as with fenced
+matrix environment expansion.
 
-`Lossy` skips automatic render validation and is currently unused by builtin rules.
+A rule's `fidelity` is the worst-case render-fidelity guarantee over its declared
+input domain and must not fall below its level's floor. See `RuleFidelity` in the `texform-transform`
+README for the fidelity ladder, the per-level floor table, and how to document a
+rule whose worst case is rarer than its usual behavior (such as
+`displaylines-to-gather-env`).
 
 ## alias_rule!
 
@@ -240,7 +243,7 @@ alias_rule! {
         key: Physics / "trace-to-tr",
         level: Standard,
         summary: "Canonicalize \\Tr, \\trace, and \\Trace into \\tr",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::TR,
         aliases: [

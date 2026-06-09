@@ -92,6 +92,42 @@ fn corpus_normalize_keeps_braced_prefix_argument_scope() {
 }
 
 #[test]
+fn displaylines_runs_at_corpus_but_not_faithful() {
+    let input = r"\displaylines{a \cr b}";
+
+    let faithful = TransformEngine::builder()
+        .packages(&["base", "ams"])
+        .profile(Profile::Faithful)
+        .build()
+        .expect("faithful engine should build")
+        .normalize(input)
+        .expect("faithful normalize should succeed");
+    assert!(
+        faithful.normalized.contains(r"\displaylines"),
+        "faithful output: {}",
+        faithful.normalized
+    );
+
+    let corpus = TransformEngine::builder()
+        .packages(&["base", "ams"])
+        .profile(Profile::Corpus)
+        .build()
+        .expect("corpus engine should build")
+        .normalize(input)
+        .expect("corpus normalize should succeed");
+    assert!(
+        corpus.normalized.contains(r"\begin {gather}"),
+        "corpus output: {}",
+        corpus.normalized
+    );
+    assert!(
+        !corpus.normalized.contains(r"\displaylines"),
+        "corpus output: {}",
+        corpus.normalized
+    );
+}
+
+#[test]
 fn document_transform_preserves_parse_once_workflow() {
     let engine = TransformEngine::builder()
         .packages(&["base"])

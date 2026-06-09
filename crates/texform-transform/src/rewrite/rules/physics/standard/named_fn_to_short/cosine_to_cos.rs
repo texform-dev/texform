@@ -22,7 +22,7 @@ alias_rule! {
         key: Physics / "cosine-to-cos",
         level: Standard,
         summary: "Collapse the long cosine helper to the standard cos operator.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         canonical: &base::cmd::COS,
         aliases: [&physics::cmd::COSINE],

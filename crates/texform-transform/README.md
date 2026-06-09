@@ -97,43 +97,58 @@ Each profile selects build-time normalization levels and supplies a default runt
 | Profile | Normalization levels | `flatten_groups` | Target scenario |
 | --- | --- | --- | --- |
 | `Authoring` | `Standard` | `STRICT` | Polished author-facing formatting; stylistic choices kept. |
-| `Faithful` | `Standard` + `Expand` | `STRICT` | Render-faithful corpus normalization and correctness analysis. |
+| `Faithful` | `Standard` + `Expand` | `STRICT` | Preserves the rendered formula while allowing expanded source forms. |
 | `Corpus` | `Standard` + `Expand` + `Drop` | `STRUCTURAL_ONLY` | MER training data normalization; layout hints dropped. |
 | `Equiv` | `Standard` + `Expand` + `Drop` + `Equiv` | `STRUCTURAL_ONLY` | Formula equivalence comparison. |
 
 #### `NormalizationLevel`
 
-Every rule belongs to exactly one ordered level. The level captures the rule's intent, not its mechanism:
+Every rule belongs to exactly one ordered level. A rule's level is the first
+profile that accepts the rule output as a suitable product; it is not inferred
+from render fidelity.
 
 | Level      | Intent |
 |------------|--------|
 | `Standard` | Uncontroversial author-facing standardization: legacy-syntax modernization, typo fixes, alias canonicalization, cross-package anchor unification. Does not collapse stylistic choices that an author may legitimately make. |
-| `Expand`   | Render-faithful normal form: rewrites convenience commands, semantic macros, package-specific commands, and spacing primitives into more universal structures. Output remains readable LaTeX and preserves layout information. |
+| `Expand`   | Expands convenience commands, semantic macros, package-specific commands, and spacing primitives into more explicit universal structures while preserving the rendered formula. Output remains readable LaTeX and may be visually, rather than pixel, equivalent. |
 | `Drop`     | Removes non-ink, metadata, and layout hints a corpus should not learn: linebreak preferences, invisible layout nodes, and similar caller-opt-in deletions. |
-| `Equiv`    | Aggressive normalization tuned for equivalence comparison; may sacrifice common idioms or author intent for higher recall. |
+| `Equiv`    | Output is only suitable as an equivalence-checking intermediate, not as a corpus label. Fidelity does not decide this level: fenced matrix environment expansion is `Full` but still `Equiv`. |
 
-A rule's level is decided by its immediate rewrite intent, not by what later rules might do to the result.
+Classify a rule by asking which profile first accepts its output, then declare
+the rule's fidelity independently. `fidelity` may rule out profiles whose floor
+it cannot meet, but a high-fidelity rule is not automatically a lower level.
 
 #### `RuleFidelity`
 
-Orthogonal to level: how faithfully the rewrite preserves rendering or semantics.
+`fidelity` is the worst-case render-fidelity guarantee over the rule's declared
+input domain. It is ordered from least to most faithful:
+`Semantic < Approximate < Full`.
 
-| Fidelity | Meaning |
+| Fidelity | Guarantee |
 | --- | --- |
-| `Lossless` | Pixel-identical rendering before and after the rewrite. |
-| `Semantic` | Mathematical meaning is preserved, but rendering may differ. |
-| `Lossy` | Even semantics may change; automatic render validation is skipped. |
+| `Full` | Pixel-identical rendering before and after the rewrite. |
+| `Approximate` | Visually equivalent apart from spacing or placement. |
+| `Semantic` | Mathematical meaning is preserved; rendering may change. |
 
-`fidelity` must not fall below the rule's level floor (`Lossless` > `Semantic` > `Lossy`):
+`fidelity` is a metadata contract only. `texform-transform` runs no rendering
+comparison; how a downstream validator interprets a fidelity level when comparing
+rendered output is defined by that consumer, not in this crate.
+
+`fidelity` must not fall below the rule's level floor:
 
 | Level | Default fidelity | Min fidelity |
 | --- | --- | --- |
-| `Standard` | `Lossless` | `Semantic` |
-| `Expand` | `Lossless` | `Semantic` |
-| `Drop` | `Semantic` | `Lossy` |
-| `Equiv` | `Lossless` | `Lossy` |
+| `Standard` | `Full` | `Approximate` |
+| `Expand` | `Full` | `Approximate` |
+| `Drop` | `Semantic` | `Semantic` |
+| `Equiv` | `Full` | `Semantic` |
 
-`Lossy` is currently unused by builtin rules.
+Do not add a second metadata field for ordinary behavior. If a rule has an
+important gap between its worst case and usual samples, document that gap in the
+rule's top-level comment. For example, `displaylines-to-gather-env` is
+`level: Drop` and `fidelity: Semantic`: ordinary `\displaylines` samples usually
+look closer to `Approximate`, but manual layout commands such as `\hfill` or
+`\llap` can make MathJax reflow or overlap hand-written equation numbers.
 
 ### `FlattenGroupsConfig`
 

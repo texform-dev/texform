@@ -24,7 +24,7 @@ define_rule! {
         key: Ams / "Doteq-to-doteqdot",
         level: Standard,
         summary: "Collapse Doteq to the descriptive doteqdot character.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::DOTEQ],
         consumes: RuleConsumes {

@@ -24,7 +24,7 @@ define_rule! {
         key: Ams / "doublecap-to-Cap",
         level: Standard,
         summary: "Collapse doublecap to the more common Cap character.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::DOUBLECAP],
         consumes: RuleConsumes {

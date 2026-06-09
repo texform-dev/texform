@@ -3,8 +3,8 @@ use texform_core::parse::{ParseConfig, ParseContext};
 use texform_interface::syntax_node::{ContentMode, SyntaxNode};
 use texform_knowledge::builtin::base;
 use texform_transform::{
-    BuildConfig, Profile, RewriteError, RewriteReport, RuleTarget, RuleTargetKey, TransformContext,
-    TransformError, collect_eliminated_violations,
+    BuildConfig, NormalizationLevel, Profile, RewriteError, RewriteReport, RuleFidelity,
+    RuleTarget, RuleTargetKey, TransformContext, TransformError, collect_eliminated_violations,
 };
 
 fn parse_to_ast(parse_ctx: &ParseContext, src: &str) -> Ast {
@@ -112,6 +112,28 @@ fn builtin_rule_fidelity_meets_level_floor() {
             meta.level.min_fidelity()
         );
     }
+}
+
+#[test]
+fn fidelity_order_matches_level_floors() {
+    assert!(RuleFidelity::Full > RuleFidelity::Approximate);
+    assert!(RuleFidelity::Approximate > RuleFidelity::Semantic);
+    assert_eq!(
+        NormalizationLevel::Standard.min_fidelity(),
+        RuleFidelity::Approximate
+    );
+    assert_eq!(
+        NormalizationLevel::Expand.min_fidelity(),
+        RuleFidelity::Approximate
+    );
+    assert_eq!(
+        NormalizationLevel::Drop.min_fidelity(),
+        RuleFidelity::Semantic
+    );
+    assert_eq!(
+        NormalizationLevel::Equiv.min_fidelity(),
+        RuleFidelity::Semantic
+    );
 }
 
 #[test]

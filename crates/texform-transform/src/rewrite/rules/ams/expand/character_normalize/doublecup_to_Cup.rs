@@ -24,7 +24,7 @@ define_rule! {
         key: Ams / "doublecup-to-Cup",
         level: Expand,
         summary: "Normalize doublecup to Cup for corpus form.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::DOUBLECUP],
         consumes: RuleConsumes {

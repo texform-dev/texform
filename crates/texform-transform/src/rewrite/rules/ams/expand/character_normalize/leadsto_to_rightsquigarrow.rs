@@ -24,7 +24,7 @@ define_rule! {
         key: Ams / "leadsto-to-rightsquigarrow",
         level: Expand,
         summary: "Normalize leadsto to the more common rightsquigarrow corpus form.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::LEADSTO],
         consumes: RuleConsumes {

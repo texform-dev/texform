@@ -29,7 +29,7 @@ define_rule! {
         key: Ams / "implies-to-Longrightarrow",
         level: Expand,
         summary: "Collapse implies to the explicit AMS long-right-arrow spelling with source-backed spacing.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Ams],
         triggers: cmd_targets![&ams::cmd::IMPLIES],
         consumes: RuleConsumes {

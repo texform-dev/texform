@@ -1,5 +1,13 @@
 //! Rewrite displaylines to the standard gather environment.
 //!
+//! This rule declares `fidelity: Semantic` because fidelity is the worst-case
+//! guarantee over the declared input domain. Bodies that use manual layout
+//! commands such as `\hfill` or `\llap` can make MathJax reflow or overlap
+//! hand-written equation numbers after the rewrite to `gather`. Ordinary
+//! samples without those constructs are usually only spacing-level different
+//! and closer to `Approximate`, but `Faithful` must not run a rewrite below its
+//! `Approximate` floor, so this rule starts at `Drop`.
+//!
 //! ```yaml
 //! proposal: displaylines-to-gather-env
 //! triggers:
@@ -26,7 +34,7 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static DISPLAYLINES_TO_GATHER_ENV: DisplaylinesToGatherEnvRule {
         key: Base / "displaylines-to-gather-env",
-        level: Standard,
+        level: Drop,
         summary: "Rewrite displaylines to the standard gather environment.",
         fidelity: Semantic,
         enabled_by_packages: [Base],
@@ -75,7 +83,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: DISPLAYLINES_TO_GATHER_ENV,
-        level: Standard,
+        level: Drop,
         examples: [
         {
             label: multi_line_derivation,

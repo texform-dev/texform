@@ -22,7 +22,7 @@ alias_rule! {
         key: Physics / "sine-to-sin",
         level: Standard,
         summary: "Collapse the long sine helper to the standard sin operator.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         canonical: &base::cmd::SIN,
         aliases: [&physics::cmd::SINE],

@@ -23,7 +23,7 @@ define_rule! {
         key: Base / "prime-to-prime-node",
         level: Standard,
         summary: "Convert the prime control sequence to the Prime AST node.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::PRIME],
         consumes: RuleConsumes {

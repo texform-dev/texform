@@ -34,7 +34,7 @@ define_rule! {
         key: Physics / "expectation-expand",
         level: Expand,
         summary: "Expand expectation-value helpers to explicit angle brackets.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::EV],
         consumes: RuleConsumes {

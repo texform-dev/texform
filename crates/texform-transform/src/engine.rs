@@ -159,7 +159,7 @@ mod tests {
                 enabled_by_packages: &[PackageName::Physics],
                 level: NormalizationLevel::Expand,
                 summary: "Create a bold prefix that the post LowerAttributes pass removes.",
-                fidelity: RuleFidelity::Lossless,
+                fidelity: RuleFidelity::Full,
                 triggers: &[RuleTarget::Command(&physics::cmd::VB)],
                 consumes: RuleConsumes {
                     eliminates: &[RuleTarget::Command(&base::cmd::MATHBF)],

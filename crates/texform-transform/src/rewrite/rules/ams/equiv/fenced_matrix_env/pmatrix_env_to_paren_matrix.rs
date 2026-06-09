@@ -28,7 +28,7 @@ define_rule! {
         key: Ams / "pmatrix-env-to-paren-matrix",
         level: Equiv,
         summary: "Rewrite the fenced pmatrix environment to explicit parens around a core matrix environment.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Ams],
         triggers: env_targets![&ams::env::PMATRIX],
         consumes: RuleConsumes {

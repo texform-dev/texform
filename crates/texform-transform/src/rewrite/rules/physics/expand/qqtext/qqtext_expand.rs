@@ -33,7 +33,7 @@ define_rule! {
         key: Physics / "qqtext-expand",
         level: Expand,
         summary: "Expand quick-quad prose helpers, including the star branch, to explicit text and quad spacing.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::QQTEXT, &physics::cmd::QQ],
         consumes: RuleConsumes {

@@ -29,7 +29,7 @@ define_rule! {
         key: Physics / "qcomma-expand",
         level: Expand,
         summary: "Expand quick-quad punctuation helpers to explicit text punctuation plus trailing quad spacing.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::QC, &physics::cmd::QCOMMA],
         consumes: RuleConsumes {

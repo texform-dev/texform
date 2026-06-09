@@ -24,7 +24,7 @@ define_rule! {
         key: Ams / "restriction-to-upharpoonright",
         level: Expand,
         summary: "Normalize restriction to upharpoonright for corpus form.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::RESTRICTION],
         consumes: RuleConsumes {

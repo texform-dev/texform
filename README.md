@@ -141,29 +141,20 @@ The engine runs the following ordered phases. `Profile` / `BuildConfig` decide w
 3. **LowerAttributes (post)** — re-canonicalize attribute markers produced by rewrite rules.
 4. **FlattenGroups** — remove redundant explicit and implicit groups after earlier phases have finished producing canonical structure.
 
-### Normalization Levels
+### Normalization Levels and Fidelity
 
-Every transform rule belongs to exactly one ordered **normalization level**. Each step sacrifices a little more: `Standard` keeps author intent, `Expand` unfolds package and convenience forms while preserving layout, `Drop` removes layout hints for corpus data, and `Equiv` targets visual equivalence.
-
-| Level      | Intent |
-|------------|--------|
-| `Standard` | Uncontroversial author-facing standardization: legacy-syntax modernization, typo fixes, alias canonicalization, cross-package anchor unification. Does not collapse stylistic choices that an author may legitimately make. |
-| `Expand`   | Render-faithful normal form: rewrites convenience commands, semantic macros, package-specific commands, and spacing primitives into more universal structures. Output remains readable LaTeX and preserves layout information. |
-| `Drop`     | Removes non-ink, metadata, and layout hints a corpus should not learn: linebreak preferences, invisible layout nodes, and similar caller-opt-in deletions. |
-| `Equiv`    | Aggressive normalization tuned for equivalence comparison; may sacrifice common idioms or author intent for higher recall. |
-
-A rule's level is decided by its immediate rewrite intent, not by what later rules might do to the result.
+Every transform rule carries two orthogonal attributes. Its **normalization level** (`Standard`, `Expand`, `Drop`, `Equiv`) is the first profile that accepts the rule output as a suitable product, and decides which profiles enable the rule. Its **fidelity** (`Semantic < Approximate < Full`) is a separate worst-case render-fidelity guarantee and does not determine the level. See the [`texform-transform` README](crates/texform-transform/README.md) and [the rule-authoring guide](crates/texform-transform/src/rewrite/rules/README.md) for the per-level intent, the per-fidelity guarantees, and the fidelity floor each level requires.
 
 ### Profiles
 
-`Profile` bundles normalization levels and runtime defaults for common downstream scenarios:
+`Profile` bundles normalization levels and runtime defaults for common downstream scenarios. The [`texform-transform` README](crates/texform-transform/README.md) lists the normalization levels and `flatten_groups` defaults each profile selects.
 
-| Profile | Normalization levels | `flatten_groups` | Target scenario |
-| --- | --- | --- | --- |
-| `Authoring` | `Standard` | `STRICT` | Polished author-facing formatting; stylistic choices kept. |
-| `Faithful` | `Standard` + `Expand` | `STRICT` | Render-faithful corpus normalization and correctness analysis. |
-| `Corpus` | `Standard` + `Expand` + `Drop` | `STRUCTURAL_ONLY` | MER training data normalization; layout hints dropped. |
-| `Equiv` | `Standard` + `Expand` + `Drop` + `Equiv` | `STRUCTURAL_ONLY` | Formula equivalence comparison. |
+| Profile | Target scenario |
+| --- | --- |
+| `Authoring` | Polished author-facing formatting; stylistic choices kept. |
+| `Faithful` | Preserves the rendered formula while allowing expanded source forms. |
+| `Corpus` | MER training data normalization; layout hints dropped. |
+| `Equiv` | Formula equivalence comparison. |
 
 See `crates/texform-transform/src/rewrite/rules/README.md` for rule authoring conventions.
 

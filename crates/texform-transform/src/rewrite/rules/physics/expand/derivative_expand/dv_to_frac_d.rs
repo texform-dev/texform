@@ -35,7 +35,7 @@ define_rule! {
         key: Physics / "dv-to-frac-d",
         level: Expand,
         summary: "Expand dv forms to explicit d-based derivative fractions.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::DV],
         consumes: RuleConsumes {

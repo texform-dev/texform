@@ -32,7 +32,7 @@ define_rule! {
         key: Physics / "physics-braket-expand",
         level: Expand,
         summary: "Expand braket to an explicit angle-bracket form with a middle bar.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::BRAKET],
         consumes: RuleConsumes {

@@ -8,10 +8,10 @@
 //!
 //! - **Package** ([`PackageName`]) — the owning package namespace (base, ams,
 //!   physics).
-//! - **Normalization level** ([`NormalizationLevel`]) — the ordered strength
-//!   level where the rule becomes available (standard, expand, drop, equiv).
-//! - **Fidelity** ([`RuleFidelity`]) — how faithfully the rewrite preserves
-//!   the input for automatic render validation.
+//! - **Normalization level** ([`NormalizationLevel`]) — the first transform
+//!   profile that accepts the rule output as a suitable product.
+//! - **Fidelity** ([`RuleFidelity`]) — the rule's worst-case render-fidelity
+//!   guarantee over its declared input domain.
 
 pub use texform_knowledge::builtin::PackageName;
 use texform_knowledge::specs::{
@@ -24,9 +24,15 @@ use crate::rewrite::rule_context::RuleContext;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum NormalizationLevel {
+    /// Rules whose output is suitable for authoring-oriented normalization.
     Standard,
+    /// Rules that expand compact or package-specific notation while preserving
+    /// the rendered formula.
     Expand,
+    /// Rules that remove layout-only forms for corpus-oriented normalization.
     Drop,
+    /// Rules whose output is only suitable as an equivalence-checking
+    /// intermediate, not as a corpus label.
     Equiv,
 }
 
@@ -41,27 +47,34 @@ impl NormalizationLevel {
     }
 
     /// Lowest fidelity a rule at this level may declare.
+    ///
+    /// `level` and `fidelity` answer different questions. `level` determines
+    /// when profiles accept the rewrite output; `fidelity` is the render
+    /// guarantee used for contract validation. Do not infer one from the
+    /// other: an `Equiv` rule may still be `Full` when its output is
+    /// pixel-identical but too expanded to serve as a corpus label, as with
+    /// fenced matrix environment expansion.
     pub const fn min_fidelity(self) -> RuleFidelity {
         match self {
-            NormalizationLevel::Standard | NormalizationLevel::Expand => RuleFidelity::Semantic,
-            NormalizationLevel::Drop | NormalizationLevel::Equiv => RuleFidelity::Lossy,
+            NormalizationLevel::Standard | NormalizationLevel::Expand => RuleFidelity::Approximate,
+            NormalizationLevel::Drop | NormalizationLevel::Equiv => RuleFidelity::Semantic,
         }
     }
 }
 
 /// How faithfully a rewrite preserves the input when re-rendered.
 ///
-/// Ordered least-to-most faithful. The value drives automatic render
-/// validation: `Lossless` uses exact pixels, `Semantic` uses SSIM, and `Lossy`
-/// skips render validation.
+/// Ordered least-to-most faithful. The value is the rule's worst-case
+/// guarantee over its declared input domain. It drives contract validation,
+/// but it does not choose the image comparison algorithm.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RuleFidelity {
-    /// Even semantics may change; automatic render validation is skipped.
-    Lossy,
-    /// Meaning is preserved, but rendering may differ.
+    /// Mathematical meaning is preserved, but rendering may change.
     Semantic,
+    /// Rendering is visually equivalent apart from minor spacing or placement.
+    Approximate,
     /// Rendering is pixel-identical before and after the rewrite.
-    Lossless,
+    Full,
 }
 
 /// Unique identifier for a rule, composed of its package and a human-readable name.
@@ -191,8 +204,8 @@ pub struct RuleProduces {
 /// and dependency contract.
 ///
 /// The rewrite phase uses `triggers` and `consumes` to decide when to attempt a
-/// rule, `produces` to verify convergence, and `fidelity` for render
-/// validation policy.
+/// rule, `produces` to verify convergence, and `fidelity` for the rule's
+/// render-fidelity contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RuleMeta {
     /// Unique identifier for this rule.
@@ -203,7 +216,7 @@ pub struct RuleMeta {
     pub level: NormalizationLevel,
     /// One-line human-readable description of what the rule does.
     pub summary: &'static str,
-    /// The render-fidelity guarantee this rule provides.
+    /// Worst-case render-fidelity guarantee over the rule's declared input domain.
     pub fidelity: RuleFidelity,
     /// Commands, environments, or characters that decide where the engine attempts this rule.
     ///

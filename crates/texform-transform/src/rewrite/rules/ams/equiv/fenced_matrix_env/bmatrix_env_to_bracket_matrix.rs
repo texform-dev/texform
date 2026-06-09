@@ -28,7 +28,7 @@ define_rule! {
         key: Ams / "bmatrix-env-to-bracket-matrix",
         level: Equiv,
         summary: "Rewrite the fenced bmatrix environment to explicit brackets around a core matrix environment.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Ams],
         triggers: env_targets![&ams::env::BMATRIX],
         consumes: RuleConsumes {

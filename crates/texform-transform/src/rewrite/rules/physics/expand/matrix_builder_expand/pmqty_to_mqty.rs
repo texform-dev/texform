@@ -23,7 +23,7 @@ define_rule! {
         key: Physics / "pmqty-to-mqty",
         level: Expand,
         summary: "Expand pmqty to the core mqty builder with paren fence syntax.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::PMQTY],
         consumes: RuleConsumes {

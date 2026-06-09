@@ -24,7 +24,7 @@ define_rule! {
         key: Base / "atopwithdelims-to-genfrac",
         level: Standard,
         summary: "Rewrite atopwithdelims to an explicit delimited no-rule genfrac form.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::ATOPWITHDELIMS],
         consumes: RuleConsumes {

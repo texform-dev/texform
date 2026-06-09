@@ -24,7 +24,7 @@ define_rule! {
         key: Base / "owns-to-ni",
         level: Standard,
         summary: "Collapse owns to the shorter ni character.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::OWNS],
         consumes: RuleConsumes {

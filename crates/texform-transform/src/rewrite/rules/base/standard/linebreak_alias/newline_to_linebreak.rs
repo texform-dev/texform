@@ -23,7 +23,7 @@ define_rule! {
         key: Base / "newline-to-linebreak",
         level: Standard,
         summary: "Collapse newline to the explicit linebreak command.",
-        fidelity: Semantic,
+        fidelity: Approximate,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::NEWLINE],
         consumes: RuleConsumes {

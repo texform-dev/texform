@@ -33,7 +33,7 @@ define_rule! {
         key: Physics / "pqty-to-paren-fence",
         level: Expand,
         summary: "Rewrite pqty to explicit parenthesis fences.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::PQTY],
         consumes: RuleConsumes {

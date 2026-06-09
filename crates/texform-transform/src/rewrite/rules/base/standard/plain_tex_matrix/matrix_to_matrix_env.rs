@@ -24,7 +24,7 @@ define_rule! {
         key: Base / "matrix-to-matrix-env",
         level: Standard,
         summary: "Rewrite plain-TeX matrix to the standard matrix environment with row breaks.",
-        fidelity: Semantic,
+        fidelity: Approximate,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::MATRIX],
         consumes: RuleConsumes {

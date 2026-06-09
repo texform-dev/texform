@@ -26,7 +26,7 @@ define_rule! {
         key: Base / "choose-to-binom",
         level: Standard,
         summary: "Rewrite infix choose to an explicit binom command.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::CHOOSE],
         consumes: RuleConsumes {

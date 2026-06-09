@@ -408,3 +408,68 @@ fn visit_cycle(
     state[index] = 2;
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use texform_knowledge::builtin::base;
+
+    use super::*;
+    use crate::ast::NodeId;
+    use crate::rewrite::rule::{
+        NormalizationLevel, RuleConsumes, RuleEffect, RuleFidelity, RuleMeta, RuleProduces,
+    };
+    use crate::rewrite::rule_context::RuleContext;
+    use crate::rewrite::{RuleError, cmd_targets};
+
+    #[test]
+    fn metadata_validation_rejects_fidelity_below_level_floor() {
+        let err = validate_rule_metadata(&SEMANTIC_STANDARD_RULE)
+            .expect_err("standard rules must not declare semantic fidelity");
+
+        assert_eq!(
+            err,
+            PlanBuildError::InvalidRuleMetadata {
+                rule: SemanticStandardRule::KEY,
+                message: "fidelity must not be below the normalization level floor",
+            }
+        );
+    }
+
+    struct SemanticStandardRule;
+
+    static SEMANTIC_STANDARD_RULE: SemanticStandardRule = SemanticStandardRule;
+
+    impl SemanticStandardRule {
+        const KEY: RuleKey = RuleKey {
+            package: PackageName::Base,
+            name: "semantic-standard-test",
+        };
+    }
+
+    impl RewriteRule for SemanticStandardRule {
+        fn meta(&self) -> &'static RuleMeta {
+            static META: RuleMeta = RuleMeta {
+                key: SemanticStandardRule::KEY,
+                enabled_by_packages: &[PackageName::Base],
+                level: NormalizationLevel::Standard,
+                summary: "Test-only invalid metadata.",
+                fidelity: RuleFidelity::Semantic,
+                triggers: cmd_targets![&base::cmd::BREAK],
+                consumes: RuleConsumes {
+                    eliminates: cmd_targets![&base::cmd::BREAK],
+                    touches: &[],
+                },
+                produces: RuleProduces { targets: &[] },
+            };
+            &META
+        }
+
+        fn apply(
+            &self,
+            _cx: &mut RuleContext<'_>,
+            _node_id: NodeId,
+        ) -> Result<RuleEffect, RuleError> {
+            Ok(RuleEffect::Skipped)
+        }
+    }
+}

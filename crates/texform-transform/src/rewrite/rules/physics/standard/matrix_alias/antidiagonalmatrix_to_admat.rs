@@ -22,7 +22,7 @@ alias_rule! {
         key: Physics / "antidiagonalmatrix-to-admat",
         level: Standard,
         summary: "Collapse antidiagonalmatrix to the shorter admat helper.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::ADMAT,
         aliases: [&physics::cmd::ANTIDIAGONALMATRIX],

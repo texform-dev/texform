@@ -36,7 +36,7 @@ define_rule! {
         key: Physics / "pdv-to-frac-partial",
         level: Expand,
         summary: "Expand pdv forms to explicit partial-derivative fractions.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::PDV],
         consumes: RuleConsumes {

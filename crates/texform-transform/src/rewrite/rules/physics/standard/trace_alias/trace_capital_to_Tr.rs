@@ -21,7 +21,7 @@ alias_rule! {
         key: Physics / "trace-capital-to-Tr",
         level: Standard,
         summary: "Collapse capital Trace to the local Tr anchor.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::TR_2,
         aliases: [

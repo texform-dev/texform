@@ -24,7 +24,7 @@ alias_rule! {
         key: Physics / "evaluated-to-eval",
         level: Standard,
         summary: "Collapse evaluated to the shorter eval helper before eval expansion.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::EVAL,
         aliases: [&physics::cmd::EVALUATED],

@@ -32,7 +32,7 @@ define_rule! {
         key: Physics / "poisson-bracket-expand",
         level: Expand,
         summary: "Expand poisson brackets to explicit brace fences.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::PB],
         consumes: RuleConsumes {

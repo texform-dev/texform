@@ -33,7 +33,7 @@ define_rule! {
         key: Physics / "norm-to-double-vert-fence",
         level: Expand,
         summary: "Rewrite norm to explicit double-vertical-bar fences.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::NORM],
         consumes: RuleConsumes {

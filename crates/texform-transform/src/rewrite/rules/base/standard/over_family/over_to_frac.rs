@@ -25,7 +25,7 @@ define_rule! {
         key: Base / "over-to-frac",
         level: Standard,
         summary: "Rewrite infix over to an explicit frac command.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::OVER],
         consumes: RuleConsumes {

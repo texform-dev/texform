@@ -24,7 +24,7 @@ define_rule! {
         key: Ams / "unlhd-to-trianglelefteq",
         level: Standard,
         summary: "Collapse unlhd to the descriptive trianglelefteq character.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::UNLHD],
         consumes: RuleConsumes {

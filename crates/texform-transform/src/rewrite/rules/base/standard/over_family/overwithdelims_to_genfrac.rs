@@ -24,7 +24,7 @@ define_rule! {
         key: Base / "overwithdelims-to-genfrac",
         level: Standard,
         summary: "Rewrite overwithdelims to an explicit genfrac with delimiters.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::OVERWITHDELIMS],
         consumes: RuleConsumes {

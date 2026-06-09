@@ -29,7 +29,7 @@ define_rule! {
         key: Physics / "vu-to-hat-mathbf",
         level: Expand,
         summary: "Canonicalize vu to an explicit hat-wrapped mathbf form.",
-        fidelity: Lossless,
+        fidelity: Full,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::VU],
         consumes: RuleConsumes {
