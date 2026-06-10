@@ -1,8 +1,10 @@
 # texform-transform
 
-A phase-oriented AST rewrite pipeline for TeXForm. It normalizes a parsed `Ast` into a canonical form so downstream consumers — formula equivalence comparison, MER tokenization, LLM pretraining corpora, polished authoring output — can work against a stable shape without re-implementing LaTeX semantics per use case.
+Internal implementation crate for [texform](https://crates.io/crates/texform). Do not depend on this crate directly — its API has no stability guarantees and may change in any release. Use the `texform` facade crate instead.
 
-The crate is a thin wrapper around four ordered phases. Callers choose a build-time [`Profile`] / [`BuildConfig`] to compile a rewrite plan, then use per-run [`TransformConfig`] values to gate phases and set runtime limits.
+A phase-oriented AST rewrite pipeline for TeXForm. It normalizes a parsed `Ast` into a canonical form so downstream consumers — formula equivalence comparison, MER tokenization, LLM pretraining corpora, polished authoring output — can work against a stable shape without re-implementing LaTeX semantics per use case. This README is the in-depth reference for the transform subsystem: rule authors and contributors should start here.
+
+The crate is a thin wrapper around five ordered phases. Callers choose a build-time [`Profile`] / [`BuildConfig`] to compile a rewrite plan, then use per-run [`TransformConfig`] values to gate phases and set runtime limits.
 
 ## Quick start
 
@@ -51,8 +53,7 @@ for mut ast in batch {
 
 ## Public API
 
-This is an internal crate with no external stability guarantee; integrate through the `texform`
-facade rather than depending on it directly. The crate's public surface is intentionally small:
+The crate's public surface is intentionally small:
 
 | Item | Purpose |
 |------|---------|
@@ -73,7 +74,8 @@ The rewrite phase additionally re-exports `RewriteRule`, `NormalizationLevel`, `
 1. **LowerAttributes (pre)** — canonicalize declarative-scope commands (e.g. `\bf x`) and registered prefix wrappers (e.g. `\mathbf{x}`) into a single normal form.
 2. **Rewrite** — apply the precompiled rewrite plan in a fixed-point loop, bounded by `max_iterations`.
 3. **LowerAttributes (post)** — re-canonicalize attribute markers introduced by rewrite rules (some Standard / Expand rules emit prefix wrappers that need lowering again).
-4. **FlattenGroups** — remove redundant explicit and implicit groups after the earlier phases have stabilized.
+4. **FinalizeAst** — local AST cleanup that does not depend on rewrite metadata, currently merging adjacent `Prime` nodes produced by rewrite rules.
+5. **FlattenGroups** — remove redundant explicit and implicit groups after the earlier phases have stabilized.
 
 Phase order is fixed; only the per-phase flags are configurable.
 
@@ -85,6 +87,7 @@ Phase order is fixed; only the per-phase flags are configurable.
 pub struct TransformConfig {
     pub rewrite_enabled: bool,
     pub lower_attributes_enabled: bool,
+    pub finalize_ast: FinalizeAstConfig,
     pub flatten_groups: FlattenGroupsConfig,
     pub max_iterations: usize,
 }
@@ -223,12 +226,14 @@ Additional constants: `ENABLED` (alias for `STRICT`), `DISABLED` (no flattening 
 pub struct TransformReport {
     pub lower_attributes: LowerAttributesReport,
     pub rewrite: RewriteReport,
+    pub finalize_ast: FinalizeAstReport,
     pub flatten_groups: FlattenGroupsReport,
 }
 ```
 
 - `LowerAttributesReport` — `attributes` (`HashMap<AttributeSet, AttributeStat>`) plus `eliminated_empty_segments`; each attribute stat has `consumed`, `redundant`, and `emitted` counts split into `declaratives` and `prefixes`. The report aggregates all LowerAttributes invocations in one transform run, so the default pipeline combines pre-Rewrite and post-Rewrite counts.
 - `RewriteReport` — `iterations` (fixed-point iteration count) and `rules` (`Vec<RewriteRuleStat>` with `key`, `applied_count`, `skipped_count` per rule that was attempted at least once).
+- `FinalizeAstReport` — `steps` with one `applied_count` counter per cleanup step (currently `merge_adjacent_primes`).
 - `FlattenGroupsReport` — `actions` for the four action counters and `guards` for one hit counter per preserve guard. Hit counters are short-circuit: when several guards would apply to the same group, only the first one that matches in the internal evaluation order is incremented.
 
 The stable facade DTO used by the Python and WebAssembly bindings flattens the same information into a transport-safe shape:
@@ -237,6 +242,9 @@ The stable facade DTO used by the Python and WebAssembly bindings flattens the s
 {
   iterations,
   rules: [{ key, applied_count, skipped_count }],
+  finalize_ast: {
+    steps: { merge_adjacent_primes: { applied_count } }
+  },
   flatten_groups: {
     actions: { removed_empty, replaced_single_child, inlined_multi_child, unwrapped_slot },
     guards: { preserve_group_* }
@@ -280,7 +288,11 @@ Rules live under `src/rewrite/rules/{base, ams, braket, physics}/` and are auto-
 
 `TransformContext::from_build_config` builds a `Plan` by filtering all registered rules through the selected profile levels, build-time disabled rules, and the `ParseContext`'s enabled packages. The plan is then driven by `scheduler::drive_fixed_point` until either no rule fires in an iteration or `max_iterations` is exceeded. When Rewrite is enabled, after the full pipeline has run post-Rewrite LowerAttributes and FlattenGroups, the engine uses `collect_eliminated_violations` to verify that no rule's `eliminates` set remains in the output AST; a violation is reported as `RewriteError::ContractViolation`.
 
-See [`src/rewrite/rules/README.md`](src/rewrite/rules/README.md) for rule authoring conventions and the macro-based DSL used to define rules.
+See [`src/rewrite/rules/README.md`](https://github.com/texform-dev/texform/blob/main/crates/texform-transform/src/rewrite/rules/README.md) for rule authoring conventions and the macro-based DSL used to define rules.
+
+### FinalizeAst
+
+A single pass (`src/finalize_ast/`) for local AST cleanup that does not depend on rewrite metadata. Its current step merges adjacent `Prime` nodes produced by rewrite rules, so `f^{\prime\prime}` normalizes through `Prime(1), Prime(1)` into the same final shape as `f''`. The phase is enabled by default in every profile and gated by `TransformConfig.finalize_ast.enabled`.
 
 ### FlattenGroups
 
@@ -325,8 +337,11 @@ Integration tests cover the phases and their interactions:
 
 - `tests/flatten_groups.rs` — preserve-guard toggles, `STRICT` vs `STRUCTURAL_ONLY`, action and per-guard counters.
 - `tests/lower_attributes.rs` — declarative consumption, prefix wrapping, inherited-state absorption.
+- `tests/finalize_ast.rs` — adjacent-`Prime` merging and the phase gate.
 - `tests/rewrite_rule.rs` — single-rule execution and metadata contracts.
 - `tests/rewrite_context.rs` — the `RuleContext` AST view exposed to rules.
+- `tests/transform_contract.rs` — eliminated-form contract checking across the pipeline.
+- `tests/config_model.rs` — profile and config invariants.
 
 Run with:
 
@@ -336,5 +351,6 @@ cargo test -p texform-transform
 
 ## See also
 
-- High-level overview: [`lib/texform/README.md`](../../README.md) (Transform section).
-- Rule authoring guide: [`src/rewrite/rules/README.md`](src/rewrite/rules/README.md).
+- High-level overview: [repository README](https://github.com/texform-dev/texform#readme).
+- Architecture: [`ARCHITECTURE.md`](https://github.com/texform-dev/texform/blob/main/ARCHITECTURE.md) (Transform Engine section).
+- Rule authoring guide: [`src/rewrite/rules/README.md`](https://github.com/texform-dev/texform/blob/main/crates/texform-transform/src/rewrite/rules/README.md).

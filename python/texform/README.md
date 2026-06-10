@@ -1,54 +1,43 @@
 # texform
 
-Python bindings for TeXForm's LaTeX parser, serializer, and transform engine.
-
-Build the native extension from the repository root:
+Python bindings for [TeXForm](https://github.com/texform-dev/texform), a LaTeX formula parser, editor, and normalizer built on a structured command knowledge base.
 
 ```bash
-uv sync --dev
-uv run maturin develop
+pip install texform
 ```
+
+## Quick start
 
 ```python
 import texform
 
-parser = texform.Parser()
-result = parser.parse(r"\frac{x}{y}")
+# Normalize a formula into a canonical form chosen by profile.
+engine = texform.TransformEngine(profile="corpus")
+result = engine.normalize(r"a \over b")
+assert result["normalized"] == r"\frac { a } { b }"
 
-if result["document"] is not None:
-    print(result["document"].to_latex())
-
-document = texform.Document()
-root = document.root()
-x = document.create_char("x")
-document.append_child(root, x)
-
-print(document.to_latex())
-
-engine = texform.TransformEngine(profile="authoring")
-normalized = engine.normalize(r"a \over b")
-
-print(normalized["normalized"])
-print(texform.validate_argspec("m o"))
-
-try:
-    engine.normalize(r"\unknown")
-except texform.ParseError as error:
-    print(error.diagnostics)
-
-parser = texform.Parser(
-    items=[
-        {
-            "target": "command",
-            "name": "foo",
-            "kind": "prefix",
-            "allowed_mode": "math",
-            "argspec": "m",
-        }
-    ]
-)
+# Parse, inspect, edit, and serialize back to LaTeX.
+parsed = texform.Parser().parse(r"\frac{x}{y}")
+if parsed["document"] is not None:
+    print(parsed["document"].to_latex())
 ```
 
-`serialize(node, options)` remains as a compatibility helper for `SyntaxNode` snapshots. New code should use `texform.Document.from_syntax(node).to_latex(options)` or `document.to_latex(options)`.
+Profiles select the normalization target: `"authoring"`, `"faithful"`, `"corpus"`, and `"equiv"`.
 
-See the repository [`README.md`](../../README.md) and [`ARCHITECTURE.md`](../../ARCHITECTURE.md) for the full API and design.
+## Python-specific notes
+
+- `Parser.parse` returns a dict with a `document` value (or `None`) plus a `diagnostics` list — the same three-state contract as the Rust API.
+- All names follow Python conventions: methods and dict keys are snake_case (`to_latex`, `validate_argspec` returns `arg_count`).
+- Parse and edit errors raise structured exceptions (`texform.ParseError` and friends); no Rust panic ever crosses the boundary.
+- The package ships `py.typed` and `.pyi` stubs, so type checkers and IDE completion work out of the box.
+- Wheels are abi3 and require Python 3.10 or newer.
+
+## Learn more
+
+The Python API mirrors the Rust facade one-to-one. For the full picture — the editable document tree, transform profiles, and the architecture — see the [GitHub repository](https://github.com/texform-dev/texform).
+
+<!-- Full documentation: https://texform.dev (docsite goes live after 0.1.0) -->
+
+## License
+
+Apache-2.0.

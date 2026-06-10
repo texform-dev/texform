@@ -3,6 +3,9 @@ name = "texform-knowledge-macros"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Procedural macros for the TeXForm knowledge base (internal; use the texform crate)"
+repository.workspace = true
+homepage.workspace = true
 
 [lib]
 proc-macro = true

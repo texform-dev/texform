@@ -3,6 +3,9 @@ name = "texform-knowledge"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "LaTeX command and environment knowledge base for TeXForm (internal; use the texform crate)"
+repository.workspace = true
+homepage.workspace = true
 
 [dependencies]
 serde.workspace = true

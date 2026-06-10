@@ -1,67 +1,44 @@
 # texform
 
-Public npm package for TeXForm's JavaScript and TypeScript API.
+JavaScript and TypeScript bindings for [TeXForm](https://github.com/texform-dev/texform), a LaTeX formula parser, editor, and normalizer built on a structured command knowledge base. Powered by WebAssembly, with TypeScript types included.
 
 ```bash
 npm install texform
 ```
 
+## Quick start
+
 ```ts
-import { Document, Parser, TexformParseError, TransformEngine, validateArgspec } from "texform";
+import { Parser, TransformEngine } from "texform";
 
-const parser = new Parser();
-const result = parser.parse(String.raw`\frac{x}{y}`);
+// Normalize a formula into a canonical form chosen by profile.
+const engine = new TransformEngine({ profile: "corpus" });
+const result = engine.normalize("a \\over b");
+console.assert(result.normalized === "\\frac { a } { b }");
 
-if (result.document) {
-  console.log(result.document.toLatex());
+// Parse, inspect, edit, and serialize back to LaTeX.
+const parsed = new Parser().parse("\\frac{x}{y}");
+if (parsed.document) {
+  console.log(parsed.document.toLatex());
 }
-
-const document = new Document();
-const root = document.root();
-const x = document.createChar("x");
-document.appendChild(root, x);
-
-console.log(document.toLatex());
-
-const engine = new TransformEngine({ profile: "authoring" });
-const normalized = engine.normalize("a \\over b");
-
-console.log(normalized.normalized);
-console.log(validateArgspec("m o"));
-
-try {
-  engine.normalize("\\unknown");
-} catch (error) {
-  if (error instanceof TexformParseError) {
-    console.log(error.diagnostics);
-  }
-}
-
-const parserWithItem = new Parser({
-  items: [
-    {
-      target: "command",
-      name: "foo",
-      kind: "prefix",
-      allowedMode: "math",
-      argspec: "m",
-    },
-  ],
-});
 ```
 
-`serialize(node, options)` remains as a compatibility helper for `SyntaxNode` snapshots. New code should use `Document.fromSyntax(node).toLatex(options)` or `document.toLatex(options)`.
+Profiles select the normalization target: `"authoring"`, `"faithful"`, `"corpus"`, and `"equiv"`.
 
-The package exposes Node and bundler entry points:
+## JavaScript-specific notes
 
-- `texform` resolves to a Node entry in Node.js and to a bundler entry in browser-oriented bundlers.
-- `texform/node` forces the Node entry.
-- `texform/bundler` forces the bundler entry.
+- The package ships two entry points for loading the WebAssembly module. The default `texform` import resolves to the Node entry in Node.js and to the bundler entry in browser-oriented bundlers; `texform/node` and `texform/bundler` force one explicitly.
+- The bundler entry initializes the WebAssembly module at module load time and expects a modern bundler with support for top-level `await` and `.wasm` assets (e.g. Vite, webpack 5).
+- All names follow JavaScript conventions: methods and fields are camelCase (`toLatex`, `validateArgspec` returns `argCount`), and missing values are `null`.
+- Parse and edit errors throw structured exceptions (`TexformParseError` and friends); no Rust panic ever crosses the boundary.
+- TypeScript declarations are bundled — no separate `@types` package.
 
-The bundler entry initializes the WebAssembly module during module loading and expects a modern bundler that supports top-level `await` and `.wasm` assets.
+## Learn more
 
-Before publishing, rebuild and sync the underlying WebAssembly bindings:
+The JavaScript API mirrors the Rust facade one-to-one. For the full picture — the editable document tree, transform profiles, and the architecture — see the [GitHub repository](https://github.com/texform-dev/texform).
 
-```bash
-bun run prepare:publish
-```
+<!-- Full documentation: https://texform.dev (docsite goes live after 0.1.0) -->
+
+## License
+
+Apache-2.0.

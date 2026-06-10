@@ -1,4 +1,4 @@
-//! Counter aggregation for proposal impact evaluation.
+//! Counter aggregation for corpus target-frequency analysis.
 //!
 //! Walks a parsed `SyntaxNode` and counts occurrences of each `(kind, mode, name)`
 //! tuple where `kind` is "cmd", "env", or "char". Command-like nodes

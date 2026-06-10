@@ -10,26 +10,28 @@ See @README.md for usage, and @ARCHITECTURE.md for the architectural overview: c
 
 ```
 crates/                       # Rust workspace
-├── texform-core/             # Parser, AST, serializer, transform engine
-├── texform-knowledge/            # Knowledge base & command specifications
+├── texform/                  # Public facade — the only stability-guaranteed crate
+├── texform-core/             # Parser, AST, Document, serializer
+├── texform-transform/        # Profile-based AST transform engine
+├── texform-knowledge/        # Knowledge base & command specifications
 ├── texform-argspec/          # xparse-style argument spec parser
-├── texform-knowledge-macros/     # Procedural macros for specs
-├── texform-interface/        # Public types (SyntaxNode, etc.)
+├── texform-knowledge-macros/ # Procedural macros for specs
+├── texform-interface/        # Shared types (SyntaxNode, etc.)
 ├── texform-regression/       # Corpus regression harness
 ├── texform-python/           # Python bindings (PyO3)
 └── texform-wasm/             # WebAssembly bindings
 packages/                     # NPM/TypeScript packages
-└── texform/                   # Public npm package wrapper around WASM bindings
+└── texform/                  # Public npm package wrapper around WASM bindings
 python/texform/               # Python package source
 resources/specs/              # Knowledge base YAML
 regression/                   # Corpus regression data & results
 ├── data/                     # Git LFS Parquet datasets
 ├── datasets.yaml             # Dataset configuration
-├── results/                  # Regression output
-└── history/                  # Per-commit snapshots
+├── contract_exceptions.yaml  # Transform contract allow-list
+└── results/                  # Regression output
 ```
 
-Project design notes and internal planning documents live outside this repo in the parent workspace. Do not recreate a `docs/` directory here for private notes, Chinese research records, or internal implementation plans.
+Project design notes and internal planning documents live outside this open-source repository. Do not recreate a `docs/` directory here for private notes, research records, or internal implementation plans.
 
 ## Language Conventions
 
@@ -47,7 +49,7 @@ Project design notes and internal planning documents live outside this repo in t
 
 - `texform` is the only crate with a public stability guarantee. All other crates (`texform-core`, `texform-transform`, etc.) are internal: their APIs may change without notice, and external integration must go through the `texform` facade.
 - Public APIs should have stable names, predictable behavior, clear error types, and runnable examples.
-- Keep private workspace assumptions, unfinished design notes, and internal workflows out of this repo.
+- Keep private assumptions, unfinished design notes, and internal workflows out of this repo.
 
 3. **Pragmatic Implementation**
 
@@ -63,7 +65,7 @@ Project design notes and internal planning documents live outside this repo in t
 ## Corpus Regression
 
 - The corpus regression suite in `crates/texform-regression` runs TeXForm against large real-world datasets. A full parser regression run takes less than 10 seconds on the canonical corpus.
-- Current regression binaries are `parser_regression`, `transform_contract`, and `counter_dump`. `parser_regression` checks parser error-rate regressions against tracked summaries; `transform_contract` checks full-pipeline eliminated-form contracts over real corpora; `counter_dump` produces counter-map data products consumed by the parent workspace.
+- Current regression binaries are `parser_regression`, `transform_contract`, and `counter_dump`. `parser_regression` checks parser error-rate regressions against tracked summaries; `transform_contract` checks full-pipeline eliminated-form contracts over real corpora; `counter_dump` produces counter-map data products for downstream corpus analysis.
 - Any significant parser change should run `parser_regression` before and after to check for error-rate regressions.
 - `transform_contract` is not part of the pre-commit hook. Run it manually when changing transform rules, `RuleMeta`, `consumes.eliminates`, `touches`, `produces`, transform profiles/build config, rewrite scheduling, shared transform helpers, or `regression/contract_exceptions.yaml`.
 - During development, a focused probe is acceptable first: `cargo run --release -p texform-regression --bin transform_contract -- --dataset lf80m-benchmarks --dry-run`. Before merging transform-related changes, run the full check: `cargo run --release -p texform-regression --bin transform_contract -- --dry-run`.
@@ -73,7 +75,7 @@ Project design notes and internal planning documents live outside this repo in t
 
 ## Transform Engine
 
-The transform subsystem (`crates/texform-core/src/transform/`) provides rule-based AST rewriting. See `crates/texform-core/src/transform/rules/README.md` for more info.
+The transform subsystem (`crates/texform-transform`) provides profile-based AST rewriting. See [`crates/texform-transform/README.md`](crates/texform-transform/README.md) for the subsystem reference and [`crates/texform-transform/src/rewrite/rules/README.md`](crates/texform-transform/src/rewrite/rules/README.md) for rule authoring conventions.
 
 ## Tooling Conventions
 
@@ -82,6 +84,13 @@ The transform subsystem (`crates/texform-core/src/transform/`) provides rule-bas
 - **Python**: use `uv` for dependency management and `maturin` for native extension builds.
 - **Commit messages**: use Conventional Commits, such as `feat(rule): add root-family rule`, `fix(core): generate standard transform rule modules`, or `test(core): restore brace transform examples`. Prefer an existing scope like `core`, `rule`, `specs`, `regression`, `wasm`, or `python`; omit the scope only when a change spans multiple areas. Keep the subject short, imperative, and lower-case after the type/scope prefix. For large commits with several important changes, include a body after a blank line; format that body as a Markdown unordered list, with one bullet per important change.
 
+### Python Binding
+
+```bash
+uv sync --dev          # set up .venv and install deps
+uv run maturin develop # build the native extension from the repo root
+```
+
 ### WASM Binding
 
 ```bash
@@ -89,7 +98,26 @@ wasm-pack build crates/texform-wasm --target nodejs
 wasm-pack build crates/texform-wasm --target web
 ```
 
+Or rebuild both targets and sync them into the npm package in one step:
+
+```bash
+bun run --cwd packages/texform prepare:publish
+```
+
 ## Maintenance Notes
+
+### Changelog
+
+[`CHANGELOG.md`](CHANGELOG.md) is maintained by hand in the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format. Versions are lockstep: one version number covers the Rust, Python, and JavaScript release channels.
+
+- Write notable changes for users, not a commit-log dump. Describe observable behavior changes, not internal implementation.
+- Group entries under Added / Changed / Fixed / Removed; mark breaking changes explicitly.
+- Accumulate unreleased changes under the `Unreleased` heading; move them under a version number at release time.
+- A change that affects the public API, binding behavior, or normalization output should add a changelog entry in the same change.
+
+### Headline Numbers
+
+The headline numbers (such as "530+ command and environment specifications across 7 LaTeX packages") appear in exactly three places: the description sentence in the repository `README.md`, the description sentence in `crates/texform/README.md`, and the documentation site landing page (maintained separately). They are coarse lower bounds on the actual data in `texform-knowledge`. When the knowledge base or rule set crosses a milestone worth advertising, update all three together; do not introduce these numbers into other documents — use mechanism-level evidence (renderer names, text idempotency, corpus regression) instead.
 
 ### Architecture Document
 

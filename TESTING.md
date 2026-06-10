@@ -49,7 +49,7 @@ Corpus regression is our closest analog to a conformance suite. `parser_regressi
 
 `transform_contract` is intentionally not in the pre-commit hook. Run it manually for transform rule changes, rule metadata changes, transform profile/build-config changes, rewrite scheduling changes, shared transform helper changes, or edits to `regression/contract_exceptions.yaml`. A focused development probe can use `cargo run --release -p texform-regression --bin transform_contract -- --dataset lf80m-benchmarks --dry-run`; before merging transform-related changes, run the full `cargo run --release -p texform-regression --bin transform_contract -- --dry-run`.
 
-`transform_examples!` golden tests are not an independent oracle. Their expected output comes from validated rule proposal examples, so they lock implementation-to-definition consistency. They catch "the rule implementation drifted from the verified proposal"; they do not prove that the proposal definition itself was correct. Proposal correctness is checked by rule review and corpus validation workflows.
+`transform_examples!` golden tests are not an independent oracle. Their expected output comes from verified rule definitions, so they lock implementation-to-definition consistency. They catch "the rule implementation drifted from the verified definition"; they do not prove that the definition itself was correct. Definition correctness is established by review and corpus validation outside this repository.
 
 Facade tests do not carry transform correctness. A facade failure means the public API contract, wrapper behavior, or error mapping broke. A single rewrite rule bug belongs in that rule's inline golden tests or the relevant phase tests.
 

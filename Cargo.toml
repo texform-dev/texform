@@ -17,6 +17,10 @@ resolver = "3"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
+repository = "https://github.com/texform-dev/texform"
+homepage = "https://texform.dev"
+keywords = ["latex", "math", "parser", "formula", "normalization"]
+categories = ["parser-implementations", "text-processing", "mathematics"]
 
 [workspace.dependencies]
 chumsky = "0.11.1"

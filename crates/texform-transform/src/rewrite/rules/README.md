@@ -6,13 +6,12 @@ This directory stores concrete transform rules.
 
 Do not add one-off transform rules for declarative-scope commands such as
 `\bf`, `\rm`, `\large`, or `\displaystyle`, or for registered prefix wrappers
-such as `\mathbf` and `\textbf`. These markers are handled by the hard-coded
-`transform::lower_attributes` pass before and after normal rule execution.
-The data source for that phase is
-`src/transform/lower_attributes/data.yaml`.
+such as `\mathbf` and `\textbf`. These markers are handled by the dedicated
+LowerAttributes phase before and after normal rule execution. The data source
+for that phase is `src/lower_attributes/data.yaml`.
 
-Ordinary ApplyRules and Cleanup rules can assume registered attribute markers
-have already been lowered to the canonical form for their current phase.
+Ordinary rewrite rules can assume registered attribute markers have already
+been lowered to the canonical form by the time they run.
 
 ## Adding a New Rule
 
@@ -59,9 +58,8 @@ Rules use this directory structure:
 
 Rule group directories must use standard snake_case Rust module names. Rule
 file stems must be valid Rust module names and may contain ASCII uppercase
-letters when the rule id does. The rule-forge proposal field `directory_group`
-remains a dash slug for workflow data, but scaffold output converts it to the
-snake_case Rust path segment.
+letters when the rule id does. Group names written as dash slugs elsewhere are
+converted to snake_case Rust path segments here.
 
 The rule key remains `<package>/<name>`, independent of the directory group.
 
@@ -83,8 +81,8 @@ For repeated rule shells, prefer the crate-private authoring macros:
 use crate::rewrite::{alias_rule, char_targets, cmd_targets, define_rule, env_targets};
 ```
 
-These macros are intentionally local to `texform-core`; they are ergonomics
-helpers for builtin rules, not a public rule-definition API.
+These macros are intentionally local to `texform-transform`; they are
+ergonomics helpers for builtin rules, not a public rule-definition API.
 
 ## Scheduling With `triggers`
 

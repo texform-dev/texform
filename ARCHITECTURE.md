@@ -4,6 +4,8 @@ TeXForm is a LaTeX formula parser, serializer, and transform engine. This docume
 
 For end-user usage and runnable examples, see [`README.md`](README.md). For contributor conventions, see [`AGENTS.md`](AGENTS.md). This file covers the *why* of the structure, not the *how* of any individual feature.
 
+<!-- Full documentation: https://texform.dev (docsite goes live after 0.1.0) -->
+
 ## Crate Layout and the Stability Boundary
 
 TeXForm is a Rust workspace of small, single-purpose crates. Only one of them — `texform` — carries a public stability guarantee. Every other crate is an internal implementation detail whose API may change without notice; external code must integrate through the `texform` facade.
@@ -135,7 +137,7 @@ All user-facing editing goes through `Document` and is fallible by design:
 - **`to_latex()` / `to_latex_with(&SerializeOptions)`** render the tree back to LaTeX *text* using the canonical serializer. There is intentionally no method named `serialize` on `Document`.
 - **`to_syntax()`** converts the tree to a `SyntaxNode`, which is the single serde DTO. `Document` and `Ast` do not implement serde directly; structured-data output always goes through `SyntaxNode`.
 
-The serializer covers the full node vocabulary, including emitting an `Error` node's snippet and writing `Prime` nodes back as quote shorthand. A pure prime superscript serializes compactly as `f'` or `f''`; mixed superscripts such as `f'^2` remain ordinary script groups. The serializer guarantees text idempotency (see the README's serialization section for the exact contract and the configurable style axes).
+The serializer covers the full node vocabulary, including emitting an `Error` node's snippet and writing `Prime` nodes back as quote shorthand. A pure prime superscript serializes compactly as `f'` or `f''`; mixed superscripts such as `f'^2` remain ordinary script groups. The serializer guarantees **text idempotency** — `serialize(parse(serialize(parse(src)))) == serialize(parse(src))`: parsing the canonical output and re-serializing always produces the same string. This is a text-level guarantee; `parse(serialize(ast))` is not required to recover the exact same AST kind. Output style is configurable through `SerializeOptions` (see the [`texform` API docs](https://docs.rs/texform) for the option axes).
 
 ## Transform Engine
 

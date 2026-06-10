@@ -3,6 +3,12 @@ name = "texform"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "LaTeX formula parser, editor, and normalizer — the public TeXForm facade"
+readme = "README.md"
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 serde.workspace = true

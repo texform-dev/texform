@@ -70,7 +70,7 @@ cargo run --release -p texform-regression --bin counter_dump
   - `results/counter_map/<slug>.parquet` when the dataset fits in a single chunk (the conventional small-dataset layout);
   - `results/counter_map/<slug>/part-<offset>-<limit>.parquet` when the dataset spans multiple chunks. Downstream consumers (Polars / PyArrow / DuckDB) read either form as a parquet dataset, so no merge step is needed.
 
-`<hash>` is the HEAD of this texform repository, even when the command is invoked from an outer workspace with
+`<hash>` is the HEAD of this texform repository, even when the command is invoked from another directory with
 `--manifest-path`.
 
 `summary.json` is intentionally stable enough to track in git; run timings, formula-level detail, and

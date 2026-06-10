@@ -1,237 +1,160 @@
+<div align="center">
+
 # TeXForm
 
-A LaTeX formula parser, formatter, and transform engine.
+**The missing foundation for LaTeX formula processing.**
 
-For a high-level map of the crates, the processing pipeline, the three tree representations, and the public API guarantees, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
+TeXForm parses, edits, and transforms LaTeX math, built on a structured knowledge base of 530+ command and environment specifications across 7 LaTeX packages, validated against MathJax, KaTeX, and XeTeX. One Rust core, available in Rust, Python, and JavaScript.
 
-## Quick Start
+[![crates.io](https://img.shields.io/crates/v/texform.svg)](https://crates.io/crates/texform)
+[![PyPI](https://img.shields.io/pypi/v/texform.svg)](https://pypi.org/project/texform/)
+[![npm](https://img.shields.io/npm/v/texform.svg)](https://www.npmjs.com/package/texform)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-### Normalize Example
+[Playground](https://play.texform.dev) · [Architecture](ARCHITECTURE.md) · [Changelog](CHANGELOG.md)
 
-```rust
-let engine = texform::TransformEngine::builder()
-    .profile(texform::Profile::Authoring)
-    .build()?;
+<!-- Full documentation: https://texform.dev (docsite goes live after 0.1.0) -->
 
-let result = engine.normalize(r"a \over b")?;
-assert_eq!(result.normalized, r"\frac { a } { b }");
-```
+</div>
 
-### Parse Example
+## Why TeXForm
 
-```rust
-let parser = texform::Parser::builder().build()?;
-let result = parser.parse(r"\frac{x}{y}");
+Programs that process LaTeX formulas — cleaning OCR training data, comparing formulas for equivalence, preparing pretraining corpora, building math editors — keep reinventing the same fragile layer: regular expressions and one-off heuristics that guess what `\frac`, `\over`, or `\quantity` mean. The hard part was never the string manipulation. It is knowing the argument structure of every command well enough to work on formulas as syntax trees instead of text.
 
-for diagnostic in result.diagnostics() {
-    eprintln!("{}", diagnostic.message);
-}
+TeXForm is that missing layer. It parses formulas against a real command knowledge base, gives you an editable document tree, and normalizes formulas into canonical forms tuned for specific downstream uses.
 
-let Some(document) = result.document() else {
-    return Ok(());
-};
+## What TeXForm gives you
 
-println!("{}", document.to_latex()?);
-```
+<table>
+<tr>
+<th align="center"><a href="ARCHITECTURE.md#knowledge-and-argument-specifications">Knowledge-driven parser</a></th>
+<th align="center"><a href="ARCHITECTURE.md#editing-model">Editable document tree</a></th>
+<th align="center"><a href="crates/texform-transform/README.md">Profile-based transform engine</a></th>
+</tr>
+<tr>
+<td valign="top">
 
-Standalone [`Parser`](crates/texform/src/parser.rs) defaults to [`ParseConfig::LENIENT`]: unknown commands are preserved as `known: false` nodes and diagnostics are collected across the whole input (suitable for playgrounds and exploration).
+Formulas parse into real syntax trees, driven by xparse-style argument specifications for every command in `base`, `ams`, `physics`, `braket`, `bboldx`, `boldsymbol`, and `textmacros`. Unknown commands and unparseable fragments survive as explicit nodes — under your control, never a crash.
 
-`Parser::parse` has three observable states:
+</td>
+<td valign="top">
 
-- `None`: no document was produced; diagnostics describe the failure.
-- `Some(document)` without error nodes: the document is editable.
-- `Some(document)` with error nodes: the document is partial and read-only.
+Parsing produces a `Document` — a DOM-style tree you can query, mutate, and serialize back to LaTeX. Edits are validated and return structured errors; no panic ever reaches the caller. The canonical serializer guarantees text idempotency.
 
-Empty input is a valid empty document.
+</td>
+<td valign="top">
 
-### Document Edit Example
+Normalization has no single correct answer, so TeXForm never imposes one true form. You pick a `Profile`, and a curated rule pipeline produces the canonical form for that use case — from polished authoring output to aggressive corpus normalization.
 
-```rust
-let mut document = texform::Document::new();
-let x = document.create_char('x')?;
-document.append_child(document.root().id(), x)?;
+</td>
+</tr>
+</table>
 
-assert_eq!(document.to_latex()?, "x");
-```
+<!-- Pillar titles will link to https://texform.dev guide pages once the docsite goes live. -->
 
-### Parse Configuration
+## Normalization at a glance
 
-[`ParseConfig`](crates/texform-core/src/parse/config.rs) has two orthogonal axes; **`true` means stricter** on both:
-
-| Field | `true` (strict) | `false` (lenient) |
-|-------|-----------------|-------------------|
-| `reject_unknown` | Unknown command/env names become diagnostics | Preserved as `known: false` nodes |
-| `abort_on_error` | Stop at the first error per item | Continue parsing to collect all diagnostics (slower) |
-
-Named extremes: [`ParseConfig::STRICT`](crates/texform-core/src/parse/config.rs) (both `true`) and [`ParseConfig::LENIENT`](crates/texform-core/src/parse/config.rs) (both `false`, also `Default::default()`). Mixed settings use struct-update syntax:
-
-```rust
-use texform::ParseConfig;
-
-// Reject unknown names but still collect every diagnostic.
-let cfg = ParseConfig { reject_unknown: true, ..Default::default() };
-```
-
-[`TransformEngine`](crates/texform/src/transform_engine.rs) wraps the same internal [`Parser`](crates/texform/src/parser.rs) with a **strict default** (`ParseConfig::STRICT`) shared by `engine.parser().parse()` and `engine.normalize()`. Use a standalone `Parser` for lenient exploration; use `TransformEngineBuilder::default_parse_config` to change the engine-wide default. `TransformEngine` requires a [`Profile`](crates/texform-transform/src/config.rs) because normalization has no neutral canonical form — that choice is intentional and separate from parse strictness.
-
-### validate_argspec Example
-
-Validate an argspec string:
-
-```rust
-let result = texform::validate_argspec("m o");
-assert!(result.valid);
-assert_eq!(result.arg_count, Some(2));
-assert!(result.parsed.is_some());
-```
-
-## Serialization
-
-TeXForm provides a canonical serializer through [`Document::to_latex`](crates/texform/src/document.rs). It is designed as an independent stage: it covers the full public document vocabulary and makes no assumptions about whether the input has been normalized by a transform pass.
-
-Use `Document` as the main public tree API:
-
-```rust
-let latex = document.to_latex()?;
-let syntax = document.to_syntax();
-```
-
-`SyntaxNode` remains available as a lossless serde and transport snapshot. It is not the editing API; convert it with `Document::from_syntax` before making tree edits.
-
-### Binding Conventions
-
-`SyntaxNode` is the cross-language tree wire format. It intentionally keeps the same tagged shape in Rust, Python, JavaScript, and JSON fixtures.
-
-Human-facing binding DTOs follow the host language: JavaScript uses camelCase, Python uses snake_case. Missing JavaScript values are returned as `null`. `validate_argspec` returns `valid`, `error`, `arg_count`, and `parsed` in Rust/Python; JavaScript exposes the same contract as `valid`, `error`, `argCount`, and `parsed`.
-
-### Text Idempotency
-
-The serializer guarantees **text idempotency**:
-
-```
-serialize(parse(serialize(parse(src)))) == serialize(parse(src))
-```
-
-That is, parsing the canonical output and re-serializing always produces the same string. Note that this is a *text-level* guarantee — `parse(serialize(ast))` is not required to recover the exact same AST kind (e.g. `Explicit` vs `Implicit` group distinctions may not round-trip).
-
-### Default Canonical Style
-
-The default style targets the **corpus** and **equiv** use cases (MER data processing, formula equivalence comparison) with the following design choices:
-
-- **Strong disambiguation** — implicit boundaries are made explicit. For example, `\frac12` serializes as `\frac { 1 } { 2 }`, and `x^2_i` serializes as `x _ { i } ^ { 2 }`.
-- **Token-level separation in math mode** — adjacent math character atoms are space-separated (`abc` → `a b c`), inspired by the `im2markup` tokenization style, but without replicating its semantic rewriting (e.g. `\sin` is never rewritten to `\operatorname{s i n}`).
-- **Text mode preserved verbatim** — text content (via `\text{...}` etc.) is never split or re-spaced. `\text{abc}` stays `\text {abc}`, not `\text { a b c }`.
-- **Single-line output** — no formatting newlines are inserted around `\begin`/`\end` or after `\\`.
-
-### Configurable Options
-
-The serializer exposes `SerializeOptions` for style customization via `document.to_latex_with(&options)`. Key axes include:
-
-| Option | Default | Effect |
-|--------|---------|--------|
-| `math.spacing.commands` | `Spaced` | Space between command and `{`/`[`: `\frac { a }` vs `\frac{ a }` |
-| `math.spacing.group_inner_spacing` | `Padded` | Padding inside math braces: `{ a }` vs `{a}` |
-| `math.spacing.adjacent_chars` | `Spaced` | Space between math chars: `a b c` vs `abc` |
-| `math.scripts.spacing` | `Spaced` | Space around `_`/`^`: `x _ { i }` vs `x_{i}` |
-| `math.scripts.order` | `SubFirst` | Fixed output order: `_` before `^` |
-| `syntax.environments.name_spacing` | `Spaced` | `\begin {matrix}` vs `\begin{matrix}` |
-
-## Transform
-
-TeXForm includes a phase-oriented AST transform engine in `texform-transform`. It normalizes a parsed AST so downstream consumers — formula equivalence, MER tokenization, LLM pretraining corpora, or polished authoring output — can work against a stable canonical form without re-implementing LaTeX semantics per use case.
-
-### Pipeline
-
-The engine runs the following ordered phases. `Profile` / `BuildConfig` decide which rewrite rules are compiled into the plan, while `TransformConfig` controls per-run switches such as phase gates, FlattenGroups behavior, and max iterations:
-
-1. **LowerAttributes (pre)** — canonicalize declarative-scope commands and registered prefix wrappers.
-2. **Rewrite** — apply rewrite rules in a fixed-point loop.
-3. **LowerAttributes (post)** — re-canonicalize attribute markers produced by rewrite rules.
-4. **FlattenGroups** — remove redundant explicit and implicit groups after earlier phases have finished producing canonical structure.
-
-### Normalization Levels and Fidelity
-
-Every transform rule carries two orthogonal attributes. Its **normalization level** (`Standard`, `Expand`, `Drop`, `Equiv`) is the first profile that accepts the rule output as a suitable product, and decides which profiles enable the rule. Its **fidelity** (`Semantic < Approximate < Full`) is a separate worst-case render-fidelity guarantee and does not determine the level. See the [`texform-transform` README](crates/texform-transform/README.md) and [the rule-authoring guide](crates/texform-transform/src/rewrite/rules/README.md) for the per-level intent, the per-fidelity guarantees, and the fidelity floor each level requires.
-
-### Profiles
-
-`Profile` bundles normalization levels and runtime defaults for common downstream scenarios. The [`texform-transform` README](crates/texform-transform/README.md) lists the normalization levels and `flatten_groups` defaults each profile selects.
+Each `Profile` targets one downstream scenario:
 
 | Profile | Target scenario |
 | --- | --- |
-| `Authoring` | Polished author-facing formatting; stylistic choices kept. |
-| `Faithful` | Preserves the rendered formula while allowing expanded source forms. |
-| `Corpus` | MER training data normalization; layout hints dropped. |
-| `Equiv` | Formula equivalence comparison. |
+| `Authoring` | Polished author-facing output; stylistic choices kept. |
+| `Faithful` | Same rendered formula; convenience macros expanded into universal forms. |
+| `Corpus` | Training-data normalization; layout hints dropped. |
+| `Equiv` | Aggressive canonicalization for formula equivalence comparison. |
 
-See `crates/texform-transform/src/rewrite/rules/README.md` for rule authoring conventions.
+The same input, normalized under different profiles (real engine output):
 
-## Language Bindings
+| Input | `Authoring` | `Corpus` | `Corpus`, rendered |
+| --- | --- | --- | --- |
+| `a \over b` | `\frac { a } { b }` | `\frac { a } { b }` | $\frac { a } { b }$ |
+| `\substack{a \\ b}` | `\substack { a \\ b }` | `\begin {subarray} {c} a \\ b \end {subarray}` | $\begin {subarray} {c} a \\ b \end {subarray}$ |
+| `\dv{f}{x}` | `\dv { f } { x }` | `\frac { \mathrm { d } f } { \mathrm { d } x }` | $\frac { \mathrm { d } f } { \mathrm { d } x }$ |
+| `\ket{\psi}` | `\ket { \psi }` | `\left \vert \psi \right \rangle` | $\left \vert \psi \right \rangle$ |
 
-`texform` is the single public, stability-guaranteed Rust entry point. The facade exposes a parse-only `Parser`, an editable `Document`, a normalizing `TransformEngine`, `validate_argspec`, and analysis helpers — integrate against `texform` only.
+Every profile modernizes legacy syntax like `\over`. `Authoring` keeps the author's shorthand; `Corpus` expands it into universal forms that render on any vanilla MathJax or KaTeX deployment with no extra packages — including right here on GitHub, where inputs like `\dv` and `\ket` would not render at all.
 
-All other crates (`texform-core`, `texform-transform`, `texform-knowledge`, ...) are internal implementation details with no stability guarantee; their APIs may change without notice. In particular, the facade's `Parser` is the stable wrapper around the lower-level `texform-core::parse::ParseContext` — depend on the wrapper, not the internals.
+## What's underneath
+
+Behind a profile, normalization runs as a multi-phase pipeline, not a find-and-replace pass:
+
+- **Rewrite** applies a curated rule set in a fixed-point loop — modernizing legacy syntax, canonicalizing aliases, and expanding semantic macros, depending on the levels the profile selects.
+- **LowerAttributes** canonicalizes font and style markup, so `{\bf x}` and `\mathbf{x}` converge to a single form with declarative scope tracked correctly.
+- **FlattenGroups** strips redundant braces behind semantic and spacing guards, so flattening never changes script binding, environment cell boundaries, or atom spacing unless you opt in.
+
+Two assets carry most of the weight, and neither existed as a reusable artifact before:
+
+- **The argspec knowledge base.** Machine-readable, xparse-style argument signatures for every supported command and environment — validated by rendering against MathJax, KaTeX, and XeTeX rather than transcribed from documentation.
+- **The curated rewrite rule set.** Every rule declares its normalization level, its worst-case render fidelity, and the forms it eliminates. The engine enforces that eliminated-form contract after every run, and corpus regression re-checks it against real-world datasets.
+
+## Quick start
 
 ### Python
 
 ```bash
-uv sync --dev          # set up .venv and install deps
-uv run maturin develop # build from repo root
+pip install texform
 ```
 
 ```python
 import texform
 
-parser = texform.Parser()
-parsed = parser.parse(r"\frac{a}{b}")
-document = parsed["document"]
-text = document.to_latex() if document is not None else ""
+engine = texform.TransformEngine(profile="corpus")
+assert engine.normalize(r"a \over b")["normalized"] == r"\frac { a } { b }"
 
-engine = texform.TransformEngine(profile="authoring")
-result = engine.normalize(r"a \over b")
-
-assert text == r"\frac { a } { b }"
-assert result["normalized"] == r"\frac { a } { b }"
+parsed = texform.Parser().parse(r"\frac{x}{y}")
+if parsed["document"] is not None:
+    print(parsed["document"].to_latex())
 ```
 
-### WASM / JavaScript
+### JavaScript / TypeScript
 
 ```bash
 npm install texform
 ```
 
 ```ts
-import { Parser, TransformEngine, validateArgspec } from "texform";
+import { Parser, TransformEngine } from "texform";
 
-const parser = new Parser();
-const parsed = parser.parse("\\frac{a}{b}");
-const text = parsed.document?.toLatex() ?? "";
+const engine = new TransformEngine({ profile: "corpus" });
+console.assert(engine.normalize("a \\over b").normalized === "\\frac { a } { b }");
 
-const engine = new TransformEngine({ profile: "authoring" });
-const result = engine.normalize("a \\over b");
-
-console.assert(text === "\\frac { a } { b }");
-console.assert(result.normalized === "\\frac { a } { b }");
+const parsed = new Parser().parse("\\frac{x}{y}");
+if (parsed.document) console.log(parsed.document.toLatex());
 ```
 
-For local development, regenerate the underlying WASM package and sync it into the npm package before publishing:
+### Rust
 
 ```bash
-bun run --cwd packages/texform prepare:publish
+cargo add texform
 ```
 
-Python and JavaScript parse calls return the same shape as Rust: a `document` value plus `diagnostics`. When recovery succeeds, the partial tree is the returned document itself.
+```rust
+use texform::{Parser, Profile, TransformEngine};
 
-## Corpus Regression
+let engine = TransformEngine::builder().profile(Profile::Corpus).build()?;
+let result = engine.normalize(r"a \over b")?;
+assert_eq!(result.normalized, r"\frac { a } { b }");
 
-The corpus regression suite lives in `crates/texform-regression` and reads Parquet datasets from `regression/data/`.
-
-```bash
-git lfs install && git lfs pull
-
-cargo run --release -p texform-regression --bin parser_regression
+let parser = Parser::builder().build()?;
+let parsed = parser.parse(r"\frac{x}{y}");
+if let Some(document) = parsed.document() {
+    println!("{}", document.to_latex()?);
+}
 ```
 
-Current summaries are written to `regression/results/parser_regression/summary.json`.
+> **Note:** the `texform` crate is the only public, stability-guaranteed Rust entry point; the `texform-*` crates it depends on are internal and may change in any release. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the crate layout and the public API guarantees.
 
-See [`regression/README.md`](regression/README.md) for dataset provenance and result locations.
+The Python and JavaScript bindings expose the same parser, document, and engine from the single Rust core. See the [PyPI package notes](python/texform/README.md) and the [npm package notes](packages/texform/README.md) for language-specific details.
+
+## Links
+
+- [Playground](https://play.texform.dev) — try TeXForm in the browser
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — crate layout, pipeline, tree representations, API guarantees
+- [`TESTING.md`](TESTING.md) — how TeXForm is tested, from contract tests to corpus regression
+- [`CHANGELOG.md`](CHANGELOG.md) — release history
+
+<!-- Full documentation: https://texform.dev (docsite goes live after 0.1.0) -->
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).

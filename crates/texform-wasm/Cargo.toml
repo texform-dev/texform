@@ -3,6 +3,8 @@ name = "texform-wasm"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "WebAssembly bindings for TeXForm, published to npm via wasm-pack"
+publish = false
 
 [lib]
 crate-type = ["cdylib"]
