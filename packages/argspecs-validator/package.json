@@ -6,6 +6,7 @@
   "main": "src/index.ts",
   "scripts": {
     "test": "bun test",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "validate": "bun run src/cli.ts",
     "check:argspecs": "bun run src/cli.ts --check"
   },

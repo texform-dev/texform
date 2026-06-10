@@ -16,7 +16,10 @@ pub mod parser;
 pub mod serialize;
 pub mod transform_engine;
 
-pub use argspec::{ValidateArgspecResult, validate_argspec};
+pub use argspec::{
+    ArgSpecFormInfo, ArgSpecKindInfo, DelimiterTokenInfo, DelimiterTokenPairInfo,
+    ParsedArgSpecSlot, RuntimeContentModeInfo, ValidateArgspecResult, validate_argspec,
+};
 pub use config::{NormalizeConfig, Profile, RuleKey, TransformConfig, rule_key_from_name};
 pub use document::{
     ArgRef, ArgValue, DelimiterRef, DelimiterValue, Document, DocumentId, EditError,

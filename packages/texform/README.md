@@ -7,7 +7,7 @@ npm install texform
 ```
 
 ```ts
-import { Document, Parser, TransformEngine, validateArgspec } from "texform";
+import { Document, Parser, TexformParseError, TransformEngine, validateArgspec } from "texform";
 
 const parser = new Parser();
 const result = parser.parse(String.raw`\frac{x}{y}`);
@@ -28,6 +28,26 @@ const normalized = engine.normalize("a \\over b");
 
 console.log(normalized.normalized);
 console.log(validateArgspec("m o"));
+
+try {
+  engine.normalize("\\unknown");
+} catch (error) {
+  if (error instanceof TexformParseError) {
+    console.log(error.diagnostics);
+  }
+}
+
+const parserWithItem = new Parser({
+  items: [
+    {
+      target: "command",
+      name: "foo",
+      kind: "prefix",
+      allowedMode: "math",
+      argspec: "m",
+    },
+  ],
+});
 ```
 
 `serialize(node, options)` remains as a compatibility helper for `SyntaxNode` snapshots. New code should use `Document.fromSyntax(node).toLatex(options)` or `document.toLatex(options)`.

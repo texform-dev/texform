@@ -35,6 +35,10 @@ NodeKind = Literal[
 ContextItem = dict[str, Any]
 SyntaxNode: TypeAlias = dict[str, Any]
 Span: TypeAlias = dict[str, int]
+ArgSpecKindType = Literal[
+    "content", "delimiter", "csname", "dimension", "integer", "keyval", "column", "star"
+]
+ArgSpecFormType = Literal["standard", "star", "group", "delimited", "paired"]
 
 
 class ParseDiagnostic(TypedDict, total=False):
@@ -79,6 +83,21 @@ class TransformReport(TypedDict):
 class TransformResult(TypedDict):
     normalized: str
     report: TransformReport
+
+
+class ParsedArgSpecSlot(TypedDict):
+    required: bool
+    no_leading_space: bool
+    nullable: bool
+    kind: dict[str, Any]
+    form: dict[str, Any]
+
+
+class ValidateArgspecResult(TypedDict):
+    valid: bool
+    error: str | None
+    arg_count: int | None
+    parsed: list[ParsedArgSpecSlot] | None
 
 
 class DelimiterNone(TypedDict):
@@ -181,6 +200,8 @@ ArgValueInput: TypeAlias = ArgRef
 
 __all__ = [
     "Document",
+    "ConfigError",
+    "EditError",
     "FinalizeAstConfig",
     "FlattenGroupsConfig",
     "LowerAttributesConfig",
@@ -189,16 +210,31 @@ __all__ = [
     "ParseError",
     "Parser",
     "RewriteConfig",
+    "TexformError",
     "TransformConfig",
     "TransformEngine",
+    "TransformError",
     "count_targets",
     "serialize",
     "validate_argspec",
 ]
 
 
-class ParseError(Exception):
-    """Raised when Python binding input cannot be converted or edited."""
+class TexformError(Exception): ...
+
+
+class ParseError(TexformError):
+    diagnostics: list[ParseDiagnostic]
+    document: Document | None
+
+
+class EditError(TexformError): ...
+
+
+class ConfigError(TexformError): ...
+
+
+class TransformError(TexformError): ...
 
 
 class Document:
@@ -435,7 +471,7 @@ def count_targets(
     ...
 
 
-def validate_argspec(spec: str) -> dict[str, Any]: ...
+def validate_argspec(spec: str) -> ValidateArgspecResult: ...
 
 
 def serialize(node: dict[str, Any], options: dict[str, Any] | None = None) -> str: ...

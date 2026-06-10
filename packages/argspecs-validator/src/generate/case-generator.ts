@@ -138,12 +138,13 @@ function makeNegativeCase(
     }
   }
 
-  const kindLabel = slots[negIndex].kind.mode === "text" ? "T"
-    : slots[negIndex].kind.type === "delimiter" ? "D"
-    : slots[negIndex].kind.type === "dimension" ? "L"
-    : slots[negIndex].kind.type === "integer" ? "I"
-    : slots[negIndex].kind.type === "csname" ? "N"
-    : slots[negIndex].kind.type[0].toUpperCase();
+  const negKind = slots[negIndex].kind;
+  const kindLabel = negKind.type === "content" && negKind.mode === "text" ? "T"
+    : negKind.type === "delimiter" ? "D"
+    : negKind.type === "dimension" ? "L"
+    : negKind.type === "integer" ? "I"
+    : negKind.type === "csname" ? "N"
+    : negKind.type[0].toUpperCase();
 
   const tex = record.type === "command"
     ? buildCommandTex(record, filledSlots)

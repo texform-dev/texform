@@ -2,7 +2,7 @@ use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use texform::bindings::{
     FinalizeAstConfigInput, FlattenGroupsConfigInput, LowerAttributesConfigInput, ParseConfigInput,
     RewriteConfigInput, TransformConfigInput, transform_report_to_dto,
@@ -18,7 +18,6 @@ use texform::{
     LowerAttributesConfig as CoreLowerAttributesConfig, Profile as CoreProfile,
     TransformConfig as CoreTransformConfig,
 };
-use texform_argspec::{ArgForm, ArgSpec, DelimiterToken, ValueKind, parse_arg_specs};
 use wasm_bindgen::prelude::*;
 
 type SharedDocument = Rc<RefCell<texform::Document>>;
@@ -29,8 +28,123 @@ thread_local! {
     static NODE_HANDLES: RefCell<HashMap<u32, NodeHandleEntry>> = RefCell::new(HashMap::new());
 }
 
+fn to_js_value<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
+    let serializer = serde_wasm_bindgen::Serializer::new()
+        .serialize_missing_as_null(true)
+        .serialize_maps_as_objects(true);
+    value
+        .serialize(&serializer)
+        .map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
+fn binding_dto_to_js<T: Serialize>(value: &T) -> JsValue {
+    let value = serde_json::to_value(value).map(camelize_json_keys);
+    match value {
+        Ok(value) => to_js_value(&value).unwrap_or_else(|error| error),
+        Err(error) => JsValue::from_str(&error.to_string()),
+    }
+}
+
+fn camelize_json_keys(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => serde_json::Value::Object(
+            map.into_iter()
+                .map(|(key, value)| (snake_to_camel(&key), camelize_json_keys(value)))
+                .collect(),
+        ),
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.into_iter().map(camelize_json_keys).collect())
+        }
+        other => other,
+    }
+}
+
+fn snake_to_camel(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut upper_next = false;
+    for ch in value.chars() {
+        if ch == '_' {
+            upper_next = true;
+        } else if upper_next {
+            out.push(ch.to_ascii_uppercase());
+            upper_next = false;
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+fn binding_error_to_js(error: texform::bindings::BindingErrorDto) -> JsValue {
+    binding_error_parts_to_js(texform::bindings::BindingErrorParts {
+        error,
+        document: None,
+    })
+}
+
+fn binding_error_parts_to_js(parts: texform::bindings::BindingErrorParts) -> JsValue {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        js_error_message(&parts.error.message)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let error = js_sys::Error::new(&parts.error.message);
+        error.set_name(binding_error_name(parts.error.kind));
+        let value: JsValue = error.into();
+        js_sys::Reflect::set(&value, &"kind".into(), &parts.error.kind.into()).unwrap();
+        if parts.error.kind == "parse" {
+            let diagnostics = to_js_value(&parts.error.diagnostics).unwrap_or(JsValue::NULL);
+            let document = match parts.document {
+                Some(document) => Document::from_core(document).into(),
+                None => JsValue::NULL,
+            };
+            js_sys::Reflect::set(&value, &"diagnostics".into(), &diagnostics).unwrap();
+            js_sys::Reflect::set(&value, &"document".into(), &document).unwrap();
+        }
+        value
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn binding_error_name(kind: &str) -> &'static str {
+    match kind {
+        "parse" => "TexformParseError",
+        "edit" => "TexformEditError",
+        "config" => "TexformConfigError",
+        "transform" => "TexformTransformError",
+        _ => "TexformError",
+    }
+}
+
+fn config_error_to_js(message: impl Into<String>) -> JsValue {
+    binding_error_to_js(texform::bindings::config_error_to_dto(message))
+}
+
+fn parse_message_to_js(message: impl Into<String>) -> JsValue {
+    binding_error_to_js(texform::bindings::BindingErrorDto {
+        kind: "parse",
+        message: message.into(),
+        diagnostics: Vec::new(),
+    })
+}
+
+fn edit_message_to_js(message: impl Into<String>) -> JsValue {
+    binding_error_to_js(texform::bindings::BindingErrorDto {
+        kind: "edit",
+        message: message.into(),
+        diagnostics: Vec::new(),
+    })
+}
+
 #[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "target", rename_all = "lowercase")]
+#[serde(
+    tag = "target",
+    rename_all = "lowercase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
 enum ContextItemInput {
     Command {
         name: String,
@@ -436,7 +550,7 @@ pub struct TransformConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
-#[serde(rename_all = "camelCase", default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 struct TransformEngineOptions {
     packages: Option<Vec<String>>,
     items: Option<Vec<ContextItemInput>>,
@@ -448,7 +562,7 @@ struct TransformEngineOptions {
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
-#[serde(rename_all = "camelCase", default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 struct ParserOptions {
     packages: Option<Vec<String>>,
     items: Option<Vec<ContextItemInput>>,
@@ -458,7 +572,7 @@ struct ParserOptions {
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
-#[serde(rename_all = "camelCase", default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 struct NormalizeOptions {
     reject_unknown: Option<bool>,
     abort_on_error: Option<bool>,
@@ -468,6 +582,80 @@ struct NormalizeOptions {
     rewrite_enabled: Option<bool>,
     lower_attributes_enabled: Option<bool>,
     max_iterations: Option<usize>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+struct SerializeOptionsInput {
+    math: MathSerializeOptionsInput,
+    syntax: SyntaxSerializeOptionsInput,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+struct MathSerializeOptionsInput {
+    spacing: MathSpacingOptionsInput,
+    scripts: MathScriptOptionsInput,
+    infix: MathInfixOptionsInput,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+struct MathSpacingOptionsInput {
+    commands: texform_core::serialize::CommandSpacing,
+    group_inner_spacing: texform_core::serialize::MathGroupInnerSpacing,
+    adjacent_chars: texform_core::serialize::AdjacentCharSpacing,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+struct MathScriptOptionsInput {
+    spacing: texform_core::serialize::ScriptSpacing,
+    order: texform_core::serialize::ScriptOrder,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+struct MathInfixOptionsInput {
+    grouping: texform_core::serialize::InfixGrouping,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+struct SyntaxSerializeOptionsInput {
+    environments: EnvironmentSerializeOptionsInput,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+struct EnvironmentSerializeOptionsInput {
+    name_spacing: texform_core::serialize::EnvironmentNameSpacing,
+}
+
+impl SerializeOptionsInput {
+    fn into_core(self) -> SerializeOptions {
+        SerializeOptions {
+            math: texform_core::serialize::MathSerializeOptions {
+                spacing: texform_core::serialize::MathSpacingOptions {
+                    commands: self.math.spacing.commands,
+                    group_inner_spacing: self.math.spacing.group_inner_spacing,
+                    adjacent_chars: self.math.spacing.adjacent_chars,
+                },
+                scripts: texform_core::serialize::MathScriptOptions {
+                    spacing: self.math.scripts.spacing,
+                    order: self.math.scripts.order,
+                },
+                infix: texform_core::serialize::MathInfixOptions {
+                    grouping: self.math.infix.grouping,
+                },
+            },
+            syntax: texform_core::serialize::SyntaxSerializeOptions {
+                environments: texform_core::serialize::EnvironmentSerializeOptions {
+                    name_spacing: self.syntax.environments.name_spacing,
+                },
+            },
+        }
+    }
 }
 
 #[wasm_bindgen]
@@ -568,9 +756,8 @@ fn profile_from_name(name: &str) -> Result<texform::Profile, JsValue> {
         "faithful" => Ok(texform::Profile::Faithful),
         "corpus" => Ok(texform::Profile::Corpus),
         "equiv" => Ok(texform::Profile::Equiv),
-        other => Err(JsValue::from_str(&format!(
-            "unknown transform profile: {}",
-            other
+        other => Err(config_error_to_js(format!(
+            "unknown transform profile: {other}"
         ))),
     }
 }
@@ -590,10 +777,12 @@ impl Document {
     #[wasm_bindgen(js_name = fromSyntax)]
     pub fn from_syntax(node: JsValue) -> Result<Document, JsValue> {
         let node = serde_wasm_bindgen::from_value::<SyntaxNode>(node)
-            .map_err(|error| JsValue::from_str(&format!("invalid syntax node: {}", error)))?;
+            .map_err(|error| parse_message_to_js(format!("invalid syntax node: {error}")))?;
         texform::Document::from_syntax(&node)
             .map(Self::from_core)
-            .map_err(|error| JsValue::from_str(&error.to_string()))
+            .map_err(|error| {
+                binding_error_to_js(texform::bindings::from_syntax_error_to_dto(error))
+            })
     }
 
     pub fn root(&self) -> Result<Node, JsValue> {
@@ -651,7 +840,13 @@ impl Document {
         let options = parse_serialize_options(options)?;
         borrow_document(&self.inner)?
             .to_latex_with(&options)
-            .map_err(|error| JsValue::from_str(&error.to_string()))
+            .map_err(|error| {
+                binding_error_to_js(texform::bindings::BindingErrorDto {
+                    kind: "internal",
+                    message: error.to_string(),
+                    diagnostics: Vec::new(),
+                })
+            })
     }
 
     #[wasm_bindgen(js_name = createChar)]
@@ -827,7 +1022,7 @@ impl Document {
     #[wasm_bindgen(js_name = setChar)]
     pub fn set_char(&self, node: &Node, value: &str) -> Result<(), JsValue> {
         self.ensure_same_document(node)?;
-        let ch = parse_single_char(value, "setChar")?;
+        let ch = parse_single_char(value, "setChar").map_err(edit_message_to_js)?;
         borrow_document_mut(&self.inner)?
             .set_char(node.id, ch)
             .map_err(edit_error_to_js)
@@ -907,7 +1102,8 @@ impl Node {
         let ch = value
             .as_deref()
             .map(|value| parse_single_char(value, "isChar"))
-            .transpose()?;
+            .transpose()
+            .map_err(config_error_to_js)?;
         self.with_ref(|node| match ch {
             Some(ch) => node.is_char(ch),
             None => node.kind() == texform::NodeKind::Char,
@@ -925,28 +1121,36 @@ impl Node {
     }
 
     #[wasm_bindgen(getter, js_name = commandName)]
-    pub fn command_name(&self) -> Result<Option<String>, JsValue> {
-        self.with_ref(|node| node.command_name().map(str::to_owned))
+    pub fn command_name(&self) -> Result<JsValue, JsValue> {
+        self.with_ref(|node| optional_string_to_js(node.command_name()))
     }
 
     #[wasm_bindgen(getter, js_name = envName)]
-    pub fn env_name(&self) -> Result<Option<String>, JsValue> {
-        self.with_ref(|node| node.env_name().map(str::to_owned))
+    pub fn env_name(&self) -> Result<JsValue, JsValue> {
+        self.with_ref(|node| optional_string_to_js(node.env_name()))
     }
 
     #[wasm_bindgen(getter)]
-    pub fn text(&self) -> Result<Option<String>, JsValue> {
-        self.with_ref(|node| node.text().map(str::to_owned))
+    pub fn text(&self) -> Result<JsValue, JsValue> {
+        self.with_ref(|node| optional_string_to_js(node.text()))
     }
 
     #[wasm_bindgen(getter, js_name = char)]
-    pub fn char_value(&self) -> Result<Option<String>, JsValue> {
-        self.with_ref(|node| node.char().map(|ch| ch.to_string()))
+    pub fn char_value(&self) -> Result<JsValue, JsValue> {
+        self.with_ref(|node| {
+            node.char()
+                .map(|ch| JsValue::from(ch.to_string()))
+                .unwrap_or(JsValue::NULL)
+        })
     }
 
     #[wasm_bindgen(js_name = primeCount)]
-    pub fn prime_count(&self) -> Result<Option<usize>, JsValue> {
-        self.with_ref(|node| node.prime_count())
+    pub fn prime_count(&self) -> Result<JsValue, JsValue> {
+        self.with_ref(|node| {
+            node.prime_count()
+                .map(|count| JsValue::from_f64(count as f64))
+                .unwrap_or(JsValue::NULL)
+        })
     }
 
     #[wasm_bindgen(js_name = errorParts)]
@@ -967,10 +1171,12 @@ impl Node {
     }
 
     #[wasm_bindgen(js_name = contentMode)]
-    pub fn content_mode(&self) -> Result<Option<String>, JsValue> {
+    pub fn content_mode(&self) -> Result<JsValue, JsValue> {
         self.with_ref(|node| {
             node.content_mode()
-                .map(|mode| content_mode_to_string(mode).to_string())
+                .map(content_mode_to_string)
+                .map(JsValue::from)
+                .unwrap_or(JsValue::NULL)
         })
     }
 
@@ -1132,7 +1338,7 @@ fn borrow_document_mut(
 }
 
 fn edit_error_to_js(error: texform::EditError) -> JsValue {
-    js_error_message(&error.to_string())
+    binding_error_to_js(texform::bindings::edit_error_to_dto(error))
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1145,17 +1351,13 @@ fn js_error_message(_message: &str) -> JsValue {
     JsValue::NULL
 }
 
-fn parse_single_char(value: &str, method: &str) -> Result<char, JsValue> {
+fn parse_single_char(value: &str, method: &str) -> Result<char, String> {
     let mut chars = value.chars();
     let Some(ch) = chars.next() else {
-        return Err(JsValue::from_str(&format!(
-            "{method} expects one character"
-        )));
+        return Err(format!("{method} expects one character"));
     };
     if chars.next().is_some() {
-        return Err(JsValue::from_str(&format!(
-            "{method} expects one character"
-        )));
+        return Err(format!("{method} expects one character"));
     }
     Ok(ch)
 }
@@ -1179,6 +1381,10 @@ fn optional_node_to_js(
         Some(id) => Node::from_parts(Rc::clone(document), id).into(),
         None => JsValue::NULL,
     }
+}
+
+fn optional_string_to_js(value: Option<&str>) -> JsValue {
+    value.map(JsValue::from).unwrap_or(JsValue::NULL)
 }
 
 fn register_node_handle(document: &Rc<RefCell<texform::Document>>, id: texform::NodeId) -> u32 {
@@ -1240,7 +1446,7 @@ fn parse_arg_value(
         "Text" => Ok(ArgValue::text(arg_node_id(document, &value)?)),
         "Delimiter" => Ok(ArgValue::delimiter(parse_delimiter_value(
             js_sys::Reflect::get(&value, &"value".into())
-                .map_err(|_| JsValue::from_str("ArgValue.value is not readable"))?,
+                .map_err(|_| edit_message_to_js("ArgValue.value is not readable"))?,
         )?)),
         "CSName" => Ok(ArgValue::cs_name(object_string_property(&value, "value")?)),
         "Dimension" => Ok(ArgValue::dimension(object_string_property(
@@ -1251,13 +1457,13 @@ fn parse_arg_value(
         "Column" => Ok(ArgValue::column(object_string_property(&value, "value")?)),
         "Boolean" => {
             let value = js_sys::Reflect::get(&value, &"value".into())
-                .map_err(|_| JsValue::from_str("ArgValue.value is not readable"))?;
+                .map_err(|_| edit_message_to_js("ArgValue.value is not readable"))?;
             value
                 .as_bool()
                 .map(ArgValue::boolean)
-                .ok_or_else(|| JsValue::from_str("Boolean ArgValue.value must be a boolean"))
+                .ok_or_else(|| edit_message_to_js("Boolean ArgValue.value must be a boolean"))
         }
-        other => Err(JsValue::from_str(&format!(
+        other => Err(edit_message_to_js(format!(
             "unsupported ArgValue kind: {other}"
         ))),
     }
@@ -1268,43 +1474,43 @@ fn arg_node_id(
     value: &JsValue,
 ) -> Result<texform::NodeId, JsValue> {
     let node = js_sys::Reflect::get(value, &"node".into())
-        .map_err(|_| JsValue::from_str("ArgValue.node is not readable"))?;
+        .map_err(|_| edit_message_to_js("ArgValue.node is not readable"))?;
     let handle = js_sys::Reflect::get(&node, &"__texformBindingHandle".into())
-        .map_err(|_| JsValue::from_str("ArgValue.node binding handle is not readable"))?
+        .map_err(|_| edit_message_to_js("ArgValue.node binding handle is not readable"))?
         .as_f64()
-        .ok_or_else(|| JsValue::from_str("ArgValue.node must be a Node"))? as u32;
+        .ok_or_else(|| edit_message_to_js("ArgValue.node must be a Node"))? as u32;
     NODE_HANDLES.with(|handles| {
         let handles = handles.borrow();
         let (owner, id) = handles
             .get(&handle)
-            .ok_or_else(|| JsValue::from_str("ArgValue.node must be a live Node"))?;
+            .ok_or_else(|| edit_message_to_js("ArgValue.node must be a live Node"))?;
         if Rc::ptr_eq(document, owner) {
             Ok(*id)
         } else {
-            Err(JsValue::from_str("node belongs to a different document"))
+            Err(edit_message_to_js("node belongs to a different document"))
         }
     })
 }
 
 fn object_string_property(value: &JsValue, key: &str) -> Result<String, JsValue> {
     js_sys::Reflect::get(value, &key.into())
-        .map_err(|_| JsValue::from_str(&format!("{key} is not readable")))?
+        .map_err(|_| edit_message_to_js(format!("{key} is not readable")))?
         .as_string()
-        .ok_or_else(|| JsValue::from_str(&format!("{key} must be a string")))
+        .ok_or_else(|| edit_message_to_js(format!("{key} must be a string")))
 }
 
 fn parse_delimiter_value(value: JsValue) -> Result<DelimiterValue, JsValue> {
     let kind = object_string_property(&value, "kind")?;
     match kind.as_str() {
         "None" => Ok(DelimiterValue::None),
-        "Char" => Ok(DelimiterValue::Char(parse_single_char(
-            &object_string_property(&value, "value")?,
-            "delimiter value",
-        )?)),
+        "Char" => Ok(DelimiterValue::Char(
+            parse_single_char(&object_string_property(&value, "value")?, "delimiter value")
+                .map_err(edit_message_to_js)?,
+        )),
         "Control" => Ok(DelimiterValue::Control(object_string_property(
             &value, "value",
         )?)),
-        other => Err(JsValue::from_str(&format!(
+        other => Err(edit_message_to_js(format!(
             "unsupported delimiter kind: {other}"
         ))),
     }
@@ -1404,7 +1610,7 @@ impl Parser {
         let input = match args {
             Some(value) if !value.is_null() && !value.is_undefined() => {
                 serde_wasm_bindgen::from_value::<ParserOptions>(value).map_err(|error| {
-                    JsValue::from_str(&format!("invalid parser options: {}", error))
+                    config_error_to_js(format!("invalid parser options: {error}"))
                 })?
             }
             _ => ParserOptions::default(),
@@ -1506,7 +1712,7 @@ impl TransformEngine {
             Some(value) if !value.is_null() && !value.is_undefined() => {
                 serde_wasm_bindgen::from_value::<TransformEngineOptions>(value).map_err(
                     |error| {
-                        JsValue::from_str(&format!("invalid transform engine options: {}", error))
+                        config_error_to_js(format!("invalid transform engine options: {error}"))
                     },
                 )?
             }
@@ -1515,7 +1721,7 @@ impl TransformEngine {
         let profile = input
             .profile
             .as_deref()
-            .ok_or_else(|| JsValue::from_str("profile is required"))?;
+            .ok_or_else(|| config_error_to_js("profile is required"))?;
         let mut builder = texform::TransformEngine::builder().profile(profile_from_name(profile)?);
         if let Some(packages) = input.packages {
             let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
@@ -1540,12 +1746,12 @@ impl TransformEngine {
         for name in input.disable_rules.unwrap_or_default() {
             builder = builder
                 .disable_rule_by_name(&name)
-                .map_err(|error| JsValue::from_str(&error.to_string()))?;
+                .map_err(|error| config_error_to_js(error.to_string()))?;
         }
         Ok(Self {
             inner: builder
                 .build()
-                .map_err(|error| JsValue::from_str(&error.to_string()))?,
+                .map_err(|error| config_error_to_js(error.to_string()))?,
         })
     }
 
@@ -1562,10 +1768,9 @@ impl TransformEngine {
 
     pub fn normalize(&self, src: &str, options: Option<JsValue>) -> Result<JsValue, JsValue> {
         let Some(value) = options else {
-            let result = self
-                .inner
-                .normalize(src)
-                .map_err(|error| JsValue::from_str(&error.to_string()))?;
+            let result = self.inner.normalize(src).map_err(|error| {
+                binding_error_parts_to_js(texform::bindings::normalize_error_to_parts(error))
+            })?;
             return Ok(normalize_result_to_js(result.normalized, &result.report));
         };
         let mut config = texform::NormalizeConfig {
@@ -1575,7 +1780,7 @@ impl TransformEngine {
         if !value.is_null() && !value.is_undefined() {
             let input =
                 serde_wasm_bindgen::from_value::<NormalizeOptions>(value).map_err(|error| {
-                    JsValue::from_str(&format!("invalid normalize options: {}", error))
+                    config_error_to_js(format!("invalid normalize options: {error}"))
                 })?;
             if let Some(reject_unknown) = input.reject_unknown {
                 config.parse.reject_unknown = reject_unknown;
@@ -1604,10 +1809,9 @@ impl TransformEngine {
                 config.transform.max_iterations = max_iterations;
             }
         }
-        let result = self
-            .inner
-            .normalize_with(src, &config)
-            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let result = self.inner.normalize_with(src, &config).map_err(|error| {
+            binding_error_parts_to_js(texform::bindings::normalize_error_to_parts(error))
+        })?;
         Ok(normalize_result_to_js(result.normalized, &result.report))
     }
 
@@ -1666,17 +1870,18 @@ fn normalize_result_to_js(normalized: String, report: &texform::TransformReport)
 #[wasm_bindgen]
 pub fn serialize(node: JsValue, options: Option<JsValue>) -> Result<String, JsValue> {
     let node = serde_wasm_bindgen::from_value::<SyntaxNode>(node)
-        .map_err(|error| JsValue::from_str(&format!("invalid syntax node: {}", error)))?;
+        .map_err(|error| parse_message_to_js(format!("invalid syntax node: {error}")))?;
     let options = parse_serialize_options(options)?;
     texform::Document::from_syntax(&node)
-        .map_err(|error| match error {
-            texform::FromSyntaxError::NotARoot => {
-                JsValue::from_str("serialize expects a syntax root")
-            }
-            other => JsValue::from_str(&other.to_string()),
-        })?
+        .map_err(|error| binding_error_to_js(texform::bindings::from_syntax_error_to_dto(error)))?
         .to_latex_with(&options)
-        .map_err(|error| JsValue::from_str(&error.to_string()))
+        .map_err(|error| {
+            binding_error_to_js(texform::bindings::BindingErrorDto {
+                kind: "internal",
+                message: error.to_string(),
+                diagnostics: Vec::new(),
+            })
+        })
 }
 
 impl Parser {
@@ -1810,37 +2015,11 @@ fn parse_context_item_input(input: ContextItemInput) -> Result<ContextItem, JsVa
 
 #[wasm_bindgen]
 pub fn validate_argspec(spec: &str) -> JsValue {
-    let value = js_sys::Object::new();
-
-    match parse_arg_specs(spec, "validate_argspec") {
-        Ok(args) => {
-            let parsed = js_sys::Array::new();
-            for arg in &args {
-                parsed.push(&arg_spec_to_js(arg));
-            }
-            js_sys::Reflect::set(&value, &"valid".into(), &JsValue::TRUE).unwrap();
-            js_sys::Reflect::set(
-                &value,
-                &"arg_count".into(),
-                &JsValue::from_f64(args.len() as f64),
-            )
-            .unwrap();
-            js_sys::Reflect::set(&value, &"parsed".into(), &parsed.into()).unwrap();
-            js_sys::Reflect::set(&value, &"error".into(), &JsValue::NULL).unwrap();
-        }
-        Err(error) => {
-            js_sys::Reflect::set(&value, &"valid".into(), &JsValue::FALSE).unwrap();
-            js_sys::Reflect::set(&value, &"error".into(), &error.to_string().into()).unwrap();
-            js_sys::Reflect::set(&value, &"parsed".into(), &JsValue::NULL).unwrap();
-        }
-    }
-
-    value.into()
+    binding_dto_to_js(&texform::validate_argspec(spec))
 }
 
 fn transform_report_to_js(report: &texform::TransformReport) -> JsValue {
-    serde_wasm_bindgen::to_value(&transform_report_to_dto(report))
-        .unwrap_or_else(|error| JsValue::from_str(&error.to_string()))
+    binding_dto_to_js(&transform_report_to_dto(report))
 }
 
 fn format_parse_context_build_error(error: ParserBuildError) -> String {
@@ -1848,7 +2027,7 @@ fn format_parse_context_build_error(error: ParserBuildError) -> String {
 }
 
 fn parse_context_build_error_to_js(error: ParserBuildError) -> JsValue {
-    JsValue::from_str(&format_parse_context_build_error(error))
+    config_error_to_js(format_parse_context_build_error(error))
 }
 
 fn parse_config_from_js(value: Option<JsValue>, base: ParseConfig) -> Result<ParseConfig, JsValue> {
@@ -1856,7 +2035,7 @@ fn parse_config_from_js(value: Option<JsValue>, base: ParseConfig) -> Result<Par
         Some(value) if !value.is_null() && !value.is_undefined() => {
             serde_wasm_bindgen::from_value::<ParseConfigInput>(value)
                 .map(|input| input.into_config(base))
-                .map_err(|error| JsValue::from_str(&format!("invalid parse config: {}", error)))
+                .map_err(|error| config_error_to_js(format!("invalid parse config: {error}")))
         }
         _ => Ok(base),
     }
@@ -1865,9 +2044,9 @@ fn parse_config_from_js(value: Option<JsValue>, base: ParseConfig) -> Result<Par
 fn parse_serialize_options(value: Option<JsValue>) -> Result<SerializeOptions, JsValue> {
     match value {
         Some(value) if !value.is_null() && !value.is_undefined() => {
-            serde_wasm_bindgen::from_value::<SerializeOptions>(value).map_err(|error| {
-                JsValue::from_str(&format!("invalid serialize options: {}", error))
-            })
+            serde_wasm_bindgen::from_value::<SerializeOptionsInput>(value)
+                .map(SerializeOptionsInput::into_core)
+                .map_err(|error| config_error_to_js(format!("invalid serialize options: {error}")))
         }
         _ => Ok(SerializeOptions::default()),
     }
@@ -1886,8 +2065,7 @@ fn parse_result_to_js(result: texform::ParseResult) -> Result<JsValue, JsValue> 
         Some(document) => Document::from_core(document).into(),
         None => JsValue::NULL,
     };
-    let diagnostics = serde_wasm_bindgen::to_value(&diagnostics)
-        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let diagnostics = to_js_value(&diagnostics)?;
     js_sys::Reflect::set(&value, &"document".into(), &document).unwrap();
     js_sys::Reflect::set(&value, &"diagnostics".into(), &diagnostics).unwrap();
     Ok(value.into())
@@ -1898,18 +2076,9 @@ fn parse_command_kind(value: &str) -> Result<CommandKind, JsValue> {
         "prefix" => Ok(CommandKind::Prefix),
         "infix" => Ok(CommandKind::Infix),
         "declarative" => Ok(CommandKind::Declarative),
-        _ => Err(JsValue::from_str(&format!(
-            "unsupported command kind: {}",
-            value
+        _ => Err(config_error_to_js(format!(
+            "unsupported command kind: {value}"
         ))),
-    }
-}
-
-fn command_kind_to_string(kind: CommandKind) -> &'static str {
-    match kind {
-        CommandKind::Prefix => "prefix",
-        CommandKind::Infix => "infix",
-        CommandKind::Declarative => "declarative",
     }
 }
 
@@ -1918,9 +2087,8 @@ fn parse_allowed_mode(value: &str) -> Result<AllowedMode, JsValue> {
         "math" => Ok(AllowedMode::Math),
         "text" => Ok(AllowedMode::Text),
         "both" => Ok(AllowedMode::Both),
-        _ => Err(JsValue::from_str(&format!(
-            "unsupported allowed mode: {}",
-            value
+        _ => Err(config_error_to_js(format!(
+            "unsupported allowed mode: {value}"
         ))),
     }
 }
@@ -1929,9 +2097,8 @@ fn parse_content_mode(value: &str) -> Result<ContentMode, JsValue> {
     match value {
         "math" => Ok(ContentMode::Math),
         "text" => Ok(ContentMode::Text),
-        _ => Err(JsValue::from_str(&format!(
-            "unsupported content mode: {}",
-            value
+        _ => Err(config_error_to_js(format!(
+            "unsupported content mode: {value}"
         ))),
     }
 }
@@ -1944,234 +2111,15 @@ fn content_mode_to_string(mode: ContentMode) -> &'static str {
 }
 
 fn command_meta_to_js(meta: &ActiveCommandRecord) -> JsValue {
-    let value = js_sys::Object::new();
-    js_sys::Reflect::set(&value, &"name".into(), &meta.name.into()).unwrap();
-    js_sys::Reflect::set(
-        &value,
-        &"kind".into(),
-        &command_kind_to_string(meta.kind).into(),
-    )
-    .unwrap();
-    js_sys::Reflect::set(
-        &value,
-        &"allowed_mode".into(),
-        &meta.allowed_mode.as_str().into(),
-    )
-    .unwrap();
-    js_sys::Reflect::set(&value, &"spec_string".into(), &meta.argspec.source.into()).unwrap();
-    js_sys::Reflect::set(
-        &value,
-        &"from_packages".into(),
-        &string_slice_to_js_array(meta.from_packages).into(),
-    )
-    .unwrap();
-
-    let tags = js_sys::Array::new();
-    for &tag in meta.tags {
-        tags.push(&tag.into());
-    }
-    js_sys::Reflect::set(&value, &"tags".into(), &tags.into()).unwrap();
-
-    let args = js_sys::Array::new();
-    for spec in meta.argspec.args {
-        args.push(&arg_spec_to_js(spec));
-    }
-    js_sys::Reflect::set(&value, &"args".into(), &args.into()).unwrap();
-
-    value.into()
+    binding_dto_to_js(&texform::bindings::command_info_to_dto(meta))
 }
 
 fn env_meta_to_js(meta: &ActiveEnvironmentRecord) -> JsValue {
-    let value = js_sys::Object::new();
-    js_sys::Reflect::set(&value, &"name".into(), &meta.name.into()).unwrap();
-    js_sys::Reflect::set(
-        &value,
-        &"allowed_mode".into(),
-        &meta.allowed_mode.as_str().into(),
-    )
-    .unwrap();
-    js_sys::Reflect::set(
-        &value,
-        &"body_mode".into(),
-        &content_mode_to_string(meta.body_mode).into(),
-    )
-    .unwrap();
-    js_sys::Reflect::set(&value, &"spec_string".into(), &meta.argspec.source.into()).unwrap();
-    js_sys::Reflect::set(
-        &value,
-        &"from_packages".into(),
-        &string_slice_to_js_array(meta.from_packages).into(),
-    )
-    .unwrap();
-
-    let tags = js_sys::Array::new();
-    for &tag in meta.tags {
-        tags.push(&tag.into());
-    }
-    js_sys::Reflect::set(&value, &"tags".into(), &tags.into()).unwrap();
-
-    let args = js_sys::Array::new();
-    for spec in meta.argspec.args {
-        args.push(&arg_spec_to_js(spec));
-    }
-    js_sys::Reflect::set(&value, &"args".into(), &args.into()).unwrap();
-
-    value.into()
+    binding_dto_to_js(&texform::bindings::env_info_to_dto(meta))
 }
 
 fn character_meta_to_js(meta: &ActiveCharacterRecord) -> JsValue {
-    let value = js_sys::Object::new();
-    js_sys::Reflect::set(&value, &"name".into(), &meta.name.as_str().into()).unwrap();
-    js_sys::Reflect::set(
-        &value,
-        &"allowed_mode".into(),
-        &meta.allowed_mode.as_str().into(),
-    )
-    .unwrap();
-    js_sys::Reflect::set(
-        &value,
-        &"unicode_value".into(),
-        &meta.unicode_value.as_str().into(),
-    )
-    .unwrap();
-    js_sys::Reflect::set(
-        &value,
-        &"attributes".into(),
-        &character_attributes_to_js(meta).into(),
-    )
-    .unwrap();
-    js_sys::Reflect::set(&value, &"package".into(), &meta.package.as_str().into()).unwrap();
-    value.into()
-}
-
-fn character_attributes_to_js(meta: &ActiveCharacterRecord) -> js_sys::Object {
-    let value = js_sys::Object::new();
-    match meta.attributes.mathvariant.as_deref() {
-        Some(mathvariant) => {
-            js_sys::Reflect::set(&value, &"mathvariant".into(), &mathvariant.into()).unwrap();
-        }
-        None => {
-            js_sys::Reflect::set(&value, &"mathvariant".into(), &JsValue::UNDEFINED).unwrap();
-        }
-    }
-    value
-}
-
-fn string_slice_to_js_array(values: &[&str]) -> js_sys::Array {
-    let array = js_sys::Array::new();
-    for &value in values {
-        array.push(&value.into());
-    }
-    array
-}
-
-fn arg_spec_to_js(spec: &ArgSpec) -> JsValue {
-    let value = js_sys::Object::new();
-    js_sys::Reflect::set(
-        &value,
-        &"required".into(),
-        &JsValue::from_bool(spec.required),
-    )
-    .unwrap();
-    js_sys::Reflect::set(
-        &value,
-        &"no_leading_space".into(),
-        &JsValue::from_bool(spec.no_leading_space),
-    )
-    .unwrap();
-    js_sys::Reflect::set(
-        &value,
-        &"nullable".into(),
-        &JsValue::from_bool(spec.nullable),
-    )
-    .unwrap();
-    js_sys::Reflect::set(&value, &"kind".into(), &value_kind_to_js(&spec.kind)).unwrap();
-    js_sys::Reflect::set(&value, &"form".into(), &arg_form_to_js(&spec.form)).unwrap();
-    value.into()
-}
-
-fn value_kind_to_js(kind: &ValueKind) -> JsValue {
-    let value = js_sys::Object::new();
-    match kind {
-        ValueKind::Content { mode } => {
-            js_sys::Reflect::set(&value, &"type".into(), &"content".into()).unwrap();
-            let mode_str = match mode {
-                ContentMode::Math => "math",
-                ContentMode::Text => "text",
-            };
-            js_sys::Reflect::set(&value, &"mode".into(), &mode_str.into()).unwrap();
-        }
-        ValueKind::Delimiter => {
-            js_sys::Reflect::set(&value, &"type".into(), &"delimiter".into()).unwrap();
-        }
-        ValueKind::CSName => {
-            js_sys::Reflect::set(&value, &"type".into(), &"csname".into()).unwrap();
-        }
-        ValueKind::Dimension => {
-            js_sys::Reflect::set(&value, &"type".into(), &"dimension".into()).unwrap();
-        }
-        ValueKind::Integer => {
-            js_sys::Reflect::set(&value, &"type".into(), &"integer".into()).unwrap();
-        }
-        ValueKind::KeyVal => {
-            js_sys::Reflect::set(&value, &"type".into(), &"keyval".into()).unwrap();
-        }
-        ValueKind::Column => {
-            js_sys::Reflect::set(&value, &"type".into(), &"column".into()).unwrap();
-        }
-        ValueKind::Star => {
-            js_sys::Reflect::set(&value, &"type".into(), &"star".into()).unwrap();
-        }
-    }
-    value.into()
-}
-
-fn arg_form_to_js(form: &ArgForm) -> JsValue {
-    let value = js_sys::Object::new();
-    match form {
-        ArgForm::Standard => {
-            js_sys::Reflect::set(&value, &"type".into(), &"standard".into()).unwrap();
-        }
-        ArgForm::Star => {
-            js_sys::Reflect::set(&value, &"type".into(), &"star".into()).unwrap();
-        }
-        ArgForm::Group => {
-            js_sys::Reflect::set(&value, &"type".into(), &"group".into()).unwrap();
-        }
-        ArgForm::Delimited { open, close } => {
-            js_sys::Reflect::set(&value, &"type".into(), &"delimited".into()).unwrap();
-            js_sys::Reflect::set(&value, &"open".into(), &delimiter_token_to_js(open)).unwrap();
-            js_sys::Reflect::set(&value, &"close".into(), &delimiter_token_to_js(close)).unwrap();
-        }
-        ArgForm::Paired { pairs } => {
-            js_sys::Reflect::set(&value, &"type".into(), &"paired".into()).unwrap();
-            let pairs_value = js_sys::Array::new();
-            for (open, close) in pairs.iter() {
-                let pair = js_sys::Object::new();
-                js_sys::Reflect::set(&pair, &"open".into(), &delimiter_token_to_js(open)).unwrap();
-                js_sys::Reflect::set(&pair, &"close".into(), &delimiter_token_to_js(close))
-                    .unwrap();
-                pairs_value.push(&pair.into());
-            }
-            js_sys::Reflect::set(&value, &"pairs".into(), &pairs_value.into()).unwrap();
-        }
-    }
-    value.into()
-}
-
-fn delimiter_token_to_js(token: &DelimiterToken) -> JsValue {
-    let value = js_sys::Object::new();
-    match token {
-        DelimiterToken::Char(ch) => {
-            js_sys::Reflect::set(&value, &"type".into(), &"char".into()).unwrap();
-            js_sys::Reflect::set(&value, &"value".into(), &ch.to_string().into()).unwrap();
-        }
-        DelimiterToken::ControlSeq(name) => {
-            js_sys::Reflect::set(&value, &"type".into(), &"control-seq".into()).unwrap();
-            js_sys::Reflect::set(&value, &"value".into(), &name.as_ref().into()).unwrap();
-        }
-    }
-    value.into()
+    binding_dto_to_js(&texform::bindings::character_info_to_dto(meta))
 }
 
 #[cfg(test)]
@@ -2354,6 +2302,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_arch = "wasm32")]
     fn wasm_node_exposes_prime_count() {
         let document = Document::from_core(
             texform::Parser::builder()
@@ -2376,7 +2325,7 @@ mod tests {
         let prime = Node::from_parts(Rc::clone(&document.inner), prime_id);
 
         assert_eq!(prime.kind().unwrap(), "prime");
-        assert_eq!(prime.prime_count().unwrap(), Some(2));
+        assert_eq!(prime.prime_count().unwrap().as_f64(), Some(2.0));
     }
 
     #[test]

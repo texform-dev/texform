@@ -80,7 +80,9 @@ Validate an argspec string:
 
 ```rust
 let result = texform::validate_argspec("m o");
-assert!(result.ok);
+assert!(result.valid);
+assert_eq!(result.arg_count, Some(2));
+assert!(result.parsed.is_some());
 ```
 
 ## Serialization
@@ -95,6 +97,12 @@ let syntax = document.to_syntax();
 ```
 
 `SyntaxNode` remains available as a lossless serde and transport snapshot. It is not the editing API; convert it with `Document::from_syntax` before making tree edits.
+
+### Binding Conventions
+
+`SyntaxNode` is the cross-language tree wire format. It intentionally keeps the same tagged shape in Rust, Python, JavaScript, and JSON fixtures.
+
+Human-facing binding DTOs follow the host language: JavaScript uses camelCase, Python uses snake_case. Missing JavaScript values are returned as `null`. `validate_argspec` returns `valid`, `error`, `arg_count`, and `parsed` in Rust/Python; JavaScript exposes the same contract as `valid`, `error`, `argCount`, and `parsed`.
 
 ### Text Idempotency
 

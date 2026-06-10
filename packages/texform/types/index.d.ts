@@ -36,15 +36,14 @@ export interface ParseDiagnosticContext {
 }
 
 export interface ParseDiagnostic {
-  kind?: ParseDiagnosticKind;
+  kind: ParseDiagnosticKind | null;
   message: string;
   span: Span;
   expected: string[];
-  found?: string;
+  found: string | null;
   contexts: ParseDiagnosticContext[];
 }
 
-export type ContentMode = "Math" | "Text" | "math" | "text";
 export type SyntaxContentMode = "Math" | "Text";
 export type RuntimeContentMode = "math" | "text";
 
@@ -185,13 +184,13 @@ export class Node {
   prevSibling(): Node | null;
   ancestors(): Node[];
   descendants(): Node[];
-  readonly commandName?: string;
-  readonly envName?: string;
-  readonly text?: string;
-  readonly char?: string;
+  readonly commandName: string | null;
+  readonly envName: string | null;
+  readonly text: string | null;
+  readonly char: string | null;
   primeCount(): number | null;
   errorParts(): { message: string; snippet: string } | null;
-  contentMode(): RuntimeContentMode | undefined;
+  contentMode(): RuntimeContentMode | null;
   groupKind(): GroupKindRef | null;
   argCount(): number;
   arg(index: number): ArgRef | null;
@@ -205,49 +204,81 @@ export class Node {
   span(): Span | null;
 }
 
-export class TexformParseError extends Error {
-  diagnostics: ParseDiagnostic[];
+export class TexformError extends Error {
+  readonly kind: "parse" | "edit" | "config" | "transform" | "internal";
 }
+
+export class TexformParseError extends TexformError {
+  diagnostics: ParseDiagnostic[];
+  document: Document | null;
+}
+
+export class TexformEditError extends TexformError {}
+
+export class TexformConfigError extends TexformError {}
+
+export class TexformTransformError extends TexformError {}
 
 export type AllowedMode = "math" | "text" | "both";
 export type CommandKind = "prefix" | "infix" | "declarative";
 
-export interface ArgSpecInfo {
+export type ArgSpecKindInfo =
+  | { type: "content"; mode: RuntimeContentMode }
+  | { type: "delimiter" }
+  | { type: "csname" }
+  | { type: "dimension" }
+  | { type: "integer" }
+  | { type: "keyval" }
+  | { type: "column" }
+  | { type: "star" };
+
+export type DelimiterTokenInfo =
+  | { type: "char"; value: string }
+  | { type: "control-seq"; value: string };
+
+export type ArgSpecFormInfo =
+  | { type: "standard" }
+  | { type: "star" }
+  | { type: "group" }
+  | { type: "delimited"; open: DelimiterTokenInfo; close: DelimiterTokenInfo }
+  | { type: "paired"; pairs: Array<{ open: DelimiterTokenInfo; close: DelimiterTokenInfo }> };
+
+export interface ParsedArgSpecSlot {
   required: boolean;
-  no_leading_space: boolean;
+  noLeadingSpace: boolean;
   nullable: boolean;
-  kind: unknown;
-  form: unknown;
+  kind: ArgSpecKindInfo;
+  form: ArgSpecFormInfo;
 }
 
 export interface CommandInfo {
   name: string;
   kind: CommandKind;
-  allowed_mode: AllowedMode;
-  spec_string: string;
-  from_packages: string[];
+  allowedMode: AllowedMode;
+  specString: string;
+  fromPackages: string[];
   tags: string[];
-  args: ArgSpecInfo[];
+  args: ParsedArgSpecSlot[];
 }
 
 export interface EnvInfo {
   name: string;
-  allowed_mode: AllowedMode;
-  body_mode: RuntimeContentMode;
-  spec_string: string;
-  from_packages: string[];
+  allowedMode: AllowedMode;
+  bodyMode: RuntimeContentMode;
+  specString: string;
+  fromPackages: string[];
   tags: string[];
-  args: ArgSpecInfo[];
+  args: ParsedArgSpecSlot[];
 }
 
 export interface CharacterAttributesInfo {
-  mathvariant?: string;
+  mathvariant: string | null;
 }
 
 export interface CharacterInfo {
   name: string;
-  allowed_mode: AllowedMode;
-  unicode_value: string;
+  allowedMode: AllowedMode;
+  unicodeValue: string;
   attributes: CharacterAttributesInfo;
   package: string;
 }
@@ -257,15 +288,15 @@ export type ContextItem =
       target: "command";
       name: string;
       kind: CommandKind;
-      allowed_mode: AllowedMode;
+      allowedMode: AllowedMode;
       argspec: string;
       tags?: string[];
     }
   | {
       target: "environment";
       name: string;
-      allowed_mode: AllowedMode;
-      body_mode: RuntimeContentMode;
+      allowedMode: AllowedMode;
+      bodyMode: RuntimeContentMode;
       argspec: string;
       tags?: string[];
     }
@@ -283,8 +314,8 @@ export type EnvironmentNameSpacing = "spaced" | "compact";
 
 export interface MathSpacingOptions {
   commands?: CommandSpacing;
-  group_inner_spacing?: MathGroupInnerSpacing;
-  adjacent_chars?: AdjacentCharSpacing;
+  groupInnerSpacing?: MathGroupInnerSpacing;
+  adjacentChars?: AdjacentCharSpacing;
 }
 
 export interface MathScriptOptions {
@@ -298,7 +329,7 @@ export interface MathSerializeOptions {
 }
 
 export interface EnvironmentSerializeOptions {
-  name_spacing?: EnvironmentNameSpacing;
+  nameSpacing?: EnvironmentNameSpacing;
 }
 
 export interface SyntaxSerializeOptions {
@@ -314,15 +345,15 @@ export interface TransformReport {
   /** Fixed-point rewrite iterations for this normalization run. */
   iterations: number;
   /** Rewrite rules that were attempted, sorted by stable rule key. */
-  rules: Array<{ key: string; applied_count: number; skipped_count: number }>;
+  rules: Array<{ key: string; appliedCount: number; skippedCount: number }>;
   finalizeAst: {
     steps: {
-      merge_adjacent_primes: {
-        applied_count: number;
+      mergeAdjacentPrimes: {
+        appliedCount: number;
       };
     };
   };
-  lower_attributes: {
+  lowerAttributes: {
     /** Use the `(attr, value)` pair as the stable lower-attribute unit key. */
     attributes: Array<{
       attr: string;
@@ -334,28 +365,28 @@ export interface TransformReport {
       /** Canonical forms emitted by LowerAttributes. */
       emitted: AttributeFormCounts;
     }>;
-    eliminated_empty_segments: number;
+    eliminatedEmptySegments: number;
   };
-  flatten_groups: {
+  flattenGroups: {
     actions: {
-      removed_empty: number;
-      replaced_single_child: number;
-      inlined_multi_child: number;
-      unwrapped_slot: number;
+      removedEmpty: number;
+      replacedSingleChild: number;
+      inlinedMultiChild: number;
+      unwrappedSlot: number;
     };
     /** Preserve-guard hit counters; each guard blocks a flatten action in a specific context. */
     guards: {
-      preserve_group_containing_declarative_command: number;
-      preserve_group_in_script_base_slot: number;
-      preserve_group_inside_env_body: number;
-      preserve_group_containing_infix: number;
-      preserve_group_adjacent_to_command_like: number;
-      preserve_group_as_argument_of_command: number;
-      preserve_group_after_scripted_command_like: number;
-      preserve_empty_group: number;
-      preserve_group_with_lone_atom_spacing_char: number;
-      preserve_group_starting_with_atom_spacing_char: number;
-      preserve_group_containing_delimited_pair: number;
+      preserveGroupContainingDeclarativeCommand: number;
+      preserveGroupInScriptBaseSlot: number;
+      preserveGroupInsideEnvBody: number;
+      preserveGroupContainingInfix: number;
+      preserveGroupAdjacentToCommandLike: number;
+      preserveGroupAsArgumentOfCommand: number;
+      preserveGroupAfterScriptedCommandLike: number;
+      preserveEmptyGroup: number;
+      preserveGroupWithLoneAtomSpacingChar: number;
+      preserveGroupStartingWithAtomSpacingChar: number;
+      preserveGroupContainingDelimitedPair: number;
     };
   };
 }
@@ -372,9 +403,9 @@ export interface TransformResult {
 
 export interface ValidateArgspecResult {
   valid: boolean;
-  parsed?: unknown[] | null;
-  error?: string | null;
-  arg_count?: number;
+  error: string | null;
+  argCount: number | null;
+  parsed: ParsedArgSpecSlot[] | null;
 }
 
 export interface LowerAttributesConfigInput {
@@ -442,10 +473,10 @@ export class Parser {
   knowsCommandName(name: string): boolean;
   knowsEnvName(name: string): boolean;
   knowsCharacterName(name: string): boolean;
-  lookupCharacter(name: string, mode: RuntimeContentMode): CharacterInfo | undefined;
-  lookupCommand(name: string, mode: RuntimeContentMode): CommandInfo | undefined;
-  lookupEnv(name: string, mode: RuntimeContentMode): EnvInfo | undefined;
-  lookupExplicitCommand(name: string, mode: RuntimeContentMode): CommandInfo | undefined;
+  lookupCharacter(name: string, mode: RuntimeContentMode): CharacterInfo | null;
+  lookupCommand(name: string, mode: RuntimeContentMode): CommandInfo | null;
+  lookupEnv(name: string, mode: RuntimeContentMode): EnvInfo | null;
+  lookupExplicitCommand(name: string, mode: RuntimeContentMode): CommandInfo | null;
   parse(src: string, config?: ParseConfigInput | null): ParseResult;
 }
 
@@ -459,10 +490,10 @@ export class TransformEngine {
   knowsCommandName(name: string): boolean;
   knowsEnvName(name: string): boolean;
   knowsCharacterName(name: string): boolean;
-  lookupCharacter(name: string, mode: RuntimeContentMode): CharacterInfo | undefined;
-  lookupCommand(name: string, mode: RuntimeContentMode): CommandInfo | undefined;
-  lookupEnv(name: string, mode: RuntimeContentMode): EnvInfo | undefined;
-  lookupExplicitCommand(name: string, mode: RuntimeContentMode): CommandInfo | undefined;
+  lookupCharacter(name: string, mode: RuntimeContentMode): CharacterInfo | null;
+  lookupCommand(name: string, mode: RuntimeContentMode): CommandInfo | null;
+  lookupEnv(name: string, mode: RuntimeContentMode): EnvInfo | null;
+  lookupExplicitCommand(name: string, mode: RuntimeContentMode): CommandInfo | null;
 }
 
 /**

@@ -34,10 +34,27 @@ export interface TestRecord {
 export interface ParsedSlot {
   required: boolean;
   nullable: boolean;
-  no_leading_space: boolean;
-  kind: { type: string; mode?: string };
-  form: { type: string; open?: any; close?: any; pairs?: any[] };
+  noLeadingSpace: boolean;
+  kind:
+    | { type: "content"; mode: "math" | "text" }
+    | { type: "delimiter" }
+    | { type: "csname" }
+    | { type: "dimension" }
+    | { type: "integer" }
+    | { type: "keyval" }
+    | { type: "column" }
+    | { type: "star" };
+  form:
+    | { type: "standard" }
+    | { type: "star" }
+    | { type: "group" }
+    | { type: "delimited"; open: DelimiterTokenInfo; close: DelimiterTokenInfo }
+    | { type: "paired"; pairs: Array<{ open: DelimiterTokenInfo; close: DelimiterTokenInfo }> };
 }
+
+export type DelimiterTokenInfo =
+  | { type: "char"; value: string }
+  | { type: "control-seq"; value: string };
 
 export interface TestCase {
   branch: string;

@@ -2,33 +2,77 @@
 
 const wasm = require("../wasm/nodejs/texform_wasm.cjs");
 
-class TexformParseError extends Error {
-  constructor(payload) {
-    const diagnostics = payload?.diagnostics ?? [];
-    super(diagnostics[0]?.message ?? "parse failed");
-    this.name = "TexformParseError";
-    this.diagnostics = diagnostics;
+class TexformError extends Error {
+  constructor(payload, fallback = "texform error") {
+    super(payload?.message ?? fallback);
+    this.name = "TexformError";
+    this.kind = payload?.kind ?? "internal";
   }
 }
 
-function wrapParseError(callback) {
+class TexformParseError extends TexformError {
+  constructor(payload) {
+    super(payload, "parse failed");
+    this.name = "TexformParseError";
+    this.diagnostics = payload?.diagnostics ?? [];
+    this.document = payload?.document ? new Document(payload.document) : null;
+  }
+}
+
+class TexformEditError extends TexformError {
+  constructor(payload) {
+    super(payload, "edit failed");
+    this.name = "TexformEditError";
+  }
+}
+
+class TexformConfigError extends TexformError {
+  constructor(payload) {
+    super(payload, "invalid texform configuration");
+    this.name = "TexformConfigError";
+  }
+}
+
+class TexformTransformError extends TexformError {
+  constructor(payload) {
+    super(payload, "transform failed");
+    this.name = "TexformTransformError";
+  }
+}
+
+function wrapTexformError(callback) {
   try {
     return callback();
   } catch (error) {
-    if (error && typeof error === "object" && "diagnostics" in error) {
-      throw new TexformParseError(error);
+    if (error && typeof error === "object" && typeof error.kind === "string") {
+      if (error.kind === "parse") {
+        throw new TexformParseError(error);
+      }
+      if (error.kind === "edit") {
+        throw new TexformEditError(error);
+      }
+      if (error.kind === "config") {
+        throw new TexformConfigError(error);
+      }
+      if (error.kind === "transform") {
+        throw new TexformTransformError(error);
+      }
+      throw new TexformError(error);
     }
     throw error;
   }
 }
 
-function present(value) {
-  return value == null ? undefined : value;
+function wrapParseResult(result) {
+  return {
+    ...result,
+    document: result.document ? new Document(result.document) : null,
+  };
 }
 
 class Parser {
   constructor(options) {
-    this.inner = new wasm.Parser(options ?? undefined);
+    this.inner = wrapTexformError(() => new wasm.Parser(options ?? undefined));
   }
   free() {
     this.inner.free();
@@ -37,19 +81,21 @@ class Parser {
     this.free();
   }
   parse(src, options) {
-    return wrapParseError(() => this.inner.parse(src, options ?? undefined));
+    return wrapTexformError(() =>
+      wrapParseResult(this.inner.parse(src, options ?? undefined)),
+    );
   }
   lookupCommand(name, mode) {
-    return present(this.inner.lookup_command(name, mode));
+    return this.inner.lookup_command(name, mode);
   }
   lookupExplicitCommand(name, mode) {
-    return present(this.inner.lookup_explicit_command(name, mode));
+    return this.inner.lookup_explicit_command(name, mode);
   }
   lookupCharacter(name, mode) {
-    return present(this.inner.lookup_character(name, mode));
+    return this.inner.lookup_character(name, mode);
   }
   lookupEnv(name, mode) {
-    return present(this.inner.lookup_env(name, mode));
+    return this.inner.lookup_env(name, mode);
   }
   isDelimiterControl(name) {
     return this.inner.is_delimiter_control(name);
@@ -67,7 +113,7 @@ class Parser {
 
 class TransformEngine {
   constructor(options) {
-    this.inner = new wasm.TransformEngine(options);
+    this.inner = wrapTexformError(() => new wasm.TransformEngine(options));
   }
   free() {
     this.inner.free();
@@ -76,22 +122,24 @@ class TransformEngine {
     this.free();
   }
   parse(src, options) {
-    return wrapParseError(() => this.inner.parse(src, options ?? undefined));
+    return wrapTexformError(() =>
+      wrapParseResult(this.inner.parse(src, options ?? undefined)),
+    );
   }
   normalize(src, options) {
-    return this.inner.normalize(src, options ?? undefined);
+    return wrapTexformError(() => this.inner.normalize(src, options ?? undefined));
   }
   lookupCommand(name, mode) {
-    return present(this.inner.lookup_command(name, mode));
+    return this.inner.lookup_command(name, mode);
   }
   lookupExplicitCommand(name, mode) {
-    return present(this.inner.lookup_explicit_command(name, mode));
+    return this.inner.lookup_explicit_command(name, mode);
   }
   lookupCharacter(name, mode) {
-    return present(this.inner.lookup_character(name, mode));
+    return this.inner.lookup_character(name, mode);
   }
   lookupEnv(name, mode) {
-    return present(this.inner.lookup_env(name, mode));
+    return this.inner.lookup_env(name, mode);
   }
   isDelimiterControl(name) {
     return this.inner.is_delimiter_control(name);
@@ -107,10 +155,151 @@ class TransformEngine {
   }
 }
 
-exports.Document = wasm.Document;
+class Document {
+  constructor(inner) {
+    this.inner = inner ?? new wasm.Document();
+  }
+
+  static fromSyntax(node) {
+    return wrapTexformError(() => new Document(wasm.Document.fromSyntax(node)));
+  }
+
+  free() {
+    this.inner.free();
+  }
+
+  [Symbol.dispose]() {
+    this.free();
+  }
+
+  root() {
+    return wrapTexformError(() => this.inner.root());
+  }
+
+  hasErrors() {
+    return wrapTexformError(() => this.inner.hasErrors());
+  }
+
+  isReadOnly() {
+    return wrapTexformError(() => this.inner.isReadOnly());
+  }
+
+  errors() {
+    return wrapTexformError(() => this.inner.errors());
+  }
+
+  findCommands(name) {
+    return wrapTexformError(() => this.inner.findCommands(name));
+  }
+
+  findEnvironments(name) {
+    return wrapTexformError(() => this.inner.findEnvironments(name));
+  }
+
+  createChar(value) {
+    return wrapTexformError(() => this.inner.createChar(value));
+  }
+
+  createText(value) {
+    return wrapTexformError(() => this.inner.createText(value));
+  }
+
+  createActiveSpace() {
+    return wrapTexformError(() => this.inner.createActiveSpace());
+  }
+
+  createGroup(mode) {
+    return wrapTexformError(() => this.inner.createGroup(mode));
+  }
+
+  createCommand(name, args) {
+    return wrapTexformError(() => this.inner.createCommand(name, args ?? undefined));
+  }
+
+  createDeclarative(name, args) {
+    return wrapTexformError(() => this.inner.createDeclarative(name, args ?? undefined));
+  }
+
+  createEnvironment(name, args, body) {
+    return wrapTexformError(() =>
+      this.inner.createEnvironment(name, args ?? undefined, body),
+    );
+  }
+
+  appendChild(parent, child) {
+    return wrapTexformError(() => this.inner.appendChild(parent, child));
+  }
+
+  insertChild(parent, index, child) {
+    return wrapTexformError(() => this.inner.insertChild(parent, index, child));
+  }
+
+  insertBefore(anchor, node) {
+    return wrapTexformError(() => this.inner.insertBefore(anchor, node));
+  }
+
+  insertAfter(anchor, node) {
+    return wrapTexformError(() => this.inner.insertAfter(anchor, node));
+  }
+
+  replaceWith(target, replacement) {
+    return wrapTexformError(() => this.inner.replaceWith(target, replacement));
+  }
+
+  wrap(target, wrapper) {
+    return wrapTexformError(() => this.inner.wrap(target, wrapper));
+  }
+
+  unwrap(group) {
+    return wrapTexformError(() => this.inner.unwrap(group));
+  }
+
+  extract(node) {
+    return wrapTexformError(() => this.inner.extract(node));
+  }
+
+  remove(node) {
+    return wrapTexformError(() => this.inner.remove(node));
+  }
+
+  clear(node) {
+    return wrapTexformError(() => this.inner.clear(node));
+  }
+
+  setText(node, value) {
+    return wrapTexformError(() => this.inner.setText(node, value));
+  }
+
+  setChar(node, value) {
+    return wrapTexformError(() => this.inner.setChar(node, value));
+  }
+
+  setCommandName(node, name) {
+    return wrapTexformError(() => this.inner.setCommandName(node, name));
+  }
+
+  setArg(node, index, value) {
+    return wrapTexformError(() => this.inner.setArg(node, index, value));
+  }
+
+  toSyntax() {
+    return wrapTexformError(() => this.inner.toSyntax());
+  }
+
+  toLatex(options) {
+    return wrapTexformError(() => this.inner.toLatex(options ?? undefined));
+  }
+}
+
+exports.Document = Document;
 exports.Node = wasm.Node;
 exports.Parser = Parser;
+exports.TexformConfigError = TexformConfigError;
+exports.TexformEditError = TexformEditError;
+exports.TexformError = TexformError;
 exports.TexformParseError = TexformParseError;
+exports.TexformTransformError = TexformTransformError;
 exports.TransformEngine = TransformEngine;
-exports.serialize = wasm.serialize;
+exports.serialize = (node, options) =>
+  wrapTexformError(() => wasm.serialize(node, options ?? undefined));
 exports.validateArgspec = wasm.validate_argspec;

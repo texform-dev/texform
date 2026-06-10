@@ -8,7 +8,11 @@ use texform::{
     Profile as CoreProfile, TransformConfig as CoreTransformConfig,
 };
 
-pyo3::create_exception!(texform, ParseError, PyException);
+pyo3::create_exception!(texform, TexformError, PyException);
+pyo3::create_exception!(texform, ParseError, TexformError);
+pyo3::create_exception!(texform, EditError, TexformError);
+pyo3::create_exception!(texform, ConfigError, TexformError);
+pyo3::create_exception!(texform, TransformError, TexformError);
 
 #[pyclass(name = "ParseConfig")]
 #[derive(Clone, Debug)]
@@ -393,7 +397,7 @@ fn parse_context(packages: Option<Vec<String>>) -> PyResult<texform::Parser> {
     }
     builder
         .build()
-        .map_err(|error| ParseError::new_err(error.to_string()))
+        .map_err(|error| ConfigError::new_err(error.to_string()))
 }
 
 fn profile_from_name(name: &str) -> PyResult<texform::Profile> {
@@ -402,7 +406,7 @@ fn profile_from_name(name: &str) -> PyResult<texform::Profile> {
         "faithful" => Ok(texform::Profile::Faithful),
         "corpus" => Ok(texform::Profile::Corpus),
         "equiv" => Ok(texform::Profile::Equiv),
-        other => Err(ParseError::new_err(format!(
+        other => Err(ConfigError::new_err(format!(
             "unknown transform profile: {other}"
         ))),
     }
@@ -440,7 +444,7 @@ fn py_command_kind(value: &str) -> PyResult<texform::CommandKind> {
         "prefix" => Ok(texform::CommandKind::Prefix),
         "infix" => Ok(texform::CommandKind::Infix),
         "declarative" => Ok(texform::CommandKind::Declarative),
-        other => Err(ParseError::new_err(format!(
+        other => Err(ConfigError::new_err(format!(
             "unsupported command kind: {other}"
         ))),
     }
@@ -451,7 +455,7 @@ fn py_allowed_mode(value: &str) -> PyResult<texform::AllowedMode> {
         "math" => Ok(texform::AllowedMode::Math),
         "text" => Ok(texform::AllowedMode::Text),
         "both" => Ok(texform::AllowedMode::Both),
-        other => Err(ParseError::new_err(format!(
+        other => Err(ConfigError::new_err(format!(
             "unsupported allowed mode: {other}"
         ))),
     }
@@ -461,25 +465,9 @@ fn py_content_mode(value: &str) -> PyResult<texform::ContentMode> {
     match value {
         "math" => Ok(texform::ContentMode::Math),
         "text" => Ok(texform::ContentMode::Text),
-        other => Err(ParseError::new_err(format!(
+        other => Err(ConfigError::new_err(format!(
             "unsupported content mode: {other}"
         ))),
-    }
-}
-
-fn allowed_mode_to_str(value: texform::AllowedMode) -> &'static str {
-    match value {
-        texform::AllowedMode::Math => "math",
-        texform::AllowedMode::Text => "text",
-        texform::AllowedMode::Both => "both",
-    }
-}
-
-fn command_kind_to_str(value: texform::CommandKind) -> &'static str {
-    match value {
-        texform::CommandKind::Prefix => "prefix",
-        texform::CommandKind::Infix => "infix",
-        texform::CommandKind::Declarative => "declarative",
     }
 }
 
@@ -488,50 +476,6 @@ fn content_mode_to_str(value: texform::ContentMode) -> &'static str {
         texform::ContentMode::Math => "math",
         texform::ContentMode::Text => "text",
     }
-}
-
-fn command_record_to_json(record: &texform::ActiveCommandRecord) -> serde_json::Value {
-    serde_json::json!({
-        "name": record.name,
-        "kind": command_kind_to_str(record.kind),
-        "allowed_mode": allowed_mode_to_str(record.allowed_mode),
-        "spec_string": record.argspec.source,
-        "from_packages": record.from_packages,
-        "tags": record.tags,
-        "args": record.argspec.args.iter().map(|spec| serde_json::json!({
-            "required": spec.required,
-            "no_leading_space": spec.no_leading_space,
-            "nullable": spec.nullable,
-        })).collect::<Vec<_>>(),
-    })
-}
-
-fn env_record_to_json(record: &texform::ActiveEnvironmentRecord) -> serde_json::Value {
-    serde_json::json!({
-        "name": record.name,
-        "allowed_mode": allowed_mode_to_str(record.allowed_mode),
-        "body_mode": content_mode_to_str(record.body_mode),
-        "spec_string": record.argspec.source,
-        "from_packages": record.from_packages,
-        "tags": record.tags,
-        "args": record.argspec.args.iter().map(|spec| serde_json::json!({
-            "required": spec.required,
-            "no_leading_space": spec.no_leading_space,
-            "nullable": spec.nullable,
-        })).collect::<Vec<_>>(),
-    })
-}
-
-fn character_record_to_json(record: &texform::ActiveCharacterRecord) -> serde_json::Value {
-    serde_json::json!({
-        "name": record.name,
-        "allowed_mode": allowed_mode_to_str(record.allowed_mode),
-        "unicode_value": record.unicode_value,
-        "attributes": {
-            "mathvariant": record.attributes.mathvariant,
-        },
-        "package": record.package,
-    })
 }
 
 fn py_context_item(py: Python<'_>, item: &Py<PyAny>) -> PyResult<texform::ContextItem> {
@@ -630,11 +574,53 @@ fn engine_builder_with_options(
 }
 
 fn borrow_error(error: impl std::fmt::Display) -> PyErr {
-    ParseError::new_err(format!("document borrow conflict: {error}"))
+    EditError::new_err(format!("document borrow conflict: {error}"))
 }
 
 fn edit_error(error: impl std::fmt::Display) -> PyErr {
-    ParseError::new_err(error.to_string())
+    EditError::new_err(error.to_string())
+}
+
+fn binding_error_to_py(
+    py: Python<'_>,
+    error: texform::bindings::BindingErrorDto,
+) -> PyResult<PyErr> {
+    match error.kind {
+        "parse" => parse_error_to_py(py, error, None),
+        "edit" => Ok(EditError::new_err(error.message)),
+        "config" => Ok(ConfigError::new_err(error.message)),
+        "transform" => Ok(TransformError::new_err(error.message)),
+        _ => Ok(TexformError::new_err(error.message)),
+    }
+}
+
+fn binding_error_parts_to_py(
+    py: Python<'_>,
+    parts: texform::bindings::BindingErrorParts,
+) -> PyResult<PyErr> {
+    match parts.error.kind {
+        "parse" => parse_error_to_py(py, parts.error, parts.document),
+        "edit" => Ok(EditError::new_err(parts.error.message)),
+        "config" => Ok(ConfigError::new_err(parts.error.message)),
+        "transform" => Ok(TransformError::new_err(parts.error.message)),
+        _ => Ok(TexformError::new_err(parts.error.message)),
+    }
+}
+
+fn parse_error_to_py(
+    py: Python<'_>,
+    error: texform::bindings::BindingErrorDto,
+    document: Option<texform::Document>,
+) -> PyResult<PyErr> {
+    let py_error = ParseError::new_err(error.message);
+    let value = py_error.value(py);
+    value.setattr("diagnostics", pythonize(py, &error.diagnostics)?)?;
+    let document = match document {
+        Some(inner) => Py::new(py, PyDocument { inner })?.into_any(),
+        None => py.None(),
+    };
+    value.setattr("document", document)?;
+    Ok(py_error)
 }
 
 fn parse_result_to_python(py: Python<'_>, result: texform::ParseResult) -> PyResult<Py<PyAny>> {
@@ -886,12 +872,24 @@ impl PyDocument {
     }
 
     #[staticmethod]
-    fn from_syntax(node: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let node = depythonize::<texform::SyntaxNode>(node)
-            .map_err(|error| ParseError::new_err(format!("invalid syntax node: {error}")))?;
+    fn from_syntax(py: Python<'_>, node: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let node = depythonize::<texform::SyntaxNode>(node).map_err(|error| {
+            parse_error_to_py(
+                py,
+                texform::bindings::BindingErrorDto {
+                    kind: "parse",
+                    message: format!("invalid syntax node: {error}"),
+                    diagnostics: Vec::new(),
+                },
+                None,
+            )
+            .unwrap_or_else(|error| error)
+        })?;
         Ok(Self {
-            inner: texform::Document::from_syntax(&node)
-                .map_err(|error| ParseError::new_err(error.to_string()))?,
+            inner: texform::Document::from_syntax(&node).map_err(|error| {
+                binding_error_to_py(py, texform::bindings::from_syntax_error_to_dto(error))
+                    .unwrap_or_else(|error| error)
+            })?,
         })
     }
 
@@ -964,17 +962,14 @@ impl PyDocument {
         document
             .inner
             .to_latex_with(&options)
-            .map_err(|error| ParseError::new_err(error.to_string()))
+            .map_err(|error| TexformError::new_err(error.to_string()))
     }
 
     fn create_char(slf: &Bound<'_, Self>, py: Python<'_>, value: &str) -> PyResult<Py<PyNode>> {
         let ch = parse_char(value)?;
         let id = {
             let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-            document
-                .inner
-                .create_char(ch)
-                .map_err(|error| ParseError::new_err(error.to_string()))?
+            document.inner.create_char(ch).map_err(edit_error)?
         };
         py_node(py, slf.clone().unbind(), id)
     }
@@ -1299,10 +1294,7 @@ impl PyNode {
 
     fn kind(&self, py: Python<'_>) -> PyResult<String> {
         let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-        let node = document
-            .inner
-            .node(self.id)
-            .map_err(|error| ParseError::new_err(error.to_string()))?;
+        let node = document.inner.node(self.id).map_err(edit_error)?;
         Ok(format!("{:?}", node.kind()))
     }
 
@@ -1362,10 +1354,7 @@ impl PyNode {
 
     fn command_name(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-        let node = document
-            .inner
-            .node(self.id)
-            .map_err(|error| ParseError::new_err(error.to_string()))?;
+        let node = document.inner.node(self.id).map_err(edit_error)?;
         Ok(node.command_name().map(ToOwned::to_owned))
     }
 
@@ -1377,10 +1366,7 @@ impl PyNode {
 
     fn text(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-        let node = document
-            .inner
-            .node(self.id)
-            .map_err(|error| ParseError::new_err(error.to_string()))?;
+        let node = document.inner.node(self.id).map_err(edit_error)?;
         Ok(node.text().map(ToOwned::to_owned))
     }
 
@@ -1743,7 +1729,7 @@ impl PyParser {
         Ok(Self {
             inner: builder
                 .build()
-                .map_err(|error| ParseError::new_err(error.to_string()))?,
+                .map_err(|error| ConfigError::new_err(error.to_string()))?,
         })
     }
 
@@ -1766,7 +1752,9 @@ impl PyParser {
     fn lookup_command(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
         Ok(
             match self.inner.lookup_command(name, py_content_mode(mode)?) {
-                Some(record) => pythonize(py, &command_record_to_json(record))?.unbind(),
+                Some(record) => {
+                    pythonize(py, &texform::bindings::command_info_to_dto(record))?.unbind()
+                }
                 None => py.None(),
             },
         )
@@ -1783,7 +1771,9 @@ impl PyParser {
                 .inner
                 .lookup_explicit_command(name, py_content_mode(mode)?)
             {
-                Some(record) => pythonize(py, &command_record_to_json(record))?.unbind(),
+                Some(record) => {
+                    pythonize(py, &texform::bindings::command_info_to_dto(record))?.unbind()
+                }
                 None => py.None(),
             },
         )
@@ -1792,7 +1782,9 @@ impl PyParser {
     fn lookup_character(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
         Ok(
             match self.inner.lookup_character(name, py_content_mode(mode)?) {
-                Some(record) => pythonize(py, &character_record_to_json(record))?.unbind(),
+                Some(record) => {
+                    pythonize(py, &texform::bindings::character_info_to_dto(record))?.unbind()
+                }
                 None => py.None(),
             },
         )
@@ -1800,7 +1792,7 @@ impl PyParser {
 
     fn lookup_env(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
         Ok(match self.inner.lookup_env(name, py_content_mode(mode)?) {
-            Some(record) => pythonize(py, &env_record_to_json(record))?.unbind(),
+            Some(record) => pythonize(py, &texform::bindings::env_info_to_dto(record))?.unbind(),
             None => py.None(),
         })
     }
@@ -1862,12 +1854,12 @@ impl PyTransformEngine {
         for rule in disable_rules.unwrap_or_default() {
             builder = builder
                 .disable_rule_by_name(&rule)
-                .map_err(|error| ParseError::new_err(error.to_string()))?;
+                .map_err(|error| ConfigError::new_err(error.to_string()))?;
         }
         Ok(Self {
             inner: builder
                 .build()
-                .map_err(|error| ParseError::new_err(error.to_string()))?,
+                .map_err(|error| ConfigError::new_err(error.to_string()))?,
         })
     }
 
@@ -1887,7 +1879,10 @@ impl PyTransformEngine {
             Some(config) => self.inner.normalize_with(src, &config),
             None => self.inner.normalize(src),
         }
-        .map_err(|error| ParseError::new_err(error.to_string()))?;
+        .map_err(|error| {
+            binding_error_parts_to_py(py, texform::bindings::normalize_error_to_parts(error))
+                .unwrap_or_else(|error| error)
+        })?;
         transform_result_to_python(py, result.normalized, &result.report)
     }
 
@@ -1914,7 +1909,9 @@ impl PyTransformEngine {
                 .parser()
                 .lookup_command(name, py_content_mode(mode)?)
             {
-                Some(record) => pythonize(py, &command_record_to_json(record))?.unbind(),
+                Some(record) => {
+                    pythonize(py, &texform::bindings::command_info_to_dto(record))?.unbind()
+                }
                 None => py.None(),
             },
         )
@@ -1932,7 +1929,9 @@ impl PyTransformEngine {
                 .parser()
                 .lookup_explicit_command(name, py_content_mode(mode)?)
             {
-                Some(record) => pythonize(py, &command_record_to_json(record))?.unbind(),
+                Some(record) => {
+                    pythonize(py, &texform::bindings::command_info_to_dto(record))?.unbind()
+                }
                 None => py.None(),
             },
         )
@@ -1945,7 +1944,9 @@ impl PyTransformEngine {
                 .parser()
                 .lookup_character(name, py_content_mode(mode)?)
             {
-                Some(record) => pythonize(py, &character_record_to_json(record))?.unbind(),
+                Some(record) => {
+                    pythonize(py, &texform::bindings::character_info_to_dto(record))?.unbind()
+                }
                 None => py.None(),
             },
         )
@@ -1954,7 +1955,9 @@ impl PyTransformEngine {
     fn lookup_env(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
         Ok(
             match self.inner.parser().lookup_env(name, py_content_mode(mode)?) {
-                Some(record) => pythonize(py, &env_record_to_json(record))?.unbind(),
+                Some(record) => {
+                    pythonize(py, &texform::bindings::env_info_to_dto(record))?.unbind()
+                }
                 None => py.None(),
             },
         )
@@ -1985,11 +1988,6 @@ fn transform_result_to_python(
     let out = PyDict::new(py);
     out.set_item("normalized", normalized)?;
     let report = pythonize(py, &texform::bindings::transform_report_to_dto(report))?;
-    let report = report.cast::<PyDict>()?;
-    if let Some(finalize_ast) = report.get_item("finalizeAst")? {
-        report.set_item("finalize_ast", finalize_ast)?;
-        report.del_item("finalizeAst")?;
-    }
     out.set_item("report", report)?;
     Ok(out.unbind().into_any())
 }
@@ -2060,7 +2058,11 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyNode>()?;
     m.add_class::<PyParser>()?;
     m.add_class::<PyTransformEngine>()?;
+    m.add("TexformError", m.py().get_type::<TexformError>())?;
     m.add("ParseError", m.py().get_type::<ParseError>())?;
+    m.add("EditError", m.py().get_type::<EditError>())?;
+    m.add("ConfigError", m.py().get_type::<ConfigError>())?;
+    m.add("TransformError", m.py().get_type::<TransformError>())?;
     Ok(())
 }
 
@@ -2119,6 +2121,73 @@ mod tests {
                     .unwrap()
             );
             assert_eq!(diagnostics.len().unwrap(), 1);
+        });
+    }
+
+    #[test]
+    fn python_validate_argspec_returns_snake_case_contract() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let result = module
+                .getattr("validate_argspec")
+                .unwrap()
+                .call1(("m",))
+                .unwrap()
+                .cast_into::<PyDict>()
+                .unwrap();
+
+            assert!(
+                result
+                    .get_item("valid")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap()
+            );
+            assert_eq!(
+                result
+                    .get_item("arg_count")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<usize>()
+                    .unwrap(),
+                1
+            );
+            let parsed = result.get_item("parsed").unwrap().unwrap();
+            assert!(parsed.cast::<PyList>().is_ok());
+        });
+    }
+
+    #[test]
+    fn python_normalize_parse_error_has_error_base_and_payload() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let kwargs = PyDict::new(py);
+            kwargs.set_item("profile", "authoring").unwrap();
+            let engine = module
+                .getattr("TransformEngine")
+                .unwrap()
+                .call((), Some(&kwargs))
+                .unwrap();
+            let error = engine
+                .call_method1("normalize", (r"\unknowncmd",))
+                .expect_err("normalize should raise a parse error");
+
+            assert!(error.is_instance_of::<ParseError>(py));
+            assert!(error.is_instance_of::<TexformError>(py));
+            let value = error.value(py);
+            assert!(
+                value
+                    .getattr("diagnostics")
+                    .unwrap()
+                    .cast::<PyList>()
+                    .is_ok()
+            );
+            assert!(value.getattr("document").unwrap().is_none());
         });
     }
 

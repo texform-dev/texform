@@ -1,6 +1,9 @@
+use crate::argspec::parsed_arg_spec_slot;
 use crate::{
-    FinalizeAstConfig, FinalizeAstReport, FlattenGroupsConfig, FlattenGroupsReport,
-    LowerAttributesConfig, LowerAttributesReport, TransformConfig, TransformReport,
+    ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, Document, EditError,
+    Error, FinalizeAstConfig, FinalizeAstReport, FlattenGroupsConfig, FlattenGroupsReport,
+    FromSyntaxError, LowerAttributesConfig, LowerAttributesReport, ParseDiagnostic,
+    ParsedArgSpecSlot, TransformConfig, TransformReport,
 };
 use texform_transform::{
     Attr, AttrValue, AttributeFormCounts, MathFontValue, SizeValue, StyleValue, TextFamily,
@@ -8,13 +11,10 @@ use texform_transform::{
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub struct ParseConfigInput {
-    #[serde(alias = "reject_unknown")]
     pub reject_unknown: Option<bool>,
-    #[serde(alias = "abort_on_error")]
     pub abort_on_error: Option<bool>,
-    #[serde(alias = "max_group_depth")]
     pub max_group_depth: Option<usize>,
 }
 
@@ -37,7 +37,7 @@ impl ParseConfigInput {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct LowerAttributesConfigInput {
     pub enabled: Option<bool>,
 }
@@ -52,38 +52,26 @@ impl LowerAttributesConfigInput {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub struct RewriteConfigInput {
     pub enabled: Option<bool>,
-    #[serde(alias = "max_iterations")]
     pub max_iterations: Option<usize>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub struct FlattenGroupsConfigInput {
     pub enabled: Option<bool>,
-    #[serde(alias = "preserve_group_containing_declarative_command")]
     pub preserve_group_containing_declarative_command: Option<bool>,
-    #[serde(alias = "preserve_group_in_script_base_slot")]
     pub preserve_group_in_script_base_slot: Option<bool>,
-    #[serde(alias = "preserve_group_inside_env_body")]
     pub preserve_group_inside_env_body: Option<bool>,
-    #[serde(alias = "preserve_group_containing_infix")]
     pub preserve_group_containing_infix: Option<bool>,
-    #[serde(alias = "preserve_group_adjacent_to_command_like")]
     pub preserve_group_adjacent_to_command_like: Option<bool>,
-    #[serde(alias = "preserve_group_as_argument_of_command")]
     pub preserve_group_as_argument_of_command: Option<bool>,
-    #[serde(alias = "preserve_group_after_scripted_command_like")]
     pub preserve_group_after_scripted_command_like: Option<bool>,
-    #[serde(alias = "preserve_empty_group")]
     pub preserve_empty_group: Option<bool>,
-    #[serde(alias = "preserve_group_with_lone_atom_spacing_char")]
     pub preserve_group_with_lone_atom_spacing_char: Option<bool>,
-    #[serde(alias = "preserve_group_starting_with_atom_spacing_char")]
     pub preserve_group_starting_with_atom_spacing_char: Option<bool>,
-    #[serde(alias = "preserve_group_containing_delimited_pair")]
     pub preserve_group_containing_delimited_pair: Option<bool>,
 }
 
@@ -130,7 +118,7 @@ impl FlattenGroupsConfigInput {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct FinalizeAstConfigInput {
     pub enabled: Option<bool>,
 }
@@ -145,14 +133,11 @@ impl FinalizeAstConfigInput {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub struct TransformConfigInput {
-    #[serde(alias = "lower_attributes")]
     pub lower_attributes: Option<LowerAttributesConfigInput>,
     pub rewrite: Option<RewriteConfigInput>,
-    #[serde(alias = "finalize_ast")]
     pub finalize_ast: Option<FinalizeAstConfigInput>,
-    #[serde(alias = "flatten_groups")]
     pub flatten_groups: Option<FlattenGroupsConfigInput>,
 }
 
@@ -191,10 +176,57 @@ impl TransformConfigInput {
 pub struct TransformReportDto {
     pub iterations: usize,
     pub rules: Vec<RewriteRuleDto>,
-    #[serde(rename = "finalizeAst")]
     pub finalize_ast: FinalizeAstReportDto,
     pub flatten_groups: FlattenGroupsReportDto,
     pub lower_attributes: LowerAttributesReportDto,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct CommandInfoDto {
+    pub name: String,
+    pub kind: &'static str,
+    pub allowed_mode: &'static str,
+    pub spec_string: String,
+    pub from_packages: Vec<String>,
+    pub tags: Vec<String>,
+    pub args: Vec<ParsedArgSpecSlot>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct EnvInfoDto {
+    pub name: String,
+    pub allowed_mode: &'static str,
+    pub body_mode: &'static str,
+    pub spec_string: String,
+    pub from_packages: Vec<String>,
+    pub tags: Vec<String>,
+    pub args: Vec<ParsedArgSpecSlot>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct CharacterAttributesInfoDto {
+    pub mathvariant: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct CharacterInfoDto {
+    pub name: String,
+    pub allowed_mode: &'static str,
+    pub unicode_value: String,
+    pub attributes: CharacterAttributesInfoDto,
+    pub package: String,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct BindingErrorDto {
+    pub kind: &'static str,
+    pub message: String,
+    pub diagnostics: Vec<ParseDiagnostic>,
+}
+
+pub struct BindingErrorParts {
+    pub error: BindingErrorDto,
+    pub document: Option<Document>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -288,6 +320,143 @@ pub fn transform_report_to_dto(report: &TransformReport) -> TransformReportDto {
         finalize_ast: finalize_ast_report_to_dto(&report.finalize_ast),
         flatten_groups: flatten_groups_report_to_dto(&report.flatten_groups),
         lower_attributes: lower_attributes_report_to_dto(&report.lower_attributes),
+    }
+}
+
+pub fn command_info_to_dto(record: &ActiveCommandRecord) -> CommandInfoDto {
+    CommandInfoDto {
+        name: record.name.to_string(),
+        kind: command_kind_to_dto_key(record.kind),
+        allowed_mode: record.allowed_mode.as_str(),
+        spec_string: record.argspec.source.to_string(),
+        from_packages: record
+            .from_packages
+            .iter()
+            .map(|package| (*package).to_string())
+            .collect(),
+        tags: record.tags.iter().map(|tag| (*tag).to_string()).collect(),
+        args: record
+            .argspec
+            .args
+            .iter()
+            .map(parsed_arg_spec_slot)
+            .collect(),
+    }
+}
+
+pub fn env_info_to_dto(record: &ActiveEnvironmentRecord) -> EnvInfoDto {
+    EnvInfoDto {
+        name: record.name.to_string(),
+        allowed_mode: record.allowed_mode.as_str(),
+        body_mode: content_mode_to_dto_key(record.body_mode),
+        spec_string: record.argspec.source.to_string(),
+        from_packages: record
+            .from_packages
+            .iter()
+            .map(|package| (*package).to_string())
+            .collect(),
+        tags: record.tags.iter().map(|tag| (*tag).to_string()).collect(),
+        args: record
+            .argspec
+            .args
+            .iter()
+            .map(parsed_arg_spec_slot)
+            .collect(),
+    }
+}
+
+pub fn character_info_to_dto(record: &ActiveCharacterRecord) -> CharacterInfoDto {
+    CharacterInfoDto {
+        name: record.name.to_string(),
+        allowed_mode: record.allowed_mode.as_str(),
+        unicode_value: record.unicode_value.to_string(),
+        attributes: CharacterAttributesInfoDto {
+            mathvariant: record.attributes.mathvariant.clone(),
+        },
+        package: record.package.to_string(),
+    }
+}
+
+pub fn normalize_error_to_parts(error: crate::NormalizeError) -> BindingErrorParts {
+    match error {
+        Error::Parse(error) => {
+            let message = error.to_string();
+            let (document, diagnostics) = error.into_parts();
+            BindingErrorParts {
+                error: BindingErrorDto {
+                    kind: "parse",
+                    message,
+                    diagnostics,
+                },
+                document,
+            }
+        }
+        Error::MissingProfile
+        | Error::UnknownRule(_)
+        | Error::ParserBuild(_)
+        | Error::TransformBuild(_) => BindingErrorParts {
+            error: BindingErrorDto {
+                kind: "config",
+                message: error.to_string(),
+                diagnostics: Vec::new(),
+            },
+            document: None,
+        },
+        Error::Transform(_) => BindingErrorParts {
+            error: BindingErrorDto {
+                kind: "transform",
+                message: error.to_string(),
+                diagnostics: Vec::new(),
+            },
+            document: None,
+        },
+        Error::IncompleteTree | Error::Serialize(_) => BindingErrorParts {
+            error: BindingErrorDto {
+                kind: "internal",
+                message: error.to_string(),
+                diagnostics: Vec::new(),
+            },
+            document: None,
+        },
+    }
+}
+
+pub fn from_syntax_error_to_dto(error: FromSyntaxError) -> BindingErrorDto {
+    BindingErrorDto {
+        kind: "parse",
+        message: error.to_string(),
+        diagnostics: Vec::new(),
+    }
+}
+
+pub fn edit_error_to_dto(error: EditError) -> BindingErrorDto {
+    BindingErrorDto {
+        kind: "edit",
+        message: error.to_string(),
+        diagnostics: Vec::new(),
+    }
+}
+
+pub fn config_error_to_dto(message: impl Into<String>) -> BindingErrorDto {
+    BindingErrorDto {
+        kind: "config",
+        message: message.into(),
+        diagnostics: Vec::new(),
+    }
+}
+
+fn command_kind_to_dto_key(kind: texform_core::parse::CommandKind) -> &'static str {
+    match kind {
+        texform_core::parse::CommandKind::Prefix => "prefix",
+        texform_core::parse::CommandKind::Infix => "infix",
+        texform_core::parse::CommandKind::Declarative => "declarative",
+    }
+}
+
+fn content_mode_to_dto_key(mode: texform_interface::syntax_node::ContentMode) -> &'static str {
+    match mode {
+        texform_interface::syntax_node::ContentMode::Math => "math",
+        texform_interface::syntax_node::ContentMode::Text => "text",
     }
 }
 
@@ -554,17 +723,15 @@ mod tests {
     }
 
     #[test]
-    fn transform_config_input_deserializes_snake_case_finalize_ast() {
-        let input: TransformConfigInput = serde_json::from_value(serde_json::json!({
+    fn transform_config_input_rejects_snake_case_finalize_ast() {
+        let error = serde_json::from_value::<TransformConfigInput>(serde_json::json!({
             "finalize_ast": {
                 "enabled": false
             }
         }))
-        .unwrap();
+        .expect_err("JS-facing transform config should reject snake_case fields");
 
-        let config = input.into_config();
-
-        assert!(!config.finalize_ast.enabled);
+        assert!(error.to_string().contains("unknown field"));
     }
 
     #[test]
@@ -582,17 +749,15 @@ mod tests {
     }
 
     #[test]
-    fn transform_config_input_deserializes_snake_case_flatten_groups() {
-        let input: TransformConfigInput = serde_json::from_value(serde_json::json!({
+    fn transform_config_input_rejects_snake_case_flatten_groups() {
+        let error = serde_json::from_value::<TransformConfigInput>(serde_json::json!({
             "flatten_groups": {
                 "preserve_empty_group": false
             }
         }))
-        .unwrap();
+        .expect_err("JS-facing transform config should reject snake_case fields");
 
-        let config = input.into_config();
-
-        assert!(!config.flatten_groups.preserve_empty_group);
+        assert!(error.to_string().contains("unknown field"));
     }
 
     #[test]
@@ -635,7 +800,7 @@ mod tests {
             4
         );
         assert_eq!(
-            json["finalizeAst"]["steps"]["merge_adjacent_primes"]["applied_count"],
+            json["finalize_ast"]["steps"]["merge_adjacent_primes"]["applied_count"],
             4
         );
     }

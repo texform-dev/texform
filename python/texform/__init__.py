@@ -2,6 +2,8 @@
 
 from ._native import (
     Document,
+    ConfigError,
+    EditError,
     FlattenGroupsConfig,
     LowerAttributesConfig,
     Node,
@@ -9,8 +11,10 @@ from ._native import (
     ParseError,
     Parser,
     RewriteConfig,
+    TexformError,
     TransformConfig,
     TransformEngine,
+    TransformError,
     count_targets,
     serialize,
     validate_argspec,
@@ -18,6 +22,8 @@ from ._native import (
 
 __all__ = [
     "Document",
+    "ConfigError",
+    "EditError",
     "FlattenGroupsConfig",
     "LowerAttributesConfig",
     "Node",
@@ -25,8 +31,10 @@ __all__ = [
     "ParseError",
     "Parser",
     "RewriteConfig",
+    "TexformError",
     "TransformConfig",
     "TransformEngine",
+    "TransformError",
     "count_targets",
     "serialize",
     "validate_argspec",

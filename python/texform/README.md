@@ -30,6 +30,23 @@ normalized = engine.normalize(r"a \over b")
 
 print(normalized["normalized"])
 print(texform.validate_argspec("m o"))
+
+try:
+    engine.normalize(r"\unknown")
+except texform.ParseError as error:
+    print(error.diagnostics)
+
+parser = texform.Parser(
+    items=[
+        {
+            "target": "command",
+            "name": "foo",
+            "kind": "prefix",
+            "allowed_mode": "math",
+            "argspec": "m",
+        }
+    ]
+)
 ```
 
 `serialize(node, options)` remains as a compatibility helper for `SyntaxNode` snapshots. New code should use `texform.Document.from_syntax(node).to_latex(options)` or `document.to_latex(options)`.

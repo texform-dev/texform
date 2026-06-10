@@ -42,7 +42,8 @@
     "build:wasm:web": "wasm-pack build ../../crates/texform-wasm --target web --out-dir pkg-web",
     "sync:wasm": "node scripts/sync-wasm.mjs",
     "prepare:publish": "bun run build:wasm:node && bun run build:wasm:web && bun run sync:wasm",
-    "check": "tsc -p tsconfig.json --noEmit"
+    "check": "tsc -p tsconfig.json --noEmit",
+    "smoke:node": "node scripts/smoke-node.mjs"
   },
   "devDependencies": {
     "typescript": "~5.9"
