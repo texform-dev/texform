@@ -852,6 +852,12 @@ impl Document {
             .map_err(|error| internal_message_to_js(error.to_string()))
     }
 
+    #[wasm_bindgen(js_name = nodeSpans)]
+    pub fn node_spans(&self) -> Result<JsValue, JsValue> {
+        let entries = texform::bindings::node_spans_to_dto(&*borrow_document(&self.inner)?);
+        Ok(binding_dto_to_js(&entries))
+    }
+
     #[wasm_bindgen(js_name = toLatex)]
     pub fn to_latex(&self, options: Option<JsValue>) -> Result<String, JsValue> {
         let options = parse_serialize_options(options)?;
@@ -2033,6 +2039,11 @@ fn parse_context_item_input(input: ContextItemInput) -> Result<ContextItem, JsVa
 #[wasm_bindgen]
 pub fn validate_argspec(spec: &str) -> JsValue {
     binding_dto_to_js(&texform::validate_argspec(spec))
+}
+
+#[wasm_bindgen(js_name = listPackages)]
+pub fn list_packages() -> JsValue {
+    binding_dto_to_js(&texform::bindings::list_packages_to_dto())
 }
 
 fn transform_report_to_js(report: &texform::TransformReport) -> JsValue {

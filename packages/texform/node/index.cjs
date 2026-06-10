@@ -356,6 +356,10 @@ class Document {
     return wrapTexformError(() => this.inner.toSyntax());
   }
 
+  nodeSpans() {
+    return wrapTexformError(() => this.inner.nodeSpans());
+  }
+
   toLatex(options) {
     return wrapTexformError(() => this.inner.toLatex(options ?? undefined));
   }
@@ -499,3 +503,4 @@ exports.TransformEngine = TransformEngine;
 exports.serialize = (node, options) =>
   wrapTexformError(() => wasm.serialize(node, options ?? undefined));
 exports.validateArgspec = wasm.validate_argspec;
+exports.listPackages = () => wrapTexformError(() => wasm.listPackages());

@@ -11,6 +11,7 @@ pub mod bindings;
 pub mod config;
 pub mod document;
 pub mod error;
+pub mod knowledge;
 pub mod parse_result;
 pub mod parser;
 pub mod serialize;
@@ -23,9 +24,10 @@ pub use argspec::{
 pub use config::{NormalizeConfig, Profile, RuleKey, TransformConfig, rule_key_from_name};
 pub use document::{
     ArgRef, ArgValue, DelimiterRef, DelimiterValue, Document, DocumentId, EditError,
-    FromSyntaxError, GroupKindRef, NodeId, NodeKind, NodeRef,
+    FromSyntaxError, GroupKindRef, NodeId, NodeKind, NodeRef, NodeSpanEntry,
 };
 pub use error::{Error, NormalizeError};
+pub use knowledge::{PackageInfo, list_packages};
 pub use parse_result::{ParseError, ParseResult};
 pub use parser::{Parser, ParserBuildError, ParserBuilder};
 pub use serialize::{SerializeError, SerializeOptions};

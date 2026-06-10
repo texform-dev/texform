@@ -1052,6 +1052,76 @@ impl Document {
         Ok(())
     }
 
+    /// Export the parse-time span side table as `(path, span)` pairs.
+    ///
+    /// Paths follow the parser's tree-path scheme rooted at `root`:
+    /// `.child.N` for container children, `.arg.N.content` for content-carrying
+    /// argument slots, `.left` / `.right` for infix operands, `.body` for
+    /// environment bodies, and `.base` / `.sub` / `.sup` for script slots.
+    /// Nodes without a recorded span (e.g. created by edits, or any node of a
+    /// document built without parser spans) are omitted. Spans reflect the
+    /// original parse and are not updated by document edits.
+    pub fn node_spans(&self) -> Vec<(String, Span)> {
+        let mut out = Vec::new();
+        self.collect_node_spans(self.ast.root(), "root", &mut out);
+        out
+    }
+
+    fn collect_node_spans(&self, id: RawNodeId, path: &str, out: &mut Vec<(String, Span)>) {
+        if let Some(span) = self.spans.get(id) {
+            out.push((path.to_string(), span.clone()));
+        }
+        match self.ast.node(id) {
+            Node::Root { children, .. } | Node::Group { children, .. } => {
+                for (index, child) in children.iter().enumerate() {
+                    self.collect_node_spans(*child, &format!("{path}.child.{index}"), out);
+                }
+            }
+            Node::Command { args, .. } | Node::Declarative { args, .. } => {
+                self.collect_arg_node_spans(args, path, out);
+            }
+            Node::Infix {
+                args, left, right, ..
+            } => {
+                self.collect_node_spans(*left, &format!("{path}.left"), out);
+                self.collect_arg_node_spans(args, path, out);
+                self.collect_node_spans(*right, &format!("{path}.right"), out);
+            }
+            Node::Environment { args, body, .. } => {
+                self.collect_arg_node_spans(args, path, out);
+                self.collect_node_spans(*body, &format!("{path}.body"), out);
+            }
+            Node::Scripted {
+                base,
+                subscript,
+                superscript,
+            } => {
+                self.collect_node_spans(*base, &format!("{path}.base"), out);
+                if let Some(sub) = subscript {
+                    self.collect_node_spans(*sub, &format!("{path}.sub"), out);
+                }
+                if let Some(sup) = superscript {
+                    self.collect_node_spans(*sup, &format!("{path}.sup"), out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn collect_arg_node_spans(
+        &self,
+        args: &[ArgumentSlot],
+        path: &str,
+        out: &mut Vec<(String, Span)>,
+    ) {
+        for (index, slot) in args.iter().enumerate() {
+            let Some(arg) = slot else { continue };
+            if let ArgumentValue::MathContent(id) | ArgumentValue::TextContent(id) = &arg.value {
+                self.collect_node_spans(*id, &format!("{path}.arg.{index}.content"), out);
+            }
+        }
+    }
+
     #[allow(dead_code)]
     fn assign_spans(
         ast: &Ast,

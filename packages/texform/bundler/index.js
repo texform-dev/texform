@@ -2,6 +2,7 @@ import init, {
   Document as WasmDocument,
   Parser as WasmParser,
   TransformEngine as WasmTransformEngine,
+  listPackages as wasmListPackages,
   serialize as wasmSerialize,
   validate_argspec,
 } from "../wasm/web/texform_wasm.js";
@@ -363,6 +364,10 @@ export class Document {
     return wrapTexformError(() => this.inner.toSyntax());
   }
 
+  nodeSpans() {
+    return wrapTexformError(() => this.inner.nodeSpans());
+  }
+
   toLatex(options) {
     return wrapTexformError(() => this.inner.toLatex(options ?? undefined));
   }
@@ -497,3 +502,4 @@ export class Node {
 export const serialize = (node, options) =>
   wrapTexformError(() => wasmSerialize(node, options ?? undefined));
 export { validate_argspec as validateArgspec };
+export const listPackages = () => wrapTexformError(() => wasmListPackages());

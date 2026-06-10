@@ -55,6 +55,17 @@ class ParseResult(TypedDict):
     diagnostics: list[ParseDiagnostic]
 
 
+class NodeSpanEntry(TypedDict):
+    id: str
+    span: Span
+
+
+class PackageInfo(TypedDict):
+    name: str
+    commands: int
+    environments: int
+
+
 class ErrorParts(TypedDict):
     message: str
     snippet: str
@@ -248,6 +259,7 @@ class Document:
     def find_commands(self, name: str) -> list[Node]: ...
     def find_environments(self, name: str) -> list[Node]: ...
     def to_syntax(self) -> SyntaxNode: ...
+    def node_spans(self) -> list[NodeSpanEntry]: ...
     def to_latex(self, options: dict[str, Any] | None = None) -> str: ...
     def create_char(self, value: str) -> Node: ...
     def create_text(self, value: str) -> Node: ...
@@ -472,6 +484,11 @@ def count_targets(
 
 
 def validate_argspec(spec: str) -> ValidateArgspecResult: ...
+
+
+def list_packages() -> list[PackageInfo]:
+    """List all built-in knowledge packages with record counts."""
+    ...
 
 
 def serialize(node: dict[str, Any], options: dict[str, Any] | None = None) -> str: ...

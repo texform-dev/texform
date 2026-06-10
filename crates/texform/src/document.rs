@@ -6,6 +6,15 @@ pub use texform_core::serialize::SerializeOptions;
 
 pub use crate::serialize::SerializeError;
 
+/// Parse-time source span of one tree node, addressed by its tree path.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NodeSpanEntry {
+    /// Tree path such as `root.child.0.arg.1.content` (see [`Document::node_spans`]).
+    pub id: String,
+    /// Source byte span recorded by the parser.
+    pub span: texform_core::parse::Span,
+}
+
 #[derive(Clone, Debug)]
 pub struct Document {
     inner: texform_core::document::Document,
@@ -190,6 +199,23 @@ impl Document {
 
     pub fn set_arg(&mut self, id: NodeId, index: usize, value: ArgValue) -> Result<(), EditError> {
         self.inner.set_arg(id, index, value)
+    }
+
+    /// Export the parse-time span side table as a list of `(path, span)` entries.
+    ///
+    /// Paths follow the parser's tree-path scheme rooted at `root`:
+    /// `.child.N` for container children, `.arg.N.content` for content-carrying
+    /// argument slots, `.left` / `.right` for infix operands, `.body` for
+    /// environment bodies, and `.base` / `.sub` / `.sup` for script slots.
+    /// Nodes without a recorded span (e.g. created by edits, or any node of a
+    /// document built without parser spans) are omitted. Spans reflect the
+    /// original parse and are not updated by document edits.
+    pub fn node_spans(&self) -> Vec<NodeSpanEntry> {
+        self.inner
+            .node_spans()
+            .into_iter()
+            .map(|(id, span)| NodeSpanEntry { id, span })
+            .collect()
     }
 
     pub fn to_syntax(&self) -> texform_interface::syntax_node::SyntaxNode {

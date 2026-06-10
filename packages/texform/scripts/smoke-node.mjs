@@ -6,6 +6,7 @@ import {
   TexformConfigError,
   TexformEditError,
   TexformParseError,
+  listPackages,
   validateArgspec,
 } from "../node/index.js";
 
@@ -156,4 +157,29 @@ try {
   if (error.kind !== "edit") {
     throw new Error("ArgValue error should expose edit kind");
   }
+}
+
+const spanSrc = "\\frac{a}{b}";
+const spanEntries = parser.parse(spanSrc).document.nodeSpans();
+if (!Array.isArray(spanEntries) || spanEntries.length === 0) {
+  throw new Error("nodeSpans should return entries for parsed documents");
+}
+const rootEntry = spanEntries.find((entry) => entry.id === "root");
+if (!rootEntry || rootEntry.span.start !== 0 || rootEntry.span.end !== spanSrc.length) {
+  throw new Error("nodeSpans should include a root span covering the source");
+}
+if (!spanEntries.some((entry) => entry.id === "root.child.0.arg.0.content")) {
+  throw new Error("nodeSpans should include argument content paths");
+}
+if (new Document().nodeSpans().length !== 0) {
+  throw new Error("nodeSpans should be empty for documents built without parsing");
+}
+
+const packages = listPackages();
+if (!Array.isArray(packages) || packages.length === 0) {
+  throw new Error("listPackages should return package infos");
+}
+const basePackage = packages.find((info) => info.name === "base");
+if (!basePackage || basePackage.commands <= 0 || basePackage.environments <= 0) {
+  throw new Error("listPackages should report base with record counts");
 }

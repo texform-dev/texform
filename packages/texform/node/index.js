@@ -380,6 +380,10 @@ export class Document {
     return wrapTexformError(() => this.inner.toSyntax());
   }
 
+  nodeSpans() {
+    return wrapTexformError(() => this.inner.nodeSpans());
+  }
+
   toLatex(options) {
     return wrapTexformError(() => this.inner.toLatex(options ?? undefined));
   }
@@ -514,3 +518,4 @@ export class Node {
 export const serialize = (node, options) =>
   wrapTexformError(() => wasm.serialize(node, options ?? undefined));
 export const validateArgspec = wasm.validate_argspec;
+export const listPackages = () => wrapTexformError(() => wasm.listPackages());

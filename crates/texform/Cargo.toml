@@ -16,4 +16,5 @@ serde_json.workspace = true
 texform-argspec.workspace = true
 texform-core.workspace = true
 texform-interface.workspace = true
+texform-knowledge.workspace = true
 texform-transform.workspace = true

@@ -16,6 +16,7 @@ from ._native import (
     TransformEngine,
     TransformError,
     count_targets,
+    list_packages,
     serialize,
     validate_argspec,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "TransformEngine",
     "TransformError",
     "count_targets",
+    "list_packages",
     "serialize",
     "validate_argspec",
 ]

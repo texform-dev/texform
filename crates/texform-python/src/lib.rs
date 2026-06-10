@@ -955,6 +955,14 @@ impl PyDocument {
         Ok(pythonize(py, &syntax)?.unbind())
     }
 
+    fn node_spans(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let entries = {
+            let document = slf.try_borrow().map_err(borrow_error)?;
+            texform::bindings::node_spans_to_dto(&document.inner)
+        };
+        Ok(pythonize(py, &entries)?.unbind())
+    }
+
     #[pyo3(signature = (options = None))]
     fn to_latex(slf: &Bound<'_, Self>, options: Option<&Bound<'_, PyAny>>) -> PyResult<String> {
         let options = serialize_options_from_python(options)?;
@@ -2025,6 +2033,11 @@ fn validate_argspec(py: Python<'_>, spec: &str) -> PyResult<Py<PyAny>> {
 }
 
 #[pyfunction]
+fn list_packages(py: Python<'_>) -> PyResult<Py<PyAny>> {
+    Ok(pythonize(py, &texform::bindings::list_packages_to_dto())?.unbind())
+}
+
+#[pyfunction]
 #[pyo3(signature = (src, config = None, packages = None))]
 fn count_targets(
     py: Python<'_>,
@@ -2048,6 +2061,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(count_targets, m)?)?;
     m.add_function(wrap_pyfunction!(serialize, m)?)?;
     m.add_function(wrap_pyfunction!(validate_argspec, m)?)?;
+    m.add_function(wrap_pyfunction!(list_packages, m)?)?;
     m.add_class::<PyParseConfig>()?;
     m.add_class::<PyLowerAttributesConfig>()?;
     m.add_class::<PyRewriteConfig>()?;

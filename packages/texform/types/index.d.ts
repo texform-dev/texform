@@ -168,7 +168,22 @@ export class Document {
   setCommandName(node: Node, name: string): void;
   setArg(node: Node, index: number, value: ArgValueInput): void;
   toSyntax(): SyntaxNode;
+  /**
+   * Export the parse-time span side table as a list of `{id, span}` entries.
+   *
+   * Ids follow the parser's tree-path scheme rooted at `root`: `.child.N` for
+   * container children, `.arg.N.content` for content-carrying argument slots,
+   * `.left` / `.right` for infix operands, `.body` for environment bodies, and
+   * `.base` / `.sub` / `.sup` for script slots. Nodes without a recorded span
+   * are omitted. Spans reflect the original parse and are not updated by edits.
+   */
+  nodeSpans(): NodeSpanEntry[];
   toLatex(options?: SerializeOptions | null): string;
+}
+
+export interface NodeSpanEntry {
+  id: string;
+  span: Span;
 }
 
 export class Node {
@@ -503,3 +518,12 @@ export class TransformEngine {
 export function serialize(node: SyntaxNode, options?: SerializeOptions | null): string;
 
 export function validateArgspec(spec: string): ValidateArgspecResult;
+
+export interface PackageInfo {
+  name: string;
+  commands: number;
+  environments: number;
+}
+
+/** List all built-in knowledge packages with record counts. */
+export function listPackages(): PackageInfo[];

@@ -1194,6 +1194,7 @@ dependencies = [
  "texform-argspec",
  "texform-core",
  "texform-interface",
+ "texform-knowledge",
  "texform-transform",
 ]
 

@@ -421,6 +421,41 @@ pub fn normalize_error_to_parts(error: crate::NormalizeError) -> BindingErrorPar
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct NodeSpanEntryDto {
+    pub id: String,
+    pub span: crate::Span,
+}
+
+pub fn node_spans_to_dto(document: &Document) -> Vec<NodeSpanEntryDto> {
+    document
+        .node_spans()
+        .into_iter()
+        .map(|entry| NodeSpanEntryDto {
+            id: entry.id,
+            span: entry.span,
+        })
+        .collect()
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct PackageInfoDto {
+    pub name: String,
+    pub commands: usize,
+    pub environments: usize,
+}
+
+pub fn list_packages_to_dto() -> Vec<PackageInfoDto> {
+    crate::list_packages()
+        .into_iter()
+        .map(|info| PackageInfoDto {
+            name: info.name,
+            commands: info.commands,
+            environments: info.environments,
+        })
+        .collect()
+}
+
 pub fn from_syntax_error_to_dto(error: FromSyntaxError) -> BindingErrorDto {
     BindingErrorDto {
         kind: "parse",

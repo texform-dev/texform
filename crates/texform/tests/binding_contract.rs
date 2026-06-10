@@ -135,3 +135,20 @@ fn normalize_error_maps_parse_failure_to_binding_error_parts() {
     assert_eq!(parts.error.kind, "parse");
     assert!(!parts.error.diagnostics.is_empty());
 }
+
+#[test]
+fn list_packages_reports_known_packages_with_counts() {
+    let packages = texform::list_packages();
+    assert!(!packages.is_empty());
+
+    for expected in ["base", "ams", "physics"] {
+        let info = packages
+            .iter()
+            .find(|info| info.name == expected)
+            .unwrap_or_else(|| panic!("package {expected} should be listed"));
+        assert!(info.commands > 0, "{expected} should have commands");
+    }
+
+    let base = packages.iter().find(|info| info.name == "base").unwrap();
+    assert!(base.environments > 0, "base should have environments");
+}
