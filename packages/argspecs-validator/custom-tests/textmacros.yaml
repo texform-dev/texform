@@ -1,9 +1,0 @@
-# Custom tests for textmacros package commands that require specific context.
-
-commands:
-  mmlToken:
-    skip_generated: true
-    cases:
-      - branch: "ctx:text-mathml-token"
-        tex: "\\mmlToken{mi}{x}"
-        expect: pass

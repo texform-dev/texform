@@ -19,9 +19,7 @@ crates/                       # Rust workspace
 ├── texform-python/           # Python bindings (PyO3)
 └── texform-wasm/             # WebAssembly bindings
 packages/                     # NPM/TypeScript packages
-├── texform/                   # Public npm package wrapper around WASM bindings
-├── argspecs-validator/       # Argument spec validation & spec-test runner
-└── tex-renderers/            # MathJax / KaTeX / XeTeX rendering adapters
+└── texform/                   # Public npm package wrapper around WASM bindings
 python/texform/               # Python package source
 resources/specs/              # Knowledge base YAML
 regression/                   # Corpus regression data & results
@@ -29,7 +27,6 @@ regression/                   # Corpus regression data & results
 ├── datasets.yaml             # Dataset configuration
 ├── results/                  # Regression output
 └── history/                  # Per-commit snapshots
-data/argspec-validate-results/  # Spec validation results
 ```
 
 Project design notes and internal planning documents live outside this repo in the parent workspace. Do not recreate a `docs/` directory here for private notes, Chinese research records, or internal implementation plans.
@@ -80,7 +77,7 @@ The transform subsystem (`crates/texform-core/src/transform/`) provides rule-bas
 
 ## Tooling Conventions
 
-- **Rust**: `cargo test`, `cargo check`, `cargo clippy`; pre-commit hooks run `cargo fmt`, `cargo clippy`, spec validation, and the parser regression check. Transform-related changes must run `transform_contract` manually as described above.
+- **Rust**: `cargo test`, `cargo check`, `cargo clippy`; pre-commit hooks run Rust formatting, clippy, and parser regression checks. Transform-related changes must run `transform_contract` manually as described above.
 - **TypeScript**: use `bun` as package manager.
 - **Python**: use `uv` for dependency management and `maturin` for native extension builds.
 - **Commit messages**: use Conventional Commits, such as `feat(rule): add root-family rule`, `fix(core): generate standard transform rule modules`, or `test(core): restore brace transform examples`. Prefer an existing scope like `core`, `rule`, `specs`, `regression`, `wasm`, or `python`; omit the scope only when a change spans multiple areas. Keep the subject short, imperative, and lower-case after the type/scope prefix. For large commits with several important changes, include a body after a blank line; format that body as a Markdown unordered list, with one bullet per important change.

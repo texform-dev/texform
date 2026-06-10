@@ -22,13 +22,6 @@ repos:
         pass_filenames: false
         entry: cargo clippy --all-targets --all-features
 
-      - id: spec-validate-check
-        name: spec validate check
-        language: system
-        files: ^(crates/|resources/specs/)
-        pass_filenames: false
-        entry: bun run packages/argspecs-validator/src/cli.ts --check
-
       - id: parser-regression-check
         name: parser regression check
         language: system
