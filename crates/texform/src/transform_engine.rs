@@ -15,6 +15,7 @@ pub struct TransformEngineBuilder {
     parser: ParserBuilder,
     profile: Option<Profile>,
     build_config: Option<BuildConfig>,
+    disabled_rules: Vec<crate::RuleKey>,
 }
 
 pub struct NormalizeResult {
@@ -28,6 +29,7 @@ impl TransformEngine {
             parser: Parser::builder().default_parse_config(ParseConfig::STRICT),
             profile: None,
             build_config: None,
+            disabled_rules: Vec::new(),
         }
     }
 
@@ -127,12 +129,7 @@ impl TransformEngineBuilder {
     }
 
     pub fn disable_rule(mut self, key: crate::RuleKey) -> Self {
-        let config = self
-            .build_config
-            .take()
-            .or_else(|| self.profile.map(BuildConfig::profile))
-            .expect("profile must be set before disabling rules");
-        self.build_config = Some(config.disable_rule(key));
+        self.disabled_rules.push(key);
         self
     }
 
@@ -144,10 +141,13 @@ impl TransformEngineBuilder {
     }
 
     pub fn build(self) -> Result<TransformEngine, Error> {
-        let build_config = self
+        let mut build_config = self
             .build_config
             .or_else(|| self.profile.map(BuildConfig::profile))
             .ok_or(Error::MissingProfile)?;
+        for key in self.disabled_rules {
+            build_config = build_config.disable_rule(key);
+        }
         let parser = self.parser.build().map_err(Error::ParserBuild)?;
         let transform = TransformContext::from_build_config(build_config, parser.inner())
             .map_err(Error::TransformBuild)?;

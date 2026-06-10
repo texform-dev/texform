@@ -21,5 +21,10 @@ fn count_targets_from_output(
     let (document, _) = output.try_into_document()?;
     let mut counter = TargetCounter::default();
     count_node(&document.to_syntax(), &mut counter);
-    Ok(serde_json::to_value(counter.logical_counts()).expect("target counts should serialize"))
+    Ok(counter
+        .logical_counts()
+        .into_iter()
+        .map(|(key, count)| (key, serde_json::Value::from(count)))
+        .collect::<serde_json::Map<_, _>>()
+        .into())
 }

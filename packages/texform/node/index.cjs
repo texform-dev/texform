@@ -70,6 +70,44 @@ function wrapParseResult(result) {
   };
 }
 
+function wrapNode(node) {
+  return node ? new Node(node) : null;
+}
+
+function wrapNodes(nodes) {
+  return Array.from(nodes, (node) => new Node(node));
+}
+
+function unwrapNode(node) {
+  return node instanceof Node ? node.inner : node;
+}
+
+function unwrapArgValue(value) {
+  if (
+    value &&
+    typeof value === "object" &&
+    (value.kind === "Math" || value.kind === "Text")
+  ) {
+    return { ...value, node: unwrapNode(value.node) };
+  }
+  return value;
+}
+
+function unwrapArgValues(values) {
+  return Array.isArray(values) ? values.map(unwrapArgValue) : values;
+}
+
+function wrapArgRef(value) {
+  if (
+    value &&
+    typeof value === "object" &&
+    (value.kind === "Math" || value.kind === "Text")
+  ) {
+    return { ...value, node: wrapNode(value.node) };
+  }
+  return value;
+}
+
 class Parser {
   constructor(options) {
     this.inner = wrapTexformError(() => new wasm.Parser(options ?? undefined));
@@ -86,16 +124,18 @@ class Parser {
     );
   }
   lookupCommand(name, mode) {
-    return this.inner.lookup_command(name, mode);
+    return wrapTexformError(() => this.inner.lookup_command(name, mode));
   }
   lookupExplicitCommand(name, mode) {
-    return this.inner.lookup_explicit_command(name, mode);
+    return wrapTexformError(() =>
+      this.inner.lookup_explicit_command(name, mode),
+    );
   }
   lookupCharacter(name, mode) {
-    return this.inner.lookup_character(name, mode);
+    return wrapTexformError(() => this.inner.lookup_character(name, mode));
   }
   lookupEnv(name, mode) {
-    return this.inner.lookup_env(name, mode);
+    return wrapTexformError(() => this.inner.lookup_env(name, mode));
   }
   isDelimiterControl(name) {
     return this.inner.is_delimiter_control(name);
@@ -130,16 +170,18 @@ class TransformEngine {
     return wrapTexformError(() => this.inner.normalize(src, options ?? undefined));
   }
   lookupCommand(name, mode) {
-    return this.inner.lookup_command(name, mode);
+    return wrapTexformError(() => this.inner.lookup_command(name, mode));
   }
   lookupExplicitCommand(name, mode) {
-    return this.inner.lookup_explicit_command(name, mode);
+    return wrapTexformError(() =>
+      this.inner.lookup_explicit_command(name, mode),
+    );
   }
   lookupCharacter(name, mode) {
-    return this.inner.lookup_character(name, mode);
+    return wrapTexformError(() => this.inner.lookup_character(name, mode));
   }
   lookupEnv(name, mode) {
-    return this.inner.lookup_env(name, mode);
+    return wrapTexformError(() => this.inner.lookup_env(name, mode));
   }
   isDelimiterControl(name) {
     return this.inner.is_delimiter_control(name);
@@ -173,7 +215,7 @@ class Document {
   }
 
   root() {
-    return wrapTexformError(() => this.inner.root());
+    return wrapTexformError(() => wrapNode(this.inner.root()));
   }
 
   hasErrors() {
@@ -185,101 +227,129 @@ class Document {
   }
 
   errors() {
-    return wrapTexformError(() => this.inner.errors());
+    return wrapTexformError(() => wrapNodes(this.inner.errors()));
   }
 
   findCommands(name) {
-    return wrapTexformError(() => this.inner.findCommands(name));
+    return wrapTexformError(() => wrapNodes(this.inner.findCommands(name)));
   }
 
   findEnvironments(name) {
-    return wrapTexformError(() => this.inner.findEnvironments(name));
+    return wrapTexformError(() => wrapNodes(this.inner.findEnvironments(name)));
   }
 
   createChar(value) {
-    return wrapTexformError(() => this.inner.createChar(value));
+    return wrapTexformError(() => wrapNode(this.inner.createChar(value)));
   }
 
   createText(value) {
-    return wrapTexformError(() => this.inner.createText(value));
+    return wrapTexformError(() => wrapNode(this.inner.createText(value)));
   }
 
   createActiveSpace() {
-    return wrapTexformError(() => this.inner.createActiveSpace());
+    return wrapTexformError(() => wrapNode(this.inner.createActiveSpace()));
   }
 
   createGroup(mode) {
-    return wrapTexformError(() => this.inner.createGroup(mode));
+    return wrapTexformError(() => wrapNode(this.inner.createGroup(mode)));
   }
 
   createCommand(name, args) {
-    return wrapTexformError(() => this.inner.createCommand(name, args ?? undefined));
+    return wrapTexformError(() =>
+      wrapNode(this.inner.createCommand(name, unwrapArgValues(args) ?? undefined)),
+    );
   }
 
   createDeclarative(name, args) {
-    return wrapTexformError(() => this.inner.createDeclarative(name, args ?? undefined));
+    return wrapTexformError(() =>
+      wrapNode(
+        this.inner.createDeclarative(name, unwrapArgValues(args) ?? undefined),
+      ),
+    );
   }
 
   createEnvironment(name, args, body) {
     return wrapTexformError(() =>
-      this.inner.createEnvironment(name, args ?? undefined, body),
+      wrapNode(
+        this.inner.createEnvironment(
+          name,
+          unwrapArgValues(args) ?? undefined,
+          unwrapNode(body),
+        ),
+      ),
     );
   }
 
   appendChild(parent, child) {
-    return wrapTexformError(() => this.inner.appendChild(parent, child));
+    return wrapTexformError(() =>
+      this.inner.appendChild(unwrapNode(parent), unwrapNode(child)),
+    );
   }
 
   insertChild(parent, index, child) {
-    return wrapTexformError(() => this.inner.insertChild(parent, index, child));
+    return wrapTexformError(() =>
+      this.inner.insertChild(unwrapNode(parent), index, unwrapNode(child)),
+    );
   }
 
   insertBefore(anchor, node) {
-    return wrapTexformError(() => this.inner.insertBefore(anchor, node));
+    return wrapTexformError(() =>
+      this.inner.insertBefore(unwrapNode(anchor), unwrapNode(node)),
+    );
   }
 
   insertAfter(anchor, node) {
-    return wrapTexformError(() => this.inner.insertAfter(anchor, node));
+    return wrapTexformError(() =>
+      this.inner.insertAfter(unwrapNode(anchor), unwrapNode(node)),
+    );
   }
 
   replaceWith(target, replacement) {
-    return wrapTexformError(() => this.inner.replaceWith(target, replacement));
+    return wrapTexformError(() =>
+      this.inner.replaceWith(unwrapNode(target), unwrapNode(replacement)),
+    );
   }
 
   wrap(target, wrapper) {
-    return wrapTexformError(() => this.inner.wrap(target, wrapper));
+    return wrapTexformError(() =>
+      wrapNode(this.inner.wrap(unwrapNode(target), unwrapNode(wrapper))),
+    );
   }
 
   unwrap(group) {
-    return wrapTexformError(() => this.inner.unwrap(group));
+    return wrapTexformError(() => wrapNodes(this.inner.unwrap(unwrapNode(group))));
   }
 
   extract(node) {
-    return wrapTexformError(() => this.inner.extract(node));
+    return wrapTexformError(() => wrapNode(this.inner.extract(unwrapNode(node))));
   }
 
   remove(node) {
-    return wrapTexformError(() => this.inner.remove(node));
+    return wrapTexformError(() => this.inner.remove(unwrapNode(node)));
   }
 
   clear(node) {
-    return wrapTexformError(() => this.inner.clear(node));
+    return wrapTexformError(() => this.inner.clear(unwrapNode(node)));
   }
 
   setText(node, value) {
-    return wrapTexformError(() => this.inner.setText(node, value));
+    return wrapTexformError(() => this.inner.setText(unwrapNode(node), value));
   }
 
   setChar(node, value) {
-    return wrapTexformError(() => this.inner.setChar(node, value));
+    return wrapTexformError(() => this.inner.setChar(unwrapNode(node), value));
   }
 
   setCommandName(node, name) {
-    return wrapTexformError(() => this.inner.setCommandName(node, name));
+    return wrapTexformError(() =>
+      this.inner.setCommandName(unwrapNode(node), name),
+    );
   }
 
   setArg(node, index, value) {
-    return wrapTexformError(() => this.inner.setArg(node, index, value));
+    return wrapTexformError(() =>
+      this.inner.setArg(unwrapNode(node), index, unwrapArgValue(value)),
+    );
   }
 
   toSyntax() {
@@ -291,8 +361,134 @@ class Document {
   }
 }
 
+class Node {
+  constructor(inner) {
+    this.inner = inner;
+  }
+
+  free() {
+    this.inner.free();
+  }
+
+  [Symbol.dispose]() {
+    this.free();
+  }
+
+  get kind() {
+    return wrapTexformError(() => this.inner.kind);
+  }
+
+  isCommand(name) {
+    return wrapTexformError(() => this.inner.isCommand(name ?? undefined));
+  }
+
+  isChar(value) {
+    return wrapTexformError(() => this.inner.isChar(value ?? undefined));
+  }
+
+  isError() {
+    return wrapTexformError(() => this.inner.isError());
+  }
+
+  parent() {
+    return wrapTexformError(() => wrapNode(this.inner.parent()));
+  }
+
+  get children() {
+    return wrapTexformError(() => wrapNodes(this.inner.children));
+  }
+
+  nextSibling() {
+    return wrapTexformError(() => wrapNode(this.inner.nextSibling()));
+  }
+
+  prevSibling() {
+    return wrapTexformError(() => wrapNode(this.inner.prevSibling()));
+  }
+
+  ancestors() {
+    return wrapTexformError(() => wrapNodes(this.inner.ancestors()));
+  }
+
+  descendants() {
+    return wrapTexformError(() => wrapNodes(this.inner.descendants()));
+  }
+
+  get commandName() {
+    return wrapTexformError(() => this.inner.commandName);
+  }
+
+  get envName() {
+    return wrapTexformError(() => this.inner.envName);
+  }
+
+  get text() {
+    return wrapTexformError(() => this.inner.text);
+  }
+
+  get char() {
+    return wrapTexformError(() => this.inner.char);
+  }
+
+  primeCount() {
+    return wrapTexformError(() => this.inner.primeCount());
+  }
+
+  errorParts() {
+    return wrapTexformError(() => this.inner.errorParts());
+  }
+
+  contentMode() {
+    return wrapTexformError(() => this.inner.contentMode());
+  }
+
+  groupKind() {
+    return wrapTexformError(() => this.inner.groupKind());
+  }
+
+  argCount() {
+    return wrapTexformError(() => this.inner.argCount());
+  }
+
+  arg(index) {
+    return wrapTexformError(() => wrapArgRef(this.inner.arg(index)));
+  }
+
+  argSlots() {
+    return wrapTexformError(() => this.inner.argSlots().map(wrapArgRef));
+  }
+
+  scriptBase() {
+    return wrapTexformError(() => wrapNode(this.inner.scriptBase()));
+  }
+
+  subscript() {
+    return wrapTexformError(() => wrapNode(this.inner.subscript()));
+  }
+
+  superscript() {
+    return wrapTexformError(() => wrapNode(this.inner.superscript()));
+  }
+
+  infixLeft() {
+    return wrapTexformError(() => wrapNode(this.inner.infixLeft()));
+  }
+
+  infixRight() {
+    return wrapTexformError(() => wrapNode(this.inner.infixRight()));
+  }
+
+  envBody() {
+    return wrapTexformError(() => wrapNode(this.inner.envBody()));
+  }
+
+  span() {
+    return wrapTexformError(() => this.inner.span());
+  }
+}
+
 exports.Document = Document;
-exports.Node = wasm.Node;
+exports.Node = Node;
 exports.Parser = Parser;
 exports.TexformConfigError = TexformConfigError;
 exports.TexformEditError = TexformEditError;

@@ -243,6 +243,20 @@ fn engine_builder_requires_profile() {
 }
 
 #[test]
+fn engine_builder_disable_rule_without_profile_reports_error() {
+    let error = match TransformEngine::builder()
+        .disable_rule_by_name("physics/quantity-to-qty")
+        .expect("known rule should resolve")
+        .build()
+    {
+        Ok(_) => panic!("engine profile is required"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(error, texform::Error::MissingProfile));
+}
+
+#[test]
 fn engine_builder_disables_rule_by_public_name() {
     let engine = TransformEngine::builder()
         .packages(&["base", "physics"])
@@ -265,6 +279,23 @@ fn engine_builder_disables_rule_by_public_name() {
         unknown.is_err(),
         "unknown rule names should fail at the facade"
     );
+}
+
+#[test]
+fn engine_builder_disable_rule_can_precede_profile() {
+    let engine = TransformEngine::builder()
+        .packages(&["base", "physics"])
+        .disable_rule_by_name("physics/quantity-to-qty")
+        .expect("known rule should resolve")
+        .profile(Profile::Authoring)
+        .build()
+        .expect("engine should build");
+
+    let result = engine
+        .normalize(r"\quantity{x}")
+        .expect("normalize should succeed");
+
+    assert_eq!(result.normalized, r"\quantity { x }");
 }
 
 #[test]

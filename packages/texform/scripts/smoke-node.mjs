@@ -1,5 +1,6 @@
 import {
   Document,
+  Node,
   Parser,
   TransformEngine,
   TexformConfigError,
@@ -25,6 +26,15 @@ if (missing !== null) {
 const frac = parser.lookupCommand("frac", "math");
 if (frac && !("allowedMode" in frac)) {
   throw new Error("lookup hit should be camelCase");
+}
+
+try {
+  parser.lookupCommand("frac", "bad");
+  throw new Error("invalid lookup mode should fail");
+} catch (error) {
+  if (!(error instanceof TexformConfigError)) {
+    throw error;
+  }
 }
 
 new Parser({
@@ -69,6 +79,9 @@ try {
 }
 
 const doc = parser.parse("x^{y}").document;
+if (!(doc.root() instanceof Node)) {
+  throw new Error("document.root should return public Node wrapper");
+}
 const defaultLatex = doc.toLatex();
 const compactLatex = doc.toLatex({
   math: { spacing: { groupInnerSpacing: "compact" } },
@@ -116,6 +129,20 @@ try {
   }
   if (error.kind !== "parse" || error.name !== "TexformParseError") {
     throw new Error("Document path error should expose kind/name");
+  }
+}
+
+try {
+  const staleDoc = new Document();
+  const root = staleDoc.root();
+  const child = staleDoc.createChar("x");
+  staleDoc.appendChild(root, child);
+  staleDoc.remove(child);
+  child.kind;
+  throw new Error("stale Node access should fail");
+} catch (error) {
+  if (!(error instanceof TexformEditError)) {
+    throw error;
   }
 }
 
