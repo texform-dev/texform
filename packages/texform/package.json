@@ -1,6 +1,7 @@
 {
   "name": "texform",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "type": "module",
   "sideEffects": [
     "./bundler/index.js",
@@ -32,6 +33,7 @@
   "module": "./bundler/index.js",
   "types": "./types/index.d.ts",
   "files": [
+    "LICENSE",
     "bundler/",
     "node/",
     "types/",

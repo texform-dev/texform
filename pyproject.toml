@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "texform"
 description = "Python bindings for the TeXForm LaTeX parser"
-readme = "README.md"
+readme = "python/texform/README.md"
 requires-python = ">=3.10"
 dynamic = ["version"]
 license = { text = "Apache-2.0" }
