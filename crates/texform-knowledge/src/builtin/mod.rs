@@ -18,7 +18,7 @@ mod generated_prelude {
     };
 }
 
-include!("generated.rs");
+include!(concat!(env!("OUT_DIR"), "/builtin_generated.rs"));
 
 pub fn lookup_package(name: &str) -> Option<&'static BuiltinPackage> {
     ALL_PACKAGES.iter().find(|pkg| pkg.name == name)

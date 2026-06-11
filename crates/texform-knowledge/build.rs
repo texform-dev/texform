@@ -29,9 +29,9 @@ const MANAGED_PACKAGE_IMPORT_ORDER: [&str; 7] = [
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let specs_dir = manifest_dir.join("../../resources/specs");
+    let specs_dir = manifest_dir.join("resources/specs");
     let command_symbol_facades_path = manifest_dir.join("codegen/command_symbol_facades.rs");
-    let out_path = manifest_dir.join("src/builtin/generated.rs");
+    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap()).join("builtin_generated.rs");
 
     println!("cargo:rerun-if-changed={}", specs_dir.display());
     println!(
@@ -116,14 +116,14 @@ fn assert_managed_order_matches_specs(packages: &[BuiltinPackageSource]) {
     for managed in MANAGED_PACKAGE_IMPORT_ORDER {
         assert!(
             package_names.contains(&managed),
-            "managed package `{managed}` is missing from resources/specs"
+            "managed package `{managed}` is missing from texform-knowledge resources/specs"
         );
     }
 
     for name in package_names {
         assert!(
             MANAGED_PACKAGE_IMPORT_ORDER.contains(&name),
-            "package `{name}` exists in resources/specs but is missing from MANAGED_PACKAGE_IMPORT_ORDER"
+            "package `{name}` exists in texform-knowledge resources/specs but is missing from MANAGED_PACKAGE_IMPORT_ORDER"
         );
     }
 }

@@ -42,10 +42,10 @@ tsify-next = { version = "0.5", default-features = false, features = ["js"] }
 wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6"
 
-texform-argspec = { path = "crates/texform-argspec" }
-texform = { path = "crates/texform" }
-texform-core = { path = "crates/texform-core" }
-texform-interface = { path = "crates/texform-interface" }
-texform-knowledge = { path = "crates/texform-knowledge" }
-texform-knowledge-macros = { path = "crates/texform-knowledge-macros" }
-texform-transform = { path = "crates/texform-transform" }
+texform-argspec = { version = "0.1.0", path = "crates/texform-argspec" }
+texform = { version = "0.1.0", path = "crates/texform" }
+texform-core = { version = "0.1.0", path = "crates/texform-core" }
+texform-interface = { version = "0.1.0", path = "crates/texform-interface" }
+texform-knowledge = { version = "0.1.0", path = "crates/texform-knowledge" }
+texform-knowledge-macros = { version = "0.1.0", path = "crates/texform-knowledge-macros" }
+texform-transform = { version = "0.1.0", path = "crates/texform-transform" }

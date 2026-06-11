@@ -23,7 +23,7 @@ crates/                       # Rust workspace
 packages/                     # NPM/TypeScript packages
 └── texform/                  # Public npm package wrapper around WASM bindings
 python/texform/               # Python package source
-resources/specs/              # Knowledge base YAML
+crates/texform-knowledge/resources/specs/ # Knowledge base YAML
 regression/                   # Corpus regression data & results
 ├── data/                     # Git LFS Parquet datasets
 ├── datasets.yaml             # Dataset configuration
