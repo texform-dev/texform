@@ -3,14 +3,68 @@ pub enum Error {
     MissingProfile,
     UnknownRule(String),
     ParserBuild(crate::parser::ParserBuildError),
-    TransformBuild(texform_transform::TransformBuildError),
+    TransformBuild(TransformBuildError),
     Parse(crate::parse_result::ParseError),
     IncompleteTree,
-    Transform(texform_transform::TransformError),
+    Transform(TransformError),
     Serialize(crate::serialize::SerializeError),
 }
 
 pub type NormalizeError = Error;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TransformBuildError {
+    message: String,
+}
+
+impl TransformBuildError {
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl std::fmt::Display for TransformBuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for TransformBuildError {}
+
+impl From<texform_transform::TransformBuildError> for TransformBuildError {
+    fn from(error: texform_transform::TransformBuildError) -> Self {
+        Self {
+            message: error.to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TransformError {
+    message: String,
+}
+
+impl TransformError {
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl std::fmt::Display for TransformError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for TransformError {}
+
+impl From<texform_transform::TransformError> for TransformError {
+    fn from(error: texform_transform::TransformError) -> Self {
+        Self {
+            message: error.to_string(),
+        }
+    }
+}
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -29,6 +83,12 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+impl From<texform_transform::TransformBuildError> for Error {
+    fn from(error: texform_transform::TransformBuildError) -> Self {
+        Self::TransformBuild(error.into())
+    }
+}
+
 impl From<crate::parse_result::ParseError> for Error {
     fn from(error: crate::parse_result::ParseError) -> Self {
         Self::Parse(error)
@@ -37,7 +97,7 @@ impl From<crate::parse_result::ParseError> for Error {
 
 impl From<texform_transform::TransformError> for Error {
     fn from(error: texform_transform::TransformError) -> Self {
-        Self::Transform(error)
+        Self::Transform(error.into())
     }
 }
 

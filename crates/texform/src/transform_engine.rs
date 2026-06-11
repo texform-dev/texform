@@ -149,8 +149,7 @@ impl TransformEngineBuilder {
             build_config = build_config.disable_rule(key);
         }
         let parser = self.parser.build().map_err(Error::ParserBuild)?;
-        let transform = TransformContext::from_build_config(build_config, parser.inner())
-            .map_err(Error::TransformBuild)?;
+        let transform = TransformContext::from_build_config(build_config, parser.inner())?;
         Ok(TransformEngine { parser, transform })
     }
 }

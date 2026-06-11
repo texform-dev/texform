@@ -26,7 +26,7 @@ pub use document::{
     ArgRef, ArgValue, DelimiterRef, DelimiterValue, Document, DocumentId, EditError,
     FromSyntaxError, GroupKindRef, NodeId, NodeKind, NodeRef, NodeSpanEntry,
 };
-pub use error::{Error, NormalizeError};
+pub use error::{Error, NormalizeError, TransformBuildError, TransformError};
 pub use knowledge::{PackageInfo, list_packages};
 pub use parse_result::{ParseError, ParseResult};
 pub use parser::{Parser, ParserBuildError, ParserBuilder};
