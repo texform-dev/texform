@@ -15,7 +15,7 @@
 //!   -> String
 //! ```
 //!
-//! Most spacing rules are concentrated in [`AtomWriter::should_insert_space`],
+//! Most spacing rules are concentrated in the atom writer's boundary decision,
 //! which inspects the previous atom, the next atom, the current content mode,
 //! and the active [`SerializeOptions`]. A few wrapper/scalar helpers still emit
 //! preformatted spaces directly for cases that cannot be expressed as a simple
@@ -242,8 +242,8 @@ enum AtomKind {
 
 /// Accumulates output text and decides where to insert inter-atom spaces.
 ///
-/// Most boundary rules live in [`AtomWriter::should_insert_space`], making them
-/// testable in isolation without constructing a full AST. A few helpers still
+/// Most boundary rules live in the atom writer's central decision function,
+/// making them testable in isolation without constructing a full AST. A few helpers still
 /// bypass it for preformatted cases such as empty padded groups. The writer
 /// tracks only the *previous* atom kind — no look-ahead — so the serializer
 /// must emit atoms in final output order.
@@ -670,7 +670,7 @@ impl<'a> Serializer<'a> {
     ///
     /// Script spacing is controlled by emitting the marker in a synthetic
     /// mode: `Math` triggers boundary insertion while `Text` suppresses it,
-    /// reusing the existing `should_insert_space` logic without a dedicated
+    /// reusing the existing boundary logic without a dedicated
     /// script-mark branch in every caller.
     fn emit_script(&mut self, marker: char, node: NodeId) {
         let mode = match self.options.math.scripts.spacing {

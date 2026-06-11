@@ -175,7 +175,7 @@ pub enum SyntaxNode {
         children: Vec<SyntaxNode>,
     },
 
-    /// Prefix command: \frac{a}{b}, \sqrt[n]{x}
+    /// Prefix command: `\frac{a}{b}`, `\sqrt[n]{x}`.
     ///
     /// This is the most common command type where arguments follow the command name.
     Command {

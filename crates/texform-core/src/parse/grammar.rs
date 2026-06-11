@@ -1,9 +1,10 @@
 //! Chumsky-based parser for LaTeX formulas.
 //!
 //! This module builds the syntax parser around [`SyntaxNode`] while carrying
-//! parser-private span and diagnostic metadata in [`TrackedNode`]. Top-level
-//! math/text block parsers first produce implicit content groups, then promote
-//! those groups to [`SyntaxNode::Root`] before returning results to callers.
+//! parser-private span and diagnostic metadata in its internal tracked-node
+//! wrapper. Top-level math/text block parsers first produce implicit content
+//! groups, then promote those groups to [`SyntaxNode::Root`] before returning
+//! results to callers.
 //!
 //! # Parser layers
 //!

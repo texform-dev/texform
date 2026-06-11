@@ -43,7 +43,7 @@ struct Args {
     #[arg(long)]
     results_root: Option<PathBuf>,
 
-    /// Counter map output directory. Defaults to <results-root>/counter_map.
+    /// Counter map output directory. Defaults to the `counter_map` directory under `results-root`.
     /// Each dataset writes to a subdirectory `<counter-map-root>/<slug>/` containing
     /// one or more `part-<offset>-<limit>.parquet` files.
     #[arg(long)]
