@@ -1,0 +1,93 @@
+name: release-plz
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    # Manual release entry: bootstrap and binding/wrapper-only releases.
+
+concurrency:
+  group: release-plz
+  cancel-in-progress: false
+
+jobs:
+  release-pr:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run release-plz release-pr
+        id: release-pr
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+      - name: Sync npm package version into release PR
+        if: steps.release-pr.outputs.prs_created == 'true'
+        env:
+          PR_JSON: ${{ steps.release-pr.outputs.pr }}
+        run: |
+          branch=$(echo "$PR_JSON" | jq -r '.head_branch')
+          git fetch origin "$branch"
+          git checkout "$branch"
+          node .github/scripts/sync-versions.mjs
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -am "chore: sync npm package version"
+            git push origin "$branch"
+          fi
+      - name: Warn on binding or wrapper drift
+        # release-plz change detection is based on cargo package files; the
+        # publish=false binding crates and wrapper directories do not trigger a
+        # release PR by themselves. This warning is the alert path; releases for
+        # such changes go through the manual dispatch entry (see RELEASING.md).
+        run: |
+          last_tag=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          if [ -z "$last_tag" ]; then exit 0; fi
+          git checkout "${{ github.sha }}" --quiet
+          if ! git diff --quiet "$last_tag"..HEAD -- crates/texform-python/ crates/texform-wasm/ python/ packages/texform/; then
+            echo "::warning::binding or wrapper files changed since $last_tag. If no release PR reflects this, release manually (RELEASING.md)."
+          fi
+
+  release:
+    if: vars.RELEASE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      BOOTSTRAP_CARGO_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # The tag must be pushed with a PAT: tags pushed with the default
+          # GITHUB_TOKEN do not trigger the release.yml workflow.
+          token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Enable manual release (dispatch only)
+        if: github.event_name == 'workflow_dispatch'
+        # release_always = false rejects releases whose HEAD is not a release
+        # PR merge; flip it for explicit manual runs. The final behavior is
+        # verified in the private GitHub Actions rehearsal.
+        run: sed -i 's/^release_always = false/release_always = true/' release-plz.toml
+      - name: Obtain crates.io OIDC token
+        id: oidc
+        if: env.BOOTSTRAP_CARGO_TOKEN == ''
+        uses: rust-lang/crates-io-auth-action@v1
+      - name: Run release-plz release
+        uses: release-plz/action@v0.5
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN || steps.oidc.outputs.token }}

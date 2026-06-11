@@ -1,0 +1,51 @@
+[workspace]
+# Releases happen only by merging a release PR (or the manual dispatch entry).
+release_always = false
+# Single-tag mode: only the facade crate creates the tag and GitHub release.
+git_tag_enable = false
+git_release_enable = false
+changelog_update = false
+pr_labels = ["release"]
+dependencies_update = false
+
+[[package]]
+name = "texform"
+git_tag_enable = true
+git_tag_name = "v{{ version }}"
+git_release_enable = true
+git_release_name = "v{{ version }}"
+changelog_update = true
+changelog_path = "./CHANGELOG.md"
+# Fold commits from all other workspace crates into the facade changelog,
+# so the root CHANGELOG.md covers the whole project.
+# release-plz changelog_include accepts package names, not arbitrary paths.
+# Wrapper-only commits are added manually during release PR review
+# (see RELEASING.md).
+changelog_include = [
+  "texform-core",
+  "texform-argspec",
+  "texform-interface",
+  "texform-knowledge",
+  "texform-knowledge-macros",
+  "texform-transform",
+  "texform-python",
+  "texform-wasm",
+]
+
+[changelog]
+# Keep a Changelog grouping. Groups sort alphabetically: Added, Changed, Fixed.
+body = """
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group }}
+{% for commit in commits %}
+- {% if commit.breaking %}**Breaking:** {% endif %}{{ commit.message | upper_first }}
+{%- endfor %}
+{% endfor %}
+"""
+commit_parsers = [
+  { message = "^feat", group = "Added" },
+  { message = "^fix", group = "Fixed" },
+  { message = "^perf", group = "Changed" },
+  { message = "^(docs|chore|ci|test|style|refactor|build|revert)", skip = true },
+]
