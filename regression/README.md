@@ -38,13 +38,19 @@ git lfs install && git lfs pull
 # from texform repo root
 
 # run all datasets
-cargo run --release -p texform-regression --bin parser_regression
+cargo run --release -p texform-regression --bin parser_regression -- run
 
 # run one dataset
-cargo run --release -p texform-regression --bin parser_regression -- --dataset lf80m-benchmarks
+cargo run --release -p texform-regression --bin parser_regression -- run --dataset lf80m-benchmarks
 
-# pre-commit probe: check one dataset first, then refresh all results if it changed or is missing
-cargo run --release -p texform-regression --bin parser_regression -- --dataset lf80m-benchmarks --check
+# refresh all tracked parser regression results
+cargo run --release -p texform-regression --bin parser_regression -- refresh
+
+# pre-commit refresh: check one probe dataset first, then refresh all results if it changed or is missing
+cargo run --release -p texform-regression --bin parser_regression -- refresh --probe-dataset lf80m-benchmarks
+
+# CI verification: check one dataset against tracked results without writing files
+cargo run --release -p texform-regression --bin parser_regression -- verify --dataset lf80m-benchmarks
 
 # run the transform eliminated-form contract gate
 cargo run --release -p texform-regression --bin transform_contract

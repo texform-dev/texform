@@ -409,12 +409,16 @@ impl MeanRegressionWarning {
     }
 }
 
+fn stable_rate(value: f64) -> f64 {
+    (value * 100.0).round() / 100.0
+}
+
 impl From<&ModeStats> for StableModeStats {
     fn from(stats: &ModeStats) -> Self {
         Self {
             ok: stats.ok,
             failed: stats.failed,
-            failure_rate_pct: stats.failure_rate_pct,
+            failure_rate_pct: stable_rate(stats.failure_rate_pct),
         }
     }
 }
@@ -1164,6 +1168,40 @@ mod tests {
     fn stored_summary_status_reports_match_for_identical_summary() {
         let dir = make_temp_dir("summary-status-match");
         let summary = build_summary("demo", &sample_records(), &sample_results());
+        let summaries = vec![summary.clone()];
+        let overall = build_overall(&summaries);
+
+        write_run_summary(&dir, &summaries, &overall).unwrap();
+
+        let status = stored_summary_status(&dir, "demo", &summary).unwrap();
+
+        assert_eq!(status, StoredSummaryStatus::Match);
+    }
+
+    #[test]
+    fn stored_summary_status_uses_stable_failure_rate_precision() {
+        let dir = make_temp_dir("summary-status-stable-rate");
+        let mut records = sample_records();
+        records.push(FormulaRecord {
+            formula_id: "gamma".to_string(),
+            formula: "z".to_string(),
+        });
+        let mut results = sample_results();
+        results.push(FormulaResults {
+            strict: ParseResult {
+                duration: Duration::from_micros(20),
+                ok: true,
+                diagnostic_count: 0,
+                diagnostics: Vec::new(),
+            },
+            nonstrict: ParseResult {
+                duration: Duration::from_micros(18),
+                ok: true,
+                diagnostic_count: 0,
+                diagnostics: Vec::new(),
+            },
+        });
+        let summary = build_summary("demo", &records, &results);
         let summaries = vec![summary.clone()];
         let overall = build_overall(&summaries);
 

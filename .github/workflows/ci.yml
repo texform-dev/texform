@@ -26,8 +26,8 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test --workspace
-      - name: Parser regression check
-        run: cargo run --release -p texform-regression --bin parser_regression -- --dataset lf80m-benchmarks --check
+      - name: Parser regression verify
+        run: cargo run --release -p texform-regression --bin parser_regression -- verify --dataset lf80m-benchmarks
 
   python-binding:
     runs-on: ubuntu-latest

@@ -22,9 +22,9 @@ repos:
         pass_filenames: false
         entry: cargo clippy --all-targets --all-features
 
-      - id: parser-regression-check
-        name: parser regression check
+      - id: parser-regression-refresh
+        name: parser regression refresh
         language: system
         types: [rust]
         pass_filenames: false
-        entry: cargo run --release -p texform-regression --bin parser_regression -- --dataset lf80m-benchmarks --check
+        entry: cargo run --release -p texform-regression --bin parser_regression -- refresh --probe-dataset lf80m-benchmarks

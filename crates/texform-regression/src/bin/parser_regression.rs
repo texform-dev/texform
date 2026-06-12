@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
@@ -10,7 +10,25 @@ use texform_regression::{config, data, output, runner};
     name = "parser_regression",
     about = "Run the parser corpus regression suite across configured datasets."
 )]
-struct Args {
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Run parser regression and write results unless --dry-run is set.
+    Run(RunArgs),
+
+    /// Refresh all stored results, optionally after checking one probe dataset first.
+    Refresh(RefreshArgs),
+
+    /// Verify selected datasets match stored results without writing files.
+    Verify(VerifyArgs),
+}
+
+#[derive(Args)]
+struct CommonArgs {
     /// Dataset configuration YAML. Defaults to the texform repo regression/datasets.yaml.
     #[arg(long)]
     datasets_yaml: Option<PathBuf>,
@@ -19,8 +37,15 @@ struct Args {
     #[arg(long)]
     results_root: Option<PathBuf>,
 
+    /// Dataset slug to run. Repeat to select multiple datasets.
     #[arg(long = "dataset")]
     datasets: Vec<String>,
+}
+
+#[derive(Args)]
+struct RunArgs {
+    #[command(flatten)]
+    common: CommonArgs,
 
     #[arg(long)]
     limit: Option<usize>,
@@ -33,12 +58,40 @@ struct Args {
 
     #[arg(long, hide = true)]
     skip_commit_results: bool,
+}
 
-    #[arg(
-        long,
-        help = "Pre-commit probe for selected datasets; refresh all regression results if any summary changed"
-    )]
-    check: bool,
+#[derive(Args)]
+struct RefreshArgs {
+    /// Dataset configuration YAML. Defaults to the texform repo regression/datasets.yaml.
+    #[arg(long)]
+    datasets_yaml: Option<PathBuf>,
+
+    /// Result output directory. Defaults to results/parser_regression next to datasets-yaml.
+    #[arg(long)]
+    results_root: Option<PathBuf>,
+
+    /// Dataset slug to check before deciding whether to refresh all results.
+    #[arg(long)]
+    probe_dataset: Option<String>,
+}
+
+#[derive(Args)]
+struct VerifyArgs {
+    #[command(flatten)]
+    common: CommonArgs,
+}
+
+struct ExecutionArgs {
+    limit: Option<usize>,
+    offset: usize,
+    skip_commit_results: bool,
+}
+
+struct RegressionContext {
+    datasets_yaml: PathBuf,
+    results_root: PathBuf,
+    commits_root: PathBuf,
+    config: config::DatasetsConfig,
 }
 
 struct RunOptions {
@@ -58,7 +111,7 @@ struct SlowSample {
 }
 
 fn main() -> ExitCode {
-    match run(Args::parse()) {
+    match run(Cli::parse()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("{error}");
@@ -67,7 +120,15 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(args: Args) -> Result<(), String> {
+fn run(cli: Cli) -> Result<(), String> {
+    match cli.command {
+        Command::Run(args) => run_command(args),
+        Command::Refresh(args) => run_refresh(args),
+        Command::Verify(args) => run_verify(args),
+    }
+}
+
+fn load_context(args: &CommonArgs) -> Result<RegressionContext, String> {
     let datasets_yaml = args
         .datasets_yaml
         .clone()
@@ -85,15 +146,22 @@ fn run(args: Args) -> Result<(), String> {
         }
     };
 
-    if args.check {
-        return run_check(&args, &config, &datasets_yaml, &results_root, &commits_root);
-    }
+    Ok(RegressionContext {
+        datasets_yaml,
+        results_root,
+        commits_root,
+        config,
+    })
+}
 
-    let selected = config.filter_by_slugs(&args.datasets);
+fn run_command(args: RunArgs) -> Result<(), String> {
+    let context = load_context(&args.common)?;
+    let selected = context.config.filter_by_slugs(&args.common.datasets);
     if selected.is_empty() {
         eprintln!(
             "No datasets selected. Available: {:?}",
-            config
+            context
+                .config
                 .datasets
                 .iter()
                 .map(|dataset| &dataset.slug)
@@ -102,12 +170,18 @@ fn run(args: Args) -> Result<(), String> {
         return Ok(());
     }
 
+    let execution = ExecutionArgs {
+        limit: args.limit,
+        offset: args.offset,
+        skip_commit_results: args.skip_commit_results,
+    };
+
     run_datasets(
-        &args,
+        &execution,
         &selected,
-        &datasets_yaml,
-        &results_root,
-        &commits_root,
+        &context.datasets_yaml,
+        &context.results_root,
+        &context.commits_root,
         RunOptions {
             write: !args.dry_run,
             strict_errors: false,
@@ -117,21 +191,16 @@ fn run(args: Args) -> Result<(), String> {
     Ok(())
 }
 
-fn run_check(
-    args: &Args,
+fn selected_datasets(
     config: &config::DatasetsConfig,
-    datasets_yaml: &Path,
-    results_root: &Path,
-    commits_root: &Path,
-) -> Result<(), String> {
-    if args.dry_run {
-        return Err("--check cannot be combined with --dry-run".to_string());
-    }
-    if args.limit.is_some() {
-        return Err("--check cannot be combined with --limit".to_string());
+    dataset_slugs: &[String],
+    command: &str,
+) -> Result<Vec<config::DatasetEntry>, String> {
+    if dataset_slugs.is_empty() {
+        return Err(format!("{command} requires at least one --dataset"));
     }
 
-    let selected = config.filter_by_slugs(&args.datasets);
+    let selected = config.filter_by_slugs(dataset_slugs);
     if selected.is_empty() {
         return Err(format!(
             "No datasets selected. Available: {:?}",
@@ -143,31 +212,51 @@ fn run_check(
         ));
     }
 
-    let probe = run_datasets(
-        args,
-        &selected,
-        datasets_yaml,
-        results_root,
-        commits_root,
-        RunOptions {
-            write: false,
-            strict_errors: true,
-        },
-    )?;
+    Ok(selected)
+}
 
-    let needs_refresh = output::summaries_need_refresh(results_root, &probe.summaries)
-        .map_err(|error| format!("Failed to check stored summaries: {error}"))?;
+fn run_refresh(args: RefreshArgs) -> Result<(), String> {
+    let common = CommonArgs {
+        datasets_yaml: args.datasets_yaml,
+        results_root: args.results_root,
+        datasets: Vec::new(),
+    };
+    let context = load_context(&common)?;
+    let execution = ExecutionArgs {
+        limit: None,
+        offset: 0,
+        skip_commit_results: false,
+    };
 
-    if !needs_refresh {
-        return Ok(());
+    if let Some(probe_dataset) = args.probe_dataset {
+        let probe_datasets = vec![probe_dataset];
+        let selected = selected_datasets(&context.config, &probe_datasets, "refresh")?;
+        let probe = run_datasets(
+            &execution,
+            &selected,
+            &context.datasets_yaml,
+            &context.results_root,
+            &context.commits_root,
+            RunOptions {
+                write: false,
+                strict_errors: true,
+            },
+        )?;
+
+        let needs_refresh = output::summaries_need_refresh(&context.results_root, &probe.summaries)
+            .map_err(|error| format!("Failed to check stored summaries: {error}"))?;
+
+        if !needs_refresh {
+            return Ok(());
+        }
     }
 
     run_datasets(
-        args,
-        &config.datasets,
-        datasets_yaml,
-        results_root,
-        commits_root,
+        &execution,
+        &context.config.datasets,
+        &context.datasets_yaml,
+        &context.results_root,
+        &context.commits_root,
         RunOptions {
             write: true,
             strict_errors: true,
@@ -177,8 +266,41 @@ fn run_check(
     Ok(())
 }
 
+fn run_verify(args: VerifyArgs) -> Result<(), String> {
+    let context = load_context(&args.common)?;
+    let selected = selected_datasets(&context.config, &args.common.datasets, "verify")?;
+    let execution = ExecutionArgs {
+        limit: None,
+        offset: 0,
+        skip_commit_results: false,
+    };
+
+    let probe = run_datasets(
+        &execution,
+        &selected,
+        &context.datasets_yaml,
+        &context.results_root,
+        &context.commits_root,
+        RunOptions {
+            write: false,
+            strict_errors: true,
+        },
+    )?;
+
+    let needs_refresh = output::summaries_need_refresh(&context.results_root, &probe.summaries)
+        .map_err(|error| format!("Failed to check stored summaries: {error}"))?;
+    if needs_refresh {
+        return Err(
+            "Stored parser regression summary is out of date; run `parser_regression refresh`"
+                .to_string(),
+        );
+    }
+
+    Ok(())
+}
+
 fn run_datasets(
-    args: &Args,
+    args: &ExecutionArgs,
     selected: &[config::DatasetEntry],
     datasets_yaml: &Path,
     results_root: &Path,
