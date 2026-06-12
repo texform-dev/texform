@@ -6,14 +6,16 @@
 //! or by a single repositioned declarative at the start of the segment they
 //! affect. The set of recognised declaratives, the per-mode prefix targets
 //! and the canonical attribute values are loaded from `data.yaml` and
-//! generated into `generated.rs` by `build.rs` (see `codegen.rs`).
+//! generated into `OUT_DIR` by `build.rs` (see `codegen.rs`).
 
 use std::collections::HashMap;
 
 use crate::ast::{ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, Slot};
 use crate::rewrite::helpers::mandatory_content_slot;
 
-mod generated;
+mod generated {
+    include!(concat!(env!("OUT_DIR"), "/lower_attributes_generated.rs"));
+}
 
 use generated::{CommandRef, DeclarativeEntry, ModeTarget, PrefixEntry};
 

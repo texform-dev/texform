@@ -293,7 +293,8 @@ fn rule_path(entry: &ModuleEntry) -> String {
 fn main() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let manifest_dir_path = Path::new(&manifest_dir);
-    lower_attributes_codegen::generate(manifest_dir_path);
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    lower_attributes_codegen::generate(manifest_dir_path, &out_dir);
 
     let rules_dir = manifest_dir_path.join("src/rewrite/rules");
     println!("cargo:rerun-if-changed={}", rules_dir.display());

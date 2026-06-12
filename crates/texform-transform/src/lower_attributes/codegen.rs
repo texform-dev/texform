@@ -890,9 +890,9 @@ fn write_targets(code: &mut String, data: &DataYaml) {
 
 // === Entry point ===
 
-/// Read `data.yaml`, validate it against the builtin KB, and (re)write
-/// `generated.rs`. Called once from `build.rs`.
-pub(crate) fn generate(manifest_dir: &Path) {
+/// Read `data.yaml`, validate it against the builtin KB, and (re)write the
+/// generated source in `OUT_DIR`. Called once from `build.rs`.
+pub(crate) fn generate(manifest_dir: &Path, out_dir: &Path) {
     let base = manifest_dir.join("src/lower_attributes");
     let data_path = base.join("data.yaml");
     let codegen_path = base.join("codegen.rs");
@@ -906,9 +906,9 @@ pub(crate) fn generate(manifest_dir: &Path) {
     validate(&data);
 
     let code = render(&data);
-    let out_path = base.join("generated.rs");
+    let out_path = out_dir.join("lower_attributes_generated.rs");
     let should_write = fs::read_to_string(&out_path).map_or(true, |existing| existing != code);
     if should_write {
-        fs::write(&out_path, code).expect("failed to write lower_attributes/generated.rs");
+        fs::write(&out_path, code).expect("failed to write lower_attributes_generated.rs");
     }
 }
