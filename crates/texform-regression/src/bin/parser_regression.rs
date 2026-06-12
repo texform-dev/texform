@@ -400,7 +400,7 @@ fn collect_slow_samples(
             formula_len: record.formula.len(),
         });
     }
-    samples.sort_by(|a, b| b.duration.cmp(&a.duration));
+    samples.sort_by_key(|sample| std::cmp::Reverse(sample.duration));
     samples.truncate(limit);
 }
 
