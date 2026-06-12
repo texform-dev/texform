@@ -18,14 +18,14 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_PR_TOKEN }}
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
       - name: Run release-plz release-pr
         id: release-pr
-        uses: release-plz/action@v0.5
+        uses: release-plz/action@d22c02a7cf6d7870bd163be7c7d9518d331aef34 # v0.5
         with:
           command: release-pr
         env:
@@ -68,13 +68,13 @@ jobs:
     env:
       BOOTSTRAP_CARGO_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
           # The tag must be pushed with a PAT: tags pushed with the default
           # GITHUB_TOKEN do not trigger the release.yml workflow.
           token: ${{ secrets.RELEASE_PLZ_TOKEN }}
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
       - name: Enable manual release (dispatch only)
         if: github.event_name == 'workflow_dispatch'
         # release_always = false rejects releases whose HEAD is not a release
@@ -84,9 +84,9 @@ jobs:
       - name: Obtain crates.io OIDC token
         id: oidc
         if: env.BOOTSTRAP_CARGO_TOKEN == ''
-        uses: rust-lang/crates-io-auth-action@v1
+        uses: rust-lang/crates-io-auth-action@b7e9a28eded4986ec6b1fa40eeee8f8f165559ec # v1
       - name: Run release-plz release
-        uses: release-plz/action@v0.5
+        uses: release-plz/action@d22c02a7cf6d7870bd163be7c7d9518d331aef34 # v0.5
         with:
           command: release
         env:
