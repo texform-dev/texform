@@ -7,7 +7,6 @@
 .playwright-mcp
 .codex
 .worktrees/
-/crates/texform-transform/src/rewrite/rules/generated.rs
 /crates/texform-transform/src/lower_attributes/generated.rs
 
 # Python / uv

@@ -266,7 +266,7 @@ The stable facade DTO used by the Python and WebAssembly bindings flattens the s
 
 ### LowerAttributes
 
-Two sub-modules drive this phase: `lower_attributes/codegen.rs` and the build-time-generated `lower_attributes/generated.rs`. The phase scans the AST for declarative commands (e.g. `\bf`, `\large`, `\sf`) and registered prefix wrappers (e.g. `\mathbf{...}`, `\textbf{...}`), then normalizes both forms into a single canonical representation per attribute.
+Two sub-modules drive this phase: `lower_attributes/codegen.rs` and build-time generated data emitted into `OUT_DIR`. The phase scans the AST for declarative commands (e.g. `\bf`, `\large`, `\sf`) and registered prefix wrappers (e.g. `\mathbf{...}`, `\textbf{...}`), then normalizes both forms into a single canonical representation per attribute.
 
 Attributes are modeled as a structured `AttributeSet` (`Attr` × `AttrValue`) covering math font, math size, math style, text family, text series, text shape, and text size. Inherited state is tracked across container boundaries so that nested declarations, prefix wrappers, and empty trailing segments normalize cleanly.
 
@@ -274,7 +274,7 @@ The phase runs twice in the pipeline (pre and post Rewrite) under a single `enab
 
 ### Rewrite
 
-Rules live under `src/rewrite/rules/{base, ams, braket, physics}/` and are auto-registered through `src/rewrite/rules/generated.rs` (produced by `build.rs`). Each rule is a unit struct implementing `RewriteRule` with a static `RuleMeta` descriptor.
+Rules live under `src/rewrite/rules/{base, ams, braket, physics}/` and are auto-registered through `src/rewrite/rules/generated.rs` (maintained by `build.rs`). Each rule is a unit struct implementing `RewriteRule` with a static `RuleMeta` descriptor.
 
 `RuleMeta` declares:
 
