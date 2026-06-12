@@ -23,34 +23,52 @@ graph TD
         transform["texform-transform"]
         core["texform-core"]
         knowledge["texform-knowledge"]
+        knowledge_macros["texform-knowledge-macros"]
         argspec["texform-argspec"]
         interface["texform-interface"]
+        regression["texform-regression"]
     end
 
     py --> facade
     wasm --> facade
+    wasm --> core
+    wasm --> argspec
     facade --> transform
     facade --> core
+    facade --> knowledge
+    facade --> argspec
+    facade --> interface
     transform --> core
+    transform --> knowledge
+    transform --> interface
     core --> knowledge
     core --> argspec
+    core --> interface
     knowledge --> argspec
+    knowledge --> knowledge_macros
     knowledge --> interface
+    knowledge_macros --> argspec
     argspec --> interface
+    regression --> facade
+    regression --> transform
+    regression --> core
+    regression --> knowledge
+    regression --> interface
 ```
 
-Arrows point from a crate to the crates it depends on. Everything below `texform` is internal; the facade is the only crate external code may depend on.
+Arrows point from a crate to the crates it depends on. Everything below `texform` is internal; the facade is the only general-purpose Rust crate external code should depend on. The binding crates are published language surfaces, but they may still depend on internal helper crates for host-language glue such as generated TypeScript shapes and option conversion.
 
 | Crate | Responsibility |
 |-------|----------------|
-| `texform` | Public facade. Re-exports the stable surface: `Parser`, `TransformEngine`, `Document`, `ParseResult`, serialization, `validate_argspec`, analysis helpers. The only crate other code should depend on. |
+| `texform` | Public facade. Re-exports the stable surface: `Parser`, `TransformEngine`, `Document`, `ParseResult`, serialization, `validate_argspec`, analysis helpers, and package metadata. The only general-purpose Rust crate other code should depend on. |
 | `texform-core` | The parser, the internal `Ast` arena, the canonical serializer, and the public `Document` DOM layer. |
 | `texform-transform` | The phase-oriented rewrite/normalization engine that operates on a parsed tree. |
 | `texform-knowledge` | The command and environment knowledge base: which names are known, and what argument shapes they take. |
+| `texform-knowledge-macros` | Procedural macros used by the knowledge base, including compile-time argument-specification parsing for generated records. |
 | `texform-argspec` | An xparse-style argument-specification parser used to describe command signatures. |
 | `texform-interface` | Dependency-free shared types, most importantly `SyntaxNode`, the lossless parse snapshot. |
-| `texform-python`, `texform-wasm` | Language bindings layered strictly on top of the `texform` facade. |
-| `texform-regression` | Corpus regression and data-product tooling for parser regression and counter-map generation. Internal tooling, not part of the public API. |
+| `texform-python`, `texform-wasm` | Language bindings that expose the shared facade model to Python and WebAssembly. |
+| `texform-regression` | Corpus regression and data-product tooling for parser regression, transform-contract checking, and counter-map generation. Internal tooling, not part of the public API. |
 
 The facade deliberately does **not** re-export the internal `Ast`, `Node`, or arena types. Users get a single editable tree type — `Document` — and never touch the panic-contract arena underneath it.
 
@@ -110,7 +128,7 @@ This mirrors MathJax: its rendered MathML embeds `mjx-error` nodes for unparseab
 - **Empty input is not an error and not `None`.** `""` parses to a `Document` holding a single empty root — the exact same legal state as `Document::new()`.
 - **`None` is reserved for a hard failure with no tree to return.** It is never a synthesized `Root → Error` fallback.
 
-Within a parser-produced `ParseResult`, `has_errors()` implies a non-empty `diagnostics` list: every recovery `Error` node is emitted alongside at least one diagnostic. The converse does not hold — diagnostics can exist without any `Error` node (for example, unknown-command diagnostics under lenient parsing). This implication is a property of the *parser path only*, not a global invariant: `Document::from_syntax` can build a tree that `has_errors()` but has no diagnostics channel at all.
+Within a parser-produced `ParseResult`, `has_errors()` implies a non-empty `diagnostics` list: every recovery `Error` node is emitted alongside at least one diagnostic. The converse does not hold — diagnostics and `Error` placeholders are separate channels, so a diagnostic does not by itself make an otherwise editable tree read-only. This implication is a property of the *parser path only*, not a global invariant: `Document::from_syntax` can build a tree that `has_errors()` but has no diagnostics channel at all.
 
 ## Error Nodes and `abort_on_error`
 

@@ -6,14 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.1.0] - TBD
+## [0.1.0] - 2026-06-12
 
-Initial release.
+Initial public release of TeXForm — a LaTeX formula parser, editable document model, and normalization engine, available in Rust, Python, and JavaScript from a single Rust core.
 
 ### Added
 
-- Knowledge-driven LaTeX formula parser covering the `base`, `ams`, `physics`, `braket`, `bboldx`, `boldsymbol`, and `textmacros` packages, with strict/lenient parse configuration, unknown-command preservation, and first-class error recovery.
-- Editable `Document` tree with validated, fallible editing and canonical LaTeX serialization carrying a text-idempotency guarantee.
-- Profile-based transform engine with `Authoring`, `Faithful`, `Corpus`, and `Equiv` normalization profiles.
-- `validate_argspec` for validating xparse-style argument specifications.
-- Python bindings (PyPI `texform`, Python ≥ 3.10) and JavaScript/TypeScript bindings (npm `texform`, WebAssembly) over the same Rust core.
+- Knowledge-driven parser backed by 530+ command and environment specifications across the `base`, `ams`, `physics`, `braket`, `bboldx`, `boldsymbol`, and `textmacros` packages, with strict and lenient modes that preserve unknown commands and unparseable fragments as explicit nodes instead of failing the parse.
+- Editable `Document` tree with validated, fallible edits and canonical LaTeX serialization that guarantees text idempotency over parse/serialize cycles.
+- Profile-based transform engine with four normalization profiles — `Authoring`, `Faithful`, `Corpus`, and `Equiv` — covering author-facing cleanup, render-faithful expansion, corpus preparation, and formula-equivalence comparison.
+- `validate_argspec` for checking xparse-style argument specifications.
+- Python (PyPI `texform`, Python ≥ 3.10) and JavaScript/TypeScript (npm `texform`, WebAssembly) bindings exposing the same parser, document, and transform engine from the shared Rust core.
