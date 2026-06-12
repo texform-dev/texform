@@ -1,25 +1,75 @@
 # Releasing TeXForm
 
-## Pipeline Overview
+TeXForm ships one lockstep version to crates.io, PyPI, and npm from a single source of truth: `workspace.package.version` in `Cargo.toml`. Every crate inherits it through `version.workspace = true`, maturin reads it for the Python package, and `packages/texform/package.json` is synchronized to it for npm.
 
-TeXForm releases use one lockstep version across crates.io, PyPI, and npm. The source of truth is `workspace.package.version` in `Cargo.toml`; the Python package reads that version through maturin, and the npm package version is synchronized into `packages/texform/package.json`. The release flow starts with the auto-maintained release PR created by `release-plz`. Merging that PR lets `release-plz` publish the Rust crates to crates.io, create the single `vX.Y.Z` tag, and create the GitHub Release. The tag then triggers `release.yml`, which builds and smoke-tests Python wheels, the sdist, and the npm package before publishing PyPI and npm artifacts. Publish jobs are protected by the `release` GitHub environment and the `RELEASE_ENABLED` repository variable.
+Releases are driven by a **release PR** that `release-plz` maintains automatically. Merging that PR is the publish button.
 
-## Cutting a Regular Release
+## Pipeline at a glance
 
-Review the open release PR before merging it. Confirm that the Cargo workspace version, `CHANGELOG.md`, and `packages/texform/package.json` all move together, and edit the changelog so it describes user-visible behavior rather than commit mechanics. Pay special attention to changes under `crates/texform-python/`, `crates/texform-wasm/`, `python/`, and `packages/texform/`; release-plz does not reliably infer release notes from wrapper-only changes, so notable entries must be added by hand. After review, merge the release PR to publish the Rust crates and create the `vX.Y.Z` tag. Watch both the `release-plz` workflow and the tag-triggered `release` workflow. If a registry or runner flakes, re-run the failed job after checking the logs; crates.io publishing, PyPI publishing with `skip-existing`, and npm's pre-publish version check are intended to make retries safe.
+```
+merge the release PR
+  └─ release-plz  → publish crates to crates.io
+                  → push the single tag vX.Y.Z (facade crate only)
+                  → create the GitHub Release
+       └─ tag triggers release.yml
+                  → build + smoke-test wheels, sdist, and the npm package
+                  → publish to PyPI and npm
+                  → attach build artifacts to the GitHub Release
+```
 
-## Manual Release Entry
+## Cut a release
 
-Use the `workflow_dispatch` entry on `release-plz.yml` only for bootstrap releases or binding/wrapper-only releases that release-plz does not detect. First open and merge a normal PR that updates `workspace.package.version`, updates `CHANGELOG.md`, and runs `node .github/scripts/sync-versions.mjs` so the npm package version matches Cargo. The changelog entry should cover all user-visible Rust, Python, and JavaScript changes in the release. After that PR is merged, dispatch the `release-plz` workflow manually on `main`. The manual path temporarily flips `release_always = false` to `true` inside the workflow, then uses the same release-plz release command as the regular path. Do not use the manual entry to publish an arbitrary SHA or to bypass the release checklist.
+`release-plz` keeps a release PR open and up to date on every push to `main`. To ship, review and merge it.
 
-## First Release (Bootstrap)
+1. **Review the version bump.** It should move together across `Cargo.toml`, `CHANGELOG.md`, and `packages/texform/package.json` (the npm version is applied by a workflow step).
+2. **Polish the changelog draft** into user-facing wording.
+3. **Cover binding and wrapper changes.** `release-plz` adds no changelog entries for changes under `crates/texform-python/`, `crates/texform-wasm/`, `python/`, or `packages/texform/`; review those paths since the last release and add any by hand.
+4. **Merge.** This publishes the crates, pushes the `vX.Y.Z` tag, and triggers `release.yml` to build, smoke-test, and publish to PyPI and npm.
 
-The first public release needs temporary registry setup because crates.io and npm trusted publishing require the package to exist first. Make the repository public before publishing so npm provenance can be attached and GitHub Actions minutes use the public-project path. Register a PyPI pending publisher for the `texform` project, then create temporary `CARGO_REGISTRY_TOKEN` and `NODE_AUTH_TOKEN` repository secrets for the first crates.io and npm publishes. Update the `0.1.0` changelog date from `TBD` to the actual release date, set `RELEASE_ENABLED=true`, merge the bootstrap PR, and dispatch `release-plz.yml` manually. If any leg fails, fix the issue and re-run the failed jobs; if a version number has been burned in one registry, publish the next patch version instead of trying to overwrite it. After a successful first release, configure crates.io and npm trusted publishers, delete both temporary token secrets, and enable crates.io trusted publishing enforcement.
+## Release a binding- or wrapper-only change
 
-## Registry Configuration
+`release-plz` detects changes from publishable Cargo crates only. Changes confined to these paths do **not** open a release PR on their own:
 
-On GitHub, create the `release` environment, set the `RELEASE_ENABLED` repository variable, and add `RELEASE_PLZ_TOKEN`. The `RELEASE_PLZ_TOKEN` should be a fine-grained PAT scoped to `texform-dev/texform` with Contents read/write and Pull requests read/write; release-plz needs it because tags pushed with the default `GITHUB_TOKEN` do not trigger the downstream release workflow. For PyPI trusted publishing, configure owner `texform-dev`, repository `texform`, workflow `release.yml`, and environment `release`. For npm trusted publishing, configure the matching package owner or organization, repository, workflow `release.yml`, and environment `release`; matching is case-sensitive, npm requires Node >= 22.14.0 and npm >= 11.5.1, and `packages/texform/package.json` must keep the exact GitHub `repository.url`. For crates.io trusted publishing, configure repository `texform-dev/texform` and workflow `release-plz.yml`. After the bootstrap release succeeds, remove `CARGO_REGISTRY_TOKEN` and `NODE_AUTH_TOKEN` so the workflows automatically use OIDC.
+- `crates/texform-python/` and `crates/texform-wasm/` — the binding crates, marked `publish = false`.
+- `python/` and `packages/texform/` — the Python and npm wrappers.
 
-## Rehearsal (While Private)
+The release-PR job in `release-plz.yml` emits a warning when these paths change without a matching release PR. To ship such a change, use the manual entry:
 
-Before the repository is public, keep `RELEASE_ENABLED=false` and validate the pipeline without publishing. Open a PR to exercise `ci.yml`; the `rust`, `python-binding`, and `npm-binding` jobs should all pass before the release pipeline is considered ready. Merge once in the private rehearsal window to confirm that `release-plz` can open or update the release PR, bump versions, generate the changelog draft, and synchronize the npm package version. With `RELEASE_ENABLED=false`, the release job must not publish, create the real `v0.1.0` tag, or create the final release. Run `release.yml` via `workflow_dispatch` to execute the full build and smoke-test matrix as a dry run. If needed, push a one-shot test tag such as `v0.0.0-test.1` to verify tag triggering and the version gate, then delete that tag immediately after confirming the expected failure.
+1. Open a normal PR that bumps `workspace.package.version`, updates `CHANGELOG.md`, and runs `node .github/scripts/sync-versions.mjs` so `packages/texform/package.json` matches.
+2. Merge that PR.
+3. Run the `release-plz` workflow via **workflow_dispatch** on `main`. The dispatch path temporarily flips `release_always` to `true` so the release runs without a release-PR merge.
+
+Do not use the manual entry to publish an arbitrary commit or to skip the review steps above.
+
+## When a publish fails
+
+Every publish step is safe to re-run:
+
+- **crates.io** — `release-plz` skips crates already published at the current version.
+- **PyPI** — `gh-action-pypi-publish` runs with `skip-existing: true`.
+- **npm** — the publish step checks `npm view` first and exits cleanly if the version already exists.
+
+If a version is already burned in one registry and cannot be reused, do not overwrite it — release the next patch instead. Versions are lockstep, so one patch bump covers all three registries.
+
+## Registry configuration (reference)
+
+Steady-state configuration. Touch this when rotating credentials, onboarding a maintainer, or renaming a workflow.
+
+**GitHub repository**
+
+- Environment `release` — gates the release-plz publish job and the PyPI/npm publish jobs. Use it for real publishing credentials and optional manual approval.
+- Repository variable `RELEASE_ENABLED` — must be `true` for any publish to run. Keep this at repository scope because both release workflows read it before entering an environment.
+- Repository secret `RELEASE_PR_TOKEN` — a fine-grained PAT scoped to `texform-dev/texform` with **Contents: read/write** and **Pull requests: read/write**. The release-pr job uses it to maintain the automated release PR without entering the `release` environment.
+- Environment secret `RELEASE_PLZ_TOKEN` — a fine-grained PAT scoped to `texform-dev/texform` with **Contents: read/write** and **Pull requests: read/write**. The release job uses it to publish crates, push the release tag, and create the GitHub Release; the PAT is required because a tag pushed with the default `GITHUB_TOKEN` does not trigger the downstream `release.yml`.
+- Environment secret `CARGO_REGISTRY_TOKEN` — bootstrap-only crates.io token for the first release, before trusted publishing can be configured on the newly created crates. Delete it after the first successful release.
+- Environment secret `NODE_AUTH_TOKEN` — bootstrap-only npm token for the first release, before trusted publishing can be configured on the package. Delete it after the first successful release.
+
+**Trusted publishing (OIDC).** All three registries publish via OIDC; no long-lived registry tokens are stored. Matching is case-sensitive.
+
+| Registry | Configure |
+| --- | --- |
+| crates.io | repository `texform-dev/texform`, workflow `release-plz.yml` |
+| PyPI | owner `texform-dev`, repository `texform`, workflow `release.yml`, environment `release` |
+| npm | package owner/org, repository, workflow `release.yml`, environment `release` |
+
+npm additionally requires Node ≥ 22.14.0, npm ≥ 11.5.1, and an exact `repository.url` in `packages/texform/package.json` that matches the GitHub repository — provenance fails otherwise.

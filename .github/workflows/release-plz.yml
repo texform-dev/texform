@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          token: ${{ secrets.RELEASE_PR_TOKEN }}
       - uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz release-pr
         id: release-pr
@@ -29,7 +29,7 @@ jobs:
         with:
           command: release-pr
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
       - name: Sync npm package version into release PR
         if: steps.release-pr.outputs.prs_created == 'true'
         env:
@@ -61,6 +61,7 @@ jobs:
   release:
     if: vars.RELEASE_ENABLED == 'true'
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: write
       id-token: write
