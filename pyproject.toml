@@ -27,6 +27,7 @@ python-source = "python"
 module-name = "texform._native"
 features = ["pyo3/extension-module"]
 include = [
+    { path = "LICENSE", format = "sdist" },
     { path = "python/texform/py.typed", format = "sdist" },
     { path = "python/texform/*.pyi", format = "sdist" },
 ]
