@@ -61,8 +61,7 @@ Steady-state configuration. Touch this when rotating credentials, onboarding a m
 - Repository variable `RELEASE_ENABLED` — must be `true` for any publish to run. Keep this at repository scope because both release workflows read it before entering an environment.
 - Repository secret `RELEASE_PR_TOKEN` — a fine-grained PAT scoped to `texform-dev/texform` with **Contents: read/write** and **Pull requests: read/write**. The release-pr job uses it to maintain the automated release PR without entering the `release` environment.
 - Environment secret `RELEASE_PLZ_TOKEN` — a fine-grained PAT scoped to `texform-dev/texform` with **Contents: read/write** and **Pull requests: read/write**. The release job uses it to publish crates, push the release tag, and create the GitHub Release; the PAT is required because a tag pushed with the default `GITHUB_TOKEN` does not trigger the downstream `release.yml`.
-- Environment secret `CARGO_REGISTRY_TOKEN` — bootstrap-only crates.io token for the first release, before trusted publishing can be configured on the newly created crates. Delete it after the first successful release.
-- Environment secret `NODE_AUTH_TOKEN` — bootstrap-only npm token for the first release, before trusted publishing can be configured on the package. Delete it after the first successful release.
+- Do not configure `CARGO_REGISTRY_TOKEN` or `NODE_AUTH_TOKEN` in steady state. They were bootstrap-only registry tokens for the first `0.1.0` release before trusted publishing could be configured.
 
 **Trusted publishing (OIDC).** All three registries publish via OIDC; no long-lived registry tokens are stored. Matching is case-sensitive.
 

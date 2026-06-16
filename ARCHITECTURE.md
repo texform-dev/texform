@@ -2,10 +2,6 @@
 
 TeXForm is a LaTeX formula parser, serializer, and transform engine. This document explains how the pieces fit together: the crate layout and where the stability boundary sits, the processing pipeline a formula travels through, the three tree representations and why they are distinct, and the invariants that the public API guarantees. It is the map to read before diving into any single module.
 
-For end-user usage and runnable examples, see [`README.md`](README.md). For contributor conventions, see [`AGENTS.md`](AGENTS.md). This file covers the *why* of the structure, not the *how* of any individual feature.
-
-<!-- Full documentation: https://texform.dev (docsite goes live after 0.1.0) -->
-
 ## Crate Layout and the Stability Boundary
 
 TeXForm is a Rust workspace of small, single-purpose crates. Only one of them — `texform` — carries a public stability guarantee. Every other crate is an internal implementation detail whose API may change without notice; external code must integrate through the `texform` facade.

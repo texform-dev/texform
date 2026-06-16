@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-TeXForm is a LaTeX formula parser, formatter, and transform engine. This repository is intended to be open source, so code, documentation, comments, examples, and user-facing text must be clear, polished, and written in English.
+TeXForm is a LaTeX formula parser, formatter, and transform engine. Code, documentation, comments, examples, and user-facing text must be clear, polished, and written in English.
 
 See @README.md for usage, and @ARCHITECTURE.md for the architectural overview: crate layout, the processing pipeline, the three tree representations, and the public API guarantees.
 
