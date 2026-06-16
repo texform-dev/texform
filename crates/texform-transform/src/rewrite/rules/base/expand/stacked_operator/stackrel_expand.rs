@@ -1,4 +1,4 @@
-//! Expand stackrel to an explicit relation-class stacked operator form.
+//! Expand stackrel to an explicit relation-level stacked operator form.
 //!
 //! ```yaml
 //! proposal: stackrel-expand
@@ -25,7 +25,7 @@ define_rule! {
     pub static STACKREL_EXPAND: StackrelExpandRule {
         key: Base / "stackrel-expand",
         level: Expand,
-        summary: "Expand stackrel to an explicit relation-class stacked operator form.",
+        summary: "Expand stackrel to an explicit relation-level stacked operator form.",
         fidelity: Full,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::STACKREL],

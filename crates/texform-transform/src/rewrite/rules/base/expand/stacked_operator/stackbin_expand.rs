@@ -1,4 +1,4 @@
-//! Expand stackbin to an explicit binary-class stacked operator form.
+//! Expand stackbin to an explicit binary-level stacked operator form.
 //!
 //! ```yaml
 //! proposal: stackbin-expand
@@ -25,7 +25,7 @@ define_rule! {
     pub static STACKBIN_EXPAND: StackbinExpandRule {
         key: Base / "stackbin-expand",
         level: Expand,
-        summary: "Expand stackbin to an explicit binary-class stacked operator form.",
+        summary: "Expand stackbin to an explicit binary-level stacked operator form.",
         fidelity: Full,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::STACKBIN],

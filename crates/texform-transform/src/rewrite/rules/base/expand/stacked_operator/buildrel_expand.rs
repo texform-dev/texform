@@ -1,4 +1,4 @@
-//! Expand buildrel syntax to an explicit relation-class stacked operator form.
+//! Expand buildrel syntax to an explicit relation-level stacked operator form.
 //!
 //! ```yaml
 //! proposal: buildrel-expand
@@ -26,7 +26,7 @@ define_rule! {
     pub static BUILDREL_EXPAND: BuildrelExpandRule {
         key: Base / "buildrel-expand",
         level: Expand,
-        summary: "Expand buildrel syntax to an explicit relation-class stacked operator form.",
+        summary: "Expand buildrel syntax to an explicit relation-level stacked operator form.",
         fidelity: Full,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::BUILDREL],
