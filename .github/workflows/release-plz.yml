@@ -11,6 +11,41 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      should_release: ${{ steps.gate.outputs.should_release }}
+    steps:
+      - name: Check whether this run may publish
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "Manual dispatch may run the release job."
+            exit 0
+          fi
+
+          prs_json=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/$REPO/commits/$SHA/pulls")
+
+          if echo "$prs_json" | jq -e 'any(.[]; .merged_at != null and (.head.ref | startswith("release-plz-")))' >/dev/null; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "This push is associated with a merged release-plz PR."
+          else
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping release job before entering the release environment."
+          fi
+
   release-pr:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -59,7 +94,8 @@ jobs:
           fi
 
   release:
-    if: vars.RELEASE_ENABLED == 'true'
+    needs: release-gate
+    if: vars.RELEASE_ENABLED == 'true' && needs.release-gate.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     environment: release
     permissions:

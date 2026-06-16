@@ -7,6 +7,12 @@ git_release_enable = false
 changelog_update = false
 pr_labels = ["release"]
 dependencies_update = false
+# Pinned to the default value rather than left implicit: the release-gate job in
+# .github/workflows/release-plz.yml decides whether a push may enter the release
+# environment by matching the merged PR head branch with
+# startswith("release-plz-"). Changing this prefix without updating that gate
+# would silently stop every release. Keep the two in sync.
+pr_branch_prefix = "release-plz-"
 
 [[package]]
 name = "texform"
