@@ -82,7 +82,6 @@ The transform subsystem (`crates/texform-transform`) provides profile-based AST 
 - **Rust**: `cargo test`, `cargo check`, `cargo clippy`; pre-commit hooks run Rust formatting, clippy, and parser regression checks. Transform-related changes must run `transform_contract` manually as described above.
 - **TypeScript**: use `bun` as package manager.
 - **Python**: use `uv` for dependency management and `maturin` for native extension builds.
-- **Commit messages**: use Conventional Commits, such as `feat(rule): add root-family rule`, `fix(core): generate standard transform rule modules`, or `test(core): restore brace transform examples`. Prefer an existing scope like `core`, `rule`, `specs`, `regression`, `wasm`, or `python`; omit the scope only when a change spans multiple areas. Keep the subject short, imperative, and lower-case after the type/scope prefix. For large commits with several important changes, include a body after a blank line; format that body as a Markdown unordered list, with one bullet per important change.
 
 ### Python Binding
 
@@ -104,16 +103,44 @@ Or rebuild both targets and sync them into the npm package in one step:
 bun run --cwd packages/texform prepare:publish
 ```
 
+## Commit Messages
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/): `<type>(<scope>)<!>: <subject>`. The `type` and the optional `!` breaking marker drive the automatically generated changelog (see the Changelog note below), so choose them deliberately.
+
+### Types
+
+- `feat` — a user-facing feature or behavior change (grouped under **Added**).
+- `fix` — a bug fix (grouped under **Fixed**).
+- `perf` — a performance improvement (grouped under **Changed**).
+- `docs`, `chore`, `ci`, `test`, `style`, `refactor`, `build`, `revert` — supporting changes; these are omitted from the changelog.
+
+Append `!` after the type/scope to mark a breaking change, e.g. `feat(transform)!: ...`.
+
+### Scopes
+
+Prefer an existing scope naming the affected area: `core`, `parser`, `transform`, `rule`, `specs`, `knowledge`, `argspec`, `interface`, `regression`, `bindings`, `python`, `wasm`. Omit the scope only when a change genuinely spans multiple areas.
+
+### Subject
+
+Keep the subject short, imperative, and lower-case after the type/scope prefix. Use backticks around code identifiers — commands, types, methods — in the subject:
+
+```bash
+git commit -m 'feat(bindings): add `TransformEngine.transform`'
+git commit -m 'feat(transform)!: reject foreign documents in `TransformEngine::transform`'
+git commit -m 'fix(parser): preserve unknown `\left...\right` spans'
+```
+
+### Body
+
+For large commits with several important changes, add a body after a blank line, formatted as a Markdown unordered list with one bullet per important change.
+
 ## Maintenance Notes
 
 ### Changelog
 
-[`CHANGELOG.md`](CHANGELOG.md) is maintained by hand in the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format. Versions are lockstep: one version number covers the Rust, Python, and JavaScript release channels.
+[`CHANGELOG.md`](CHANGELOG.md) is generated automatically; do not write it by hand and do not add an `Unreleased` section during normal development. `release-plz` derives the changelog from Conventional Commit messages and maintains it inside the release PR it opens — that PR is where unreleased changes accumulate. This is why commit `type`, `scope`, and the `!` breaking marker matter: they decide whether a change appears in the changelog and how it is grouped (`feat` → Added, `fix` → Fixed, `perf` → Changed; `docs`/`chore`/`refactor`/etc. are omitted). Entries are polished, and binding/wrapper-only changes added, during release review (see [`RELEASING.md`](RELEASING.md)).
 
-- Write notable changes for users, not a commit-log dump. Describe observable behavior changes, not internal implementation.
-- Group entries under Added / Changed / Fixed / Removed; mark breaking changes explicitly.
-- Accumulate unreleased changes under the `Unreleased` heading; move them under a version number at release time.
-- A change that affects the public API, binding behavior, or normalization output should add a changelog entry in the same change.
+Versions are lockstep: one version number covers the Rust, Python, and JavaScript release channels.
 
 ### Headline Numbers
 
