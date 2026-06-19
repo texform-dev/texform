@@ -1,5 +1,6 @@
 /// Error returned by transform and normalize APIs.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Error {
     /// No transform profile was selected when building the engine.
     MissingProfile,
