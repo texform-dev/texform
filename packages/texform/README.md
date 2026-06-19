@@ -9,17 +9,18 @@ npm install texform
 ## Quick start
 
 ```ts
-import { Parser, TransformEngine } from "texform";
+import { TransformEngine } from "texform";
 
 // Normalize a formula into a canonical form chosen by profile.
 const engine = new TransformEngine({ profile: "corpus" });
 const result = engine.normalize("a \\over b");
 console.assert(result.normalized === "\\frac { a } { b }");
 
-// Parse, inspect, edit, and serialize back to LaTeX.
-const parsed = new Parser().parse("\\frac{x}{y}");
+// Parse through the engine, transform the live document in place, then serialize.
+const parsed = engine.parse("a \\over b");
 if (parsed.document) {
-  console.log(parsed.document.toLatex());
+  engine.transform(parsed.document);
+  console.assert(parsed.document.toLatex() === "\\frac { a } { b }");
 }
 ```
 

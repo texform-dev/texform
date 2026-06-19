@@ -13,19 +13,17 @@ cargo add texform
 ```
 
 ```rust
-use texform::{Parser, Profile, TransformEngine};
+use texform::{Profile, TransformEngine};
 
 // Normalize a formula into a canonical form chosen by profile.
 let engine = TransformEngine::builder().profile(Profile::Corpus).build()?;
 let result = engine.normalize(r"a \over b")?;
 assert_eq!(result.normalized, r"\frac { a } { b }");
 
-// Parse, inspect diagnostics, and serialize back to LaTeX.
-let parser = Parser::builder().build()?;
-let parsed = parser.parse(r"\frac{x}{y}");
-if let Some(document) = parsed.document() {
-    println!("{}", document.to_latex()?);
-}
+// Parse through the engine, transform the live document in place, then serialize.
+let (mut document, _) = engine.parser().parse(r"a \over b").try_into_document()?;
+engine.transform(&mut document)?;
+assert_eq!(document.to_latex()?, r"\frac { a } { b }");
 ```
 
 Profiles select the normalization target: `Authoring` (polished author-facing output), `Faithful` (same rendered formula, macros expanded), `Corpus` (training-data normalization), and `Equiv` (formula equivalence comparison).

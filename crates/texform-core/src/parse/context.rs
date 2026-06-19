@@ -7,6 +7,7 @@
 //! [`ParseDiagnostic`]) used by every parse entry point.
 
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use chumsky::prelude::*;
@@ -29,6 +30,21 @@ use crate::parse::grammar::{self, TokenStream, TrackedNode, build_token_stream};
 use crate::parse::{ParseConfig, ParserState};
 
 type LexedSource = Vec<(Token, std::ops::Range<usize>)>;
+
+/// Process-wide identity for a fully-built parser context.
+///
+/// Documents parsed by a context carry this id so transform engines can reject
+/// trees produced under a different parser context. Cloned contexts keep the
+/// same id; independently built contexts get distinct ids even when their
+/// package configuration is equivalent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ParseContextId(u64);
+
+static NEXT_PARSE_CONTEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+fn next_parse_context_id() -> ParseContextId {
+    ParseContextId(NEXT_PARSE_CONTEXT_ID.fetch_add(1, Ordering::Relaxed))
+}
 
 // Diagnostic kind is propagated through two independent channels because chumsky
 // may discard context labels during error merging/deduplication, while Custom
@@ -692,6 +708,7 @@ pub struct ParseContext {
     text_kb: Arc<KnowledgeBase>,
     mutation_summary: MutationSummary,
     enabled_packages: Vec<PackageName>,
+    id: ParseContextId,
 }
 
 impl std::fmt::Debug for ParseContext {
@@ -700,6 +717,7 @@ impl std::fmt::Debug for ParseContext {
             .field("math_kb", &self.math_kb)
             .field("text_kb", &self.text_kb)
             .field("enabled_packages", &self.enabled_packages)
+            .field("id", &self.id)
             .finish_non_exhaustive()
     }
 }
@@ -728,7 +746,16 @@ impl ParseContext {
             text_kb: Arc::new(text_kb),
             mutation_summary,
             enabled_packages,
+            id: next_parse_context_id(),
         }
+    }
+
+    /// Stable identity for this parser context and its clones.
+    ///
+    /// Parsed [`Document`] values store this id. Transform engines compare it
+    /// with the id of their own parser context before mutating a live document.
+    pub fn id(&self) -> ParseContextId {
+        self.id
     }
 
     pub fn mutation_summary(&self) -> &MutationSummary {
@@ -924,8 +951,10 @@ pub(crate) fn parse_with_context(
                 )
             })
             .collect();
-        Document::from_syntax_with_spans(&node, &path_spans)
-            .expect("parser must produce a syntax root accepted by Document")
+        let mut document = Document::from_syntax_with_spans(&node, &path_spans)
+            .expect("parser must produce a syntax root accepted by Document");
+        document.set_parse_context_id(ctx.id());
+        document
     });
 
     let mut diagnostics: Vec<_> = errors

@@ -457,6 +457,8 @@ export interface TransformConfigInput {
   flattenGroups?: FlattenGroupsConfigInput;
 }
 
+export type TransformOptions = TransformConfigInput;
+
 export type Profile = "authoring" | "faithful" | "corpus" | "equiv";
 
 export interface ParserOptions {
@@ -501,6 +503,7 @@ export class TransformEngine {
   [Symbol.dispose](): void;
   parse(src: string, config?: ParseConfigInput | null): ParseResult;
   normalize(src: string, options?: NormalizeOptions | null): TransformResult;
+  transform(document: Document, options?: TransformOptions | null): TransformReport;
   isDelimiterControl(name: string): boolean;
   knowsCommandName(name: string): boolean;
   knowsEnvName(name: string): boolean;

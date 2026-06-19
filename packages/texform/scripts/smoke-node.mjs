@@ -6,6 +6,7 @@ import {
   TexformConfigError,
   TexformEditError,
   TexformParseError,
+  TexformTransformError,
   listPackages,
   validateArgspec,
 } from "../node/index.js";
@@ -98,6 +99,39 @@ if (!("finalizeAst" in normalized.report)) {
 }
 if ("lower_attributes" in normalized.report) {
   throw new Error("report leaked snake_case");
+}
+
+const liveParsed = engine.parse("{{x}}").document;
+const transformReport = engine.transform(liveParsed, {
+  rewrite: { enabled: false },
+  lowerAttributes: { enabled: false },
+  flattenGroups: { enabled: true },
+});
+if (liveParsed.toLatex() !== "x") {
+  throw new Error("engine.transform should update documents in place");
+}
+if (!("flattenGroups" in transformReport)) {
+  throw new Error("transform report should be camelCase");
+}
+
+try {
+  const syntaxDoc = Document.fromSyntax(engine.parse("x").document.toSyntax());
+  engine.transform(syntaxDoc);
+  throw new Error("engine.transform should reject syntax-created documents");
+} catch (error) {
+  if (!(error instanceof TexformTransformError)) {
+    throw error;
+  }
+}
+
+try {
+  const otherEngine = new TransformEngine({ profile: "authoring" });
+  engine.transform(otherEngine.parse("x").document);
+  throw new Error("engine.transform should reject documents from another engine");
+} catch (error) {
+  if (!(error instanceof TexformTransformError)) {
+    throw error;
+  }
 }
 
 try {

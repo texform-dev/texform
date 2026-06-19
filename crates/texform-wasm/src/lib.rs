@@ -1835,6 +1835,22 @@ impl TransformEngine {
         normalize_result_to_js(result.normalized, &result.report)
     }
 
+    pub fn transform(
+        &self,
+        document: &Document,
+        config: Option<JsValue>,
+    ) -> Result<JsValue, JsValue> {
+        let config = transform_config_from_js(config, *self.inner.default_transform_config())?;
+        let mut document = borrow_document_mut(&document.inner)?;
+        let report = self
+            .inner
+            .transform_with(&mut document, &config)
+            .map_err(|error| {
+                binding_error_parts_to_js(texform::bindings::normalize_error_to_parts(error))
+            })?;
+        Ok(transform_report_to_js(&report))
+    }
+
     pub fn is_delimiter_control(&self, name: &str) -> bool {
         self.inner.parser().is_delimiter_control(name)
     }
@@ -1888,6 +1904,21 @@ fn normalize_result_to_js(
     js_set(value.as_ref(), "normalized", &normalized.into())?;
     js_set(value.as_ref(), "report", &transform_report_to_js(report))?;
     Ok(value.into())
+}
+
+fn transform_config_from_js(
+    value: Option<JsValue>,
+    base: CoreTransformConfig,
+) -> Result<CoreTransformConfig, JsValue> {
+    let Some(value) = value else {
+        return Ok(base);
+    };
+    if value.is_null() || value.is_undefined() {
+        return Ok(base);
+    }
+    let input = serde_wasm_bindgen::from_value::<TransformConfigInput>(value)
+        .map_err(|error| config_error_to_js(format!("invalid transform config: {error}")))?;
+    Ok(input.into_config_with_base(base))
 }
 
 #[wasm_bindgen]
@@ -2266,6 +2297,81 @@ mod tests {
         let config = TransformConfig::corpus();
 
         assert!(config.finalize_ast().enabled());
+    }
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn wasm_engine_transform_updates_own_document_in_place() {
+        let engine = TransformEngine::new(Some(
+            serde_wasm_bindgen::to_value(&serde_json::json!({
+                "profile": "equiv",
+                "packages": ["base"],
+            }))
+            .expect("options should serialize"),
+        ))
+        .expect("engine should build");
+        let document = Document::from_core(
+            engine
+                .inner
+                .parser()
+                .parse("{{x}}")
+                .try_into_document()
+                .expect("parse should succeed")
+                .0,
+        );
+
+        let report = engine
+            .transform(
+                &document,
+                Some(
+                    serde_wasm_bindgen::to_value(&serde_json::json!({
+                        "rewrite": { "enabled": false },
+                        "lowerAttributes": { "enabled": false },
+                        "flattenGroups": { "enabled": true },
+                    }))
+                    .expect("config should serialize"),
+                ),
+            )
+            .expect("transform should succeed");
+
+        assert_eq!(document.to_latex(None).unwrap(), "x");
+        assert!(js_sys::Reflect::has(&report, &JsValue::from_str("flattenGroups")).unwrap());
+    }
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn wasm_engine_transform_rejects_document_without_parse_context() {
+        let engine = TransformEngine::new(Some(
+            serde_wasm_bindgen::to_value(&serde_json::json!({
+                "profile": "equiv",
+                "packages": ["base"],
+            }))
+            .expect("options should serialize"),
+        ))
+        .expect("engine should build");
+        let parsed_document = Document::from_core(
+            engine
+                .inner
+                .parser()
+                .parse("x")
+                .try_into_document()
+                .expect("parse should succeed")
+                .0,
+        );
+        let syntax = parsed_document.to_syntax().expect("syntax should export");
+        let document = Document::from_syntax(syntax).expect("syntax should rebuild document");
+
+        let error = engine
+            .transform(&document, None)
+            .expect_err("syntax-created documents must not be transformed");
+
+        assert_eq!(
+            js_sys::Reflect::get(&error, &JsValue::from_str("kind"))
+                .expect("kind should exist")
+                .as_string()
+                .as_deref(),
+            Some("transform")
+        );
     }
 
     #[test]

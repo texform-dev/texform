@@ -1,6 +1,6 @@
 use texform::{
-    Error, FlattenGroupsConfig, NormalizeConfig, ParseConfig, Profile, TransformConfig,
-    TransformEngine,
+    Document, Error, FlattenGroupsConfig, NormalizeConfig, ParseConfig, Parser, Profile,
+    TransformConfig, TransformEngine,
 };
 use texform_transform::FinalizeAstConfig;
 
@@ -63,6 +63,45 @@ fn transform_updates_document_in_place() {
         document.to_latex().expect("document should serialize"),
         "x y"
     );
+}
+
+#[test]
+fn transform_rejects_documents_from_a_different_parser() {
+    let parser = Parser::builder()
+        .packages(&["base"])
+        .build()
+        .expect("parser should build");
+    let engine = engine();
+    let mut document = parser
+        .parse("x")
+        .try_into_document()
+        .expect("parse should succeed")
+        .0;
+
+    let error = engine
+        .transform(&mut document)
+        .expect_err("foreign parser documents must not be transformed");
+
+    assert!(matches!(error, Error::ForeignDocument));
+}
+
+#[test]
+fn transform_rejects_documents_without_parse_context() {
+    let engine = engine();
+    let parsed = engine
+        .parser()
+        .parse("x")
+        .try_into_document()
+        .expect("parse should succeed")
+        .0;
+    let syntax = parsed.to_syntax();
+    let mut document = Document::from_syntax(&syntax).expect("syntax should rebuild document");
+
+    let error = engine
+        .transform(&mut document)
+        .expect_err("syntax-created documents must not be transformed");
+
+    assert!(matches!(error, Error::ForeignDocument));
 }
 
 #[test]

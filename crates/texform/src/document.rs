@@ -15,20 +15,41 @@ pub struct NodeSpanEntry {
     pub span: texform_core::parse::Span,
 }
 
+/// Editable LaTeX document tree.
+///
+/// Documents extracted from a [`ParseResult`](crate::ParseResult) remember the
+/// parser context that produced them. [`TransformEngine::transform`](crate::TransformEngine::transform)
+/// uses that parser identity to accept only documents parsed through the same
+/// engine. Documents created with [`Document::new`], [`Document::with_mode`],
+/// or [`Document::from_syntax`] can still be edited and serialized, but they
+/// cannot be transformed in place by a `TransformEngine`.
 #[derive(Clone, Debug)]
 pub struct Document {
     inner: texform_core::document::Document,
 }
 
 impl Document {
+    /// Create an empty math-mode document.
+    ///
+    /// The document is editable and serializable, but it is not associated
+    /// with any parser context and cannot be passed to
+    /// [`TransformEngine::transform`](crate::TransformEngine::transform).
     pub fn new() -> Self {
         Self::from_core(texform_core::document::Document::new())
     }
 
+    /// Create an empty document with an explicit root content mode.
+    ///
+    /// The document is not associated with any parser context and cannot be
+    /// passed to [`TransformEngine::transform`](crate::TransformEngine::transform).
     pub fn with_mode(mode: texform_core::parse::ContentMode) -> Self {
         Self::from_core(texform_core::document::Document::with_mode(mode))
     }
 
+    /// Build a document from a syntax tree.
+    ///
+    /// This path validates and imports the tree, but it does not attach the
+    /// parser context required by [`TransformEngine::transform`](crate::TransformEngine::transform).
     pub fn from_syntax(
         node: &texform_interface::syntax_node::SyntaxNode,
     ) -> Result<Self, FromSyntaxError> {
@@ -43,6 +64,10 @@ impl Document {
 
     pub(crate) fn core_mut(&mut self) -> &mut texform_core::document::Document {
         &mut self.inner
+    }
+
+    pub(crate) fn parse_context_id(&self) -> Option<texform_core::parse::ParseContextId> {
+        self.inner.parse_context_id()
     }
 
     pub fn root(&self) -> NodeRef<'_> {

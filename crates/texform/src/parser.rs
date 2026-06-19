@@ -40,11 +40,21 @@ impl Parser {
     /// Parse a LaTeX formula with this parser's default configuration.
     ///
     /// The standalone [`Parser`] default is [`ParseConfig::LENIENT`]. Use
-    /// [`parse_with`](Self::parse_with) to override per call.
+    /// [`parse_with`](Self::parse_with) to override per call. When this parser
+    /// comes from [`TransformEngine::parser`](crate::TransformEngine::parser),
+    /// documents extracted from the returned [`ParseResult`] can be edited and
+    /// then passed back to that same engine's
+    /// [`transform`](crate::TransformEngine::transform) method.
     pub fn parse(&self, src: &str) -> ParseResult {
         ParseResult::from_core(self.inner.parse(src, &self.default_config))
     }
 
+    /// Parse a LaTeX formula with an explicit parse configuration.
+    ///
+    /// Like [`parse`](Self::parse), documents extracted from the returned
+    /// [`ParseResult`] keep the parser identity needed for the same
+    /// `TransformEngine` to transform them in place when this parser came from
+    /// [`TransformEngine::parser`](crate::TransformEngine::parser).
     pub fn parse_with(&self, src: &str, config: &ParseConfig) -> ParseResult {
         ParseResult::from_core(self.inner.parse(src, config))
     }

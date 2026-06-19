@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Python and JavaScript `TransformEngine.transform(document, config/options?)` methods for in-place normalization of live documents parsed by the same engine.
+
+### Changed
+
+- `TransformEngine::transform` now rejects documents parsed by a different parser context, or rebuilt from `Document::from_syntax`, with `Error::ForeignDocument`.
+
 ## [0.1.0] - 2026-06-12
 
 Initial public release of TeXForm — a LaTeX formula parser, editable document model, and normalization engine, available in Rust, Python, and JavaScript from a single Rust core.

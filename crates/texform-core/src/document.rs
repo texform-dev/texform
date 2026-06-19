@@ -24,7 +24,7 @@ use crate::ast::{
     Argument, ArgumentKind, ArgumentSlot, ArgumentValue, Ast, ContentMode, Delimiter, GroupKind,
     Node, NodeId as RawNodeId, Slot,
 };
-use crate::parse::Span;
+use crate::parse::{ParseContextId, Span};
 use crate::serialize::{SerializeError, SerializeOptions, serialize, serialize_with};
 
 /// Process-wide unique identity for a [`Document`].
@@ -198,30 +198,44 @@ impl DelimiterValue {
 }
 
 /// Public, fallible, editable DOM over an internal [`Ast`].
+///
+/// Documents produced by the parser remember the [`ParseContextId`] of the
+/// context that parsed them. Transform engines use that parser identity before
+/// mutating a live document in place. Documents created directly with
+/// [`Document::new`] or [`Document::from_syntax`] have no parser context id.
 pub struct Document {
     ast: Ast,
     spans: SecondaryMap<RawNodeId, Span>,
     has_errors: bool,
     id: DocumentId,
+    parse_context_id: Option<ParseContextId>,
 }
 
 impl Document {
     /// Create an empty document containing only an empty math-mode root.
+    ///
+    /// The document has no source parser context id.
     pub fn new() -> Self {
         Self::with_mode(ContentMode::Math)
     }
 
     /// Like [`Document::new`] but with an explicit root content mode.
+    ///
+    /// The document has no source parser context id.
     pub fn with_mode(mode: ContentMode) -> Self {
         Document {
             ast: Ast::with_root_mode(mode),
             spans: SecondaryMap::new(),
             has_errors: false,
             id: next_document_id(),
+            parse_context_id: None,
         }
     }
 
     /// Build a document from a parsed syntax tree.
+    ///
+    /// This imports the tree but does not attach a parser context id. Only the
+    /// parser bridge attaches that id for freshly parsed documents.
     pub fn from_syntax(node: &SyntaxNode) -> Result<Document, FromSyntaxError> {
         Self::validate_syntax(node, None, true)?;
         let ast = Ast::from_syntax_root(node);
@@ -233,6 +247,7 @@ impl Document {
             spans: SecondaryMap::new(),
             has_errors,
             id: next_document_id(),
+            parse_context_id: None,
         })
     }
 
@@ -256,6 +271,20 @@ impl Document {
     /// Process-wide unique id of this document.
     pub fn id(&self) -> DocumentId {
         self.id
+    }
+
+    /// Parser context that produced this document, when it came from parsing.
+    ///
+    /// `None` means the document was constructed directly or rebuilt from a
+    /// syntax tree, so a transform engine cannot verify that it came from its
+    /// own parser.
+    pub fn parse_context_id(&self) -> Option<ParseContextId> {
+        self.parse_context_id
+    }
+
+    /// Internal parser bridge: attach the source parser context to a freshly parsed document.
+    pub(crate) fn set_parse_context_id(&mut self, id: ParseContextId) {
+        self.parse_context_id = Some(id);
     }
 
     /// Root node handle.
@@ -1300,6 +1329,7 @@ impl Clone for Document {
             spans: self.spans.clone(),
             has_errors: self.has_errors,
             id: next_document_id(),
+            parse_context_id: self.parse_context_id,
         }
     }
 }
@@ -1649,6 +1679,7 @@ impl Document {
             spans: SecondaryMap::new(),
             has_errors: false,
             id: next_document_id(),
+            parse_context_id: None,
         }
     }
 
@@ -1664,6 +1695,7 @@ impl Document {
             spans: SecondaryMap::new(),
             has_errors,
             id: next_document_id(),
+            parse_context_id: None,
         }
     }
 }

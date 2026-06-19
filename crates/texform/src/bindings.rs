@@ -402,7 +402,7 @@ pub fn normalize_error_to_parts(error: crate::NormalizeError) -> BindingErrorPar
             },
             document: None,
         },
-        Error::Transform(_) => BindingErrorParts {
+        Error::ForeignDocument | Error::Transform(_) => BindingErrorParts {
             error: BindingErrorDto {
                 kind: "transform",
                 message: error.to_string(),

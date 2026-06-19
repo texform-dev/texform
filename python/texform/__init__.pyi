@@ -365,6 +365,12 @@ class TransformEngine:
         config: TransformConfig | dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> TransformResult: ...
+    def transform(
+        self,
+        document: Document,
+        config: TransformConfig | dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> TransformReport: ...
     def parse(
         self,
         src: str,

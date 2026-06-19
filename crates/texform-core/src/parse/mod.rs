@@ -10,8 +10,8 @@ pub use context::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveDelimiterRecord, ActiveEnvironmentRecord,
     AllowedMode, ArgSpecParseError, CommandItem, CommandKind, ContentMode, ContextItem,
     DelimiterControlItem, EnvironmentItem, PackageLoadError, ParseContext, ParseContextBuildError,
-    ParseContextBuilder, ParseDiagnostic, ParseDiagnosticContext, ParseDiagnosticKind, ParseError,
-    ParseResult, Span,
+    ParseContextBuilder, ParseContextId, ParseDiagnostic, ParseDiagnosticContext,
+    ParseDiagnosticKind, ParseError, ParseResult, Span,
 };
 
 pub use context::MutationSummary;

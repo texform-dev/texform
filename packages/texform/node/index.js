@@ -186,6 +186,12 @@ export class TransformEngine {
     return wrapTexformError(() => this.inner.normalize(src, options ?? undefined));
   }
 
+  transform(document, config) {
+    return wrapTexformError(() =>
+      this.inner.transform(document.inner, config ?? undefined),
+    );
+  }
+
   lookupCommand(name, mode) {
     return wrapTexformError(() => this.inner.lookup_command(name, mode));
   }

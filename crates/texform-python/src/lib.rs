@@ -1674,6 +1674,70 @@ fn apply_normalize_config_dict(
     Ok(())
 }
 
+fn apply_transform_config_dict(
+    config: &mut CoreTransformConfig,
+    dict: &Bound<'_, PyDict>,
+) -> PyResult<()> {
+    if let Some(value) = py_optional_bool(dict, "rewrite_enabled")? {
+        config.rewrite_enabled = value;
+    }
+    if let Some(value) = py_optional_bool(dict, "lower_attributes_enabled")? {
+        config.lower_attributes_enabled = value;
+    }
+    if let Some(value) = py_optional_usize(dict, "max_iterations")? {
+        config.max_iterations = value;
+    }
+    if let Some(finalize_ast) = dict.get_item("finalize_ast")?
+        && !finalize_ast.is_none()
+    {
+        if let Ok(finalize_ast) = finalize_ast.extract::<PyRef<'_, PyFinalizeAstConfig>>() {
+            config.finalize_ast = finalize_ast.to_core();
+        } else {
+            let dict = finalize_ast.cast::<PyDict>().map_err(|_| {
+                ConfigError::new_err("finalize_ast must be a FinalizeAstConfig or dict")
+            })?;
+            apply_finalize_ast_dict(&mut config.finalize_ast, dict)?;
+        }
+    }
+    if let Some(flatten_groups) = dict.get_item("flatten_groups")?
+        && !flatten_groups.is_none()
+    {
+        if let Ok(flatten_groups) = flatten_groups.extract::<PyRef<'_, PyFlattenGroupsConfig>>() {
+            config.flatten_groups = flatten_groups.to_core();
+        } else {
+            let dict = flatten_groups.cast::<PyDict>().map_err(|_| {
+                ConfigError::new_err("flatten_groups must be a FlattenGroupsConfig or dict")
+            })?;
+            apply_flatten_groups_dict(&mut config.flatten_groups, dict)?;
+        }
+    }
+    Ok(())
+}
+
+fn transform_config_from_python(
+    config: Option<&Bound<'_, PyAny>>,
+    kwargs: Option<&Bound<'_, PyDict>>,
+    default: CoreTransformConfig,
+) -> PyResult<CoreTransformConfig> {
+    let mut parsed = default;
+    if let Some(value) = config {
+        if value.is_none() {
+            // Keep the default.
+        } else if let Ok(transform) = value.extract::<PyRef<'_, PyTransformConfig>>() {
+            parsed = transform.to_core();
+        } else {
+            let dict = value
+                .cast::<PyDict>()
+                .map_err(|_| ConfigError::new_err("config must be a TransformConfig or dict"))?;
+            apply_transform_config_dict(&mut parsed, dict)?;
+        }
+    }
+    if let Some(kwargs) = kwargs {
+        apply_transform_config_dict(&mut parsed, kwargs)?;
+    }
+    Ok(parsed)
+}
+
 fn normalize_config_from_python(
     config: Option<&Bound<'_, PyAny>>,
     kwargs: Option<&Bound<'_, PyDict>>,
@@ -1894,6 +1958,27 @@ impl PyTransformEngine {
         transform_result_to_python(py, result.normalized, &result.report)
     }
 
+    #[pyo3(signature = (document, config = None, **kwargs))]
+    fn transform(
+        &self,
+        py: Python<'_>,
+        document: &Bound<'_, PyDocument>,
+        config: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Py<PyAny>> {
+        let config =
+            transform_config_from_python(config, kwargs, *self.inner.default_transform_config())?;
+        let report = {
+            let mut document = document.try_borrow_mut().map_err(borrow_error)?;
+            self.inner.transform_with(&mut document.inner, &config)
+        }
+        .map_err(|error| {
+            binding_error_parts_to_py(py, texform::bindings::normalize_error_to_parts(error))
+                .unwrap_or_else(|error| error)
+        })?;
+        transform_report_to_python(py, &report)
+    }
+
     #[pyo3(signature = (src, config = None, **kwargs))]
     fn parse(
         &self,
@@ -1995,9 +2080,15 @@ fn transform_result_to_python(
 ) -> PyResult<Py<PyAny>> {
     let out = PyDict::new(py);
     out.set_item("normalized", normalized)?;
-    let report = pythonize(py, &texform::bindings::transform_report_to_dto(report))?;
-    out.set_item("report", report)?;
+    out.set_item("report", transform_report_to_python(py, report)?)?;
     Ok(out.unbind().into_any())
+}
+
+fn transform_report_to_python(
+    py: Python<'_>,
+    report: &texform::TransformReport,
+) -> PyResult<Py<PyAny>> {
+    Ok(pythonize(py, &texform::bindings::transform_report_to_dto(report))?.unbind())
 }
 
 fn serialize_options_from_python(
@@ -2603,6 +2694,165 @@ mod tests {
                     .unwrap(),
                 r"\quantity { x }"
             );
+        });
+    }
+
+    #[test]
+    fn python_engine_transform_updates_own_document_in_place() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("profile", "equiv").unwrap();
+            kwargs.set_item("packages", vec!["base"]).unwrap();
+            let engine = module
+                .getattr("TransformEngine")
+                .unwrap()
+                .call((), Some(&kwargs))
+                .unwrap();
+
+            let parsed = engine.call_method1("parse", ("{{x}}",)).unwrap();
+            let document = parsed
+                .cast::<pyo3::types::PyDict>()
+                .unwrap()
+                .get_item("document")
+                .unwrap()
+                .unwrap();
+            let config = pyo3::types::PyDict::new(py);
+            config.set_item("rewrite_enabled", false).unwrap();
+            config.set_item("lower_attributes_enabled", false).unwrap();
+            let flatten_groups = pyo3::types::PyDict::new(py);
+            flatten_groups.set_item("enabled", true).unwrap();
+            config.set_item("flatten_groups", flatten_groups).unwrap();
+
+            let report = engine
+                .call_method1("transform", (&document, config))
+                .expect("transform should succeed");
+
+            assert_eq!(
+                document
+                    .call_method0("to_latex")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                "x"
+            );
+            assert!(
+                report
+                    .cast::<pyo3::types::PyDict>()
+                    .unwrap()
+                    .get_item("flatten_groups")
+                    .unwrap()
+                    .is_some()
+            );
+        });
+    }
+
+    #[test]
+    fn python_engine_transform_rejects_document_without_parse_context() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("profile", "equiv").unwrap();
+            kwargs.set_item("packages", vec!["base"]).unwrap();
+            let engine = module
+                .getattr("TransformEngine")
+                .unwrap()
+                .call((), Some(&kwargs))
+                .unwrap();
+
+            let parsed = engine.call_method1("parse", ("x",)).unwrap();
+            let parsed_document = parsed
+                .cast::<pyo3::types::PyDict>()
+                .unwrap()
+                .get_item("document")
+                .unwrap()
+                .unwrap();
+            let syntax = parsed_document.call_method0("to_syntax").unwrap();
+            let document_cls = module.getattr("Document").unwrap();
+            let document = document_cls
+                .call_method1("from_syntax", (syntax,))
+                .expect("syntax should rebuild document");
+
+            let error = engine
+                .call_method1("transform", (document,))
+                .expect_err("syntax-created documents must not be transformed");
+
+            assert!(error.is_instance_of::<TransformError>(py));
+        });
+    }
+
+    #[test]
+    fn python_engine_transform_rejects_document_from_another_engine() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("profile", "equiv").unwrap();
+            kwargs.set_item("packages", vec!["base"]).unwrap();
+            let first_engine = module
+                .getattr("TransformEngine")
+                .unwrap()
+                .call((), Some(&kwargs))
+                .unwrap();
+            let second_engine = module
+                .getattr("TransformEngine")
+                .unwrap()
+                .call((), Some(&kwargs))
+                .unwrap();
+
+            let parsed = first_engine.call_method1("parse", ("x",)).unwrap();
+            let document = parsed
+                .cast::<pyo3::types::PyDict>()
+                .unwrap()
+                .get_item("document")
+                .unwrap()
+                .unwrap();
+
+            let error = second_engine
+                .call_method1("transform", (document,))
+                .expect_err("documents from another engine must not be transformed");
+
+            assert!(error.is_instance_of::<TransformError>(py));
+        });
+    }
+
+    #[test]
+    fn python_engine_transform_invalid_config_raises_config_error() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("profile", "equiv").unwrap();
+            kwargs.set_item("packages", vec!["base"]).unwrap();
+            let engine = module
+                .getattr("TransformEngine")
+                .unwrap()
+                .call((), Some(&kwargs))
+                .unwrap();
+            let parsed = engine.call_method1("parse", ("x",)).unwrap();
+            let document = parsed
+                .cast::<pyo3::types::PyDict>()
+                .unwrap()
+                .get_item("document")
+                .unwrap()
+                .unwrap();
+
+            let error = engine
+                .call_method1("transform", (document.clone(), py.None()))
+                .expect("None config should be accepted");
+            assert!(error.cast::<pyo3::types::PyDict>().is_ok());
+
+            let error = engine
+                .call_method1("transform", (document, "not a config"))
+                .expect_err("invalid config object should fail");
+
+            assert!(error.is_instance_of::<ConfigError>(py));
         });
     }
 

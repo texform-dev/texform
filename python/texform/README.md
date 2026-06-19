@@ -16,10 +16,12 @@ engine = texform.TransformEngine(profile="corpus")
 result = engine.normalize(r"a \over b")
 assert result["normalized"] == r"\frac { a } { b }"
 
-# Parse, inspect, edit, and serialize back to LaTeX.
-parsed = texform.Parser().parse(r"\frac{x}{y}")
+# Parse through the engine, transform the live document in place, then serialize.
+parsed = engine.parse(r"a \over b")
 if parsed["document"] is not None:
-    print(parsed["document"].to_latex())
+    document = parsed["document"]
+    engine.transform(document)
+    assert document.to_latex() == r"\frac { a } { b }"
 ```
 
 Profiles select the normalization target: `"authoring"`, `"faithful"`, `"corpus"`, and `"equiv"`.

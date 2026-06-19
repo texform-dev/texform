@@ -101,9 +101,11 @@ import texform
 engine = texform.TransformEngine(profile="corpus")
 assert engine.normalize(r"a \over b")["normalized"] == r"\frac { a } { b }"
 
-parsed = texform.Parser().parse(r"\frac{x}{y}")
+parsed = engine.parse(r"a \over b")
 if parsed["document"] is not None:
-    print(parsed["document"].to_latex())
+    document = parsed["document"]
+    engine.transform(document)
+    assert document.to_latex() == r"\frac { a } { b }"
 ```
 
 ### JavaScript / TypeScript
@@ -113,13 +115,16 @@ npm install texform
 ```
 
 ```ts
-import { Parser, TransformEngine } from "texform";
+import { TransformEngine } from "texform";
 
 const engine = new TransformEngine({ profile: "corpus" });
 console.assert(engine.normalize("a \\over b").normalized === "\\frac { a } { b }");
 
-const parsed = new Parser().parse("\\frac{x}{y}");
-if (parsed.document) console.log(parsed.document.toLatex());
+const parsed = engine.parse("a \\over b");
+if (parsed.document) {
+  engine.transform(parsed.document);
+  console.assert(parsed.document.toLatex() === "\\frac { a } { b }");
+}
 ```
 
 ### Rust
@@ -129,17 +134,15 @@ cargo add texform
 ```
 
 ```rust
-use texform::{Parser, Profile, TransformEngine};
+use texform::{Profile, TransformEngine};
 
 let engine = TransformEngine::builder().profile(Profile::Corpus).build()?;
 let result = engine.normalize(r"a \over b")?;
 assert_eq!(result.normalized, r"\frac { a } { b }");
 
-let parser = Parser::builder().build()?;
-let parsed = parser.parse(r"\frac{x}{y}");
-if let Some(document) = parsed.document() {
-    println!("{}", document.to_latex()?);
-}
+let (mut document, _) = engine.parser().parse(r"a \over b").try_into_document()?;
+engine.transform(&mut document)?;
+assert_eq!(document.to_latex()?, r"\frac { a } { b }");
 ```
 
 > **Note:** the `texform` crate is the only public, stability-guaranteed Rust entry point; the `texform-*` crates it depends on are internal and may change in any release. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the crate layout and the public API guarantees.
