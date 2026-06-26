@@ -378,12 +378,16 @@ impl GitCommitInfo {
 
 pub struct CommitResultWriter {
     dir: std::path::PathBuf,
+    dataset: String,
     errors: std::io::BufWriter<std::fs::File>,
 }
 
 #[derive(Serialize)]
 struct ErrorEntry {
+    dataset: String,
+    formula_id: String,
     formula: String,
+    mode: &'static str,
     strict: bool,
     diagnostic_count: usize,
     diagnostics: Vec<ParseDiagnostic>,
@@ -608,7 +612,7 @@ pub fn write_commit_results(
     )?;
 
     write_results_parquet(&dir.join("results.parquet"), records, results)?;
-    write_errors_jsonl(&dir.join("errors.jsonl"), records, results)?;
+    write_errors_jsonl(&dir.join("errors.jsonl"), slug, records, results)?;
 
     Ok(())
 }
@@ -621,7 +625,11 @@ pub fn start_commit_results(
     let dir = commits_root.join(commit.commit_dir_name()).join(slug);
     std::fs::create_dir_all(&dir)?;
     let errors = std::io::BufWriter::new(std::fs::File::create(dir.join("errors.jsonl"))?);
-    Ok(CommitResultWriter { dir, errors })
+    Ok(CommitResultWriter {
+        dir,
+        dataset: slug.to_string(),
+        errors,
+    })
 }
 
 impl CommitResultWriter {
@@ -630,33 +638,7 @@ impl CommitResultWriter {
         records: &[FormulaRecord],
         results: &[FormulaResults],
     ) -> Result<(), Box<dyn std::error::Error>> {
-        for (record, result) in records.iter().zip(results.iter()) {
-            if !result.strict.ok {
-                serde_json::to_writer(
-                    &mut self.errors,
-                    &ErrorEntry {
-                        formula: record.formula.clone(),
-                        strict: true,
-                        diagnostic_count: result.strict.diagnostic_count,
-                        diagnostics: result.strict.diagnostics.clone(),
-                    },
-                )?;
-                self.errors.write_all(b"\n")?;
-            }
-
-            if !result.nonstrict.ok {
-                serde_json::to_writer(
-                    &mut self.errors,
-                    &ErrorEntry {
-                        formula: record.formula.clone(),
-                        strict: false,
-                        diagnostic_count: result.nonstrict.diagnostic_count,
-                        diagnostics: result.nonstrict.diagnostics.clone(),
-                    },
-                )?;
-                self.errors.write_all(b"\n")?;
-            }
-        }
+        append_error_entries(&mut self.errors, &self.dataset, records, results)?;
         Ok(())
     }
 
@@ -1068,38 +1050,97 @@ fn write_results_parquet(
 
 fn write_errors_jsonl(
     path: &Path,
+    dataset: &str,
     records: &[FormulaRecord],
     results: &[FormulaResults],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut file = std::io::BufWriter::new(std::fs::File::create(path)?);
+    append_error_entries(&mut file, dataset, records, results)?;
+    Ok(())
+}
+
+/// Appends one JSON object per failed parse (strict and/or nonstrict) to `writer`.
+///
+/// Shared by the per-commit snapshot writer and the standalone
+/// [`ErrorsEmitWriter`] so the two outputs stay byte-identical for the same
+/// inputs.
+fn append_error_entries<W: std::io::Write + ?Sized>(
+    writer: &mut W,
+    dataset: &str,
+    records: &[FormulaRecord],
+    results: &[FormulaResults],
+) -> std::io::Result<()> {
     for (record, result) in records.iter().zip(results.iter()) {
         if !result.strict.ok {
             serde_json::to_writer(
-                &mut file,
+                &mut *writer,
                 &ErrorEntry {
+                    dataset: dataset.to_string(),
+                    formula_id: record.formula_id.clone(),
                     formula: record.formula.clone(),
+                    mode: "strict",
                     strict: true,
                     diagnostic_count: result.strict.diagnostic_count,
                     diagnostics: result.strict.diagnostics.clone(),
                 },
             )?;
-            file.write_all(b"\n")?;
+            writer.write_all(b"\n")?;
         }
 
         if !result.nonstrict.ok {
             serde_json::to_writer(
-                &mut file,
+                &mut *writer,
                 &ErrorEntry {
+                    dataset: dataset.to_string(),
+                    formula_id: record.formula_id.clone(),
                     formula: record.formula.clone(),
+                    mode: "nonstrict",
                     strict: false,
                     diagnostic_count: result.nonstrict.diagnostic_count,
                     diagnostics: result.nonstrict.diagnostics.clone(),
                 },
             )?;
-            file.write_all(b"\n")?;
+            writer.write_all(b"\n")?;
         }
     }
     Ok(())
+}
+
+/// Streams per-formula failure diagnostics to a single `errors.jsonl`, decoupled
+/// from the per-commit snapshot tree.
+///
+/// Downstream consumers that only need the failure diagnostics (for example the
+/// workspace studies analysis) can request this output via `--emit-errors`
+/// without populating `commits/<hash>/`, keeping the results directory flat.
+pub struct ErrorsEmitWriter {
+    writer: std::io::BufWriter<std::fs::File>,
+}
+
+impl ErrorsEmitWriter {
+    pub fn start(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let file = std::fs::File::create(path)?;
+        Ok(Self {
+            writer: std::io::BufWriter::new(file),
+        })
+    }
+
+    pub fn write_batch(
+        &mut self,
+        dataset: &str,
+        records: &[FormulaRecord],
+        results: &[FormulaResults],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        append_error_entries(&mut self.writer, dataset, records, results)?;
+        Ok(())
+    }
+
+    pub fn finish(mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.writer.flush()?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1264,6 +1305,29 @@ mod tests {
     }
 
     #[test]
+    fn errors_emit_writer_streams_failures_with_dataset_and_formula_id() {
+        let dir = make_temp_dir("errors-emit");
+        let records = sample_records();
+        let results = sample_results();
+
+        let mut writer = ErrorsEmitWriter::start(&dir.join("errors.jsonl")).unwrap();
+        writer.write_batch("demo", &records, &results).unwrap();
+        writer.finish().unwrap();
+
+        let errors = std::fs::read_to_string(dir.join("errors.jsonl")).unwrap();
+        let rows: Vec<serde_json::Value> = errors
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        // sample_results: only `beta` fails (strict); `alpha` is clean in both modes.
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["dataset"], "demo");
+        assert_eq!(rows[0]["formula_id"], "beta");
+        assert_eq!(rows[0]["mode"], "strict");
+        assert_eq!(rows[0]["diagnostic_count"], 2);
+    }
+
+    #[test]
     fn write_commit_results_persists_diagnostics_for_both_modes() {
         let dir = make_temp_dir("commit-results");
         let records = sample_records();
@@ -1346,8 +1410,14 @@ mod tests {
             .map(|line| serde_json::from_str(line).unwrap())
             .collect();
         assert_eq!(errors.len(), 2);
+        assert_eq!(errors[0]["dataset"], "demo");
+        assert_eq!(errors[0]["formula_id"], "alpha");
+        assert_eq!(errors[0]["mode"], "strict");
         assert_eq!(errors[0]["strict"], true);
         assert_eq!(errors[0]["diagnostics"][0]["message"], "strict failed");
+        assert_eq!(errors[1]["dataset"], "demo");
+        assert_eq!(errors[1]["formula_id"], "beta");
+        assert_eq!(errors[1]["mode"], "nonstrict");
         assert_eq!(errors[1]["strict"], false);
         assert_eq!(errors[1]["diagnostics"][0]["message"], "nonstrict failed");
     }

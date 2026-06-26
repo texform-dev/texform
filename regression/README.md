@@ -43,6 +43,9 @@ cargo run --release -p texform-regression --bin parser_regression -- run
 # run one dataset
 cargo run --release -p texform-regression --bin parser_regression -- run --dataset lf80m-benchmarks
 
+# emit a flat per-failure errors.jsonl without the per-commit snapshot (for downstream consumers)
+cargo run --release -p texform-regression --bin parser_regression -- run --dataset lf80m-benchmarks --emit-errors --skip-commit-results --results-root <dir>
+
 # refresh all tracked parser regression results
 cargo run --release -p texform-regression --bin parser_regression -- refresh
 
@@ -68,7 +71,8 @@ cargo run --release -p texform-regression --bin counter_dump
 
 - `results/parser_regression/summary.json` — tracked current parser regression summary; per-dataset entries live under `datasets`
 - `results/parser_regression/commits/<hash>/<slug>/summary.json` — ignored per-dataset snapshot for that commit
-- `results/parser_regression/commits/<hash>/<slug>/errors.jsonl` — ignored strict and nonstrict failures with full diagnostics
+- `results/parser_regression/commits/<hash>/<slug>/errors.jsonl` — ignored strict and nonstrict failures with `dataset`, `formula_id`, `formula`, `mode`, and full diagnostics
+- `results/parser_regression/errors.jsonl` — same per-failure records, written flat under the results root when `--emit-errors` is passed, independent of the per-commit snapshot tree (for downstream consumers that only need failure diagnostics)
 - `results/transform_contract/summary.json` — tracked current transform eliminated-form contract summary
 - `results/transform_contract/commits/<hash>[-dirty]/violations.jsonl` — ignored formula-level transform contract violations
 - `results/transform_contract/commits/<hash>[-dirty]/errors.jsonl` — ignored parse and non-contract transform errors

@@ -58,6 +58,11 @@ struct RunArgs {
 
     #[arg(long, hide = true)]
     skip_commit_results: bool,
+
+    /// Write per-formula failure diagnostics to <results-root>/errors.jsonl, one
+    /// JSON object per strict/nonstrict failure, independent of commit snapshots.
+    #[arg(long)]
+    emit_errors: bool,
 }
 
 #[derive(Args)]
@@ -85,6 +90,7 @@ struct ExecutionArgs {
     limit: Option<usize>,
     offset: usize,
     skip_commit_results: bool,
+    emit_errors: bool,
 }
 
 struct RegressionContext {
@@ -174,6 +180,7 @@ fn run_command(args: RunArgs) -> Result<(), String> {
         limit: args.limit,
         offset: args.offset,
         skip_commit_results: args.skip_commit_results,
+        emit_errors: args.emit_errors,
     };
 
     run_datasets(
@@ -226,6 +233,7 @@ fn run_refresh(args: RefreshArgs) -> Result<(), String> {
         limit: None,
         offset: 0,
         skip_commit_results: false,
+        emit_errors: false,
     };
 
     if let Some(probe_dataset) = args.probe_dataset {
@@ -273,6 +281,7 @@ fn run_verify(args: VerifyArgs) -> Result<(), String> {
         limit: None,
         offset: 0,
         skip_commit_results: false,
+        emit_errors: false,
     };
 
     let probe = run_datasets(
@@ -329,6 +338,15 @@ fn run_datasets(
     let mut total_strict_failed = 0_usize;
     let mut total_nonstrict_failed = 0_usize;
     let mut ran_datasets = 0_usize;
+
+    let mut errors_emit = if options.write && args.emit_errors {
+        match output::ErrorsEmitWriter::start(&results_root.join("errors.jsonl")) {
+            Ok(writer) => Some(writer),
+            Err(error) => return Err(format!("Failed to create errors emit writer: {error}")),
+        }
+    } else {
+        None
+    };
 
     for entry in selected {
         let data_path = config::resolve_dataset_file(datasets_yaml, entry);
@@ -397,6 +415,9 @@ fn run_datasets(
                 if let Some(writer) = commit_writer.as_mut() {
                     writer.write_batch_errors(&records, &results)?;
                 }
+                if let Some(writer) = errors_emit.as_mut() {
+                    writer.write_batch(&entry.slug, &records, &results)?;
+                }
                 accumulator.append(&records, &results);
                 drop(results);
                 trim_allocator();
@@ -448,6 +469,14 @@ fn run_datasets(
         );
         print_slow_samples(&entry.slug, "nonstrict", &slow_nonstrict);
         print_slow_samples(&entry.slug, "strict", &slow_strict);
+    }
+
+    if let Some(error) = errors_emit.and_then(|writer| writer.finish().err()) {
+        let message = format!("Failed to finalize errors emit writer: {error}");
+        if options.strict_errors {
+            return Err(message);
+        }
+        eprintln!("{message}");
     }
 
     if !summaries.is_empty() {
