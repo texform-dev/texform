@@ -120,6 +120,23 @@ fn preserves_text_multi_axis_combinations() {
 }
 
 #[test]
+fn lower_attributes_turns_whitespace_only_text_prefix_into_plain_space() {
+    serialized_text(r"\textrm{ }", r" ");
+    serialized_text(r"\textbf{ }", r" ");
+}
+
+#[test]
+fn lower_attributes_keeps_boundary_spaces_outside_text_prefix() {
+    serialized_text(r"\textbf{ a }", r"\textbf {a}  ");
+}
+
+#[test]
+fn lower_attributes_keeps_empty_prefix_body_empty() {
+    serialized_text(r"\textrm{}", r"");
+    serialized_text(r"\textbf{}", r"");
+}
+
+#[test]
 fn isolates_math_and_text_attribute_state() {
     serialized(
         r"{\bf \text{\textit{y}}} z",

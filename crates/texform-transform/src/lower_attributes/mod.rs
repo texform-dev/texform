@@ -461,6 +461,21 @@ fn collect_detached_child(
         return;
     }
 
+    if let Some((entry, child_mode)) = lookup_prefix_for_content_mode(ast, child, mode) {
+        let previous = inherited_for_child_mode(*state, mode, child_mode);
+        let body_pairs = collect_prefix_body(ast, child, previous, entry, child_mode, report);
+        if prefix_is_fully_absorbed(previous, entry.set, &body_pairs) {
+            report.record_redundant_prefix(entry.set);
+        }
+        let rebuilt = segment_and_emit(ast, body_pairs, previous, child_mode, report);
+        pairs.extend(rebuilt.into_iter().map(|node| Pair {
+            state: *state,
+            node,
+        }));
+        ast.remove_detached(child);
+        return;
+    }
+
     if is_explicit_group(ast, child) {
         pairs.extend(collect_explicit_group(ast, child, *state, mode, report));
         return;
@@ -692,13 +707,74 @@ fn segment_and_emit(
     rebuilt
 }
 
-/// Wrap a non-empty segment body with the active attributes in mode-specific
-/// order: attributes with a `prefix` target wrap the body into an implicit
-/// group + prefix command (innermost first), while attributes without a prefix
-/// prepend the corresponding declarative.
+fn is_plain_whitespace_node(ast: &Ast, node: NodeId) -> bool {
+    matches!(ast.node(node), Node::Text(text) if text.chars().all(char::is_whitespace))
+}
+
+fn segment_is_plain_whitespace(ast: &Ast, nodes: &[NodeId]) -> bool {
+    !nodes.is_empty()
+        && nodes
+            .iter()
+            .all(|node| is_plain_whitespace_node(ast, *node))
+}
+
+fn split_text_boundary_whitespace(ast: &mut Ast, node: NodeId) -> Vec<NodeId> {
+    let Node::Text(text) = ast.node(node) else {
+        return vec![node];
+    };
+    let text = text.clone();
+    let leading_len = text.len() - text.trim_start_matches(char::is_whitespace).len();
+    let trailing_start = text.trim_end_matches(char::is_whitespace).len();
+    let has_middle = leading_len < trailing_start;
+    let has_leading = leading_len > 0;
+    let has_trailing = trailing_start < text.len();
+
+    if !has_middle || (!has_leading && !has_trailing) {
+        return vec![node];
+    }
+
+    let mut out = Vec::new();
+    if has_leading {
+        out.push(ast.new_node(Node::Text(text[..leading_len].to_string())));
+    }
+    if has_middle {
+        out.push(ast.new_node(Node::Text(text[leading_len..trailing_start].to_string())));
+    }
+    if has_trailing {
+        out.push(ast.new_node(Node::Text(text[trailing_start..].to_string())));
+    }
+    ast.remove_detached(node);
+    out
+}
+
+fn split_whitespace_boundaries(ast: &mut Ast, nodes: Vec<NodeId>) -> Vec<Vec<NodeId>> {
+    let mut out = Vec::new();
+    let mut current = Vec::new();
+
+    for node in nodes {
+        for node in split_text_boundary_whitespace(ast, node) {
+            if is_plain_whitespace_node(ast, node) {
+                if !current.is_empty() {
+                    out.push(current);
+                    current = Vec::new();
+                }
+                out.push(vec![node]);
+            } else {
+                current.push(node);
+            }
+        }
+    }
+
+    if !current.is_empty() {
+        out.push(current);
+    }
+
+    out
+}
+
 fn wrap_with_canonical(
     ast: &mut Ast,
-    mut children: Vec<NodeId>,
+    children: Vec<NodeId>,
     state: AttributeState,
     inherited: AttributeState,
     mode: ContentMode,
@@ -709,6 +785,31 @@ fn wrap_with_canonical(
         "segment_and_emit must not call wrap_with_canonical with an empty segment"
     );
 
+    let mut rebuilt = Vec::new();
+    for run in split_whitespace_boundaries(ast, children) {
+        if segment_is_plain_whitespace(ast, &run) {
+            rebuilt.extend(run);
+            continue;
+        }
+        rebuilt.extend(wrap_non_whitespace_with_canonical(
+            ast, run, state, inherited, mode, report,
+        ));
+    }
+    rebuilt
+}
+
+/// Wrap a non-empty segment body with the active attributes in mode-specific
+/// order: attributes with a `prefix` target wrap the body into an implicit
+/// group + prefix command (innermost first), while attributes without a prefix
+/// prepend the corresponding declarative.
+fn wrap_non_whitespace_with_canonical(
+    ast: &mut Ast,
+    mut children: Vec<NodeId>,
+    state: AttributeState,
+    inherited: AttributeState,
+    mode: ContentMode,
+    report: &mut LowerAttributesReport,
+) -> Vec<NodeId> {
     for attr in emit_axis_order(state, inherited, mode) {
         let Some(value) = state.get(attr) else {
             continue;
@@ -782,6 +883,36 @@ fn lookup_prefix_at(ast: &Ast, node_id: NodeId, mode: ContentMode) -> Option<&'s
     generated::PREFIXES
         .iter()
         .find(|entry| entry.allowed_mode == mode && entry.name == name)
+}
+
+fn lookup_prefix_for_content_mode(
+    ast: &Ast,
+    node_id: NodeId,
+    parent_mode: ContentMode,
+) -> Option<(&'static PrefixEntry, ContentMode)> {
+    let child_mode = mandatory_content_child_mode(ast, node_id)?;
+    if child_mode == parent_mode {
+        return None;
+    }
+    lookup_prefix_at(ast, node_id, child_mode).map(|entry| (entry, child_mode))
+}
+
+fn mandatory_content_child_mode(ast: &Ast, node: NodeId) -> Option<ContentMode> {
+    let mut found = None;
+    for argument in ast.arg_slots(node).iter().flatten() {
+        if !matches!(argument.kind, crate::ast::ArgumentKind::Mandatory) {
+            continue;
+        }
+        let child_mode = match argument.value {
+            ArgumentValue::MathContent(_) => ContentMode::Math,
+            ArgumentValue::TextContent(_) => ContentMode::Text,
+            _ => continue,
+        };
+        if found.replace(child_mode).is_some() {
+            return None;
+        }
+    }
+    found
 }
 
 fn lookup_target(attr: Attr, value: AttrValue, mode: ContentMode) -> Option<&'static ModeTarget> {
