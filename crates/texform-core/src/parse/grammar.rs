@@ -792,6 +792,7 @@ fn text_chunk<'a>() -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError
     select! {
         Token::Char(c) => c.to_string(),
         Token::Whitespaces => " ".to_string(),
+        Token::Star => "*".to_string(),
         Token::LBracket => "[".to_string(),
         Token::RBracket => "]".to_string(),
         Token::Prime(n) => "'".repeat(n),
@@ -827,6 +828,15 @@ fn control_seq<'a>(
         Token::ControlSeq(name) if name == target => (),
     }
     .labelled(target)
+}
+
+fn optional_control_seq<'a>(
+    target: Option<&'static str>,
+) -> impl Parser<'a, TokenStream<'a>, (), ParserError<'a>> + Clone {
+    select! {
+        Token::ControlSeq(name) if target.is_some_and(|target| name == target) => (),
+    }
+    .labelled(target.unwrap_or("control stop"))
 }
 
 /// Build an implicit group from a content parser.
@@ -1394,6 +1404,10 @@ fn slice_snippet(src: &str, span: SimpleSpan) -> String {
 fn is_math_hard_stop(token: &Token) -> bool {
     matches!(token, Token::RBrace | Token::MathShift)
         || matches!(token, Token::ControlSeq(name) if matches!(name.as_str(), "right" | "end"))
+}
+
+fn is_math_control_paren_hard_stop(token: &Token) -> bool {
+    is_math_hard_stop(token) || matches!(token, Token::ControlSeq(name) if name == ")")
 }
 
 fn is_text_hard_stop(token: &Token) -> bool {
@@ -2112,7 +2126,15 @@ fn text_item_parser<'a>(
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
-    let normal_item = text_atom_parser(state, text_content.clone(), math_content, text_content);
+    let control_inline_math_content =
+        math_content_parser_with_extra_control_stop(state, text_content.clone(), None, ")");
+    let normal_item = text_atom_parser(
+        state,
+        text_content.clone(),
+        math_content,
+        control_inline_math_content,
+        text_content,
+    );
 
     control_seq("end").not().ignore_then(normal_item)
 }
@@ -2510,11 +2532,68 @@ where
     })
 }
 
+fn inline_math_group_from_tracked(tracked: TrackedNode, span: SimpleSpan) -> TrackedNode {
+    let node = match tracked.node {
+        SyntaxNode::Group { mode, children, .. } => SyntaxNode::Group {
+            mode,
+            kind: GroupKind::InlineMath,
+            children,
+        },
+        other => other,
+    };
+    TrackedNode {
+        node,
+        span,
+        records: tracked.records,
+        diagnostics: tracked.diagnostics,
+    }
+}
+
+fn math_content_parser_with_extra_control_stop<'a>(
+    state: &'a ParserState<'a>,
+    text_content: ContentParser<'a>,
+    recoverable_src: Option<&'a str>,
+    extra_control_stop: &'static str,
+) -> ContentParser<'a> {
+    recursive(move |group_content| {
+        let ws = insignificant_whitespace();
+        let math_content = group_content.clone().boxed();
+        let base_item = math_item_node_parser(
+            state,
+            group_content,
+            math_content.clone(),
+            text_content.clone(),
+        );
+        let normal_item = if recoverable_src.is_some() && !state.config.abort_on_error {
+            recoverable_content_item_parser(
+                state,
+                ContentMode::Math,
+                recoverable_src.expect("checked above"),
+                base_item.padded_by(ws.clone()),
+                is_math_control_paren_hard_stop,
+            )
+            .boxed()
+        } else {
+            base_item.padded_by(ws.clone()).boxed()
+        };
+        math_group_content_parser(
+            state,
+            normal_item,
+            math_content,
+            text_content.clone(),
+            Some(extra_control_stop),
+        )
+        .padded_by(ws)
+    })
+    .boxed()
+}
+
 /// Parse a text atom (text chunk, inline math, group, command, env).
 fn text_atom_parser<'a, P>(
     state: &'a ParserState<'a>,
     group_content: P,
     math_content: ContentParser<'a>,
+    control_inline_math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone
 where
@@ -2522,29 +2601,21 @@ where
 {
     let ctx = state.ctx;
     let reject_unknown = state.config.reject_unknown;
-    let inline_math = just(Token::MathShift)
+    let dollar_inline_math = just(Token::MathShift)
         .ignore_then(implicit_group_parser(
             ContentMode::Math,
             math_content.clone(),
         ))
         .then_ignore(just(Token::MathShift))
-        .map_with(|tracked, e| {
-            // Reclassify the implicit group as inline-math; preserve span records.
-            let node = match tracked.node {
-                SyntaxNode::Group { mode, children, .. } => SyntaxNode::Group {
-                    mode,
-                    kind: GroupKind::InlineMath,
-                    children,
-                },
-                other => other,
-            };
-            TrackedNode {
-                node,
-                span: e.span(),
-                records: tracked.records,
-                diagnostics: tracked.diagnostics,
-            }
-        });
+        .map_with(|tracked, e| inline_math_group_from_tracked(tracked, e.span()));
+    let control_sequence_inline_math = control_seq("(")
+        .ignore_then(implicit_group_parser(
+            ContentMode::Math,
+            control_inline_math_content,
+        ))
+        .then_ignore(control_seq(")"))
+        .map_with(|tracked, e| inline_math_group_from_tracked(tracked, e.span()));
+    let inline_math = choice((dollar_inline_math, control_sequence_inline_math));
 
     let scripted_marker = select! {
         Token::Superscript => (),
@@ -2576,6 +2647,7 @@ where
     let unknown_command = unknown_command_parser(ctx, reject_unknown);
 
     let control_seq_fallback = choice((
+        inline_math.clone(),
         environment.clone(),
         escaped_symbol(),
         declarative_command.clone(),
@@ -2603,6 +2675,7 @@ fn math_group_content_parser<'a, P>(
     normal_item: P,
     math_content: ContentParser<'a>,
     text_content: ContentParser<'a>,
+    extra_control_stop: Option<&'static str>,
 ) -> impl Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone
 where
     P: Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone + 'a,
@@ -2616,6 +2689,9 @@ where
         .ignore_then(stop_infix)
         .or(ws.clone().ignore_then(control_seq("right")))
         .or(ws.clone().ignore_then(control_seq("end")))
+        .or(ws
+            .clone()
+            .ignore_then(optional_control_seq(extra_control_stop)))
         .rewind();
     let guarded_item = stop_boundary.clone().not().ignore_then(normal_item.clone());
     let ws_for_leading = ws.clone();
@@ -2700,6 +2776,9 @@ where
                 .clone()
                 .ignore_then(control_seq("right"))
                 .or(ws.clone().ignore_then(control_seq("end")))
+                .or(ws
+                    .clone()
+                    .ignore_then(optional_control_seq(extra_control_stop)))
                 .rewind();
             let guarded_item = stop_boundary.clone().not().ignore_then(normal_item.clone());
             let buildrel_over_tail =
@@ -2889,10 +2968,17 @@ fn mode_content_parsers<'a>(state: &'a ParserState<'a>) -> (ContentParser<'a>, C
             let math_content = group_content.clone().boxed();
             move |group_content| {
                 let text_content = group_content.clone().boxed();
+                let control_inline_math_content = math_content_parser_with_extra_control_stop(
+                    state,
+                    text_content.clone(),
+                    None,
+                    ")",
+                );
                 let normal_item = text_atom_parser(
                     state,
                     group_content,
                     math_content.clone(),
+                    control_inline_math_content,
                     text_content.clone(),
                 );
                 text_group_content_parser(normal_item)
@@ -2906,7 +2992,8 @@ fn mode_content_parsers<'a>(state: &'a ParserState<'a>) -> (ContentParser<'a>, C
             text_content.clone(),
         );
         let normal_item = base_item.padded_by(ws.clone()).boxed();
-        math_group_content_parser(state, normal_item, math_content, text_content).padded_by(ws)
+        math_group_content_parser(state, normal_item, math_content, text_content, None)
+            .padded_by(ws)
     })
     .boxed();
 
@@ -2914,10 +3001,13 @@ fn mode_content_parsers<'a>(state: &'a ParserState<'a>) -> (ContentParser<'a>, C
         let math_content = math.clone();
         move |group_content| {
             let text_content = group_content.clone().boxed();
+            let control_inline_math_content =
+                math_content_parser_with_extra_control_stop(state, text_content.clone(), None, ")");
             let normal_item = text_atom_parser(
                 state,
                 group_content,
                 math_content.clone(),
+                control_inline_math_content,
                 text_content.clone(),
             );
             text_group_content_parser(normal_item)
@@ -2939,10 +3029,17 @@ fn mode_content_parsers_with_source<'a>(
             let math_content = group_content.clone().boxed();
             move |group_content| {
                 let text_content = group_content.clone().boxed();
+                let control_inline_math_content = math_content_parser_with_extra_control_stop(
+                    state,
+                    text_content.clone(),
+                    Some(src),
+                    ")",
+                );
                 let base_item = text_atom_parser(
                     state,
                     group_content,
                     math_content.clone(),
+                    control_inline_math_content,
                     text_content.clone(),
                 );
                 let normal_item = if state.config.abort_on_error {
@@ -2980,7 +3077,8 @@ fn mode_content_parsers_with_source<'a>(
             )
             .boxed()
         };
-        math_group_content_parser(state, normal_item, math_content, text_content).padded_by(ws)
+        math_group_content_parser(state, normal_item, math_content, text_content, None)
+            .padded_by(ws)
     })
     .boxed();
 
@@ -2988,10 +3086,17 @@ fn mode_content_parsers_with_source<'a>(
         let math_content = math.clone();
         move |group_content| {
             let text_content = group_content.clone().boxed();
+            let control_inline_math_content = math_content_parser_with_extra_control_stop(
+                state,
+                text_content.clone(),
+                Some(src),
+                ")",
+            );
             let base_item = text_atom_parser(
                 state,
                 group_content,
                 math_content.clone(),
+                control_inline_math_content,
                 text_content.clone(),
             );
             let normal_item = if state.config.abort_on_error {

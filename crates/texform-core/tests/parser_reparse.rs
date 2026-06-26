@@ -231,3 +231,24 @@ fn test_text_mode_inline_math_reparse_keeps_known_command() {
         other => panic!("Expected root node, got {:?}", other),
     }
 }
+
+#[test]
+fn text_mode_accepts_control_sequence_inline_math_delimiters() {
+    let ctx = test_context_with_items([command_item(
+        "small",
+        CommandKind::Declarative,
+        AllowedMode::Text,
+        "",
+    )]);
+    let output = ctx.parse(r"\mbox{\small\(a \in b^2\)}", &ParseConfig::LENIENT);
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        output.diagnostics
+    );
+
+    let result = output
+        .document()
+        .expect("control-sequence inline math should produce a document");
+    assert!(!result.has_errors());
+}

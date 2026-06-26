@@ -917,6 +917,18 @@ fn test_environment_mode_mismatch_reports_explicit_error() {
 }
 
 #[test]
+fn text_mode_accepts_star_as_text_character() {
+    let (result, _) = parse(r"\text{a*b}", false).unwrap();
+    assert!(!support::contains_error_node(&result));
+}
+
+#[test]
+fn math_mode_keeps_control_sequence_closing_paren_as_unknown_command() {
+    let (result, _) = parse(r"x \)", false).unwrap();
+    assert!(!support::contains_error_node(&result));
+}
+
+#[test]
 fn test_text_mode_scripted_syntax_reports_explicit_error() {
     let ctx = test_context_with_items([
         command_item("underline", CommandKind::Prefix, AllowedMode::Math, "m"),

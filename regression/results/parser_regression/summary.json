@@ -22,13 +22,13 @@
       "total_tasks": 606802,
       "completed": 606802,
       "strict": {
-        "ok": 593536,
-        "failed": 13266,
+        "ok": 593540,
+        "failed": 13262,
         "failure_rate_pct": 2.19
       },
       "nonstrict": {
-        "ok": 605866,
-        "failed": 936,
+        "ok": 605874,
+        "failed": 928,
         "failure_rate_pct": 0.15
       }
     },
@@ -38,14 +38,14 @@
       "total_tasks": 492136,
       "completed": 492136,
       "strict": {
-        "ok": 481237,
-        "failed": 10899,
+        "ok": 481256,
+        "failed": 10880,
         "failure_rate_pct": 2.21
       },
       "nonstrict": {
-        "ok": 491901,
-        "failed": 235,
-        "failure_rate_pct": 0.05
+        "ok": 491920,
+        "failed": 216,
+        "failure_rate_pct": 0.04
       }
     },
     {
@@ -54,14 +54,14 @@
       "total_tasks": 34104,
       "completed": 34104,
       "strict": {
-        "ok": 31999,
-        "failed": 2105,
+        "ok": 32000,
+        "failed": 2104,
         "failure_rate_pct": 6.17
       },
       "nonstrict": {
-        "ok": 33925,
-        "failed": 179,
-        "failure_rate_pct": 0.52
+        "ok": 33929,
+        "failed": 175,
+        "failure_rate_pct": 0.51
       }
     }
   ],
@@ -69,13 +69,13 @@
     "dataset_count": 4,
     "total_tasks": 1226621,
     "strict": {
-      "ok": 1198596,
-      "failed": 28025,
+      "ok": 1198620,
+      "failed": 28001,
       "failure_rate_pct": 2.28
     },
     "nonstrict": {
-      "ok": 1225003,
-      "failed": 1618,
+      "ok": 1225034,
+      "failed": 1587,
       "failure_rate_pct": 0.13
     }
   }
