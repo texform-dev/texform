@@ -389,6 +389,26 @@ fn normalize_content_subparse(mode: ContentMode, tracked: TrackedNode) -> Tracke
     normalized.with_diagnostics(existing_diagnostics)
 }
 
+fn whitespace_only_text_content_node(
+    tokens: &[Token],
+    source_offset: usize,
+) -> Option<TrackedNode> {
+    if tokens.is_empty() {
+        return None;
+    }
+    if !tokens
+        .iter()
+        .all(|token| matches!(token, Token::Whitespaces))
+    {
+        return None;
+    }
+
+    Some(TrackedNode::leaf(
+        SyntaxNode::Text(" ".to_string()),
+        SimpleSpan::new((), source_offset..source_offset + 1),
+    ))
+}
+
 /// Convert a collected token slice into an argument value while preserving the
 /// most specific inner diagnostic we have. The generic outer argument error is
 /// only a last resort once the subparse produced neither a recoverable tree nor
@@ -400,6 +420,12 @@ fn parse_tokens_as_content<'src, 'parse>(
     tokens: Vec<Token>,
     source_offset: usize,
 ) -> Result<TrackedNode, Rich<'src, Token>> {
+    if mode == ContentMode::Text
+        && let Some(content) = whitespace_only_text_content_node(&tokens, source_offset)
+    {
+        return Ok(content);
+    }
+
     let (content, diagnostics) = parse_content_substream(state, mode, &tokens, source_offset);
     if let Some(content) = content {
         return Ok(content);

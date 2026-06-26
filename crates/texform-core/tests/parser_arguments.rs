@@ -777,6 +777,40 @@ fn star_argument_uses_boolean_value() {
 }
 
 #[test]
+fn text_content_arguments_accept_whitespace_only_body() {
+    let output =
+        ParseContext::shared().parse(r"\textrm { }", &texform_core::parse::ParseConfig::LENIENT);
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        output.diagnostics
+    );
+
+    let result = output
+        .document()
+        .expect("whitespace-only text argument should produce a document");
+    assert!(
+        !result.has_errors(),
+        "whitespace-only text argument should not create recovery errors"
+    );
+}
+
+#[test]
+fn text_content_arguments_keep_empty_body_valid() {
+    let output =
+        ParseContext::shared().parse(r"\textrm{}", &texform_core::parse::ParseConfig::LENIENT);
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        output.diagnostics
+    );
+    assert!(
+        output.document().is_some(),
+        "empty text argument should still parse as a complete document"
+    );
+}
+
+#[test]
 fn text_content_generic_only_error_keeps_expected_found_diagnostic() {
     let items = [text_command_item()];
 

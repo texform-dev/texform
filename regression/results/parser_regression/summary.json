@@ -6,14 +6,14 @@
       "total_tasks": 93579,
       "completed": 93579,
       "strict": {
-        "ok": 91811,
-        "failed": 1768,
-        "failure_rate_pct": 1.89
+        "ok": 91824,
+        "failed": 1755,
+        "failure_rate_pct": 1.88
       },
       "nonstrict": {
-        "ok": 93296,
-        "failed": 283,
-        "failure_rate_pct": 0.30
+        "ok": 93311,
+        "failed": 268,
+        "failure_rate_pct": 0.29
       }
     },
     {
@@ -22,14 +22,14 @@
       "total_tasks": 606802,
       "completed": 606802,
       "strict": {
-        "ok": 593515,
-        "failed": 13287,
+        "ok": 593536,
+        "failed": 13266,
         "failure_rate_pct": 2.19
       },
       "nonstrict": {
-        "ok": 605845,
-        "failed": 957,
-        "failure_rate_pct": 0.16
+        "ok": 605866,
+        "failed": 936,
+        "failure_rate_pct": 0.15
       }
     },
     {
@@ -38,14 +38,14 @@
       "total_tasks": 492136,
       "completed": 492136,
       "strict": {
-        "ok": 481022,
-        "failed": 11114,
-        "failure_rate_pct": 2.26
+        "ok": 481237,
+        "failed": 10899,
+        "failure_rate_pct": 2.21
       },
       "nonstrict": {
-        "ok": 491683,
-        "failed": 453,
-        "failure_rate_pct": 0.09
+        "ok": 491901,
+        "failed": 235,
+        "failure_rate_pct": 0.05
       }
     },
     {
@@ -54,14 +54,14 @@
       "total_tasks": 34104,
       "completed": 34104,
       "strict": {
-        "ok": 31981,
-        "failed": 2123,
-        "failure_rate_pct": 6.23
+        "ok": 31999,
+        "failed": 2105,
+        "failure_rate_pct": 6.17
       },
       "nonstrict": {
-        "ok": 33905,
-        "failed": 199,
-        "failure_rate_pct": 0.58
+        "ok": 33925,
+        "failed": 179,
+        "failure_rate_pct": 0.52
       }
     }
   ],
@@ -69,14 +69,14 @@
     "dataset_count": 4,
     "total_tasks": 1226621,
     "strict": {
-      "ok": 1198329,
-      "failed": 28292,
-      "failure_rate_pct": 2.31
+      "ok": 1198596,
+      "failed": 28025,
+      "failure_rate_pct": 2.28
     },
     "nonstrict": {
-      "ok": 1224729,
-      "failed": 1892,
-      "failure_rate_pct": 0.15
+      "ok": 1225003,
+      "failed": 1618,
+      "failure_rate_pct": 0.13
     }
   }
 }
