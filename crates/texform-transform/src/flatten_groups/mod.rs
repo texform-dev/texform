@@ -2,8 +2,12 @@
 
 use crate::ast::{ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, ParentLink, Slot};
 
+/// Per-run switches for the FlattenGroups phase: the master gate plus one
+/// preserve guard per situation where flattening would be unsafe. Use the
+/// `STRICT` / `STRUCTURAL_ONLY` presets rather than setting fields by hand.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FlattenGroupsConfig {
+    /// Run the phase when `true`; skip it entirely when `false`.
     pub enabled: bool,
     /// Semantic guard. Keep groups whose subtree contains a declarative command
     /// (for example `\cal` or `\bf`) to avoid leaking declarative scope into
@@ -81,32 +85,68 @@ impl FlattenGroupsConfig {
     pub const DEFAULTS: Self = Self::STRICT;
 }
 
+/// What the FlattenGroups phase did: how many groups it flattened, and how
+/// often each preserve guard blocked a flattening.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FlattenGroupsReport {
+    /// Counts of the flattenings actually performed, by action kind.
     pub actions: FlattenGroupsActionCounts,
+    /// Per-guard counts of flattenings that were prevented. Counters are
+    /// short-circuit: when several guards match the same group, only the first
+    /// one in evaluation order is incremented.
     pub guards: FlattenGroupsGuardCounts,
 }
 
+/// How many groups FlattenGroups removed, split by the action taken.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FlattenGroupsActionCounts {
+    /// Empty `GroupChild` (`{}`) dropped.
     pub removed_empty: usize,
+    /// Single-child `GroupChild` replaced by its child.
     pub replaced_single_child: usize,
+    /// Multi-child `GroupChild` spliced into its parent's child sequence.
     pub inlined_multi_child: usize,
+    /// Single-child group in an `Argument` / `Script*` / `Infix*` slot
+    /// unwrapped in place.
     pub unwrapped_slot: usize,
 }
 
+/// How often each preserve guard prevented a group from being flattened.
+///
+/// Each field corresponds to the same-named flag on [`FlattenGroupsConfig`]
+/// and counts the structural situation that flag protects.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FlattenGroupsGuardCounts {
+    /// Group kept because its subtree holds a declarative command, so
+    /// flattening would leak declarative scope into following siblings.
     pub preserve_group_containing_declarative_command: usize,
+    /// Group kept because it occupies a `ScriptBase` slot, so flattening would
+    /// change which atom a sub/superscript attaches to.
     pub preserve_group_in_script_base_slot: usize,
+    /// Group kept because it sits inside an environment body, where flattening
+    /// would blur cell boundaries or intra-cell spacing.
     pub preserve_group_inside_env_body: usize,
+    /// Group kept because its subtree holds an `\over`-style infix, so
+    /// flattening would change the infix scope.
     pub preserve_group_containing_infix: usize,
+    /// Group kept because its preceding sibling or first child is command-like,
+    /// where flattening would change atom spacing.
     pub preserve_group_adjacent_to_command_like: usize,
+    /// Group kept because it is a risky singleton used directly as a command
+    /// argument, preserving one spacing boundary.
     pub preserve_group_as_argument_of_command: usize,
+    /// Adjacency check above matched only after recursing through a `Scripted`
+    /// base; counted in addition to `preserve_group_adjacent_to_command_like`.
     pub preserve_group_after_scripted_command_like: usize,
+    /// Empty group kept for its spacing / kerning effect.
     pub preserve_empty_group: usize,
+    /// Singleton group kept because it holds a single math atom-spacing
+    /// character.
     pub preserve_group_with_lone_atom_spacing_char: usize,
+    /// Multi-child group kept because its first child is a math atom-spacing
+    /// character.
     pub preserve_group_starting_with_atom_spacing_char: usize,
+    /// Group kept because its subtree holds a `\left...\right` delimited pair.
     pub preserve_group_containing_delimited_pair: usize,
 }
 

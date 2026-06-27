@@ -94,15 +94,30 @@ impl std::error::Error for FromSyntaxError {}
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum EditError {
+    /// The referenced node does not exist in this document.
     NodeNotFound,
+    /// The document is read-only because it contains `Error` nodes, so no
+    /// mutation is allowed.
     ReadOnlyDocument,
+    /// The edit targets the root node, which cannot be detached or replaced.
     CannotEditRoot,
+    /// The target node cannot hold ordered children, so child operations
+    /// (append, insert) do not apply.
     NotAContainer,
+    /// A node was supplied for a typed slot whose required shape it does not
+    /// match; `expected` names the shape the slot demands.
     SlotShapeMismatch { expected: &'static str },
+    /// The edit would attach a node into its own subtree, forming a cycle.
     WouldCreateCycle,
+    /// A child index lies outside the valid range for the container.
     IndexOutOfBounds,
+    /// The same node would appear more than once in the tree.
     DuplicateChild,
+    /// The operation expected a staged, detached subtree root but received an
+    /// already-attached node.
     ExpectedDetachedRoot,
+    /// The node belongs to a different document; cross-document edits are
+    /// rejected before they can corrupt either tree.
     ForeignNode,
 }
 
@@ -130,14 +145,23 @@ impl std::error::Error for EditError {}
 /// Write-side command/environment argument value.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ArgValue {
+    /// Math-mode content argument referencing a child subtree.
     Math(NodeId),
+    /// Text-mode content argument referencing a child subtree.
     Text(NodeId),
+    /// Delimiter argument such as the opener of a paired form.
     Delimiter(DelimiterValue),
+    /// Control-sequence name argument, stored without the leading backslash.
     CSName(String),
+    /// Raw dimension argument, kept as its source text (e.g. `2pt`).
     Dimension(String),
+    /// Raw integer argument, kept as its source text.
     Integer(String),
+    /// Raw key-value argument, kept as its source text.
     KeyVal(String),
+    /// Column-specification argument, kept as its source text.
     Column(String),
+    /// Boolean argument, primarily backing a star slot.
     Boolean(bool),
 }
 
@@ -182,8 +206,11 @@ impl ArgValue {
 /// Public write-side delimiter value.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DelimiterValue {
+    /// No delimiter, corresponding to `.` in LaTeX.
     None,
+    /// Single-character delimiter such as `(`, `)`, or `|`.
     Char(char),
+    /// Control-sequence delimiter such as `\langle`, without the backslash.
     Control(String),
 }
 
@@ -1627,35 +1654,56 @@ impl<'a> NodeRef<'a> {
     }
 }
 
+/// Read-side view of a [`DelimiterValue`], borrowing the document.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DelimiterRef<'a> {
+    /// No delimiter, corresponding to `.` in LaTeX.
     None,
+    /// Single-character delimiter such as `(`, `)`, or `|`.
     Char(char),
+    /// Control-sequence delimiter such as `\langle`, without the backslash.
     Control(&'a str),
 }
 
+/// Read-side view of a [`GroupKind`], borrowing the document.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GroupKindRef<'a> {
+    /// Author-written brace group `{ ... }`.
     Explicit,
+    /// Synthesized group with no source braces, produced by parsing or
+    /// normalization.
     Implicit,
+    /// Delimited group such as `\left( ... \right)`, carrying its delimiter pair.
     Delimited {
+        /// Opening delimiter of the group.
         left: DelimiterRef<'a>,
+        /// Closing delimiter of the group.
         right: DelimiterRef<'a>,
     },
+    /// Inline math segment inside text mode, written `$ ... $`.
     InlineMath,
 }
 
 /// Read-side view of one command/environment argument value.
 #[derive(Clone, Copy, Debug)]
 pub enum ArgRef<'a> {
+    /// Math-mode content argument, borrowing its child subtree.
     Math(NodeRef<'a>),
+    /// Text-mode content argument, borrowing its child subtree.
     Text(NodeRef<'a>),
+    /// Delimiter argument such as the opener of a paired form.
     Delimiter(DelimiterRef<'a>),
+    /// Control-sequence name argument, without the leading backslash.
     CSName(&'a str),
+    /// Raw dimension argument, kept as its source text (e.g. `2pt`).
     Dimension(&'a str),
+    /// Raw integer argument, kept as its source text.
     Integer(&'a str),
+    /// Raw key-value argument, kept as its source text.
     KeyVal(&'a str),
+    /// Column-specification argument, kept as its source text.
     Column(&'a str),
+    /// Boolean argument, primarily backing a star slot.
     Boolean(bool),
 }
 

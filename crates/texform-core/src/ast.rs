@@ -77,16 +77,28 @@ pub enum Slot {
 /// Cheap node discriminant for queries that do not need full pattern matching.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeKind {
+    /// Document root holding the top-level children and parse mode.
     Root,
+    /// Grouping node holding ordered children, e.g. a brace or delimited group.
     Group,
+    /// Prefix command with argument slots.
     Command,
+    /// Infix command with explicit left and right operands, e.g. `\over`.
     Infix,
+    /// Declarative command that affects following content rather than taking
+    /// operands.
     Declarative,
+    /// Environment whose body is always a group.
     Environment,
+    /// Base expression carrying an optional subscript and superscript.
     Scripted,
+    /// Math prime shorthand standing for one or more consecutive prime marks.
     Prime,
+    /// Text-mode text chunk.
     Text,
+    /// Single character leaf.
     Char,
+    /// Active `~` space leaf.
     ActiveSpace,
     /// Parser-produced error placeholder; see [`Node::Error`].
     Error,

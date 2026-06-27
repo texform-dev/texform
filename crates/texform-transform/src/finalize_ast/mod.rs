@@ -2,8 +2,11 @@
 
 use crate::ast::{Ast, ContentMode, Node, NodeId};
 
+/// Per-run switch for the FinalizeAst phase.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FinalizeAstConfig {
+    /// Run the phase when `true`; skip it entirely when `false`. Enabled by
+    /// default in every public profile.
     pub enabled: bool,
 }
 
@@ -13,18 +16,24 @@ impl FinalizeAstConfig {
     pub const DEFAULTS: Self = Self::ENABLED;
 }
 
+/// What the FinalizeAst phase changed in the tree.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FinalizeAstReport {
+    /// Per-step counters for the phase's cleanup passes.
     pub steps: FinalizeAstStepReports,
 }
 
+/// One report per FinalizeAst cleanup step.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FinalizeAstStepReports {
+    /// Counter for merging runs of adjacent `Prime` nodes into one.
     pub merge_adjacent_primes: FinalizeAstStepReport,
 }
 
+/// Activity counter for a single FinalizeAst step.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FinalizeAstStepReport {
+    /// Number of times the step rewrote part of the tree.
     pub applied_count: usize,
 }
 

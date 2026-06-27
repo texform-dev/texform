@@ -1,3 +1,11 @@
+//! Outcome of a parse call.
+//!
+//! [`ParseResult`] is what [`Parser::parse`](crate::Parser::parse) returns: an
+//! optional [`Document`] plus the [`ParseDiagnostic`]s
+//! emitted while parsing. Use [`ParseResult::try_into_document`] when downstream
+//! code needs a complete, editable tree; it returns [`ParseError`] when the
+//! parse produced no document or a document containing parse-error nodes.
+
 use crate::Document;
 use crate::ParseDiagnostic;
 

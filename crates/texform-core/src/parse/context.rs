@@ -57,20 +57,44 @@ const DIAGNOSTIC_KIND_MESSAGE_SEPARATOR: char = '\x1e';
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 #[serde(rename_all = "kebab-case")]
+/// Machine-readable category of a parse diagnostic.
+///
+/// Each variant labels why a diagnostic was emitted, letting callers branch on
+/// the cause without parsing the human-readable message. The kebab-case form
+/// produced by [`ParseDiagnosticKind::as_str`] is the stable wire value.
 pub enum ParseDiagnosticKind {
+    /// A control sequence usable as an infix operator appeared where its
+    /// left/right operands could not be resolved unambiguously.
     AmbiguousInfix,
+    /// A command or environment argument failed argspec validation.
     ArgumentValidation,
+    /// A command was used in a content mode it is not allowed in.
     CommandModeError,
+    /// An unescaped `%` started a comment that swallowed the rest of an
+    /// argument, leaving it unclosed.
     CommentTruncatedArgument,
+    /// An environment was used in a content mode it is not allowed in.
     EnvironmentModeError,
+    /// An `\end{...}` name did not match the opening `\begin{...}`.
     EnvironmentNameMismatch,
+    /// A `\left ... \right` group had an invalid delimiter or a missing
+    /// `\right`.
     LeftRightDelimiter,
+    /// Group nesting exceeded the configured maximum depth.
     MaxGroupDepthExceeded,
+    /// A low-level expected-vs-found mismatch with no more specific category.
     RawExpectedFound,
+    /// Sub/superscript syntax appeared in text mode, where it is not allowed.
     TextScriptError,
+    /// An inline math segment (`$ ... $`) was opened but never closed.
     UnclosedInlineMath,
+    /// A math-shift `$` appeared where it is not expected inside a math formula.
     UnexpectedMathShift,
+    /// A command name is not present in the knowledge base, under a config that
+    /// rejects unknown names.
     UnknownCommand,
+    /// An environment name is not present in the knowledge base, under a config
+    /// that rejects unknown names.
     UnknownEnvironment,
 }
 

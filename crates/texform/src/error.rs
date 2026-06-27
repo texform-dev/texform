@@ -1,3 +1,12 @@
+//! Error types for the transform and normalize APIs.
+//!
+//! [`Error`] is the single failure type returned by
+//! [`TransformEngine`](crate::TransformEngine); its variants distinguish the
+//! pipeline stage that failed (build, parse, transform, serialize) and the two
+//! precondition violations ([`Error::IncompleteTree`] and
+//! [`Error::ForeignDocument`]). [`TransformBuildError`] and [`TransformError`]
+//! are opaque wrappers carrying a message from the internal transform engine.
+
 /// Error returned by transform and normalize APIs.
 #[derive(Debug)]
 #[non_exhaustive]
@@ -30,14 +39,20 @@ pub enum Error {
     Serialize(crate::serialize::SerializeError),
 }
 
+/// Alias for [`Error`], kept for naming symmetry with `normalize` APIs.
 pub type NormalizeError = Error;
 
+/// Failure building the transform plan for an engine.
+///
+/// Carries a diagnostic message from the internal transform engine; obtain it
+/// with [`message`](Self::message).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TransformBuildError {
     message: String,
 }
 
 impl TransformBuildError {
+    /// The underlying build-error message.
     pub fn message(&self) -> &str {
         &self.message
     }
@@ -59,12 +74,17 @@ impl From<texform_transform::TransformBuildError> for TransformBuildError {
     }
 }
 
+/// Failure while a transform rule rewrites the tree.
+///
+/// Carries a diagnostic message from the internal transform engine; obtain it
+/// with [`message`](Self::message).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TransformError {
     message: String,
 }
 
 impl TransformError {
+    /// The underlying transform-error message.
     pub fn message(&self) -> &str {
         &self.message
     }

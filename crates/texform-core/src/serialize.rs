@@ -71,7 +71,9 @@ impl std::error::Error for SerializeError {}
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SerializeOptions {
+    /// Math-mode-specific output controls (spacing, scripts, infix grouping).
     pub math: MathSerializeOptions,
+    /// Mode-independent structural syntax controls (e.g. environment headers).
     pub syntax: SyntaxSerializeOptions,
 }
 

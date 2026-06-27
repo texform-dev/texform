@@ -20,7 +20,9 @@ use serde::{Deserialize, Deserializer, Serialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub struct Argument {
+    /// The syntactic form the argument takes (mandatory, optional, delimited, ...).
     pub kind: ArgumentKind,
+    /// The argument's content, or its absence for an omitted optional slot.
     pub value: ArgumentValue,
 }
 

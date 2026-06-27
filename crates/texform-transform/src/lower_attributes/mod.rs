@@ -38,6 +38,7 @@ pub struct LowerAttributesReport {
     pub eliminated_empty_segments: usize,
 }
 
+/// Per-attribute breakdown of forms consumed, found redundant, and emitted.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AttributeStat {
     /// Declarative and prefix forms removed from the AST.
@@ -54,33 +55,49 @@ pub struct AttributeStat {
 /// Declarative/prefix split for a single attribute statistic bucket.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AttributeFormCounts {
+    /// Count for declarative-scope forms (e.g. `\bf`).
     pub declaratives: usize,
+    /// Count for prefix-wrapper forms (e.g. `\mathbf{...}`).
     pub prefixes: usize,
 }
 
 /// One of the attribute axes recognised by the phase.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Attr {
+    /// Math-mode font family (e.g. `\mathbf`, `\mathbb`).
     MathFont,
+    /// Math-mode size (e.g. `\large`, `\scriptsize`).
     MathSize,
+    /// Math-mode style (e.g. `\displaystyle`, `\scriptstyle`).
     MathStyle,
+    /// Text-mode font family (roman, sans-serif, typewriter, ...).
     TextFamily,
+    /// Text-mode weight (medium or bold).
     TextSeries,
+    /// Text-mode shape (upright, italic, slanted, small caps).
     TextShape,
+    /// Text-mode size (e.g. `\large` in text mode).
     TextSize,
 }
 
 /// Canonical value carried by an attribute slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AttrValue {
+    /// Math font family identifier, for the `MathFont` axis.
     MathFont(MathFontValue),
+    /// Scaled size factor, shared by the `MathSize` and `TextSize` axes.
     Size(SizeValue),
+    /// Math style (cramped/display flags and nesting level), for `MathStyle`.
     Style(StyleValue),
+    /// Text font family, for the `TextFamily` axis.
     TextFamily(TextFamily),
+    /// Text weight, for the `TextSeries` axis.
     TextSeries(TextSeries),
+    /// Text shape, for the `TextShape` axis.
     TextShape(TextShape),
 }
 
+/// Math font family name carried by the `MathFont` attribute axis.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MathFontValue(pub &'static str);
 
@@ -89,37 +106,58 @@ pub struct MathFontValue(pub &'static str);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SizeValue(pub i32);
 
+/// Canonical math style: which `\...style` command and its rendering effect.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct StyleValue {
+    /// Style letter (`D`, `T`, `S`, `SS`) identifying the canonical command.
     pub letter: &'static str,
+    /// Whether the style renders in display layout.
     pub display: bool,
+    /// Script nesting level (0 = display/text, increasing when cramped).
     pub level: u8,
 }
 
+/// Canonical text font family for the `TextFamily` axis.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TextFamily {
+    /// Roman / serif (`\textrm`).
     Roman,
+    /// Sans-serif (`\textsf`).
     SansSerif,
+    /// Monospace / typewriter (`\texttt`).
     Typewriter,
+    /// Calligraphic.
     Calligraphic,
+    /// Italic family.
     Italic,
+    /// Oldstyle figures.
     Oldstyle,
 }
 
+/// Canonical text weight for the `TextSeries` axis.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TextSeries {
+    /// Normal weight (`\textmd`).
     Medium,
+    /// Bold weight (`\textbf`).
     Bold,
 }
 
+/// Canonical text shape for the `TextShape` axis.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TextShape {
+    /// Upright (`\textup`).
     Upright,
+    /// Italic (`\textit`).
     Italic,
+    /// Slanted (`\textsl`).
     Slanted,
+    /// Small caps (`\textsc`).
     SmallCaps,
 }
 
+/// One canonical attribute axis paired with its value (e.g. `MathFont` =
+/// `mathbf`); the key used to bucket [`AttributeStat`] entries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AttributeSet {
     attr: Attr,
@@ -271,8 +309,20 @@ impl AttributeState {
 // Entry point
 // ---------------------------------------------------------------------------
 
+/// Enablement carrier for the LowerAttributes phase.
+///
+/// The engine gates the phase through
+/// [`TransformConfig::lower_attributes_enabled`](crate::TransformConfig::lower_attributes_enabled),
+/// not through this flag directly: when LowerAttributes is enabled the engine
+/// calls [`run`] (which then processes the whole subtree unconditionally), and
+/// when it is disabled the engine skips the call. The language bindings surface
+/// this flag as their `lower_attributes` / `lowerAttributes` config, which feeds
+/// `TransformConfig::lower_attributes_enabled`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LowerAttributesConfig {
+    /// Whether the engine runs the LowerAttributes phase. Consumed via
+    /// [`TransformConfig::lower_attributes_enabled`](crate::TransformConfig::lower_attributes_enabled);
+    /// [`run`] itself does not read it.
     pub enabled: bool,
 }
 

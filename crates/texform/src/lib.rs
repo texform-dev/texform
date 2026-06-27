@@ -1,8 +1,54 @@
-//! Public TeXForm facade.
+#![deny(missing_docs)]
+//! Public TeXForm facade — parse, edit, serialize, and normalize LaTeX math.
 //!
-//! This crate exposes the stable user-facing API: parse-only [`Parser`],
-//! normalization [`TransformEngine`], AST serialization, argspec validation, and
-//! analysis helpers.
+//! `texform` is the only crate in the workspace with a public stability
+//! guarantee. Every other `texform-*` crate is an internal implementation
+//! detail whose API may change without notice; external code should depend on
+//! this facade alone. See the project `ARCHITECTURE.md` for the full crate
+//! layout and the pipeline a formula travels through.
+//!
+//! # The two entry points
+//!
+//! - [`Parser`] parses LaTeX into an editable [`Document`] without normalizing
+//!   it. Use it when you want to inspect or mutate the tree yourself.
+//! - [`TransformEngine`] pairs a parser with a normalization pipeline selected
+//!   by a [`Profile`]. Use it to canonicalize formulas for a downstream
+//!   scenario (authoring output, corpus normalization, equivalence comparison).
+//!
+//! A formula flows in one direction: source text parses into a [`Document`]
+//! (a DOM-style tree wrapping an internal arena), which you can query, edit,
+//! serialize back to LaTeX with [`Document::to_latex`], convert to a
+//! [`SyntaxNode`] for serde with [`Document::to_syntax`], or normalize in place
+//! with [`TransformEngine::transform`].
+//!
+//! # Error model and tree states
+//!
+//! Parsing never panics on bad input. It produces a [`ParseResult`] with one of
+//! three honest states: no tree, a complete editable tree, or a partial
+//! read-only tree carrying [`Error`](SyntaxNode) placeholder nodes. Whether a
+//! tree contains such placeholders is the O(1) [`Document::has_errors`] signal,
+//! which is distinct from the [`ParseConfig::abort_on_error`] parse-strictness
+//! knob. A tree with errors is read-only and cannot be normalized.
+//!
+//! # Example
+//!
+//! Normalize a legacy `\over` fraction with the corpus profile, then parse,
+//! edit-free transform, and serialize the same input through the live document:
+//!
+//! ```
+//! use texform::{Profile, TransformEngine};
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let engine = TransformEngine::builder().profile(Profile::Corpus).build()?;
+//! let result = engine.normalize(r"a \over b")?;
+//! assert_eq!(result.normalized, r"\frac { a } { b }");
+//!
+//! let (mut document, _) = engine.parser().parse(r"a \over b").try_into_document()?;
+//! engine.transform(&mut document)?;
+//! assert_eq!(document.to_latex()?, r"\frac { a } { b }");
+//! # Ok(())
+//! # }
+//! ```
 
 pub mod analysis;
 pub mod argspec;

@@ -19,10 +19,21 @@ pub use texform_argspec::{
     parse_arg_specs,
 };
 
+/// How a command consumes its surroundings during parsing.
+///
+/// The kind determines where the command's arguments come from: from the tokens
+/// that follow it, from the material on both sides of it, or from the scope it
+/// opens until the enclosing group ends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandKind {
+    /// An ordinary command that takes its arguments from the tokens following it,
+    /// per its argspec (e.g. `\frac`, `\sqrt`).
     Prefix,
+    /// An infix operator that splits the surrounding material into numerator and
+    /// denominator, like `\over` or `\atop`.
     Infix,
+    /// A declaration that changes style for the rest of the current group rather
+    /// than taking explicit arguments, like the font switch `\bf`.
     Declarative,
 }
 
@@ -36,10 +47,18 @@ impl CommandKind {
     }
 }
 
+/// The content mode(s) in which a knowledge-base name is valid.
+///
+/// Constrains whether a command, environment, character, or delimiter may appear
+/// in math mode, text mode, or either; the parser uses it to reject a name used
+/// in a mode it does not support.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AllowedMode {
+    /// Valid only in math mode.
     Math,
+    /// Valid only in text mode.
     Text,
+    /// Valid in both math and text mode.
     Both,
 }
 
@@ -122,23 +141,45 @@ pub struct BuiltinDelimiterRecord {
     pub attributes: BuiltinCharacterAttributes,
 }
 
+/// A command entry in the active knowledge base the parser consults.
+///
+/// "Active" means it is part of the resolved set the parser sees for the current
+/// package configuration, merged from builtin and package specs. It records what
+/// a command name means and what argument shape it takes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveCommandRecord {
+    /// The command name, without the leading backslash (e.g. `frac`).
     pub name: &'static str,
+    /// How the command consumes its surroundings (prefix, infix, or declarative).
     pub kind: CommandKind,
+    /// The content mode(s) in which the command is valid.
     pub allowed_mode: AllowedMode,
+    /// The command's argument signature, in the xparse-style spec language.
     pub argspec: ParsedArgSpec,
+    /// Free-form classification tags carried from the source spec.
     pub tags: &'static [&'static str],
+    /// The packages that contribute this record, in resolution order.
     pub from_packages: &'static [&'static str],
 }
 
+/// An environment entry in the active knowledge base the parser consults.
+///
+/// "Active" means it is part of the resolved set the parser sees for the current
+/// package configuration. It records the argument shape an environment takes
+/// after its `\begin{...}` and the content mode its body is parsed in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveEnvironmentRecord {
+    /// The environment name, as written between the braces of `\begin{...}`.
     pub name: &'static str,
+    /// The content mode(s) in which the environment may be opened.
     pub allowed_mode: AllowedMode,
+    /// The argument signature taken after `\begin{name}`, in the xparse-style spec language.
     pub argspec: ParsedArgSpec,
+    /// The content mode the environment body is parsed in.
     pub body_mode: ContentMode,
+    /// Free-form classification tags carried from the source spec.
     pub tags: &'static [&'static str],
+    /// The packages that contribute this record, in resolution order.
     pub from_packages: &'static [&'static str],
 }
 
@@ -163,22 +204,43 @@ impl From<BuiltinCharacterAttributes> for CharacterAttributes {
     }
 }
 
+/// A character command entry in the active knowledge base the parser consults.
+///
+/// Maps a named character command (such as a Greek letter or symbol) to the
+/// Unicode it stands for, together with the rendering attributes that describe
+/// how it behaves in a formula.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveCharacterRecord {
+    /// The character command name, without the leading backslash (e.g. `alpha`).
     pub name: String,
+    /// The content mode(s) in which the character is valid.
     pub allowed_mode: AllowedMode,
+    /// The Unicode character this command represents.
     pub unicode_value: String,
+    /// Rendering attributes (math variant, TeX class, stretchiness, ...) for the character.
     pub attributes: CharacterAttributes,
+    /// The package this record comes from.
     pub package: String,
 }
 
+/// A delimiter entry in the active knowledge base the parser consults.
+///
+/// Describes a name usable as a delimiter (for example after `\left`/`\right`),
+/// the Unicode it stands for, and its rendering attributes. A delimiter may be a
+/// control sequence (like `\langle`) or a single literal character (like `(`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveDelimiterRecord {
+    /// The delimiter name: a control-sequence name without the backslash, or the literal character.
     pub name: &'static str,
+    /// Whether the name is a control sequence (`true`) rather than a literal character (`false`).
     pub is_control_sequence: bool,
+    /// The content mode(s) in which the delimiter is valid.
     pub allowed_mode: AllowedMode,
+    /// The Unicode character this delimiter represents.
     pub unicode_value: String,
+    /// Rendering attributes (TeX class, stretchiness, ...) for the delimiter.
     pub attributes: CharacterAttributes,
+    /// The package this record comes from.
     pub package: String,
 }
 

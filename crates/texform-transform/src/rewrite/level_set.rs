@@ -2,6 +2,11 @@
 
 use super::rule::NormalizationLevel;
 
+/// The set of normalization levels a `Profile` selects, as a packed bitset.
+///
+/// A rule fires only if its level is in this set, so the set defines how
+/// aggressive a profile is: `Authoring` selects `Standard`, `Faithful` adds
+/// `Expand`, `Corpus` adds `Drop`, and `Equiv` adds `Equiv`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct NormalizationLevelSet(u8);
 
