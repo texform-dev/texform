@@ -677,7 +677,7 @@ class Document:
             identifiers to source byte ranges.
         """
 
-    def to_latex(self, options: dict[str, Any] | None = None) -> str:
+    def to_latex(self, options: SerializeOptions | None = None) -> str:
         """Serialize the tree back to LaTeX text using the canonical serializer.
 
         ``Error`` nodes round-trip their captured source snippet verbatim, so a
@@ -688,9 +688,9 @@ class Document:
         channel.
 
         Args:
-            options: A serialize-options dict, or ``None`` for the default
+            options: A ``SerializeOptions`` dict, or ``None`` for the default
                 (spaced) style. Unrecognized keys are ignored and keep their
-                default. See the ``serialize`` function for the full option axes.
+                default. See ``SerializeOptions`` for the full option axes.
 
         Returns:
             The serialized LaTeX string.
@@ -701,7 +701,7 @@ class Document:
             doc.to_latex({"math": {"scripts": {"spacing": "compact"}}})  # 'x^{ 2 }'
 
         See Also:
-            serialize, Document.to_syntax
+            SerializeOptions, serialize, Document.to_syntax
         """
 
     def create_char(self, value: str) -> Node:
@@ -1968,7 +1968,130 @@ def list_packages() -> list[PackageInfo]:
         PackageInfo, Parser, TransformEngine
     """
 
-def serialize(node: dict[str, Any], options: dict[str, Any] | None = None) -> str:
+CommandSpacing = Literal["spaced", "minimal"]
+"""Spacing around control sequences in serialized output: ``"spaced"`` pads
+around them; ``"minimal"`` emits only the separation LaTeX requires."""
+
+MathGroupInnerSpacing = Literal["padded", "compact"]
+"""Inner spacing of math groups: ``"padded"`` writes ``{ x }``; ``"compact"``
+writes ``{x}``."""
+
+AdjacentCharSpacing = Literal["spaced", "compact"]
+"""Spacing between adjacent characters: ``"spaced"`` writes ``a b c``;
+``"compact"`` writes ``abc``."""
+
+ScriptSpacing = Literal["spaced", "compact"]
+"""Spacing around script operators: ``"spaced"`` writes ``x _ { i } ^ { 2 }``;
+``"compact"`` writes ``x_{ i }^{ 2 }``."""
+
+ScriptOrder = Literal["sub_first", "sup_first"]
+"""Order of subscript and superscript in serialized output: ``"sub_first"``
+writes ``x _ { i } ^ { 2 }``; ``"sup_first"`` writes ``x ^ { 2 } _ { i }``."""
+
+EnvironmentNameSpacing = Literal["spaced", "compact"]
+"""Spacing after ``\\begin`` / ``\\end``: ``"spaced"`` writes
+``\\begin {matrix}``; ``"compact"`` writes ``\\begin{matrix}``."""
+
+
+class MathSpacingOptions(TypedDict, total=False):
+    """Math spacing options for the serializer. Omitted keys keep their default.
+
+    Attributes:
+        commands: Spacing around control sequences. Default ``"spaced"``.
+        group_inner_spacing: Inner spacing of math groups. Default ``"padded"``.
+        adjacent_chars: Spacing between adjacent characters. Default ``"spaced"``.
+
+    See Also:
+        MathSerializeOptions
+    """
+
+    commands: CommandSpacing
+    group_inner_spacing: MathGroupInnerSpacing
+    adjacent_chars: AdjacentCharSpacing
+
+
+class MathScriptOptions(TypedDict, total=False):
+    """Math script options for the serializer. Omitted keys keep their default.
+
+    Attributes:
+        spacing: Spacing around script operators. Default ``"spaced"``.
+        order: Order of subscript and superscript. Default ``"sub_first"``.
+
+    See Also:
+        MathSerializeOptions
+    """
+
+    spacing: ScriptSpacing
+    order: ScriptOrder
+
+
+class MathSerializeOptions(TypedDict, total=False):
+    """Math-mode serialization options, grouping spacing and script axes.
+
+    Attributes:
+        spacing: Spacing axes (commands, group inner spacing, adjacent chars).
+        scripts: Script axes (spacing and order).
+
+    See Also:
+        SerializeOptions
+    """
+
+    spacing: MathSpacingOptions
+    scripts: MathScriptOptions
+
+
+class EnvironmentSerializeOptions(TypedDict, total=False):
+    """Serialization options for environment markup.
+
+    Attributes:
+        name_spacing: Spacing after ``\\begin`` / ``\\end``. Default ``"spaced"``.
+
+    See Also:
+        SyntaxSerializeOptions
+    """
+
+    name_spacing: EnvironmentNameSpacing
+
+
+class SyntaxSerializeOptions(TypedDict, total=False):
+    """Serialization options for syntactic (non-math-spacing) constructs.
+
+    Attributes:
+        environments: Environment serialization options.
+
+    See Also:
+        SerializeOptions
+    """
+
+    environments: EnvironmentSerializeOptions
+
+
+class SerializeOptions(TypedDict, total=False):
+    """Options controlling serialized LaTeX output style.
+
+    A nested dict keyed by snake_case names. An unrecognized key — including a
+    camelCase key meant for the JavaScript binding — is silently ignored, so the
+    corresponding axis keeps its default. Passed to ``Document.to_latex`` and
+    ``serialize``. For a task-oriented walkthrough, see the Serialization guide.
+
+    Attributes:
+        math: Math-mode spacing and script options.
+        syntax: Syntactic (environment) options.
+
+    Examples:
+        result = texform.Parser().parse(r"x_i^2")
+        syntax = result["document"].to_syntax()
+        texform.serialize(syntax, {"math": {"scripts": {"order": "sup_first"}}})  # 'x ^ { 2 } _ { i }'
+
+    See Also:
+        Document.to_latex, serialize
+    """
+
+    math: MathSerializeOptions
+    syntax: SyntaxSerializeOptions
+
+
+def serialize(node: SyntaxNode, options: SerializeOptions | None = None) -> str:
     """Render a ``SyntaxNode`` dict to LaTeX text using the canonical serializer.
 
     This is the free-function counterpart to ``Document.to_latex()``; both take
@@ -1980,7 +2103,7 @@ def serialize(node: dict[str, Any], options: dict[str, Any] | None = None) -> st
     Args:
         node: A ``SyntaxNode`` dict, typically from ``Document.to_syntax()`` or a
             stored snapshot.
-        options: A serialize-options dict, or ``None`` for the default (spaced)
+        options: A ``SerializeOptions`` dict, or ``None`` for the default (spaced)
             style. Keys are snake_case; an unrecognized key (including a camelCase
             key meant for the JavaScript binding) is silently ignored, so that
             axis keeps its default.
@@ -1997,5 +2120,5 @@ def serialize(node: dict[str, Any], options: dict[str, Any] | None = None) -> st
         texform.serialize(syntax, {"math": {"scripts": {"spacing": "compact"}}})  # 'x^{ 2 }'
 
     See Also:
-        Document.to_latex
+        SerializeOptions, Document.to_latex
     """
