@@ -26,6 +26,7 @@ pub enum ArgForm {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueKind {
     Content { mode: ContentMode },
+    OperatorName,
     Delimiter,
     CSName,
     Dimension,
@@ -37,7 +38,11 @@ pub enum ValueKind {
 
 impl ValueKind {
     pub const fn is_content(&self) -> bool {
-        matches!(self, ValueKind::Content { .. })
+        matches!(self, ValueKind::Content { .. } | ValueKind::OperatorName)
+    }
+
+    pub const fn is_operator_name(&self) -> bool {
+        matches!(self, ValueKind::OperatorName)
     }
 
     pub const fn is_delimiter(&self) -> bool {
@@ -71,6 +76,7 @@ impl ValueKind {
     pub const fn content_mode(&self) -> Option<ContentMode> {
         match self {
             ValueKind::Content { mode } => Some(*mode),
+            ValueKind::OperatorName => Some(ContentMode::Math),
             _ => None,
         }
     }
@@ -370,6 +376,7 @@ impl<'a> ArgSpecParser<'a> {
             'T' => ValueKind::Content {
                 mode: ContentMode::Text,
             },
+            'O' => ValueKind::OperatorName,
             'D' => ValueKind::Delimiter,
             'N' => ValueKind::CSName,
             'L' => ValueKind::Dimension,

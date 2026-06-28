@@ -142,7 +142,7 @@ fn count_args(args: &[Option<Argument>], out: &mut TargetCounter) {
     for slot in args {
         let Some(arg) = slot else { continue };
         match &arg.value {
-            ArgumentValue::MathContent(node) => {
+            ArgumentValue::MathContent(node) | ArgumentValue::OperatorNameContent(node) => {
                 count_node_in_mode(node, ContentMode::Math, out);
             }
             ArgumentValue::TextContent(node) => {

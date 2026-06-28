@@ -503,22 +503,22 @@ mod tests {
             &mut report,
         );
 
-        let star = Some(Argument {
-            kind: ArgumentKind::Star,
-            value: ArgumentValue::Boolean(true),
-        });
-        let required = Some(Argument {
-            kind: ArgumentKind::Mandatory,
-            value: ArgumentValue::MathContent(required),
-        });
-        let optional = Some(Argument {
-            kind: ArgumentKind::Optional,
-            value: ArgumentValue::MathContent(optional),
-        });
-        let grouped = Some(Argument {
-            kind: ArgumentKind::Group,
-            value: ArgumentValue::MathContent(grouped),
-        });
+        let star = Some(Argument::from_value(
+            ArgumentKind::Star,
+            ArgumentValue::Boolean(true),
+        ));
+        let required = Some(Argument::from_value(
+            ArgumentKind::Mandatory,
+            ArgumentValue::MathContent(required),
+        ));
+        let optional = Some(Argument::from_value(
+            ArgumentKind::Optional,
+            ArgumentValue::MathContent(optional),
+        ));
+        let grouped = Some(Argument::from_value(
+            ArgumentKind::Group,
+            ArgumentValue::MathContent(grouped),
+        ));
 
         assert!(
             cx.for_rule(TEST_RULE)

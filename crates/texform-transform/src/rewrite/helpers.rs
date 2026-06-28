@@ -17,34 +17,39 @@ pub fn mandatory_content_slot(node_id: NodeId, mode: ContentMode) -> ArgumentSlo
         ContentMode::Math => ArgumentValue::MathContent(node_id),
         ContentMode::Text => ArgumentValue::TextContent(node_id),
     };
-    Some(Argument {
-        kind: ArgumentKind::Mandatory,
-        value,
-    })
+    Some(Argument::from_value(ArgumentKind::Mandatory, value))
+}
+
+/// Creates a mandatory operator-name content argument slot.
+pub fn mandatory_operator_name_slot(node_id: NodeId) -> ArgumentSlot {
+    Some(Argument::from_value(
+        ArgumentKind::Mandatory,
+        ArgumentValue::OperatorNameContent(node_id),
+    ))
 }
 
 /// Creates a mandatory delimiter argument slot.
 pub fn delimiter_slot(delimiter: Delimiter) -> ArgumentSlot {
-    Some(Argument {
-        kind: ArgumentKind::Mandatory,
-        value: ArgumentValue::Delimiter(delimiter),
-    })
+    Some(Argument::from_value(
+        ArgumentKind::Mandatory,
+        ArgumentValue::Delimiter(delimiter),
+    ))
 }
 
 /// Creates a mandatory dimension argument slot.
 pub fn dimension_slot(value: impl Into<String>) -> ArgumentSlot {
-    Some(Argument {
-        kind: ArgumentKind::Mandatory,
-        value: ArgumentValue::Dimension(value.into()),
-    })
+    Some(Argument::from_value(
+        ArgumentKind::Mandatory,
+        ArgumentValue::Dimension(value.into()),
+    ))
 }
 
 /// Creates a mandatory integer argument slot.
 pub fn integer_slot(value: impl Into<String>) -> ArgumentSlot {
-    Some(Argument {
-        kind: ArgumentKind::Mandatory,
-        value: ArgumentValue::Integer(value.into()),
-    })
+    Some(Argument::from_value(
+        ArgumentKind::Mandatory,
+        ArgumentValue::Integer(value.into()),
+    ))
 }
 
 /// Creates the two mandatory content arguments used when converting an infix node to a prefix command.
@@ -57,10 +62,10 @@ pub fn infix_prefix_args(left: NodeId, right: NodeId, mode: ContentMode) -> Vec<
 
 /// Creates a star (boolean) argument slot, representing a `*` modifier on a command.
 pub fn star_slot(value: bool) -> ArgumentSlot {
-    Some(Argument {
-        kind: ArgumentKind::Star,
-        value: ArgumentValue::Boolean(value),
-    })
+    Some(Argument::from_value(
+        ArgumentKind::Star,
+        ArgumentValue::Boolean(value),
+    ))
 }
 
 /// Creates a known command node with no arguments.
@@ -116,6 +121,7 @@ mod tests {
             Some(Argument {
                 kind: ArgumentKind::Mandatory,
                 value: ArgumentValue::MathContent(id),
+                ..
             }) if id == node_id
         ));
 
@@ -125,6 +131,7 @@ mod tests {
             Some(Argument {
                 kind: ArgumentKind::Star,
                 value: ArgumentValue::Boolean(true),
+                ..
             })
         ));
 
@@ -140,6 +147,7 @@ mod tests {
                             Some(Argument {
                                 kind: ArgumentKind::Star,
                                 value: ArgumentValue::Boolean(false),
+                                ..
                             }),
                             None,
                         ]

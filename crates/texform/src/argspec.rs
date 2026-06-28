@@ -52,6 +52,9 @@ pub enum ArgSpecKindInfo {
         /// The content mode the argument body is parsed in.
         mode: RuntimeContentModeInfo,
     },
+    /// Operator-name content parsed as math but serialized compactly.
+    #[serde(rename = "operatorname")]
+    OperatorName,
     /// A single delimiter token.
     Delimiter,
     /// A control-sequence name.
@@ -181,6 +184,7 @@ fn arg_spec_kind_info(kind: ValueKind) -> ArgSpecKindInfo {
         ValueKind::Content { mode } => ArgSpecKindInfo::Content {
             mode: runtime_content_mode_info(mode),
         },
+        ValueKind::OperatorName => ArgSpecKindInfo::OperatorName,
         ValueKind::Delimiter => ArgSpecKindInfo::Delimiter,
         ValueKind::CSName => ArgSpecKindInfo::CsName,
         ValueKind::Dimension => ArgSpecKindInfo::Dimension,

@@ -16,6 +16,14 @@ fn parse_to_ast(src: &str) -> texform_core::ast::Ast {
     Ast::from_syntax_root(&document.0.to_syntax())
 }
 
+fn parse_to_ast_with_context(ctx: &ParseContext, src: &str) -> texform_core::ast::Ast {
+    let document = ctx
+        .parse(src, &texform_core::parse::ParseConfig::STRICT)
+        .try_into_document()
+        .unwrap();
+    Ast::from_syntax_root(&document.0.to_syntax())
+}
+
 #[test]
 fn try_into_document_returns_diagnostics_present_when_partial_tree_has_errors() {
     let error = ParseContext::shared()
@@ -57,6 +65,55 @@ fn test_serialize_simple_math_chars() {
 fn test_serialize_glues_adjacent_math_digits_only() {
     assert_eq!(serialize(&parse_to_ast("1093^2")), "1093 ^ { 2 }");
     assert_eq!(serialize(&parse_to_ast("abc")), "a b c");
+}
+
+#[test]
+fn test_serialize_operatorname_argument_stays_compact() {
+    let ctx = ParseContext::from_packages(&["ams", "base"]);
+
+    assert_eq!(
+        serialize(&parse_to_ast_with_context(
+            &ctx,
+            r"\operatorname{Effectiveness}"
+        )),
+        r"\operatorname {Effectiveness}"
+    );
+    assert_eq!(
+        serialize(&parse_to_ast_with_context(
+            &ctx,
+            r"\operatorname{lambda-lift}"
+        )),
+        r"\operatorname {lambda-lift}"
+    );
+    assert_eq!(
+        serialize(&parse_to_ast_with_context(&ctx, r"\operatorname{a+}")),
+        r"\operatorname {a+}"
+    );
+}
+
+#[test]
+fn test_serialize_declare_math_operator_name_stays_compact() {
+    let ctx = ParseContext::from_packages(&["ams", "base"]);
+    let output = serialize(&parse_to_ast_with_context(
+        &ctx,
+        r"\DeclareMathOperator{diff}{Diff}",
+    ));
+
+    assert!(
+        output.contains("{Diff}"),
+        "operator name should stay compact: {output}"
+    );
+    assert!(
+        !output.contains("{D i f f}"),
+        "operator name should not be split: {output}"
+    );
+}
+
+#[test]
+fn test_serialize_regular_math_argument_still_uses_math_spacing() {
+    let ast = parse_to_ast(r"\sqrt{abc}");
+
+    assert_eq!(serialize(&ast), r"\sqrt { a b c }");
 }
 
 #[test]

@@ -36,7 +36,15 @@ ContextItem = dict[str, Any]
 SyntaxNode: TypeAlias = dict[str, Any]
 Span: TypeAlias = dict[str, int]
 ArgSpecKindType = Literal[
-    "content", "delimiter", "csname", "dimension", "integer", "keyval", "column", "star"
+    "content",
+    "operatorname",
+    "delimiter",
+    "csname",
+    "dimension",
+    "integer",
+    "keyval",
+    "column",
+    "star",
 ]
 ArgSpecFormType = Literal["standard", "star", "group", "delimited", "paired"]
 

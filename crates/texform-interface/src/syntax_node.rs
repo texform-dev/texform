@@ -69,6 +69,8 @@ pub enum ArgumentValue {
     MathContent(SyntaxNode),
     /// Parsed text-mode content subtree.
     TextContent(SyntaxNode),
+    /// Parsed operator-name content subtree.
+    OperatorNameContent(SyntaxNode),
     /// Delimiter argument value.
     Delimiter(Delimiter),
     /// Control-sequence name string with no escape/control sequences.
@@ -282,14 +284,18 @@ impl SyntaxNode {
             slot.as_ref().is_none_or(|arg| {
                 !matches!(
                     arg.value,
-                    ArgumentValue::MathContent(_) | ArgumentValue::TextContent(_)
+                    ArgumentValue::MathContent(_)
+                        | ArgumentValue::TextContent(_)
+                        | ArgumentValue::OperatorNameContent(_)
                 )
             })
         })) || matches!(self, SyntaxNode::Declarative { args, .. } if args.iter().all(|slot| {
             slot.as_ref().is_none_or(|arg| {
                 !matches!(
                     arg.value,
-                    ArgumentValue::MathContent(_) | ArgumentValue::TextContent(_)
+                    ArgumentValue::MathContent(_)
+                        | ArgumentValue::TextContent(_)
+                        | ArgumentValue::OperatorNameContent(_)
                 )
             })
         }))
@@ -517,6 +523,10 @@ impl ArgumentValue {
         match self {
             ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
                 node.fmt_with_indent(f, indent)
+            }
+            ArgumentValue::OperatorNameContent(node) => {
+                writeln!(f, "{}OperatorNameContent", prefix)?;
+                node.fmt_with_indent(f, indent + 1)
             }
             ArgumentValue::Delimiter(delim) => writeln!(f, "{}Delimiter({:?})", prefix, delim),
             ArgumentValue::CSName(value) => writeln!(f, "{}CSName(\"{}\")", prefix, value),

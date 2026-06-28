@@ -943,6 +943,9 @@ impl Document {
                 syntax_node::ArgumentValue::TextContent(node) => {
                     Self::validate_syntax(node, Some(ContentMode::Text), false)?;
                 }
+                syntax_node::ArgumentValue::OperatorNameContent(node) => {
+                    Self::validate_syntax(node, Some(ContentMode::Math), false)?;
+                }
                 _ => {}
             }
         }
@@ -952,7 +955,9 @@ impl Document {
     fn push_arg_children(args: &[ArgumentSlot], out: &mut Vec<RawNodeId>) {
         for arg in args.iter().flatten() {
             match &arg.value {
-                ArgumentValue::MathContent(child) | ArgumentValue::TextContent(child) => {
+                ArgumentValue::MathContent(child)
+                | ArgumentValue::TextContent(child)
+                | ArgumentValue::OperatorNameContent(child) => {
                     out.push(*child);
                 }
                 _ => {}
@@ -1022,7 +1027,7 @@ impl Document {
             ArgValue::Column(s) => (ArgumentKind::Mandatory, ArgumentValue::Column(s)),
             ArgValue::Boolean(b) => (ArgumentKind::Star, ArgumentValue::Boolean(b)),
         };
-        Ok(Some(Argument { kind, value }))
+        Ok(Some(Argument::from_value(kind, value)))
     }
 
     fn build_arg_value_for_kind(
@@ -1071,9 +1076,9 @@ impl Document {
             .get(index)
             .and_then(|slot| slot.as_ref())
             .and_then(|arg| match &arg.value {
-                ArgumentValue::MathContent(content) | ArgumentValue::TextContent(content) => {
-                    Some(*content)
-                }
+                ArgumentValue::MathContent(content)
+                | ArgumentValue::TextContent(content)
+                | ArgumentValue::OperatorNameContent(content) => Some(*content),
                 _ => None,
             });
 
@@ -1172,7 +1177,10 @@ impl Document {
     ) {
         for (index, slot) in args.iter().enumerate() {
             let Some(arg) = slot else { continue };
-            if let ArgumentValue::MathContent(id) | ArgumentValue::TextContent(id) = &arg.value {
+            if let ArgumentValue::MathContent(id)
+            | ArgumentValue::TextContent(id)
+            | ArgumentValue::OperatorNameContent(id) = &arg.value
+            {
                 self.collect_node_spans(*id, &format!("{path}.arg.{index}.content"), out);
             }
         }
@@ -1333,8 +1341,11 @@ impl Document {
             let content_path = format!("{path}.arg.{index}.content");
             if let (
                 syntax_node::ArgumentValue::MathContent(syntax_node)
-                | syntax_node::ArgumentValue::TextContent(syntax_node),
-                ArgumentValue::MathContent(ast_id) | ArgumentValue::TextContent(ast_id),
+                | syntax_node::ArgumentValue::TextContent(syntax_node)
+                | syntax_node::ArgumentValue::OperatorNameContent(syntax_node),
+                ArgumentValue::MathContent(ast_id)
+                | ArgumentValue::TextContent(ast_id)
+                | ArgumentValue::OperatorNameContent(ast_id),
             ) = (&syntax_arg.value, &ast_arg.value)
             {
                 Self::assign_spans(ast, syntax_node, *ast_id, &content_path, lookup, out);
@@ -1621,6 +1632,7 @@ impl<'a> NodeRef<'a> {
         match &arg.value {
             ArgumentValue::MathContent(id) => ArgRef::Math(self.sibling(*id)),
             ArgumentValue::TextContent(id) => ArgRef::Text(self.sibling(*id)),
+            ArgumentValue::OperatorNameContent(id) => ArgRef::Math(self.sibling(*id)),
             ArgumentValue::Delimiter(delimiter) => {
                 ArgRef::Delimiter(Self::delimiter_ref(delimiter))
             }

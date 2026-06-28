@@ -160,6 +160,8 @@ pub enum ArgumentValue {
     MathContent(NodeId),
     /// Child subtree used as text-mode argument content
     TextContent(NodeId),
+    /// Child subtree used as operator-name argument content
+    OperatorNameContent(NodeId),
     /// Parsed delimiter value
     Delimiter(Delimiter),
     /// Control-sequence name without leading backslash
@@ -183,6 +185,12 @@ pub struct Argument {
     pub kind: ArgumentKind,
     /// Parsed value stored in the slot
     pub value: ArgumentValue,
+}
+
+impl Argument {
+    pub fn from_value(kind: ArgumentKind, value: ArgumentValue) -> Self {
+        Self { kind, value }
+    }
 }
 
 /// Optional argument slot in a command or environment signature.
@@ -1588,6 +1596,9 @@ impl Ast {
             ArgumentValue::TextContent(id) => {
                 syntax_node::ArgumentValue::TextContent(self.to_syntax_node(*id))
             }
+            ArgumentValue::OperatorNameContent(id) => {
+                syntax_node::ArgumentValue::OperatorNameContent(self.to_syntax_node(*id))
+            }
             ArgumentValue::Delimiter(delimiter) => {
                 syntax_node::ArgumentValue::Delimiter(self.to_syntax_delimiter(delimiter))
             }
@@ -1706,6 +1717,9 @@ impl Ast {
             ArgumentValue::TextContent(child) => {
                 ArgumentValue::TextContent(self.clone_subtree_impl(child))
             }
+            ArgumentValue::OperatorNameContent(child) => {
+                ArgumentValue::OperatorNameContent(self.clone_subtree_impl(child))
+            }
             ArgumentValue::Delimiter(delimiter) => ArgumentValue::Delimiter(delimiter),
             ArgumentValue::CSName(name) => ArgumentValue::CSName(name),
             ArgumentValue::Dimension(value) => ArgumentValue::Dimension(value),
@@ -1786,7 +1800,9 @@ impl Ast {
             // Only content arguments participate in tree traversal. Scalar
             // values still live on the node, but they do not become AST edges.
             match &argument.value {
-                ArgumentValue::MathContent(child) | ArgumentValue::TextContent(child) => {
+                ArgumentValue::MathContent(child)
+                | ArgumentValue::TextContent(child)
+                | ArgumentValue::OperatorNameContent(child) => {
                     edges.push((*child, Slot::Argument(index)));
                 }
                 _ => {}
@@ -1945,6 +1961,9 @@ impl Ast {
             syntax_node::ArgumentValue::TextContent(node) => {
                 ArgumentValue::TextContent(Self::convert_syntax_node(node, nodes, parent))
             }
+            syntax_node::ArgumentValue::OperatorNameContent(node) => {
+                ArgumentValue::OperatorNameContent(Self::convert_syntax_node(node, nodes, parent))
+            }
             syntax_node::ArgumentValue::Delimiter(delimiter) => {
                 ArgumentValue::Delimiter(Self::convert_delimiter(*delimiter))
             }
@@ -1987,7 +2006,9 @@ fn replace_argument_child(args: &mut [ArgumentSlot], slot: Slot, old: NodeId, re
         .and_then(Option::as_mut)
         .unwrap_or_else(|| panic!("Argument slot is missing"));
     match &mut argument.value {
-        ArgumentValue::MathContent(child) | ArgumentValue::TextContent(child) => {
+        ArgumentValue::MathContent(child)
+        | ArgumentValue::TextContent(child)
+        | ArgumentValue::OperatorNameContent(child) => {
             assert_eq!(*child, old, "Argument child must match old node");
             *child = replacement;
         }

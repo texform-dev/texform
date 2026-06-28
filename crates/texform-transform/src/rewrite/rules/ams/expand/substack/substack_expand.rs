@@ -62,10 +62,10 @@ fn environment_body(cx: &mut crate::rewrite::rule_context::RuleContext<'_>, body
 }
 
 fn center_column_arg() -> Option<Argument> {
-    Some(Argument {
-        kind: ArgumentKind::Mandatory,
-        value: ArgumentValue::Column("c".to_string()),
-    })
+    Some(Argument::from_value(
+        ArgumentKind::Mandatory,
+        ArgumentValue::Column("c".to_string()),
+    ))
 }
 
 #[cfg(test)]

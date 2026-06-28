@@ -490,9 +490,12 @@ fn parse_delimited_value<'src, 'parse>(
     nullable: bool,
 ) -> Result<ArgumentValue, Rich<'src, Token>> {
     match kind {
-        ValueKind::Content { mode } => {
+        ValueKind::Content { .. } | ValueKind::OperatorName => {
+            let mode = kind
+                .content_mode()
+                .expect("content-like value kind should have a content mode");
             let content = parse_tokens_as_content(input, state, mode, tokens, 0)?;
-            Ok(argument_content_value(mode, content.node))
+            Ok(argument_content_value_for_kind(kind, content.node))
         }
         ValueKind::CSName => {
             if nullable && tokens.iter().all(|t| matches!(t, Token::Whitespaces)) {
@@ -582,10 +585,16 @@ fn parse_delimited_value<'src, 'parse>(
     }
 }
 
-fn argument_content_value(mode: ContentMode, node: SyntaxNode) -> ArgumentValue {
-    match mode {
-        ContentMode::Math => ArgumentValue::MathContent(node),
-        ContentMode::Text => ArgumentValue::TextContent(node),
+fn argument_content_value_for_kind(kind: ValueKind, node: SyntaxNode) -> ArgumentValue {
+    match kind {
+        ValueKind::Content {
+            mode: ContentMode::Math,
+        } => ArgumentValue::MathContent(node),
+        ValueKind::Content {
+            mode: ContentMode::Text,
+        } => ArgumentValue::TextContent(node),
+        ValueKind::OperatorName => ArgumentValue::OperatorNameContent(node),
+        _ => unreachable!("non-content value kind cannot carry a content node"),
     }
 }
 
@@ -621,7 +630,11 @@ pub(super) fn argument_parser<'a>(
 
         match &spec.form {
             ArgForm::Standard => match spec.kind {
-                ValueKind::Content { mode } => {
+                ValueKind::Content { .. } | ValueKind::OperatorName => {
+                    let mode = spec
+                        .kind
+                        .content_mode()
+                        .expect("content-like value kind should have a content mode");
                     if spec.required {
                         if matches!(input.peek(), Some(Token::LBrace)) {
                             // Braced content: {abc}
@@ -638,7 +651,10 @@ pub(super) fn argument_parser<'a>(
                             Ok(TrackedArgumentSlot {
                                 slot: Some(Argument::from_value(
                                     ArgumentKind::Mandatory,
-                                    argument_content_value(mode, content.node.clone()),
+                                    argument_content_value_for_kind(
+                                        spec.kind,
+                                        content.node.clone(),
+                                    ),
                                 )),
                                 span: Some(arg_span),
                                 content: Some(content),
@@ -675,7 +691,10 @@ pub(super) fn argument_parser<'a>(
                             Ok(TrackedArgumentSlot {
                                 slot: Some(Argument::from_value(
                                     ArgumentKind::Mandatory,
-                                    argument_content_value(mode, content.node.clone()),
+                                    argument_content_value_for_kind(
+                                        spec.kind,
+                                        content.node.clone(),
+                                    ),
                                 )),
                                 span: Some(arg_span),
                                 content: Some(content),
@@ -694,7 +713,7 @@ pub(super) fn argument_parser<'a>(
                         Ok(TrackedArgumentSlot {
                             slot: Some(Argument::from_value(
                                 ArgumentKind::Optional,
-                                argument_content_value(mode, content.node.clone()),
+                                argument_content_value_for_kind(spec.kind, content.node.clone()),
                             )),
                             span: Some(arg_span),
                             content: Some(content),
@@ -936,10 +955,10 @@ pub(super) fn argument_parser<'a>(
                 }
                 let arg_span = input.span_from_cursor(&arg_start);
                 Ok(TrackedArgumentSlot::with_span(
-                    Some(Argument {
-                        kind: ArgumentKind::Star,
-                        value: ArgumentValue::Boolean(present),
-                    }),
+                    Some(Argument::from_value(
+                        ArgumentKind::Star,
+                        ArgumentValue::Boolean(present),
+                    )),
                     arg_span,
                 ))
             }
@@ -961,14 +980,18 @@ pub(super) fn argument_parser<'a>(
                 let arg_span = input.span_from_cursor(&arg_start);
 
                 // For content-typed group args, track the content subtree.
-                if let ValueKind::Content { mode } = spec.kind {
+                if spec.kind.is_content() {
+                    let mode = spec
+                        .kind
+                        .content_mode()
+                        .expect("content-like value kind should have a content mode");
                     let content_offset = arg_span.start + 1;
                     let content =
                         parse_tokens_as_content(input, state, mode, tokens, content_offset)?;
                     return Ok(TrackedArgumentSlot {
                         slot: Some(Argument::from_value(
                             ArgumentKind::Group,
-                            argument_content_value(mode, content.node.clone()),
+                            argument_content_value_for_kind(spec.kind, content.node.clone()),
                         )),
                         span: Some(arg_span),
                         content: Some(content),
@@ -998,7 +1021,11 @@ pub(super) fn argument_parser<'a>(
                 let arg_span = input.span_from_cursor(&arg_start);
 
                 // For content-typed delimited args, track the content subtree.
-                if let ValueKind::Content { mode } = spec.kind {
+                if spec.kind.is_content() {
+                    let mode = spec
+                        .kind
+                        .content_mode()
+                        .expect("content-like value kind should have a content mode");
                     let open_len = delimiter_token_source_len(open);
                     let close_len = delimiter_token_source_len(close);
                     let content_offset = arg_span.start + open_len;
@@ -1012,7 +1039,7 @@ pub(super) fn argument_parser<'a>(
                                 open: syntax_delimiter(open),
                                 close: syntax_delimiter(close),
                             },
-                            argument_content_value(mode, content.node.clone()),
+                            argument_content_value_for_kind(spec.kind, content.node.clone()),
                         )),
                         span: Some(arg_span),
                         content: Some(content),
@@ -1052,7 +1079,11 @@ pub(super) fn argument_parser<'a>(
                 let arg_span = input.span_from_cursor(&arg_start);
 
                 // For content-typed paired args, track the content subtree.
-                if let ValueKind::Content { mode } = spec.kind {
+                if spec.kind.is_content() {
+                    let mode = spec
+                        .kind
+                        .content_mode()
+                        .expect("content-like value kind should have a content mode");
                     let open_len = delimiter_token_source_len(open);
                     let content_offset = arg_span.start + open_len;
                     let content =
@@ -1063,7 +1094,7 @@ pub(super) fn argument_parser<'a>(
                                 open: syntax_delimiter(open),
                                 close: syntax_delimiter(close),
                             },
-                            argument_content_value(mode, content.node.clone()),
+                            argument_content_value_for_kind(spec.kind, content.node.clone()),
                         )),
                         span: Some(arg_span),
                         content: Some(content),

@@ -36,10 +36,10 @@ fn text_group(children: Vec<SyntaxNode>) -> SyntaxNode {
 }
 
 fn math_arg(node: SyntaxNode) -> Option<Argument> {
-    Some(Argument {
-        kind: ArgumentKind::Mandatory,
-        value: ArgumentValue::MathContent(node),
-    })
+    Some(Argument::from_value(
+        ArgumentKind::Mandatory,
+        ArgumentValue::MathContent(node),
+    ))
 }
 
 fn root_children(ast: &Ast) -> Vec<SyntaxNode> {

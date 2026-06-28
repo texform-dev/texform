@@ -59,6 +59,7 @@ fn render_value_kind(kind: ValueKind) -> TokenStream2 {
                 ::texform_knowledge::specs::ValueKind::Content { mode: #mode }
             }
         }
+        ValueKind::OperatorName => quote!(::texform_knowledge::specs::ValueKind::OperatorName),
         ValueKind::Delimiter => quote!(::texform_knowledge::specs::ValueKind::Delimiter),
         ValueKind::CSName => quote!(::texform_knowledge::specs::ValueKind::CSName),
         ValueKind::Dimension => quote!(::texform_knowledge::specs::ValueKind::Dimension),

@@ -16,7 +16,7 @@ use texform_knowledge::builtin::ams;
 use texform_knowledge::builtin::physics;
 
 use crate::ast::{ContentMode, GroupKind, Node};
-use crate::rewrite::helpers::{mandatory_content_slot, prefix_command_node, star_slot};
+use crate::rewrite::helpers::{mandatory_operator_name_slot, prefix_command_node, star_slot};
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::rewrite::{cmd_targets, define_rule};
 
@@ -54,10 +54,7 @@ define_rule! {
                 node_id,
                 prefix_command_node(
                     &ams::cmd::OPERATORNAME,
-                    vec![
-                        star_slot(false),
-                        mandatory_content_slot(rank_text, ContentMode::Math),
-                    ],
+                    vec![star_slot(false), mandatory_operator_name_slot(rank_text)],
                 ),
             );
             Ok(RuleEffect::Applied)
@@ -122,8 +119,8 @@ mod tests {
             panic!("operatorname should carry a rank argument");
         };
         assert_eq!(rank_arg.kind, ArgumentKind::Mandatory);
-        let ArgumentValue::MathContent(rank_group) = rank_arg.value else {
-            panic!("rank argument should be math content");
+        let ArgumentValue::OperatorNameContent(rank_group) = rank_arg.value else {
+            panic!("rank argument should be operator-name content");
         };
         let Node::Group { children, mode, .. } = ast.node(rank_group) else {
             panic!("rank argument should be a group");

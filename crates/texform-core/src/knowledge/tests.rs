@@ -55,6 +55,25 @@ fn test_arg_spec_helpers() {
 }
 
 #[test]
+fn test_ams_operator_names_use_operator_name_content() {
+    let kb = KnowledgeBase::build_from_packages(&["ams", "base"]);
+    let operatorname = kb
+        .lookup_command("operatorname")
+        .expect("expected operatorname command");
+
+    assert_eq!(operatorname.argspec.source, "s m:O");
+    assert_eq!(operatorname.argspec[1].kind, ValueKind::OperatorName);
+
+    let declare = kb
+        .lookup_command("DeclareMathOperator")
+        .expect("expected DeclareMathOperator command");
+
+    assert_eq!(declare.argspec.source, "s m:N m:O");
+    assert_eq!(declare.argspec[1].kind, ValueKind::CSName);
+    assert_eq!(declare.argspec[2].kind, ValueKind::OperatorName);
+}
+
+#[test]
 fn test_delimiter_controls() {
     let kb = KnowledgeBase::empty();
     assert!(kb.lookup_delimiter_control("langle").is_none());

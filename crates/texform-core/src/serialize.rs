@@ -600,11 +600,20 @@ impl<'a> Serializer<'a> {
             (ArgumentKind::Mandatory | ArgumentKind::Group, ArgumentValue::TextContent(child)) => {
                 self.emit_argument_content(*child, ContentMode::Text, "{", "}", mode);
             }
+            (
+                ArgumentKind::Mandatory | ArgumentKind::Group,
+                ArgumentValue::OperatorNameContent(child),
+            ) => {
+                self.emit_operator_name_argument_content(*child, "{", "}", mode);
+            }
             (ArgumentKind::Optional, ArgumentValue::MathContent(child)) => {
                 self.emit_argument_content(*child, ContentMode::Math, "[", "]", mode);
             }
             (ArgumentKind::Optional, ArgumentValue::TextContent(child)) => {
                 self.emit_argument_content(*child, ContentMode::Text, "[", "]", mode);
+            }
+            (ArgumentKind::Optional, ArgumentValue::OperatorNameContent(child)) => {
+                self.emit_operator_name_argument_content(*child, "[", "]", mode);
             }
             (ArgumentKind::Mandatory | ArgumentKind::Group, value) => {
                 self.emit_scalar_wrapped(value, "{", "}", mode)
@@ -617,6 +626,10 @@ impl<'a> Serializer<'a> {
             (ArgumentKind::Delimited { open, close }, ArgumentValue::TextContent(node))
             | (ArgumentKind::Paired { open, close }, ArgumentValue::TextContent(node)) => {
                 self.emit_recorded_delimiters(open, close, *node, ContentMode::Text)
+            }
+            (ArgumentKind::Delimited { open, close }, ArgumentValue::OperatorNameContent(node))
+            | (ArgumentKind::Paired { open, close }, ArgumentValue::OperatorNameContent(node)) => {
+                self.emit_operator_name_between_delimiters(open, close, *node, mode)
             }
             (ArgumentKind::Delimited { open, close }, value)
             | (ArgumentKind::Paired { open, close }, value) => {
@@ -639,6 +652,20 @@ impl<'a> Serializer<'a> {
         wrapper_mode: ContentMode,
     ) {
         self.emit_wrapped_content(child, wrapper_mode, content_mode, open, close);
+    }
+
+    fn emit_operator_name_argument_content(
+        &mut self,
+        child: NodeId,
+        open: &str,
+        close: &str,
+        wrapper_mode: ContentMode,
+    ) {
+        self.writer
+            .emit(wrapper_mode, AtomKind::Brace, open, self.options);
+        self.visit_operator_name_content_node(child);
+        self.writer
+            .emit(ContentMode::Text, AtomKind::Brace, close, self.options);
     }
 
     fn visit_scripted(
@@ -932,6 +959,33 @@ impl<'a> Serializer<'a> {
         self.emit_delimiter(close, mode);
     }
 
+    fn emit_operator_name_between_delimiters(
+        &mut self,
+        open: &Delimiter,
+        close: &Delimiter,
+        node: NodeId,
+        mode: ContentMode,
+    ) {
+        self.emit_delimiter(open, mode);
+        self.visit_operator_name_content_node(node);
+        self.emit_delimiter(close, ContentMode::Text);
+    }
+
+    fn visit_operator_name_content_node(&mut self, node: NodeId) {
+        match self.ast.node(node) {
+            Node::Group {
+                children,
+                kind: GroupKind::Explicit | GroupKind::Implicit,
+                ..
+            } => {
+                for &child in children {
+                    self.visit(child, ContentMode::Text);
+                }
+            }
+            _ => self.visit(node, ContentMode::Text),
+        }
+    }
+
     fn emit_scalar_between_delimiters(
         &mut self,
         open: &Delimiter,
@@ -957,7 +1011,9 @@ impl<'a> Serializer<'a> {
             ArgumentValue::Boolean(_) => {
                 unreachable!("boolean values are only valid in star slots")
             }
-            ArgumentValue::MathContent(_) | ArgumentValue::TextContent(_) => {
+            ArgumentValue::MathContent(_)
+            | ArgumentValue::TextContent(_)
+            | ArgumentValue::OperatorNameContent(_) => {
                 unreachable!("content variants must be serialized as child nodes")
             }
         }

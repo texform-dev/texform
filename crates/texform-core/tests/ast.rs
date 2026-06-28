@@ -14,10 +14,10 @@ fn explicit_group(ast: &mut Ast, mode: ContentMode) -> NodeId {
 }
 
 fn content_arg(kind: ArgumentKind, child: NodeId) -> ArgumentSlot {
-    Some(Argument {
+    Some(Argument::from_value(
         kind,
-        value: ArgumentValue::MathContent(child),
-    })
+        ArgumentValue::MathContent(child),
+    ))
 }
 
 #[test]

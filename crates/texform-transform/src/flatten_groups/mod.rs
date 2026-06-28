@@ -531,7 +531,9 @@ fn context_mode(ast: &Ast, link: ParentLink) -> Option<ContentMode> {
 fn argument_slot_mode(ast: &Ast, parent: NodeId, index: usize) -> Option<ContentMode> {
     let argument = ast.arg_slots(parent).get(index)?.as_ref()?;
     match argument.value {
-        ArgumentValue::MathContent(_) => Some(ContentMode::Math),
+        ArgumentValue::MathContent(_) | ArgumentValue::OperatorNameContent(_) => {
+            Some(ContentMode::Math)
+        }
         ArgumentValue::TextContent(_) => Some(ContentMode::Text),
         _ => None,
     }

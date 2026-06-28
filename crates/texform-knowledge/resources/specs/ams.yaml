@@ -33,7 +33,7 @@ commands:
       - decoration
   - name: DeclareMathOperator
     kind: prefix
-    argspec: s m:N m
+    argspec: s m:N m:O
     allowed_mode: math
     tags:
       - invisible
@@ -110,7 +110,7 @@ commands:
       - invisible
   - name: operatorname
     kind: prefix
-    argspec: s m
+    argspec: s m:O
     allowed_mode: math
     tags: []
   - name: projlim

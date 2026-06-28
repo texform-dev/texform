@@ -111,10 +111,10 @@ fn rewrite_root_of(
         prefix_command_node(
             &base::cmd::SQRT,
             vec![
-                Some(Argument {
-                    kind: ArgumentKind::Optional,
-                    value: ArgumentValue::MathContent(degree),
-                }),
+                Some(Argument::from_value(
+                    ArgumentKind::Optional,
+                    ArgumentValue::MathContent(degree),
+                )),
                 mandatory_content_slot(radicand, ContentMode::Math),
             ],
         ),

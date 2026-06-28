@@ -148,9 +148,9 @@ pub(crate) fn assert_first_diagnostic_span_eq(output: &ParseResult, src: &str, e
 
 fn slot_contains_error(slot: &Option<Argument>) -> bool {
     slot.as_ref().is_some_and(|arg| match &arg.value {
-        ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
-            contains_error_node(node)
-        }
+        ArgumentValue::MathContent(node)
+        | ArgumentValue::TextContent(node)
+        | ArgumentValue::OperatorNameContent(node) => contains_error_node(node),
         _ => false,
     })
 }
@@ -179,9 +179,9 @@ pub(crate) fn contains_error_node(node: &SyntaxNode) -> bool {
 
 fn slot_contains_command_named(slot: &Option<Argument>, name: &str) -> bool {
     slot.as_ref().is_some_and(|arg| match &arg.value {
-        ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
-            contains_command_named(node, name)
-        }
+        ArgumentValue::MathContent(node)
+        | ArgumentValue::TextContent(node)
+        | ArgumentValue::OperatorNameContent(node) => contains_command_named(node, name),
         _ => false,
     })
 }

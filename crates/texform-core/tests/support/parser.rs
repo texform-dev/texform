@@ -403,7 +403,9 @@ pub(crate) fn expect_arg(slot: &Option<Argument>) -> &Argument {
 
 pub(crate) fn unwrap_content(slot: &Option<Argument>) -> &SyntaxNode {
     match &expect_arg(slot).value {
-        ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => node,
+        ArgumentValue::MathContent(node)
+        | ArgumentValue::TextContent(node)
+        | ArgumentValue::OperatorNameContent(node) => node,
         _ => panic!("Expected content argument"),
     }
 }
@@ -439,17 +441,17 @@ pub(crate) fn extract_command_args<'a>(
             .find_map(|child| extract_command_args(child, name)),
         SyntaxNode::Command { args, .. } => args.iter().find_map(|slot| {
             slot.as_ref().and_then(|arg| match &arg.value {
-                ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
-                    extract_command_args(node, name)
-                }
+                ArgumentValue::MathContent(node)
+                | ArgumentValue::TextContent(node)
+                | ArgumentValue::OperatorNameContent(node) => extract_command_args(node, name),
                 _ => None,
             })
         }),
         SyntaxNode::Declarative { args, .. } => args.iter().find_map(|slot| {
             slot.as_ref().and_then(|arg| match &arg.value {
-                ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
-                    extract_command_args(node, name)
-                }
+                ArgumentValue::MathContent(node)
+                | ArgumentValue::TextContent(node)
+                | ArgumentValue::OperatorNameContent(node) => extract_command_args(node, name),
                 _ => None,
             })
         }),
@@ -457,9 +459,9 @@ pub(crate) fn extract_command_args<'a>(
             .iter()
             .find_map(|slot| {
                 slot.as_ref().and_then(|arg| match &arg.value {
-                    ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
-                        extract_command_args(node, name)
-                    }
+                    ArgumentValue::MathContent(node)
+                    | ArgumentValue::TextContent(node)
+                    | ArgumentValue::OperatorNameContent(node) => extract_command_args(node, name),
                     _ => None,
                 })
             })
@@ -470,9 +472,9 @@ pub(crate) fn extract_command_args<'a>(
             .iter()
             .find_map(|slot| {
                 slot.as_ref().and_then(|arg| match &arg.value {
-                    ArgumentValue::MathContent(node) | ArgumentValue::TextContent(node) => {
-                        extract_command_args(node, name)
-                    }
+                    ArgumentValue::MathContent(node)
+                    | ArgumentValue::TextContent(node)
+                    | ArgumentValue::OperatorNameContent(node) => extract_command_args(node, name),
                     _ => None,
                 })
             })

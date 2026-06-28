@@ -23,6 +23,18 @@ fn test_parse_arg_specs_xparse_style() {
 }
 
 #[test]
+fn test_parse_operator_name_value_kind() {
+    let specs = parse_arg_specs("s m:O o:O", "operator-name").unwrap();
+
+    assert_eq!(specs.len(), 3);
+    assert_eq!(specs[0].kind, ValueKind::Star);
+    assert_eq!(specs[1].kind, ValueKind::OperatorName);
+    assert!(specs[1].required);
+    assert_eq!(specs[2].kind, ValueKind::OperatorName);
+    assert!(!specs[2].required);
+}
+
+#[test]
 fn test_parse_arg_specs_supports_required_group_form() {
     let specs = parse_arg_specs("m m{} m{}:T m{}:L", "required-group")
         .expect("required group argspec should be valid");

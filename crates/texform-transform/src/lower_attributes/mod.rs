@@ -405,7 +405,9 @@ fn argument_content_mode(ast: &Ast, parent: NodeId, index: usize) -> Option<Cont
         .get(index)
         .and_then(Option::as_ref)
         .and_then(|argument| match argument.value {
-            ArgumentValue::MathContent(_) => Some(ContentMode::Math),
+            ArgumentValue::MathContent(_) | ArgumentValue::OperatorNameContent(_) => {
+                Some(ContentMode::Math)
+            }
             ArgumentValue::TextContent(_) => Some(ContentMode::Text),
             _ => None,
         })
@@ -689,7 +691,9 @@ fn mandatory_content_child(ast: &Ast, node: NodeId) -> Option<NodeId> {
             continue;
         }
         let child = match argument.value {
-            ArgumentValue::MathContent(child) | ArgumentValue::TextContent(child) => child,
+            ArgumentValue::MathContent(child)
+            | ArgumentValue::TextContent(child)
+            | ArgumentValue::OperatorNameContent(child) => child,
             _ => continue,
         };
         if found.replace(child).is_some() {
@@ -954,7 +958,9 @@ fn mandatory_content_child_mode(ast: &Ast, node: NodeId) -> Option<ContentMode> 
             continue;
         }
         let child_mode = match argument.value {
-            ArgumentValue::MathContent(_) => ContentMode::Math,
+            ArgumentValue::MathContent(_) | ArgumentValue::OperatorNameContent(_) => {
+                ContentMode::Math
+            }
             ArgumentValue::TextContent(_) => ContentMode::Text,
             _ => continue,
         };

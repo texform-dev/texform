@@ -283,10 +283,10 @@ fn fixed_parts(cx: &mut RuleContext<'_>, body: NodeId, close: Node) -> Vec<NodeI
 fn middle_vert() -> Node {
     Node::Command {
         name: base::cmd::MIDDLE.name.to_string(),
-        args: vec![Some(crate::ast::Argument {
-            kind: ArgumentKind::Mandatory,
-            value: ArgumentValue::Delimiter(Delimiter::Control("vert".to_string())),
-        })],
+        args: vec![Some(crate::ast::Argument::from_value(
+            ArgumentKind::Mandatory,
+            ArgumentValue::Delimiter(Delimiter::Control("vert".to_string())),
+        ))],
         known: true,
     }
 }

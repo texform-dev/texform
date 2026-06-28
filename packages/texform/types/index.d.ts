@@ -272,6 +272,7 @@ export interface Argument {
 export type ArgumentValue =
   | { MathContent: SyntaxNode }
   | { TextContent: SyntaxNode }
+  | { OperatorNameContent: SyntaxNode }
   | { Delimiter: Delimiter }
   | { CSName: string }
   | { Dimension: string }
@@ -1056,13 +1057,14 @@ export type CommandKind = "prefix" | "infix" | "declarative";
  * The value kind one parsed argument slot accepts, with a `type` discriminator.
  *
  * `content` carries the {@link RuntimeContentMode} its body parses in; the
- * other variants are leaf kinds (delimiter, csname, dimension, integer, keyval,
- * column, star).
+ * other variants are leaf kinds (operatorname, delimiter, csname, dimension,
+ * integer, keyval, column, star).
  *
  * @see {@link ParsedArgSpecSlot}
  */
 export type ArgSpecKindInfo =
   | { type: "content"; mode: RuntimeContentMode }
+  | { type: "operatorname" }
   | { type: "delimiter" }
   | { type: "csname" }
   | { type: "dimension" }

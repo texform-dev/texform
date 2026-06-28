@@ -57,6 +57,20 @@ fn validate_argspec_success_returns_stable_slot_shape() {
 }
 
 #[test]
+fn validate_argspec_reports_operator_name_kind() {
+    let result = validate_argspec("m:O");
+
+    assert!(result.valid);
+    let parsed = result
+        .parsed
+        .expect("valid argspec should include parsed slots");
+    assert_eq!(parsed[0].kind, ArgSpecKindInfo::OperatorName);
+
+    let slot = serde_json::to_value(&parsed[0]).unwrap();
+    assert_eq!(slot["kind"], serde_json::json!({ "type": "operatorname" }));
+}
+
+#[test]
 fn validate_argspec_failure_keeps_all_fields_present() {
     let result = validate_argspec("m?");
 
