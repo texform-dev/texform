@@ -2924,9 +2924,8 @@ where
 {
     let ws = insignificant_whitespace();
 
-    let stop_boundary = ws.clone().ignore_then(control_seq("end")).rewind();
+    let stop_boundary = ws.clone().ignore_then(control_seq("end"));
 
-    let guarded_item = stop_boundary.clone().not().ignore_then(normal_item.clone());
     custom(move |input| {
         let mut items = Vec::new();
 
@@ -2935,11 +2934,13 @@ where
             let _ = input.parse(ws.clone());
             let natural_end = matches!(input.peek().as_ref(), None | Some(Token::RBrace));
             input.rewind(checkpoint.clone());
-            if natural_end || input.parse(stop_boundary.clone()).is_ok() {
+            let at_stop = input.parse(stop_boundary.clone()).is_ok();
+            input.rewind(checkpoint.clone());
+            if natural_end || at_stop {
                 break;
             }
 
-            match input.parse(guarded_item.clone()) {
+            match input.parse(normal_item.clone()) {
                 Ok(item) => items.push(item),
                 Err(err) => {
                     input.rewind(checkpoint);

@@ -295,6 +295,20 @@ fn test_serialize_text_argument_single_text_chunk_stays_compact() {
 }
 
 #[test]
+fn test_serialize_text_argument_preserves_edge_spaces() {
+    let ast = parse_to_ast(r"\text{ or }");
+
+    assert_eq!(serialize(&ast), r"\text { or }");
+}
+
+#[test]
+fn test_serialize_mbox_argument_preserves_leading_space() {
+    let ast = parse_to_ast(r"\mbox{ heads}");
+
+    assert_eq!(serialize(&ast), r"\mbox { heads}");
+}
+
+#[test]
 fn test_serialize_frac_and_text_argument() {
     let ast = parse_to_ast(r"\frac{a}{\text{abc}}");
 
