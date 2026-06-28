@@ -470,7 +470,7 @@ fn parse_argument_slots<'src, 'parse>(
 
         let arg_start = input.cursor();
         let parser = argument_parser(state, math_content.clone(), text_content.clone(), spec);
-        let arg = input.parse(parser).map_err(|err| {
+        let mut arg = input.parse(parser).map_err(|err| {
             let original_kind = diagnostic_kind(&err);
             let arg_span = err
                 .contexts()
@@ -484,6 +484,9 @@ fn parse_argument_slots<'src, 'parse>(
                 with_default_diagnostic_kind(err, ParseDiagnosticKind::ArgumentValidation)
             }
         })?;
+        if let Some(argument) = arg.slot.as_mut() {
+            argument.no_leading_space = spec.no_leading_space;
+        }
         slots.push(arg);
     }
 

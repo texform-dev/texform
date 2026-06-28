@@ -81,6 +81,7 @@ fn text_argument(
         Some(arg) if arg.kind == ArgumentKind::Mandatory => match arg.value {
             ArgumentValue::TextContent(node_id) => Ok(Some(Argument {
                 kind: arg.kind.clone(),
+                no_leading_space: arg.no_leading_space,
                 value: ArgumentValue::TextContent(cx.ast.clone_subtree(node_id)),
             })),
             _ => Err(cx.for_rule(QqtextExpandRule::KEY).invalid_shape(format!("{subject} should carry a mandatory text argument"))),

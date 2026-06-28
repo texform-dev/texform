@@ -258,6 +258,8 @@ export type SyntaxNode =
 export interface Argument {
   /** The argument's syntactic kind (mandatory, optional, delimited, ...). */
   kind: ArgumentKind;
+  /** Whether the argspec slot was prefixed with `!`. */
+  no_leading_space?: boolean;
   /** The argument's parsed value. */
   value: ArgumentValue;
 }

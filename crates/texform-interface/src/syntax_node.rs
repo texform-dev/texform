@@ -22,6 +22,9 @@ use serde::{Deserialize, Deserializer, Serialize};
 pub struct Argument {
     /// The syntactic form the argument takes (mandatory, optional, delimited, ...).
     pub kind: ArgumentKind,
+    /// Whether the argument was parsed from an argspec slot prefixed with `!`.
+    #[serde(default)]
+    pub no_leading_space: bool,
     /// The argument's content, or its absence for an omitted optional slot.
     pub value: ArgumentValue,
 }
@@ -341,7 +344,16 @@ impl SyntaxNode {
 impl Argument {
     /// Create an argument from a kind and value.
     pub fn from_value(kind: ArgumentKind, value: ArgumentValue) -> Self {
-        Argument { kind, value }
+        Argument {
+            kind,
+            no_leading_space: false,
+            value,
+        }
+    }
+
+    pub fn with_no_leading_space(mut self, no_leading_space: bool) -> Self {
+        self.no_leading_space = no_leading_space;
+        self
     }
 }
 
@@ -512,7 +524,11 @@ impl SyntaxNode {
 impl Argument {
     fn fmt_with_indent(&self, f: &mut std::fmt::Formatter<'_>, indent: usize) -> std::fmt::Result {
         let prefix = "  ".repeat(indent);
-        writeln!(f, "{}Arg({:?}):", prefix, self.kind)?;
+        writeln!(
+            f,
+            "{}Arg({:?}, no_leading_space={}):",
+            prefix, self.kind, self.no_leading_space
+        )?;
         self.value.fmt_with_indent(f, indent + 1)
     }
 }

@@ -587,6 +587,11 @@ impl<'a> Serializer<'a> {
         let Some(arg) = slot else {
             return;
         };
+        let wrapper_mode = if arg.no_leading_space {
+            ContentMode::Text
+        } else {
+            mode
+        };
 
         match (&arg.kind, &arg.value) {
             (ArgumentKind::Star, ArgumentValue::Boolean(true)) => self.writer.emit_star_suffix(),
@@ -595,30 +600,32 @@ impl<'a> Serializer<'a> {
                 unreachable!("star slots must carry boolean values")
             }
             (ArgumentKind::Mandatory | ArgumentKind::Group, ArgumentValue::MathContent(child)) => {
-                self.emit_argument_content(*child, ContentMode::Math, "{", "}", mode);
+                self.emit_argument_content(*child, ContentMode::Math, "{", "}", wrapper_mode);
             }
             (ArgumentKind::Mandatory | ArgumentKind::Group, ArgumentValue::TextContent(child)) => {
-                self.emit_argument_content(*child, ContentMode::Text, "{", "}", mode);
+                self.emit_argument_content(*child, ContentMode::Text, "{", "}", wrapper_mode);
             }
             (
                 ArgumentKind::Mandatory | ArgumentKind::Group,
                 ArgumentValue::OperatorNameContent(child),
             ) => {
-                self.emit_operator_name_argument_content(*child, "{", "}", mode);
+                self.emit_operator_name_argument_content(*child, "{", "}", wrapper_mode);
             }
             (ArgumentKind::Optional, ArgumentValue::MathContent(child)) => {
-                self.emit_argument_content(*child, ContentMode::Math, "[", "]", mode);
+                self.emit_argument_content(*child, ContentMode::Math, "[", "]", wrapper_mode);
             }
             (ArgumentKind::Optional, ArgumentValue::TextContent(child)) => {
-                self.emit_argument_content(*child, ContentMode::Text, "[", "]", mode);
+                self.emit_argument_content(*child, ContentMode::Text, "[", "]", wrapper_mode);
             }
             (ArgumentKind::Optional, ArgumentValue::OperatorNameContent(child)) => {
-                self.emit_operator_name_argument_content(*child, "[", "]", mode);
+                self.emit_operator_name_argument_content(*child, "[", "]", wrapper_mode);
             }
             (ArgumentKind::Mandatory | ArgumentKind::Group, value) => {
-                self.emit_scalar_wrapped(value, "{", "}", mode)
+                self.emit_scalar_wrapped(value, "{", "}", wrapper_mode)
             }
-            (ArgumentKind::Optional, value) => self.emit_scalar_wrapped(value, "[", "]", mode),
+            (ArgumentKind::Optional, value) => {
+                self.emit_scalar_wrapped(value, "[", "]", wrapper_mode)
+            }
             (ArgumentKind::Delimited { open, close }, ArgumentValue::MathContent(node))
             | (ArgumentKind::Paired { open, close }, ArgumentValue::MathContent(node)) => {
                 self.emit_recorded_delimiters(open, close, *node, ContentMode::Math)
@@ -629,11 +636,11 @@ impl<'a> Serializer<'a> {
             }
             (ArgumentKind::Delimited { open, close }, ArgumentValue::OperatorNameContent(node))
             | (ArgumentKind::Paired { open, close }, ArgumentValue::OperatorNameContent(node)) => {
-                self.emit_operator_name_between_delimiters(open, close, *node, mode)
+                self.emit_operator_name_between_delimiters(open, close, *node, wrapper_mode)
             }
             (ArgumentKind::Delimited { open, close }, value)
             | (ArgumentKind::Paired { open, close }, value) => {
-                self.emit_scalar_between_delimiters(open, close, value, mode)
+                self.emit_scalar_between_delimiters(open, close, value, wrapper_mode)
             }
         }
     }

@@ -147,12 +147,14 @@ fn test_command_arg_slots_keep_non_content_values_out_of_tree_edges() {
         args: vec![
             Some(Argument {
                 kind: ArgumentKind::Star,
+                no_leading_space: false,
                 value: ArgumentValue::Boolean(true),
             }),
             None,
             content_arg(ArgumentKind::Mandatory, group),
             Some(Argument {
                 kind: ArgumentKind::Optional,
+                no_leading_space: false,
                 value: ArgumentValue::Dimension("1em".to_string()),
             }),
         ],
@@ -211,10 +213,12 @@ fn test_command_arg_slots_keep_scalar_variants_opaque() {
         args: vec![
             Some(Argument {
                 kind: ArgumentKind::Optional,
+                no_leading_space: false,
                 value: ArgumentValue::Integer("12".to_string()),
             }),
             Some(Argument {
                 kind: ArgumentKind::Mandatory,
+                no_leading_space: false,
                 value: ArgumentValue::MathContent(content),
             }),
         ],

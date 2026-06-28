@@ -1,6 +1,9 @@
+mod support;
+
+use support::parser::{command_item, test_context, test_context_with_items};
 use texform_core::{
     ast::{Argument, ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node},
-    parse::ParseContext,
+    parse::{AllowedMode, CommandKind, ParseContext},
     serialize::{
         AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, InfixGrouping,
         MathGroupInnerSpacing, MathScriptOptions, ScriptOrder, ScriptSpacing, SerializeOptions,
@@ -117,6 +120,33 @@ fn test_serialize_regular_math_argument_still_uses_math_spacing() {
 }
 
 #[test]
+fn test_serialize_tight_optional_argument_sticks_to_previous_slot() {
+    assert_eq!(serialize(&parse_to_ast(r"\\[3pt]")), r"\\[3pt]");
+    assert_eq!(serialize(&parse_to_ast(r"\\*[3pt]")), r"\\*[3pt]");
+
+    let ctx = test_context();
+    assert_eq!(
+        serialize(&parse_to_ast_with_context(&ctx, r"\newline*[1cm]")),
+        r"\newline*[1cm]"
+    );
+}
+
+#[test]
+fn test_serialize_custom_no_leading_space_optional_is_generic() {
+    let ctx = test_context_with_items([command_item(
+        "probe",
+        CommandKind::Prefix,
+        AllowedMode::Math,
+        "m !o",
+    )]);
+
+    assert_eq!(
+        serialize(&parse_to_ast_with_context(&ctx, r"\probe a[b]")),
+        r"\probe { a }[ b ]"
+    );
+}
+
+#[test]
 fn test_serialize_root_does_not_emit_extra_braces() {
     let mut ast = Ast::new();
     let root = ast.root();
@@ -211,6 +241,7 @@ fn test_serialize_command_argument_does_not_double_wrap_group_content() {
         name: "sqrt".to_string(),
         args: vec![Some(Argument {
             kind: ArgumentKind::Mandatory,
+            no_leading_space: false,
             value: ArgumentValue::MathContent(group),
         })],
         known: true,
@@ -381,6 +412,7 @@ fn test_serialize_text_mode_single_char_argument_uses_text_content_variant() {
         name: "text".to_string(),
         args: vec![Some(Argument {
             kind: ArgumentKind::Mandatory,
+            no_leading_space: false,
             value: ArgumentValue::TextContent(ch),
         })],
         known: true,
@@ -400,10 +432,12 @@ fn test_serialize_scalar_arguments_stay_opaque() {
         args: vec![
             Some(Argument {
                 kind: ArgumentKind::Optional,
+                no_leading_space: false,
                 value: ArgumentValue::KeyVal("width=1em".to_string()),
             }),
             Some(Argument {
                 kind: ArgumentKind::Mandatory,
+                no_leading_space: false,
                 value: ArgumentValue::TextContent(file),
             }),
         ],
@@ -423,6 +457,7 @@ fn test_serialize_other_scalar_argument_variants() {
         name: "label".to_string(),
         args: vec![Some(Argument {
             kind: ArgumentKind::Mandatory,
+            no_leading_space: false,
             value: ArgumentValue::CSName("sec:intro".to_string()),
         })],
         known: true,
@@ -431,6 +466,7 @@ fn test_serialize_other_scalar_argument_variants() {
         name: "romannumeral".to_string(),
         args: vec![Some(Argument {
             kind: ArgumentKind::Mandatory,
+            no_leading_space: false,
             value: ArgumentValue::Integer("12".to_string()),
         })],
         known: true,
@@ -439,6 +475,7 @@ fn test_serialize_other_scalar_argument_variants() {
         name: "arraycols".to_string(),
         args: vec![Some(Argument {
             kind: ArgumentKind::Mandatory,
+            no_leading_space: false,
             value: ArgumentValue::Column("lcr".to_string()),
         })],
         known: true,
@@ -447,6 +484,7 @@ fn test_serialize_other_scalar_argument_variants() {
         name: "delim".to_string(),
         args: vec![Some(Argument {
             kind: ArgumentKind::Mandatory,
+            no_leading_space: false,
             value: ArgumentValue::Delimiter(texform_core::ast::Delimiter::Control(
                 "langle".to_string(),
             )),
@@ -479,6 +517,7 @@ fn test_serialize_paired_argument_replays_recorded_delimiters_and_skips_missing_
                     open: texform_core::ast::Delimiter::Char('|'),
                     close: texform_core::ast::Delimiter::Char('|'),
                 },
+                no_leading_space: false,
                 value: ArgumentValue::MathContent(x),
             }),
         ],
@@ -499,10 +538,12 @@ fn test_serialize_star_slot_sticks_to_command_name() {
         args: vec![
             Some(Argument {
                 kind: ArgumentKind::Star,
+                no_leading_space: false,
                 value: ArgumentValue::Boolean(true),
             }),
             Some(Argument {
                 kind: ArgumentKind::Mandatory,
+                no_leading_space: false,
                 value: ArgumentValue::MathContent(body),
             }),
         ],
@@ -680,6 +721,7 @@ fn test_serialize_environment_inside_text_mode_stays_compact() {
         name: "text".to_string(),
         args: vec![Some(Argument {
             kind: ArgumentKind::Mandatory,
+            no_leading_space: false,
             value: ArgumentValue::TextContent(text_group),
         })],
         known: true,
@@ -700,6 +742,7 @@ fn test_serialize_scalar_paired_argument_keeps_math_spacing() {
                 open: texform_core::ast::Delimiter::Char('|'),
                 close: texform_core::ast::Delimiter::Char('|'),
             },
+            no_leading_space: false,
             value: ArgumentValue::Integer("12".to_string()),
         })],
         known: true,
@@ -732,6 +775,7 @@ fn test_serialize_text_mode_control_word_keeps_text_boundary() {
         name: "text".to_string(),
         args: vec![Some(Argument {
             kind: ArgumentKind::Mandatory,
+            no_leading_space: false,
             value: ArgumentValue::TextContent(text_group),
         })],
         known: true,
@@ -764,6 +808,7 @@ fn test_serialize_paired_argument_unwraps_multi_item_content_group() {
                 open: texform_core::ast::Delimiter::Char('('),
                 close: texform_core::ast::Delimiter::Char(')'),
             },
+            no_leading_space: false,
             value: ArgumentValue::MathContent(content),
         })],
         known: true,
@@ -792,6 +837,7 @@ fn test_serialize_text_mode_paired_scalar_stays_compact() {
                 open: texform_core::ast::Delimiter::Char('|'),
                 close: texform_core::ast::Delimiter::Char('|'),
             },
+            no_leading_space: false,
             value: ArgumentValue::Integer("12".to_string()),
         })],
         known: true,
@@ -804,6 +850,7 @@ fn test_serialize_text_mode_paired_scalar_stays_compact() {
         name: "text".to_string(),
         args: vec![Some(Argument {
             kind: ArgumentKind::Mandatory,
+            no_leading_space: false,
             value: ArgumentValue::TextContent(text_group),
         })],
         known: true,

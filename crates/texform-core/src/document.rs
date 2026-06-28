@@ -2024,6 +2024,7 @@ mod tests {
                 name: "sqrt".to_string(),
                 args: vec![Some(SyntaxArgument {
                     kind: SyntaxArgumentKind::Optional,
+                    no_leading_space: false,
                     value: SyntaxArgumentValue::MathContent(SyntaxNode::Char('a')),
                 })],
                 known: true,
@@ -2040,6 +2041,43 @@ mod tests {
     }
 
     #[test]
+    fn set_arg_preserves_no_leading_space_flag() {
+        use texform_interface::syntax_node::{
+            Argument as SyntaxArgument, ArgumentKind as SyntaxArgumentKind,
+            ArgumentValue as SyntaxArgumentValue, ContentMode as M, SyntaxNode,
+        };
+
+        let syntax = SyntaxNode::Root {
+            mode: M::Math,
+            children: vec![SyntaxNode::Command {
+                name: "probe".to_string(),
+                args: vec![Some(SyntaxArgument {
+                    kind: SyntaxArgumentKind::Optional,
+                    no_leading_space: true,
+                    value: SyntaxArgumentValue::MathContent(SyntaxNode::Char('a')),
+                })],
+                known: true,
+            }],
+        };
+        let mut doc = Document::from_syntax(&syntax).unwrap();
+        let command = doc.root().children().next().unwrap().id();
+        let replacement = doc.create_char('b').unwrap();
+
+        doc.set_arg(command, 0, ArgValue::math(replacement))
+            .unwrap();
+
+        let roundtrip = doc.to_syntax();
+        let SyntaxNode::Root { children, .. } = roundtrip else {
+            panic!("expected root");
+        };
+        let SyntaxNode::Command { args, .. } = &children[0] else {
+            panic!("expected command");
+        };
+
+        assert!(args[0].as_ref().unwrap().no_leading_space);
+    }
+
+    #[test]
     fn set_arg_preserves_star_boolean_slot_kind() {
         use texform_interface::syntax_node::{
             Argument as SyntaxArgument, ArgumentKind as SyntaxArgumentKind,
@@ -2053,10 +2091,12 @@ mod tests {
                 args: vec![
                     Some(SyntaxArgument {
                         kind: SyntaxArgumentKind::Star,
+                        no_leading_space: false,
                         value: SyntaxArgumentValue::Boolean(false),
                     }),
                     Some(SyntaxArgument {
                         kind: SyntaxArgumentKind::Mandatory,
+                        no_leading_space: false,
                         value: SyntaxArgumentValue::MathContent(SyntaxNode::Char('x')),
                     }),
                 ],
@@ -2226,6 +2266,7 @@ mod tests {
                 name: "text".to_string(),
                 args: vec![Some(Argument {
                     kind: ArgumentKind::Mandatory,
+                    no_leading_space: false,
                     value: ArgumentValue::TextContent(SyntaxNode::Scripted {
                         base: Box::new(SyntaxNode::Prime { count: 1 }),
                         subscript: None,

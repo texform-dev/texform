@@ -55,6 +55,30 @@ fn first_command(output: &ParseResult) -> (String, Vec<Option<Argument>>) {
     }
 }
 
+#[test]
+fn test_no_leading_space_metadata_is_preserved_on_custom_optional() {
+    let output = parse_with_items(
+        &[command_item(
+            "probe",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "m !o",
+        )],
+        r"\probe a[b]",
+        true,
+    );
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        output.diagnostics
+    );
+
+    let (name, args) = first_command(&output);
+    assert_eq!(name, "probe");
+    assert!(!expect_arg(&args[0]).no_leading_space);
+    assert!(expect_arg(&args[1]).no_leading_space);
+}
+
 fn single_root_child(output: &ParseResult) -> SyntaxNode {
     let result = output
         .document()
@@ -756,6 +780,7 @@ fn star_argument_uses_boolean_value() {
         expect_arg(&args[0]),
         &Argument {
             kind: ArgumentKind::Star,
+            no_leading_space: false,
             value: ArgumentValue::Boolean(true),
         }
     );
@@ -771,6 +796,7 @@ fn star_argument_uses_boolean_value() {
         expect_arg(&args[0]),
         &Argument {
             kind: ArgumentKind::Star,
+            no_leading_space: false,
             value: ArgumentValue::Boolean(false),
         }
     );

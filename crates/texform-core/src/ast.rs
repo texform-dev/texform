@@ -183,13 +183,24 @@ pub enum ArgumentValue {
 pub struct Argument {
     /// Slot kind recorded by the parser
     pub kind: ArgumentKind,
+    /// Whether the source argspec required this slot to be adjacent to the previous token
+    pub no_leading_space: bool,
     /// Parsed value stored in the slot
     pub value: ArgumentValue,
 }
 
 impl Argument {
     pub fn from_value(kind: ArgumentKind, value: ArgumentValue) -> Self {
-        Self { kind, value }
+        Self {
+            kind,
+            no_leading_space: false,
+            value,
+        }
+    }
+
+    pub fn with_no_leading_space(mut self, no_leading_space: bool) -> Self {
+        self.no_leading_space = no_leading_space;
+        self
     }
 }
 
@@ -1567,6 +1578,7 @@ impl Ast {
     fn to_syntax_arg_slot(&self, slot: &ArgumentSlot) -> syntax_node::ArgumentSlot {
         slot.as_ref().map(|argument| syntax_node::Argument {
             kind: self.to_syntax_arg_kind(&argument.kind),
+            no_leading_space: argument.no_leading_space,
             value: self.to_syntax_arg_value(&argument.value),
         })
     }
@@ -1703,6 +1715,7 @@ impl Ast {
             .map(|slot| {
                 slot.map(|arg| Argument {
                     kind: arg.kind,
+                    no_leading_space: arg.no_leading_space,
                     value: self.clone_argument_value(arg.value),
                 })
             })
@@ -1926,6 +1939,7 @@ impl Ast {
     ) -> ArgumentSlot {
         slot.as_ref().map(|arg| Argument {
             kind: Self::convert_argument_kind(arg.kind),
+            no_leading_space: arg.no_leading_space,
             value: Self::convert_argument_value(&arg.value, nodes, parent),
         })
     }
@@ -2140,10 +2154,12 @@ mod tests {
             args: vec![
                 Some(Argument {
                     kind: ArgumentKind::Mandatory,
+                    no_leading_space: false,
                     value: ArgumentValue::MathContent(numerator),
                 }),
                 Some(Argument {
                     kind: ArgumentKind::Mandatory,
+                    no_leading_space: false,
                     value: ArgumentValue::MathContent(denominator),
                 }),
             ],
@@ -2487,6 +2503,7 @@ mod tests {
             name: "sqrt".to_string(),
             args: vec![Some(Argument {
                 kind: ArgumentKind::Mandatory,
+                no_leading_space: false,
                 value: ArgumentValue::MathContent(target),
             })],
             known: true,

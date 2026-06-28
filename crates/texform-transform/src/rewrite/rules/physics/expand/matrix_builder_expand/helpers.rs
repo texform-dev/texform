@@ -12,6 +12,7 @@ pub(super) fn matrix_quantity_command(body: NodeId, open: char, close: char) -> 
                     open: Delimiter::Char(open),
                     close: Delimiter::Char(close),
                 },
+                no_leading_space: false,
                 value: ArgumentValue::MathContent(body),
             }),
         ],

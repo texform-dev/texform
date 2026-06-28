@@ -10,6 +10,8 @@ fn test_no_leading_space_prefix_for_linebreak_command() {
     let (name, args) = extract_first_command(immediate);
     assert_eq!(name, "\\");
     assert_eq!(args.len(), 2);
+    assert!(expect_arg(&args[0]).no_leading_space);
+    assert!(expect_arg(&args[1]).no_leading_space);
     assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(true));
     assert_eq!(
         expect_arg(&args[1]).value,
@@ -79,6 +81,10 @@ fn test_package_loaded_math_linebreak_supports_representative_forms() {
             .unwrap_or_else(|| panic!("expected linebreak command in {src}"));
 
         assert_eq!(args.len(), 2, "expected star + optional length slots");
+        assert!(expect_arg(&args[0]).no_leading_space);
+        if let Some(arg) = args[1].as_ref() {
+            assert!(arg.no_leading_space);
+        }
         assert_eq!(
             expect_arg(&args[0]).value,
             ArgumentValue::Boolean(expected_star)
@@ -116,6 +122,10 @@ fn test_package_loaded_text_linebreak_supports_representative_forms() {
             .unwrap_or_else(|| panic!("expected linebreak command in {src}"));
 
         assert_eq!(args.len(), 2, "expected star + optional length slots");
+        assert!(expect_arg(&args[0]).no_leading_space);
+        if let Some(arg) = args[1].as_ref() {
+            assert!(arg.no_leading_space);
+        }
         assert_eq!(
             expect_arg(&args[0]).value,
             ArgumentValue::Boolean(expected_star)
@@ -150,6 +160,8 @@ fn test_newline_command_preserves_no_leading_space_behavior() {
             SyntaxNode::Command { name, args, .. } => {
                 assert_eq!(name, "newline");
                 assert_eq!(args.len(), 2);
+                assert!(expect_arg(&args[0]).no_leading_space);
+                assert!(expect_arg(&args[1]).no_leading_space);
                 assert_eq!(expect_arg(&args[0]).value, ArgumentValue::Boolean(true));
                 assert_eq!(
                     expect_arg(&args[1]).value,
