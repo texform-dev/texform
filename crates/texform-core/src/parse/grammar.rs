@@ -2567,17 +2567,16 @@ fn math_content_parser_with_extra_control_stop<'a>(
             math_content.clone(),
             text_content.clone(),
         );
-        let normal_item = if recoverable_src.is_some() && !state.config.abort_on_error {
-            recoverable_content_item_parser(
+        let normal_item = match recoverable_src {
+            Some(src) if !state.config.abort_on_error => recoverable_content_item_parser(
                 state,
                 ContentMode::Math,
-                recoverable_src.expect("checked above"),
+                src,
                 base_item.padded_by(ws.clone()),
                 is_math_control_paren_hard_stop,
             )
-            .boxed()
-        } else {
-            base_item.padded_by(ws.clone()).boxed()
+            .boxed(),
+            _ => base_item.padded_by(ws.clone()).boxed(),
         };
         math_group_content_parser(
             state,
