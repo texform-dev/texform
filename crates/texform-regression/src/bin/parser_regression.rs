@@ -1,9 +1,12 @@
 use clap::{Args, Parser, Subcommand};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 use texform_regression::stats::ModeStats;
 use texform_regression::{config, data, output, runner};
+
+const DEFAULT_MAX_FORMULA_LEN: usize = 10_000;
 
 #[derive(Parser)]
 #[command(
@@ -40,6 +43,10 @@ struct CommonArgs {
     /// Dataset slug to run. Repeat to select multiple datasets.
     #[arg(long = "dataset")]
     datasets: Vec<String>,
+
+    /// Skip formulas longer than this many bytes before parsing.
+    #[arg(long, default_value_t = DEFAULT_MAX_FORMULA_LEN)]
+    max_formula_len: usize,
 }
 
 #[derive(Args)]
@@ -63,6 +70,10 @@ struct RunArgs {
     /// JSON object per strict/nonstrict failure, independent of commit snapshots.
     #[arg(long)]
     emit_errors: bool,
+
+    /// Show a simple per-dataset progress line on stderr.
+    #[arg(long)]
+    progress: bool,
 }
 
 #[derive(Args)]
@@ -78,6 +89,10 @@ struct RefreshArgs {
     /// Dataset slug to check before deciding whether to refresh all results.
     #[arg(long)]
     probe_dataset: Option<String>,
+
+    /// Skip formulas longer than this many bytes before parsing.
+    #[arg(long, default_value_t = DEFAULT_MAX_FORMULA_LEN)]
+    max_formula_len: usize,
 }
 
 #[derive(Args)]
@@ -91,6 +106,8 @@ struct ExecutionArgs {
     offset: usize,
     skip_commit_results: bool,
     emit_errors: bool,
+    max_formula_len: usize,
+    progress: bool,
 }
 
 struct RegressionContext {
@@ -181,6 +198,8 @@ fn run_command(args: RunArgs) -> Result<(), String> {
         offset: args.offset,
         skip_commit_results: args.skip_commit_results,
         emit_errors: args.emit_errors,
+        max_formula_len: args.common.max_formula_len,
+        progress: args.progress,
     };
 
     run_datasets(
@@ -227,6 +246,7 @@ fn run_refresh(args: RefreshArgs) -> Result<(), String> {
         datasets_yaml: args.datasets_yaml,
         results_root: args.results_root,
         datasets: Vec::new(),
+        max_formula_len: args.max_formula_len,
     };
     let context = load_context(&common)?;
     let execution = ExecutionArgs {
@@ -234,6 +254,8 @@ fn run_refresh(args: RefreshArgs) -> Result<(), String> {
         offset: 0,
         skip_commit_results: false,
         emit_errors: false,
+        max_formula_len: args.max_formula_len,
+        progress: false,
     };
 
     if let Some(probe_dataset) = args.probe_dataset {
@@ -282,6 +304,8 @@ fn run_verify(args: VerifyArgs) -> Result<(), String> {
         offset: 0,
         skip_commit_results: false,
         emit_errors: false,
+        max_formula_len: args.common.max_formula_len,
+        progress: false,
     };
 
     let probe = run_datasets(
@@ -383,9 +407,22 @@ fn run_datasets(
         );
 
         let start = Instant::now();
-        let mut accumulator = output::SummaryAccumulator::new();
+        let mut accumulator = output::SummaryAccumulator::new(Some(args.max_formula_len));
         let mut slow_nonstrict = Vec::new();
         let mut slow_strict = Vec::new();
+        let expected_records = if args.progress {
+            Some(
+                progress_expected(&data_path, args.offset, args.limit).map_err(|error| {
+                    format!(
+                        "[{}] Failed to read parquet metadata for progress: {error}",
+                        entry.slug
+                    )
+                })?,
+            )
+        } else {
+            None
+        };
+        let mut processed_records = 0_usize;
         let mut commit_writer = if options.write {
             commit_info
                 .as_ref()
@@ -402,24 +439,33 @@ fn run_datasets(
             args.offset,
             args.limit,
             |records| {
-                let results = runner::run_parser_regression(&records);
-                collect_slow_samples(&mut slow_nonstrict, &records, &results, false, 5, None);
-                collect_slow_samples(
-                    &mut slow_strict,
-                    &records,
-                    &results,
-                    true,
-                    10,
-                    Some(Duration::from_millis(100)),
-                );
-                if let Some(writer) = commit_writer.as_mut() {
-                    writer.write_batch_errors(&records, &results)?;
+                processed_records += records.len();
+                let (kept, filtered_count) = filter_records_by_len(records, args.max_formula_len);
+                accumulator.append_filtered(filtered_count);
+
+                if !kept.is_empty() {
+                    let results = runner::run_parser_regression(&kept);
+                    collect_slow_samples(&mut slow_nonstrict, &kept, &results, false, 5, None);
+                    collect_slow_samples(
+                        &mut slow_strict,
+                        &kept,
+                        &results,
+                        true,
+                        10,
+                        Some(Duration::from_millis(100)),
+                    );
+                    if let Some(writer) = commit_writer.as_mut() {
+                        writer.write_batch_errors(&kept, &results)?;
+                    }
+                    if let Some(writer) = errors_emit.as_mut() {
+                        writer.write_batch(&entry.slug, &kept, &results)?;
+                    }
+                    accumulator.append(&kept, &results);
+                    drop(results);
                 }
-                if let Some(writer) = errors_emit.as_mut() {
-                    writer.write_batch(&entry.slug, &records, &results)?;
+                if let Some(expected) = expected_records {
+                    print_progress(&entry.slug, processed_records, expected);
                 }
-                accumulator.append(&records, &results);
-                drop(results);
                 trim_allocator();
                 Ok(())
             },
@@ -434,6 +480,9 @@ fn run_datasets(
                 continue;
             }
         };
+        if args.progress {
+            eprintln!();
+        }
         let elapsed = start.elapsed();
         let summary = accumulator.finish(&entry.slug);
 
@@ -460,10 +509,12 @@ fn run_datasets(
         }
 
         println!(
-            "[{}] {} formulas in {:.1}s\n  {}\n  {}",
+            "[{}] {} formulas in {:.1}s ({} parsed, {} length-filtered)\n  {}\n  {}",
             entry.slug,
             records_read,
             elapsed.as_secs_f64(),
+            summary.total_tasks,
+            summary.length_filtered_count,
             format_mode_stats("strict", &summary.strict),
             format_mode_stats("nonstrict", &summary.nonstrict),
         );
@@ -555,6 +606,38 @@ fn collect_slow_samples(
     samples.truncate(limit);
 }
 
+fn progress_expected(
+    data_path: &Path,
+    offset: usize,
+    limit: Option<usize>,
+) -> Result<usize, Box<dyn std::error::Error>> {
+    let available = data::formula_row_count(data_path)?.saturating_sub(offset);
+    Ok(limit.map_or(available, |limit| limit.min(available)))
+}
+
+fn filter_records_by_len(
+    records: Vec<data::FormulaRecord>,
+    max_formula_len: usize,
+) -> (Vec<data::FormulaRecord>, usize) {
+    let original_len = records.len();
+    let kept = records
+        .into_iter()
+        .filter(|record| record.formula.len() <= max_formula_len)
+        .collect::<Vec<_>>();
+    let filtered_count = original_len.saturating_sub(kept.len());
+    (kept, filtered_count)
+}
+
+fn print_progress(slug: &str, processed: usize, expected: usize) {
+    let pct = if expected == 0 {
+        100.0
+    } else {
+        processed.min(expected) as f64 / expected as f64 * 100.0
+    };
+    eprint!("\r[{slug}] {processed}/{expected} formulas ({pct:.1}%)");
+    let _ = std::io::stderr().flush();
+}
+
 fn print_slow_samples(slug: &str, mode: &str, samples: &[SlowSample]) {
     if samples.is_empty() {
         return;
@@ -583,6 +666,31 @@ fn trim_allocator() {
 
 #[cfg(not(target_os = "linux"))]
 fn trim_allocator() {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filter_records_by_len_keeps_only_records_within_limit() {
+        let records = vec![
+            data::FormulaRecord {
+                formula_id: "short".to_string(),
+                formula: "x^2".to_string(),
+            },
+            data::FormulaRecord {
+                formula_id: "long".to_string(),
+                formula: "123456".to_string(),
+            },
+        ];
+
+        let (kept, filtered_count) = filter_records_by_len(records, 3);
+
+        assert_eq!(filtered_count, 1);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].formula_id, "short");
+    }
+}
 
 fn format_mode_stats(label: &str, stats: &ModeStats) -> String {
     format!(

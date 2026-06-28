@@ -5,6 +5,9 @@
       "dataset_row_count": 93579,
       "total_tasks": 93579,
       "completed": 93579,
+      "max_formula_len": 10000,
+      "length_filtered_count": 0,
+      "length_filtered_rate_pct": 0.00,
       "strict": {
         "ok": 91824,
         "failed": 1755,
@@ -19,15 +22,18 @@
     {
       "dataset": "unimer",
       "dataset_row_count": 606802,
-      "total_tasks": 606802,
-      "completed": 606802,
+      "total_tasks": 606801,
+      "completed": 606801,
+      "max_formula_len": 10000,
+      "length_filtered_count": 1,
+      "length_filtered_rate_pct": 0.00,
       "strict": {
-        "ok": 593540,
+        "ok": 593539,
         "failed": 13262,
         "failure_rate_pct": 2.19
       },
       "nonstrict": {
-        "ok": 605874,
+        "ok": 605873,
         "failed": 928,
         "failure_rate_pct": 0.15
       }
@@ -35,16 +41,19 @@
     {
       "dataset": "wikipedia",
       "dataset_row_count": 492136,
-      "total_tasks": 492136,
-      "completed": 492136,
+      "total_tasks": 492133,
+      "completed": 492133,
+      "max_formula_len": 10000,
+      "length_filtered_count": 3,
+      "length_filtered_rate_pct": 0.00,
       "strict": {
         "ok": 481256,
-        "failed": 10880,
+        "failed": 10877,
         "failure_rate_pct": 2.21
       },
       "nonstrict": {
         "ok": 491920,
-        "failed": 216,
+        "failed": 213,
         "failure_rate_pct": 0.04
       }
     },
@@ -53,6 +62,9 @@
       "dataset_row_count": 34104,
       "total_tasks": 34104,
       "completed": 34104,
+      "max_formula_len": 10000,
+      "length_filtered_count": 0,
+      "length_filtered_rate_pct": 0.00,
       "strict": {
         "ok": 32000,
         "failed": 2104,
@@ -67,15 +79,19 @@
   ],
   "overall": {
     "dataset_count": 4,
-    "total_tasks": 1226621,
+    "dataset_row_count": 1226621,
+    "total_tasks": 1226617,
+    "max_formula_len": 10000,
+    "length_filtered_count": 4,
+    "length_filtered_rate_pct": 0.00,
     "strict": {
-      "ok": 1198620,
-      "failed": 28001,
+      "ok": 1198619,
+      "failed": 27998,
       "failure_rate_pct": 2.28
     },
     "nonstrict": {
-      "ok": 1225034,
-      "failed": 1587,
+      "ok": 1225033,
+      "failed": 1584,
       "failure_rate_pct": 0.13
     }
   }

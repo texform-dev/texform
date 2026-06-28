@@ -113,6 +113,12 @@ pub struct Summary {
     pub dataset_row_count: usize,
     pub total_tasks: usize,
     pub completed: usize,
+    #[serde(default)]
+    pub max_formula_len: Option<usize>,
+    #[serde(default)]
+    pub length_filtered_count: usize,
+    #[serde(default)]
+    pub length_filtered_rate_pct: f64,
     pub strict: ModeStats,
     pub nonstrict: ModeStats,
     #[serde(skip, default)]
@@ -135,6 +141,9 @@ pub struct Summary {
 
 #[derive(Debug, Default)]
 pub struct SummaryAccumulator {
+    max_formula_len: Option<usize>,
+    dataset_row_count: usize,
+    length_filtered_count: usize,
     total_tasks: usize,
     strict_duration_buckets: Vec<u32>,
     strict_duration_ms_sum: f64,
@@ -149,13 +158,22 @@ pub struct SummaryAccumulator {
 }
 
 impl SummaryAccumulator {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(max_formula_len: Option<usize>) -> Self {
+        Self {
+            max_formula_len,
+            ..Self::default()
+        }
+    }
+
+    pub fn append_filtered(&mut self, count: usize) {
+        self.dataset_row_count += count;
+        self.length_filtered_count += count;
     }
 
     pub fn append(&mut self, records: &[FormulaRecord], results: &[FormulaResults]) {
         debug_assert_eq!(records.len(), results.len());
 
+        self.dataset_row_count += records.len();
         self.total_tasks += records.len();
         ensure_histogram(&mut self.strict_duration_buckets);
         ensure_histogram(&mut self.nonstrict_duration_buckets);
@@ -226,9 +244,12 @@ impl SummaryAccumulator {
 
         Summary {
             dataset: slug.to_string(),
-            dataset_row_count: self.total_tasks,
+            dataset_row_count: self.dataset_row_count,
             total_tasks: self.total_tasks,
             completed: self.total_tasks,
+            max_formula_len: self.max_formula_len,
+            length_filtered_count: self.length_filtered_count,
+            length_filtered_rate_pct: rate_pct(self.length_filtered_count, self.dataset_row_count),
             strict,
             nonstrict,
             strict_duration_buckets: self.strict_duration_buckets,
@@ -240,6 +261,14 @@ impl SummaryAccumulator {
             nonstrict_count: self.nonstrict_count,
             nonstrict_failed: self.nonstrict_failed,
         }
+    }
+}
+
+fn rate_pct(num: usize, den: usize) -> f64 {
+    if den == 0 {
+        0.0
+    } else {
+        num as f64 / den as f64 * 100.0
     }
 }
 
@@ -307,7 +336,14 @@ fn histogram_percentile_ms(buckets: &[u32], total: usize, percentile: f64) -> f6
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OverallSummary {
     pub dataset_count: usize,
+    pub dataset_row_count: usize,
     pub total_tasks: usize,
+    #[serde(default)]
+    pub max_formula_len: Option<usize>,
+    #[serde(default)]
+    pub length_filtered_count: usize,
+    #[serde(default)]
+    pub length_filtered_rate_pct: f64,
     pub strict: ModeStats,
     pub nonstrict: ModeStats,
 }
@@ -332,6 +368,12 @@ struct StableSummary {
     dataset_row_count: usize,
     total_tasks: usize,
     completed: usize,
+    #[serde(default)]
+    max_formula_len: Option<usize>,
+    #[serde(default)]
+    length_filtered_count: usize,
+    #[serde(default)]
+    length_filtered_rate_pct: f64,
     strict: StableModeStats,
     nonstrict: StableModeStats,
 }
@@ -339,7 +381,15 @@ struct StableSummary {
 #[derive(Serialize, Deserialize)]
 struct StableOverallSummary {
     dataset_count: usize,
+    #[serde(default)]
+    dataset_row_count: usize,
     total_tasks: usize,
+    #[serde(default)]
+    max_formula_len: Option<usize>,
+    #[serde(default)]
+    length_filtered_count: usize,
+    #[serde(default)]
+    length_filtered_rate_pct: f64,
     strict: StableModeStats,
     nonstrict: StableModeStats,
 }
@@ -434,6 +484,9 @@ impl From<&Summary> for StableSummary {
             dataset_row_count: summary.dataset_row_count,
             total_tasks: summary.total_tasks,
             completed: summary.completed,
+            max_formula_len: summary.max_formula_len,
+            length_filtered_count: summary.length_filtered_count,
+            length_filtered_rate_pct: stable_rate(summary.length_filtered_rate_pct),
             strict: StableModeStats::from(&summary.strict),
             nonstrict: StableModeStats::from(&summary.nonstrict),
         }
@@ -444,7 +497,11 @@ impl From<&OverallSummary> for StableOverallSummary {
     fn from(overall: &OverallSummary) -> Self {
         Self {
             dataset_count: overall.dataset_count,
+            dataset_row_count: overall.dataset_row_count,
             total_tasks: overall.total_tasks,
+            max_formula_len: overall.max_formula_len,
+            length_filtered_count: overall.length_filtered_count,
+            length_filtered_rate_pct: stable_rate(overall.length_filtered_rate_pct),
             strict: StableModeStats::from(&overall.strict),
             nonstrict: StableModeStats::from(&overall.nonstrict),
         }
@@ -461,13 +518,22 @@ impl StableRunSummary {
 }
 
 pub fn build_summary(slug: &str, records: &[FormulaRecord], results: &[FormulaResults]) -> Summary {
-    let mut accumulator = SummaryAccumulator::new();
+    let mut accumulator = SummaryAccumulator::new(None);
     accumulator.append(records, results);
     accumulator.finish(slug)
 }
 
 pub fn build_overall(summaries: &[Summary]) -> OverallSummary {
     let total_tasks = summaries.iter().map(|summary| summary.total_tasks).sum();
+    let dataset_row_count = summaries
+        .iter()
+        .map(|summary| summary.dataset_row_count)
+        .sum();
+    let length_filtered_count = summaries
+        .iter()
+        .map(|summary| summary.length_filtered_count)
+        .sum();
+    let max_formula_len = summaries.iter().find_map(|summary| summary.max_formula_len);
     let mut strict_duration_buckets = vec![0_u32; HISTOGRAM_BUCKET_COUNT];
     let mut nonstrict_duration_buckets = vec![0_u32; HISTOGRAM_BUCKET_COUNT];
     let strict_count = summaries.iter().map(|summary| summary.strict_count).sum();
@@ -514,7 +580,11 @@ pub fn build_overall(summaries: &[Summary]) -> OverallSummary {
 
     OverallSummary {
         dataset_count: summaries.len(),
+        dataset_row_count,
         total_tasks,
+        max_formula_len,
+        length_filtered_count,
+        length_filtered_rate_pct: rate_pct(length_filtered_count, dataset_row_count),
         strict: mode_stats_from_histogram(
             strict_count,
             strict_failed,
@@ -1169,6 +1239,49 @@ mod tests {
     }
 
     #[test]
+    fn summary_accumulator_excludes_length_filtered_records_from_parse_rates() {
+        let records = sample_records();
+        let results = sample_results();
+        let mut accumulator = SummaryAccumulator::new(Some(5));
+
+        accumulator.append(&records[..1], &results[..1]);
+        accumulator.append_filtered(1);
+        let summary = accumulator.finish("demo");
+
+        assert_eq!(summary.dataset_row_count, 2);
+        assert_eq!(summary.total_tasks, 1);
+        assert_eq!(summary.completed, 1);
+        assert_eq!(summary.max_formula_len, Some(5));
+        assert_eq!(summary.length_filtered_count, 1);
+        assert!((summary.length_filtered_rate_pct - 50.0).abs() < 1e-9);
+        assert_eq!(summary.strict.ok, 1);
+        assert_eq!(summary.strict.failed, 0);
+        assert!((summary.strict.failure_rate_pct - 0.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn build_overall_sums_length_filtered_counts() {
+        let records = sample_records();
+        let results = sample_results();
+        let mut first = SummaryAccumulator::new(Some(5));
+        first.append(&records[..1], &results[..1]);
+        first.append_filtered(1);
+        let first = first.finish("first");
+
+        let mut second = SummaryAccumulator::new(Some(5));
+        second.append(&records[..1], &results[..1]);
+        let second = second.finish("second");
+
+        let overall = build_overall(&[first, second]);
+
+        assert_eq!(overall.dataset_row_count, 3);
+        assert_eq!(overall.total_tasks, 2);
+        assert_eq!(overall.max_formula_len, Some(5));
+        assert_eq!(overall.length_filtered_count, 1);
+        assert!((overall.length_filtered_rate_pct - 33.33333333333333).abs() < 1e-9);
+    }
+
+    #[test]
     fn write_run_summary_omits_unstable_timing_fields() {
         let dir = make_temp_dir("stable-run-summary");
         let summary = build_summary("demo", &sample_records(), &sample_results());
@@ -1192,6 +1305,8 @@ mod tests {
                 .get("max_formula_id")
                 .is_none()
         );
+        assert_eq!(summary_json["datasets"][0]["length_filtered_count"], 0);
+        assert_eq!(summary_json["overall"]["length_filtered_count"], 0);
         assert!(!dir.join("overall.json").exists());
     }
 
@@ -1567,6 +1682,9 @@ mod tests {
             dataset_row_count: total_tasks,
             total_tasks,
             completed: total_tasks,
+            max_formula_len: None,
+            length_filtered_count: 0,
+            length_filtered_rate_pct: 0.0,
             strict: ModeStats {
                 ok: total_tasks,
                 failed: 0,

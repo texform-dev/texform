@@ -40,6 +40,12 @@ pub fn check_data_file(path: &Path) -> DataFileStatus {
     DataFileStatus::Ready
 }
 
+pub fn formula_row_count(path: &Path) -> Result<usize, Box<dyn std::error::Error>> {
+    let file = File::open(path)?;
+    let builder = ParquetRecordBatchReaderBuilder::try_new(file)?;
+    Ok(builder.metadata().file_metadata().num_rows() as usize)
+}
+
 pub fn read_formula_record_batches<F>(
     path: &Path,
     offset: usize,
