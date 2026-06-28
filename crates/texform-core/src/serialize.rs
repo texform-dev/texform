@@ -158,8 +158,8 @@ pub enum MathGroupInnerSpacing {
 /// Whether adjacent math character atoms get explicit space separation.
 ///
 /// `Spaced`: `a b c + d` — `Compact`: `abc+d`.
-/// All `Char` nodes in math mode are treated uniformly; the serializer does
-/// not classify characters as operators vs. letters.
+/// Letters and symbols follow this setting; adjacent digits are always
+/// glued (see `MathDigit`), so multi-digit numbers stay compact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AdjacentCharSpacing {
@@ -225,6 +225,8 @@ enum AtomKind {
     TextChunk,
     /// Single math-mode character atom
     MathChar,
+    /// ASCII digit in math mode
+    MathDigit,
     /// Prime shorthand mark(s)
     Prime,
     /// `{`, `}`, `[`, `]` — structural delimiters
@@ -314,7 +316,13 @@ impl AtomWriter {
             };
         }
 
-        if matches!(prev, AtomKind::MathChar) && matches!(next, AtomKind::MathChar) {
+        if matches!((prev, next), (AtomKind::MathDigit, AtomKind::MathDigit)) {
+            return false;
+        }
+
+        if matches!(prev, AtomKind::MathChar | AtomKind::MathDigit)
+            && matches!(next, AtomKind::MathChar | AtomKind::MathDigit)
+        {
             return matches!(
                 options.math.spacing.adjacent_chars,
                 AdjacentCharSpacing::Spaced
@@ -327,7 +335,10 @@ impl AtomWriter {
         if matches!(next, AtomKind::Prime) {
             return !matches!(
                 prev,
-                AtomKind::ControlSequence | AtomKind::MathChar | AtomKind::Prime
+                AtomKind::ControlSequence
+                    | AtomKind::MathChar
+                    | AtomKind::MathDigit
+                    | AtomKind::Prime
             );
         }
         if matches!(prev, AtomKind::Prime) && matches!(next, AtomKind::ScriptMark) {
@@ -997,11 +1008,13 @@ impl<'a> Serializer<'a> {
         }
     }
 
-    /// Emit a `Char` node — classified as `MathChar` or `TextChunk`
+    /// Emit a `Char` node — classified by mode and digit status
     /// depending on the surrounding mode so boundary rules apply correctly.
     fn visit_char(&mut self, ch: char, mode: ContentMode) {
         let kind = if matches!(mode, ContentMode::Text) {
             AtomKind::TextChunk
+        } else if ch.is_ascii_digit() {
+            AtomKind::MathDigit
         } else {
             AtomKind::MathChar
         };

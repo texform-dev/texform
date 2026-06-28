@@ -54,6 +54,12 @@ fn test_serialize_simple_math_chars() {
 }
 
 #[test]
+fn test_serialize_glues_adjacent_math_digits_only() {
+    assert_eq!(serialize(&parse_to_ast("1093^2")), "1093 ^ { 2 }");
+    assert_eq!(serialize(&parse_to_ast("abc")), "a b c");
+}
+
+#[test]
 fn test_serialize_root_does_not_emit_extra_braces() {
     let mut ast = Ast::new();
     let root = ast.root();
