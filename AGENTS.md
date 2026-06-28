@@ -118,7 +118,9 @@ Append `!` after the type/scope to mark a breaking change, e.g. `feat(transform)
 
 ### Scopes
 
-Prefer an existing scope naming the affected area: `core`, `parser`, `transform`, `rule`, `specs`, `knowledge`, `argspec`, `interface`, `regression`, `bindings`, `python`, `wasm`. Omit the scope only when a change genuinely spans multiple areas.
+Prefer an existing scope naming the affected area: `core`, `parser`, `serializer`, `document`, `transform`, `rule`, `specs`, `knowledge`, `argspec`, `interface`, `regression`, `bindings`, `python`, `wasm`. Omit the scope only when a change genuinely spans multiple areas.
+
+`core` is deliberately broad — the `texform-core` crate covers the parser, the AST, `Document`, and the serializer. Prefer a more specific scope for the part you actually touch (`parser`, `serializer`, `document`, ...) and reserve `core` for changes that genuinely span several of them or that sit in shared internals with no narrower home.
 
 ### Subject
 
@@ -132,7 +134,13 @@ git commit -m 'fix(parser): preserve unknown `\left...\right` spans'
 
 ### Body
 
-For large commits with several important changes, add a body after a blank line, formatted as a Markdown unordered list with one bullet per important change.
+Whenever a commit is more than a trivial one-liner, add a body after a blank line that explains the change beyond what the subject already says. A good body covers three things:
+
+- **Motivation** — why the change is needed: the bug's wrong behavior, the missing capability, or the constraint being satisfied. For a fix, give the concrete trigger and the incorrect result so the before/after is unambiguous.
+- **What changed** — the mechanism or approach, described at the level of modules and concepts rather than restating the diff.
+- **Why it matters** — the resulting behavior or guarantee, when it is not already obvious from the subject.
+
+Write the body as short prose, or as a Markdown unordered list with one bullet per important change when a commit carries several. Only truly trivial commits (typo fixes, mechanical renames) may keep the subject alone.
 
 ## Maintenance Notes
 
