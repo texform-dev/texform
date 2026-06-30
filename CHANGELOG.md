@@ -3,6 +3,30 @@
 All notable changes to TeXForm are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
+## [0.2.0] - 2026-06-30
+
+### Added
+
+- Add `:O` operator-name content
+- Add engine.transform and verify document provenance
+
+### Changed
+
+- Carry source spans as a positional tree
+- Gate AST invariant sweep behind debug builds
+- Index rewrite rules by trigger name
+- Gate FinalizeAst invariant sweep behind debug builds
+
+### Fixed
+
+- Avoid unnecessary unwrap in recovery parser
+- Preserve tight argspec slot spacing
+- Preserve text argument edge spaces
+- Keep adjacent math digits compact
+- Accept text-mode control inline math
+- Accept whitespace-only text arguments
+- Preserve text prefix edge spaces
+- Keep whitespace outside attribute wrappers
 
 ## [0.1.0] - 2026-06-12
 
