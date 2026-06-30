@@ -667,31 +667,6 @@ fn trim_allocator() {
 #[cfg(not(target_os = "linux"))]
 fn trim_allocator() {}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn filter_records_by_len_keeps_only_records_within_limit() {
-        let records = vec![
-            data::FormulaRecord {
-                formula_id: "short".to_string(),
-                formula: "x^2".to_string(),
-            },
-            data::FormulaRecord {
-                formula_id: "long".to_string(),
-                formula: "123456".to_string(),
-            },
-        ];
-
-        let (kept, filtered_count) = filter_records_by_len(records, 3);
-
-        assert_eq!(filtered_count, 1);
-        assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].formula_id, "short");
-    }
-}
-
 fn format_mode_stats(label: &str, stats: &ModeStats) -> String {
     format!(
         "{label}: {:.2}% fail | mean {:.2}ms | p50 {:.2} | p95 {:.2} | p99 {:.2} | max {:.2}",
@@ -718,4 +693,29 @@ fn format_mode_stats_with_failures(
         stats.timing_ms.p99,
         stats.timing_ms.max,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filter_records_by_len_keeps_only_records_within_limit() {
+        let records = vec![
+            data::FormulaRecord {
+                formula_id: "short".to_string(),
+                formula: "x^2".to_string(),
+            },
+            data::FormulaRecord {
+                formula_id: "long".to_string(),
+                formula: "123456".to_string(),
+            },
+        ];
+
+        let (kept, filtered_count) = filter_records_by_len(records, 3);
+
+        assert_eq!(filtered_count, 1);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].formula_id, "short");
+    }
 }
