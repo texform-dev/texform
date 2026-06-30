@@ -120,14 +120,16 @@ fn preserves_text_multi_axis_combinations() {
 }
 
 #[test]
-fn lower_attributes_turns_whitespace_only_text_prefix_into_plain_space() {
-    serialized_text(r"\textrm{ }", r" ");
-    serialized_text(r"\textbf{ }", r" ");
+fn lower_attributes_preserves_whitespace_only_text_prefix_body() {
+    serialized_text(r"\textrm{ }", r"\textrm { }");
+    serialized_text(r"\textbf{ }", r"\textbf { }");
 }
 
 #[test]
-fn lower_attributes_keeps_boundary_spaces_outside_text_prefix() {
-    serialized_text(r"\textbf{ a }", r"\textbf {a}  ");
+fn lower_attributes_preserves_text_prefix_edge_spaces() {
+    serialized_text(r"\textbf{ a }", r"\textbf { a }");
+    serialized_text(r"\textbf{ a}", r"\textbf { a}");
+    serialized_text(r"\textbf{a }", r"\textbf {a }");
 }
 
 #[test]

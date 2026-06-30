@@ -839,13 +839,17 @@ fn wrap_with_canonical(
         "segment_and_emit must not call wrap_with_canonical with an empty segment"
     );
 
+    if matches!(mode, ContentMode::Text) {
+        return wrap_segment_with_canonical(ast, children, state, inherited, mode, report);
+    }
+
     let mut rebuilt = Vec::new();
     for run in split_whitespace_boundaries(ast, children) {
         if segment_is_plain_whitespace(ast, &run) {
             rebuilt.extend(run);
             continue;
         }
-        rebuilt.extend(wrap_non_whitespace_with_canonical(
+        rebuilt.extend(wrap_segment_with_canonical(
             ast, run, state, inherited, mode, report,
         ));
     }
@@ -856,7 +860,7 @@ fn wrap_with_canonical(
 /// order: attributes with a `prefix` target wrap the body into an implicit
 /// group + prefix command (innermost first), while attributes without a prefix
 /// prepend the corresponding declarative.
-fn wrap_non_whitespace_with_canonical(
+fn wrap_segment_with_canonical(
     ast: &mut Ast,
     mut children: Vec<NodeId>,
     state: AttributeState,
