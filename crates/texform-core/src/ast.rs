@@ -400,7 +400,14 @@ impl Ast {
             detached_roots: HashSet::new(),
             root,
         };
-        ast.assert_invariants();
+        // `assert_invariants` is an O(n * branching) structural sanity check.
+        // The freshly converted tree is correct by construction, and external
+        // input is already rejected by `Document::validate_syntax` before this
+        // point, so the full sweep is a debug-only contract check — running it
+        // on every parse made long, wide formulas quadratic in release.
+        if cfg!(debug_assertions) {
+            ast.assert_invariants();
+        }
         ast
     }
 
