@@ -13,7 +13,7 @@
 //! exposed by [`Document::has_errors`]. A `Document` produced from a partial
 //! parse (containing `Error` nodes) is read-only.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use slotmap::SecondaryMap;
@@ -24,6 +24,7 @@ use crate::ast::{
     Argument, ArgumentKind, ArgumentSlot, ArgumentValue, Ast, ContentMode, Delimiter, GroupKind,
     Node, NodeId as RawNodeId, Slot,
 };
+use crate::parse::grammar::SpanTree;
 use crate::parse::{ParseContextId, Span};
 use crate::serialize::{SerializeError, SerializeOptions, serialize, serialize_with};
 
@@ -276,19 +277,15 @@ impl Document {
         })
     }
 
-    /// Internal: build from syntax plus parser path spans.
+    /// Internal: build from syntax plus the parser's positional span subtree.
     #[allow(dead_code)]
     pub(crate) fn from_syntax_with_spans(
         node: &SyntaxNode,
-        path_spans: &[(String, Span)],
+        span_tree: &SpanTree,
     ) -> Result<Document, FromSyntaxError> {
         let mut doc = Document::from_syntax(node)?;
-        let lookup: HashMap<&str, &Span> = path_spans
-            .iter()
-            .map(|(path, span)| (path.as_str(), span))
-            .collect();
         let mut spans = SecondaryMap::new();
-        Self::assign_spans(&doc.ast, node, doc.ast.root(), "root", &lookup, &mut spans);
+        Self::assign_spans(&doc.ast, node, doc.ast.root(), span_tree, &mut spans);
         doc.spans = spans;
         Ok(doc)
     }
@@ -1184,18 +1181,26 @@ impl Document {
         }
     }
 
+    /// Attach parser spans by walking the syntax tree, the arena, and the
+    /// positional [`SpanTree`] in lockstep. The span subtree mirrors the syntax
+    /// structure, so each node reads its span directly and recurses into the
+    /// child subtrees in the order documented on [`SpanTree`] — no path strings
+    /// and no hashing.
     #[allow(dead_code)]
     fn assign_spans(
         ast: &Ast,
         syntax: &SyntaxNode,
         id: RawNodeId,
-        path: &str,
-        lookup: &HashMap<&str, &Span>,
+        span_tree: &SpanTree,
         out: &mut SecondaryMap<RawNodeId, Span>,
     ) {
-        if let Some(span) = lookup.get(path) {
-            out.insert(id, (*span).clone());
-        }
+        out.insert(
+            id,
+            Span {
+                start: span_tree.span.start,
+                end: span_tree.span.end,
+            },
+        );
 
         match (syntax, ast.node(id)) {
             (
@@ -1215,14 +1220,9 @@ impl Document {
                 for (index, (syntax_child, ast_child)) in
                     syntax_children.iter().zip(children.iter()).enumerate()
                 {
-                    Self::assign_spans(
-                        ast,
-                        syntax_child,
-                        *ast_child,
-                        &format!("{path}.child.{index}"),
-                        lookup,
-                        out,
-                    );
+                    if let Some(kid) = span_tree.kids.get(index) {
+                        Self::assign_spans(ast, syntax_child, *ast_child, kid, out);
+                    }
                 }
             }
             (
@@ -1236,7 +1236,17 @@ impl Document {
                     args: syntax_args, ..
                 },
                 Node::Declarative { args: ast_args, .. },
-            ) => Self::assign_arg_spans(ast, syntax_args, ast_args, path, lookup, out),
+            ) => {
+                let mut cursor = 0;
+                Self::assign_arg_spans(
+                    ast,
+                    syntax_args,
+                    ast_args,
+                    &span_tree.kids,
+                    &mut cursor,
+                    out,
+                );
+            }
             (
                 SyntaxNode::Infix {
                     args: syntax_args,
@@ -1251,23 +1261,22 @@ impl Document {
                     ..
                 },
             ) => {
-                Self::assign_spans(
+                let mut cursor = 0;
+                if let Some(kid) = span_tree.kids.get(cursor) {
+                    Self::assign_spans(ast, syntax_left, *left, kid, out);
+                    cursor += 1;
+                }
+                Self::assign_arg_spans(
                     ast,
-                    syntax_left,
-                    *left,
-                    &format!("{path}.left"),
-                    lookup,
+                    syntax_args,
+                    ast_args,
+                    &span_tree.kids,
+                    &mut cursor,
                     out,
                 );
-                Self::assign_arg_spans(ast, syntax_args, ast_args, path, lookup, out);
-                Self::assign_spans(
-                    ast,
-                    syntax_right,
-                    *right,
-                    &format!("{path}.right"),
-                    lookup,
-                    out,
-                );
+                if let Some(kid) = span_tree.kids.get(cursor) {
+                    Self::assign_spans(ast, syntax_right, *right, kid, out);
+                }
             }
             (
                 SyntaxNode::Environment {
@@ -1281,15 +1290,18 @@ impl Document {
                     ..
                 },
             ) => {
-                Self::assign_arg_spans(ast, syntax_args, ast_args, path, lookup, out);
-                Self::assign_spans(
+                let mut cursor = 0;
+                Self::assign_arg_spans(
                     ast,
-                    syntax_body,
-                    *body,
-                    &format!("{path}.body"),
-                    lookup,
+                    syntax_args,
+                    ast_args,
+                    &span_tree.kids,
+                    &mut cursor,
                     out,
                 );
+                if let Some(kid) = span_tree.kids.get(cursor) {
+                    Self::assign_spans(ast, syntax_body, *body, kid, out);
+                }
             }
             (
                 SyntaxNode::Scripted {
@@ -1303,40 +1315,43 @@ impl Document {
                     superscript,
                 },
             ) => {
-                Self::assign_spans(
-                    ast,
-                    syntax_base,
-                    *base,
-                    &format!("{path}.base"),
-                    lookup,
-                    out,
-                );
-                if let (Some(syntax), Some(ast_id)) = (syntax_subscript, subscript) {
-                    Self::assign_spans(ast, syntax, *ast_id, &format!("{path}.sub"), lookup, out);
+                let mut cursor = 0;
+                if let Some(kid) = span_tree.kids.get(cursor) {
+                    Self::assign_spans(ast, syntax_base, *base, kid, out);
+                    cursor += 1;
                 }
-                if let (Some(syntax), Some(ast_id)) = (syntax_superscript, superscript) {
-                    Self::assign_spans(ast, syntax, *ast_id, &format!("{path}.sup"), lookup, out);
+                if let (Some(syntax), Some(ast_id)) = (syntax_subscript, subscript)
+                    && let Some(kid) = span_tree.kids.get(cursor)
+                {
+                    Self::assign_spans(ast, syntax, *ast_id, kid, out);
+                    cursor += 1;
+                }
+                if let (Some(syntax), Some(ast_id)) = (syntax_superscript, superscript)
+                    && let Some(kid) = span_tree.kids.get(cursor)
+                {
+                    Self::assign_spans(ast, syntax, *ast_id, kid, out);
                 }
             }
             _ => {}
         }
     }
 
+    /// Recurse into each content-bearing argument slot, consuming one span
+    /// subtree from `kids` per slot via `cursor`. The producer pushes exactly
+    /// one subtree per content slot in slot order, so the cursor stays aligned.
     #[allow(dead_code)]
     fn assign_arg_spans(
         ast: &Ast,
         syntax_args: &[syntax_node::ArgumentSlot],
         ast_args: &[ArgumentSlot],
-        path: &str,
-        lookup: &HashMap<&str, &Span>,
+        kids: &[SpanTree],
+        cursor: &mut usize,
         out: &mut SecondaryMap<RawNodeId, Span>,
     ) {
-        for (index, (syntax_slot, ast_slot)) in syntax_args.iter().zip(ast_args.iter()).enumerate()
-        {
+        for (syntax_slot, ast_slot) in syntax_args.iter().zip(ast_args.iter()) {
             let (Some(syntax_arg), Some(ast_arg)) = (syntax_slot, ast_slot) else {
                 continue;
             };
-            let content_path = format!("{path}.arg.{index}.content");
             if let (
                 syntax_node::ArgumentValue::MathContent(syntax_node)
                 | syntax_node::ArgumentValue::TextContent(syntax_node)
@@ -1345,8 +1360,10 @@ impl Document {
                 | ArgumentValue::TextContent(ast_id)
                 | ArgumentValue::OperatorNameContent(ast_id),
             ) = (&syntax_arg.value, &ast_arg.value)
+                && let Some(kid) = kids.get(*cursor)
             {
-                Self::assign_spans(ast, syntax_node, *ast_id, &content_path, lookup, out);
+                Self::assign_spans(ast, syntax_node, *ast_id, kid, out);
+                *cursor += 1;
             }
         }
     }
@@ -2310,19 +2327,24 @@ mod tests {
 
     #[test]
     fn span_mapping_aligns_paths_to_node_ids() {
+        use chumsky::prelude::*;
         use texform_interface::syntax_node::{ContentMode as M, SyntaxNode};
+
+        let leaf = |start: usize, end: usize| SpanTree {
+            span: SimpleSpan::new((), start..end),
+            kids: Vec::new(),
+        };
 
         let syntax = SyntaxNode::Root {
             mode: M::Math,
             children: vec![SyntaxNode::Char('a'), SyntaxNode::Char('b')],
         };
-        let path_spans = vec![
-            ("root".to_string(), Span { start: 0, end: 2 }),
-            ("root.child.0".to_string(), Span { start: 0, end: 1 }),
-            ("root.child.1".to_string(), Span { start: 1, end: 2 }),
-        ];
+        let span_tree = SpanTree {
+            span: SimpleSpan::new((), 0..2),
+            kids: vec![leaf(0, 1), leaf(1, 2)],
+        };
 
-        let doc = Document::from_syntax_with_spans(&syntax, &path_spans).unwrap();
+        let doc = Document::from_syntax_with_spans(&syntax, &span_tree).unwrap();
         let mut kids = doc.root().children();
         let a = kids.next().unwrap();
         let b = kids.next().unwrap();

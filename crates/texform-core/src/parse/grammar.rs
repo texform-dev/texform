@@ -52,43 +52,46 @@ pub(crate) type Spanned<T> = (T, SimpleSpan);
 // Node Span Tracking Infrastructure
 // ============================================================================
 
-// Path segment constants for node span IDs.
-const CHILD: &str = "child";
-const ARG: &str = "arg";
-const CONTENT: &str = "content";
-const LEFT: &str = "left";
-const RIGHT: &str = "right";
-const BODY: &str = "body";
-const BASE: &str = "base";
-const SUB: &str = "sub";
-const SUP: &str = "sup";
-
-/// Descendant span keyed by a path relative to the current tracked node.
+/// Positional span subtree mirroring a `SyntaxNode`. It carries the node's own
+/// source span plus the span subtrees of its spannable children, addressed by
+/// structural position rather than a path string.
+/// [`Document::from_syntax_with_spans`] walks it in lockstep with the converted
+/// arena to attach spans, so there is no path formatting or hashing on either
+/// the producer or the consumer side.
+///
+/// `kids` lists child span subtrees in the exact order the consumer visits
+/// them:
+/// - Group / Root: each child, in order.
+/// - Command / Declarative: each content-bearing argument slot, in slot order.
+/// - Infix: `left`, then each content-bearing argument slot, then `right`.
+/// - Environment: each content-bearing argument slot, then `body`.
+/// - Scripted: `base`, then `subscript` if present, then `superscript` if present.
+/// - Leaves carry no kids.
 #[derive(Debug, Clone)]
-pub(crate) struct RelativeSpanEntry {
-    pub path: String,
+pub(crate) struct SpanTree {
     pub span: SimpleSpan,
+    pub kids: Vec<SpanTree>,
 }
 
-/// Parser-private wrapper: a syntax node bundled with its span and descendant
-/// path records. This is the only tracking structure in the parser; it is NOT
-/// a mirror of `SyntaxNode` — the node is constructed normally, and the
-/// records are assembled via a handful of decompose/prefix helpers.
+/// Parser-private wrapper: a syntax node bundled with its span, the span
+/// subtrees of its spannable children, and recovery diagnostics. The node is
+/// constructed normally; `span_kids` is assembled positionally by a handful of
+/// decompose helpers and finalized into a [`SpanTree`] by `finish_root`.
 #[derive(Debug, Clone)]
 pub(crate) struct TrackedNode {
     pub node: SyntaxNode,
     pub span: SimpleSpan,
-    pub records: Vec<RelativeSpanEntry>,
+    pub span_kids: Vec<SpanTree>,
     diagnostics: Vec<Rich<'static, Token>>,
 }
 
 impl TrackedNode {
-    /// Wrap a syntax node with no descendant records.
+    /// Wrap a syntax node with no spannable children.
     pub(crate) fn leaf(node: SyntaxNode, span: SimpleSpan) -> Self {
         Self {
             node,
             span,
-            records: Vec::new(),
+            span_kids: Vec::new(),
             diagnostics: Vec::new(),
         }
     }
@@ -103,14 +106,11 @@ impl TrackedNode {
     pub(crate) fn offset(self, offset: usize) -> Self {
         TrackedNode {
             node: self.node,
-            span: SimpleSpan::new((), self.span.start + offset..self.span.end + offset),
-            records: self
-                .records
+            span: shift_simple_span(self.span, offset),
+            span_kids: self
+                .span_kids
                 .into_iter()
-                .map(|e| RelativeSpanEntry {
-                    path: e.path,
-                    span: SimpleSpan::new((), e.span.start + offset..e.span.end + offset),
-                })
+                .map(|kid| shift_span_tree(kid, offset))
                 .collect(),
             diagnostics: self
                 .diagnostics
@@ -120,20 +120,13 @@ impl TrackedNode {
         }
     }
 
-    /// Finalize into the root-prefixed record list consumed by `ParseResult`.
+    /// Finalize into the syntax root plus its span subtree.
     ///
     /// Promotes the tracked top-level implicit group into a real
     /// `SyntaxNode::Root` so downstream consumers never see the root as a
-    /// regular group. Span paths continue to start with `root` and
-    /// `root.child.N` before they are attached to `Document` node handles.
-    pub(crate) fn finish_root(
-        self,
-    ) -> (
-        SyntaxNode,
-        SimpleSpan,
-        Vec<RelativeSpanEntry>,
-        Vec<Rich<'static, Token>>,
-    ) {
+    /// regular group. The returned [`SpanTree`] is rooted at the document root
+    /// before it is attached to `Document` node handles.
+    pub(crate) fn finish_root(self) -> (SyntaxNode, SpanTree, Vec<Rich<'static, Token>>) {
         let root_node = match self.node {
             node @ SyntaxNode::Root { .. } => node,
             SyntaxNode::Group {
@@ -147,75 +140,70 @@ impl TrackedNode {
             ),
         };
 
-        let mut records = vec![RelativeSpanEntry {
-            path: "root".to_string(),
+        let span_tree = SpanTree {
             span: self.span,
-        }];
-        for entry in self.records {
-            records.push(RelativeSpanEntry {
-                path: format!("root.{}", entry.path),
-                span: entry.span,
-            });
-        }
-        (root_node, self.span, records, self.diagnostics)
+            kids: self.span_kids,
+        };
+        (root_node, span_tree, self.diagnostics)
     }
 
-    /// Extract syntax nodes and `child.N` records from tracked children.
+    /// Extract syntax nodes and one child span subtree per child, in order.
     fn decompose_children(
         children: Vec<TrackedNode>,
-    ) -> (
-        Vec<SyntaxNode>,
-        Vec<RelativeSpanEntry>,
-        Vec<Rich<'static, Token>>,
-    ) {
-        let mut records = Vec::new();
+    ) -> (Vec<SyntaxNode>, Vec<SpanTree>, Vec<Rich<'static, Token>>) {
+        let mut kids = Vec::with_capacity(children.len());
         let mut diagnostics = Vec::new();
         let mut nodes = Vec::with_capacity(children.len());
-        for (index, child) in children.iter().enumerate() {
-            records.extend(prefix_records(&format!("{CHILD}.{index}"), child));
-            extend_unique_diagnostics(&mut diagnostics, child.diagnostics.iter().cloned());
-        }
         for child in children {
-            nodes.push(child.node);
+            let TrackedNode {
+                node,
+                span,
+                span_kids,
+                diagnostics: child_diagnostics,
+            } = child;
+            extend_unique_diagnostics(&mut diagnostics, child_diagnostics);
+            nodes.push(node);
+            kids.push(SpanTree {
+                span,
+                kids: span_kids,
+            });
         }
-        (nodes, records, diagnostics)
+        (nodes, kids, diagnostics)
     }
 
-    /// Extract argument slots and `arg.N` / `arg.N.content` records.
+    /// Extract argument slots and one span subtree per content-bearing slot, in
+    /// slot order. Slots without content (e.g. starred or absent optionals)
+    /// contribute no span subtree, matching the consumer's recursion.
     fn decompose_args(
         slots: Vec<TrackedArgumentSlot>,
-    ) -> (
-        Vec<ArgumentSlot>,
-        Vec<RelativeSpanEntry>,
-        Vec<Rich<'static, Token>>,
-    ) {
-        let mut records = Vec::new();
+    ) -> (Vec<ArgumentSlot>, Vec<SpanTree>, Vec<Rich<'static, Token>>) {
+        let mut kids = Vec::new();
         let mut diagnostics = Vec::new();
-        for (index, arg) in slots.iter().enumerate() {
-            if let Some(arg_span) = arg.span {
-                let arg_path = format!("{ARG}.{index}");
-                records.push(RelativeSpanEntry {
-                    path: arg_path.clone(),
-                    span: arg_span,
+        let mut out_slots = Vec::with_capacity(slots.len());
+        for arg in slots {
+            if let Some(content) = arg.content {
+                let TrackedNode {
+                    span,
+                    span_kids,
+                    diagnostics: content_diagnostics,
+                    ..
+                } = content;
+                extend_unique_diagnostics(&mut diagnostics, content_diagnostics);
+                kids.push(SpanTree {
+                    span,
+                    kids: span_kids,
                 });
-                if let Some(content) = &arg.content {
-                    records.extend(prefix_records(&format!("{arg_path}.{CONTENT}"), content));
-                    extend_unique_diagnostics(
-                        &mut diagnostics,
-                        content.diagnostics.iter().cloned(),
-                    );
-                }
             }
+            out_slots.push(arg.slot);
         }
-        let slots = slots.into_iter().map(|a| a.slot).collect();
-        (slots, records, diagnostics)
+        (out_slots, kids, diagnostics)
     }
 
-    /// `fold_items` equivalent that preserves span records.
+    /// `fold_items` equivalent that preserves span subtrees.
     ///
     /// - 0 items → empty implicit group
-    /// - 1 item  → unwrap (reuse child's records, override span)
-    /// - N items → implicit group with `child.N` records
+    /// - 1 item  → unwrap (reuse child's span subtrees, override span)
+    /// - N items → implicit group with one child span subtree per item
     fn fold(mode: ContentMode, items: Vec<TrackedNode>, span: SimpleSpan) -> Self {
         match items.len() {
             0 => TrackedNode::leaf(
@@ -231,7 +219,7 @@ impl TrackedNode {
                 TrackedNode { span, ..child }
             }
             _ => {
-                let (nodes, records, diagnostics) = TrackedNode::decompose_children(items);
+                let (nodes, span_kids, diagnostics) = TrackedNode::decompose_children(items);
                 TrackedNode {
                     node: SyntaxNode::Group {
                         mode,
@@ -239,7 +227,7 @@ impl TrackedNode {
                         children: nodes,
                     },
                     span,
-                    records,
+                    span_kids,
                     diagnostics,
                 }
             }
@@ -256,21 +244,21 @@ fn items_span(items: &[TrackedNode], fallback: usize) -> SimpleSpan {
     }
 }
 
-/// Create records for a child node: one entry for the child itself, plus all
-/// its descendants prefixed under the given path. Takes a reference to avoid
-/// unnecessary cloning at callsites.
-fn prefix_records(prefix: &str, child: &TrackedNode) -> Vec<RelativeSpanEntry> {
-    let mut records = vec![RelativeSpanEntry {
-        path: prefix.to_string(),
-        span: child.span,
-    }];
-    for entry in &child.records {
-        records.push(RelativeSpanEntry {
-            path: format!("{prefix}.{}", entry.path),
-            span: entry.span,
-        });
+/// Shift a span by `offset` bytes.
+fn shift_simple_span(span: SimpleSpan, offset: usize) -> SimpleSpan {
+    SimpleSpan::new((), span.start + offset..span.end + offset)
+}
+
+/// Shift every span in a span subtree by `offset` bytes.
+fn shift_span_tree(tree: SpanTree, offset: usize) -> SpanTree {
+    SpanTree {
+        span: shift_simple_span(tree.span, offset),
+        kids: tree
+            .kids
+            .into_iter()
+            .map(|kid| shift_span_tree(kid, offset))
+            .collect(),
     }
-    records
 }
 
 // Nested content reparses can surface the same inner diagnostic at multiple wrapper levels.
@@ -851,7 +839,7 @@ where
     P: Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone + 'a,
 {
     content.map_with(move |children, e| {
-        let (nodes, records, diagnostics) = TrackedNode::decompose_children(children);
+        let (nodes, span_kids, diagnostics) = TrackedNode::decompose_children(children);
         TrackedNode {
             node: SyntaxNode::Group {
                 mode,
@@ -859,7 +847,7 @@ where
                 children: nodes,
             },
             span: e.span(),
-            records,
+            span_kids,
             diagnostics,
         }
     })
@@ -906,7 +894,7 @@ where
 
         result.map(move |children| {
             let span = input.span_from_cursor(&group_start);
-            let (nodes, records, diagnostics) = TrackedNode::decompose_children(children);
+            let (nodes, span_kids, diagnostics) = TrackedNode::decompose_children(children);
             TrackedNode {
                 node: SyntaxNode::Group {
                     mode,
@@ -914,7 +902,7 @@ where
                     children: nodes,
                 },
                 span,
-                records,
+                span_kids,
                 diagnostics,
             }
         })
@@ -1012,7 +1000,7 @@ where
         };
 
         let span = input.span_from_cursor(&group_start);
-        let (nodes, records, diagnostics) = TrackedNode::decompose_children(children);
+        let (nodes, span_kids, diagnostics) = TrackedNode::decompose_children(children);
         Ok(TrackedNode {
             node: SyntaxNode::Group {
                 mode: ContentMode::Math,
@@ -1020,7 +1008,7 @@ where
                 children: nodes,
             },
             span,
-            records,
+            span_kids,
             diagnostics,
         })
     })
@@ -2177,7 +2165,7 @@ fn prefix_command_parser<'a>(
         )?;
 
         let span = input.span_from_cursor(&cmd_start);
-        let (args, records, diagnostics) = TrackedNode::decompose_args(cmd_args);
+        let (args, span_kids, diagnostics) = TrackedNode::decompose_args(cmd_args);
         Ok(TrackedNode {
             node: SyntaxNode::Command {
                 name,
@@ -2185,7 +2173,7 @@ fn prefix_command_parser<'a>(
                 known: true,
             },
             span,
-            records,
+            span_kids,
             diagnostics,
         })
     })
@@ -2222,11 +2210,11 @@ fn declarative_command_parser<'a>(
         )?;
 
         let span = input.span_from_cursor(&cmd_start);
-        let (args, records, diagnostics) = TrackedNode::decompose_args(cmd_args);
+        let (args, span_kids, diagnostics) = TrackedNode::decompose_args(cmd_args);
         Ok(TrackedNode {
             node: SyntaxNode::Declarative { name, args },
             span,
-            records,
+            span_kids,
             diagnostics,
         })
     })
@@ -2400,18 +2388,28 @@ fn environment_parser<'a>(
         }
 
         let span = input.span_from_cursor(&env_start);
-        let (args, mut records, mut diagnostics) = TrackedNode::decompose_args(cmd_args);
-        records.extend(prefix_records(BODY, &body));
-        diagnostics.extend(body.diagnostics.clone());
+        let (args, mut span_kids, mut diagnostics) = TrackedNode::decompose_args(cmd_args);
+        let TrackedNode {
+            node: body_node,
+            span: body_span,
+            span_kids: body_kids,
+            diagnostics: body_diagnostics,
+        } = body;
+        diagnostics.extend(body_diagnostics);
+        // Environment span subtree order is [args..., body].
+        span_kids.push(SpanTree {
+            span: body_span,
+            kids: body_kids,
+        });
         Ok(TrackedNode {
             node: SyntaxNode::Environment {
                 name,
                 args,
                 known,
-                body: Box::new(body.node),
+                body: Box::new(body_node),
             },
             span,
-            records,
+            span_kids,
             diagnostics,
         })
     })
@@ -2510,26 +2508,48 @@ where
         }
 
         let span = input.span_from_cursor(&start);
-        let mut records = Vec::new();
-        let mut diagnostics = Vec::new();
-        records.extend(prefix_records(BASE, &components.base));
-        diagnostics.extend(components.base.diagnostics.clone());
-        if let Some(sub) = &components.subscript {
-            records.extend(prefix_records(SUB, sub));
-            diagnostics.extend(sub.diagnostics.clone());
-        }
-        if let Some(sup_node) = &components.superscript {
-            records.extend(prefix_records(SUP, sup_node));
-            diagnostics.extend(sup_node.diagnostics.clone());
-        }
+        // Scripted span subtree order is [base, subscript?, superscript?].
+        let TrackedNode {
+            node: base_node,
+            span: base_span,
+            span_kids: base_kids,
+            diagnostics: base_diagnostics,
+        } = components.base;
+        let mut diagnostics = base_diagnostics;
+        let mut span_kids = vec![SpanTree {
+            span: base_span,
+            kids: base_kids,
+        }];
+        let subscript_node = components.subscript.map(|sub| {
+            let TrackedNode {
+                node,
+                span,
+                span_kids: kids,
+                diagnostics: sub_diagnostics,
+            } = sub;
+            diagnostics.extend(sub_diagnostics);
+            span_kids.push(SpanTree { span, kids });
+            Box::new(node)
+        });
+        let superscript_node = components.superscript.map(|sup| {
+            let TrackedNode {
+                node,
+                span,
+                span_kids: kids,
+                diagnostics: sup_diagnostics,
+            } = sup;
+            diagnostics.extend(sup_diagnostics);
+            span_kids.push(SpanTree { span, kids });
+            Box::new(node)
+        });
         Ok(TrackedNode {
             node: SyntaxNode::Scripted {
-                base: Box::new(components.base.node),
-                subscript: components.subscript.map(|t| Box::new(t.node)),
-                superscript: components.superscript.map(|t| Box::new(t.node)),
+                base: Box::new(base_node),
+                subscript: subscript_node,
+                superscript: superscript_node,
             },
             span,
-            records,
+            span_kids,
             diagnostics,
         })
     })
@@ -2547,7 +2567,7 @@ fn inline_math_group_from_tracked(tracked: TrackedNode, span: SimpleSpan) -> Tra
     TrackedNode {
         node,
         span,
-        records: tracked.records,
+        span_kids: tracked.span_kids,
         diagnostics: tracked.diagnostics,
     }
 }
@@ -2888,23 +2908,44 @@ where
                 let right_span = items_span(&right_items, content_span.end);
                 let right = TrackedNode::fold(ContentMode::Math, right_items, right_span);
 
-                let (args, mut records, mut diagnostics) = TrackedNode::decompose_args(args);
-                records.extend(prefix_records(LEFT, &left));
-                records.extend(prefix_records(RIGHT, &right));
-                diagnostics.extend(left.diagnostics.clone());
-                diagnostics.extend(right.diagnostics.clone());
+                let (args, args_kids, mut diagnostics) = TrackedNode::decompose_args(args);
+                let TrackedNode {
+                    node: left_node,
+                    span: left_span,
+                    span_kids: left_kids,
+                    diagnostics: left_diagnostics,
+                } = left;
+                let TrackedNode {
+                    node: right_node,
+                    span: right_span,
+                    span_kids: right_kids,
+                    diagnostics: right_diagnostics,
+                } = right;
+                diagnostics.extend(left_diagnostics);
+                diagnostics.extend(right_diagnostics);
 
                 // Span covers from left start to right end.
-                let infix_span = SimpleSpan::new((), left.span.start..right.span.end);
+                let infix_span = SimpleSpan::new((), left_span.start..right_span.end);
+                // Infix span subtree order is [left, args..., right].
+                let mut span_kids = Vec::with_capacity(args_kids.len() + 2);
+                span_kids.push(SpanTree {
+                    span: left_span,
+                    kids: left_kids,
+                });
+                span_kids.extend(args_kids);
+                span_kids.push(SpanTree {
+                    span: right_span,
+                    kids: right_kids,
+                });
                 let infix_node = TrackedNode {
                     node: SyntaxNode::Infix {
                         name,
                         args,
-                        left: Box::new(left.node),
-                        right: Box::new(right.node),
+                        left: Box::new(left_node),
+                        right: Box::new(right_node),
                     },
                     span: infix_span,
-                    records,
+                    span_kids,
                     diagnostics,
                 };
 

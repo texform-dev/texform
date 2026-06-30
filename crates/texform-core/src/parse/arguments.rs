@@ -29,33 +29,23 @@ use super::{
     optional_bracketed, optional_bracketed_or_empty, shift_owned_rich_span, text_item_parser,
 };
 
-/// Parsed argument slot bundled with span metadata for node-span tracking.
+/// Parsed argument slot bundled with its tracked content subtree.
 ///
 /// - `slot`: the public argument value (unchanged from before tracking)
-/// - `span`: byte range of the full argument consumption (including delimiters)
-/// - `content`: tracked content subtree for `arg.N.content` paths (content args only)
+/// - `content`: tracked content subtree for content arguments; `None` for
+///   non-content arguments (delimiters, dimensions, ...), whose own span is not
+///   tracked because only content nodes carry spans.
 #[derive(Debug, Clone)]
 pub(crate) struct TrackedArgumentSlot {
     pub slot: ArgumentSlot,
-    pub span: Option<SimpleSpan>,
     pub content: Option<TrackedNode>,
 }
 
 impl TrackedArgumentSlot {
-    /// Wrap a plain slot with no tracking metadata.
+    /// Wrap a slot with no tracked content subtree.
     fn untracked(slot: ArgumentSlot) -> Self {
         Self {
             slot,
-            span: None,
-            content: None,
-        }
-    }
-
-    /// Wrap a slot with span but no content subtree (non-content arguments).
-    fn with_span(slot: ArgumentSlot, span: SimpleSpan) -> Self {
-        Self {
-            slot,
-            span: Some(span),
             content: None,
         }
     }
@@ -348,36 +338,28 @@ fn is_trailing_outer_error(
 /// wrapper group, but the aggregated diagnostics still belong to the returned
 /// content node after the wrapper is stripped away.
 fn normalize_content_subparse(mode: ContentMode, tracked: TrackedNode) -> TrackedNode {
-    let content_span = tracked.span;
-    let existing_diagnostics = tracked.diagnostics.clone();
+    let TrackedNode {
+        node,
+        span: content_span,
+        span_kids,
+        diagnostics,
+    } = tracked;
 
-    let normalized = match tracked.node {
+    let normalized = match node {
         SyntaxNode::Group { children, .. } => {
+            // A group's span subtrees line up one-to-one with its children, so
+            // unwrapping the group hands each child its own subtree directly.
+            let mut kids = span_kids.into_iter();
             let mut items = Vec::with_capacity(children.len());
-            for (i, child_node) in children.into_iter().enumerate() {
-                let prefix = format!("child.{i}");
-                let child_span = tracked
-                    .records
-                    .iter()
-                    .find(|r| r.path == prefix)
-                    .map(|r| r.span)
-                    .unwrap_or(content_span);
-                let child_records: Vec<super::RelativeSpanEntry> = tracked
-                    .records
-                    .iter()
-                    .filter_map(|r| {
-                        r.path.strip_prefix(&format!("{prefix}.")).map(|suffix| {
-                            super::RelativeSpanEntry {
-                                path: suffix.to_string(),
-                                span: r.span,
-                            }
-                        })
-                    })
-                    .collect();
+            for child_node in children {
+                let (span, sub_kids) = match kids.next() {
+                    Some(kid) => (kid.span, kid.kids),
+                    None => (content_span, Vec::new()),
+                };
                 items.push(TrackedNode {
                     node: child_node,
-                    span: child_span,
-                    records: child_records,
+                    span,
+                    span_kids: sub_kids,
                     diagnostics: Vec::new(),
                 });
             }
@@ -386,7 +368,7 @@ fn normalize_content_subparse(mode: ContentMode, tracked: TrackedNode) -> Tracke
         other => TrackedNode::leaf(other, content_span),
     };
 
-    normalized.with_diagnostics(existing_diagnostics)
+    normalized.with_diagnostics(diagnostics)
 }
 
 fn whitespace_only_text_content_node(
@@ -656,7 +638,6 @@ pub(super) fn argument_parser<'a>(
                                         content.node.clone(),
                                     ),
                                 )),
-                                span: Some(arg_span),
                                 content: Some(content),
                             })
                         } else {
@@ -681,11 +662,10 @@ pub(super) fn argument_parser<'a>(
                                     .as_context(),
                                 )?,
                             };
-                            let arg_span = input.span_from_cursor(&arg_start);
                             let content = TrackedNode {
                                 node: normalize_argument_value(mode, item.node.clone()),
                                 span: item.span,
-                                records: item.records,
+                                span_kids: item.span_kids,
                                 diagnostics: item.diagnostics,
                             };
                             Ok(TrackedArgumentSlot {
@@ -696,7 +676,6 @@ pub(super) fn argument_parser<'a>(
                                         content.node.clone(),
                                     ),
                                 )),
-                                span: Some(arg_span),
                                 content: Some(content),
                             })
                         }
@@ -715,7 +694,6 @@ pub(super) fn argument_parser<'a>(
                                 ArgumentKind::Optional,
                                 argument_content_value_for_kind(spec.kind, content.node.clone()),
                             )),
-                            span: Some(arg_span),
                             content: Some(content),
                         })
                     }
@@ -734,8 +712,7 @@ pub(super) fn argument_parser<'a>(
                             ))
                         });
                         let slot = input.parse(parser)?;
-                        let arg_span = input.span_from_cursor(&arg_start);
-                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                        Ok(TrackedArgumentSlot::untracked(slot))
                     } else if !matches!(input.peek(), Some(Token::LBracket)) {
                         Ok(TrackedArgumentSlot::untracked(None))
                     } else {
@@ -753,8 +730,7 @@ pub(super) fn argument_parser<'a>(
                             })
                         });
                         let slot = input.parse(parser)?;
-                        let arg_span = input.span_from_cursor(&arg_start);
-                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                        Ok(TrackedArgumentSlot::untracked(slot))
                     }
                 }
                 ValueKind::Dimension => {
@@ -771,8 +747,7 @@ pub(super) fn argument_parser<'a>(
                             ))
                         });
                         let slot = input.parse(parser)?;
-                        let arg_span = input.span_from_cursor(&arg_start);
-                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                        Ok(TrackedArgumentSlot::untracked(slot))
                     } else if !matches!(input.peek(), Some(Token::LBracket)) {
                         Ok(TrackedArgumentSlot::untracked(None))
                     } else {
@@ -790,8 +765,7 @@ pub(super) fn argument_parser<'a>(
                             })
                         });
                         let slot = input.parse(parser)?;
-                        let arg_span = input.span_from_cursor(&arg_start);
-                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                        Ok(TrackedArgumentSlot::untracked(slot))
                     }
                 }
                 ValueKind::Integer => {
@@ -808,8 +782,7 @@ pub(super) fn argument_parser<'a>(
                             ))
                         });
                         let slot = input.parse(parser)?;
-                        let arg_span = input.span_from_cursor(&arg_start);
-                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                        Ok(TrackedArgumentSlot::untracked(slot))
                     } else if !matches!(input.peek(), Some(Token::LBracket)) {
                         Ok(TrackedArgumentSlot::untracked(None))
                     } else {
@@ -827,8 +800,7 @@ pub(super) fn argument_parser<'a>(
                             })
                         });
                         let slot = input.parse(parser)?;
-                        let arg_span = input.span_from_cursor(&arg_start);
-                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                        Ok(TrackedArgumentSlot::untracked(slot))
                     }
                 }
                 ValueKind::KeyVal => {
@@ -843,8 +815,7 @@ pub(super) fn argument_parser<'a>(
                             })
                             .boxed();
                         let slot = input.parse(parser)?;
-                        let arg_span = input.span_from_cursor(&arg_start);
-                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                        Ok(TrackedArgumentSlot::untracked(slot))
                     } else if !matches!(input.peek(), Some(Token::LBracket)) {
                         Ok(TrackedArgumentSlot::untracked(None))
                     } else {
@@ -858,8 +829,7 @@ pub(super) fn argument_parser<'a>(
                             })
                             .boxed();
                         let slot = input.parse(parser)?;
-                        let arg_span = input.span_from_cursor(&arg_start);
-                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                        Ok(TrackedArgumentSlot::untracked(slot))
                     }
                 }
                 ValueKind::Column => {
@@ -873,8 +843,7 @@ pub(super) fn argument_parser<'a>(
                             })
                             .boxed();
                         let slot = input.parse(parser)?;
-                        let arg_span = input.span_from_cursor(&arg_start);
-                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                        Ok(TrackedArgumentSlot::untracked(slot))
                     } else if !matches!(input.peek(), Some(Token::LBracket)) {
                         Ok(TrackedArgumentSlot::untracked(None))
                     } else {
@@ -887,8 +856,7 @@ pub(super) fn argument_parser<'a>(
                             })
                             .boxed();
                         let slot = input.parse(parser)?;
-                        let arg_span = input.span_from_cursor(&arg_start);
-                        Ok(TrackedArgumentSlot::with_span(slot, arg_span))
+                        Ok(TrackedArgumentSlot::untracked(slot))
                     }
                 }
                 ValueKind::CSName => {
@@ -911,14 +879,10 @@ pub(super) fn argument_parser<'a>(
                             })?;
                             parse_tokens_as_cs_name(input, std::slice::from_ref(&token))?
                         };
-                        let arg_span = input.span_from_cursor(&arg_start);
-                        Ok(TrackedArgumentSlot::with_span(
-                            Some(Argument::from_value(
-                                ArgumentKind::Mandatory,
-                                ArgumentValue::CSName(value),
-                            )),
-                            arg_span,
-                        ))
+                        Ok(TrackedArgumentSlot::untracked(Some(Argument::from_value(
+                            ArgumentKind::Mandatory,
+                            ArgumentValue::CSName(value),
+                        ))))
                     } else if !matches!(input.peek(), Some(Token::LBracket)) {
                         Ok(TrackedArgumentSlot::untracked(None))
                     } else {
@@ -932,14 +896,10 @@ pub(super) fn argument_parser<'a>(
                         } else {
                             parse_tokens_as_cs_name(input, &tokens)?
                         };
-                        let arg_span = input.span_from_cursor(&arg_start);
-                        Ok(TrackedArgumentSlot::with_span(
-                            Some(Argument::from_value(
-                                ArgumentKind::Optional,
-                                ArgumentValue::CSName(value),
-                            )),
-                            arg_span,
-                        ))
+                        Ok(TrackedArgumentSlot::untracked(Some(Argument::from_value(
+                            ArgumentKind::Optional,
+                            ArgumentValue::CSName(value),
+                        ))))
                     }
                 }
                 ValueKind::Star => {
@@ -953,14 +913,10 @@ pub(super) fn argument_parser<'a>(
                 if present {
                     input.next();
                 }
-                let arg_span = input.span_from_cursor(&arg_start);
-                Ok(TrackedArgumentSlot::with_span(
-                    Some(Argument::from_value(
-                        ArgumentKind::Star,
-                        ArgumentValue::Boolean(present),
-                    )),
-                    arg_span,
-                ))
+                Ok(TrackedArgumentSlot::untracked(Some(Argument::from_value(
+                    ArgumentKind::Star,
+                    ArgumentValue::Boolean(present),
+                ))))
             }
             ArgForm::Group => {
                 if !matches!(input.peek(), Some(Token::LBrace)) {
@@ -977,10 +933,10 @@ pub(super) fn argument_parser<'a>(
                     &DelimiterToken::Char('{'),
                     &DelimiterToken::Char('}'),
                 )?;
-                let arg_span = input.span_from_cursor(&arg_start);
 
                 // For content-typed group args, track the content subtree.
                 if spec.kind.is_content() {
+                    let arg_span = input.span_from_cursor(&arg_start);
                     let mode = spec
                         .kind
                         .content_mode()
@@ -993,16 +949,15 @@ pub(super) fn argument_parser<'a>(
                             ArgumentKind::Group,
                             argument_content_value_for_kind(spec.kind, content.node.clone()),
                         )),
-                        span: Some(arg_span),
                         content: Some(content),
                     });
                 }
 
                 let value = parse_delimited_value(input, state, spec.kind, tokens, spec.nullable)?;
-                Ok(TrackedArgumentSlot::with_span(
-                    Some(Argument::from_value(ArgumentKind::Group, value)),
-                    arg_span,
-                ))
+                Ok(TrackedArgumentSlot::untracked(Some(Argument::from_value(
+                    ArgumentKind::Group,
+                    value,
+                ))))
             }
             ArgForm::Delimited { open, close } => {
                 let has_open =
@@ -1018,10 +973,10 @@ pub(super) fn argument_parser<'a>(
                 }
 
                 let tokens = collect_delimited_tokens(input, open, close)?;
-                let arg_span = input.span_from_cursor(&arg_start);
 
                 // For content-typed delimited args, track the content subtree.
                 if spec.kind.is_content() {
+                    let arg_span = input.span_from_cursor(&arg_start);
                     let mode = spec
                         .kind
                         .content_mode()
@@ -1041,22 +996,18 @@ pub(super) fn argument_parser<'a>(
                             },
                             argument_content_value_for_kind(spec.kind, content.node.clone()),
                         )),
-                        span: Some(arg_span),
                         content: Some(content),
                     });
                 }
 
                 let value = parse_delimited_value(input, state, spec.kind, tokens, spec.nullable)?;
-                Ok(TrackedArgumentSlot::with_span(
-                    Some(Argument::from_value(
-                        ArgumentKind::Delimited {
-                            open: syntax_delimiter(open),
-                            close: syntax_delimiter(close),
-                        },
-                        value,
-                    )),
-                    arg_span,
-                ))
+                Ok(TrackedArgumentSlot::untracked(Some(Argument::from_value(
+                    ArgumentKind::Delimited {
+                        open: syntax_delimiter(open),
+                        close: syntax_delimiter(close),
+                    },
+                    value,
+                ))))
             }
             ArgForm::Paired { pairs } => {
                 let matched = input.peek().and_then(|next| {
@@ -1076,10 +1027,10 @@ pub(super) fn argument_parser<'a>(
                 };
 
                 let tokens = collect_delimited_tokens(input, open, close)?;
-                let arg_span = input.span_from_cursor(&arg_start);
 
                 // For content-typed paired args, track the content subtree.
                 if spec.kind.is_content() {
+                    let arg_span = input.span_from_cursor(&arg_start);
                     let mode = spec
                         .kind
                         .content_mode()
@@ -1096,22 +1047,18 @@ pub(super) fn argument_parser<'a>(
                             },
                             argument_content_value_for_kind(spec.kind, content.node.clone()),
                         )),
-                        span: Some(arg_span),
                         content: Some(content),
                     });
                 }
 
                 let value = parse_delimited_value(input, state, spec.kind, tokens, spec.nullable)?;
-                Ok(TrackedArgumentSlot::with_span(
-                    Some(Argument::from_value(
-                        ArgumentKind::Paired {
-                            open: syntax_delimiter(open),
-                            close: syntax_delimiter(close),
-                        },
-                        value,
-                    )),
-                    arg_span,
-                ))
+                Ok(TrackedArgumentSlot::untracked(Some(Argument::from_value(
+                    ArgumentKind::Paired {
+                        open: syntax_delimiter(open),
+                        close: syntax_delimiter(close),
+                    },
+                    value,
+                ))))
             }
         }
     })

@@ -961,21 +961,9 @@ pub(crate) fn parse_with_context(
     let (output, mut errors) = parse_raw(ctx, src, token_stream, config);
 
     let document = output.map(|tracked| {
-        let (node, _span, records, diagnostics) = tracked.finish_root();
+        let (node, span_tree, diagnostics) = tracked.finish_root();
         errors.extend(diagnostics);
-        let path_spans: Vec<_> = records
-            .into_iter()
-            .map(|entry| {
-                (
-                    entry.path,
-                    Span {
-                        start: entry.span.start,
-                        end: entry.span.end,
-                    },
-                )
-            })
-            .collect();
-        let mut document = Document::from_syntax_with_spans(&node, &path_spans)
+        let mut document = Document::from_syntax_with_spans(&node, &span_tree)
             .expect("parser must produce a syntax root accepted by Document");
         document.set_parse_context_id(ctx.id());
         document
