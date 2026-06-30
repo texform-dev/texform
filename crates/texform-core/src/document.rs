@@ -266,9 +266,7 @@ impl Document {
     pub fn from_syntax(node: &SyntaxNode) -> Result<Document, FromSyntaxError> {
         Self::validate_syntax(node, None, true)?;
         let ast = Ast::from_syntax_root(node);
-        let has_errors = ast
-            .find(ast.root(), |node| matches!(node, Node::Error { .. }))
-            .is_some();
+        let has_errors = ast.contains_error();
         Ok(Document {
             ast,
             spans: SecondaryMap::new(),
@@ -1747,9 +1745,7 @@ impl Document {
         let mut ast = Ast::new();
         build(&mut ast);
         ast.assert_invariants();
-        let has_errors = ast
-            .find(ast.root(), |node| matches!(node, Node::Error { .. }))
-            .is_some();
+        let has_errors = ast.contains_error();
         Document {
             ast,
             spans: SecondaryMap::new(),

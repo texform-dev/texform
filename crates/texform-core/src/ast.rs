@@ -430,6 +430,17 @@ impl Ast {
         self.root
     }
 
+    /// `true` when any node in the arena is an `Error` placeholder.
+    ///
+    /// Scans the flat node storage directly, so this is a single allocation-free
+    /// pass — unlike a tree walk through [`find`](Self::find), which allocates a
+    /// child-edge vector at every visited node.
+    pub fn contains_error(&self) -> bool {
+        self.nodes
+            .values()
+            .any(|node| matches!(node, Node::Error { .. }))
+    }
+
     /// Check whether `id` still exists in the arena.
     pub fn contains(&self, id: NodeId) -> bool {
         self.nodes.contains_key(id)
