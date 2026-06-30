@@ -43,6 +43,11 @@ pub fn run(ast: &mut Ast, config: &FinalizeAstConfig, report: &mut FinalizeAstRe
     }
 
     visit(ast, ast.root(), report);
+    // Debug-only structural contract check. `assert_invariants` is an
+    // O(n * branching) full-tree sweep, so running it on every transform made
+    // long, wide formulas quadratic in release. The rewrite scheduler gates its
+    // own per-rule check the same way.
+    #[cfg(debug_assertions)]
     ast.assert_invariants();
 }
 
