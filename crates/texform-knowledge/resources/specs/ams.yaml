@@ -3,22 +3,18 @@ commands:
     kind: prefix
     argspec: m m
     allowed_mode: math
-    tags: []
   - name: boxed
     kind: prefix
     argspec: m
     allowed_mode: math
-    tags: []
   - name: cfrac
     kind: prefix
     argspec: o:N m m
     allowed_mode: math
-    tags: []
   - name: dbinom
     kind: prefix
     argspec: m m
     allowed_mode: math
-    tags: []
   - name: ddddot
     kind: prefix
     argspec: m
@@ -42,42 +38,34 @@ commands:
     kind: prefix
     argspec: m m
     allowed_mode: math
-    tags: []
   - name: eqref
     kind: prefix
     argspec: m:N
     allowed_mode: math
-    tags: []
   - name: frac
     kind: prefix
     argspec: m m
     allowed_mode: math
-    tags: []
   - name: genfrac
     kind: prefix
     argspec: m:D? m:D? m:L? m:I? m m
     allowed_mode: math
-    tags: []
   - name: idotsint
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: impliedby
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: implies
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: injlim
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: mathring
     kind: prefix
     argspec: m
@@ -112,12 +100,10 @@ commands:
     kind: prefix
     argspec: s m:O
     allowed_mode: math
-    tags: []
   - name: projlim
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: shoveleft
     kind: declarative
     argspec: ''
@@ -135,57 +121,46 @@ commands:
     kind: prefix
     argspec: m m m
     allowed_mode: math
-    tags: []
   - name: substack
     kind: prefix
     argspec: m
     allowed_mode: math
-    tags: []
   - name: tag
     kind: prefix
     argspec: s m:T
     allowed_mode: math
-    tags: []
   - name: tbinom
     kind: prefix
     argspec: m m
     allowed_mode: math
-    tags: []
   - name: tfrac
     kind: prefix
     argspec: m m
     allowed_mode: math
-    tags: []
   - name: varinjlim
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: varliminf
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: varlimsup
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: varprojlim
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: xleftarrow
     kind: prefix
     argspec: o m
     allowed_mode: math
-    tags: []
   - name: xrightarrow
     kind: prefix
     argspec: o m
     allowed_mode: math
-    tags: []
 environments:
   - name: align
     argspec: ''
@@ -257,7 +232,6 @@ environments:
     argspec: ''
     body_mode: math
     allowed_mode: math
-    tags: []
   - name: flalign
     argspec: ''
     body_mode: math

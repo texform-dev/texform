@@ -197,11 +197,6 @@ impl Argument {
             value,
         }
     }
-
-    pub fn with_no_leading_space(mut self, no_leading_space: bool) -> Self {
-        self.no_leading_space = no_leading_space;
-        self
-    }
 }
 
 /// Optional argument slot in a command or environment signature.
@@ -631,28 +626,6 @@ impl Ast {
         let mut result = Vec::new();
         self.find_all_impl(start, &predicate, &mut result);
         result
-    }
-
-    /// Check whether `id` is a character node matching `expected`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `id` is invalid.
-    pub fn is_char(&self, id: NodeId, expected: char) -> bool {
-        matches!(self.node(id), Node::Char(ch) if *ch == expected)
-    }
-
-    /// Check whether the subtree rooted at `start` contains a command named `name`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `start` is invalid.
-    pub fn subtree_contains_command(&self, start: NodeId, name: &str) -> bool {
-        self.find(
-            start,
-            |node| matches!(node, Node::Command { name: command_name, .. } if command_name == name),
-        )
-        .is_some()
     }
 
     /// Insert a new detached node into the arena and return its [`NodeId`].

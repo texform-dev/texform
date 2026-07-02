@@ -6,8 +6,8 @@ use texform_core::{
     parse::{AllowedMode, CommandKind, ParseContext},
     serialize::{
         AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, InfixGrouping,
-        MathGroupInnerSpacing, MathScriptOptions, ScriptOrder, ScriptSpacing, SerializeOptions,
-        SyntaxSerializeOptions, serialize, serialize_with,
+        MathGroupInnerSpacing, ScriptOrder, ScriptSpacing, SerializeOptions, serialize,
+        serialize_with,
     },
 };
 
@@ -292,15 +292,6 @@ fn test_serialize_prime_superscript_respects_script_order() {
 #[test]
 fn test_serialize_mixed_prime_superscript_keeps_script_group() {
     assert_eq!(serialize(&parse_to_ast("f'^2")), "f ^ { ' 2 }");
-}
-
-#[test]
-fn test_serializer_option_surfaces_only_expose_live_fields() {
-    let MathScriptOptions {
-        spacing: _,
-        order: _,
-    } = MathScriptOptions::default();
-    let SyntaxSerializeOptions { environments: _ } = SyntaxSerializeOptions::default();
 }
 
 #[test]

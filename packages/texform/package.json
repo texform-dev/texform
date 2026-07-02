@@ -42,6 +42,7 @@
     "LICENSE",
     "bundler/",
     "node/",
+    "shared/",
     "types/",
     "wasm/"
   ],

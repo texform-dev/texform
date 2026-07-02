@@ -37,15 +37,6 @@ pub enum NormalizationLevel {
 }
 
 impl NormalizationLevel {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            NormalizationLevel::Standard => "standard",
-            NormalizationLevel::Expand => "expand",
-            NormalizationLevel::Drop => "drop",
-            NormalizationLevel::Equiv => "equiv",
-        }
-    }
-
     /// Lowest fidelity a rule at this level may declare.
     ///
     /// `level` and `fidelity` answer different questions. `level` determines
@@ -148,14 +139,6 @@ impl RuleTarget {
                 kind: RuleTargetKind::Character,
                 name: record.name,
             },
-        }
-    }
-
-    pub const fn kind_label(self) -> &'static str {
-        match self {
-            RuleTarget::Command(_) => "command",
-            RuleTarget::Environment(_) => "environment",
-            RuleTarget::Character(_) => "character",
         }
     }
 

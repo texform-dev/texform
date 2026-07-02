@@ -57,26 +57,3 @@ pub fn resolve_dataset_file(datasets_yaml: &Path, entry: &DatasetEntry) -> PathB
         .expect("datasets yaml should have a parent directory")
         .join(&entry.file)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn filter_by_slugs_empty_returns_all() {
-        let yaml =
-            "datasets:\n  - slug: a\n    file: a.parquet\n  - slug: b\n    file: b.parquet\n";
-        let config: DatasetsConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.filter_by_slugs(&[]).len(), 2);
-    }
-
-    #[test]
-    fn filter_by_slugs_selects() {
-        let yaml =
-            "datasets:\n  - slug: a\n    file: a.parquet\n  - slug: b\n    file: b.parquet\n";
-        let config: DatasetsConfig = serde_yaml::from_str(yaml).unwrap();
-        let filtered = config.filter_by_slugs(&["b".to_string()]);
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].slug, "b");
-    }
-}

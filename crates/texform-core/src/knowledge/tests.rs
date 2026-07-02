@@ -464,7 +464,7 @@ fn test_remove_environment_by_name_reports_presence() {
 
 #[test]
 fn test_all_packages_default_includes_registered_package_entries() {
-    let package_names = texform_knowledge::packages::all_package_names();
+    let package_names = texform_knowledge::builtin::all_package_names();
     let kb = build_default_kb(Some(package_names.as_slice()));
     assert!(kb.lookup_command("\\").is_some());
     assert!(kb.lookup_command("over").is_some());

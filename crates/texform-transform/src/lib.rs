@@ -16,7 +16,7 @@ pub mod lower_attributes;
 pub mod report;
 pub mod rewrite;
 
-pub use config::{BuildConfig, NormalizeConfig, Profile, TransformConfig};
+pub use config::{BuildConfig, Profile, TransformConfig};
 pub use context::TransformContext;
 pub use error::{TransformBuildError, TransformError};
 pub use finalize_ast::{

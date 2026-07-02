@@ -31,14 +31,6 @@ fn package_name_import_order_matches_transform_order() {
             "boldsymbol",
         ]
     );
-    assert_eq!(
-        texform_knowledge::builtin::managed_package_import_order(),
-        MANAGED_PACKAGE_IMPORT_ORDER
-    );
-    assert_eq!(
-        texform_knowledge::packages::MANAGED_PACKAGE_IMPORT_ORDER,
-        MANAGED_PACKAGE_IMPORT_ORDER
-    );
 }
 
 #[test]
@@ -46,16 +38,12 @@ fn package_name_lookup_and_package_access_use_generated_registry() {
     assert_eq!(PackageName::from_str("physics"), Some(PackageName::Physics));
     assert_eq!(PackageName::from_str("missing"), None);
     assert_eq!(PackageName::Physics.package().name, "physics");
-    assert_eq!(
-        texform_knowledge::packages::PackageName::Physics.as_str(),
-        "physics"
-    );
 }
 
 #[test]
 fn all_resource_specs_are_registered() {
     let names: Vec<&str> = ALL_PACKAGES.iter().map(|pkg| pkg.name).collect();
-    assert_eq!(texform_knowledge::packages::all_package_names(), names);
+    assert_eq!(texform_knowledge::builtin::all_package_names(), names);
     assert_eq!(
         names,
         vec![

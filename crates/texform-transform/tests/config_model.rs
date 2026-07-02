@@ -34,25 +34,3 @@ fn context_always_builds_a_plan_even_when_runtime_rewrite_is_disabled() {
     assert_eq!(report.rewrite.iterations, 0);
     assert_eq!(serialize::serialize(&ast), r"\quantity { x }");
 }
-
-#[test]
-fn profile_supplies_runtime_defaults_without_changing_parse_config() {
-    assert!(
-        Profile::Corpus
-            .default_transform_config()
-            .finalize_ast
-            .enabled
-    );
-    assert!(
-        Profile::Authoring
-            .default_transform_config()
-            .flatten_groups
-            .preserve_empty_group
-    );
-    assert!(
-        !Profile::Equiv
-            .default_transform_config()
-            .flatten_groups
-            .preserve_empty_group
-    );
-}

@@ -278,7 +278,6 @@ impl Document {
     }
 
     /// Internal: build from syntax plus the parser's positional span subtree.
-    #[allow(dead_code)]
     pub(crate) fn from_syntax_with_spans(
         node: &SyntaxNode,
         span_tree: &SpanTree,

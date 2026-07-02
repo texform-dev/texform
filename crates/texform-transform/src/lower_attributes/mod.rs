@@ -248,12 +248,6 @@ impl AttributeState {
         }
     }
 
-    #[allow(dead_code)]
-    fn with(mut self, set: AttributeSet) -> Self {
-        self.set(set);
-        self
-    }
-
     /// Sets the selected slot. Returns true when the previous value differed,
     /// which means the call should be recorded as a changepoint by the caller.
     fn set(&mut self, set: AttributeSet) -> bool {
@@ -563,7 +557,8 @@ fn collect_prefix_body(
     report: &mut LowerAttributesReport,
 ) -> Vec<Pair> {
     report.record_consumed_prefix(entry.set);
-    let body_state = previous.with(entry.set);
+    let mut body_state = previous;
+    body_state.set(entry.set);
     let body = mandatory_content_child(ast, prefix).expect("registered prefix should have a body");
 
     match ast.node(body) {
@@ -1016,31 +1011,31 @@ mod tests {
     #[test]
     fn attribute_state_diff_axes_uses_mode_specific_order() {
         let inherited = AttributeState::default();
-        let state = AttributeState::default()
-            .with(AttributeSet {
-                attr: Attr::MathStyle,
-                value: AttrValue::Style(super::StyleValue {
-                    letter: "D",
-                    display: true,
-                    level: 0,
-                }),
-            })
-            .with(AttributeSet {
-                attr: Attr::MathFont,
-                value: AttrValue::MathFont(MathFontValue("VARIANT.BOLD")),
-            })
-            .with(AttributeSet {
-                attr: Attr::TextFamily,
-                value: AttrValue::TextFamily(TextFamily::Roman),
-            })
-            .with(AttributeSet {
-                attr: Attr::TextShape,
-                value: AttrValue::TextShape(TextShape::Italic),
-            })
-            .with(AttributeSet {
-                attr: Attr::TextSeries,
-                value: AttrValue::TextSeries(TextSeries::Bold),
-            });
+        let mut state = AttributeState::default();
+        state.set(AttributeSet {
+            attr: Attr::MathStyle,
+            value: AttrValue::Style(super::StyleValue {
+                letter: "D",
+                display: true,
+                level: 0,
+            }),
+        });
+        state.set(AttributeSet {
+            attr: Attr::MathFont,
+            value: AttrValue::MathFont(MathFontValue("VARIANT.BOLD")),
+        });
+        state.set(AttributeSet {
+            attr: Attr::TextFamily,
+            value: AttrValue::TextFamily(TextFamily::Roman),
+        });
+        state.set(AttributeSet {
+            attr: Attr::TextShape,
+            value: AttrValue::TextShape(TextShape::Italic),
+        });
+        state.set(AttributeSet {
+            attr: Attr::TextSeries,
+            value: AttrValue::TextSeries(TextSeries::Bold),
+        });
 
         assert_eq!(
             state.diff_axes(inherited, ContentMode::Math),
@@ -1054,19 +1049,19 @@ mod tests {
 
     #[test]
     fn attribute_state_mode_reset_preserves_other_mode() {
-        let state = AttributeState::default()
-            .with(AttributeSet {
-                attr: Attr::MathSize,
-                value: AttrValue::Size(SizeValue(120)),
-            })
-            .with(AttributeSet {
-                attr: Attr::TextSize,
-                value: AttrValue::Size(SizeValue(85)),
-            })
-            .with(AttributeSet {
-                attr: Attr::TextShape,
-                value: AttrValue::TextShape(TextShape::Italic),
-            });
+        let mut state = AttributeState::default();
+        state.set(AttributeSet {
+            attr: Attr::MathSize,
+            value: AttrValue::Size(SizeValue(120)),
+        });
+        state.set(AttributeSet {
+            attr: Attr::TextSize,
+            value: AttrValue::Size(SizeValue(85)),
+        });
+        state.set(AttributeSet {
+            attr: Attr::TextShape,
+            value: AttrValue::TextShape(TextShape::Italic),
+        });
 
         let math_reset = state.with_mode_reset(ContentMode::Math);
         assert_eq!(math_reset.get(Attr::MathSize), None);

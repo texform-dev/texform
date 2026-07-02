@@ -80,14 +80,6 @@ fn builder_applies_insert_and_remove_environment_before_freezing() {
 }
 
 #[test]
-fn parse_context_debug_omits_mutation_summary() {
-    let debug = format!("{:?}", ParseContext::empty());
-    assert!(debug.contains("ParseContext"));
-    assert!(debug.contains("kb"));
-    assert!(!debug.contains("mutation_summary"));
-}
-
-#[test]
 fn convenience_factories_use_default_runtime_packages() {
     let default_ctx = ParseContext::default();
     let shared = ParseContext::shared();

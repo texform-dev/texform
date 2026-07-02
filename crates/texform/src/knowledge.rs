@@ -13,7 +13,7 @@ pub struct PackageInfo {
 
 /// List all built-in knowledge packages with record counts.
 pub fn list_packages() -> Vec<PackageInfo> {
-    texform_knowledge::packages::ALL_PACKAGES
+    texform_knowledge::builtin::ALL_PACKAGES
         .iter()
         .map(|pkg| PackageInfo {
             name: pkg.name.to_string(),

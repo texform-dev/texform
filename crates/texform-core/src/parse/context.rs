@@ -201,15 +201,6 @@ impl ContextItem {
             ContextItem::DelimiterControl(item) => item.name.as_str(),
         }
     }
-
-    /// Human-readable tag for error messages (`"command"`, `"environment"`, etc.)
-    pub const fn target_tag(&self) -> &'static str {
-        match self {
-            ContextItem::Command(_) => "command",
-            ContextItem::Environment(_) => "environment",
-            ContextItem::DelimiterControl(_) => "delimiter control",
-        }
-    }
 }
 
 /// Runtime command definition to be injected into a [`ParseContext`].
@@ -390,10 +381,6 @@ impl ParseContextBuilder {
             mode: KnowledgeBaseMode::Empty,
             ops: Vec::new(),
         }
-    }
-
-    pub fn empty_knowledge(self) -> Self {
-        Self::empty()
     }
 
     pub fn packages(mut self, packages: &[&str]) -> Self {

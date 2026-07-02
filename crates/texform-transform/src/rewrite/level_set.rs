@@ -20,16 +20,8 @@ impl NormalizationLevelSet {
         Self(0)
     }
 
-    pub const fn all() -> Self {
-        Self(0b1111)
-    }
-
     pub const fn union(self, other: Self) -> Self {
         Self(self.0 | other.0)
-    }
-
-    pub const fn intersects(self, other: Self) -> bool {
-        self.0 & other.0 != 0
     }
 
     pub const fn contains(self, level: NormalizationLevel) -> bool {
@@ -40,16 +32,6 @@ impl NormalizationLevelSet {
             NormalizationLevel::Equiv => 1 << 3,
         };
         self.0 & bit != 0
-    }
-
-    pub fn iter(self) -> impl Iterator<Item = NormalizationLevel> {
-        const ORDER: [NormalizationLevel; 4] = [
-            NormalizationLevel::Standard,
-            NormalizationLevel::Expand,
-            NormalizationLevel::Drop,
-            NormalizationLevel::Equiv,
-        ];
-        ORDER.into_iter().filter(move |level| self.contains(*level))
     }
 }
 
@@ -94,26 +76,5 @@ mod tests {
         assert!(set.contains(NormalizationLevel::Standard));
         assert!(set.contains(NormalizationLevel::Expand));
         assert!(!set.contains(NormalizationLevel::Drop));
-    }
-
-    #[test]
-    fn iter_emits_in_canonical_order() {
-        let set = NormalizationLevelSet::DROP | NormalizationLevelSet::STANDARD;
-        assert_eq!(
-            set.iter().collect::<Vec<_>>(),
-            vec![NormalizationLevel::Standard, NormalizationLevel::Drop]
-        );
-    }
-
-    #[test]
-    fn all_preset_contains_every_level() {
-        for level in [
-            NormalizationLevel::Standard,
-            NormalizationLevel::Expand,
-            NormalizationLevel::Drop,
-            NormalizationLevel::Equiv,
-        ] {
-            assert!(NormalizationLevelSet::all().contains(level));
-        }
     }
 }

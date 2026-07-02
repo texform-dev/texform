@@ -5,6 +5,3 @@ commands:
     allowed_mode: math
     tags:
       - presentation
-environments: []
-characters: []
-delimiters: []

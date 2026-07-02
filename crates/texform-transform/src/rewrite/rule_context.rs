@@ -272,32 +272,6 @@ impl<'a> RuleContext<'a> {
         RuleScopedContext { cx: self, rule }
     }
 
-    pub fn knows_command_name(&self, name: &str) -> bool {
-        self.lookup_command(name, ContentMode::Math).is_some()
-            || self.lookup_command(name, ContentMode::Text).is_some()
-    }
-
-    pub fn knows_env_name(&self, name: &str) -> bool {
-        self.lookup_env(name, ContentMode::Math).is_some()
-            || self.lookup_env(name, ContentMode::Text).is_some()
-    }
-
-    pub fn command_has_tag(&self, name: &str, tag: &str) -> bool {
-        self.lookup_command(name, ContentMode::Math)
-            .is_some_and(|record| record.tags.contains(&tag))
-            || self
-                .lookup_command(name, ContentMode::Text)
-                .is_some_and(|record| record.tags.contains(&tag))
-    }
-
-    pub fn env_has_tag(&self, name: &str, tag: &str) -> bool {
-        self.lookup_env(name, ContentMode::Math)
-            .is_some_and(|record| record.tags.contains(&tag))
-            || self
-                .lookup_env(name, ContentMode::Text)
-                .is_some_and(|record| record.tags.contains(&tag))
-    }
-
     /// Looks up the active command record for the node at `node_id` by extracting its name from the AST.
     pub fn active_command(&self, node_id: NodeId) -> Option<&ActiveCommandRecord> {
         let name = lookup_command_node_name(self.ast.node(node_id))?;
@@ -339,11 +313,6 @@ impl<'a> RuleContext<'a> {
     /// Records that a rule was attempted after consumed target matching but made no change.
     pub fn mark_rule_skipped(&mut self, key: RuleKey) {
         self.report.mark_rule_skipped(key);
-    }
-
-    /// Records the total number of fixed-point iterations the engine performed.
-    pub fn record_iteration(&mut self, iterations: usize) {
-        self.report.record_iteration(iterations);
     }
 
     /// Returns the AST node for the given identifier.

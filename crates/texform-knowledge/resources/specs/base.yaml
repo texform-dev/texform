@@ -78,22 +78,18 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: arcsin
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: arctan
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: arg
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: array
     kind: prefix
     argspec: m
@@ -237,13 +233,10 @@ commands:
   - name: bmod
     kind: prefix
     argspec: ''
-    allowed_mode: both
-    tags: []
   - name: boxed
     kind: prefix
     argspec: m
     allowed_mode: math
-    tags: []
   - name: brace
     kind: infix
     argspec: ''
@@ -311,22 +304,18 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: cosh
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: cot
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: coth
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: cr
     kind: prefix
     argspec: ''
@@ -337,7 +326,6 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: ddddot
     kind: prefix
     argspec: m
@@ -360,17 +348,14 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: det
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: dim
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: displaylines
     kind: prefix
     argspec: m
@@ -393,7 +378,6 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: enspace
     kind: prefix
     argspec: ''
@@ -417,7 +401,6 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: fbox
     kind: prefix
     argspec: m:T
@@ -428,7 +411,6 @@ commands:
     kind: prefix
     argspec: m m
     allowed_mode: math
-    tags: []
   - name: frak
     kind: prefix
     argspec: m
@@ -445,7 +427,6 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: goodbreak
     kind: prefix
     argspec: ''
@@ -475,7 +456,6 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: hfil
     kind: prefix
     argspec: ''
@@ -500,12 +480,10 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: hom
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: hphantom
     kind: prefix
     argspec: m
@@ -548,12 +526,10 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: inf
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: it
     kind: declarative
     argspec: ''
@@ -565,7 +541,6 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: kern
     kind: prefix
     argspec: m:L
@@ -600,12 +575,10 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: left
     kind: prefix
     argspec: m:D
     allowed_mode: math
-    tags: []
   - name: leftroot
     kind: prefix
     argspec: m:I
@@ -622,17 +595,14 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: lim
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: liminf
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: limits
     kind: prefix
     argspec: ''
@@ -643,7 +613,6 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: llap
     kind: prefix
     argspec: m
@@ -654,12 +623,10 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: log
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: lower
     kind: prefix
     argspec: m:L m
@@ -736,7 +703,6 @@ commands:
     kind: prefix
     argspec: m
     allowed_mode: math
-    tags: []
   - name: mathcal
     kind: prefix
     argspec: m
@@ -747,12 +713,10 @@ commands:
     kind: prefix
     argspec: m m m m
     allowed_mode: math
-    tags: []
   - name: mathclose
     kind: prefix
     argspec: m
     allowed_mode: math
-    tags: []
   - name: mathfrak
     kind: prefix
     argspec: m
@@ -763,7 +727,6 @@ commands:
     kind: prefix
     argspec: m
     allowed_mode: math
-    tags: []
   - name: mathit
     kind: prefix
     argspec: m
@@ -780,27 +743,22 @@ commands:
     kind: prefix
     argspec: m
     allowed_mode: math
-    tags: []
   - name: mathopen
     kind: prefix
     argspec: m
     allowed_mode: math
-    tags: []
   - name: mathord
     kind: prefix
     argspec: m
     allowed_mode: math
-    tags: []
   - name: mathpunct
     kind: prefix
     argspec: m
     allowed_mode: math
-    tags: []
   - name: mathrel
     kind: prefix
     argspec: m
     allowed_mode: math
-    tags: []
   - name: mathrm
     kind: prefix
     argspec: m
@@ -834,7 +792,6 @@ commands:
   - name: mathstrut
     kind: prefix
     argspec: ''
-    allowed_mode: both
     tags:
       - invisible
   - name: mathtt
@@ -859,7 +816,6 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: mbox
     kind: prefix
     argspec: m:T
@@ -870,12 +826,10 @@ commands:
     kind: prefix
     argspec: m:D
     allowed_mode: math
-    tags: []
   - name: min
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: mit
     kind: declarative
     argspec: ''
@@ -898,7 +852,6 @@ commands:
     kind: prefix
     argspec: m
     allowed_mode: math
-    tags: []
   - name: moveleft
     kind: prefix
     argspec: m:L m
@@ -978,12 +931,10 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - kind: prefix
     argspec: ''
     name: of
     allowed_mode: math
-    tags: []
   - name: oldstyle
     kind: declarative
     argspec: ''
@@ -1037,12 +988,10 @@ commands:
     kind: prefix
     argspec: m m
     allowed_mode: math
-    tags: []
   - name: overunderset
     kind: prefix
     argspec: m m m
     allowed_mode: math
-    tags: []
   - name: overwithdelims
     kind: infix
     argspec: m:D m:D
@@ -1071,23 +1020,18 @@ commands:
   - name: pmb
     kind: prefix
     argspec: m
-    allowed_mode: both
-    tags: []
   - name: pmod
     kind: prefix
     argspec: m
     allowed_mode: math
-    tags: []
   - name: pod
     kind: prefix
     argspec: m
     allowed_mode: math
-    tags: []
   - name: Pr
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: qquad
     kind: prefix
     argspec: ''
@@ -1110,12 +1054,10 @@ commands:
     kind: prefix
     argspec: m:N
     allowed_mode: math
-    tags: []
   - name: right
     kind: prefix
     argspec: m:D
     allowed_mode: math
-    tags: []
   - name: rlap
     kind: prefix
     argspec: m
@@ -1139,7 +1081,6 @@ commands:
     kind: prefix
     argspec: o:L m:L m:L
     allowed_mode: math
-    tags: []
   - name: Rule
     kind: prefix
     argspec: m:L m:L m:L
@@ -1169,7 +1110,6 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: sf
     kind: declarative
     argspec: ''
@@ -1181,17 +1121,13 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: sinh
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: skew
     kind: prefix
     argspec: m:I m m
-    allowed_mode: both
-    tags: []
   - name: small
     kind: declarative
     argspec: ''
@@ -1221,17 +1157,14 @@ commands:
     kind: prefix
     argspec: o m
     allowed_mode: math
-    tags: []
   - name: stackbin
     kind: prefix
     argspec: m m
     allowed_mode: math
-    tags: []
   - name: stackrel
     kind: prefix
     argspec: m m
     allowed_mode: math
-    tags: []
   - name: strut
     kind: prefix
     argspec: ''
@@ -1243,7 +1176,6 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: symbb
     kind: prefix
     argspec: m
@@ -1374,22 +1306,18 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: tanh
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: TeX
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: text
     kind: prefix
     argspec: m:T
     allowed_mode: math
-    tags: []
   - name: textbf
     kind: prefix
     argspec: m:T
@@ -1406,7 +1334,6 @@ commands:
     kind: prefix
     argspec: m:T
     allowed_mode: math
-    tags: []
   - name: textrm
     kind: prefix
     argspec: m:T
@@ -1510,7 +1437,6 @@ commands:
     kind: prefix
     argspec: m m
     allowed_mode: math
-    tags: []
   - name: uproot
     kind: prefix
     argspec: m:I
@@ -1593,7 +1519,6 @@ environments:
     argspec: ''
     body_mode: math
     allowed_mode: math
-    tags: []
   - name: indentalign
     argspec: o:L o:L o:L m:C
     body_mode: math

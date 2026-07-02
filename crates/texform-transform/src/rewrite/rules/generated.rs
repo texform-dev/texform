@@ -92,7 +92,6 @@ pub(crate) mod base {
         }
         pub(crate) mod linebreak_alias {
             pub(crate) mod break_to_linebreak;
-            pub(crate) mod helpers;
             pub(crate) mod newline_to_linebreak;
         }
         pub(crate) mod over_family {

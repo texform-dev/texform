@@ -85,7 +85,10 @@ fn split_eqalignno_row(
 
     let Some(amp_index) = row
         .windows(2)
-        .rposition(|pair| cx.ast.is_char(pair[0], '&') && cx.ast.is_char(pair[1], '('))
+        .rposition(|pair| {
+            matches!(cx.ast.node(pair[0]), Node::Char('&'))
+                && matches!(cx.ast.node(pair[1]), Node::Char('('))
+        })
     else {
         return Err(cx.for_rule(rule).invalid_shape(r"\eqalignno row should contain a final &(...) tag"));
     };

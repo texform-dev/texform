@@ -104,7 +104,6 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: text
-    tags: []
   - name: Bbb
     kind: prefix
     argspec: m:T
@@ -128,12 +127,10 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: text
-    tags: []
   - name: ddagger
     kind: prefix
     argspec: ''
     allowed_mode: text
-    tags: []
   - name: emph
     kind: prefix
     argspec: m:T
@@ -150,7 +147,6 @@ commands:
     kind: prefix
     argspec: m:N
     allowed_mode: text
-    tags: []
   - name: frak
     kind: prefix
     argspec: m:T
@@ -224,12 +220,10 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: text
-    tags: []
   - name: llap
     kind: prefix
     argspec: m:T
     allowed_mode: text
-    tags: []
   - name: mit
     kind: declarative
     argspec: ''
@@ -303,12 +297,10 @@ commands:
     kind: prefix
     argspec: m:N
     allowed_mode: text
-    tags: []
   - name: rlap
     kind: prefix
     argspec: m:T
     allowed_mode: text
-    tags: []
   - name: rm
     kind: declarative
     argspec: ''
@@ -320,7 +312,6 @@ commands:
     kind: prefix
     argspec: o:L m:L m:L
     allowed_mode: text
-    tags: []
   - name: Rule
     kind: prefix
     argspec: m:L m:L m:L
@@ -332,7 +323,6 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: text
-    tags: []
   - name: scriptsize
     kind: declarative
     argspec: ''
@@ -456,7 +446,6 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: text
-    tags: []
   - name: vphantom
     kind: prefix
     argspec: m:T
@@ -464,6 +453,3 @@ commands:
     tags:
       - invisible
       - spacing
-environments: []
-characters: []
-delimiters: []

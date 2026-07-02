@@ -1239,7 +1239,6 @@ dependencies = [
  "serde",
  "serde_yaml",
  "texform-argspec",
- "texform-interface",
  "texform-knowledge-macros",
  "trybuild",
 ]

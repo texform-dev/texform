@@ -1,15 +1,9 @@
 use crate::data::FormulaRecord;
 use crate::runner::FormulaResults;
 use crate::stats::{self, ModeStats};
-use arrow_array::{BooleanArray, Float64Array, RecordBatch, StringArray, UInt32Array};
-use arrow_schema::{DataType, Field, Schema};
-use parquet::arrow::ArrowWriter;
-use parquet::basic::Compression;
-use parquet::file::properties::WriterProperties;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::Path;
-use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use texform_core::parse::ParseDiagnostic;
 
@@ -655,38 +649,6 @@ pub fn write_run_summary(
     )
 }
 
-pub fn write_commit_results(
-    history_root: &Path,
-    slug: &str,
-    summary: &Summary,
-    records: &[FormulaRecord],
-    results: &[FormulaResults],
-    commit: &GitCommitInfo,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = history_root
-        .join(format!("{}-{}", commit.date, commit.short_hash))
-        .join(slug);
-    std::fs::create_dir_all(&dir)?;
-    write_json_file(&dir.join("summary.json"), summary)?;
-
-    let manifest = Manifest {
-        commit_hash: commit.short_hash.clone(),
-        commit_full: commit.full_hash.clone(),
-        dataset: slug.to_string(),
-        dataset_row_count: records.len(),
-        timestamp: now_timestamp(),
-    };
-    std::fs::write(
-        dir.join("manifest.json"),
-        serde_json::to_string_pretty(&manifest)?,
-    )?;
-
-    write_results_parquet(&dir.join("results.parquet"), records, results)?;
-    write_errors_jsonl(&dir.join("errors.jsonl"), slug, records, results)?;
-
-    Ok(())
-}
-
 pub fn start_commit_results(
     commits_root: &Path,
     slug: &str,
@@ -1038,102 +1000,7 @@ pub fn write_json_file<T: Serialize>(
     Ok(())
 }
 
-fn write_results_parquet(
-    path: &Path,
-    records: &[FormulaRecord],
-    results: &[FormulaResults],
-) -> Result<(), Box<dyn std::error::Error>> {
-    let schema = Arc::new(Schema::new(vec![
-        Field::new("formula_id", DataType::Utf8, false),
-        Field::new("formula", DataType::Utf8, false),
-        Field::new("strict_ok", DataType::Boolean, false),
-        Field::new("strict_duration_ms", DataType::Float64, false),
-        Field::new("strict_diagnostic_count", DataType::UInt32, false),
-        Field::new("nonstrict_ok", DataType::Boolean, false),
-        Field::new("nonstrict_duration_ms", DataType::Float64, false),
-        Field::new("nonstrict_diagnostic_count", DataType::UInt32, false),
-    ]));
-
-    let batch = RecordBatch::try_new(
-        schema.clone(),
-        vec![
-            Arc::new(StringArray::from(
-                records
-                    .iter()
-                    .map(|record| record.formula_id.clone())
-                    .collect::<Vec<_>>(),
-            )),
-            Arc::new(StringArray::from(
-                records
-                    .iter()
-                    .map(|record| record.formula.clone())
-                    .collect::<Vec<_>>(),
-            )),
-            Arc::new(BooleanArray::from(
-                results
-                    .iter()
-                    .map(|result| result.strict.ok)
-                    .collect::<Vec<_>>(),
-            )),
-            Arc::new(Float64Array::from(
-                results
-                    .iter()
-                    .map(|result| result.strict.duration.as_secs_f64() * 1_000.0)
-                    .collect::<Vec<_>>(),
-            )),
-            Arc::new(UInt32Array::from(
-                results
-                    .iter()
-                    .map(|result| result.strict.diagnostic_count as u32)
-                    .collect::<Vec<_>>(),
-            )),
-            Arc::new(BooleanArray::from(
-                results
-                    .iter()
-                    .map(|result| result.nonstrict.ok)
-                    .collect::<Vec<_>>(),
-            )),
-            Arc::new(Float64Array::from(
-                results
-                    .iter()
-                    .map(|result| result.nonstrict.duration.as_secs_f64() * 1_000.0)
-                    .collect::<Vec<_>>(),
-            )),
-            Arc::new(UInt32Array::from(
-                results
-                    .iter()
-                    .map(|result| result.nonstrict.diagnostic_count as u32)
-                    .collect::<Vec<_>>(),
-            )),
-        ],
-    )?;
-
-    let props = WriterProperties::builder()
-        .set_compression(Compression::ZSTD(Default::default()))
-        .build();
-    let file = std::fs::File::create(path)?;
-    let mut writer = ArrowWriter::try_new(file, schema, Some(props))?;
-    writer.write(&batch)?;
-    writer.close()?;
-    Ok(())
-}
-
-fn write_errors_jsonl(
-    path: &Path,
-    dataset: &str,
-    records: &[FormulaRecord],
-    results: &[FormulaResults],
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut file = std::io::BufWriter::new(std::fs::File::create(path)?);
-    append_error_entries(&mut file, dataset, records, results)?;
-    Ok(())
-}
-
 /// Appends one JSON object per failed parse (strict and/or nonstrict) to `writer`.
-///
-/// Shared by the per-commit snapshot writer and the standalone
-/// [`ErrorsEmitWriter`] so the two outputs stay byte-identical for the same
-/// inputs.
 fn append_error_entries<W: std::io::Write + ?Sized>(
     writer: &mut W,
     dataset: &str,
@@ -1440,101 +1307,6 @@ mod tests {
         assert_eq!(rows[0]["formula_id"], "beta");
         assert_eq!(rows[0]["mode"], "strict");
         assert_eq!(rows[0]["diagnostic_count"], 2);
-    }
-
-    #[test]
-    fn write_commit_results_persists_diagnostics_for_both_modes() {
-        let dir = make_temp_dir("commit-results");
-        let records = sample_records();
-        let results = vec![
-            FormulaResults {
-                strict: ParseResult {
-                    duration: Duration::from_micros(10),
-                    ok: false,
-                    diagnostic_count: 1,
-                    diagnostics: vec![ParseDiagnostic::new(
-                        "strict failed",
-                        Span { start: 0, end: 1 },
-                        vec!["group".to_string()],
-                        Some("\\foo".to_string()),
-                        Vec::new(),
-                    )],
-                },
-                nonstrict: ParseResult {
-                    duration: Duration::from_micros(12),
-                    ok: true,
-                    diagnostic_count: 0,
-                    diagnostics: Vec::new(),
-                },
-            },
-            FormulaResults {
-                strict: ParseResult {
-                    duration: Duration::from_micros(30),
-                    ok: true,
-                    diagnostic_count: 0,
-                    diagnostics: Vec::new(),
-                },
-                nonstrict: ParseResult {
-                    duration: Duration::from_micros(25),
-                    ok: false,
-                    diagnostic_count: 1,
-                    diagnostics: vec![ParseDiagnostic::new(
-                        "nonstrict failed",
-                        Span { start: 2, end: 3 },
-                        vec!["delimiter".to_string()],
-                        Some("\\bar".to_string()),
-                        Vec::new(),
-                    )],
-                },
-            },
-        ];
-        let summary = build_summary("demo", &records, &results);
-
-        write_commit_results(
-            &dir,
-            "demo",
-            &summary,
-            &records,
-            &results,
-            &GitCommitInfo {
-                short_hash: "abc12345".to_string(),
-                full_hash: "abc12345full".to_string(),
-                date: "2024-01-01".to_string(),
-                dirty: false,
-            },
-        )
-        .unwrap();
-
-        let commit_dir = dir.join("2024-01-01-abc12345").join("demo");
-        assert!(commit_dir.join("summary.json").exists());
-        assert!(commit_dir.join("manifest.json").exists());
-        assert!(commit_dir.join("results.parquet").exists());
-        assert!(commit_dir.join("errors.jsonl").exists());
-
-        let summary_json: serde_json::Value =
-            serde_json::from_reader(std::fs::File::open(commit_dir.join("summary.json")).unwrap())
-                .unwrap();
-        assert_eq!(
-            summary_json["strict"]["timing_ms"]["max_formula_id"],
-            "beta"
-        );
-
-        let errors = std::fs::read_to_string(commit_dir.join("errors.jsonl")).unwrap();
-        let errors: Vec<serde_json::Value> = errors
-            .lines()
-            .map(|line| serde_json::from_str(line).unwrap())
-            .collect();
-        assert_eq!(errors.len(), 2);
-        assert_eq!(errors[0]["dataset"], "demo");
-        assert_eq!(errors[0]["formula_id"], "alpha");
-        assert_eq!(errors[0]["mode"], "strict");
-        assert_eq!(errors[0]["strict"], true);
-        assert_eq!(errors[0]["diagnostics"][0]["message"], "strict failed");
-        assert_eq!(errors[1]["dataset"], "demo");
-        assert_eq!(errors[1]["formula_id"], "beta");
-        assert_eq!(errors[1]["mode"], "nonstrict");
-        assert_eq!(errors[1]["strict"], false);
-        assert_eq!(errors[1]["diagnostics"][0]["message"], "nonstrict failed");
     }
 
     #[test]

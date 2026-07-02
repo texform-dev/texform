@@ -14,8 +14,8 @@
 
 use texform_knowledge::builtin::base;
 
-use super::helpers::linebreak_command;
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};
+use crate::rewrite::helpers::linebreak_command_node;
 use crate::rewrite::{cmd_targets, define_rule};
 
 define_rule! {
@@ -39,7 +39,7 @@ define_rule! {
             };
             cx.for_rule(Self::KEY).expect_no_args(command.args, "\\newline")?;
 
-            cx.ast.replace_node(node_id, linebreak_command());
+            cx.ast.replace_node(node_id, linebreak_command_node());
             Ok(RuleEffect::Applied)
         }
     }

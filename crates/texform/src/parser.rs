@@ -218,11 +218,6 @@ impl ParserBuilder {
         self
     }
 
-    /// Alias for [`item`](Self::item).
-    pub fn insert_item(self, item: impl Into<ContextItem>) -> Self {
-        self.item(item)
-    }
-
     /// Remove a command from the knowledge base by name.
     ///
     /// After removal the name parses as unknown, subject to

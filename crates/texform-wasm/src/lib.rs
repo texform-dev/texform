@@ -1647,7 +1647,7 @@ impl Parser {
             _ => texform::Parser::builder(),
         };
         for item in input.items.unwrap_or_default() {
-            builder = builder.insert_item(parse_context_item_input(item)?);
+            builder = builder.item(parse_context_item_input(item)?);
         }
         for name in input.remove_commands.unwrap_or_default() {
             builder = builder.remove_command(name);
@@ -1953,7 +1953,7 @@ impl Parser {
             _ => texform::Parser::builder(),
         };
         for item in input.items.unwrap_or_default() {
-            builder = builder.insert_item(parse_context_item_input(item)?);
+            builder = builder.item(parse_context_item_input(item)?);
         }
 
         let inner = builder.build().map_err(parse_context_build_error_to_js)?;

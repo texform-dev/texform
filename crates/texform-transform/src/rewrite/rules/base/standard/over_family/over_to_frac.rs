@@ -15,7 +15,7 @@
 use texform_knowledge::builtin::base;
 
 use super::helpers::replace_infix_with_command;
-use crate::ast::ContentMode;
+use crate::ast::{ContentMode, Node};
 use crate::rewrite::helpers::infix_prefix_args;
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::rewrite::{cmd_targets, define_rule};
@@ -42,7 +42,12 @@ define_rule! {
             cx.for_rule(Self::KEY).expect_no_args(infix.args, "\\over")?;
             // \buildrel uses TeX's \buildrel <above> \over <operator> shape; leave
             // that infix form for buildrel-expand instead of turning it into \frac.
-            if cx.ast.subtree_contains_command(infix.left, base::cmd::BUILDREL.name) {
+            if cx.ast
+                .find(infix.left, |node| {
+                    matches!(node, Node::Command { name, .. } if name == base::cmd::BUILDREL.name)
+                })
+                .is_some()
+            {
                 return Ok(RuleEffect::Skipped);
             }
             replace_infix_with_command(

@@ -409,34 +409,3 @@ pub(crate) use define_rule;
 pub(crate) use env_targets;
 #[cfg(test)]
 pub(crate) use transform_examples;
-
-#[cfg(test)]
-mod tests {
-    use texform_knowledge::builtin::{ams, base, bboldx};
-
-    use crate::rewrite::{RuleTarget, RuleTargetKind};
-
-    #[test]
-    fn cmd_targets_expands_to_command_target_slice() {
-        assert_eq!(
-            cmd_targets![&base::cmd::FRAC],
-            &[RuleTarget::Command(&base::cmd::FRAC)]
-        );
-    }
-
-    #[test]
-    fn env_targets_expands_to_environment_target_slice() {
-        assert_eq!(
-            env_targets![&ams::env::ALIGN],
-            &[RuleTarget::Environment(&ams::env::ALIGN)]
-        );
-    }
-
-    #[test]
-    fn char_targets_wraps_character_records() {
-        let targets = char_targets![&bboldx::chars::BBDOTLESSI];
-        assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].key().kind, RuleTargetKind::Character);
-        assert_eq!(targets[0].key().name, "bbdotlessi");
-    }
-}

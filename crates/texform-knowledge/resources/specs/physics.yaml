@@ -3,152 +3,122 @@ commands:
     kind: prefix
     argspec: s m{}
     allowed_mode: math
-    tags: []
   - name: absolutevalue
     kind: prefix
     argspec: s m{}
     allowed_mode: math
-    tags: []
   - name: acomm
     kind: prefix
     argspec: s m{} m
     allowed_mode: math
-    tags: []
   - name: acos
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: acosecant
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: acosine
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: acot
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: acotangent
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: acsc
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: admat
     kind: prefix
     argspec: g
     allowed_mode: math
-    tags: []
   - name: anticommutator
     kind: prefix
     argspec: s m{} m
     allowed_mode: math
-    tags: []
   - name: antidiagonalmatrix
     kind: prefix
     argspec: g
     allowed_mode: math
-    tags: []
   - name: arccos
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: arccosecant
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: arccosine
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: arccot
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: arccotangent
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: arccsc
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: arcsec
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: arcsecant
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: arcsin
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: arcsine
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: arctan
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: arctangent
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: asec
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: asecant
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: asin
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: asine
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: atan
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: atangent
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: bmqty
     kind: prefix
     argspec: m
@@ -159,77 +129,62 @@ commands:
     kind: prefix
     argspec: s m{}
     allowed_mode: math
-    tags: []
   - name: Bqty
     kind: prefix
     argspec: s m{}
     allowed_mode: math
-    tags: []
   - name: bra
     kind: prefix
     argspec: s m
     allowed_mode: math
-    tags: []
   - name: braket
     kind: prefix
     argspec: s m g
     allowed_mode: math
-    tags: []
   - name: comm
     kind: prefix
     argspec: s m{} m
     allowed_mode: math
-    tags: []
   - name: commutator
     kind: prefix
     argspec: s m{} m
     allowed_mode: math
-    tags: []
   - name: cos
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: cosecant
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: cosh
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: cosine
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: cot
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: cotangent
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: coth
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: csc
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: csch
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: curl
     kind: prefix
     argspec: d<(,)><[,]><{,}>
@@ -240,112 +195,90 @@ commands:
     kind: prefix
     argspec: o d<(,)><{,}>
     allowed_mode: math
-    tags: []
   - name: derivative
     kind: prefix
     argspec: s o m g
     allowed_mode: math
-    tags: []
   - name: det
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: determinant
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: diagonalmatrix
     kind: prefix
     argspec: g
     allowed_mode: math
-    tags: []
   - name: diffd
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: differential
     kind: prefix
     argspec: o d<(,)><{,}>
     allowed_mode: math
-    tags: []
   - name: div
     kind: prefix
     argspec: d<(,)><[,]><{,}>
     allowed_mode: math
-    tags: []
   - name: divergence
     kind: prefix
     argspec: d<(,)><[,]><{,}>
     allowed_mode: math
-    tags: []
   - name: dmat
     kind: prefix
     argspec: g
     allowed_mode: math
-    tags: []
   - name: dv
     kind: prefix
     argspec: s o m g
     allowed_mode: math
-    tags: []
   - name: dyad
     kind: prefix
     argspec: s m g
     allowed_mode: math
-    tags: []
   - name: erf
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: ev
     kind: prefix
     argspec: s s m g
     allowed_mode: math
-    tags: []
   - name: eval
     kind: prefix
     argspec: s d<(,|><[,|><{,}>
     allowed_mode: math
-    tags: []
   - name: evaluated
     kind: prefix
     argspec: s d<(,|><[,|><{,}>
     allowed_mode: math
-    tags: []
   - name: exp
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: expectationvalue
     kind: prefix
     argspec: s s m g
     allowed_mode: math
-    tags: []
   - name: exponential
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: expval
     kind: prefix
     argspec: s s m g
     allowed_mode: math
-    tags: []
   - name: fderivative
     kind: prefix
     argspec: s o m g
     allowed_mode: math
-    tags: []
   - name: fdv
     kind: prefix
     argspec: s o m g
     allowed_mode: math
-    tags: []
   - name: flatfrac
     kind: prefix
     argspec: m m
@@ -356,102 +289,82 @@ commands:
     kind: prefix
     argspec: s o m g
     allowed_mode: math
-    tags: []
   - name: grad
     kind: prefix
     argspec: d<(,)><[,]><{,}>
     allowed_mode: math
-    tags: []
   - name: gradient
     kind: prefix
     argspec: d<(,)><[,]><{,}>
     allowed_mode: math
-    tags: []
   - name: hypcosecant
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: hypcosine
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: hypcotangent
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: hypsecant
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: hypsine
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: hyptangent
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: identitymatrix
     kind: prefix
     argspec: m:I
     allowed_mode: math
-    tags: []
   - name: Im
     kind: prefix
     argspec: d<{,}>
     allowed_mode: math
-    tags: []
   - name: imat
     kind: prefix
     argspec: m:I
     allowed_mode: math
-    tags: []
   - name: innerproduct
     kind: prefix
     argspec: s m g
     allowed_mode: math
-    tags: []
   - name: ip
     kind: prefix
     argspec: s m g
     allowed_mode: math
-    tags: []
   - name: ket
     kind: prefix
     argspec: s m
     allowed_mode: math
-    tags: []
   - name: ketbra
     kind: prefix
     argspec: s m g
     allowed_mode: math
-    tags: []
   - name: laplacian
     kind: prefix
     argspec: d<(,)><[,]><{,}>
     allowed_mode: math
-    tags: []
   - name: ln
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: log
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: logarithm
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: matrixdeterminant
     kind: prefix
     argspec: m
@@ -462,12 +375,10 @@ commands:
     kind: prefix
     argspec: s s m m m
     allowed_mode: math
-    tags: []
   - name: matrixelement
     kind: prefix
     argspec: s s m m m
     allowed_mode: math
-    tags: []
   - name: matrixquantity
     kind: prefix
     argspec: s d<(,)><[,]><{,}><|,|>
@@ -484,7 +395,6 @@ commands:
     kind: prefix
     argspec: s s m m m
     allowed_mode: math
-    tags: []
   - name: mqty
     kind: prefix
     argspec: s d<(,)><[,]><{,}><|,|>
@@ -495,57 +405,46 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: norm
     kind: prefix
     argspec: s m{}
     allowed_mode: math
-    tags: []
   - name: op
     kind: prefix
     argspec: s m g
     allowed_mode: math
-    tags: []
   - name: order
     kind: prefix
     argspec: s m{}
     allowed_mode: math
-    tags: []
   - name: outerproduct
     kind: prefix
     argspec: s m g
     allowed_mode: math
-    tags: []
   - name: partialderivative
     kind: prefix
     argspec: s o m g g
     allowed_mode: math
-    tags: []
   - name: paulimatrix
     kind: prefix
     argspec: m
     allowed_mode: math
-    tags: []
   - name: pb
     kind: prefix
     argspec: s m{} m
     allowed_mode: math
-    tags: []
   - name: pderivative
     kind: prefix
     argspec: s o m g g
     allowed_mode: math
-    tags: []
   - name: pdv
     kind: prefix
     argspec: s o m g g
     allowed_mode: math
-    tags: []
   - name: pmat
     kind: prefix
     argspec: m
     allowed_mode: math
-    tags: []
   - name: pmqty
     kind: prefix
     argspec: m
@@ -562,57 +461,46 @@ commands:
     kind: prefix
     argspec: s m{} m
     allowed_mode: math
-    tags: []
   - name: pqty
     kind: prefix
     argspec: s m{}
     allowed_mode: math
-    tags: []
   - name: Pr
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: principalvalue
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: Probability
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: pv
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: PV
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: qall
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qand
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qas
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qassume
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qc
     kind: prefix
     argspec: ''
@@ -624,7 +512,6 @@ commands:
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qcomma
     kind: prefix
     argspec: ''
@@ -636,112 +523,90 @@ commands:
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qeven
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qfor
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qgiven
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qif
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qin
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qinteger
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qlet
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qodd
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qor
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qotherwise
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qq
     kind: prefix
     argspec: s m:T
     allowed_mode: math
-    tags: []
   - name: qqtext
     kind: prefix
     argspec: s m:T
     allowed_mode: math
-    tags: []
   - name: qsince
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qthen
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qty
     kind: prefix
     argspec: d<(,)><[,]><{,}><|,|>
     allowed_mode: math
-    tags: []
   - name: quantity
     kind: prefix
     argspec: d<(,)><[,]><{,}><|,|>
     allowed_mode: math
-    tags: []
   - name: qunless
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: qusing
     kind: prefix
     argspec: s
     allowed_mode: math
-    tags: []
   - name: rank
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: Re
     kind: prefix
     argspec: d<{,}>
     allowed_mode: math
-    tags: []
   - name: Res
     kind: prefix
     argspec: d<(,)><[,]><{,}>
     allowed_mode: math
-    tags: []
   - name: Residue
     kind: prefix
     argspec: ''
@@ -758,32 +623,26 @@ commands:
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: secant
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: sech
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: sin
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: sine
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: sinh
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: smallmatrixquantity
     kind: prefix
     argspec: s d<(,)><[,]><{,}><|,|>
@@ -824,52 +683,42 @@ commands:
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: tangent
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: tanh
     kind: prefix
     argspec: o
     allowed_mode: math
-    tags: []
   - name: tr
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: Tr
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: trace
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: Trace
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: va
     kind: prefix
     argspec: s m
     allowed_mode: math
-    tags: []
   - name: var
     kind: prefix
     argspec: o d<(,)><{,}>
     allowed_mode: math
-    tags: []
   - name: variation
     kind: prefix
     argspec: o d<(,)><{,}>
     allowed_mode: math
-    tags: []
   - name: vb
     kind: prefix
     argspec: s m
@@ -880,7 +729,6 @@ commands:
     kind: prefix
     argspec: s m
     allowed_mode: math
-    tags: []
   - name: vectorbold
     kind: prefix
     argspec: s m
@@ -891,7 +739,6 @@ commands:
     kind: prefix
     argspec: s m
     allowed_mode: math
-    tags: []
   - name: vmqty
     kind: prefix
     argspec: m
@@ -902,27 +749,22 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-    tags: []
   - name: vqty
     kind: prefix
     argspec: s m{}
     allowed_mode: math
-    tags: []
   - name: vu
     kind: prefix
     argspec: s m
     allowed_mode: math
-    tags: []
   - name: xmat
     kind: prefix
     argspec: s m m:I m:I
     allowed_mode: math
-    tags: []
   - name: xmatrix
     kind: prefix
     argspec: s m m:I m:I
     allowed_mode: math
-    tags: []
   - name: zeromatrix
     kind: prefix
     argspec: m:I m:I
@@ -933,7 +775,6 @@ commands:
     kind: prefix
     argspec: m:I m:I
     allowed_mode: math
-    tags: []
 environments:
   - name: smallmatrix
     argspec: ''
@@ -988,4 +829,3 @@ characters:
     unicode_value: ⋅
     attributes:
       mathvariant: bold
-delimiters: []

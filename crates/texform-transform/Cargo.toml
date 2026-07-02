@@ -9,7 +9,6 @@ homepage.workspace = true
 
 [dependencies]
 serde.workspace = true
-serde_yaml.workspace = true
 texform-core.workspace = true
 texform-interface.workspace = true
 texform-knowledge.workspace = true

@@ -41,28 +41,8 @@ impl ValueKind {
         matches!(self, ValueKind::Content { .. } | ValueKind::OperatorName)
     }
 
-    pub const fn is_operator_name(&self) -> bool {
-        matches!(self, ValueKind::OperatorName)
-    }
-
     pub const fn is_delimiter(&self) -> bool {
         matches!(self, ValueKind::Delimiter)
-    }
-
-    pub const fn is_cs_name(&self) -> bool {
-        matches!(self, ValueKind::CSName)
-    }
-
-    pub const fn is_dimension(&self) -> bool {
-        matches!(self, ValueKind::Dimension)
-    }
-
-    pub const fn is_integer(&self) -> bool {
-        matches!(self, ValueKind::Integer)
-    }
-
-    pub const fn is_keyval(&self) -> bool {
-        matches!(self, ValueKind::KeyVal)
     }
 
     pub const fn is_column(&self) -> bool {
@@ -92,31 +72,6 @@ pub struct ArgSpec {
 }
 
 impl ArgSpec {
-    pub const fn new(required: bool, kind: ValueKind) -> Self {
-        ArgSpec {
-            required,
-            no_leading_space: false,
-            nullable: false,
-            kind,
-            form: ArgForm::Standard,
-        }
-    }
-
-    pub const fn with_form(
-        required: bool,
-        no_leading_space: bool,
-        kind: ValueKind,
-        form: ArgForm,
-    ) -> Self {
-        ArgSpec {
-            required,
-            no_leading_space,
-            nullable: false,
-            kind,
-            form,
-        }
-    }
-
     pub const fn mandatory(mode: ContentMode) -> Self {
         ArgSpec {
             required: true,
@@ -135,14 +90,6 @@ impl ArgSpec {
             kind: ValueKind::Content { mode },
             form: ArgForm::Standard,
         }
-    }
-
-    pub const fn is_required(&self) -> bool {
-        self.required
-    }
-
-    pub const fn is_optional(&self) -> bool {
-        !self.required
     }
 }
 
