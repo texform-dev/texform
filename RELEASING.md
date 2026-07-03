@@ -19,7 +19,7 @@ merge the release PR
 
 ## Cut a release
 
-`release-plz` keeps a release PR open and up to date on every push to `main`. To ship, review and merge it.
+`release-plz` keeps a release PR open and up to date on every push to `main`. Merging it is what publishes: the `release` job runs when a pull request whose head branch starts with `release-plz-` is merged into `main`, reading the merged-PR event directly. To ship, review and merge it.
 
 1. **Review the version bump.** It should move together across `Cargo.toml`, `CHANGELOG.md`, and `packages/texform/package.json` (the npm version is applied by a workflow step).
 2. **Polish the changelog draft** into user-facing wording.

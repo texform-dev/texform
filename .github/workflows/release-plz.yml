@@ -3,49 +3,26 @@ name: release-plz
 on:
   push:
     branches: [main]
+    # Keeps the release PR up to date; only the release-pr job runs here.
+  pull_request:
+    types: [closed]
+    branches: [main]
+    # A merged release PR fires the release job. The event payload carries the
+    # head branch and the merge commit directly, so the gate needs no
+    # commit->PR lookup and cannot race the API that backs it.
   workflow_dispatch:
     # Manual release entry: bootstrap and binding/wrapper-only releases.
 
 concurrency:
-  group: release-plz
+  # Separate groups for the two intents: push runs only release-pr, while a
+  # merged release PR or a dispatch runs only release, and the two jobs do not
+  # conflict. Sharing one group would be harmful — a concurrency group keeps at
+  # most one pending run, so a push to main queued behind an in-flight run
+  # could silently cancel a pending release run.
+  group: release-plz-${{ github.event_name == 'push' && 'pr' || 'release' }}
   cancel-in-progress: false
 
 jobs:
-  release-gate:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      should_release: ${{ steps.gate.outputs.should_release }}
-    steps:
-      - name: Check whether this run may publish
-        id: gate
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EVENT_NAME: ${{ github.event_name }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-        run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-            echo "Manual dispatch may run the release job."
-            exit 0
-          fi
-
-          prs_json=$(gh api \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "/repos/$REPO/commits/$SHA/pulls")
-
-          if echo "$prs_json" | jq -e 'any(.[]; .merged_at != null and (.head.ref | startswith("release-plz-")))' >/dev/null; then
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-            echo "This push is associated with a merged release-plz PR."
-          else
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping release job before entering the release environment."
-          fi
-
   release-pr:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -94,8 +71,17 @@ jobs:
           fi
 
   release:
-    needs: release-gate
-    if: vars.RELEASE_ENABLED == 'true' && needs.release-gate.outputs.should_release == 'true'
+    # Run only for a merged release-plz PR (payload-driven, so it cannot race
+    # the commit->PR association API) or an explicit manual dispatch. The `if`
+    # is evaluated before the job starts, so a non-release event never enters
+    # the release environment.
+    if: >-
+      vars.RELEASE_ENABLED == 'true' && (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event.pull_request.merged == true &&
+         github.event.pull_request.head.repo.full_name == github.repository &&
+         startsWith(github.event.pull_request.head.ref, 'release-plz-'))
+      )
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -107,15 +93,21 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
+          # On a pull_request event github.sha is a synthetic merge ref, so
+          # check out the PR's real merge/squash commit on main; fall back to
+          # github.sha for a workflow_dispatch run.
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
           # The tag must be pushed with a PAT: tags pushed with the default
           # GITHUB_TOKEN do not trigger the release.yml workflow.
           token: ${{ secrets.RELEASE_PLZ_TOKEN }}
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-      - name: Enable manual release (dispatch only)
-        if: github.event_name == 'workflow_dispatch'
-        # release_always = false rejects releases whose HEAD is not a release
-        # PR merge; flip it for explicit manual runs. The final behavior is
-        # verified in the private GitHub Actions rehearsal.
+      - name: Enable release for this gated run
+        # With release_always = false, release-plz itself re-checks whether
+        # HEAD came from a release PR via the commit->PR association API — the
+        # same racy lookup this workflow's gate used to depend on. Both entry
+        # points are already validated by the job-level `if`, so flip the flag
+        # unconditionally here; release-plz stays idempotent for versions that
+        # are already published.
         run: sed -i 's/^release_always = false/release_always = true/' release-plz.toml
       - name: Obtain crates.io OIDC token
         id: oidc
