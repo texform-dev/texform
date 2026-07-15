@@ -21,6 +21,8 @@ pub(crate) mod ams {
     pub(crate) mod expand {
         pub(crate) mod ams_operator_alias {
             #[allow(non_snake_case)]
+            pub(crate) mod impliedby_to_Longleftarrow;
+            #[allow(non_snake_case)]
             pub(crate) mod implies_to_Longrightarrow;
         }
         pub(crate) mod character_normalize {
@@ -233,6 +235,7 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &ams::equiv::fenced_matrix_env::bmatrix_env_to_bracket_matrix::BMATRIX_ENV_TO_BRACKET_MATRIX,
     &ams::equiv::fenced_matrix_env::pmatrix_env_to_paren_matrix::PMATRIX_ENV_TO_PAREN_MATRIX,
     &ams::equiv::fenced_matrix_env::vmatrix_env_to_vert_matrix::VMATRIX_ENV_TO_VERT_MATRIX,
+    &ams::expand::ams_operator_alias::impliedby_to_Longleftarrow::IMPLIEDBY_TO_LONGLEFTARROW,
     &ams::expand::ams_operator_alias::implies_to_Longrightarrow::IMPLIES_TO_LONGRIGHTARROW,
     &ams::expand::character_normalize::Join_to_bowtie::JOIN_TO_BOWTIE,
     &ams::expand::character_normalize::centerdot_to_cdot::CENTERDOT_TO_CDOT,
