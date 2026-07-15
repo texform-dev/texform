@@ -12,6 +12,7 @@
 //!   - cmd:right
 //!   - cmd:vphantom
 //!   - cmd:smash
+//!   - char:int
 //! rewrite_patterns:
 //!   - {label: braced, from: '\eval{#1}#2', to: '\left.#1\vphantom{\int}\right|#2'}
 //!   - {label: braced-star, from: '\eval*{#1}#2', to: '\left.\smash{#1}\vphantom{\int}\right|#2'}
@@ -27,7 +28,7 @@ use texform_knowledge::builtin::physics;
 use super::helpers::replace_with_eval_fence;
 use crate::ast::{ArgumentKind, ArgumentSlot, ArgumentValue, Delimiter, NodeId};
 use crate::rewrite::RuleError;
-use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleKey, RuleProduces};
+use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleKey, RuleProduces, RuleTarget};
 use crate::rewrite::rule_context::RuleContext;
 use crate::rewrite::{cmd_targets, define_rule};
 
@@ -44,7 +45,13 @@ define_rule! {
             touches: &[],
         },
         produces: RuleProduces {
-            targets: cmd_targets![&base::cmd::LEFT, &base::cmd::RIGHT, &base::cmd::VPHANTOM, &base::cmd::SMASH],
+            targets: &[
+                RuleTarget::Command(&base::cmd::LEFT),
+                RuleTarget::Command(&base::cmd::RIGHT),
+                RuleTarget::Command(&base::cmd::VPHANTOM),
+                RuleTarget::Command(&base::cmd::SMASH),
+                RuleTarget::Character(&base::chars::INT),
+            ],
         },
         apply(rule, cx, node_id) {
             expand_eval(Self::KEY, cx, node_id)

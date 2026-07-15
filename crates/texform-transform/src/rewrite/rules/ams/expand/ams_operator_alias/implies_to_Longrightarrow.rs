@@ -7,7 +7,9 @@
 //! consumes:
 //!   eliminates: cmd:implies
 //!   touches: null
-//! produces: cmd:;
+//! produces:
+//!   - cmd:;
+//!   - char:Longrightarrow
 //! rewrite_patterns:
 //!   - {from: \implies, to: \;\Longrightarrow\;}
 //! ```
@@ -17,7 +19,7 @@ use texform_knowledge::builtin::base;
 
 use crate::ast::Node;
 use crate::rewrite::helpers::bare_command_node;
-use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};
+use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces, RuleTarget};
 use crate::rewrite::{cmd_targets, define_rule};
 
 fn zero_arg_command(name: &str) -> Node {
@@ -37,7 +39,10 @@ define_rule! {
             touches: &[],
         },
         produces: RuleProduces {
-            targets: cmd_targets![&base::cmd::_SEMICOLON],
+            targets: &[
+                RuleTarget::Command(&base::cmd::_SEMICOLON),
+                RuleTarget::Character(&base::chars::LONGRIGHTARROW_2),
+            ],
         },
         apply(rule, cx, node_id) {
             let Some(command) = cx.match_command(node_id, &ams::cmd::IMPLIES) else {
@@ -46,7 +51,9 @@ define_rule! {
             cx.for_rule(Self::KEY).expect_no_args(command.args, "\\implies")?;
 
             let left_spacing = cx.ast.new_node(zero_arg_command(base::cmd::_SEMICOLON.name));
-            let arrow = cx.ast.new_node(zero_arg_command("Longrightarrow"));
+            let arrow = cx
+                .ast
+                .new_node(zero_arg_command(base::chars::LONGRIGHTARROW_2.name));
             let right_spacing = cx.ast.new_node(zero_arg_command(base::cmd::_SEMICOLON.name));
             cx.ast.replace_with_math_sequence(
                 node_id,

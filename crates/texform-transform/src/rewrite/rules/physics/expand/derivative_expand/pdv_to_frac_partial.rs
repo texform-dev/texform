@@ -10,6 +10,7 @@
 //! produces:
 //!   - cmd:frac
 //!   - cmd:flatfrac
+//!   - char:partial
 //! rewrite_patterns:
 //!   - {label: pdv-two-argument, from: '\pdv{#1}{#2}', to: '\frac{\partial #1}{\partial #2}'}
 //!   - {label: pdv-operator, from: '\pdv{#1}', to: '\frac{\partial}{\partial #1}'}
@@ -27,7 +28,7 @@ use super::helpers::{
 };
 use crate::ast::NodeId;
 use crate::rewrite::RuleError;
-use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};
+use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces, RuleTarget};
 use crate::rewrite::rule_context::RuleContext;
 use crate::rewrite::{cmd_targets, define_rule};
 
@@ -44,7 +45,11 @@ define_rule! {
             touches: &[],
         },
         produces: RuleProduces {
-            targets: cmd_targets![&base::cmd::FRAC, &physics::cmd::FLATFRAC],
+            targets: &[
+                RuleTarget::Command(&base::cmd::FRAC),
+                RuleTarget::Command(&physics::cmd::FLATFRAC),
+                RuleTarget::Character(&base::chars::PARTIAL),
+            ],
         },
         apply(rule, cx, node_id) {
             expand_pdv(rule, cx, node_id)

@@ -38,7 +38,7 @@ fn smash_body(cx: &mut RuleContext<'_>, body: NodeId) -> NodeId {
 }
 
 fn vphantom_int(cx: &mut RuleContext<'_>) -> NodeId {
-    let int = cx.ast.new_node(bare_command_node("int"));
+    let int = cx.ast.new_node(bare_command_node(base::chars::INT.name));
     cx.ast.new_node(prefix_command_node(
         &base::cmd::VPHANTOM,
         vec![mandatory_content_slot(int, ContentMode::Math)],

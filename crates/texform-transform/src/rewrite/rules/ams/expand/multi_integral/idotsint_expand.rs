@@ -12,6 +12,8 @@
 //!   - cmd:mathop
 //!   - cmd:,
 //!   - cmd:limits
+//!   - char:int
+//!   - char:cdots
 //! rewrite_patterns:
 //!   - {from: \idotsint, to: \int\cdots\int}
 //! ```
@@ -22,7 +24,7 @@ use texform_knowledge::specs::BuiltinCharacterRecord;
 
 use crate::ast::{ContentMode, Node, NodeId, Slot};
 use crate::rewrite::helpers::{bare_command_node, mandatory_content_slot, prefix_command_node};
-use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};
+use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces, RuleTarget};
 use crate::rewrite::{cmd_targets, define_rule};
 
 define_rule! {
@@ -38,11 +40,13 @@ define_rule! {
             touches: &[],
         },
         produces: RuleProduces {
-            targets: cmd_targets![
-                &base::cmd::_EXCLAMATION,
-                &base::cmd::MATHOP,
-                &base::cmd::_COMMA,
-                &base::cmd::LIMITS,
+            targets: &[
+                RuleTarget::Command(&base::cmd::_EXCLAMATION),
+                RuleTarget::Command(&base::cmd::MATHOP),
+                RuleTarget::Command(&base::cmd::_COMMA),
+                RuleTarget::Command(&base::cmd::LIMITS),
+                RuleTarget::Character(&base::chars::INT),
+                RuleTarget::Character(&base::chars::CDOTS),
             ],
         },
         apply(rule, cx, node_id) {

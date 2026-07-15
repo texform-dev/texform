@@ -10,6 +10,7 @@
 //! produces:
 //!   - cmd:frac
 //!   - cmd:flatfrac
+//!   - char:delta
 //! rewrite_patterns:
 //!   - {label: fdv-two-argument, from: '\fdv{#1}{#2}', to: '\frac{\delta #1}{\delta #2}'}
 //!   - {label: fdv-operator, from: '\fdv{#1}', to: '\frac{\delta}{\delta #1}'}
@@ -25,7 +26,7 @@ use super::helpers::{
 };
 use crate::ast::NodeId;
 use crate::rewrite::RuleError;
-use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};
+use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces, RuleTarget};
 use crate::rewrite::rule_context::RuleContext;
 use crate::rewrite::{cmd_targets, define_rule};
 
@@ -42,7 +43,11 @@ define_rule! {
             touches: &[],
         },
         produces: RuleProduces {
-            targets: cmd_targets![&base::cmd::FRAC, &physics::cmd::FLATFRAC],
+            targets: &[
+                RuleTarget::Command(&base::cmd::FRAC),
+                RuleTarget::Command(&physics::cmd::FLATFRAC),
+                RuleTarget::Character(&base::chars::DELTA),
+            ],
         },
         apply(rule, cx, node_id) {
             expand_fdv(rule, cx, node_id)

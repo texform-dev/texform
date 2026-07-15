@@ -1,5 +1,6 @@
 use texform_knowledge::builtin::base;
 use texform_knowledge::builtin::physics;
+use texform_knowledge::specs::BuiltinCharacterRecord;
 
 use crate::ast::{ContentMode, Node, NodeId};
 use crate::rewrite::helpers::{bare_command_node, mandatory_content_slot, prefix_command_node};
@@ -82,11 +83,11 @@ pub(super) fn differential_d(cx: &mut RuleContext<'_>) -> NodeId {
 }
 
 pub(super) fn delta_symbol(cx: &mut RuleContext<'_>) -> NodeId {
-    named_symbol(cx, "delta")
+    character_symbol(cx, &base::chars::DELTA)
 }
 
 pub(super) fn partial_symbol(cx: &mut RuleContext<'_>) -> NodeId {
-    named_symbol(cx, "partial")
+    character_symbol(cx, &base::chars::PARTIAL)
 }
 
 pub(super) fn order_two(cx: &mut RuleContext<'_>) -> NodeId {
@@ -108,6 +109,9 @@ fn ordered_differential_symbol(
     }
 }
 
-fn named_symbol(cx: &mut RuleContext<'_>, name: &str) -> NodeId {
-    cx.ast.new_node(bare_command_node(name))
+fn character_symbol(
+    cx: &mut RuleContext<'_>,
+    record: &'static BuiltinCharacterRecord,
+) -> NodeId {
+    cx.ast.new_node(bare_command_node(record.name))
 }
