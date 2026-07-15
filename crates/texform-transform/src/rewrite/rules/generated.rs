@@ -83,6 +83,7 @@ pub(crate) mod base {
     }
     pub(crate) mod standard {
         pub(crate) mod character_alias {
+            pub(crate) mod ast_to_asterisk;
             pub(crate) mod ge_to_geq;
             pub(crate) mod le_to_leq;
             pub(crate) mod lnot_to_neg;
@@ -251,6 +252,7 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::expand::stacked_operator::buildrel_expand::BUILDREL_EXPAND,
     &base::expand::stacked_operator::stackbin_expand::STACKBIN_EXPAND,
     &base::expand::stacked_operator::stackrel_expand::STACKREL_EXPAND,
+    &base::standard::character_alias::ast_to_asterisk::AST_TO_ASTERISK,
     &base::standard::character_alias::ge_to_geq::GE_TO_GEQ,
     &base::standard::character_alias::le_to_leq::LE_TO_LEQ,
     &base::standard::character_alias::lnot_to_neg::LNOT_TO_NEG,
