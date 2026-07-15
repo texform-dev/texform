@@ -12,6 +12,8 @@ pub(crate) mod ams {
         pub(crate) mod fenced_matrix_env {
             #[allow(non_snake_case)]
             pub(crate) mod Bmatrix_env_to_brace_matrix;
+            #[allow(non_snake_case)]
+            pub(crate) mod Vmatrix_env_to_Vert_matrix;
             pub(crate) mod bmatrix_env_to_bracket_matrix;
             pub(crate) mod helpers;
             pub(crate) mod pmatrix_env_to_paren_matrix;
@@ -233,6 +235,7 @@ pub(crate) mod physics {
 
 pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &ams::equiv::fenced_matrix_env::Bmatrix_env_to_brace_matrix::BMATRIX_ENV_TO_BRACE_MATRIX,
+    &ams::equiv::fenced_matrix_env::Vmatrix_env_to_Vert_matrix::VMATRIX_ENV_TO_VERT_MATRIX,
     &ams::equiv::fenced_matrix_env::bmatrix_env_to_bracket_matrix::BMATRIX_ENV_TO_BRACKET_MATRIX,
     &ams::equiv::fenced_matrix_env::pmatrix_env_to_paren_matrix::PMATRIX_ENV_TO_PAREN_MATRIX,
     &ams::equiv::fenced_matrix_env::vmatrix_env_to_vert_matrix::VMATRIX_ENV_TO_VERT_MATRIX,
