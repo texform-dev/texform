@@ -79,6 +79,7 @@ pub(crate) mod base {
     }
     pub(crate) mod expand {
         pub(crate) mod character_normalize {
+            pub(crate) mod dots_to_ldots_or_cdots;
             pub(crate) mod gets_to_leftarrow;
             pub(crate) mod land_to_wedge;
             pub(crate) mod lor_to_vee;
@@ -260,6 +261,7 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::equiv::big_class_variants::Bigg_class_variants_to_Bigg::BIGG_CLASS_VARIANTS_TO_BIGG,
     &base::equiv::big_class_variants::big_class_variants_to_big::BIG_CLASS_VARIANTS_TO_BIG,
     &base::equiv::big_class_variants::bigg_class_variants_to_bigg::BIGG_CLASS_VARIANTS_TO_BIGG,
+    &base::expand::character_normalize::dots_to_ldots_or_cdots::DOTS_TO_LDOTS_OR_CDOTS,
     &base::expand::character_normalize::gets_to_leftarrow::GETS_TO_LEFTARROW,
     &base::expand::character_normalize::land_to_wedge::LAND_TO_WEDGE,
     &base::expand::character_normalize::lor_to_vee::LOR_TO_VEE,
