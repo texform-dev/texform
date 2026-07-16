@@ -3,23 +3,20 @@
 All notable changes to TeXForm are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
+
 ## [0.2.1] - 2026-07-16
+
+This release expands the normalization rule set with spacing canonicalization and a batch of alias and macro-expansion rules, so more spacing markup, legacy shorthand, and convenience commands collapse to canonical, universally renderable forms.
 
 ### Added
 
-- Add spacing merge rules
-- Add 10 spacing alias rules
-- Add spacing-drop rules
-- Add `Vmatrix-env-to-Vert-matrix`
-- Add `dots-to-ldots-or-cdots`
-- Add `impliedby-to-Longleftarrow`
-- Add 4 rules for big-class-variants group
-- Add ast-to-asterisk rule
+- Spacing normalization rules. Adjacent `\quad` pairs merge into `\qquad` and repeated small spacers collapse; MathJax spacing aliases — `\thinspace`, `\negthinspace`, `\hskip`, `\mkern`, `\mskip`, `\hfil`, `\hfilll`, `\space`, `\nobreakspace`, and `\gt` — map to their canonical spellings while preserving scalar dimensions and documented fidelity boundaries; and pure layout hints (`\mathstrut`, `\strut`, and line-break hints) are dropped.
+- Alias and macro-expansion rules that fold convenience and legacy forms into universal output: `\ast` canonicalizes to the pixel-identical literal `*`; `\dots` resolves to `\ldots` or `\cdots` from the surrounding atom class, leaving unclassifiable and boundary cases untouched; `\impliedby` expands to the source-equivalent spaced `\Longleftarrow`; the `Vmatrix` environment expands into a matrix wrapped in explicit double-bar fences; and the `\bigl`/`\bigr`/`\bigm` class variants — with their `\Big`, `\bigg`, and `\Bigg` counterparts — collapse to the plain `\big`-family delimiters.
 
 ### Fixed
 
-- Align rule metadata with proposals
-- Declare emitted character targets
+- Rule metadata is aligned with the published rule proposals, keeping each rule's declared normalization level and fidelity in sync with its documented contract.
+- Rewrite rules that synthesize new commands — the implies, derivative, eval, and multi-integral expansions — now declare every character they emit, drawing on builtin character records so the engine's eliminated-form contract sees their full output.
 
 ## [0.2.0] - 2026-07-03
 
