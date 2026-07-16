@@ -3,14 +3,14 @@
 //! ```yaml
 //! proposal: repeat-spacer-collapse
 //! triggers:
-//!   - cmd:,
+//!   - 'cmd:,'
 //!   - 'cmd::'
 //!   - cmd:>
 //!   - cmd:;
 //!   - cmd:!
 //! consumes:
 //!   eliminates: null
-//!   touches: [cmd:,, 'cmd::', cmd:>, cmd:;, cmd:!]
+//!   touches: ['cmd:,', 'cmd::', cmd:>, cmd:;, cmd:!]
 //! produces: null
 //! rewrite_patterns:
 //!   - {label: comma-space, from: '\,\,', to: '\,'}

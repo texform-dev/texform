@@ -10,7 +10,7 @@
 //! produces:
 //!   - cmd:!
 //!   - cmd:mathop
-//!   - cmd:,
+//!   - 'cmd:,'
 //!   - cmd:limits
 //!   - char:int
 //!   - char:cdots

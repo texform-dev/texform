@@ -7,7 +7,7 @@
 //! consumes:
 //!   eliminates: cmd:thinspace
 //!   touches: null
-//! produces: cmd:,
+//! produces: 'cmd:,'
 //! rewrite_patterns:
 //!   - {from: \thinspace, to: '\,'}
 //! ```
