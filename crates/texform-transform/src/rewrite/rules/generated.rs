@@ -66,7 +66,13 @@ pub(crate) mod ams {
 pub(crate) mod base {
     pub(crate) mod drop {
         pub(crate) mod spacing_drop {
+            pub(crate) mod allowbreak_drop;
+            pub(crate) mod badbreak_drop;
             pub(crate) mod goodbreak_drop;
+            pub(crate) mod helpers;
+            pub(crate) mod mathstrut_drop;
+            pub(crate) mod nobreak_drop;
+            pub(crate) mod strut_drop;
         }
     }
     pub(crate) mod equiv {
@@ -259,7 +265,12 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &ams::standard::character_alias::unlhd_to_trianglelefteq::UNLHD_TO_TRIANGLELEFTEQ,
     &ams::standard::character_alias::vartriangleleft_to_lhd::VARTRIANGLELEFT_TO_LHD,
     &ams::standard::character_alias::vartriangleright_to_rhd::VARTRIANGLERIGHT_TO_RHD,
+    &base::drop::spacing_drop::allowbreak_drop::ALLOWBREAK_DROP,
+    &base::drop::spacing_drop::badbreak_drop::BADBREAK_DROP,
     &base::drop::spacing_drop::goodbreak_drop::GOODBREAK_DROP,
+    &base::drop::spacing_drop::mathstrut_drop::MATHSTRUT_DROP,
+    &base::drop::spacing_drop::nobreak_drop::NOBREAK_DROP,
+    &base::drop::spacing_drop::strut_drop::STRUT_DROP,
     &base::equiv::big_class_variants::Big_class_variants_to_Big::BIG_CLASS_VARIANTS_TO_BIG,
     &base::equiv::big_class_variants::Bigg_class_variants_to_Bigg::BIGG_CLASS_VARIANTS_TO_BIGG,
     &base::equiv::big_class_variants::big_class_variants_to_big::BIG_CLASS_VARIANTS_TO_BIG,
