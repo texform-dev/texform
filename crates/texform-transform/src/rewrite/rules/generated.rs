@@ -81,6 +81,9 @@ pub(crate) mod base {
             pub(crate) mod break_to_linebreak;
             pub(crate) mod newline_to_linebreak;
         }
+        pub(crate) mod named_function {
+            pub(crate) mod operatorname_to_named_function;
+        }
         pub(crate) mod over_family {
             pub(crate) mod above_to_genfrac;
             pub(crate) mod abovewithdelims_to_genfrac;
@@ -294,6 +297,7 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::authoring::character_alias::prime_to_prime_node::PRIME_TO_PRIME_NODE,
     &base::authoring::linebreak_alias::break_to_linebreak::BREAK_TO_LINEBREAK,
     &base::authoring::linebreak_alias::newline_to_linebreak::NEWLINE_TO_LINEBREAK,
+    &base::authoring::named_function::operatorname_to_named_function::OPERATORNAME_TO_NAMED_FUNCTION,
     &base::authoring::over_family::above_to_genfrac::ABOVE_TO_GENFRAC,
     &base::authoring::over_family::abovewithdelims_to_genfrac::ABOVEWITHDELIMS_TO_GENFRAC,
     &base::authoring::over_family::atop_to_genfrac::ATOP_TO_GENFRAC,
