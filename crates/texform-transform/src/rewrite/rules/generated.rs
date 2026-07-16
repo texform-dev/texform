@@ -61,6 +61,9 @@ pub(crate) mod ams {
             pub(crate) mod vartriangleleft_to_lhd;
             pub(crate) mod vartriangleright_to_rhd;
         }
+        pub(crate) mod spacing_alias {
+            pub(crate) mod nobreakspace_to_tilde;
+        }
     }
 }
 pub(crate) mod base {
@@ -94,6 +97,11 @@ pub(crate) mod base {
             pub(crate) mod rightarrow_to_to;
             pub(crate) mod semantic_dots_to_cdots;
             pub(crate) mod semantic_dots_to_ldots;
+        }
+        pub(crate) mod spacing_alias {
+            pub(crate) mod helpers;
+            pub(crate) mod mkern_to_mspace;
+            pub(crate) mod mskip_to_mspace;
         }
         pub(crate) mod stacked_operator {
             pub(crate) mod buildrel_expand;
@@ -139,6 +147,16 @@ pub(crate) mod base {
         }
         pub(crate) mod root_family {
             pub(crate) mod root_of_to_sqrt;
+        }
+        pub(crate) mod spacing_alias {
+            pub(crate) mod gt_space_to_colon_space;
+            pub(crate) mod helpers;
+            pub(crate) mod hfil_to_hfill;
+            pub(crate) mod hfilll_to_hfill;
+            pub(crate) mod hskip_to_hspace;
+            pub(crate) mod negthinspace_to_neg_comma_space;
+            pub(crate) mod space_to_tilde;
+            pub(crate) mod thinspace_to_comma_space;
         }
     }
 }
@@ -265,6 +283,7 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &ams::standard::character_alias::unlhd_to_trianglelefteq::UNLHD_TO_TRIANGLELEFTEQ,
     &ams::standard::character_alias::vartriangleleft_to_lhd::VARTRIANGLELEFT_TO_LHD,
     &ams::standard::character_alias::vartriangleright_to_rhd::VARTRIANGLERIGHT_TO_RHD,
+    &ams::standard::spacing_alias::nobreakspace_to_tilde::NOBREAKSPACE_TO_TILDE,
     &base::drop::spacing_drop::allowbreak_drop::ALLOWBREAK_DROP,
     &base::drop::spacing_drop::badbreak_drop::BADBREAK_DROP,
     &base::drop::spacing_drop::goodbreak_drop::GOODBREAK_DROP,
@@ -282,6 +301,8 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::expand::character_normalize::rightarrow_to_to::RIGHTARROW_TO_TO,
     &base::expand::character_normalize::semantic_dots_to_cdots::SEMANTIC_DOTS_TO_CDOTS,
     &base::expand::character_normalize::semantic_dots_to_ldots::SEMANTIC_DOTS_TO_LDOTS,
+    &base::expand::spacing_alias::mkern_to_mspace::MKERN_TO_MSPACE,
+    &base::expand::spacing_alias::mskip_to_mspace::MSKIP_TO_MSPACE,
     &base::expand::stacked_operator::buildrel_expand::BUILDREL_EXPAND,
     &base::expand::stacked_operator::stackbin_expand::STACKBIN_EXPAND,
     &base::expand::stacked_operator::stackrel_expand::STACKREL_EXPAND,
@@ -310,6 +331,13 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::standard::plain_tex_matrix::matrix_to_matrix_env::MATRIX_TO_MATRIX_ENV,
     &base::standard::plain_tex_matrix::pmatrix_to_pmatrix_env::PMATRIX_TO_PMATRIX_ENV,
     &base::standard::root_family::root_of_to_sqrt::ROOT_OF_TO_SQRT,
+    &base::standard::spacing_alias::gt_space_to_colon_space::GT_SPACE_TO_COLON_SPACE,
+    &base::standard::spacing_alias::hfil_to_hfill::HFIL_TO_HFILL,
+    &base::standard::spacing_alias::hfilll_to_hfill::HFILLL_TO_HFILL,
+    &base::standard::spacing_alias::hskip_to_hspace::HSKIP_TO_HSPACE,
+    &base::standard::spacing_alias::negthinspace_to_neg_comma_space::NEGTHINSPACE_TO_NEG_COMMA_SPACE,
+    &base::standard::spacing_alias::space_to_tilde::SPACE_TO_TILDE,
+    &base::standard::spacing_alias::thinspace_to_comma_space::THINSPACE_TO_COMMA_SPACE,
     &physics::expand::bra_ket::expectation_expand::EXPECTATION_EXPAND,
     &physics::expand::bra_ket::matrixel_expand::MATRIXEL_EXPAND,
     &physics::expand::bra_ket::physics_bra_expand::PHYSICS_BRA_EXPAND,
