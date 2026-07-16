@@ -14,7 +14,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/texform-dev/texform"
@@ -42,10 +42,10 @@ tsify-next = { version = "0.5", default-features = false, features = ["js"] }
 wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6"
 
-texform-argspec = { version = "0.2.0", path = "crates/texform-argspec" }
-texform = { version = "0.2.0", path = "crates/texform" }
-texform-core = { version = "0.2.0", path = "crates/texform-core" }
-texform-interface = { version = "0.2.0", path = "crates/texform-interface" }
-texform-knowledge = { version = "0.2.0", path = "crates/texform-knowledge" }
-texform-knowledge-macros = { version = "0.2.0", path = "crates/texform-knowledge-macros" }
-texform-transform = { version = "0.2.0", path = "crates/texform-transform" }
+texform-argspec = { version = "0.2.1", path = "crates/texform-argspec" }
+texform = { version = "0.2.1", path = "crates/texform" }
+texform-core = { version = "0.2.1", path = "crates/texform-core" }
+texform-interface = { version = "0.2.1", path = "crates/texform-interface" }
+texform-knowledge = { version = "0.2.1", path = "crates/texform-knowledge" }
+texform-knowledge-macros = { version = "0.2.1", path = "crates/texform-knowledge-macros" }
+texform-transform = { version = "0.2.1", path = "crates/texform-transform" }
