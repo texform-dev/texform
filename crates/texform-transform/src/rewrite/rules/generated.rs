@@ -87,6 +87,10 @@ pub(crate) mod base {
             pub(crate) mod big_class_variants_to_big;
             pub(crate) mod bigg_class_variants_to_bigg;
         }
+        pub(crate) mod spacing_merge {
+            pub(crate) mod quad_run_to_qquad;
+            pub(crate) mod repeat_spacer_collapse;
+        }
     }
     pub(crate) mod expand {
         pub(crate) mod character_normalize {
@@ -294,6 +298,8 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::equiv::big_class_variants::Bigg_class_variants_to_Bigg::BIGG_CLASS_VARIANTS_TO_BIGG,
     &base::equiv::big_class_variants::big_class_variants_to_big::BIG_CLASS_VARIANTS_TO_BIG,
     &base::equiv::big_class_variants::bigg_class_variants_to_bigg::BIGG_CLASS_VARIANTS_TO_BIGG,
+    &base::equiv::spacing_merge::quad_run_to_qquad::QUAD_RUN_TO_QQUAD,
+    &base::equiv::spacing_merge::repeat_spacer_collapse::REPEAT_SPACER_COLLAPSE,
     &base::expand::character_normalize::dots_to_ldots_or_cdots::DOTS_TO_LDOTS_OR_CDOTS,
     &base::expand::character_normalize::gets_to_leftarrow::GETS_TO_LEFTARROW,
     &base::expand::character_normalize::land_to_wedge::LAND_TO_WEDGE,
