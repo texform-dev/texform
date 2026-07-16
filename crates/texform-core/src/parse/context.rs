@@ -1022,7 +1022,7 @@ fn convert_diagnostic(ctx: &ParseContext, src: &str, err: Rich<'static, Token>) 
             found: f,
         } => {
             let expected: Vec<String> = exp.iter().map(|p| format!("{p}")).collect();
-            let found = f.as_ref().map(|t| format!("{}", &**t));
+            let found = f.as_ref().map(|t| format!("{}", **t));
 
             let msg = format!("{reason}");
             (msg, expected, found)
