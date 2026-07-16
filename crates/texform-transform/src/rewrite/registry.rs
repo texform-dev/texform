@@ -3,8 +3,8 @@
 #[cfg(debug_assertions)]
 use std::sync::Once;
 
-use crate::rewrite::rule::{RewriteRule, RuleLevel};
-use crate::rewrite::rules::{ALL_RULE_SOURCE_LEVELS, ALL_RULES};
+use crate::rewrite::rule::RewriteRule;
+use crate::rewrite::rules::ALL_RULES;
 
 #[cfg(debug_assertions)]
 fn debug_validate_registered_rules_once() {
@@ -24,9 +24,4 @@ pub fn all_rules() -> &'static [&'static dyn RewriteRule] {
     #[cfg(debug_assertions)]
     debug_validate_registered_rules_once();
     ALL_RULES
-}
-
-/// Returns every registered rewrite rule with the level derived from its source path.
-pub fn all_rules_with_source_levels() -> &'static [(&'static dyn RewriteRule, RuleLevel)] {
-    ALL_RULE_SOURCE_LEVELS
 }

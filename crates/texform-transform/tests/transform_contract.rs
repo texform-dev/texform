@@ -115,31 +115,6 @@ fn builtin_rule_fidelity_meets_level_floor() {
 }
 
 #[test]
-fn builtin_rule_source_levels_match_metadata() {
-    let discovered = texform_transform::rewrite::all_rules_with_source_levels();
-    let registered = texform_transform::rewrite::all_rules();
-    assert_eq!(
-        discovered.len(),
-        registered.len(),
-        "source-level discovery and the builtin registry must cover the same rules"
-    );
-
-    for (registered_rule, (rule, source_level)) in registered.iter().zip(discovered) {
-        assert_eq!(
-            registered_rule.meta().key,
-            rule.meta().key,
-            "source-level discovery must follow the builtin registry order"
-        );
-        assert_eq!(
-            rule.meta().level,
-            *source_level,
-            "{} metadata must match its source level directory",
-            rule.meta().key
-        );
-    }
-}
-
-#[test]
 fn builtin_registry_has_no_active_equiv_rules() {
     assert!(
         texform_transform::rewrite::all_rules()

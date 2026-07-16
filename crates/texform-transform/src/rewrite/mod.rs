@@ -21,7 +21,7 @@ pub(crate) use macros::{alias_rule, char_targets, cmd_targets, define_rule, env_
 pub use contract::{ContractViolation, collect_eliminated_violations};
 pub use level_set::RuleLevelSet;
 pub use plan::{Plan, PlanBuildError, RuleAvailabilityFailure};
-pub use registry::{all_rules, all_rules_with_source_levels};
+pub use registry::all_rules;
 pub use rule::{
     PackageName, RewriteRule, RuleConsumes, RuleEffect, RuleFidelity, RuleKey, RuleLevel, RuleMeta,
     RuleProduces, RuleTarget, RuleTargetKey, RuleTargetKind,

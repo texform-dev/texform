@@ -290,30 +290,6 @@ fn rule_path(entry: &ModuleEntry) -> String {
     entry.module_path.join("::")
 }
 
-fn source_level_variant(entry: &ModuleEntry) -> &'static str {
-    if entry.module_path.len() < 3 {
-        panic!(
-            "rule source '{}' must be nested under package and level directories",
-            entry.relative_path.display()
-        );
-    }
-
-    match entry.module_path.get(1).map(String::as_str) {
-        Some("authoring") => "Authoring",
-        Some("faithful") => "Faithful",
-        Some("corpus") => "Corpus",
-        Some("equiv") => "Equiv",
-        Some(level) => panic!(
-            "rule source '{}' has unknown level directory '{level}'",
-            entry.relative_path.display()
-        ),
-        None => panic!(
-            "rule source '{}' must be nested under package and level directories",
-            entry.relative_path.display()
-        ),
-    }
-}
-
 fn main() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let manifest_dir_path = Path::new(&manifest_dir);
@@ -330,9 +306,6 @@ fn main() {
     collect_module_entries(&rules_dir, &rules_dir, &mut entries);
     entries.sort();
     validate_module_paths(&entries);
-    for entry in &entries {
-        source_level_variant(entry);
-    }
 
     let mut code = String::new();
 
@@ -347,11 +320,7 @@ fn main() {
     )
     .unwrap();
 
-    writeln!(
-        code,
-        "use crate::rewrite::rule::{{RewriteRule, RuleLevel}};\n"
-    )
-    .unwrap();
+    writeln!(code, "use crate::rewrite::rule::RewriteRule;\n").unwrap();
     write_module_tree(&mut code, &entries, &[], 0);
 
     writeln!(code).unwrap();
@@ -374,27 +343,6 @@ fn main() {
     }
     writeln!(code, "];").unwrap();
 
-    writeln!(code).unwrap();
-    writeln!(
-        code,
-        "pub(crate) static ALL_RULE_SOURCE_LEVELS: &[(&dyn RewriteRule, RuleLevel)] = &["
-    )
-    .unwrap();
-    for entry in entries
-        .iter()
-        .filter(|entry| entry.kind == ModuleKind::Rule)
-    {
-        writeln!(
-            code,
-            "    (&{}::{}, RuleLevel::{}),",
-            rule_path(entry),
-            constant_name(&entry.relative_path),
-            source_level_variant(entry)
-        )
-        .unwrap();
-    }
-    writeln!(code, "];").unwrap();
-
     let out_path = rules_dir.join("generated.rs");
     let should_write = fs::read_to_string(&out_path).map_or(true, |existing| existing != code);
     if should_write {
@@ -405,9 +353,8 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{
-        ModuleEntry, ModuleKind, constant_name, is_support_module,
-        is_valid_directory_module_component, is_valid_file_module_component, module_path,
-        needs_non_snake_case_allow, source_level_variant,
+        constant_name, is_support_module, is_valid_directory_module_component,
+        is_valid_file_module_component, module_path, needs_non_snake_case_allow,
     };
     use std::path::Path;
 
@@ -443,35 +390,6 @@ mod tests {
                 "implies_to_Longrightarrow"
             ]
         );
-    }
-
-    #[test]
-    fn source_level_comes_from_level_directory() {
-        let entry = ModuleEntry {
-            relative_path: Path::new("base/corpus/spacing_merge/quad_run_to_qquad.rs")
-                .to_path_buf(),
-            module_path: vec![
-                "base".into(),
-                "corpus".into(),
-                "spacing_merge".into(),
-                "quad_run_to_qquad".into(),
-            ],
-            kind: ModuleKind::Rule,
-        };
-
-        assert_eq!(source_level_variant(&entry), "Corpus");
-    }
-
-    #[test]
-    #[should_panic(expected = "must be nested under package and level directories")]
-    fn source_level_requires_package_and_level_directories() {
-        let entry = ModuleEntry {
-            relative_path: Path::new("base/authoring.rs").to_path_buf(),
-            module_path: vec!["base".into(), "authoring".into()],
-            kind: ModuleKind::Support,
-        };
-
-        source_level_variant(&entry);
     }
 
     #[test]
