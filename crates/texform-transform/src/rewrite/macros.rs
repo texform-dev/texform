@@ -185,7 +185,7 @@ macro_rules! define_rule {
                     enabled_by_packages: &[
                         $($crate::rewrite::PackageName::$enabled_package),+
                     ],
-                    level: $crate::rewrite::NormalizationLevel::$level,
+                    level: $crate::rewrite::RuleLevel::$level,
                     summary: $summary,
                     fidelity: $crate::rewrite::RuleFidelity::$fidelity,
                     triggers: $triggers,
@@ -245,7 +245,7 @@ macro_rules! define_rule {
                     enabled_by_packages: &[
                         $($crate::rewrite::PackageName::$enabled_package),+
                     ],
-                    level: $crate::rewrite::NormalizationLevel::$level,
+                    level: $crate::rewrite::RuleLevel::$level,
                     summary: $summary,
                     fidelity: $crate::rewrite::RuleFidelity::$fidelity,
                     triggers: $triggers,
@@ -367,8 +367,8 @@ macro_rules! transform_examples {
                 use $crate::rewrite::RewriteRule as _;
                 let parse_ctx = $crate::parse::ParseContext::from_packages(&[$($pkg),+]);
                 let build_config = $crate::BuildConfig::profile($crate::Profile::Authoring)
-                    .rewrite_levels($crate::NormalizationLevelSet::from(
-                        $crate::NormalizationLevel::$level,
+                    .rule_levels($crate::RuleLevelSet::from(
+                        $crate::RuleLevel::$level,
                     ))
                     .only_rule_for_tests($rule.meta().key);
                 let transform_context = $crate::TransformContext::from_build_config(

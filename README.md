@@ -60,8 +60,8 @@ Each `Profile` targets one downstream scenario:
 | --- | --- |
 | `Authoring` | Polished author-facing output; stylistic choices kept. |
 | `Faithful` | Same rendered formula; convenience macros expanded into universal forms. |
-| `Corpus` | Training-data normalization; layout hints dropped. |
-| `Equiv` | Aggressive canonicalization for formula equivalence comparison. |
+| `Corpus` | Complete canonical labels for training data; reading-preserving layout variants may collapse. |
+| `Equiv` | An aggressive intermediate for equivalence comparison, deduplication, or fingerprints. |
 
 The same input, normalized under different profiles (real engine output):
 
@@ -74,6 +74,8 @@ The same input, normalized under different profiles (real engine output):
 
 Every profile modernizes legacy syntax like `\over`. `Authoring` keeps the author's shorthand; `Corpus` expands it into universal forms that render on any vanilla MathJax or KaTeX deployment with no extra packages — including right here on GitHub, where inputs like `\dv` and `\ket` would not render at all.
 
+The current builtin rule set has no `Equiv`-level rules, so `Corpus` and `Equiv` temporarily produce the same output. They remain distinct profiles because their intended products differ and future math-equivalence rules belong only to `Equiv`.
+
 ## What's underneath
 
 Behind a profile, normalization runs as a multi-phase pipeline, not a find-and-replace pass:
@@ -85,7 +87,7 @@ Behind a profile, normalization runs as a multi-phase pipeline, not a find-and-r
 Two assets carry most of the weight, and neither existed as a reusable artifact before:
 
 - **The argspec knowledge base.** Machine-readable, xparse-style argument signatures for every supported command and environment — validated by rendering against MathJax, KaTeX, and XeTeX rather than transcribed from documentation.
-- **The curated rewrite rule set.** Every rule declares its normalization level, its worst-case render fidelity, and the forms it eliminates. The engine enforces that eliminated-form contract after every run, and corpus regression re-checks it against real-world datasets.
+- **The curated rewrite rule set.** Every rule declares its `RuleLevel`, its worst-case `RuleFidelity`, and the forms it eliminates. The engine enforces that eliminated-form contract after every run, and corpus regression re-checks it against real-world datasets.
 
 ## Quick start
 

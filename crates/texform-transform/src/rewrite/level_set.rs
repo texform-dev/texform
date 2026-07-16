@@ -1,19 +1,18 @@
-//! Bitset of rewrite normalization levels. Const-friendly and runtime-mutable.
+//! Bitset of rewrite rule levels. Const-friendly and runtime-mutable.
 
-use super::rule::NormalizationLevel;
+use super::rule::RuleLevel;
 
-/// The set of normalization levels a `Profile` selects, as a packed bitset.
+/// The set of rule levels a `Profile` selects, as a packed bitset.
 ///
 /// A rule fires only if its level is in this set, so the set defines how
-/// aggressive a profile is: `Authoring` selects `Standard`, `Faithful` adds
-/// `Expand`, `Corpus` adds `Drop`, and `Equiv` adds `Equiv`.
+/// aggressive a profile is: each profile adds its same-named rule level.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct NormalizationLevelSet(u8);
+pub struct RuleLevelSet(u8);
 
-impl NormalizationLevelSet {
-    pub const STANDARD: Self = Self(1 << 0);
-    pub const EXPAND: Self = Self(1 << 1);
-    pub const DROP: Self = Self(1 << 2);
+impl RuleLevelSet {
+    pub const AUTHORING: Self = Self(1 << 0);
+    pub const FAITHFUL: Self = Self(1 << 1);
+    pub const CORPUS: Self = Self(1 << 2);
     pub const EQUIV: Self = Self(1 << 3);
 
     pub const fn empty() -> Self {
@@ -24,24 +23,24 @@ impl NormalizationLevelSet {
         Self(self.0 | other.0)
     }
 
-    pub const fn contains(self, level: NormalizationLevel) -> bool {
+    pub const fn contains(self, level: RuleLevel) -> bool {
         let bit = match level {
-            NormalizationLevel::Standard => 1 << 0,
-            NormalizationLevel::Expand => 1 << 1,
-            NormalizationLevel::Drop => 1 << 2,
-            NormalizationLevel::Equiv => 1 << 3,
+            RuleLevel::Authoring => 1 << 0,
+            RuleLevel::Faithful => 1 << 1,
+            RuleLevel::Corpus => 1 << 2,
+            RuleLevel::Equiv => 1 << 3,
         };
         self.0 & bit != 0
     }
 }
 
-impl Default for NormalizationLevelSet {
+impl Default for RuleLevelSet {
     fn default() -> Self {
         Self::empty()
     }
 }
 
-impl std::ops::BitOr for NormalizationLevelSet {
+impl std::ops::BitOr for RuleLevelSet {
     type Output = Self;
 
     fn bitor(self, rhs: Self) -> Self {
@@ -49,19 +48,19 @@ impl std::ops::BitOr for NormalizationLevelSet {
     }
 }
 
-impl std::ops::BitOrAssign for NormalizationLevelSet {
+impl std::ops::BitOrAssign for RuleLevelSet {
     fn bitor_assign(&mut self, rhs: Self) {
         self.0 |= rhs.0;
     }
 }
 
-impl From<NormalizationLevel> for NormalizationLevelSet {
-    fn from(level: NormalizationLevel) -> Self {
+impl From<RuleLevel> for RuleLevelSet {
+    fn from(level: RuleLevel) -> Self {
         match level {
-            NormalizationLevel::Standard => Self::STANDARD,
-            NormalizationLevel::Expand => Self::EXPAND,
-            NormalizationLevel::Drop => Self::DROP,
-            NormalizationLevel::Equiv => Self::EQUIV,
+            RuleLevel::Authoring => Self::AUTHORING,
+            RuleLevel::Faithful => Self::FAITHFUL,
+            RuleLevel::Corpus => Self::CORPUS,
+            RuleLevel::Equiv => Self::EQUIV,
         }
     }
 }
@@ -72,9 +71,9 @@ mod tests {
 
     #[test]
     fn union_combines_bits() {
-        let set = NormalizationLevelSet::STANDARD | NormalizationLevelSet::EXPAND;
-        assert!(set.contains(NormalizationLevel::Standard));
-        assert!(set.contains(NormalizationLevel::Expand));
-        assert!(!set.contains(NormalizationLevel::Drop));
+        let set = RuleLevelSet::AUTHORING | RuleLevelSet::FAITHFUL;
+        assert!(set.contains(RuleLevel::Authoring));
+        assert!(set.contains(RuleLevel::Faithful));
+        assert!(!set.contains(RuleLevel::Corpus));
     }
 }

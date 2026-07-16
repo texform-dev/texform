@@ -1,0 +1,58 @@
+//! Collapse vectorunit to the short vu helper.
+//!
+//! ```yaml
+//! proposal: vectorunit-to-vu
+//! triggers:
+//!   - cmd:vectorunit
+//! consumes:
+//!   eliminates: cmd:vectorunit
+//!   touches: null
+//! produces: cmd:vu
+//! rewrite_patterns:
+//!   - {label: vectorunit, from: '\vectorunit{#1}', to: '\vu{#1}'}
+//!   - {label: vectorunit-star, from: '\vectorunit*{#1}', to: '\vu*{#1}'}
+//! ```
+
+use texform_knowledge::builtin::physics;
+
+use crate::rewrite::alias_rule;
+
+alias_rule! {
+    pub static VECTORUNIT_TO_VU: VectorunitToVuRule {
+        key: Physics / "vectorunit-to-vu",
+        level: Authoring,
+        summary: "Collapse vectorunit to the short vu helper.",
+        fidelity: Render,
+        enabled_by_packages: [Physics],
+        canonical: &physics::cmd::VU,
+        aliases: [&physics::cmd::VECTORUNIT],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rewrite::transform_examples;
+
+    // START: Generated examples; DO NOT modify
+    transform_examples! {
+        rule: VECTORUNIT_TO_VU,
+        level: Authoring,
+        examples: [
+        {
+            label: vectorunit_radial_basis,
+            packages: ["base", "physics"],
+            input: r"\vectorunit{e}_r\cdot\vb{r}=r",
+            expected: r"\vu{e}_r\cdot\vb{r}=r",
+        },
+        {
+            label: vectorunit_star_bold_italic,
+            packages: ["base", "physics"],
+            input: r"\vectorunit*{\alpha}\cdot\vectorunit*{p}",
+            expected: r"\vu*{\alpha}\cdot\vu*{p}",
+        },
+        ]
+    }
+    // END: Generated examples
+
+}

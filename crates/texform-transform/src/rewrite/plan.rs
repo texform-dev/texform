@@ -146,7 +146,7 @@ fn filter_rules(
         if !in_selection {
             continue;
         }
-        if !config.levels.contains(rule.meta().level) {
+        if !config.rule_levels.contains(rule.meta().level) {
             continue;
         }
         if rule_touched_by_mutations(rule, parse_ctx.mutation_summary()) {
@@ -186,7 +186,7 @@ fn validate_rule_metadata(rule: &'static dyn RewriteRule) -> Result<(), PlanBuil
     if meta.fidelity < meta.level.min_fidelity() {
         return Err(PlanBuildError::InvalidRuleMetadata {
             rule: meta.key,
-            message: "fidelity must not be below the normalization level floor",
+            message: "fidelity must not be below the rule level floor",
         });
     }
 
@@ -416,44 +416,44 @@ mod tests {
     use super::*;
     use crate::ast::NodeId;
     use crate::rewrite::rule::{
-        NormalizationLevel, RuleConsumes, RuleEffect, RuleFidelity, RuleMeta, RuleProduces,
+        RuleConsumes, RuleEffect, RuleFidelity, RuleLevel, RuleMeta, RuleProduces,
     };
     use crate::rewrite::rule_context::RuleContext;
     use crate::rewrite::{RuleError, cmd_targets};
 
     #[test]
     fn metadata_validation_rejects_fidelity_below_level_floor() {
-        let err = validate_rule_metadata(&SEMANTIC_STANDARD_RULE)
-            .expect_err("standard rules must not declare semantic fidelity");
+        let err = validate_rule_metadata(&MATH_AUTHORING_RULE)
+            .expect_err("authoring rules must not declare math fidelity");
 
         assert_eq!(
             err,
             PlanBuildError::InvalidRuleMetadata {
-                rule: SemanticStandardRule::KEY,
-                message: "fidelity must not be below the normalization level floor",
+                rule: MathAuthoringRule::KEY,
+                message: "fidelity must not be below the rule level floor",
             }
         );
     }
 
-    struct SemanticStandardRule;
+    struct MathAuthoringRule;
 
-    static SEMANTIC_STANDARD_RULE: SemanticStandardRule = SemanticStandardRule;
+    static MATH_AUTHORING_RULE: MathAuthoringRule = MathAuthoringRule;
 
-    impl SemanticStandardRule {
+    impl MathAuthoringRule {
         const KEY: RuleKey = RuleKey {
             package: PackageName::Base,
-            name: "semantic-standard-test",
+            name: "math-authoring-test",
         };
     }
 
-    impl RewriteRule for SemanticStandardRule {
+    impl RewriteRule for MathAuthoringRule {
         fn meta(&self) -> &'static RuleMeta {
             static META: RuleMeta = RuleMeta {
-                key: SemanticStandardRule::KEY,
+                key: MathAuthoringRule::KEY,
                 enabled_by_packages: &[PackageName::Base],
-                level: NormalizationLevel::Standard,
+                level: RuleLevel::Authoring,
                 summary: "Test-only invalid metadata.",
-                fidelity: RuleFidelity::Semantic,
+                fidelity: RuleFidelity::Math,
                 triggers: cmd_targets![&base::cmd::BREAK],
                 consumes: RuleConsumes {
                     eliminates: cmd_targets![&base::cmd::BREAK],

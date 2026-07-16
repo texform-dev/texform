@@ -8,9 +8,9 @@
 //!
 //! - **Package** ([`PackageName`]) — the owning package namespace (base, ams,
 //!   physics).
-//! - **Normalization level** ([`NormalizationLevel`]) — the first transform
+//! - **Rule level** ([`RuleLevel`]) — the first transform
 //!   profile that accepts the rule output as a suitable product.
-//! - **Fidelity** ([`RuleFidelity`]) — the rule's worst-case render-fidelity
+//! - **Fidelity** ([`RuleFidelity`]) — the rule's worst-case equivalence
 //!   guarantee over its declared input domain.
 
 pub use texform_knowledge::builtin::PackageName;
@@ -23,37 +23,35 @@ use crate::rewrite::RuleError;
 use crate::rewrite::rule_context::RuleContext;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum NormalizationLevel {
+pub enum RuleLevel {
     /// Rules whose output is suitable for authoring-oriented normalization.
-    Standard,
+    Authoring,
     /// Rules that expand compact or package-specific notation while preserving
     /// the rendered formula.
-    Expand,
-    /// Rules that remove layout-only forms for corpus-oriented normalization.
-    Drop,
+    Faithful,
+    /// Rules whose output remains suitable as a complete corpus label.
+    Corpus,
     /// Rules whose output is only suitable as an equivalence-checking
     /// intermediate, not as a corpus label.
     Equiv,
 }
 
-impl NormalizationLevel {
+impl RuleLevel {
     /// Lowest fidelity a rule at this level may declare.
     ///
     /// `level` and `fidelity` answer different questions. `level` determines
     /// when profiles accept the rewrite output; `fidelity` is the render
     /// guarantee used for contract validation. Do not infer one from the
-    /// other: an `Equiv` rule may still be `Full` when its output is
-    /// pixel-identical but too expanded to serve as a corpus label, as with
-    /// fenced matrix environment expansion.
+    /// other: a rule may provide a stronger guarantee than its level requires.
     pub const fn min_fidelity(self) -> RuleFidelity {
         match self {
-            NormalizationLevel::Standard | NormalizationLevel::Expand => RuleFidelity::Approximate,
-            NormalizationLevel::Drop | NormalizationLevel::Equiv => RuleFidelity::Semantic,
+            RuleLevel::Authoring | RuleLevel::Faithful | RuleLevel::Corpus => RuleFidelity::Reading,
+            RuleLevel::Equiv => RuleFidelity::Math,
         }
     }
 }
 
-/// How faithfully a rewrite preserves the input when re-rendered.
+/// Which equivalence relation a rewrite guarantees over its declared domain.
 ///
 /// Ordered least-to-most faithful. The value is the rule's worst-case
 /// guarantee over its declared input domain. It drives contract validation,
@@ -61,11 +59,11 @@ impl NormalizationLevel {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RuleFidelity {
     /// Mathematical meaning is preserved, but rendering may change.
-    Semantic,
-    /// Rendering is visually equivalent apart from minor spacing or placement.
-    Approximate,
-    /// Rendering is pixel-identical before and after the rewrite.
-    Full,
+    Math,
+    /// Notation content, reading order, and structural roles are preserved.
+    Reading,
+    /// Rendering is equivalent under the reference renderer.
+    Render,
 }
 
 /// Unique identifier for a rule, composed of its package and a human-readable name.
@@ -188,18 +186,18 @@ pub struct RuleProduces {
 ///
 /// The rewrite phase uses `triggers` and `consumes` to decide when to attempt a
 /// rule, `produces` to verify convergence, and `fidelity` for the rule's
-/// render-fidelity contract.
+/// equivalence contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RuleMeta {
     /// Unique identifier for this rule.
     pub key: RuleKey,
     /// Packages that make this rule loadable when any one of them is enabled.
     pub enabled_by_packages: &'static [PackageName],
-    /// Ordered normalization level used by transform profiles.
-    pub level: NormalizationLevel,
+    /// Ordered rule level used by transform profiles.
+    pub level: RuleLevel,
     /// One-line human-readable description of what the rule does.
     pub summary: &'static str,
-    /// Worst-case render-fidelity guarantee over the rule's declared input domain.
+    /// Worst-case equivalence guarantee over the rule's declared input domain.
     pub fidelity: RuleFidelity,
     /// Commands, environments, or characters that decide where the engine attempts this rule.
     ///

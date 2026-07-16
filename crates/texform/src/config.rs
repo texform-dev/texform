@@ -1,6 +1,6 @@
 //! Configuration for normalization.
 //!
-//! A [`Profile`] picks the normalization levels for a downstream scenario
+//! A [`Profile`] picks the rule levels for a downstream scenario
 //! ([`Authoring`](Profile::Authoring), [`Faithful`](Profile::Faithful),
 //! [`Corpus`](Profile::Corpus), [`Equiv`](Profile::Equiv)); [`TransformConfig`]
 //! holds the per-run phase switches; and [`NormalizeConfig`] bundles a

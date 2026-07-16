@@ -93,8 +93,8 @@ mod tests {
     use crate::parse::{ParseConfig, ParseContext};
     use crate::rewrite::rule_context::RuleContext;
     use crate::rewrite::{
-        NormalizationLevel, PackageName, Plan as RewritePlan, RewriteRule, RuleConsumes,
-        RuleEffect, RuleFidelity, RuleKey, RuleMeta, RuleProduces, RuleTarget,
+        PackageName, Plan as RewritePlan, RewriteRule, RuleConsumes, RuleEffect, RuleFidelity,
+        RuleKey, RuleLevel, RuleMeta, RuleProduces, RuleTarget,
     };
     use crate::serialize::serialize;
 
@@ -157,9 +157,9 @@ mod tests {
             static META: RuleMeta = RuleMeta {
                 key: VbToMathbfForContractTest::KEY,
                 enabled_by_packages: &[PackageName::Physics],
-                level: NormalizationLevel::Expand,
+                level: RuleLevel::Faithful,
                 summary: "Create a bold prefix that the post LowerAttributes pass removes.",
-                fidelity: RuleFidelity::Full,
+                fidelity: RuleFidelity::Render,
                 triggers: &[RuleTarget::Command(&physics::cmd::VB)],
                 consumes: RuleConsumes {
                     eliminates: &[RuleTarget::Command(&base::cmd::MATHBF)],

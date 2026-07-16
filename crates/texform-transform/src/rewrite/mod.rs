@@ -19,12 +19,12 @@ pub(crate) use macros::transform_examples;
 pub(crate) use macros::{alias_rule, char_targets, cmd_targets, define_rule, env_targets};
 
 pub use contract::{ContractViolation, collect_eliminated_violations};
-pub use level_set::NormalizationLevelSet;
+pub use level_set::RuleLevelSet;
 pub use plan::{Plan, PlanBuildError, RuleAvailabilityFailure};
-pub use registry::all_rules;
+pub use registry::{all_rules, all_rules_with_source_levels};
 pub use rule::{
-    NormalizationLevel, PackageName, RewriteRule, RuleConsumes, RuleEffect, RuleFidelity, RuleKey,
-    RuleMeta, RuleProduces, RuleTarget, RuleTargetKey, RuleTargetKind,
+    PackageName, RewriteRule, RuleConsumes, RuleEffect, RuleFidelity, RuleKey, RuleLevel, RuleMeta,
+    RuleProduces, RuleTarget, RuleTargetKey, RuleTargetKind,
 };
 pub use rule_context::{CommandView, DeclarativeView, EnvironmentView, InfixView, RuleContext};
 
@@ -144,10 +144,10 @@ pub(crate) fn run_one_rule_for_test(
     ast: &mut Ast,
     parse_ctx: &ParseContext,
     rule: &'static dyn RewriteRule,
-    level: NormalizationLevel,
+    level: RuleLevel,
 ) -> Result<crate::TransformReport, crate::TransformError> {
     let build_config = crate::BuildConfig::profile(crate::Profile::Authoring)
-        .rewrite_levels(NormalizationLevelSet::from(level))
+        .rule_levels(RuleLevelSet::from(level))
         .only_rule_for_tests(rule.meta().key);
     let context = crate::TransformContext::from_build_config(build_config, parse_ctx)
         .map_err(crate::TransformError::Build)?;

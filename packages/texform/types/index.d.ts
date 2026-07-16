@@ -80,10 +80,10 @@ export type ParseDiagnosticKind =
  * How aggressively a transform rule may rewrite, layered from least to most
  * destructive of stylistic detail.
  *
- * A normalization level is the first profile that accepts a rule's output as a
- * suitable product; it is orthogonal to a rule's render-fidelity guarantee.
+ * A rule level is the first profile that accepts a rule's output as a
+ * suitable product; it is orthogonal to a rule's equivalence guarantee.
  */
-export type NormalizationLevel = "standard" | "expand" | "drop" | "equiv";
+export type RuleLevel = "authoring" | "faithful" | "corpus" | "equiv";
 
 /**
  * Normalization profile selecting the canonical form for one downstream

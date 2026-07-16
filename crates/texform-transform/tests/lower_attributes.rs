@@ -1,7 +1,7 @@
 //! End-to-end behavior of the LowerAttributes phase.
 //!
 //! Tests go through the public `run` entry point with the standard
-//! normalization level, so they implicitly check that LowerAttributes composes cleanly
+//! rule level, so they implicitly check that LowerAttributes composes cleanly
 //! with the Rewrite phase.
 
 use texform_core::ast::Ast;
@@ -10,7 +10,7 @@ use texform_core::serialize::serialize;
 use texform_transform::lower_attributes::MathFontValue;
 use texform_transform::{
     Attr, AttrValue, AttributeSet, BuildConfig, LowerAttributesConfig, LowerAttributesReport,
-    NormalizationLevel, NormalizationLevelSet, Profile, TransformContext,
+    Profile, RuleLevel, RuleLevelSet, TransformContext,
 };
 
 struct Outcome {
@@ -19,24 +19,18 @@ struct Outcome {
 }
 
 fn run_with_packages(src: &str, packages: &[&str]) -> Outcome {
-    run_with_packages_and_levels(src, packages, &[NormalizationLevel::Standard])
+    run_with_packages_and_levels(src, packages, &[RuleLevel::Authoring])
 }
 
-fn run_with_packages_and_levels(
-    src: &str,
-    packages: &[&str],
-    levels: &[NormalizationLevel],
-) -> Outcome {
+fn run_with_packages_and_levels(src: &str, packages: &[&str], levels: &[RuleLevel]) -> Outcome {
     let parse_ctx = ParseContext::from_packages(packages);
     let mut ast = parse_to_ast(&parse_ctx, src);
     let levels = levels
         .iter()
         .copied()
-        .fold(NormalizationLevelSet::empty(), |set, level| {
-            set | level.into()
-        });
+        .fold(RuleLevelSet::empty(), |set, level| set | level.into());
     let context = TransformContext::from_build_config(
-        BuildConfig::profile(Profile::Authoring).rewrite_levels(levels),
+        BuildConfig::profile(Profile::Authoring).rule_levels(levels),
         &parse_ctx,
     )
     .expect("transform context should build");
@@ -178,7 +172,7 @@ fn post_pass_normalizes_prefixes_created_by_apply_rules() {
     let actual = run_with_packages_and_levels(
         r"\vb{\rm x}",
         &["base", "textmacros", "physics", "boldsymbol"],
-        &[NormalizationLevel::Standard, NormalizationLevel::Expand],
+        &[RuleLevel::Authoring, RuleLevel::Faithful],
     );
     assert_eq!(actual.text, r"\mathrm { x }");
 }

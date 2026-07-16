@@ -16,8 +16,8 @@ been lowered to the canonical form by the time they run.
 ## Adding a New Rule
 
 1. Create a new `.rs` file under the package/level/group layout, for example
-   `base/standard/over_family/over_to_frac.rs` or
-   `physics/standard/trace_alias/trace_to_tr.rs`.
+   `base/authoring/over_family/over_to_frac.rs` or
+   `physics/authoring/trace_alias/trace_to_tr.rs`.
 2. Define and export exactly one `pub static MY_RULE: MyRuleType` where the
    constant name is the UPPER_SNAKE_CASE form of the file stem.
 3. That's it — the build script auto-discovers the file and registers it.
@@ -47,8 +47,7 @@ Rules use this directory structure:
 ```
 
 - `package` is the owning rule package, such as `base`, `ams`, or `physics`.
-- `level` is the normalization level: `standard`, `expand`, `drop`, or
-  `equiv`.
+- `level` is the rule level: `authoring`, `faithful`, `corpus`, or `equiv`.
 - `directory_group` is the Rust module path segment for a human-readable group.
   It must be snake_case. It is not part of `RuleMeta` and does not affect
   scheduling.
@@ -183,9 +182,9 @@ still needs ordinary Rust code:
 define_rule! {
     pub static OVER_TO_FRAC: OverToFracRule {
         key: Base / "over-to-frac",
-        level: Standard,
+        level: Authoring,
         summary: "Rewrite infix \\over into prefix \\frac",
-        fidelity: Approximate,
+        fidelity: Reading,
         enabled_by_packages: [Base],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::OVER],
@@ -217,14 +216,9 @@ When IDE navigation matters more than keeping the body inline, use the
 
 ## Choosing `level` and `fidelity`
 
-Classify a rule by asking which profile first accepts its output as a suitable
-product, then declare the rule's fidelity independently. `fidelity` does not
-determine `level`: an `Equiv` rule may still be `Full` when its output is
-pixel-identical but too expanded to serve as a corpus label, as with fenced
-matrix environment expansion.
+Classify a rule by asking which profile first accepts its output as a suitable product, then declare the strongest fidelity guaranteed over its declared domain. `fidelity` does not determine `level`: a rule may provide a stronger guarantee than its level requires.
 
-A rule's `fidelity` is the worst-case render-fidelity guarantee over its declared
-input domain and must not fall below its level's floor. See `RuleFidelity` in the `texform-transform`
+A rule's `fidelity` is the worst-case equivalence guarantee over its declared input domain and must not fall below its level's floor. See `RuleFidelity` in the `texform-transform`
 README for the fidelity ladder, the per-level floor table, and how to document a
 rule whose worst case is rarer than its usual behavior.
 
@@ -238,9 +232,9 @@ the rule only renames the command:
 alias_rule! {
     pub static TRACE_TO_TR: TraceToTrRule {
         key: Physics / "trace-to-tr",
-        level: Standard,
+        level: Authoring,
         summary: "Canonicalize \\Tr, \\trace, and \\Trace into \\tr",
-        fidelity: Full,
+        fidelity: Render,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::TR,
         aliases: [
@@ -320,14 +314,13 @@ let context = TransformContext::from_build_config(
 let report = context.run(&mut ast, &parse_ctx)?;
 ```
 
-Profiles select rewrite rules by normalization level before rule-specific filters are applied:
+Profiles select rewrite rules by rule level before rule-specific filters are applied:
 
-- `Authoring` includes `NormalizationLevel::Standard`
-- `Faithful` includes `NormalizationLevel::Standard` and `NormalizationLevel::Expand`
-- `Corpus` includes `NormalizationLevel::Standard`, `NormalizationLevel::Expand`, and
-  `NormalizationLevel::Drop`
+- `Authoring` includes `RuleLevel::Authoring`
+- `Faithful` includes `RuleLevel::Authoring` and `RuleLevel::Faithful`
+- `Corpus` includes `RuleLevel::Authoring`, `RuleLevel::Faithful`, and `RuleLevel::Corpus`
 - `Equiv` includes all levels
 
 Rule-specific filters are allowlists or denylists inside the selected profile;
-they do not enable an `expand`, `drop`, or `equiv` rule when the profile level
+they do not enable a `faithful`, `corpus`, or `equiv` rule when the profile level
 set excludes it.

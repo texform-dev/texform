@@ -3,11 +3,11 @@
 use crate::finalize_ast::FinalizeAstConfig;
 use crate::flatten_groups::FlattenGroupsConfig;
 use crate::rewrite::plan::RuleSelection;
-use crate::rewrite::{NormalizationLevelSet, RuleKey};
+use crate::rewrite::{RuleKey, RuleLevelSet};
 
 /// Normalization target for a transform run.
 ///
-/// A profile selects which normalization levels are active and the default
+/// A profile selects which rule levels are active and the default
 /// per-run [`TransformConfig`]. Normalization has no single correct answer, so
 /// each profile canonicalizes for one downstream scenario rather than imposing
 /// one true form. The levels are cumulative: each profile in this list enables
@@ -26,17 +26,17 @@ pub enum Profile {
 }
 
 impl Profile {
-    pub const fn normalization_levels(self) -> NormalizationLevelSet {
+    pub const fn rule_levels(self) -> RuleLevelSet {
         match self {
-            Self::Authoring => NormalizationLevelSet::STANDARD,
-            Self::Faithful => NormalizationLevelSet::STANDARD.union(NormalizationLevelSet::EXPAND),
-            Self::Corpus => NormalizationLevelSet::STANDARD
-                .union(NormalizationLevelSet::EXPAND)
-                .union(NormalizationLevelSet::DROP),
-            Self::Equiv => NormalizationLevelSet::STANDARD
-                .union(NormalizationLevelSet::EXPAND)
-                .union(NormalizationLevelSet::DROP)
-                .union(NormalizationLevelSet::EQUIV),
+            Self::Authoring => RuleLevelSet::AUTHORING,
+            Self::Faithful => RuleLevelSet::AUTHORING.union(RuleLevelSet::FAITHFUL),
+            Self::Corpus => RuleLevelSet::AUTHORING
+                .union(RuleLevelSet::FAITHFUL)
+                .union(RuleLevelSet::CORPUS),
+            Self::Equiv => RuleLevelSet::AUTHORING
+                .union(RuleLevelSet::FAITHFUL)
+                .union(RuleLevelSet::CORPUS)
+                .union(RuleLevelSet::EQUIV),
         }
     }
 
@@ -62,7 +62,7 @@ impl Profile {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BuildConfig {
-    pub(crate) levels: NormalizationLevelSet,
+    pub(crate) rule_levels: RuleLevelSet,
     pub(crate) selection: RuleSelection,
     pub(crate) default_transform: TransformConfig,
 }
@@ -70,14 +70,14 @@ pub struct BuildConfig {
 impl BuildConfig {
     pub fn profile(profile: Profile) -> Self {
         Self {
-            levels: profile.normalization_levels(),
+            rule_levels: profile.rule_levels(),
             selection: RuleSelection::All,
             default_transform: profile.default_transform_config(),
         }
     }
 
-    pub fn rewrite_levels(mut self, levels: NormalizationLevelSet) -> Self {
-        self.levels = levels;
+    pub fn rule_levels(mut self, rule_levels: RuleLevelSet) -> Self {
+        self.rule_levels = rule_levels;
         self
     }
 
@@ -114,7 +114,7 @@ impl BuildConfig {
 ///
 /// A [`Profile`] supplies a default `TransformConfig`; override it per call to
 /// toggle individual phases or cap the rewrite loop. Disabling a phase here
-/// skips it without changing which normalization levels the profile selected.
+/// skips it without changing which rule levels the profile selected.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TransformConfig {
     /// Run the fixed-point Rewrite loop (legacy-syntax modernization, alias

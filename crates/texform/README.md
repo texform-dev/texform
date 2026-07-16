@@ -26,7 +26,7 @@ engine.transform(&mut document)?;
 assert_eq!(document.to_latex()?, r"\frac { a } { b }");
 ```
 
-Profiles select the normalization target: `Authoring` (polished author-facing output), `Faithful` (same rendered formula, macros expanded), `Corpus` (training-data normalization), and `Equiv` (formula equivalence comparison).
+Profiles select the normalization target: `Authoring` (polished author-facing output), `Faithful` (render-faithful universal forms), `Corpus` (complete canonical training labels), and `Equiv` (an aggressive intermediate for equivalence comparison). The current builtin rule set has no `Equiv`-level rules, so `Corpus` and `Equiv` temporarily produce the same output while retaining different intended uses.
 
 ## Stability
 

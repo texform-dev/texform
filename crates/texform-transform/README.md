@@ -18,7 +18,7 @@ let mut ast = parse_ctx
     .expect("source should parse");
 
 // Pick a profile. `Faithful` preserves layout while expanding commands; use
-// `Corpus` to drop layout hints, `Equiv` for equivalence comparison, and
+// `Corpus` for complete canonical labels, `Equiv` for equivalence comparison, and
 // `Authoring` for author-facing output.
 let context = TransformContext::from_build_config(
     BuildConfig::profile(Profile::Faithful),
@@ -65,7 +65,7 @@ The crate's public surface is intentionally small:
 | `TransformReport` | Per-phase reports aggregated across the run. |
 | `TransformError` / `TransformBuildError` | Build-time and run-time error types. |
 
-The rewrite phase additionally re-exports `RewriteRule`, `NormalizationLevel`, `NormalizationLevelSet`, `RuleKey`, `RuleMeta`, `RuleFidelity`, `RuleTarget`, `RuleTargetKey`, `RuleTargetKind`, `Plan as RewritePlan` and related items for callers that need to introspect rules.
+The rewrite phase additionally re-exports `RewriteRule`, `RuleLevel`, `RuleLevelSet`, `RuleKey`, `RuleMeta`, `RuleFidelity`, `RuleTarget`, `RuleTargetKey`, `RuleTargetKind`, `Plan as RewritePlan` and related items for callers that need to introspect rules.
 
 ## Pipeline
 
@@ -73,7 +73,7 @@ The rewrite phase additionally re-exports `RewriteRule`, `NormalizationLevel`, `
 
 1. **LowerAttributes (pre)** — canonicalize declarative-scope commands (e.g. `\bf x`) and registered prefix wrappers (e.g. `\mathbf{x}`) into a single normal form.
 2. **Rewrite** — apply the precompiled rewrite plan in a fixed-point loop, bounded by `max_iterations`.
-3. **LowerAttributes (post)** — re-canonicalize attribute markers introduced by rewrite rules (some Standard / Expand rules emit prefix wrappers that need lowering again).
+3. **LowerAttributes (post)** — re-canonicalize attribute markers introduced by rewrite rules (some Authoring / Faithful rules emit prefix wrappers that need lowering again).
 4. **FinalizeAst** — local AST cleanup that does not depend on rewrite metadata, currently merging adjacent `Prime` nodes produced by rewrite rules.
 5. **FlattenGroups** — remove redundant explicit and implicit groups after the earlier phases have stabilized.
 
@@ -95,16 +95,18 @@ pub struct TransformConfig {
 
 ### Profiles
 
-Each profile selects build-time normalization levels and supplies a default runtime config.
+Each profile selects cumulative build-time rule levels and supplies a default runtime config.
 
-| Profile | Normalization levels | `flatten_groups` | Target scenario |
+| Profile | Rule levels | `flatten_groups` | Target scenario |
 | --- | --- | --- | --- |
-| `Authoring` | `Standard` | `STRICT` | Polished author-facing formatting; stylistic choices kept. |
-| `Faithful` | `Standard` + `Expand` | `STRICT` | Preserves the rendered formula while allowing expanded source forms. |
-| `Corpus` | `Standard` + `Expand` + `Drop` | `STRUCTURAL_ONLY` | MER training data normalization; layout hints dropped. |
-| `Equiv` | `Standard` + `Expand` + `Drop` + `Equiv` | `STRUCTURAL_ONLY` | Formula equivalence comparison. |
+| `Authoring` | `Authoring` | `STRICT` | Polished author-facing formatting; stylistic choices kept. |
+| `Faithful` | `Authoring` + `Faithful` | `STRICT` | Render-faithful universal forms. |
+| `Corpus` | `Authoring` + `Faithful` + `Corpus` | `STRUCTURAL_ONLY` | Complete canonical forms suitable as training labels. |
+| `Equiv` | `Authoring` + `Faithful` + `Corpus` + `Equiv` | `STRUCTURAL_ONLY` | Aggressive intermediates for equivalence comparison. |
 
-#### `NormalizationLevel`
+The current builtin registry has no `Equiv`-level rules, so `Corpus` and `Equiv` temporarily produce the same output. Their intended products remain different.
+
+#### `RuleLevel`
 
 Every rule belongs to exactly one ordered level. A rule's level is the first
 profile that accepts the rule output as a suitable product; it is not inferred
@@ -112,10 +114,10 @@ from render fidelity.
 
 | Level      | Intent |
 |------------|--------|
-| `Standard` | Uncontroversial author-facing standardization: legacy-syntax modernization, typo fixes, alias canonicalization, cross-package anchor unification. Does not collapse stylistic choices that an author may legitimately make. |
-| `Expand`   | Expands convenience commands, semantic macros, package-specific commands, and spacing primitives into more explicit universal structures while preserving the rendered formula. Output remains readable LaTeX and may be visually, rather than pixel, equivalent. |
-| `Drop`     | Removes non-ink, metadata, and layout hints a corpus should not learn: linebreak preferences, invisible layout nodes, and similar caller-opt-in deletions. |
-| `Equiv`    | Output is only suitable as an equivalence-checking intermediate, not as a corpus label. Fidelity does not decide this level: fenced matrix environment expansion is `Full` but still `Equiv`. |
+| `Authoring` | Author-editable canonical syntax: legacy modernization, typo fixes, and alias canonicalization without collapsing legitimate notation choices. |
+| `Faithful` | Render-faithful universal forms for compact, package-specific, or legacy input. |
+| `Corpus` | Complete, stable canonical forms suitable as training labels; reading-identical layout and specialized vocabulary may collapse. |
+| `Equiv` | Output is only suitable as an equivalence-checking, deduplication, or fingerprint intermediate, not as a corpus label. |
 
 Classify a rule by asking which profile first accepts its output, then declare
 the rule's fidelity independently. `fidelity` may rule out profiles whose floor
@@ -123,15 +125,13 @@ it cannot meet, but a high-fidelity rule is not automatically a lower level.
 
 #### `RuleFidelity`
 
-`fidelity` is the worst-case render-fidelity guarantee over the rule's declared
-input domain. It is ordered from least to most faithful:
-`Semantic < Approximate < Full`.
+`fidelity` is the worst-case equivalence guarantee over the rule's declared input domain. It is ordered from least to most faithful: `Math < Reading < Render`.
 
 | Fidelity | Guarantee |
 | --- | --- |
-| `Full` | Pixel-identical rendering before and after the rewrite. |
-| `Approximate` | Visually equivalent apart from spacing or placement. |
-| `Semantic` | Mathematical meaning is preserved; rendering may change. |
+| `Render` | Rendering is equivalent under the reference renderer. |
+| `Reading` | Notation content, reading order, and structural roles are preserved; layout may change. |
+| `Math` | Mathematical meaning is preserved over the declared domain; notation and rendering may change. |
 
 `fidelity` is a metadata contract only. `texform-transform` runs no rendering
 comparison; how a downstream validator interprets a fidelity level when comparing
@@ -139,12 +139,12 @@ rendered output is defined by that consumer, not in this crate.
 
 `fidelity` must not fall below the rule's level floor:
 
-| Level | Default fidelity | Min fidelity |
-| --- | --- | --- |
-| `Standard` | `Full` | `Approximate` |
-| `Expand` | `Full` | `Approximate` |
-| `Drop` | `Semantic` | `Semantic` |
-| `Equiv` | `Full` | `Semantic` |
+| Level | Min fidelity |
+| --- | --- |
+| `Authoring` | `Reading` |
+| `Faithful` | `Reading` |
+| `Corpus` | `Reading` |
+| `Equiv` | `Math` |
 
 Do not add a second metadata field for ordinary behavior. If a rule has an
 important gap between its worst case and usual samples, document that gap in the
@@ -277,7 +277,7 @@ Rules live under `src/rewrite/rules/{base, ams, braket, physics}/` and are auto-
 
 - `key: RuleKey` (`package/name`) — the stable identifier used in reports and build-time filters.
 - `enabled_by_packages` — packages whose presence in the `ParseContext` enables the rule.
-- `level` — see [`NormalizationLevel`](#normalizationlevel).
+- `level` — see [`RuleLevel`](#rulelevel).
 - `fidelity` — see [`RuleFidelity`](#rulefidelity).
 - `triggers` — `RuleTarget`s the scheduler watches to know when to attempt the rule.
 - `consumes` — forms the rule `eliminates` (must not appear in the output) and `touches` (may read or modify).

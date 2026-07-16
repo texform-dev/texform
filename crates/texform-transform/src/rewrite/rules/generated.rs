@@ -5,10 +5,27 @@
 // Support modules named `helpers.rs` or `_*.rs` are emitted but not
 // added to `ALL_RULES`.
 
-use crate::rewrite::rule::RewriteRule;
+use crate::rewrite::rule::{RewriteRule, RuleLevel};
 
 pub(crate) mod ams {
-    pub(crate) mod equiv {
+    pub(crate) mod authoring {
+        pub(crate) mod character_alias {
+            #[allow(non_snake_case)]
+            pub(crate) mod Doteq_to_doteqdot;
+            #[allow(non_snake_case)]
+            pub(crate) mod doublecap_to_Cap;
+            pub(crate) mod gggtr_to_ggg;
+            pub(crate) mod llless_to_lll;
+            pub(crate) mod trianglerighteq_to_unrhd;
+            pub(crate) mod unlhd_to_trianglelefteq;
+            pub(crate) mod vartriangleleft_to_lhd;
+            pub(crate) mod vartriangleright_to_rhd;
+        }
+        pub(crate) mod spacing_alias {
+            pub(crate) mod nobreakspace_to_tilde;
+        }
+    }
+    pub(crate) mod corpus {
         pub(crate) mod fenced_matrix_env {
             #[allow(non_snake_case)]
             pub(crate) mod Bmatrix_env_to_brace_matrix;
@@ -20,7 +37,7 @@ pub(crate) mod ams {
             pub(crate) mod vmatrix_env_to_vert_matrix;
         }
     }
-    pub(crate) mod expand {
+    pub(crate) mod faithful {
         pub(crate) mod ams_operator_alias {
             #[allow(non_snake_case)]
             pub(crate) mod impliedby_to_Longleftarrow;
@@ -48,73 +65,9 @@ pub(crate) mod ams {
             pub(crate) mod substack_expand;
         }
     }
-    pub(crate) mod standard {
-        pub(crate) mod character_alias {
-            #[allow(non_snake_case)]
-            pub(crate) mod Doteq_to_doteqdot;
-            #[allow(non_snake_case)]
-            pub(crate) mod doublecap_to_Cap;
-            pub(crate) mod gggtr_to_ggg;
-            pub(crate) mod llless_to_lll;
-            pub(crate) mod trianglerighteq_to_unrhd;
-            pub(crate) mod unlhd_to_trianglelefteq;
-            pub(crate) mod vartriangleleft_to_lhd;
-            pub(crate) mod vartriangleright_to_rhd;
-        }
-        pub(crate) mod spacing_alias {
-            pub(crate) mod nobreakspace_to_tilde;
-        }
-    }
 }
 pub(crate) mod base {
-    pub(crate) mod drop {
-        pub(crate) mod spacing_drop {
-            pub(crate) mod allowbreak_drop;
-            pub(crate) mod badbreak_drop;
-            pub(crate) mod goodbreak_drop;
-            pub(crate) mod helpers;
-            pub(crate) mod mathstrut_drop;
-            pub(crate) mod nobreak_drop;
-            pub(crate) mod strut_drop;
-        }
-    }
-    pub(crate) mod equiv {
-        pub(crate) mod big_class_variants {
-            #[allow(non_snake_case)]
-            pub(crate) mod Big_class_variants_to_Big;
-            #[allow(non_snake_case)]
-            pub(crate) mod Bigg_class_variants_to_Bigg;
-            pub(crate) mod big_class_variants_to_big;
-            pub(crate) mod bigg_class_variants_to_bigg;
-        }
-        pub(crate) mod spacing_merge {
-            pub(crate) mod quad_run_to_qquad;
-            pub(crate) mod repeat_spacer_collapse;
-        }
-    }
-    pub(crate) mod expand {
-        pub(crate) mod character_normalize {
-            pub(crate) mod dots_to_ldots_or_cdots;
-            pub(crate) mod gets_to_leftarrow;
-            pub(crate) mod land_to_wedge;
-            pub(crate) mod lor_to_vee;
-            pub(crate) mod rightarrow_to_to;
-            pub(crate) mod semantic_dots_to_cdots;
-            pub(crate) mod semantic_dots_to_ldots;
-        }
-        pub(crate) mod spacing_alias {
-            pub(crate) mod helpers;
-            pub(crate) mod mkern_to_mspace;
-            pub(crate) mod mskip_to_mspace;
-        }
-        pub(crate) mod stacked_operator {
-            pub(crate) mod buildrel_expand;
-            pub(crate) mod helpers;
-            pub(crate) mod stackbin_expand;
-            pub(crate) mod stackrel_expand;
-        }
-    }
-    pub(crate) mod standard {
+    pub(crate) mod authoring {
         pub(crate) mod character_alias {
             pub(crate) mod ast_to_asterisk;
             pub(crate) mod ge_to_geq;
@@ -162,9 +115,91 @@ pub(crate) mod base {
             pub(crate) mod thinspace_to_comma_space;
         }
     }
+    pub(crate) mod corpus {
+        pub(crate) mod big_class_variants {
+            #[allow(non_snake_case)]
+            pub(crate) mod Big_class_variants_to_Big;
+            #[allow(non_snake_case)]
+            pub(crate) mod Bigg_class_variants_to_Bigg;
+            pub(crate) mod big_class_variants_to_big;
+            pub(crate) mod bigg_class_variants_to_bigg;
+        }
+        pub(crate) mod spacing_drop {
+            pub(crate) mod allowbreak_drop;
+            pub(crate) mod badbreak_drop;
+            pub(crate) mod goodbreak_drop;
+            pub(crate) mod helpers;
+            pub(crate) mod mathstrut_drop;
+            pub(crate) mod nobreak_drop;
+            pub(crate) mod strut_drop;
+        }
+        pub(crate) mod spacing_merge {
+            pub(crate) mod quad_run_to_qquad;
+            pub(crate) mod repeat_spacer_collapse;
+        }
+    }
+    pub(crate) mod faithful {
+        pub(crate) mod character_normalize {
+            pub(crate) mod dots_to_ldots_or_cdots;
+            pub(crate) mod gets_to_leftarrow;
+            pub(crate) mod land_to_wedge;
+            pub(crate) mod lor_to_vee;
+            pub(crate) mod rightarrow_to_to;
+            pub(crate) mod semantic_dots_to_cdots;
+            pub(crate) mod semantic_dots_to_ldots;
+        }
+        pub(crate) mod spacing_alias {
+            pub(crate) mod helpers;
+            pub(crate) mod mkern_to_mspace;
+            pub(crate) mod mskip_to_mspace;
+        }
+        pub(crate) mod stacked_operator {
+            pub(crate) mod buildrel_expand;
+            pub(crate) mod helpers;
+            pub(crate) mod stackbin_expand;
+            pub(crate) mod stackrel_expand;
+        }
+    }
 }
 pub(crate) mod physics {
-    pub(crate) mod expand {
+    pub(crate) mod authoring {
+        pub(crate) mod character_alias {
+            pub(crate) mod divsymbol_to_divisionsymbol;
+            pub(crate) mod dotproduct_to_vdot;
+        }
+        pub(crate) mod derivative_to_short {
+            pub(crate) mod derivative_to_dv;
+            pub(crate) mod functional_derivative_to_fdv;
+            pub(crate) mod partial_derivative_to_pdv;
+        }
+        pub(crate) mod matrix_alias {
+            pub(crate) mod antidiagonalmatrix_to_admat;
+            pub(crate) mod diagonalmatrix_to_dmat;
+            pub(crate) mod matrixdeterminant_to_mdet;
+        }
+        pub(crate) mod named_fn_to_short {
+            pub(crate) mod cosine_to_cos;
+            pub(crate) mod naturallogarithm_to_ln;
+            pub(crate) mod probability_to_pr;
+            pub(crate) mod sine_to_sin;
+        }
+        pub(crate) mod quantity_alias {
+            pub(crate) mod absolutevalue_to_abs;
+            pub(crate) mod evaluated_to_eval;
+            pub(crate) mod quantity_to_qty;
+        }
+        pub(crate) mod trace_alias {
+            #[allow(non_snake_case)]
+            pub(crate) mod trace_capital_to_Tr;
+            pub(crate) mod trace_to_tr;
+        }
+        pub(crate) mod vector_to_short {
+            pub(crate) mod vectorarrow_to_va;
+            pub(crate) mod vectorbold_to_vb;
+            pub(crate) mod vectorunit_to_vu;
+        }
+    }
+    pub(crate) mod faithful {
         pub(crate) mod bra_ket {
             pub(crate) mod expectation_expand;
             pub(crate) mod helpers;
@@ -221,172 +256,266 @@ pub(crate) mod physics {
             pub(crate) mod vu_to_hat_mathbf;
         }
     }
-    pub(crate) mod standard {
-        pub(crate) mod character_alias {
-            pub(crate) mod divsymbol_to_divisionsymbol;
-            pub(crate) mod dotproduct_to_vdot;
-        }
-        pub(crate) mod derivative_to_short {
-            pub(crate) mod derivative_to_dv;
-            pub(crate) mod functional_derivative_to_fdv;
-            pub(crate) mod partial_derivative_to_pdv;
-        }
-        pub(crate) mod matrix_alias {
-            pub(crate) mod antidiagonalmatrix_to_admat;
-            pub(crate) mod diagonalmatrix_to_dmat;
-            pub(crate) mod matrixdeterminant_to_mdet;
-        }
-        pub(crate) mod named_fn_to_short {
-            pub(crate) mod cosine_to_cos;
-            pub(crate) mod naturallogarithm_to_ln;
-            pub(crate) mod probability_to_pr;
-            pub(crate) mod sine_to_sin;
-        }
-        pub(crate) mod quantity_alias {
-            pub(crate) mod absolutevalue_to_abs;
-            pub(crate) mod evaluated_to_eval;
-            pub(crate) mod quantity_to_qty;
-        }
-        pub(crate) mod trace_alias {
-            #[allow(non_snake_case)]
-            pub(crate) mod trace_capital_to_Tr;
-            pub(crate) mod trace_to_tr;
-        }
-        pub(crate) mod vector_to_short {
-            pub(crate) mod vectorarrow_to_va;
-            pub(crate) mod vectorbold_to_vb;
-            pub(crate) mod vectorunit_to_vu;
-        }
-    }
 }
 
 pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
-    &ams::equiv::fenced_matrix_env::Bmatrix_env_to_brace_matrix::BMATRIX_ENV_TO_BRACE_MATRIX,
-    &ams::equiv::fenced_matrix_env::Vmatrix_env_to_Vert_matrix::VMATRIX_ENV_TO_VERT_MATRIX,
-    &ams::equiv::fenced_matrix_env::bmatrix_env_to_bracket_matrix::BMATRIX_ENV_TO_BRACKET_MATRIX,
-    &ams::equiv::fenced_matrix_env::pmatrix_env_to_paren_matrix::PMATRIX_ENV_TO_PAREN_MATRIX,
-    &ams::equiv::fenced_matrix_env::vmatrix_env_to_vert_matrix::VMATRIX_ENV_TO_VERT_MATRIX,
-    &ams::expand::ams_operator_alias::impliedby_to_Longleftarrow::IMPLIEDBY_TO_LONGLEFTARROW,
-    &ams::expand::ams_operator_alias::implies_to_Longrightarrow::IMPLIES_TO_LONGRIGHTARROW,
-    &ams::expand::character_normalize::Join_to_bowtie::JOIN_TO_BOWTIE,
-    &ams::expand::character_normalize::centerdot_to_cdot::CENTERDOT_TO_CDOT,
-    &ams::expand::character_normalize::doublecup_to_Cup::DOUBLECUP_TO_CUP,
-    &ams::expand::character_normalize::leadsto_to_rightsquigarrow::LEADSTO_TO_RIGHTSQUIGARROW,
-    &ams::expand::character_normalize::lozenge_to_Diamond::LOZENGE_TO_DIAMOND,
-    &ams::expand::character_normalize::restriction_to_upharpoonright::RESTRICTION_TO_UPHARPOONRIGHT,
-    &ams::expand::character_normalize::square_to_Box::SQUARE_TO_BOX,
-    &ams::expand::character_normalize::vartriangle_to_bigtriangleup::VARTRIANGLE_TO_BIGTRIANGLEUP,
-    &ams::expand::multi_integral::idotsint_expand::IDOTSINT_EXPAND,
-    &ams::expand::substack::substack_expand::SUBSTACK_EXPAND,
-    &ams::standard::character_alias::Doteq_to_doteqdot::DOTEQ_TO_DOTEQDOT,
-    &ams::standard::character_alias::doublecap_to_Cap::DOUBLECAP_TO_CAP,
-    &ams::standard::character_alias::gggtr_to_ggg::GGGTR_TO_GGG,
-    &ams::standard::character_alias::llless_to_lll::LLLESS_TO_LLL,
-    &ams::standard::character_alias::trianglerighteq_to_unrhd::TRIANGLERIGHTEQ_TO_UNRHD,
-    &ams::standard::character_alias::unlhd_to_trianglelefteq::UNLHD_TO_TRIANGLELEFTEQ,
-    &ams::standard::character_alias::vartriangleleft_to_lhd::VARTRIANGLELEFT_TO_LHD,
-    &ams::standard::character_alias::vartriangleright_to_rhd::VARTRIANGLERIGHT_TO_RHD,
-    &ams::standard::spacing_alias::nobreakspace_to_tilde::NOBREAKSPACE_TO_TILDE,
-    &base::drop::spacing_drop::allowbreak_drop::ALLOWBREAK_DROP,
-    &base::drop::spacing_drop::badbreak_drop::BADBREAK_DROP,
-    &base::drop::spacing_drop::goodbreak_drop::GOODBREAK_DROP,
-    &base::drop::spacing_drop::mathstrut_drop::MATHSTRUT_DROP,
-    &base::drop::spacing_drop::nobreak_drop::NOBREAK_DROP,
-    &base::drop::spacing_drop::strut_drop::STRUT_DROP,
-    &base::equiv::big_class_variants::Big_class_variants_to_Big::BIG_CLASS_VARIANTS_TO_BIG,
-    &base::equiv::big_class_variants::Bigg_class_variants_to_Bigg::BIGG_CLASS_VARIANTS_TO_BIGG,
-    &base::equiv::big_class_variants::big_class_variants_to_big::BIG_CLASS_VARIANTS_TO_BIG,
-    &base::equiv::big_class_variants::bigg_class_variants_to_bigg::BIGG_CLASS_VARIANTS_TO_BIGG,
-    &base::equiv::spacing_merge::quad_run_to_qquad::QUAD_RUN_TO_QQUAD,
-    &base::equiv::spacing_merge::repeat_spacer_collapse::REPEAT_SPACER_COLLAPSE,
-    &base::expand::character_normalize::dots_to_ldots_or_cdots::DOTS_TO_LDOTS_OR_CDOTS,
-    &base::expand::character_normalize::gets_to_leftarrow::GETS_TO_LEFTARROW,
-    &base::expand::character_normalize::land_to_wedge::LAND_TO_WEDGE,
-    &base::expand::character_normalize::lor_to_vee::LOR_TO_VEE,
-    &base::expand::character_normalize::rightarrow_to_to::RIGHTARROW_TO_TO,
-    &base::expand::character_normalize::semantic_dots_to_cdots::SEMANTIC_DOTS_TO_CDOTS,
-    &base::expand::character_normalize::semantic_dots_to_ldots::SEMANTIC_DOTS_TO_LDOTS,
-    &base::expand::spacing_alias::mkern_to_mspace::MKERN_TO_MSPACE,
-    &base::expand::spacing_alias::mskip_to_mspace::MSKIP_TO_MSPACE,
-    &base::expand::stacked_operator::buildrel_expand::BUILDREL_EXPAND,
-    &base::expand::stacked_operator::stackbin_expand::STACKBIN_EXPAND,
-    &base::expand::stacked_operator::stackrel_expand::STACKREL_EXPAND,
-    &base::standard::character_alias::ast_to_asterisk::AST_TO_ASTERISK,
-    &base::standard::character_alias::ge_to_geq::GE_TO_GEQ,
-    &base::standard::character_alias::le_to_leq::LE_TO_LEQ,
-    &base::standard::character_alias::lnot_to_neg::LNOT_TO_NEG,
-    &base::standard::character_alias::ne_to_neq::NE_TO_NEQ,
-    &base::standard::character_alias::owns_to_ni::OWNS_TO_NI,
-    &base::standard::character_alias::prime_to_prime_node::PRIME_TO_PRIME_NODE,
-    &base::standard::linebreak_alias::break_to_linebreak::BREAK_TO_LINEBREAK,
-    &base::standard::linebreak_alias::newline_to_linebreak::NEWLINE_TO_LINEBREAK,
-    &base::standard::over_family::above_to_genfrac::ABOVE_TO_GENFRAC,
-    &base::standard::over_family::abovewithdelims_to_genfrac::ABOVEWITHDELIMS_TO_GENFRAC,
-    &base::standard::over_family::atop_to_genfrac::ATOP_TO_GENFRAC,
-    &base::standard::over_family::atopwithdelims_to_genfrac::ATOPWITHDELIMS_TO_GENFRAC,
-    &base::standard::over_family::brace_to_genfrac::BRACE_TO_GENFRAC,
-    &base::standard::over_family::brack_to_genfrac::BRACK_TO_GENFRAC,
-    &base::standard::over_family::choose_to_binom::CHOOSE_TO_BINOM,
-    &base::standard::over_family::over_to_frac::OVER_TO_FRAC,
-    &base::standard::over_family::overwithdelims_to_genfrac::OVERWITHDELIMS_TO_GENFRAC,
-    &base::standard::plain_tex_matrix::cases_to_cases_env::CASES_TO_CASES_ENV,
-    &base::standard::plain_tex_matrix::eqalign_to_aligned_env::EQALIGN_TO_ALIGNED_ENV,
-    &base::standard::plain_tex_matrix::eqalignno_to_align_env::EQALIGNNO_TO_ALIGN_ENV,
-    &base::standard::plain_tex_matrix::matrix_to_matrix_env::MATRIX_TO_MATRIX_ENV,
-    &base::standard::plain_tex_matrix::pmatrix_to_pmatrix_env::PMATRIX_TO_PMATRIX_ENV,
-    &base::standard::root_family::root_of_to_sqrt::ROOT_OF_TO_SQRT,
-    &base::standard::spacing_alias::gt_space_to_colon_space::GT_SPACE_TO_COLON_SPACE,
-    &base::standard::spacing_alias::hfil_to_hfill::HFIL_TO_HFILL,
-    &base::standard::spacing_alias::hfilll_to_hfill::HFILLL_TO_HFILL,
-    &base::standard::spacing_alias::hskip_to_hspace::HSKIP_TO_HSPACE,
-    &base::standard::spacing_alias::negthinspace_to_neg_comma_space::NEGTHINSPACE_TO_NEG_COMMA_SPACE,
-    &base::standard::spacing_alias::space_to_tilde::SPACE_TO_TILDE,
-    &base::standard::spacing_alias::thinspace_to_comma_space::THINSPACE_TO_COMMA_SPACE,
-    &physics::expand::bra_ket::expectation_expand::EXPECTATION_EXPAND,
-    &physics::expand::bra_ket::matrixel_expand::MATRIXEL_EXPAND,
-    &physics::expand::bra_ket::physics_bra_expand::PHYSICS_BRA_EXPAND,
-    &physics::expand::bra_ket::physics_braket_expand::PHYSICS_BRAKET_EXPAND,
-    &physics::expand::bra_ket::physics_ket_expand::PHYSICS_KET_EXPAND,
-    &physics::expand::character_normalize::cross_aliases_to_times::CROSS_ALIASES_TO_TIMES,
-    &physics::expand::commutator::commutator_expand::COMMUTATOR_EXPAND,
-    &physics::expand::commutator::poisson_bracket_expand::POISSON_BRACKET_EXPAND,
-    &physics::expand::delimiter_shorthand::Bqty_to_brace_fence::BQTY_TO_BRACE_FENCE,
-    &physics::expand::delimiter_shorthand::abs_to_vert_fence::ABS_TO_VERT_FENCE,
-    &physics::expand::delimiter_shorthand::bqty_to_bracket_fence::BQTY_TO_BRACKET_FENCE,
-    &physics::expand::delimiter_shorthand::norm_to_double_vert_fence::NORM_TO_DOUBLE_VERT_FENCE,
-    &physics::expand::delimiter_shorthand::pqty_to_paren_fence::PQTY_TO_PAREN_FENCE,
-    &physics::expand::derivative_expand::dv_to_frac_d::DV_TO_FRAC_D,
-    &physics::expand::derivative_expand::fdv_to_frac_delta::FDV_TO_FRAC_DELTA,
-    &physics::expand::derivative_expand::pdv_to_frac_partial::PDV_TO_FRAC_PARTIAL,
-    &physics::expand::eval_fence::eval_expand::EVAL_EXPAND,
-    &physics::expand::matrix_builder_expand::bmqty_to_mqty::BMQTY_TO_MQTY,
-    &physics::expand::matrix_builder_expand::mdet_to_vmqty::MDET_TO_VMQTY,
-    &physics::expand::matrix_builder_expand::pmqty_to_mqty::PMQTY_TO_MQTY,
-    &physics::expand::matrix_builder_expand::zmat_to_xmat::ZMAT_TO_XMAT,
-    &physics::expand::named_fn_expand::rank_to_operatorname_rank::RANK_TO_OPERATORNAME_RANK,
-    &physics::expand::qqtext::qcomma_expand::QCOMMA_EXPAND,
-    &physics::expand::qqtext::qqtext_expand::QQTEXT_EXPAND,
-    &physics::expand::vector_expand::va_to_vec_mathbf::VA_TO_VEC_MATHBF,
-    &physics::expand::vector_expand::vb_to_mathbf::VB_TO_MATHBF,
-    &physics::expand::vector_expand::vu_to_hat_mathbf::VU_TO_HAT_MATHBF,
-    &physics::standard::character_alias::divsymbol_to_divisionsymbol::DIVSYMBOL_TO_DIVISIONSYMBOL,
-    &physics::standard::character_alias::dotproduct_to_vdot::DOTPRODUCT_TO_VDOT,
-    &physics::standard::derivative_to_short::derivative_to_dv::DERIVATIVE_TO_DV,
-    &physics::standard::derivative_to_short::functional_derivative_to_fdv::FUNCTIONAL_DERIVATIVE_TO_FDV,
-    &physics::standard::derivative_to_short::partial_derivative_to_pdv::PARTIAL_DERIVATIVE_TO_PDV,
-    &physics::standard::matrix_alias::antidiagonalmatrix_to_admat::ANTIDIAGONALMATRIX_TO_ADMAT,
-    &physics::standard::matrix_alias::diagonalmatrix_to_dmat::DIAGONALMATRIX_TO_DMAT,
-    &physics::standard::matrix_alias::matrixdeterminant_to_mdet::MATRIXDETERMINANT_TO_MDET,
-    &physics::standard::named_fn_to_short::cosine_to_cos::COSINE_TO_COS,
-    &physics::standard::named_fn_to_short::naturallogarithm_to_ln::NATURALLOGARITHM_TO_LN,
-    &physics::standard::named_fn_to_short::probability_to_pr::PROBABILITY_TO_PR,
-    &physics::standard::named_fn_to_short::sine_to_sin::SINE_TO_SIN,
-    &physics::standard::quantity_alias::absolutevalue_to_abs::ABSOLUTEVALUE_TO_ABS,
-    &physics::standard::quantity_alias::evaluated_to_eval::EVALUATED_TO_EVAL,
-    &physics::standard::quantity_alias::quantity_to_qty::QUANTITY_TO_QTY,
-    &physics::standard::trace_alias::trace_capital_to_Tr::TRACE_CAPITAL_TO_TR,
-    &physics::standard::trace_alias::trace_to_tr::TRACE_TO_TR,
-    &physics::standard::vector_to_short::vectorarrow_to_va::VECTORARROW_TO_VA,
-    &physics::standard::vector_to_short::vectorbold_to_vb::VECTORBOLD_TO_VB,
-    &physics::standard::vector_to_short::vectorunit_to_vu::VECTORUNIT_TO_VU,
+    &ams::authoring::character_alias::Doteq_to_doteqdot::DOTEQ_TO_DOTEQDOT,
+    &ams::authoring::character_alias::doublecap_to_Cap::DOUBLECAP_TO_CAP,
+    &ams::authoring::character_alias::gggtr_to_ggg::GGGTR_TO_GGG,
+    &ams::authoring::character_alias::llless_to_lll::LLLESS_TO_LLL,
+    &ams::authoring::character_alias::trianglerighteq_to_unrhd::TRIANGLERIGHTEQ_TO_UNRHD,
+    &ams::authoring::character_alias::unlhd_to_trianglelefteq::UNLHD_TO_TRIANGLELEFTEQ,
+    &ams::authoring::character_alias::vartriangleleft_to_lhd::VARTRIANGLELEFT_TO_LHD,
+    &ams::authoring::character_alias::vartriangleright_to_rhd::VARTRIANGLERIGHT_TO_RHD,
+    &ams::authoring::spacing_alias::nobreakspace_to_tilde::NOBREAKSPACE_TO_TILDE,
+    &ams::corpus::fenced_matrix_env::Bmatrix_env_to_brace_matrix::BMATRIX_ENV_TO_BRACE_MATRIX,
+    &ams::corpus::fenced_matrix_env::Vmatrix_env_to_Vert_matrix::VMATRIX_ENV_TO_VERT_MATRIX,
+    &ams::corpus::fenced_matrix_env::bmatrix_env_to_bracket_matrix::BMATRIX_ENV_TO_BRACKET_MATRIX,
+    &ams::corpus::fenced_matrix_env::pmatrix_env_to_paren_matrix::PMATRIX_ENV_TO_PAREN_MATRIX,
+    &ams::corpus::fenced_matrix_env::vmatrix_env_to_vert_matrix::VMATRIX_ENV_TO_VERT_MATRIX,
+    &ams::faithful::ams_operator_alias::impliedby_to_Longleftarrow::IMPLIEDBY_TO_LONGLEFTARROW,
+    &ams::faithful::ams_operator_alias::implies_to_Longrightarrow::IMPLIES_TO_LONGRIGHTARROW,
+    &ams::faithful::character_normalize::Join_to_bowtie::JOIN_TO_BOWTIE,
+    &ams::faithful::character_normalize::centerdot_to_cdot::CENTERDOT_TO_CDOT,
+    &ams::faithful::character_normalize::doublecup_to_Cup::DOUBLECUP_TO_CUP,
+    &ams::faithful::character_normalize::leadsto_to_rightsquigarrow::LEADSTO_TO_RIGHTSQUIGARROW,
+    &ams::faithful::character_normalize::lozenge_to_Diamond::LOZENGE_TO_DIAMOND,
+    &ams::faithful::character_normalize::restriction_to_upharpoonright::RESTRICTION_TO_UPHARPOONRIGHT,
+    &ams::faithful::character_normalize::square_to_Box::SQUARE_TO_BOX,
+    &ams::faithful::character_normalize::vartriangle_to_bigtriangleup::VARTRIANGLE_TO_BIGTRIANGLEUP,
+    &ams::faithful::multi_integral::idotsint_expand::IDOTSINT_EXPAND,
+    &ams::faithful::substack::substack_expand::SUBSTACK_EXPAND,
+    &base::authoring::character_alias::ast_to_asterisk::AST_TO_ASTERISK,
+    &base::authoring::character_alias::ge_to_geq::GE_TO_GEQ,
+    &base::authoring::character_alias::le_to_leq::LE_TO_LEQ,
+    &base::authoring::character_alias::lnot_to_neg::LNOT_TO_NEG,
+    &base::authoring::character_alias::ne_to_neq::NE_TO_NEQ,
+    &base::authoring::character_alias::owns_to_ni::OWNS_TO_NI,
+    &base::authoring::character_alias::prime_to_prime_node::PRIME_TO_PRIME_NODE,
+    &base::authoring::linebreak_alias::break_to_linebreak::BREAK_TO_LINEBREAK,
+    &base::authoring::linebreak_alias::newline_to_linebreak::NEWLINE_TO_LINEBREAK,
+    &base::authoring::over_family::above_to_genfrac::ABOVE_TO_GENFRAC,
+    &base::authoring::over_family::abovewithdelims_to_genfrac::ABOVEWITHDELIMS_TO_GENFRAC,
+    &base::authoring::over_family::atop_to_genfrac::ATOP_TO_GENFRAC,
+    &base::authoring::over_family::atopwithdelims_to_genfrac::ATOPWITHDELIMS_TO_GENFRAC,
+    &base::authoring::over_family::brace_to_genfrac::BRACE_TO_GENFRAC,
+    &base::authoring::over_family::brack_to_genfrac::BRACK_TO_GENFRAC,
+    &base::authoring::over_family::choose_to_binom::CHOOSE_TO_BINOM,
+    &base::authoring::over_family::over_to_frac::OVER_TO_FRAC,
+    &base::authoring::over_family::overwithdelims_to_genfrac::OVERWITHDELIMS_TO_GENFRAC,
+    &base::authoring::plain_tex_matrix::cases_to_cases_env::CASES_TO_CASES_ENV,
+    &base::authoring::plain_tex_matrix::eqalign_to_aligned_env::EQALIGN_TO_ALIGNED_ENV,
+    &base::authoring::plain_tex_matrix::eqalignno_to_align_env::EQALIGNNO_TO_ALIGN_ENV,
+    &base::authoring::plain_tex_matrix::matrix_to_matrix_env::MATRIX_TO_MATRIX_ENV,
+    &base::authoring::plain_tex_matrix::pmatrix_to_pmatrix_env::PMATRIX_TO_PMATRIX_ENV,
+    &base::authoring::root_family::root_of_to_sqrt::ROOT_OF_TO_SQRT,
+    &base::authoring::spacing_alias::gt_space_to_colon_space::GT_SPACE_TO_COLON_SPACE,
+    &base::authoring::spacing_alias::hfil_to_hfill::HFIL_TO_HFILL,
+    &base::authoring::spacing_alias::hfilll_to_hfill::HFILLL_TO_HFILL,
+    &base::authoring::spacing_alias::hskip_to_hspace::HSKIP_TO_HSPACE,
+    &base::authoring::spacing_alias::negthinspace_to_neg_comma_space::NEGTHINSPACE_TO_NEG_COMMA_SPACE,
+    &base::authoring::spacing_alias::space_to_tilde::SPACE_TO_TILDE,
+    &base::authoring::spacing_alias::thinspace_to_comma_space::THINSPACE_TO_COMMA_SPACE,
+    &base::corpus::big_class_variants::Big_class_variants_to_Big::BIG_CLASS_VARIANTS_TO_BIG,
+    &base::corpus::big_class_variants::Bigg_class_variants_to_Bigg::BIGG_CLASS_VARIANTS_TO_BIGG,
+    &base::corpus::big_class_variants::big_class_variants_to_big::BIG_CLASS_VARIANTS_TO_BIG,
+    &base::corpus::big_class_variants::bigg_class_variants_to_bigg::BIGG_CLASS_VARIANTS_TO_BIGG,
+    &base::corpus::spacing_drop::allowbreak_drop::ALLOWBREAK_DROP,
+    &base::corpus::spacing_drop::badbreak_drop::BADBREAK_DROP,
+    &base::corpus::spacing_drop::goodbreak_drop::GOODBREAK_DROP,
+    &base::corpus::spacing_drop::mathstrut_drop::MATHSTRUT_DROP,
+    &base::corpus::spacing_drop::nobreak_drop::NOBREAK_DROP,
+    &base::corpus::spacing_drop::strut_drop::STRUT_DROP,
+    &base::corpus::spacing_merge::quad_run_to_qquad::QUAD_RUN_TO_QQUAD,
+    &base::corpus::spacing_merge::repeat_spacer_collapse::REPEAT_SPACER_COLLAPSE,
+    &base::faithful::character_normalize::dots_to_ldots_or_cdots::DOTS_TO_LDOTS_OR_CDOTS,
+    &base::faithful::character_normalize::gets_to_leftarrow::GETS_TO_LEFTARROW,
+    &base::faithful::character_normalize::land_to_wedge::LAND_TO_WEDGE,
+    &base::faithful::character_normalize::lor_to_vee::LOR_TO_VEE,
+    &base::faithful::character_normalize::rightarrow_to_to::RIGHTARROW_TO_TO,
+    &base::faithful::character_normalize::semantic_dots_to_cdots::SEMANTIC_DOTS_TO_CDOTS,
+    &base::faithful::character_normalize::semantic_dots_to_ldots::SEMANTIC_DOTS_TO_LDOTS,
+    &base::faithful::spacing_alias::mkern_to_mspace::MKERN_TO_MSPACE,
+    &base::faithful::spacing_alias::mskip_to_mspace::MSKIP_TO_MSPACE,
+    &base::faithful::stacked_operator::buildrel_expand::BUILDREL_EXPAND,
+    &base::faithful::stacked_operator::stackbin_expand::STACKBIN_EXPAND,
+    &base::faithful::stacked_operator::stackrel_expand::STACKREL_EXPAND,
+    &physics::authoring::character_alias::divsymbol_to_divisionsymbol::DIVSYMBOL_TO_DIVISIONSYMBOL,
+    &physics::authoring::character_alias::dotproduct_to_vdot::DOTPRODUCT_TO_VDOT,
+    &physics::authoring::derivative_to_short::derivative_to_dv::DERIVATIVE_TO_DV,
+    &physics::authoring::derivative_to_short::functional_derivative_to_fdv::FUNCTIONAL_DERIVATIVE_TO_FDV,
+    &physics::authoring::derivative_to_short::partial_derivative_to_pdv::PARTIAL_DERIVATIVE_TO_PDV,
+    &physics::authoring::matrix_alias::antidiagonalmatrix_to_admat::ANTIDIAGONALMATRIX_TO_ADMAT,
+    &physics::authoring::matrix_alias::diagonalmatrix_to_dmat::DIAGONALMATRIX_TO_DMAT,
+    &physics::authoring::matrix_alias::matrixdeterminant_to_mdet::MATRIXDETERMINANT_TO_MDET,
+    &physics::authoring::named_fn_to_short::cosine_to_cos::COSINE_TO_COS,
+    &physics::authoring::named_fn_to_short::naturallogarithm_to_ln::NATURALLOGARITHM_TO_LN,
+    &physics::authoring::named_fn_to_short::probability_to_pr::PROBABILITY_TO_PR,
+    &physics::authoring::named_fn_to_short::sine_to_sin::SINE_TO_SIN,
+    &physics::authoring::quantity_alias::absolutevalue_to_abs::ABSOLUTEVALUE_TO_ABS,
+    &physics::authoring::quantity_alias::evaluated_to_eval::EVALUATED_TO_EVAL,
+    &physics::authoring::quantity_alias::quantity_to_qty::QUANTITY_TO_QTY,
+    &physics::authoring::trace_alias::trace_capital_to_Tr::TRACE_CAPITAL_TO_TR,
+    &physics::authoring::trace_alias::trace_to_tr::TRACE_TO_TR,
+    &physics::authoring::vector_to_short::vectorarrow_to_va::VECTORARROW_TO_VA,
+    &physics::authoring::vector_to_short::vectorbold_to_vb::VECTORBOLD_TO_VB,
+    &physics::authoring::vector_to_short::vectorunit_to_vu::VECTORUNIT_TO_VU,
+    &physics::faithful::bra_ket::expectation_expand::EXPECTATION_EXPAND,
+    &physics::faithful::bra_ket::matrixel_expand::MATRIXEL_EXPAND,
+    &physics::faithful::bra_ket::physics_bra_expand::PHYSICS_BRA_EXPAND,
+    &physics::faithful::bra_ket::physics_braket_expand::PHYSICS_BRAKET_EXPAND,
+    &physics::faithful::bra_ket::physics_ket_expand::PHYSICS_KET_EXPAND,
+    &physics::faithful::character_normalize::cross_aliases_to_times::CROSS_ALIASES_TO_TIMES,
+    &physics::faithful::commutator::commutator_expand::COMMUTATOR_EXPAND,
+    &physics::faithful::commutator::poisson_bracket_expand::POISSON_BRACKET_EXPAND,
+    &physics::faithful::delimiter_shorthand::Bqty_to_brace_fence::BQTY_TO_BRACE_FENCE,
+    &physics::faithful::delimiter_shorthand::abs_to_vert_fence::ABS_TO_VERT_FENCE,
+    &physics::faithful::delimiter_shorthand::bqty_to_bracket_fence::BQTY_TO_BRACKET_FENCE,
+    &physics::faithful::delimiter_shorthand::norm_to_double_vert_fence::NORM_TO_DOUBLE_VERT_FENCE,
+    &physics::faithful::delimiter_shorthand::pqty_to_paren_fence::PQTY_TO_PAREN_FENCE,
+    &physics::faithful::derivative_expand::dv_to_frac_d::DV_TO_FRAC_D,
+    &physics::faithful::derivative_expand::fdv_to_frac_delta::FDV_TO_FRAC_DELTA,
+    &physics::faithful::derivative_expand::pdv_to_frac_partial::PDV_TO_FRAC_PARTIAL,
+    &physics::faithful::eval_fence::eval_expand::EVAL_EXPAND,
+    &physics::faithful::matrix_builder_expand::bmqty_to_mqty::BMQTY_TO_MQTY,
+    &physics::faithful::matrix_builder_expand::mdet_to_vmqty::MDET_TO_VMQTY,
+    &physics::faithful::matrix_builder_expand::pmqty_to_mqty::PMQTY_TO_MQTY,
+    &physics::faithful::matrix_builder_expand::zmat_to_xmat::ZMAT_TO_XMAT,
+    &physics::faithful::named_fn_expand::rank_to_operatorname_rank::RANK_TO_OPERATORNAME_RANK,
+    &physics::faithful::qqtext::qcomma_expand::QCOMMA_EXPAND,
+    &physics::faithful::qqtext::qqtext_expand::QQTEXT_EXPAND,
+    &physics::faithful::vector_expand::va_to_vec_mathbf::VA_TO_VEC_MATHBF,
+    &physics::faithful::vector_expand::vb_to_mathbf::VB_TO_MATHBF,
+    &physics::faithful::vector_expand::vu_to_hat_mathbf::VU_TO_HAT_MATHBF,
+];
+
+pub(crate) static ALL_RULE_SOURCE_LEVELS: &[(&dyn RewriteRule, RuleLevel)] = &[
+    (&ams::authoring::character_alias::Doteq_to_doteqdot::DOTEQ_TO_DOTEQDOT, RuleLevel::Authoring),
+    (&ams::authoring::character_alias::doublecap_to_Cap::DOUBLECAP_TO_CAP, RuleLevel::Authoring),
+    (&ams::authoring::character_alias::gggtr_to_ggg::GGGTR_TO_GGG, RuleLevel::Authoring),
+    (&ams::authoring::character_alias::llless_to_lll::LLLESS_TO_LLL, RuleLevel::Authoring),
+    (&ams::authoring::character_alias::trianglerighteq_to_unrhd::TRIANGLERIGHTEQ_TO_UNRHD, RuleLevel::Authoring),
+    (&ams::authoring::character_alias::unlhd_to_trianglelefteq::UNLHD_TO_TRIANGLELEFTEQ, RuleLevel::Authoring),
+    (&ams::authoring::character_alias::vartriangleleft_to_lhd::VARTRIANGLELEFT_TO_LHD, RuleLevel::Authoring),
+    (&ams::authoring::character_alias::vartriangleright_to_rhd::VARTRIANGLERIGHT_TO_RHD, RuleLevel::Authoring),
+    (&ams::authoring::spacing_alias::nobreakspace_to_tilde::NOBREAKSPACE_TO_TILDE, RuleLevel::Authoring),
+    (&ams::corpus::fenced_matrix_env::Bmatrix_env_to_brace_matrix::BMATRIX_ENV_TO_BRACE_MATRIX, RuleLevel::Corpus),
+    (&ams::corpus::fenced_matrix_env::Vmatrix_env_to_Vert_matrix::VMATRIX_ENV_TO_VERT_MATRIX, RuleLevel::Corpus),
+    (&ams::corpus::fenced_matrix_env::bmatrix_env_to_bracket_matrix::BMATRIX_ENV_TO_BRACKET_MATRIX, RuleLevel::Corpus),
+    (&ams::corpus::fenced_matrix_env::pmatrix_env_to_paren_matrix::PMATRIX_ENV_TO_PAREN_MATRIX, RuleLevel::Corpus),
+    (&ams::corpus::fenced_matrix_env::vmatrix_env_to_vert_matrix::VMATRIX_ENV_TO_VERT_MATRIX, RuleLevel::Corpus),
+    (&ams::faithful::ams_operator_alias::impliedby_to_Longleftarrow::IMPLIEDBY_TO_LONGLEFTARROW, RuleLevel::Faithful),
+    (&ams::faithful::ams_operator_alias::implies_to_Longrightarrow::IMPLIES_TO_LONGRIGHTARROW, RuleLevel::Faithful),
+    (&ams::faithful::character_normalize::Join_to_bowtie::JOIN_TO_BOWTIE, RuleLevel::Faithful),
+    (&ams::faithful::character_normalize::centerdot_to_cdot::CENTERDOT_TO_CDOT, RuleLevel::Faithful),
+    (&ams::faithful::character_normalize::doublecup_to_Cup::DOUBLECUP_TO_CUP, RuleLevel::Faithful),
+    (&ams::faithful::character_normalize::leadsto_to_rightsquigarrow::LEADSTO_TO_RIGHTSQUIGARROW, RuleLevel::Faithful),
+    (&ams::faithful::character_normalize::lozenge_to_Diamond::LOZENGE_TO_DIAMOND, RuleLevel::Faithful),
+    (&ams::faithful::character_normalize::restriction_to_upharpoonright::RESTRICTION_TO_UPHARPOONRIGHT, RuleLevel::Faithful),
+    (&ams::faithful::character_normalize::square_to_Box::SQUARE_TO_BOX, RuleLevel::Faithful),
+    (&ams::faithful::character_normalize::vartriangle_to_bigtriangleup::VARTRIANGLE_TO_BIGTRIANGLEUP, RuleLevel::Faithful),
+    (&ams::faithful::multi_integral::idotsint_expand::IDOTSINT_EXPAND, RuleLevel::Faithful),
+    (&ams::faithful::substack::substack_expand::SUBSTACK_EXPAND, RuleLevel::Faithful),
+    (&base::authoring::character_alias::ast_to_asterisk::AST_TO_ASTERISK, RuleLevel::Authoring),
+    (&base::authoring::character_alias::ge_to_geq::GE_TO_GEQ, RuleLevel::Authoring),
+    (&base::authoring::character_alias::le_to_leq::LE_TO_LEQ, RuleLevel::Authoring),
+    (&base::authoring::character_alias::lnot_to_neg::LNOT_TO_NEG, RuleLevel::Authoring),
+    (&base::authoring::character_alias::ne_to_neq::NE_TO_NEQ, RuleLevel::Authoring),
+    (&base::authoring::character_alias::owns_to_ni::OWNS_TO_NI, RuleLevel::Authoring),
+    (&base::authoring::character_alias::prime_to_prime_node::PRIME_TO_PRIME_NODE, RuleLevel::Authoring),
+    (&base::authoring::linebreak_alias::break_to_linebreak::BREAK_TO_LINEBREAK, RuleLevel::Authoring),
+    (&base::authoring::linebreak_alias::newline_to_linebreak::NEWLINE_TO_LINEBREAK, RuleLevel::Authoring),
+    (&base::authoring::over_family::above_to_genfrac::ABOVE_TO_GENFRAC, RuleLevel::Authoring),
+    (&base::authoring::over_family::abovewithdelims_to_genfrac::ABOVEWITHDELIMS_TO_GENFRAC, RuleLevel::Authoring),
+    (&base::authoring::over_family::atop_to_genfrac::ATOP_TO_GENFRAC, RuleLevel::Authoring),
+    (&base::authoring::over_family::atopwithdelims_to_genfrac::ATOPWITHDELIMS_TO_GENFRAC, RuleLevel::Authoring),
+    (&base::authoring::over_family::brace_to_genfrac::BRACE_TO_GENFRAC, RuleLevel::Authoring),
+    (&base::authoring::over_family::brack_to_genfrac::BRACK_TO_GENFRAC, RuleLevel::Authoring),
+    (&base::authoring::over_family::choose_to_binom::CHOOSE_TO_BINOM, RuleLevel::Authoring),
+    (&base::authoring::over_family::over_to_frac::OVER_TO_FRAC, RuleLevel::Authoring),
+    (&base::authoring::over_family::overwithdelims_to_genfrac::OVERWITHDELIMS_TO_GENFRAC, RuleLevel::Authoring),
+    (&base::authoring::plain_tex_matrix::cases_to_cases_env::CASES_TO_CASES_ENV, RuleLevel::Authoring),
+    (&base::authoring::plain_tex_matrix::eqalign_to_aligned_env::EQALIGN_TO_ALIGNED_ENV, RuleLevel::Authoring),
+    (&base::authoring::plain_tex_matrix::eqalignno_to_align_env::EQALIGNNO_TO_ALIGN_ENV, RuleLevel::Authoring),
+    (&base::authoring::plain_tex_matrix::matrix_to_matrix_env::MATRIX_TO_MATRIX_ENV, RuleLevel::Authoring),
+    (&base::authoring::plain_tex_matrix::pmatrix_to_pmatrix_env::PMATRIX_TO_PMATRIX_ENV, RuleLevel::Authoring),
+    (&base::authoring::root_family::root_of_to_sqrt::ROOT_OF_TO_SQRT, RuleLevel::Authoring),
+    (&base::authoring::spacing_alias::gt_space_to_colon_space::GT_SPACE_TO_COLON_SPACE, RuleLevel::Authoring),
+    (&base::authoring::spacing_alias::hfil_to_hfill::HFIL_TO_HFILL, RuleLevel::Authoring),
+    (&base::authoring::spacing_alias::hfilll_to_hfill::HFILLL_TO_HFILL, RuleLevel::Authoring),
+    (&base::authoring::spacing_alias::hskip_to_hspace::HSKIP_TO_HSPACE, RuleLevel::Authoring),
+    (&base::authoring::spacing_alias::negthinspace_to_neg_comma_space::NEGTHINSPACE_TO_NEG_COMMA_SPACE, RuleLevel::Authoring),
+    (&base::authoring::spacing_alias::space_to_tilde::SPACE_TO_TILDE, RuleLevel::Authoring),
+    (&base::authoring::spacing_alias::thinspace_to_comma_space::THINSPACE_TO_COMMA_SPACE, RuleLevel::Authoring),
+    (&base::corpus::big_class_variants::Big_class_variants_to_Big::BIG_CLASS_VARIANTS_TO_BIG, RuleLevel::Corpus),
+    (&base::corpus::big_class_variants::Bigg_class_variants_to_Bigg::BIGG_CLASS_VARIANTS_TO_BIGG, RuleLevel::Corpus),
+    (&base::corpus::big_class_variants::big_class_variants_to_big::BIG_CLASS_VARIANTS_TO_BIG, RuleLevel::Corpus),
+    (&base::corpus::big_class_variants::bigg_class_variants_to_bigg::BIGG_CLASS_VARIANTS_TO_BIGG, RuleLevel::Corpus),
+    (&base::corpus::spacing_drop::allowbreak_drop::ALLOWBREAK_DROP, RuleLevel::Corpus),
+    (&base::corpus::spacing_drop::badbreak_drop::BADBREAK_DROP, RuleLevel::Corpus),
+    (&base::corpus::spacing_drop::goodbreak_drop::GOODBREAK_DROP, RuleLevel::Corpus),
+    (&base::corpus::spacing_drop::mathstrut_drop::MATHSTRUT_DROP, RuleLevel::Corpus),
+    (&base::corpus::spacing_drop::nobreak_drop::NOBREAK_DROP, RuleLevel::Corpus),
+    (&base::corpus::spacing_drop::strut_drop::STRUT_DROP, RuleLevel::Corpus),
+    (&base::corpus::spacing_merge::quad_run_to_qquad::QUAD_RUN_TO_QQUAD, RuleLevel::Corpus),
+    (&base::corpus::spacing_merge::repeat_spacer_collapse::REPEAT_SPACER_COLLAPSE, RuleLevel::Corpus),
+    (&base::faithful::character_normalize::dots_to_ldots_or_cdots::DOTS_TO_LDOTS_OR_CDOTS, RuleLevel::Faithful),
+    (&base::faithful::character_normalize::gets_to_leftarrow::GETS_TO_LEFTARROW, RuleLevel::Faithful),
+    (&base::faithful::character_normalize::land_to_wedge::LAND_TO_WEDGE, RuleLevel::Faithful),
+    (&base::faithful::character_normalize::lor_to_vee::LOR_TO_VEE, RuleLevel::Faithful),
+    (&base::faithful::character_normalize::rightarrow_to_to::RIGHTARROW_TO_TO, RuleLevel::Faithful),
+    (&base::faithful::character_normalize::semantic_dots_to_cdots::SEMANTIC_DOTS_TO_CDOTS, RuleLevel::Faithful),
+    (&base::faithful::character_normalize::semantic_dots_to_ldots::SEMANTIC_DOTS_TO_LDOTS, RuleLevel::Faithful),
+    (&base::faithful::spacing_alias::mkern_to_mspace::MKERN_TO_MSPACE, RuleLevel::Faithful),
+    (&base::faithful::spacing_alias::mskip_to_mspace::MSKIP_TO_MSPACE, RuleLevel::Faithful),
+    (&base::faithful::stacked_operator::buildrel_expand::BUILDREL_EXPAND, RuleLevel::Faithful),
+    (&base::faithful::stacked_operator::stackbin_expand::STACKBIN_EXPAND, RuleLevel::Faithful),
+    (&base::faithful::stacked_operator::stackrel_expand::STACKREL_EXPAND, RuleLevel::Faithful),
+    (&physics::authoring::character_alias::divsymbol_to_divisionsymbol::DIVSYMBOL_TO_DIVISIONSYMBOL, RuleLevel::Authoring),
+    (&physics::authoring::character_alias::dotproduct_to_vdot::DOTPRODUCT_TO_VDOT, RuleLevel::Authoring),
+    (&physics::authoring::derivative_to_short::derivative_to_dv::DERIVATIVE_TO_DV, RuleLevel::Authoring),
+    (&physics::authoring::derivative_to_short::functional_derivative_to_fdv::FUNCTIONAL_DERIVATIVE_TO_FDV, RuleLevel::Authoring),
+    (&physics::authoring::derivative_to_short::partial_derivative_to_pdv::PARTIAL_DERIVATIVE_TO_PDV, RuleLevel::Authoring),
+    (&physics::authoring::matrix_alias::antidiagonalmatrix_to_admat::ANTIDIAGONALMATRIX_TO_ADMAT, RuleLevel::Authoring),
+    (&physics::authoring::matrix_alias::diagonalmatrix_to_dmat::DIAGONALMATRIX_TO_DMAT, RuleLevel::Authoring),
+    (&physics::authoring::matrix_alias::matrixdeterminant_to_mdet::MATRIXDETERMINANT_TO_MDET, RuleLevel::Authoring),
+    (&physics::authoring::named_fn_to_short::cosine_to_cos::COSINE_TO_COS, RuleLevel::Authoring),
+    (&physics::authoring::named_fn_to_short::naturallogarithm_to_ln::NATURALLOGARITHM_TO_LN, RuleLevel::Authoring),
+    (&physics::authoring::named_fn_to_short::probability_to_pr::PROBABILITY_TO_PR, RuleLevel::Authoring),
+    (&physics::authoring::named_fn_to_short::sine_to_sin::SINE_TO_SIN, RuleLevel::Authoring),
+    (&physics::authoring::quantity_alias::absolutevalue_to_abs::ABSOLUTEVALUE_TO_ABS, RuleLevel::Authoring),
+    (&physics::authoring::quantity_alias::evaluated_to_eval::EVALUATED_TO_EVAL, RuleLevel::Authoring),
+    (&physics::authoring::quantity_alias::quantity_to_qty::QUANTITY_TO_QTY, RuleLevel::Authoring),
+    (&physics::authoring::trace_alias::trace_capital_to_Tr::TRACE_CAPITAL_TO_TR, RuleLevel::Authoring),
+    (&physics::authoring::trace_alias::trace_to_tr::TRACE_TO_TR, RuleLevel::Authoring),
+    (&physics::authoring::vector_to_short::vectorarrow_to_va::VECTORARROW_TO_VA, RuleLevel::Authoring),
+    (&physics::authoring::vector_to_short::vectorbold_to_vb::VECTORBOLD_TO_VB, RuleLevel::Authoring),
+    (&physics::authoring::vector_to_short::vectorunit_to_vu::VECTORUNIT_TO_VU, RuleLevel::Authoring),
+    (&physics::faithful::bra_ket::expectation_expand::EXPECTATION_EXPAND, RuleLevel::Faithful),
+    (&physics::faithful::bra_ket::matrixel_expand::MATRIXEL_EXPAND, RuleLevel::Faithful),
+    (&physics::faithful::bra_ket::physics_bra_expand::PHYSICS_BRA_EXPAND, RuleLevel::Faithful),
+    (&physics::faithful::bra_ket::physics_braket_expand::PHYSICS_BRAKET_EXPAND, RuleLevel::Faithful),
+    (&physics::faithful::bra_ket::physics_ket_expand::PHYSICS_KET_EXPAND, RuleLevel::Faithful),
+    (&physics::faithful::character_normalize::cross_aliases_to_times::CROSS_ALIASES_TO_TIMES, RuleLevel::Faithful),
+    (&physics::faithful::commutator::commutator_expand::COMMUTATOR_EXPAND, RuleLevel::Faithful),
+    (&physics::faithful::commutator::poisson_bracket_expand::POISSON_BRACKET_EXPAND, RuleLevel::Faithful),
+    (&physics::faithful::delimiter_shorthand::Bqty_to_brace_fence::BQTY_TO_BRACE_FENCE, RuleLevel::Faithful),
+    (&physics::faithful::delimiter_shorthand::abs_to_vert_fence::ABS_TO_VERT_FENCE, RuleLevel::Faithful),
+    (&physics::faithful::delimiter_shorthand::bqty_to_bracket_fence::BQTY_TO_BRACKET_FENCE, RuleLevel::Faithful),
+    (&physics::faithful::delimiter_shorthand::norm_to_double_vert_fence::NORM_TO_DOUBLE_VERT_FENCE, RuleLevel::Faithful),
+    (&physics::faithful::delimiter_shorthand::pqty_to_paren_fence::PQTY_TO_PAREN_FENCE, RuleLevel::Faithful),
+    (&physics::faithful::derivative_expand::dv_to_frac_d::DV_TO_FRAC_D, RuleLevel::Faithful),
+    (&physics::faithful::derivative_expand::fdv_to_frac_delta::FDV_TO_FRAC_DELTA, RuleLevel::Faithful),
+    (&physics::faithful::derivative_expand::pdv_to_frac_partial::PDV_TO_FRAC_PARTIAL, RuleLevel::Faithful),
+    (&physics::faithful::eval_fence::eval_expand::EVAL_EXPAND, RuleLevel::Faithful),
+    (&physics::faithful::matrix_builder_expand::bmqty_to_mqty::BMQTY_TO_MQTY, RuleLevel::Faithful),
+    (&physics::faithful::matrix_builder_expand::mdet_to_vmqty::MDET_TO_VMQTY, RuleLevel::Faithful),
+    (&physics::faithful::matrix_builder_expand::pmqty_to_mqty::PMQTY_TO_MQTY, RuleLevel::Faithful),
+    (&physics::faithful::matrix_builder_expand::zmat_to_xmat::ZMAT_TO_XMAT, RuleLevel::Faithful),
+    (&physics::faithful::named_fn_expand::rank_to_operatorname_rank::RANK_TO_OPERATORNAME_RANK, RuleLevel::Faithful),
+    (&physics::faithful::qqtext::qcomma_expand::QCOMMA_EXPAND, RuleLevel::Faithful),
+    (&physics::faithful::qqtext::qqtext_expand::QQTEXT_EXPAND, RuleLevel::Faithful),
+    (&physics::faithful::vector_expand::va_to_vec_mathbf::VA_TO_VEC_MATHBF, RuleLevel::Faithful),
+    (&physics::faithful::vector_expand::vb_to_mathbf::VB_TO_MATHBF, RuleLevel::Faithful),
+    (&physics::faithful::vector_expand::vu_to_hat_mathbf::VU_TO_HAT_MATHBF, RuleLevel::Faithful),
 ];
