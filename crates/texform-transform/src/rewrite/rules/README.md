@@ -164,7 +164,7 @@ does not constrain which package supplies a produced target.
 
 Package-specific split decisions are based on structural signatures:
 
-1. Commands use `CommandKind + argspec.source`
+1. Commands use `CommandKind + argspec.source + allowed_mode`
 2. Environments use `argspec.source + body_mode`
 3. Same signature means one rule with all matching packages in
    `enabled_by_packages`

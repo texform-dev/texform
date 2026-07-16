@@ -253,6 +253,7 @@ fn package_contains_matching_target(package: PackageName, target: RuleTarget) ->
         RuleTarget::Command(record) => builtin.commands.iter().any(|candidate| {
             candidate.name == record.name
                 && candidate.kind == record.kind
+                && candidate.allowed_mode == record.allowed_mode
                 && candidate.argspec.source == record.argspec.source
         }),
         RuleTarget::Environment(record) => builtin.environments.iter().any(|candidate| {
@@ -266,6 +267,16 @@ fn package_contains_matching_target(package: PackageName, target: RuleTarget) ->
                 && candidate.unicode_value == record.unicode_value
         }),
     }
+}
+
+#[test]
+fn command_signature_inference_distinguishes_allowed_modes() {
+    use texform_knowledge::builtin::base;
+
+    assert_eq!(
+        packages_for_target_signature(RuleTarget::Command(&base::cmd::MKERN)),
+        vec![PackageName::Base]
+    );
 }
 
 fn assert_unique_target_keys(targets: &[RuleTarget], key: RuleKey, field: &str) {
