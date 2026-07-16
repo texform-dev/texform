@@ -142,7 +142,6 @@ pub(crate) mod base {
         }
         pub(crate) mod plain_tex_matrix {
             pub(crate) mod cases_to_cases_env;
-            pub(crate) mod displaylines_to_gather_env;
             pub(crate) mod eqalign_to_aligned_env;
             pub(crate) mod eqalignno_to_align_env;
             pub(crate) mod helpers;
@@ -331,7 +330,6 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::standard::over_family::over_to_frac::OVER_TO_FRAC,
     &base::standard::over_family::overwithdelims_to_genfrac::OVERWITHDELIMS_TO_GENFRAC,
     &base::standard::plain_tex_matrix::cases_to_cases_env::CASES_TO_CASES_ENV,
-    &base::standard::plain_tex_matrix::displaylines_to_gather_env::DISPLAYLINES_TO_GATHER_ENV,
     &base::standard::plain_tex_matrix::eqalign_to_aligned_env::EQALIGN_TO_ALIGNED_ENV,
     &base::standard::plain_tex_matrix::eqalignno_to_align_env::EQALIGNNO_TO_ALIGN_ENV,
     &base::standard::plain_tex_matrix::matrix_to_matrix_env::MATRIX_TO_MATRIX_ENV,

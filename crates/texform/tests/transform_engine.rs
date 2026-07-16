@@ -92,39 +92,28 @@ fn corpus_normalize_keeps_braced_prefix_argument_scope() {
 }
 
 #[test]
-fn displaylines_runs_at_corpus_but_not_faithful() {
+fn displaylines_is_preserved_by_all_profiles() {
     let input = r"\displaylines{a \cr b}";
 
-    let faithful = TransformEngine::builder()
-        .packages(&["base", "ams"])
-        .profile(Profile::Faithful)
-        .build()
-        .expect("faithful engine should build")
-        .normalize(input)
-        .expect("faithful normalize should succeed");
-    assert!(
-        faithful.normalized.contains(r"\displaylines"),
-        "faithful output: {}",
-        faithful.normalized
-    );
-
-    let corpus = TransformEngine::builder()
-        .packages(&["base", "ams"])
-        .profile(Profile::Corpus)
-        .build()
-        .expect("corpus engine should build")
-        .normalize(input)
-        .expect("corpus normalize should succeed");
-    assert!(
-        corpus.normalized.contains(r"\begin {gather}"),
-        "corpus output: {}",
-        corpus.normalized
-    );
-    assert!(
-        !corpus.normalized.contains(r"\displaylines"),
-        "corpus output: {}",
-        corpus.normalized
-    );
+    for profile in [
+        Profile::Authoring,
+        Profile::Faithful,
+        Profile::Corpus,
+        Profile::Equiv,
+    ] {
+        let result = TransformEngine::builder()
+            .packages(&["base", "ams"])
+            .profile(profile)
+            .build()
+            .expect("engine should build")
+            .normalize(input)
+            .expect("normalize should succeed");
+        assert!(
+            result.normalized.contains(r"\displaylines"),
+            "{profile:?} output: {}",
+            result.normalized
+        );
+    }
 }
 
 #[test]

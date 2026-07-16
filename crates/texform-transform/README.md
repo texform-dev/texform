@@ -148,10 +148,7 @@ rendered output is defined by that consumer, not in this crate.
 
 Do not add a second metadata field for ordinary behavior. If a rule has an
 important gap between its worst case and usual samples, document that gap in the
-rule's top-level comment. For example, `displaylines-to-gather-env` is
-`level: Drop` and `fidelity: Semantic`: ordinary `\displaylines` samples usually
-look closer to `Approximate`, but manual layout commands such as `\hfill` or
-`\llap` can make MathJax reflow or overlap hand-written equation numbers.
+rule's top-level comment.
 
 ### `FlattenGroupsConfig`
 

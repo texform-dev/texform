@@ -3,7 +3,7 @@ use texform_knowledge::specs::{BuiltinCommandRecord, BuiltinEnvironmentRecord};
 
 use crate::ast::{ArgumentSlot, Node, NodeId};
 use crate::rewrite::RuleError;
-use crate::rewrite::helpers::{bare_command_node, linebreak_command_node, star_slot};
+use crate::rewrite::helpers::{linebreak_command_node, star_slot};
 use crate::rewrite::rule::{RuleEffect, RuleKey};
 use crate::rewrite::rule_context::RuleContext;
 
@@ -100,10 +100,6 @@ pub(super) fn replace_with_environment(
 
 pub(super) fn linebreak_command() -> Node {
     linebreak_command_node()
-}
-
-pub(super) fn notag_command() -> Node {
-    bare_command_node(ams::cmd::NOTAG.name)
 }
 
 pub(super) fn tag_command(tag: NodeId) -> Node {

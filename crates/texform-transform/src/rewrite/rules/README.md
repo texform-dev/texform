@@ -226,8 +226,7 @@ matrix environment expansion.
 A rule's `fidelity` is the worst-case render-fidelity guarantee over its declared
 input domain and must not fall below its level's floor. See `RuleFidelity` in the `texform-transform`
 README for the fidelity ladder, the per-level floor table, and how to document a
-rule whose worst case is rarer than its usual behavior (such as
-`displaylines-to-gather-env`).
+rule whose worst case is rarer than its usual behavior.
 
 ## alias_rule!
 
