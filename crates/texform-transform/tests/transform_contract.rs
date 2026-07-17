@@ -115,15 +115,6 @@ fn builtin_rule_fidelity_meets_level_floor() {
 }
 
 #[test]
-fn builtin_registry_has_no_active_equiv_rules() {
-    assert!(
-        texform_transform::rewrite::all_rules()
-            .iter()
-            .all(|rule| rule.meta().level != texform_transform::RuleLevel::Equiv)
-    );
-}
-
-#[test]
 fn transform_contract_accepts_prime_after_authoring_rewrite() {
     let parse_ctx = ParseContext::from_packages(&["base"]);
     let mut ast = parse_to_ast(&parse_ctx, r"\prime");

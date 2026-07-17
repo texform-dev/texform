@@ -140,6 +140,12 @@ pub(crate) mod base {
             pub(crate) mod strut_drop;
         }
     }
+    pub(crate) mod equiv {
+        pub(crate) mod accent_size {
+            pub(crate) mod widehat_to_hat;
+            pub(crate) mod widetilde_to_tilde;
+        }
+    }
     pub(crate) mod faithful {
         pub(crate) mod character_normalize {
             pub(crate) mod dots_to_ldots_or_cdots;
@@ -326,6 +332,8 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::corpus::spacing_drop::mathstrut_drop::MATHSTRUT_DROP,
     &base::corpus::spacing_drop::nobreak_drop::NOBREAK_DROP,
     &base::corpus::spacing_drop::strut_drop::STRUT_DROP,
+    &base::equiv::accent_size::widehat_to_hat::WIDEHAT_TO_HAT,
+    &base::equiv::accent_size::widetilde_to_tilde::WIDETILDE_TO_TILDE,
     &base::faithful::character_normalize::dots_to_ldots_or_cdots::DOTS_TO_LDOTS_OR_CDOTS,
     &base::faithful::character_normalize::gets_to_leftarrow::GETS_TO_LEFTARROW,
     &base::faithful::character_normalize::land_to_wedge::LAND_TO_WEDGE,
