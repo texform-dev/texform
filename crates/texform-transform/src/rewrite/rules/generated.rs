@@ -145,6 +145,15 @@ pub(crate) mod base {
             pub(crate) mod widehat_to_hat;
             pub(crate) mod widetilde_to_tilde;
         }
+        pub(crate) mod fixed_delimiter_size {
+            #[allow(non_snake_case)]
+            pub(crate) mod Big_delimiter_size_drop;
+            #[allow(non_snake_case)]
+            pub(crate) mod Bigg_delimiter_size_drop;
+            pub(crate) mod big_delimiter_size_drop;
+            pub(crate) mod bigg_delimiter_size_drop;
+            pub(crate) mod helpers;
+        }
     }
     pub(crate) mod faithful {
         pub(crate) mod character_normalize {
@@ -334,6 +343,10 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::corpus::spacing_drop::strut_drop::STRUT_DROP,
     &base::equiv::accent_size::widehat_to_hat::WIDEHAT_TO_HAT,
     &base::equiv::accent_size::widetilde_to_tilde::WIDETILDE_TO_TILDE,
+    &base::equiv::fixed_delimiter_size::Big_delimiter_size_drop::BIG_DELIMITER_SIZE_DROP,
+    &base::equiv::fixed_delimiter_size::Bigg_delimiter_size_drop::BIGG_DELIMITER_SIZE_DROP,
+    &base::equiv::fixed_delimiter_size::big_delimiter_size_drop::BIG_DELIMITER_SIZE_DROP,
+    &base::equiv::fixed_delimiter_size::bigg_delimiter_size_drop::BIGG_DELIMITER_SIZE_DROP,
     &base::faithful::character_normalize::dots_to_ldots_or_cdots::DOTS_TO_LDOTS_OR_CDOTS,
     &base::faithful::character_normalize::gets_to_leftarrow::GETS_TO_LEFTARROW,
     &base::faithful::character_normalize::land_to_wedge::LAND_TO_WEDGE,
