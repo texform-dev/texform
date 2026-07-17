@@ -84,6 +84,13 @@ pub(crate) mod base {
         pub(crate) mod named_function {
             pub(crate) mod operatorname_to_named_function;
         }
+        pub(crate) mod not_remap {
+            pub(crate) mod helpers;
+            pub(crate) mod not_equals_to_neq;
+            pub(crate) mod not_exists_to_nexists;
+            pub(crate) mod not_in_to_notin;
+            pub(crate) mod not_right_arrow_to_nrightarrow;
+        }
         pub(crate) mod over_family {
             pub(crate) mod above_to_genfrac;
             pub(crate) mod abovewithdelims_to_genfrac;
@@ -308,6 +315,10 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::authoring::linebreak_alias::break_to_linebreak::BREAK_TO_LINEBREAK,
     &base::authoring::linebreak_alias::newline_to_linebreak::NEWLINE_TO_LINEBREAK,
     &base::authoring::named_function::operatorname_to_named_function::OPERATORNAME_TO_NAMED_FUNCTION,
+    &base::authoring::not_remap::not_equals_to_neq::NOT_EQUALS_TO_NEQ,
+    &base::authoring::not_remap::not_exists_to_nexists::NOT_EXISTS_TO_NEXISTS,
+    &base::authoring::not_remap::not_in_to_notin::NOT_IN_TO_NOTIN,
+    &base::authoring::not_remap::not_right_arrow_to_nrightarrow::NOT_RIGHT_ARROW_TO_NRIGHTARROW,
     &base::authoring::over_family::above_to_genfrac::ABOVE_TO_GENFRAC,
     &base::authoring::over_family::abovewithdelims_to_genfrac::ABOVEWITHDELIMS_TO_GENFRAC,
     &base::authoring::over_family::atop_to_genfrac::ATOP_TO_GENFRAC,
