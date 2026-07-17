@@ -117,6 +117,9 @@ pub(crate) mod base {
             pub(crate) mod space_to_tilde;
             pub(crate) mod thinspace_to_comma_space;
         }
+        pub(crate) mod spacing_merge {
+            pub(crate) mod double_quad_to_qquad;
+        }
     }
     pub(crate) mod corpus {
         pub(crate) mod big_class_variants {
@@ -135,9 +138,6 @@ pub(crate) mod base {
             pub(crate) mod mathstrut_drop;
             pub(crate) mod nobreak_drop;
             pub(crate) mod strut_drop;
-        }
-        pub(crate) mod spacing_merge {
-            pub(crate) mod quad_run_to_qquad;
         }
     }
     pub(crate) mod faithful {
@@ -315,6 +315,7 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::authoring::spacing_alias::negthinspace_to_neg_comma_space::NEGTHINSPACE_TO_NEG_COMMA_SPACE,
     &base::authoring::spacing_alias::space_to_tilde::SPACE_TO_TILDE,
     &base::authoring::spacing_alias::thinspace_to_comma_space::THINSPACE_TO_COMMA_SPACE,
+    &base::authoring::spacing_merge::double_quad_to_qquad::DOUBLE_QUAD_TO_QQUAD,
     &base::corpus::big_class_variants::Big_class_variants_to_Big::BIG_CLASS_VARIANTS_TO_BIG,
     &base::corpus::big_class_variants::Bigg_class_variants_to_Bigg::BIGG_CLASS_VARIANTS_TO_BIGG,
     &base::corpus::big_class_variants::big_class_variants_to_big::BIG_CLASS_VARIANTS_TO_BIG,
@@ -325,7 +326,6 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::corpus::spacing_drop::mathstrut_drop::MATHSTRUT_DROP,
     &base::corpus::spacing_drop::nobreak_drop::NOBREAK_DROP,
     &base::corpus::spacing_drop::strut_drop::STRUT_DROP,
-    &base::corpus::spacing_merge::quad_run_to_qquad::QUAD_RUN_TO_QQUAD,
     &base::faithful::character_normalize::dots_to_ldots_or_cdots::DOTS_TO_LDOTS_OR_CDOTS,
     &base::faithful::character_normalize::gets_to_leftarrow::GETS_TO_LEFTARROW,
     &base::faithful::character_normalize::land_to_wedge::LAND_TO_WEDGE,

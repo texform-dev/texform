@@ -1,7 +1,7 @@
-//! Merge adjacent quad pairs into qquad for corpus normalization.
+//! Merge two adjacent quads into one qquad for authoring normalization.
 //!
 //! ```yaml
-//! proposal: quad-run-to-qquad
+//! proposal: double-quad-to-qquad
 //! triggers:
 //!   - cmd:quad
 //! consumes:
@@ -19,10 +19,10 @@ use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::rewrite::{cmd_targets, define_rule};
 
 define_rule! {
-    pub static QUAD_RUN_TO_QQUAD: QuadRunToQquadRule {
-        key: Base / "quad-run-to-qquad",
-        level: Corpus,
-        summary: "Merge adjacent quad pairs into qquad for corpus normalization.",
+    pub static DOUBLE_QUAD_TO_QQUAD: DoubleQuadToQquadRule {
+        key: Base / "double-quad-to-qquad",
+        level: Authoring,
+        summary: "Merge two adjacent quads into one qquad for authoring normalization.",
         fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::QUAD],
@@ -63,17 +63,17 @@ mod tests {
 
     // START: Generated examples; DO NOT modify
     transform_examples! {
-        rule: QUAD_RUN_TO_QQUAD,
-        level: Corpus,
+        rule: DOUBLE_QUAD_TO_QQUAD,
+        level: Authoring,
         examples: [
         {
-            label: quad_pair,
+            label: double_quad,
             packages: ["base"],
             input: r"A\quad\quad B",
             expected: r"A\qquad B",
         },
         {
-            label: text_quad_pair,
+            label: text_double_quad,
             packages: ["base", "textmacros"],
             input: r"\text{A\quad\quad B}",
             expected: r"\text{A\qquad B}",
@@ -83,8 +83,8 @@ mod tests {
     // END: Generated examples
 
     transform_examples! {
-        rule: QUAD_RUN_TO_QQUAD,
-        level: Corpus,
+        rule: DOUBLE_QUAD_TO_QQUAD,
+        level: Authoring,
         examples: [
         {
             label: greedy_triple_leaves_trailing_quad,
