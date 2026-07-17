@@ -1,6 +1,8 @@
 use texform_knowledge::specs::BuiltinCommandRecord;
 
-use crate::ast::{ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind, Node, NodeId};
+use crate::ast::{
+    ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind, Node, NodeId,
+};
 use crate::rewrite::RuleError;
 use crate::rewrite::helpers::{
     delimiter_slot, dimension_slot, integer_slot, mandatory_content_slot, prefix_command_node,
@@ -15,13 +17,7 @@ pub(super) fn delimiter_arg(
     subject: &str,
     label: &str,
 ) -> Result<Delimiter, RuleError> {
-    match slot {
-        Some(arg) if arg.kind == ArgumentKind::Mandatory => match &arg.value {
-            ArgumentValue::Delimiter(delimiter) => Ok(delimiter.clone()),
-            _ => Err(cx.for_rule(rule).invalid_shape(format!("{subject} {label} should be a delimiter"))),
-        },
-        _ => Err(cx.for_rule(rule).invalid_shape(format!("{subject} {label} should be a mandatory delimiter argument"))),
-    }
+    cx.for_rule(rule).mandatory_delimiter(slot, subject, label)
 }
 
 pub(super) fn dimension_arg(

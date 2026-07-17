@@ -13,7 +13,7 @@
 
 use std::ops::Deref;
 
-use crate::ast::{ArgumentKind, ArgumentSlot, ArgumentValue, Ast, Node, NodeId};
+use crate::ast::{ArgumentKind, ArgumentSlot, ArgumentValue, Ast, Delimiter, Node, NodeId};
 use crate::knowledge::{KnowledgeBase, lookup_command_node_name, lookup_environment_node_name};
 use crate::parse::ContentMode;
 use crate::rewrite::rule::RuleKey;
@@ -220,6 +220,24 @@ impl RuleScopedContext<'_, '_> {
             },
             _ => Err(self.invalid_shape(format!(
                 "{subject} {label} should be a mandatory math argument"
+            ))),
+        }
+    }
+
+    /// Extracts a mandatory delimiter argument.
+    pub fn mandatory_delimiter(
+        &self,
+        slot: &ArgumentSlot,
+        subject: &str,
+        label: &str,
+    ) -> Result<Delimiter, RuleError> {
+        match slot {
+            Some(arg) if arg.kind == ArgumentKind::Mandatory => match &arg.value {
+                ArgumentValue::Delimiter(delimiter) => Ok(delimiter.clone()),
+                _ => Err(self.invalid_shape(format!("{subject} {label} should be a delimiter"))),
+            },
+            _ => Err(self.invalid_shape(format!(
+                "{subject} {label} should be a mandatory delimiter argument"
             ))),
         }
     }
@@ -488,6 +506,10 @@ mod tests {
             ArgumentKind::Group,
             ArgumentValue::MathContent(grouped),
         ));
+        let delimiter = Some(Argument::from_value(
+            ArgumentKind::Mandatory,
+            ArgumentValue::Delimiter(Delimiter::Char('(')),
+        ));
 
         assert!(
             cx.for_rule(TEST_RULE)
@@ -538,9 +560,44 @@ mod tests {
         );
         assert_eq!(
             cx.for_rule(TEST_RULE)
+                .mandatory_delimiter(&delimiter, r"\example", "delimiter")
+                .unwrap(),
+            Delimiter::Char('(')
+        );
+        assert_eq!(
+            cx.for_rule(TEST_RULE)
                 .optional_math_content(&None, r"\example", "order")
                 .unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn rejects_invalid_mandatory_delimiter_shapes() {
+        let parse_ctx = ParseContext::from_packages(&["base"]);
+        let mut report = RewriteReport::default();
+        let mut ast = Ast::new();
+        let cx = RuleContext::new(
+            &mut ast,
+            parse_ctx.math_kb(),
+            parse_ctx.text_kb(),
+            &mut report,
+        );
+        let scoped = cx.for_rule(TEST_RULE);
+        let optional_delimiter = Some(Argument::from_value(
+            ArgumentKind::Optional,
+            ArgumentValue::Delimiter(Delimiter::Char('(')),
+        ));
+        let mandatory_dimension = Some(Argument::from_value(
+            ArgumentKind::Mandatory,
+            ArgumentValue::Dimension("1pt".to_string()),
+        ));
+
+        for slot in [&None, &optional_delimiter, &mandatory_dimension] {
+            assert!(matches!(
+                scoped.mandatory_delimiter(slot, r"\example", "delimiter"),
+                Err(RuleError::InvalidNodeShape { .. })
+            ));
+        }
     }
 }
