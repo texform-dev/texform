@@ -248,10 +248,6 @@ pub(crate) mod physics {
         pub(crate) mod named_fn_expand {
             pub(crate) mod rank_to_operatorname_rank;
         }
-        pub(crate) mod qqtext {
-            pub(crate) mod qcomma_expand;
-            pub(crate) mod qqtext_expand;
-        }
         pub(crate) mod vector_expand {
             pub(crate) mod helpers;
             pub(crate) mod va_to_vec_mathbf;
@@ -386,8 +382,6 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &physics::faithful::matrix_builder_expand::pmqty_to_mqty::PMQTY_TO_MQTY,
     &physics::faithful::matrix_builder_expand::zmat_to_xmat::ZMAT_TO_XMAT,
     &physics::faithful::named_fn_expand::rank_to_operatorname_rank::RANK_TO_OPERATORNAME_RANK,
-    &physics::faithful::qqtext::qcomma_expand::QCOMMA_EXPAND,
-    &physics::faithful::qqtext::qqtext_expand::QQTEXT_EXPAND,
     &physics::faithful::vector_expand::va_to_vec_mathbf::VA_TO_VEC_MATHBF,
     &physics::faithful::vector_expand::vb_to_mathbf::VB_TO_MATHBF,
     &physics::faithful::vector_expand::vu_to_hat_mathbf::VU_TO_HAT_MATHBF,
