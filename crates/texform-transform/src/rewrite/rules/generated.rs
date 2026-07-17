@@ -131,6 +131,9 @@ pub(crate) mod base {
             pub(crate) mod helpers;
             pub(crate) mod small_spacer_merge_to_enspace;
         }
+        pub(crate) mod tex_class_wrapper {
+            pub(crate) mod duplicate_mathrel_wrapper_drop;
+        }
     }
     pub(crate) mod corpus {
         pub(crate) mod big_class_variants {
@@ -349,6 +352,7 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::authoring::spacing_merge::double_enspace_to_quad::DOUBLE_ENSPACE_TO_QUAD,
     &base::authoring::spacing_merge::double_quad_to_qquad::DOUBLE_QUAD_TO_QQUAD,
     &base::authoring::spacing_merge::small_spacer_merge_to_enspace::SMALL_SPACER_MERGE_TO_ENSPACE,
+    &base::authoring::tex_class_wrapper::duplicate_mathrel_wrapper_drop::DUPLICATE_MATHREL_WRAPPER_DROP,
     &base::corpus::big_class_variants::Big_class_variants_to_Big::BIG_CLASS_VARIANTS_TO_BIG,
     &base::corpus::big_class_variants::Bigg_class_variants_to_Bigg::BIGG_CLASS_VARIANTS_TO_BIGG,
     &base::corpus::big_class_variants::big_class_variants_to_big::BIG_CLASS_VARIANTS_TO_BIG,
