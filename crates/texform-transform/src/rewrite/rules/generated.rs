@@ -126,7 +126,10 @@ pub(crate) mod base {
             pub(crate) mod thinspace_to_comma_space;
         }
         pub(crate) mod spacing_merge {
+            pub(crate) mod double_enspace_to_quad;
             pub(crate) mod double_quad_to_qquad;
+            pub(crate) mod helpers;
+            pub(crate) mod small_spacer_merge_to_enspace;
         }
     }
     pub(crate) mod corpus {
@@ -343,7 +346,9 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::authoring::spacing_alias::negthinspace_to_neg_comma_space::NEGTHINSPACE_TO_NEG_COMMA_SPACE,
     &base::authoring::spacing_alias::space_to_tilde::SPACE_TO_TILDE,
     &base::authoring::spacing_alias::thinspace_to_comma_space::THINSPACE_TO_COMMA_SPACE,
+    &base::authoring::spacing_merge::double_enspace_to_quad::DOUBLE_ENSPACE_TO_QUAD,
     &base::authoring::spacing_merge::double_quad_to_qquad::DOUBLE_QUAD_TO_QQUAD,
+    &base::authoring::spacing_merge::small_spacer_merge_to_enspace::SMALL_SPACER_MERGE_TO_ENSPACE,
     &base::corpus::big_class_variants::Big_class_variants_to_Big::BIG_CLASS_VARIANTS_TO_BIG,
     &base::corpus::big_class_variants::Bigg_class_variants_to_Bigg::BIGG_CLASS_VARIANTS_TO_BIGG,
     &base::corpus::big_class_variants::big_class_variants_to_big::BIG_CLASS_VARIANTS_TO_BIG,
