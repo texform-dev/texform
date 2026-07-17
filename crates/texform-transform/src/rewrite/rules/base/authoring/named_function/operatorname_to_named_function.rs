@@ -1,4 +1,4 @@
-//! Rewrite unstarred plain-text operatorname arguments to a closed whitelist of equivalent base named-function commands.
+//! Rewrite plain operatorname arguments to equivalent base named-function or named-operator commands.
 //!
 //! ```yaml
 //! proposal: operatorname-to-named-function
@@ -6,9 +6,7 @@
 //!   - cmd:operatorname
 //! consumes:
 //!   eliminates: null
-//!   touches:
-//!     - cmd:operatorname
-//!     - cmd:limits
+//!   touches: [cmd:operatorname, cmd:limits]
 //! produces:
 //!   - cmd:arccos
 //!   - cmd:arcsin
@@ -32,8 +30,17 @@
 //!   - cmd:sinh
 //!   - cmd:tan
 //!   - cmd:tanh
+//!   - cmd:det
+//!   - cmd:gcd
+//!   - cmd:inf
+//!   - cmd:lim
+//!   - cmd:max
+//!   - cmd:min
+//!   - cmd:Pr
+//!   - cmd:sup
 //! rewrite_patterns:
-//!   - {from: '\operatorname{#1}', to: \#1}
+//!   - {label: unstarred-named-function, from: '\operatorname{#1}', to: \#1}
+//!   - {label: starred-named-operator, from: '\operatorname*{#1}', to: \#1}
 //! ```
 
 use texform_knowledge::builtin::ams;
@@ -49,7 +56,7 @@ define_rule! {
     pub static OPERATORNAME_TO_NAMED_FUNCTION: OperatornameToNamedFunctionRule {
         key: Base / "operatorname-to-named-function",
         level: Authoring,
-        summary: "Rewrite unstarred plain-text operatorname arguments to a closed whitelist of equivalent base named-function commands.",
+        summary: "Rewrite plain operatorname arguments to equivalent base named-function or named-operator commands.",
         fidelity: Render,
         enabled_by_packages: [Base, Ams],
         triggers: cmd_targets![&ams::cmd::OPERATORNAME],
@@ -58,19 +65,23 @@ define_rule! {
             touches: cmd_targets![&ams::cmd::OPERATORNAME, &base::cmd::LIMITS],
         },
         produces: RuleProduces {
-            targets: cmd_targets![&base::cmd::ARCCOS, &base::cmd::ARCSIN, &base::cmd::ARCTAN, &base::cmd::ARG, &base::cmd::COS, &base::cmd::COSH, &base::cmd::COT, &base::cmd::COTH, &base::cmd::CSC, &base::cmd::DEG, &base::cmd::DIM, &base::cmd::EXP, &base::cmd::HOM, &base::cmd::KER, &base::cmd::LG, &base::cmd::LN, &base::cmd::LOG, &base::cmd::SEC, &base::cmd::SIN, &base::cmd::SINH, &base::cmd::TAN, &base::cmd::TANH],
+            targets: cmd_targets![&base::cmd::ARCCOS, &base::cmd::ARCSIN, &base::cmd::ARCTAN, &base::cmd::ARG, &base::cmd::COS, &base::cmd::COSH, &base::cmd::COT, &base::cmd::COTH, &base::cmd::CSC, &base::cmd::DEG, &base::cmd::DIM, &base::cmd::EXP, &base::cmd::HOM, &base::cmd::KER, &base::cmd::LG, &base::cmd::LN, &base::cmd::LOG, &base::cmd::SEC, &base::cmd::SIN, &base::cmd::SINH, &base::cmd::TAN, &base::cmd::TANH, &base::cmd::DET, &base::cmd::GCD, &base::cmd::INF, &base::cmd::LIM, &base::cmd::MAX, &base::cmd::MIN, &base::cmd::PR, &base::cmd::SUP],
         },
         apply(_rule, cx, node_id) {
-            let content = {
+            let (starred, content) = {
                 let Some(command) = cx.match_command(node_id, &ams::cmd::OPERATORNAME) else {
                     return Ok(RuleEffect::Skipped);
                 };
+                if !cx
+                    .active_command(node_id)
+                    .is_some_and(|record| record.from_packages == ["ams"])
+                {
+                    return Ok(RuleEffect::Skipped);
+                }
                 let subject = command.subject();
                 let scoped = cx.for_rule(Self::KEY);
                 scoped.expect_arg_len(command.args, 2, &subject)?;
-                if scoped.star_arg_value(&command.args[0], &subject)? {
-                    return Ok(RuleEffect::Skipped);
-                }
+                let starred = scoped.star_arg_value(&command.args[0], &subject)?;
 
                 let Some(argument) = &command.args[1] else {
                     return Err(scoped.invalid_shape(format!(
@@ -87,16 +98,28 @@ define_rule! {
                         "{subject} operator name should be operator-name content"
                     )));
                 };
-                content
+                (starred, content)
             };
 
             let Some(name) = plain_operator_name(cx.ast, content) else {
                 return Ok(RuleEffect::Skipped);
             };
-            let Some(record) = named_function_record(name.as_str()) else {
+            let record = if starred {
+                named_operator_record(name.as_str())
+            } else {
+                named_function_record(name.as_str())
+            };
+            let Some(record) = record else {
                 return Ok(RuleEffect::Skipped);
             };
-            if cx
+            if !cx
+                .lookup_command(record.name, ContentMode::Math)
+                .is_some_and(|active| active.from_packages == ["base"])
+            {
+                return Ok(RuleEffect::Skipped);
+            }
+            if !starred
+                && cx
                 .ast
                 .next_sibling(node_id)
                 .is_some_and(|next| is_limits_modifier(cx.ast, next))
@@ -168,6 +191,20 @@ fn named_function_record(name: &str) -> Option<&'static BuiltinCommandRecord> {
     }
 }
 
+fn named_operator_record(name: &str) -> Option<&'static BuiltinCommandRecord> {
+    match name {
+        "det" => Some(&base::cmd::DET),
+        "gcd" => Some(&base::cmd::GCD),
+        "inf" => Some(&base::cmd::INF),
+        "lim" => Some(&base::cmd::LIM),
+        "max" => Some(&base::cmd::MAX),
+        "min" => Some(&base::cmd::MIN),
+        "Pr" => Some(&base::cmd::PR),
+        "sup" => Some(&base::cmd::SUP),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,16 +217,310 @@ mod tests {
         level: Authoring,
         examples: [
         {
-            label: whitelist_match,
+            label: unstarred_arccos,
+            packages: ["base", "ams"],
+            input: r"\operatorname{arccos} x",
+            expected: r"\arccos x",
+        },
+        {
+            label: unstarred_arcsin,
+            packages: ["base", "ams"],
+            input: r"\operatorname{arcsin} x",
+            expected: r"\arcsin x",
+        },
+        {
+            label: unstarred_arctan,
+            packages: ["base", "ams"],
+            input: r"\operatorname{arctan} x",
+            expected: r"\arctan x",
+        },
+        {
+            label: unstarred_arg,
+            packages: ["base", "ams"],
+            input: r"\operatorname{arg} x",
+            expected: r"\arg x",
+        },
+        {
+            label: unstarred_cos,
+            packages: ["base", "ams"],
+            input: r"\operatorname{cos} x",
+            expected: r"\cos x",
+        },
+        {
+            label: unstarred_cosh,
+            packages: ["base", "ams"],
+            input: r"\operatorname{cosh} x",
+            expected: r"\cosh x",
+        },
+        {
+            label: unstarred_cot,
+            packages: ["base", "ams"],
+            input: r"\operatorname{cot} x",
+            expected: r"\cot x",
+        },
+        {
+            label: unstarred_coth,
+            packages: ["base", "ams"],
+            input: r"\operatorname{coth} x",
+            expected: r"\coth x",
+        },
+        {
+            label: unstarred_csc,
+            packages: ["base", "ams"],
+            input: r"\operatorname{csc} x",
+            expected: r"\csc x",
+        },
+        {
+            label: unstarred_deg,
+            packages: ["base", "ams"],
+            input: r"\operatorname{deg} x",
+            expected: r"\deg x",
+        },
+        {
+            label: unstarred_dim,
+            packages: ["base", "ams"],
+            input: r"\operatorname{dim} x",
+            expected: r"\dim x",
+        },
+        {
+            label: unstarred_exp,
+            packages: ["base", "ams"],
+            input: r"\operatorname{exp} x",
+            expected: r"\exp x",
+        },
+        {
+            label: unstarred_hom,
+            packages: ["base", "ams"],
+            input: r"\operatorname{hom} x",
+            expected: r"\hom x",
+        },
+        {
+            label: unstarred_ker,
+            packages: ["base", "ams"],
+            input: r"\operatorname{ker} x",
+            expected: r"\ker x",
+        },
+        {
+            label: unstarred_lg,
+            packages: ["base", "ams"],
+            input: r"\operatorname{lg} x",
+            expected: r"\lg x",
+        },
+        {
+            label: unstarred_ln,
             packages: ["base", "ams"],
             input: r"\operatorname{ln} x",
             expected: r"\ln x",
         },
         {
-            label: starred_preserved,
+            label: unstarred_log,
+            packages: ["base", "ams"],
+            input: r"\operatorname{log} x",
+            expected: r"\log x",
+        },
+        {
+            label: unstarred_sec,
+            packages: ["base", "ams"],
+            input: r"\operatorname{sec} x",
+            expected: r"\sec x",
+        },
+        {
+            label: unstarred_sin,
+            packages: ["base", "ams"],
+            input: r"\operatorname{sin} x",
+            expected: r"\sin x",
+        },
+        {
+            label: unstarred_sinh,
+            packages: ["base", "ams"],
+            input: r"\operatorname{sinh} x",
+            expected: r"\sinh x",
+        },
+        {
+            label: unstarred_tan,
+            packages: ["base", "ams"],
+            input: r"\operatorname{tan} x",
+            expected: r"\tan x",
+        },
+        {
+            label: unstarred_tanh,
+            packages: ["base", "ams"],
+            input: r"\operatorname{tanh} x",
+            expected: r"\tanh x",
+        },
+        {
+            label: starred_det,
+            packages: ["base", "ams"],
+            input: r"\operatorname*{det}_{x}",
+            expected: r"\det_{x}",
+        },
+        {
+            label: starred_gcd,
+            packages: ["base", "ams"],
+            input: r"\operatorname*{gcd}_{x}",
+            expected: r"\gcd_{x}",
+        },
+        {
+            label: starred_inf,
+            packages: ["base", "ams"],
+            input: r"\operatorname*{inf}_{x}",
+            expected: r"\inf_{x}",
+        },
+        {
+            label: starred_lim,
+            packages: ["base", "ams"],
+            input: r"\operatorname*{lim}_{x}",
+            expected: r"\lim_{x}",
+        },
+        {
+            label: starred_max,
+            packages: ["base", "ams"],
+            input: r"\operatorname*{max}_{x}",
+            expected: r"\max_{x}",
+        },
+        {
+            label: starred_min,
+            packages: ["base", "ams"],
+            input: r"\operatorname*{min}_{x}",
+            expected: r"\min_{x}",
+        },
+        {
+            label: starred_pr,
+            packages: ["base", "ams"],
+            input: r"\operatorname*{Pr}_{x}",
+            expected: r"\Pr_{x}",
+        },
+        {
+            label: starred_sup,
+            packages: ["base", "ams"],
+            input: r"\operatorname*{sup}_{x}",
+            expected: r"\sup_{x}",
+        },
+        {
+            label: starred_named_function_preserved,
             packages: ["base", "ams"],
             input: r"\operatorname*{ln}_{n}",
             expected: r"\operatorname*{ln}_{n}",
+        },
+        {
+            label: unstarred_named_operator_preserved,
+            packages: ["base", "ams"],
+            input: r"\operatorname{lim}_{n}",
+            expected: r"\operatorname{lim}_{n}",
+        },
+        {
+            label: unknown_name_preserved,
+            packages: ["base", "ams"],
+            input: r"\operatorname{rank} A",
+            expected: r"\operatorname{rank} A",
+        },
+        {
+            label: nested_group_preserved,
+            packages: ["base", "ams"],
+            input: r"\operatorname{{ln}} x",
+            expected: r"\operatorname{{ln}} x",
+        },
+        {
+            label: explicit_spacing_preserved,
+            packages: ["base", "ams"],
+            input: r"\operatorname{l\,n} x",
+            expected: r"\operatorname{l\,n} x",
+        },
+        {
+            label: non_ascii_preserved,
+            packages: ["base", "ams"],
+            input: r"\operatorname{λ} x",
+            expected: r"\operatorname{λ} x",
+        },
+        {
+            label: bare_limits_preserved,
+            packages: ["base", "ams"],
+            input: r"\operatorname{ln}\limits x",
+            expected: r"\operatorname{ln}\limits x",
+        },
+        {
+            label: scripted_limits_preserved,
+            packages: ["base", "ams"],
+            input: r"\operatorname{ln}\limits_{n}",
+            expected: r"\operatorname{ln}\limits_{n}",
+        },
+        {
+            label: unstarred_nolimits_rewritten,
+            packages: ["base", "ams"],
+            input: r"\operatorname{ln}\nolimits_{n}",
+            expected: r"\ln\nolimits_{n}",
+        },
+        {
+            label: starred_limits_rewritten,
+            packages: ["base", "ams"],
+            input: r"\operatorname*{lim}\limits_{n}",
+            expected: r"\lim\limits_{n}",
+        },
+        {
+            label: starred_nolimits_rewritten,
+            packages: ["base", "ams"],
+            input: r"\operatorname*{max}\nolimits_{n}",
+            expected: r"\max\nolimits_{n}",
+        },
+        {
+            label: spaced_liminf_preserved,
+            packages: ["base", "ams"],
+            input: r"\operatorname*{liminf}_{n}",
+            expected: r"\operatorname*{liminf}_{n}",
+        },
+        {
+            label: spaced_limsup_preserved,
+            packages: ["base", "ams"],
+            input: r"\operatorname*{limsup}_{n}",
+            expected: r"\operatorname*{limsup}_{n}",
+        },
+        {
+            label: spaced_injlim_preserved,
+            packages: ["base", "ams"],
+            input: r"\operatorname*{injlim}_{n}",
+            expected: r"\operatorname*{injlim}_{n}",
+        },
+        {
+            label: spaced_projlim_preserved,
+            packages: ["base", "ams"],
+            input: r"\operatorname*{projlim}_{n}",
+            expected: r"\operatorname*{projlim}_{n}",
+        },
+        {
+            label: physics_optional_argument_collision_preserved,
+            packages: ["base", "ams", "physics"],
+            input: r"\operatorname{sin}[2]x",
+            expected: r"\operatorname{sin}[2]x",
+        },
+        {
+            label: physics_expression_collision_preserved,
+            packages: ["base", "ams", "physics"],
+            input: r"\operatorname{exp}(\frac12)",
+            expected: r"\operatorname{exp}(\frac12)",
+        },
+        {
+            label: physics_base_named_function_rewritten,
+            packages: ["base", "ams", "physics"],
+            input: r"\operatorname{arg}x",
+            expected: r"\arg x",
+        },
+        {
+            label: physics_det_collision_preserved,
+            packages: ["base", "ams", "physics"],
+            input: r"\operatorname*{det}_{n}",
+            expected: r"\operatorname*{det}_{n}",
+        },
+        {
+            label: physics_pr_collision_preserved,
+            packages: ["base", "ams", "physics"],
+            input: r"\operatorname*{Pr}_{n}",
+            expected: r"\operatorname*{Pr}_{n}",
+        },
+        {
+            label: physics_base_named_operator_rewritten,
+            packages: ["base", "ams", "physics"],
+            input: r"\operatorname*{lim}_{n}",
+            expected: r"\lim_{n}",
         },
         ]
     }
@@ -252,28 +583,34 @@ mod tests {
 
     #[test]
     fn removes_replaced_operator_name_content() {
-        let parse_ctx = ParseContext::from_packages(&["base", "ams"]);
-        let mut ast = crate::parse_to_ast_for_test(
-            &parse_ctx,
-            r"\operatorname{ln} x",
-            &crate::parse::ParseConfig::STRICT,
-        );
-        let operatorname = ast.children(ast.root())[0];
-        let Some(argument) = &ast.arg_slots(operatorname)[1] else {
-            panic!("operatorname should carry a mandatory argument");
-        };
-        let ArgumentValue::OperatorNameContent(content) = argument.value else {
-            panic!("operatorname argument should be operator-name content");
-        };
+        for input in [r"\operatorname{ln} x", r"\operatorname*{lim}_{n}"] {
+            let parse_ctx = ParseContext::from_packages(&["base", "ams"]);
+            let mut ast = crate::parse_to_ast_for_test(
+                &parse_ctx,
+                input,
+                &crate::parse::ParseConfig::STRICT,
+            );
+            let root_child = ast.children(ast.root())[0];
+            let operatorname = match ast.node(root_child) {
+                Node::Scripted { base, .. } => *base,
+                _ => root_child,
+            };
+            let Some(argument) = &ast.arg_slots(operatorname)[1] else {
+                panic!("operatorname should carry a mandatory argument");
+            };
+            let ArgumentValue::OperatorNameContent(content) = argument.value else {
+                panic!("operatorname argument should be operator-name content");
+            };
 
-        run_one_rule_for_test(
-            &mut ast,
-            &parse_ctx,
-            &OPERATORNAME_TO_NAMED_FUNCTION,
-            RuleLevel::Authoring,
-        )
-        .expect("operatorname-to-named-function transform should succeed");
+            run_one_rule_for_test(
+                &mut ast,
+                &parse_ctx,
+                &OPERATORNAME_TO_NAMED_FUNCTION,
+                RuleLevel::Authoring,
+            )
+            .expect("operatorname-to-named-function transform should succeed");
 
-        assert!(!ast.contains(content));
+            assert!(!ast.contains(content));
+        }
     }
 }

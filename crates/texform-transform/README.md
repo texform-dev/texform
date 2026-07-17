@@ -101,8 +101,8 @@ Each profile selects cumulative build-time rule levels and supplies a default ru
 | --- | --- | --- | --- |
 | `Authoring` | `Authoring` | `STRICT` | Polished author-facing formatting; stylistic choices kept. |
 | `Faithful` | `Authoring` + `Faithful` | `STRICT` | Render-faithful universal forms. |
-| `Corpus` | `Authoring` + `Faithful` + `Corpus` | `STRUCTURAL_ONLY` | Complete canonical forms suitable as training labels. |
-| `Equiv` | `Authoring` + `Faithful` + `Corpus` + `Equiv` | `STRUCTURAL_ONLY` | Aggressive intermediates for equivalence comparison. |
+| `Corpus` | `Authoring` + `Faithful` + `Corpus` | `STRUCTURAL_ONLY` | Complete canonical forms that remain suitable labels for the original formulas. |
+| `Equiv` | `Authoring` + `Faithful` + `Corpus` + `Equiv` | `STRUCTURAL_ONLY` | Aggressive intermediates for equivalence comparison, including projections that discard visually salient choices. |
 
 The current builtin registry has no `Equiv`-level rules, so `Corpus` and `Equiv` temporarily produce the same output. Their intended products remain different.
 
@@ -116,12 +116,14 @@ from render fidelity.
 |------------|--------|
 | `Authoring` | Author-editable canonical syntax: legacy modernization, typo fixes, and alias canonicalization without collapsing legitimate notation choices. |
 | `Faithful` | Render-faithful universal forms for compact, package-specific, or legacy input. |
-| `Corpus` | Complete, stable canonical forms suitable as training labels; reading-identical layout and specialized vocabulary may collapse. |
-| `Equiv` | Output is only suitable as an equivalence-checking, deduplication, or fingerprint intermediate, not as a corpus label. |
+| `Corpus` | Complete, stable canonical forms that remain valid training labels for the original formulas; only training-irrelevant presentation variants and specialized vocabulary may collapse. |
+| `Equiv` | Output is only suitable as an equivalence-checking, deduplication, or fingerprint intermediate, not as a corpus label; it may discard visually salient presentation choices. |
 
 Classify a rule by asking which profile first accepts its output, then declare
 the rule's fidelity independently. `fidelity` may rule out profiles whose floor
 it cannot meet, but a high-fidelity rule is not automatically a lower level.
+
+`Reading` fidelity is necessary but not sufficient for `Corpus`. A Corpus output must remain a credible complete label for the original formula. If a rewrite materially removes size, stretch, placement, visual hierarchy, or a notation distinction useful for training, classify it as `Equiv` even when notation identity, reading order, and structural roles remain intact. `Equiv` is a use-level rather than an alias for `Math` fidelity, so `Equiv`/`Reading` is a valid and informative combination.
 
 #### `RuleFidelity`
 
