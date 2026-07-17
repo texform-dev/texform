@@ -138,7 +138,6 @@ pub(crate) mod base {
         }
         pub(crate) mod spacing_merge {
             pub(crate) mod quad_run_to_qquad;
-            pub(crate) mod repeat_spacer_collapse;
         }
     }
     pub(crate) mod faithful {
@@ -327,7 +326,6 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::corpus::spacing_drop::nobreak_drop::NOBREAK_DROP,
     &base::corpus::spacing_drop::strut_drop::STRUT_DROP,
     &base::corpus::spacing_merge::quad_run_to_qquad::QUAD_RUN_TO_QQUAD,
-    &base::corpus::spacing_merge::repeat_spacer_collapse::REPEAT_SPACER_COLLAPSE,
     &base::faithful::character_normalize::dots_to_ldots_or_cdots::DOTS_TO_LDOTS_OR_CDOTS,
     &base::faithful::character_normalize::gets_to_leftarrow::GETS_TO_LEFTARROW,
     &base::faithful::character_normalize::land_to_wedge::LAND_TO_WEDGE,
