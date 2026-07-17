@@ -62,22 +62,50 @@ fn run(args: Args) -> Result<ExitCode, String> {
 
     if outcome.summary.checked_formulas > 0 {
         println!(
-            "\nTotal: {} formulas across {} dataset(s); {} violating formula(s), {} violation(s), {:.4}% formula rate",
+            "\nTotal: {} formulas across {} dataset(s); {} transform error(s); {} violating formula(s), {} violation(s), {:.4}% formula rate",
             outcome.summary.checked_formulas,
             outcome.summary.metadata.datasets.len(),
+            outcome.summary.transform_errors,
             outcome.summary.violating_formulas,
             outcome.summary.violations,
             outcome.summary.violating_formulas_pct,
         );
     }
 
+    if outcome.summary.transform_errors > 0 {
+        eprintln!(
+            "Transform contract failed: {} transform error(s)",
+            outcome.summary.transform_errors
+        );
+    }
     if outcome.unallowed_violations > 0 {
         eprintln!(
             "Transform contract failed: {} violation(s) are not covered by contract_exceptions.yaml",
             outcome.unallowed_violations
         );
+    }
+    if contract_failed(
+        outcome.summary.transform_errors,
+        outcome.unallowed_violations,
+    ) {
         return Ok(ExitCode::FAILURE);
     }
 
     Ok(ExitCode::SUCCESS)
+}
+
+fn contract_failed(transform_errors: usize, unallowed_violations: usize) -> bool {
+    transform_errors > 0 || unallowed_violations > 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transform_errors_or_unallowed_violations_fail_the_cli() {
+        assert!(contract_failed(1, 0));
+        assert!(contract_failed(0, 1));
+        assert!(!contract_failed(0, 0));
+    }
 }

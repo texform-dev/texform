@@ -614,12 +614,16 @@ fn finish_summary(
         unmatched_exceptions: exceptions.len().saturating_sub(matched_exceptions.len()),
         allowed_exceptions: accumulator.allowed_violations,
         unexpected_violations,
-        verdict: if unexpected_violations == 0 {
-            "pass".to_string()
-        } else {
-            "fail".to_string()
-        },
+        verdict: contract_verdict(unexpected_violations, accumulator.transform_errors).to_string(),
     })
+}
+
+fn contract_verdict(unexpected_violations: usize, transform_errors: usize) -> &'static str {
+    if unexpected_violations == 0 && transform_errors == 0 {
+        "pass"
+    } else {
+        "fail"
+    }
 }
 
 impl RunAccumulator {
@@ -984,6 +988,13 @@ mod tests {
         )]);
 
         ensure_unique_eliminated_owners(&attribution).unwrap();
+    }
+
+    #[test]
+    fn transform_errors_fail_the_contract_verdict() {
+        assert_eq!(contract_verdict(0, 1), "fail");
+        assert_eq!(contract_verdict(1, 0), "fail");
+        assert_eq!(contract_verdict(0, 0), "pass");
     }
 
     #[test]
