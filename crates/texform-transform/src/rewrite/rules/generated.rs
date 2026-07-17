@@ -115,6 +115,7 @@ pub(crate) mod base {
             pub(crate) mod root_of_to_sqrt;
         }
         pub(crate) mod spacing_alias {
+            pub(crate) mod control_space_to_tilde;
             pub(crate) mod gt_space_to_colon_space;
             pub(crate) mod helpers;
             pub(crate) mod hfil_to_hfill;
@@ -334,6 +335,7 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::authoring::plain_tex_matrix::matrix_to_matrix_env::MATRIX_TO_MATRIX_ENV,
     &base::authoring::plain_tex_matrix::pmatrix_to_pmatrix_env::PMATRIX_TO_PMATRIX_ENV,
     &base::authoring::root_family::root_of_to_sqrt::ROOT_OF_TO_SQRT,
+    &base::authoring::spacing_alias::control_space_to_tilde::CONTROL_SPACE_TO_TILDE,
     &base::authoring::spacing_alias::gt_space_to_colon_space::GT_SPACE_TO_COLON_SPACE,
     &base::authoring::spacing_alias::hfil_to_hfill::HFIL_TO_HFILL,
     &base::authoring::spacing_alias::hfilll_to_hfill::HFILLL_TO_HFILL,
