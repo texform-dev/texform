@@ -83,7 +83,58 @@ use crate::rewrite::{alias_rule, char_targets, cmd_targets, define_rule, env_tar
 These macros are intentionally local to `texform-transform`; they are
 ergonomics helpers for builtin rules, not a public rule-definition API.
 
-## Scheduling With `triggers`
+## Metadata and the rewrite contract
+
+`RuleMeta` is a **static plan contract**, not a runtime audit log of every
+target `apply` inspects. Define the consumes set as
+`C = eliminates ∪ touches`; the engine uses the metadata as follows:
+
+| Layer | Fields | Engine behavior |
+| --- | --- | --- |
+| Plan filtering | `level`, `enabled_by_packages`, `produces` | Filter by profile and active packages, and require every produced target to exist in the `ParseContext` |
+| Mutation safety | `eliminates`, `touches`, `produces` | Exclude the whole rule when the runtime mutation summary contains any declared target name |
+| Scheduling | `triggers` | Index rule attempts by named target; every trigger must also appear in `C` |
+| Dependency ordering | `produces`, `C` | Add `A → B` when `produces(A) ∩ C(B)` is non-empty, then reject cycles |
+| Output contract | `eliminates` | After the full pipeline, reject output in which an eliminated target remains |
+
+`Plan::build` validates non-empty triggers, `triggers ⊆ C`, the fidelity floor,
+package and produced-target availability, and an acyclic dependency graph. It
+does not infer `enabled_by_packages` or enforce a unique eliminate owner; those
+are repository authoring and registry-validation concerns.
+
+Domain guards such as whitelists, neighbor-class checks, and package-owner
+predicates stay in the rule body and tests when `apply` validates them at
+runtime. They are not metadata merely because the implementation inspects them.
+
+### `eliminates` vs `touches`
+
+- **`eliminates`**: targets the enabled rewrite pipeline **promises** to remove
+  from successful output in the rule's declared domain. These targets alone
+  feed `collect_eliminated_violations`. If a valid input branch intentionally
+  returns `Skipped` and may preserve the same target, use a touches-only
+  conditional rule instead. A transform error aborts the pipeline and is not a
+  residual-target contract case.
+- **`touches`**: static **structural partners** in the rewrite shape that the
+  rule rewrites, splits, or co-consumes without promising global elimination.
+  They join `C` for trigger-membership validation, dependency ordering, and
+  runtime-mutation invalidation. They are not eliminate owners and are not
+  checked after the fixed point.
+
+**Put in `touches`:** fixed partners or separators in multi-command forms
+(`buildrel` + `over`, `root` + `of`, plain-TeX matrix bodies + `cr`); sibling
+targets co-consumed with the trigger (`not` + `in`); the partial source itself
+when the rule only rewrites some occurrences (`dots` → `ldots`/`cdots`).
+
+**Do not put in `touches`:** eligibility / classification / adjacency probes
+resolved only by runtime predicates (for example the atom after `\dots`, or an
+operator whitelist checked before dropping `\limits`). Document those in the
+rule comment and tests.
+
+Over-declaring `touches` invents false dependency edges and makes any runtime
+mutation of those names disable the entire rule. Under-declaring it hides
+structural partners or leaves a trigger outside `C`.
+
+### Scheduling with `triggers`
 
 `RuleMeta.triggers` is the required scheduling entry list. The engine attempts
 the rule only on nodes matching `triggers`.
@@ -114,6 +165,15 @@ consumes: RuleConsumes {
 
 Here `cmd:over` is a touched separator inside the structure, not a global
 eliminated-form contract owned by `buildrel-expand`.
+
+### Touches-only rules
+
+When `eliminates` is empty and `touches` is non-empty, every `RuleEffect::Applied`
+must strictly decrease a well-founded measure (eligible trigger count, adjacent
+chunk size, wrapper nesting depth, and so on). Non-matching nodes stay unchanged
+and return `Skipped`. Plan acyclicity does not prove single-rule convergence;
+the static graph only sees `produces` vs `eliminates ∪ touches`, not arbitrary
+AST rewrites inside `apply`.
 
 ## Builtin Record Imports
 

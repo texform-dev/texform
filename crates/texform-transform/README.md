@@ -275,19 +275,9 @@ The phase runs twice in the pipeline (pre and post Rewrite) under a single `enab
 
 Rules live under `src/rewrite/rules/{base, ams, braket, physics}/` and are auto-registered through `src/rewrite/rules/generated.rs` (maintained by `build.rs`). Each rule is a unit struct implementing `RewriteRule` with a static `RuleMeta` descriptor.
 
-`RuleMeta` declares:
+`RuleMeta` is the static contract used to filter and order rules, invalidate them after runtime knowledge mutations, schedule fixed-point attempts, and check eliminated forms after the full pipeline. `TransformContext::from_build_config` compiles that metadata into a `Plan`; `scheduler::drive_fixed_point` then runs the plan until no rule applies or `max_iterations` is exceeded.
 
-- `key: RuleKey` (`package/name`) — the stable identifier used in reports and build-time filters.
-- `enabled_by_packages` — packages whose presence in the `ParseContext` enables the rule.
-- `level` — see [`RuleLevel`](#rulelevel).
-- `fidelity` — see [`RuleFidelity`](#rulefidelity).
-- `triggers` — `RuleTarget`s the scheduler watches to know when to attempt the rule.
-- `consumes` — forms the rule `eliminates` (must not appear in the output) and `touches` (may read or modify).
-- `produces` — forms the rule may introduce. The engine verifies every produced form is either accepted by the output contract or eliminated by another rule.
-
-`TransformContext::from_build_config` builds a `Plan` by filtering all registered rules through the selected profile levels, build-time disabled rules, and the `ParseContext`'s enabled packages. The plan is then driven by `scheduler::drive_fixed_point` until either no rule fires in an iteration or `max_iterations` is exceeded. When Rewrite is enabled, after the full pipeline has run post-Rewrite LowerAttributes and FlattenGroups, the engine uses `collect_eliminated_violations` to verify that no rule's `eliminates` set remains in the output AST; a violation is reported as `RewriteError::ContractViolation`.
-
-See [`src/rewrite/rules/README.md`](https://github.com/texform-dev/texform/blob/main/crates/texform-transform/src/rewrite/rules/README.md) for rule authoring conventions and the macro-based DSL used to define rules.
+See [`src/rewrite/rules/README.md`](https://github.com/texform-dev/texform/blob/main/crates/texform-transform/src/rewrite/rules/README.md) for the authoritative metadata contract, including `triggers`, `eliminates`, `touches`, `produces`, dependency ordering, mutation filtering, convergence requirements, and the macro-based rule DSL.
 
 ### FinalizeAst
 
