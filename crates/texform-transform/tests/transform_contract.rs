@@ -123,7 +123,6 @@ fn fixed_delimiter_size_rules_are_enabled_only_by_the_equiv_profile() {
     let equiv =
         TransformContext::from_build_config(BuildConfig::profile(Profile::Equiv), &parse_ctx)
             .expect("equiv transform context should build");
-
     for rule_name in [
         "big-delimiter-size-drop",
         "Big-delimiter-size-drop",
@@ -206,6 +205,31 @@ fn fraction_style_equiv_rules_are_enabled_only_by_the_equiv_profile() {
                 .any(|rule| rule.meta().key.name == rule_name),
             "{rule_name} should be enabled by the equiv profile"
         );
+    }
+}
+
+#[test]
+fn spacing_drop_targets_are_eliminated_only_by_equiv_profile() {
+    let parse_ctx = ParseContext::from_packages(&["base"]);
+    let corpus =
+        TransformContext::from_build_config(BuildConfig::profile(Profile::Corpus), &parse_ctx)
+            .expect("corpus transform context should build");
+    let equiv =
+        TransformContext::from_build_config(BuildConfig::profile(Profile::Equiv), &parse_ctx)
+            .expect("equiv transform context should build");
+    let spacing_targets = [
+        RuleTarget::Command(&base::cmd::ENSPACE).key(),
+        RuleTarget::Command(&base::cmd::QUAD).key(),
+        RuleTarget::Command(&base::cmd::QQUAD).key(),
+        RuleTarget::Command(&base::cmd::_COMMA).key(),
+        RuleTarget::Command(&base::cmd::_COLON).key(),
+        RuleTarget::Command(&base::cmd::_SEMICOLON).key(),
+        RuleTarget::Command(&base::cmd::_EXCLAMATION).key(),
+    ];
+
+    for target in spacing_targets {
+        assert!(!corpus.rewrite_plan().eliminated_forms().contains(&target));
+        assert!(equiv.rewrite_plan().eliminated_forms().contains(&target));
     }
 }
 
