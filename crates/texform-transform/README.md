@@ -277,7 +277,7 @@ Rules live under `src/rewrite/rules/{base, ams, braket, physics}/` and are auto-
 
 `RuleMeta` is the static contract used to filter and order rules, invalidate them after runtime knowledge mutations, schedule fixed-point attempts, and check eliminated forms after the full pipeline. `TransformContext::from_build_config` compiles that metadata into a `Plan`; `scheduler::drive_fixed_point` then runs the plan until no rule applies or `max_iterations` is exceeded.
 
-See [`src/rewrite/rules/README.md`](https://github.com/texform-dev/texform/blob/main/crates/texform-transform/src/rewrite/rules/README.md) for the authoritative metadata contract, including `triggers`, `eliminates`, `touches`, `produces`, dependency ordering, mutation filtering, convergence requirements, and the macro-based rule DSL.
+See [`src/rewrite/rules/README.md`](src/rewrite/rules/README.md) for the authoritative metadata contract, including `triggers`, `eliminates`, `touches`, `produces`, dependency ordering, mutation filtering, convergence requirements, and the macro-based rule DSL.
 
 ### FinalizeAst
 
@@ -340,6 +340,6 @@ cargo test -p texform-transform
 
 ## See also
 
-- High-level overview: [repository README](https://github.com/texform-dev/texform#readme).
-- Architecture: [`ARCHITECTURE.md`](https://github.com/texform-dev/texform/blob/main/ARCHITECTURE.md) (Transform Engine section).
-- Rule authoring guide: [`src/rewrite/rules/README.md`](https://github.com/texform-dev/texform/blob/main/crates/texform-transform/src/rewrite/rules/README.md).
+- High-level overview: [repository README](../../README.md).
+- Architecture: [`ARCHITECTURE.md`](../../ARCHITECTURE.md) (Transform Engine section).
+- Rule authoring guide: [`src/rewrite/rules/README.md`](src/rewrite/rules/README.md).

@@ -1,6 +1,6 @@
 # texform
 
-JavaScript and TypeScript bindings for [TeXForm](https://github.com/texform-dev/texform), a LaTeX formula parser, editor, and normalizer built on a structured command knowledge base. Powered by WebAssembly, with TypeScript types included.
+JavaScript and TypeScript bindings for [TeXForm](../../README.md), a LaTeX formula parser, editor, and normalizer built on a structured command knowledge base. Powered by WebAssembly, with TypeScript types included.
 
 ```bash
 npm install texform
@@ -36,7 +36,7 @@ Profiles select the normalization target: `"authoring"`, `"faithful"`, `"corpus"
 
 ## Learn more
 
-The JavaScript API mirrors the Rust facade one-to-one. For the full picture — the editable document tree, transform profiles, and the architecture — see the [GitHub repository](https://github.com/texform-dev/texform).
+The JavaScript API mirrors the Rust facade one-to-one. For the full picture — the editable document tree, transform profiles, and the architecture — see the [repository README](../../README.md).
 
 <!-- Full documentation: https://texform.dev (docsite goes live after 0.1.0) -->
 

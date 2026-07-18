@@ -34,9 +34,9 @@ Profiles select the normalization target: `Authoring` (polished author-facing ou
 
 ## Links
 
-- [GitHub repository](https://github.com/texform-dev/texform) — full README, examples, and contribution guide
+- [Repository README](../../README.md) — full README, examples, and contribution guide
 - [API documentation](https://docs.rs/texform)
-- [Architecture overview](https://github.com/texform-dev/texform/blob/main/ARCHITECTURE.md)
+- [Architecture overview](../../ARCHITECTURE.md)
 - [Playground](https://play.texform.dev) — try TeXForm in the browser
 
 <!-- Full documentation: https://texform.dev (docsite goes live after 0.1.0) -->
