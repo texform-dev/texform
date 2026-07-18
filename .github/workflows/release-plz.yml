@@ -93,13 +93,17 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
-          # On a pull_request event github.sha is a synthetic merge ref, so
-          # check out the PR's real merge/squash commit on main; fall back to
-          # github.sha for a workflow_dispatch run.
-          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          # One-shot recovery of the failed v0.2.1 release. The workflow
+          # definition lives on this temporary branch, but the release must be
+          # built and tagged from the original squash commit on main.
+          ref: e205ac76324e3aedd629f0ca1fb6acb8b3a46da0
           # The tag must be pushed with a PAT: tags pushed with the default
           # GITHUB_TOKEN do not trigger the release.yml workflow.
           token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+      - name: Attach release commit to main
+        run: |
+          git switch -C main HEAD
+          git branch --set-upstream-to=origin/main main
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
       - name: Enable release for this gated run
         # With release_always = false, release-plz itself re-checks whether
