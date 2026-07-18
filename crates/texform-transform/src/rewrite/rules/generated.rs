@@ -168,6 +168,11 @@ pub(crate) mod base {
             pub(crate) mod bigg_delimiter_size_drop;
             pub(crate) mod helpers;
         }
+        pub(crate) mod limit_placement {
+            pub(crate) mod helpers;
+            pub(crate) mod limits_drop;
+            pub(crate) mod nolimits_drop;
+        }
     }
     pub(crate) mod faithful {
         pub(crate) mod character_normalize {
@@ -369,6 +374,8 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::equiv::fixed_delimiter_size::Bigg_delimiter_size_drop::BIGG_DELIMITER_SIZE_DROP,
     &base::equiv::fixed_delimiter_size::big_delimiter_size_drop::BIG_DELIMITER_SIZE_DROP,
     &base::equiv::fixed_delimiter_size::bigg_delimiter_size_drop::BIGG_DELIMITER_SIZE_DROP,
+    &base::equiv::limit_placement::limits_drop::LIMITS_DROP,
+    &base::equiv::limit_placement::nolimits_drop::NOLIMITS_DROP,
     &base::faithful::character_normalize::dots_to_ldots_or_cdots::DOTS_TO_LDOTS_OR_CDOTS,
     &base::faithful::character_normalize::gets_to_leftarrow::GETS_TO_LEFTARROW,
     &base::faithful::character_normalize::land_to_wedge::LAND_TO_WEDGE,
