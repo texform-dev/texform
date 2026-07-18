@@ -180,6 +180,36 @@ fn limit_placement_rules_are_enabled_only_by_the_equiv_profile() {
 }
 
 #[test]
+fn fraction_style_equiv_rules_are_enabled_only_by_the_equiv_profile() {
+    let parse_ctx = ParseContext::from_packages(&["base", "ams"]);
+    let corpus =
+        TransformContext::from_build_config(BuildConfig::profile(Profile::Corpus), &parse_ctx)
+            .expect("corpus transform context should build");
+    let equiv =
+        TransformContext::from_build_config(BuildConfig::profile(Profile::Equiv), &parse_ctx)
+            .expect("equiv transform context should build");
+
+    for rule_name in ["cfrac-to-frac", "dbinom-and-tbinom-to-binom"] {
+        assert!(
+            corpus
+                .rewrite_plan()
+                .rules()
+                .iter()
+                .all(|rule| rule.meta().key.name != rule_name),
+            "{rule_name} should not be enabled by the corpus profile"
+        );
+        assert!(
+            equiv
+                .rewrite_plan()
+                .rules()
+                .iter()
+                .any(|rule| rule.meta().key.name == rule_name),
+            "{rule_name} should be enabled by the equiv profile"
+        );
+    }
+}
+
+#[test]
 fn transform_contract_accepts_prime_after_authoring_rewrite() {
     let parse_ctx = ParseContext::from_packages(&["base"]);
     let mut ast = parse_to_ast(&parse_ctx, r"\prime");

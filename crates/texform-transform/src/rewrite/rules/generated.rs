@@ -36,6 +36,16 @@ pub(crate) mod ams {
             pub(crate) mod pmatrix_env_to_paren_matrix;
             pub(crate) mod vmatrix_env_to_vert_matrix;
         }
+        pub(crate) mod fraction_style {
+            pub(crate) mod dfrac_to_frac;
+            pub(crate) mod tfrac_to_frac;
+        }
+    }
+    pub(crate) mod equiv {
+        pub(crate) mod fraction_style {
+            pub(crate) mod cfrac_to_frac;
+            pub(crate) mod dbinom_and_tbinom_to_binom;
+        }
     }
     pub(crate) mod faithful {
         pub(crate) mod ams_operator_alias {
@@ -305,6 +315,10 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &ams::corpus::fenced_matrix_env::bmatrix_env_to_bracket_matrix::BMATRIX_ENV_TO_BRACKET_MATRIX,
     &ams::corpus::fenced_matrix_env::pmatrix_env_to_paren_matrix::PMATRIX_ENV_TO_PAREN_MATRIX,
     &ams::corpus::fenced_matrix_env::vmatrix_env_to_vert_matrix::VMATRIX_ENV_TO_VERT_MATRIX,
+    &ams::corpus::fraction_style::dfrac_to_frac::DFRAC_TO_FRAC,
+    &ams::corpus::fraction_style::tfrac_to_frac::TFRAC_TO_FRAC,
+    &ams::equiv::fraction_style::cfrac_to_frac::CFRAC_TO_FRAC,
+    &ams::equiv::fraction_style::dbinom_and_tbinom_to_binom::DBINOM_AND_TBINOM_TO_BINOM,
     &ams::faithful::ams_operator_alias::impliedby_to_Longleftarrow::IMPLIEDBY_TO_LONGLEFTARROW,
     &ams::faithful::ams_operator_alias::implies_to_Longrightarrow::IMPLIES_TO_LONGRIGHTARROW,
     &ams::faithful::character_normalize::Join_to_bowtie::JOIN_TO_BOWTIE,
