@@ -100,6 +100,12 @@ jobs:
           # The tag must be pushed with a PAT: tags pushed with the default
           # GITHUB_TOKEN do not trigger the release.yml workflow.
           token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+      - name: Attach release commit to main
+        # Checking out an exact commit leaves HEAD detached, but release-plz
+        # needs the current branch and its upstream to resolve the release PR.
+        run: |
+          git switch -C main HEAD
+          git branch --set-upstream-to=origin/main main
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
       - name: Enable release for this gated run
         # With release_always = false, release-plz itself re-checks whether
