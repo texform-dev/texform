@@ -155,19 +155,19 @@ impl From<RuleTarget> for RuleTargetKey {
     }
 }
 
-/// Declares the commands, environments, or characters that a rule removes from,
-/// reads, or may otherwise touch in the AST.
+/// Declares the command, environment, or character forms that a rule structurally consumes.
 ///
 /// The distinction matters for convergence analysis:
 /// - **`eliminates`** — forms the rule actively removes or replaces. After the
 ///   rule fires these forms should no longer appear in the output AST.
-/// - **`touches`** — forms that the rule may read or modify without promising
-///   to eliminate them from the output AST.
+/// - **`touches`** — non-eliminating structural dependencies that the rule
+///   directly consumes or modifies. Context inspected only for local matching,
+///   classification, or domain guards is not included when `apply` validates it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RuleConsumes {
     /// Forms that the rule removes or replaces in the AST.
     pub eliminates: &'static [RuleTarget],
-    /// Forms that the rule may read or modify but does not eliminate.
+    /// Non-eliminating structural dependencies that the rule directly consumes or modifies.
     pub touches: &'static [RuleTarget],
 }
 
@@ -204,7 +204,7 @@ pub struct RuleMeta {
     /// Triggers must be non-empty. They only affect scheduling and do not
     /// participate in eliminated-form contracts or dependency analysis.
     pub triggers: &'static [RuleTarget],
-    /// Commands, environments, or characters this rule removes from, reads, or modifies in the AST.
+    /// Commands, environments, or characters this rule structurally consumes in the AST.
     pub consumes: RuleConsumes,
     /// Commands, environments, or characters this rule may introduce into the AST.
     pub produces: RuleProduces,
