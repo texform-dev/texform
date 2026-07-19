@@ -1,3 +1,5 @@
+//! Shared helpers for dropping explicit limit-placement modifiers.
+
 use texform_knowledge::builtin::{ams, base};
 use texform_knowledge::specs::{BuiltinCharacterRecord, BuiltinCommandRecord};
 

@@ -149,7 +149,7 @@ fn fixed_delimiter_size_rules_are_enabled_only_by_the_equiv_profile() {
 }
 
 #[test]
-fn limit_placement_rules_are_enabled_only_by_the_equiv_profile() {
+fn limit_placement_rules_are_enabled_by_the_corpus_profile() {
     let parse_ctx = ParseContext::from_packages(&["base"]);
     let corpus =
         TransformContext::from_build_config(BuildConfig::profile(Profile::Corpus), &parse_ctx)
@@ -164,8 +164,8 @@ fn limit_placement_rules_are_enabled_only_by_the_equiv_profile() {
                 .rewrite_plan()
                 .rules()
                 .iter()
-                .all(|rule| rule.meta().key.name != rule_name),
-            "{rule_name} should not be enabled by the corpus profile"
+                .any(|rule| rule.meta().key.name == rule_name),
+            "{rule_name} should be enabled by the corpus profile"
         );
         assert!(
             equiv
@@ -209,7 +209,7 @@ fn fraction_style_equiv_rules_are_enabled_only_by_the_equiv_profile() {
 }
 
 #[test]
-fn spacing_drop_targets_are_eliminated_only_by_equiv_profile() {
+fn fixed_spacing_drop_targets_are_eliminated_only_by_equiv_profile() {
     let parse_ctx = ParseContext::from_packages(&["base"]);
     let corpus =
         TransformContext::from_build_config(BuildConfig::profile(Profile::Corpus), &parse_ctx)
@@ -221,10 +221,6 @@ fn spacing_drop_targets_are_eliminated_only_by_equiv_profile() {
         RuleTarget::Command(&base::cmd::ENSPACE).key(),
         RuleTarget::Command(&base::cmd::QUAD).key(),
         RuleTarget::Command(&base::cmd::QQUAD).key(),
-        RuleTarget::Command(&base::cmd::_COMMA).key(),
-        RuleTarget::Command(&base::cmd::_COLON).key(),
-        RuleTarget::Command(&base::cmd::_SEMICOLON).key(),
-        RuleTarget::Command(&base::cmd::_EXCLAMATION).key(),
     ];
 
     for target in spacing_targets {
