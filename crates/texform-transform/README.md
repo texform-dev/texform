@@ -74,10 +74,11 @@ The rewrite phase additionally re-exports `RewriteRule`, `RuleLevel`, `RuleLevel
 1. **LowerAttributes (pre)** — canonicalize declarative-scope commands (e.g. `\bf x`) and registered prefix wrappers (e.g. `\mathbf{x}`) into a single normal form.
 2. **Rewrite** — apply the precompiled rewrite plan in a fixed-point loop, bounded by `max_iterations`.
 3. **LowerAttributes (post)** — re-canonicalize attribute markers introduced by rewrite rules (some Authoring / Faithful rules emit prefix wrappers that need lowering again).
-4. **FinalizeAst** — local AST cleanup that does not depend on rewrite metadata, currently merging adjacent `Prime` nodes produced by rewrite rules.
+4. **FinalizeAst** — profile-neutral AST canonicalization (adjacent `Prime` merges, text-sequence normalization). Runs before FlattenGroups so merges can create single-child groups.
 5. **FlattenGroups** — remove redundant explicit and implicit groups after the earlier phases have stabilized.
+6. **FinalizeAst** (again, when FlattenGroups is enabled) — the same idempotent pass, so adjacency exposed by flattening is canonicalized. FinalizeAst is the last phase that mutates the AST; eliminated-form contract validation that follows is read-only.
 
-Phase order is fixed; only the per-phase flags are configurable.
+Phase order is fixed; only the per-phase flags are configurable. When `flatten_groups.enabled` is false, the engine skips the second FinalizeAst call because the first pass already finished AST mutation for that input.
 
 ## Configuration
 
@@ -232,7 +233,7 @@ pub struct TransformReport {
 
 - `LowerAttributesReport` — `attributes` (`HashMap<AttributeSet, AttributeStat>`) plus `eliminated_empty_segments`; each attribute stat has `consumed`, `redundant`, and `emitted` counts split into `declaratives` and `prefixes`. The report aggregates all LowerAttributes invocations in one transform run, so the default pipeline combines pre-Rewrite and post-Rewrite counts.
 - `RewriteReport` — `iterations` (fixed-point iteration count) and `rules` (`Vec<RewriteRuleStat>` with `key`, `applied_count`, `skipped_count` per rule that was attempted at least once).
-- `FinalizeAstReport` — `steps` with one `applied_count` counter per cleanup step (currently `merge_adjacent_primes`).
+- `FinalizeAstReport` — `steps` with one `applied_count` counter per cleanup step (`merge_adjacent_primes`, `normalize_text_sequences`). Counters accumulate both FinalizeAst invocations in one transform run without recounting already-canonical nodes.
 - `FlattenGroupsReport` — `actions` for the four action counters and `guards` for one hit counter per preserve guard. Hit counters are short-circuit: when several guards would apply to the same group, only the first one that matches in the internal evaluation order is incremented.
 
 The stable facade DTO used by the Python and WebAssembly bindings flattens the same information into a transport-safe shape:
@@ -242,7 +243,10 @@ The stable facade DTO used by the Python and WebAssembly bindings flattens the s
   iterations,
   rules: [{ key, applied_count, skipped_count }],
   finalize_ast: {
-    steps: { merge_adjacent_primes: { applied_count } }
+    steps: {
+      merge_adjacent_primes: { applied_count },
+      normalize_text_sequences: { applied_count }
+    }
   },
   flatten_groups: {
     actions: { removed_empty, replaced_single_child, inlined_multi_child, unwrapped_slot },
@@ -281,7 +285,7 @@ See [`src/rewrite/rules/README.md`](src/rewrite/rules/README.md) for the authori
 
 ### FinalizeAst
 
-A single pass (`src/finalize_ast/`) for local AST cleanup that does not depend on rewrite metadata. Its current step merges adjacent `Prime` nodes produced by rewrite rules, so `f^{\prime\prime}` normalizes through `Prime(1), Prime(1)` into the same final shape as `f''`. The phase is enabled by default in every profile and gated by `TransformConfig.finalize_ast.enabled`.
+An idempotent pass (`src/finalize_ast/`) for profile-neutral AST representation canonicalization. Rewrite owns surface-to-semantic rewrites (for example `Command("prime") → Prime { count: 1 }`); FinalizeAst owns canonical AST shape: merging adjacent `Prime` nodes, merging adjacent text-mode `Text` siblings, collapsing ordinary lexer whitespace runs to one U+0020 without trimming edge spaces, and cleaning empty text (sequence children are deleted; empty `TextContent` slots become an empty implicit text group). The engine runs the same `finalize_ast::run` before FlattenGroups and again after FlattenGroups when that phase is enabled. The phase is enabled by default in every profile and gated by `TransformConfig.finalize_ast.enabled`.
 
 ### FlattenGroups
 

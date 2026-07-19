@@ -1,17 +1,22 @@
 //! Transform engine that applies configured phases to an AST.
 //!
-//! The engine executes in five ordered steps:
+//! The engine executes in this order:
 //!
 //! 1. **LowerAttributes** rewrites registered declarative-scope commands before
 //!    ordinary rewrite execution.
 //! 2. **Rewrite** runs transform rules in a fixed-point loop until the AST
 //!    stabilizes (no rule fires) or the iteration limit is reached.
 //! 3. **LowerAttributes** normalizes attribute prefixes created by Rewrite.
-//! 4. **FinalizeAst** performs local AST cleanup that does not need rewrite metadata.
+//! 4. **FinalizeAst** performs profile-neutral AST canonicalization (adjacent
+//!    `Prime` merges, text-sequence normalization).
 //! 5. **FlattenGroups** removes redundant grouping once earlier phases are complete.
+//! 6. **FinalizeAst** again when FlattenGroups ran, so adjacency exposed by
+//!    flattening is canonicalized. FinalizeAst is the last phase that mutates
+//!    the AST.
 //!
 //! When Rewrite is enabled, after these steps the engine validates the resulting
 //! AST against the eliminated-form contract derived into [`TransformContext`].
+//! That validation is read-only.
 
 use crate::ast::Ast;
 use crate::config::TransformConfig;
@@ -61,6 +66,11 @@ pub(crate) fn execute(
 
     if cfg.flatten_groups.enabled {
         flatten_groups::run(ast, &cfg.flatten_groups, &mut report.flatten_groups);
+        // FlattenGroups can expose new adjacent Prime / Text nodes. Re-run the
+        // same idempotent FinalizeAst pass so sequence canonicalization is the
+        // last AST mutation. Skip when FlattenGroups is off: the first pass
+        // already finished the mutation pipeline for that input.
+        finalize_ast::run(ast, &cfg.finalize_ast, &mut report.finalize_ast);
     }
 
     if cfg.rewrite_enabled

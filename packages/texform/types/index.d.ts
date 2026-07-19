@@ -1353,6 +1353,10 @@ export interface TransformReport {
       mergeAdjacentPrimes: {
         appliedCount: number;
       };
+      /** Text-sequence merge, whitespace collapse, and empty-text cleanup. */
+      normalizeTextSequences: {
+        appliedCount: number;
+      };
     };
   };
   /** The LowerAttributes phase report (font/style canonicalization). */

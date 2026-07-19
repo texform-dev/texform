@@ -135,3 +135,34 @@ fn test_nbsp_whitespace() {
     assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
     assert_eq!(lex.next(), Some(Ok(Token::Char('b'))));
 }
+
+#[test]
+fn whitespace_predicate_matches_token_whitespaces_membership() {
+    use texform_core::lexer::is_whitespace_char;
+
+    let included = [' ', '\t', '\n', '\u{000C}', '\u{00A0}'];
+    for ch in included {
+        assert!(is_whitespace_char(ch), "predicate should accept {ch:?}");
+        let source = ch.to_string();
+        let mut lex = Token::lexer(&source);
+        assert_eq!(
+            lex.next(),
+            Some(Ok(Token::Whitespaces)),
+            "{ch:?} should tokenize as Whitespaces"
+        );
+        assert_eq!(lex.next(), None);
+    }
+
+    let excluded = ['\u{2007}', '\u{202F}', '\u{3000}'];
+    for ch in excluded {
+        assert!(!is_whitespace_char(ch), "predicate should reject {ch:?}");
+        let source = ch.to_string();
+        let mut lex = Token::lexer(&source);
+        assert_eq!(
+            lex.next(),
+            Some(Ok(Token::Char(ch))),
+            "{ch:?} should tokenize as Char"
+        );
+        assert_eq!(lex.next(), None);
+    }
+}

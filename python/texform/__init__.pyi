@@ -153,9 +153,12 @@ class FinalizeAstStepReports(TypedDict):
     Attributes:
         merge_adjacent_primes: The report for merging adjacent ``Prime`` nodes
             produced by rewrite rules.
+        normalize_text_sequences: The report for text-sequence merge, ordinary
+            whitespace collapse, and empty-text cleanup.
     """
 
     merge_adjacent_primes: FinalizeAstStepReport
+    normalize_text_sequences: FinalizeAstStepReport
 
 
 class FinalizeAstReport(TypedDict):

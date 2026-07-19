@@ -154,4 +154,63 @@ fn normalize_can_disable_finalize_ast_explicitly() {
             .applied_count,
         0
     );
+    assert_eq!(
+        result
+            .report
+            .finalize_ast
+            .steps
+            .normalize_text_sequences
+            .applied_count,
+        0
+    );
+}
+
+#[test]
+fn normalize_collapses_text_whitespace_without_trimming_edges() {
+    let engine = TransformEngine::builder()
+        .packages(&["base", "textmacros"])
+        .profile(Profile::Equiv)
+        .build()
+        .expect("engine should build");
+
+    let result = engine
+        .normalize(r"\text{  a  b  }")
+        .expect("normalize should succeed");
+
+    // Collapse ordinary whitespace runs; keep a single leading/trailing space.
+    assert!(
+        result.normalized.contains(" a b "),
+        "expected collapsed edge-preserving spaces in {}",
+        result.normalized
+    );
+    assert!(
+        !result.normalized.contains("  "),
+        "normalized output should not keep double spaces: {}",
+        result.normalized
+    );
+}
+
+#[test]
+fn normalize_merges_text_fragments_exposed_by_flatten_groups() {
+    let engine = TransformEngine::builder()
+        .packages(&["base", "textmacros"])
+        .profile(Profile::Equiv)
+        .build()
+        .expect("engine should build");
+
+    // Nested text groups flatten into one sequence; post-FinalizeAst merges them.
+    let result = engine
+        .normalize(r"\text{a{b}c}")
+        .expect("normalize should succeed");
+
+    assert_eq!(result.normalized, r"\text {abc}");
+    assert_eq!(
+        result
+            .report
+            .finalize_ast
+            .steps
+            .normalize_text_sequences
+            .applied_count,
+        1
+    );
 }

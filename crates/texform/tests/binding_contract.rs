@@ -93,6 +93,11 @@ fn transform_report_dto_serializes_as_snake_case() {
         .steps
         .merge_adjacent_primes
         .applied_count = 1;
+    report
+        .finalize_ast
+        .steps
+        .normalize_text_sequences
+        .applied_count = 3;
 
     let value = serde_json::to_value(texform::bindings::transform_report_to_dto(&report)).unwrap();
 
@@ -101,6 +106,10 @@ fn transform_report_dto_serializes_as_snake_case() {
     assert_eq!(
         value["finalize_ast"]["steps"]["merge_adjacent_primes"]["applied_count"],
         1
+    );
+    assert_eq!(
+        value["finalize_ast"]["steps"]["normalize_text_sequences"]["applied_count"],
+        3
     );
 }
 

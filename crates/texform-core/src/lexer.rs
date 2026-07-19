@@ -115,6 +115,8 @@ pub enum Token {
     /// - catcode 10: Spacer
     /// - Multiple consecutive whitespace characters are merged
     /// - Includes U+00A0 (non-breaking space) for copy-paste behavior
+    ///
+    /// Character membership matches [`is_whitespace_char`].
     #[regex(r"[ \t\n\f\u{00A0}]+")]
     Whitespaces,
 
@@ -141,6 +143,17 @@ pub enum Token {
         slice.chars().next().unwrap()
     })]
     Char(char),
+}
+
+/// Ordinary whitespace characters recognized by [`Token::Whitespaces`].
+///
+/// This matches the Logos regex on [`Token::Whitespaces`] exactly: SPACE, TAB,
+/// LF, FORM FEED, and NO-BREAK SPACE. Other Unicode whitespace (for example
+/// U+2007, U+202F, U+3000) is intentionally excluded and tokenizes as
+/// [`Token::Char`].
+#[inline]
+pub fn is_whitespace_char(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\n' | '\u{000C}' | '\u{00A0}')
 }
 
 impl std::fmt::Display for Token {

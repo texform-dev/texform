@@ -294,6 +294,7 @@ pub struct FinalizeAstReportDto {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct FinalizeAstStepReportsDto {
     pub merge_adjacent_primes: FinalizeAstStepReportDto,
+    pub normalize_text_sequences: FinalizeAstStepReportDto,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -500,6 +501,9 @@ fn finalize_ast_report_to_dto(report: &FinalizeAstReport) -> FinalizeAstReportDt
         steps: FinalizeAstStepReportsDto {
             merge_adjacent_primes: FinalizeAstStepReportDto {
                 applied_count: report.steps.merge_adjacent_primes.applied_count,
+            },
+            normalize_text_sequences: FinalizeAstStepReportDto {
+                applied_count: report.steps.normalize_text_sequences.applied_count,
             },
         },
     }
@@ -826,6 +830,11 @@ mod tests {
             .steps
             .merge_adjacent_primes
             .applied_count = 4;
+        report
+            .finalize_ast
+            .steps
+            .normalize_text_sequences
+            .applied_count = 2;
 
         let dto = transform_report_to_dto(&report);
         let json = serde_json::to_value(&dto).unwrap();
@@ -835,8 +844,19 @@ mod tests {
             4
         );
         assert_eq!(
+            dto.finalize_ast
+                .steps
+                .normalize_text_sequences
+                .applied_count,
+            2
+        );
+        assert_eq!(
             json["finalize_ast"]["steps"]["merge_adjacent_primes"]["applied_count"],
             4
+        );
+        assert_eq!(
+            json["finalize_ast"]["steps"]["normalize_text_sequences"]["applied_count"],
+            2
         );
     }
 
