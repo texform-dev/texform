@@ -22,7 +22,7 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static LIMITS_DROP: LimitsDropRule {
         key: Base / "limits-drop",
-        level: Equiv,
+        level: Corpus,
         summary: "Drop explicit limits from an audited operator while preserving attached scripts.",
         fidelity: Reading,
         enabled_by_packages: [Base],
@@ -48,7 +48,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: LIMITS_DROP,
-        level: Equiv,
+        level: Corpus,
         examples: [
         {
             label: base_bare,
@@ -98,7 +98,7 @@ mod tests {
 
     transform_examples! {
         rule: LIMITS_DROP,
-        level: Equiv,
+        level: Corpus,
         examples: [
         {
             label: preserves_isolated_modifier,
