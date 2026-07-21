@@ -3,6 +3,31 @@
 All notable changes to TeXForm are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
+## [0.3.0] - 2026-07-21
+
+### Added
+
+- Add tokenized serialization
+- Expand FinalizeAst with text-sequence normalization
+- Remove small-spacer-drop and demote limits rules to Corpus
+- Add 4 rules for spacing-drop group
+- Add 4 rules for fraction-style group
+- Add 2 rules for limit-placement group
+- Add duplicate-mathrel-wrapper-drop rule
+- Add 2 rules for spacing-merge group
+- Add control-space-to-tilde rule
+- Add 4 rules for not-remap group
+- Add 4 rules for fixed-delimiter-size group
+- Add reusable delimiter rewrite helpers
+- Add 2 rules for accent-size group
+- Extend operatorname canonicalization
+- Add operatorname named-function rewrite
+
+### Fixed
+
+- Remove unsafe `displaylines-to-gather-env` rewrite rule
+- Remove `repeat-spacer-collapse`
+- Remove unsafe quick-quad rewrite rules
 
 ## [0.2.1] - 2026-07-16
 
