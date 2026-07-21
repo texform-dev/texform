@@ -3,12 +3,54 @@ use crate::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, Document, EditError,
     Error, FinalizeAstConfig, FinalizeAstReport, FlattenGroupsConfig, FlattenGroupsReport,
     FromSyntaxError, LowerAttributesConfig, LowerAttributesReport, ParseDiagnostic,
-    ParsedArgSpecSlot, TransformConfig, TransformReport,
+    ParsedArgSpecSlot, SerializationTokenKind, TokenizedLatex, TransformConfig, TransformReport,
 };
 use texform_transform::{
     Attr, AttrValue, AttributeFormCounts, MathFontValue, SizeValue, StyleValue, TextFamily,
     TextSeries, TextShape,
 };
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct TokenizedLatexDto {
+    pub latex: String,
+    pub tokens: Vec<SerializationTokenDto>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct SerializationTokenDto {
+    pub text: String,
+    pub start_byte: usize,
+    pub end_byte: usize,
+    pub kind: &'static str,
+    pub mode: &'static str,
+}
+
+pub fn tokenized_latex_to_dto(result: TokenizedLatex) -> TokenizedLatexDto {
+    TokenizedLatexDto {
+        latex: result.latex,
+        tokens: result
+            .tokens
+            .into_iter()
+            .map(|token| SerializationTokenDto {
+                text: token.text,
+                start_byte: token.span.start,
+                end_byte: token.span.end,
+                kind: match token.kind {
+                    SerializationTokenKind::ControlSequence => "control_sequence",
+                    SerializationTokenKind::Character => "character",
+                    SerializationTokenKind::Delimiter => "delimiter",
+                    SerializationTokenKind::Text => "text",
+                    SerializationTokenKind::Raw => "raw",
+                    SerializationTokenKind::Error => "error",
+                },
+                mode: match token.mode {
+                    crate::ContentMode::Math => "math",
+                    crate::ContentMode::Text => "text",
+                },
+            })
+            .collect(),
+    }
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(default, rename_all = "camelCase", deny_unknown_fields)]

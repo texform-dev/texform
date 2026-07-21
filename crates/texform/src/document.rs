@@ -19,7 +19,7 @@ pub use texform_core::document::{
 };
 pub use texform_core::serialize::SerializeOptions;
 
-pub use crate::serialize::SerializeError;
+pub use crate::serialize::{SerializeError, TokenizedLatex};
 
 /// Parse-time source span of one tree node, addressed by its tree path.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -482,6 +482,34 @@ impl Document {
     /// Returns [`SerializeError`] if a node cannot be serialized.
     pub fn to_latex_with(&self, options: &SerializeOptions) -> Result<String, SerializeError> {
         self.inner.to_latex_with(options)
+    }
+
+    /// Serialize to canonical LaTeX and record typed output tokens in the same pass.
+    ///
+    /// Every token has a closed semantic kind and a UTF-8 byte span into `latex`.
+    /// The token stream is not an error-node inventory: use [`Self::has_errors`]
+    /// because an empty error snippet deliberately produces no zero-width token.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SerializeError`] if a node cannot be serialized.
+    pub fn to_tokenized_latex(&self) -> Result<TokenizedLatex, SerializeError> {
+        self.inner.to_tokenized_latex()
+    }
+
+    /// Serialize with explicit options and record typed output tokens in the same pass.
+    ///
+    /// The returned `latex` is byte-for-byte identical to [`Self::to_latex_with`]
+    /// with the same options. Token spans are UTF-8 byte offsets.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SerializeError`] if a node cannot be serialized.
+    pub fn to_tokenized_latex_with(
+        &self,
+        options: &SerializeOptions,
+    ) -> Result<TokenizedLatex, SerializeError> {
+        self.inner.to_tokenized_latex_with(options)
     }
 }
 

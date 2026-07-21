@@ -24,6 +24,7 @@
 //! because TeX whitespace carries both lexical and semantic weight.
 
 use serde::{Deserialize, Serialize};
+use std::ops::Range;
 
 use crate::ast::{
     Argument, ArgumentKind, ArgumentSlot, ArgumentValue, Ast, ContentMode, Delimiter, GroupKind,
@@ -37,7 +38,19 @@ pub fn serialize(ast: &Ast) -> String {
 
 /// Serialize an AST to LaTeX with explicit style options.
 pub fn serialize_with(ast: &Ast, options: &SerializeOptions) -> String {
-    let mut serializer = Serializer::new(ast, options);
+    let mut serializer = Serializer::new(ast, options, NoopRecorder);
+    serializer.serialize_root();
+    serializer.finish()
+}
+
+/// Serialize an AST to canonical LaTeX and record its typed output tokens.
+pub fn serialize_tokenized(ast: &Ast) -> TokenizedLatex {
+    serialize_tokenized_with(ast, &SerializeOptions::default())
+}
+
+/// Serialize an AST to canonical LaTeX and typed output tokens with explicit options.
+pub fn serialize_tokenized_with(ast: &Ast, options: &SerializeOptions) -> TokenizedLatex {
+    let mut serializer = Serializer::new(ast, options, TokenRecorder::default());
     serializer.serialize_root();
     serializer.finish()
 }
@@ -63,6 +76,33 @@ impl std::fmt::Display for SerializeError {
 }
 
 impl std::error::Error for SerializeError {}
+
+/// Canonical LaTeX and the typed tokens recorded during the same serialization pass.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TokenizedLatex {
+    pub latex: String,
+    pub tokens: Vec<SerializationToken>,
+}
+
+/// A non-empty canonical serialization fragment and its UTF-8 byte span.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SerializationToken {
+    pub text: String,
+    pub span: Range<usize>,
+    pub kind: SerializationTokenKind,
+    pub mode: ContentMode,
+}
+
+/// Stable semantic categories for canonical serialization fragments.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SerializationTokenKind {
+    ControlSequence,
+    Character,
+    Delimiter,
+    Text,
+    Raw,
+    Error,
+}
 
 /// Top-level serialization options, grouped by scope.
 ///
@@ -244,6 +284,101 @@ enum AtomKind {
     RawFragment,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum BoundaryPolicy {
+    #[default]
+    Auto,
+    SuppressOptionalSpace,
+}
+
+#[derive(Clone, Copy)]
+struct EmissionModes {
+    spacing: ContentMode,
+    semantic: ContentMode,
+}
+
+impl EmissionModes {
+    fn same(mode: ContentMode) -> Self {
+        Self {
+            spacing: mode,
+            semantic: mode,
+        }
+    }
+
+    fn new(spacing: ContentMode, semantic: ContentMode) -> Self {
+        Self { spacing, semantic }
+    }
+}
+
+trait Recorder {
+    type Output;
+    const ENABLED: bool;
+
+    fn record(
+        &mut self,
+        output: &str,
+        span: Range<usize>,
+        kind: SerializationTokenKind,
+        mode: ContentMode,
+    );
+
+    fn finish(self, latex: String) -> Self::Output;
+}
+
+#[derive(Default)]
+struct NoopRecorder;
+
+impl Recorder for NoopRecorder {
+    type Output = String;
+    const ENABLED: bool = false;
+
+    #[inline]
+    fn record(
+        &mut self,
+        _output: &str,
+        _span: Range<usize>,
+        _kind: SerializationTokenKind,
+        _mode: ContentMode,
+    ) {
+    }
+
+    fn finish(self, latex: String) -> Self::Output {
+        latex
+    }
+}
+
+#[derive(Default)]
+struct TokenRecorder {
+    tokens: Vec<SerializationToken>,
+}
+
+impl Recorder for TokenRecorder {
+    type Output = TokenizedLatex;
+    const ENABLED: bool = true;
+
+    fn record(
+        &mut self,
+        output: &str,
+        span: Range<usize>,
+        kind: SerializationTokenKind,
+        mode: ContentMode,
+    ) {
+        self.tokens.push(SerializationToken {
+            text: output[span.clone()].to_string(),
+            span,
+            kind,
+            mode,
+        });
+    }
+
+    fn finish(self, latex: String) -> Self::Output {
+        TokenizedLatex {
+            latex,
+            tokens: self.tokens,
+        }
+    }
+}
+
 /// Accumulates output text and decides where to insert inter-atom spaces.
 ///
 /// Most boundary rules live in the atom writer's central decision function,
@@ -251,25 +386,126 @@ enum AtomKind {
 /// bypass it for preformatted cases such as empty padded groups. The writer
 /// tracks only the *previous* atom kind — no look-ahead — so the serializer
 /// must emit atoms in final output order.
-#[derive(Default)]
-struct AtomWriter {
+struct AtomWriter<R> {
     output: String,
     previous: Option<AtomKind>,
+    pending_suppressed_boundaries: usize,
+    recorder: R,
 }
 
-impl AtomWriter {
-    fn emit(&mut self, mode: ContentMode, kind: AtomKind, text: &str, options: &SerializeOptions) {
-        if self.should_insert_space(mode, kind, options) {
+impl<R: Recorder> AtomWriter<R> {
+    #[inline(always)]
+    fn new(recorder: R) -> Self {
+        Self {
+            output: String::new(),
+            previous: None,
+            pending_suppressed_boundaries: 0,
+            recorder,
+        }
+    }
+
+    #[inline(always)]
+    fn emit(
+        &mut self,
+        mode: ContentMode,
+        kind: AtomKind,
+        public_kind: SerializationTokenKind,
+        text: &str,
+        options: &SerializeOptions,
+    ) {
+        self.emit_with_boundary(mode, kind, public_kind, text, BoundaryPolicy::Auto, options);
+    }
+
+    #[inline(always)]
+    fn emit_with_boundary(
+        &mut self,
+        mode: ContentMode,
+        spacing_kind: AtomKind,
+        public_kind: SerializationTokenKind,
+        text: &str,
+        boundary: BoundaryPolicy,
+        options: &SerializeOptions,
+    ) {
+        self.emit_with_semantic_mode(
+            EmissionModes::same(mode),
+            spacing_kind,
+            public_kind,
+            text,
+            boundary,
+            options,
+        );
+    }
+
+    #[inline(always)]
+    fn emit_with_semantic_mode(
+        &mut self,
+        modes: EmissionModes,
+        spacing_kind: AtomKind,
+        public_kind: SerializationTokenKind,
+        text: &str,
+        boundary: BoundaryPolicy,
+        options: &SerializeOptions,
+    ) {
+        let boundary = if !text.is_empty() && self.pending_suppressed_boundaries > 0 {
+            self.pending_suppressed_boundaries = 0;
+            BoundaryPolicy::SuppressOptionalSpace
+        } else {
+            boundary
+        };
+        if self.should_insert_space(modes.spacing, spacing_kind, boundary, options) {
             self.output.push(' ');
         }
+        let start = self.output.len();
         self.output.push_str(text);
+        let end = self.output.len();
+        if R::ENABLED && start != end {
+            self.recorder
+                .record(&self.output, start..end, public_kind, modes.semantic);
+        }
+        self.previous = Some(spacing_kind);
+    }
+
+    #[inline(always)]
+    fn emit_attached(
+        &mut self,
+        mode: ContentMode,
+        kind: AtomKind,
+        public_kind: SerializationTokenKind,
+        text: &str,
+    ) {
+        let start = self.output.len();
+        self.output.push_str(text);
+        let end = self.output.len();
+        if R::ENABLED && start != end {
+            self.recorder
+                .record(&self.output, start..end, public_kind, mode);
+        }
         self.previous = Some(kind);
     }
 
     /// Append `*` directly — star must glue to the preceding control sequence
     /// without any boundary space (`\operatorname*`, not `\operatorname *`).
-    fn emit_star_suffix(&mut self) {
-        self.output.push('*');
+    fn emit_star_suffix(&mut self, mode: ContentMode) {
+        let previous = self.previous;
+        self.emit_attached(
+            mode,
+            AtomKind::MathChar,
+            SerializationTokenKind::Character,
+            "*",
+        );
+        self.previous = previous;
+    }
+
+    fn begin_suppressed_boundary(&mut self) -> usize {
+        let previous_depth = self.pending_suppressed_boundaries;
+        self.pending_suppressed_boundaries += 1;
+        previous_depth
+    }
+
+    fn end_suppressed_boundary(&mut self, previous_depth: usize) {
+        if self.pending_suppressed_boundaries > previous_depth {
+            self.pending_suppressed_boundaries = previous_depth;
+        }
     }
 
     /// Central boundary-decision function.
@@ -277,10 +513,12 @@ impl AtomWriter {
     /// Returns `true` when a space should be inserted between the previous atom
     /// and the upcoming `next` atom. Rules are checked top-down; the first
     /// matching branch wins.
+    #[inline(always)]
     fn should_insert_space(
         &self,
         mode: ContentMode,
         next: AtomKind,
+        boundary: BoundaryPolicy,
         options: &SerializeOptions,
     ) -> bool {
         let Some(prev) = self.previous else {
@@ -299,8 +537,11 @@ impl AtomWriter {
             return true;
         }
 
-        // Text mode never injects extra spaces. Some callers also reuse
-        // `ContentMode::Text` as a synthetic "compact boundary" mode.
+        if matches!(boundary, BoundaryPolicy::SuppressOptionalSpace) {
+            return false;
+        }
+
+        // Text mode never injects extra spaces.
         if matches!(mode, ContentMode::Text) {
             return false;
         }
@@ -360,8 +601,8 @@ impl AtomWriter {
         true
     }
 
-    fn finish(self) -> String {
-        self.output
+    fn finish(self) -> R::Output {
+        self.recorder.finish(self.output)
     }
 }
 
@@ -370,18 +611,18 @@ impl AtomWriter {
 /// Mode is tracked through the recursion stack — each `visit` call receives
 /// the content mode of its parent context, so no separate mutable mode stack
 /// is needed.
-struct Serializer<'a> {
+struct Serializer<'a, R> {
     ast: &'a Ast,
     options: &'a SerializeOptions,
-    writer: AtomWriter,
+    writer: AtomWriter<R>,
 }
 
-impl<'a> Serializer<'a> {
-    fn new(ast: &'a Ast, options: &'a SerializeOptions) -> Self {
+impl<'a, R: Recorder> Serializer<'a, R> {
+    fn new(ast: &'a Ast, options: &'a SerializeOptions, recorder: R) -> Self {
         Self {
             ast,
             options,
-            writer: AtomWriter::default(),
+            writer: AtomWriter::new(recorder),
         }
     }
 
@@ -427,16 +668,27 @@ impl<'a> Serializer<'a> {
             Node::Command { name, args, .. } => self.visit_command(&name, &args, mode),
             Node::Prime { count } => self.visit_prime(count, mode),
             Node::Char(ch) => self.visit_char(ch, mode),
-            Node::Text(text) => self
-                .writer
-                .emit(mode, AtomKind::TextChunk, &text, self.options),
-            Node::ActiveSpace => self
-                .writer
-                .emit(mode, AtomKind::ActiveChar, "~", self.options),
-            Node::Error { snippet, .. } => {
-                self.writer
-                    .emit(mode, AtomKind::RawFragment, &snippet, self.options)
-            }
+            Node::Text(text) => self.writer.emit(
+                mode,
+                AtomKind::TextChunk,
+                SerializationTokenKind::Text,
+                &text,
+                self.options,
+            ),
+            Node::ActiveSpace => self.writer.emit(
+                mode,
+                AtomKind::ActiveChar,
+                SerializationTokenKind::Character,
+                "~",
+                self.options,
+            ),
+            Node::Error { snippet, .. } => self.writer.emit(
+                mode,
+                AtomKind::RawFragment,
+                SerializationTokenKind::Error,
+                &snippet,
+                self.options,
+            ),
         }
     }
 
@@ -462,6 +714,7 @@ impl<'a> Serializer<'a> {
                 self.writer.emit(
                     ContentMode::Math,
                     AtomKind::ControlSequence,
+                    SerializationTokenKind::ControlSequence,
                     r"\left",
                     self.options,
                 );
@@ -472,6 +725,7 @@ impl<'a> Serializer<'a> {
                 self.writer.emit(
                     ContentMode::Math,
                     AtomKind::ControlSequence,
+                    SerializationTokenKind::ControlSequence,
                     r"\right",
                     self.options,
                 );
@@ -485,6 +739,7 @@ impl<'a> Serializer<'a> {
         self.writer.emit(
             mode,
             AtomKind::ControlSequence,
+            SerializationTokenKind::ControlSequence,
             &format!(r"\{}", name),
             self.options,
         );
@@ -503,6 +758,7 @@ impl<'a> Serializer<'a> {
         self.writer.emit(
             ContentMode::Math,
             AtomKind::ControlSequence,
+            SerializationTokenKind::ControlSequence,
             &format!(r"\{}", name),
             self.options,
         );
@@ -517,6 +773,7 @@ impl<'a> Serializer<'a> {
         self.writer.emit(
             mode,
             AtomKind::ControlSequence,
+            SerializationTokenKind::ControlSequence,
             &format!(r"\{}", name),
             self.options,
         );
@@ -562,8 +819,13 @@ impl<'a> Serializer<'a> {
     /// piggybacking on the generic command-to-brace rule, so it stays
     /// independent from `CommandSpacing`.
     fn emit_environment_head(&mut self, outer_mode: ContentMode, head: &str, name: &str) {
-        self.writer
-            .emit(outer_mode, AtomKind::ControlSequence, head, self.options);
+        self.writer.emit(
+            outer_mode,
+            AtomKind::ControlSequence,
+            SerializationTokenKind::ControlSequence,
+            head,
+            self.options,
+        );
 
         if matches!(
             self.options.syntax.environments.name_spacing,
@@ -572,10 +834,30 @@ impl<'a> Serializer<'a> {
             self.writer.output.push(' ');
         }
 
-        self.writer.output.push('{');
-        self.writer.output.push_str(name);
-        self.writer.output.push('}');
-        self.writer.previous = Some(AtomKind::Brace);
+        self.writer.emit_with_boundary(
+            outer_mode,
+            AtomKind::Brace,
+            SerializationTokenKind::Delimiter,
+            "{",
+            BoundaryPolicy::SuppressOptionalSpace,
+            self.options,
+        );
+        self.writer.emit_with_boundary(
+            outer_mode,
+            AtomKind::RawFragment,
+            SerializationTokenKind::Raw,
+            name,
+            BoundaryPolicy::SuppressOptionalSpace,
+            self.options,
+        );
+        self.writer.emit_with_boundary(
+            outer_mode,
+            AtomKind::Brace,
+            SerializationTokenKind::Delimiter,
+            "}",
+            BoundaryPolicy::SuppressOptionalSpace,
+            self.options,
+        );
     }
 
     /// Dispatch a single argument slot to the appropriate emitter.
@@ -587,60 +869,108 @@ impl<'a> Serializer<'a> {
         let Some(arg) = slot else {
             return;
         };
-        let wrapper_mode = if arg.no_leading_space {
-            ContentMode::Text
+        let opening_boundary = if arg.no_leading_space {
+            BoundaryPolicy::SuppressOptionalSpace
         } else {
-            mode
+            BoundaryPolicy::Auto
         };
 
         match (&arg.kind, &arg.value) {
-            (ArgumentKind::Star, ArgumentValue::Boolean(true)) => self.writer.emit_star_suffix(),
+            (ArgumentKind::Star, ArgumentValue::Boolean(true)) => {
+                self.writer.emit_star_suffix(mode)
+            }
             (ArgumentKind::Star, ArgumentValue::Boolean(false)) => {}
             (ArgumentKind::Star, _) => {
                 unreachable!("star slots must carry boolean values")
             }
             (ArgumentKind::Mandatory | ArgumentKind::Group, ArgumentValue::MathContent(child)) => {
-                self.emit_argument_content(*child, ContentMode::Math, "{", "}", wrapper_mode);
+                self.emit_argument_content(
+                    *child,
+                    ContentMode::Math,
+                    "{",
+                    "}",
+                    mode,
+                    opening_boundary,
+                );
             }
             (ArgumentKind::Mandatory | ArgumentKind::Group, ArgumentValue::TextContent(child)) => {
-                self.emit_argument_content(*child, ContentMode::Text, "{", "}", wrapper_mode);
+                self.emit_argument_content(
+                    *child,
+                    ContentMode::Text,
+                    "{",
+                    "}",
+                    mode,
+                    opening_boundary,
+                );
             }
             (
                 ArgumentKind::Mandatory | ArgumentKind::Group,
                 ArgumentValue::OperatorNameContent(child),
             ) => {
-                self.emit_operator_name_argument_content(*child, "{", "}", wrapper_mode);
+                self.emit_operator_name_argument_content(*child, "{", "}", mode, opening_boundary);
             }
             (ArgumentKind::Optional, ArgumentValue::MathContent(child)) => {
-                self.emit_argument_content(*child, ContentMode::Math, "[", "]", wrapper_mode);
+                self.emit_argument_content(
+                    *child,
+                    ContentMode::Math,
+                    "[",
+                    "]",
+                    mode,
+                    opening_boundary,
+                );
             }
             (ArgumentKind::Optional, ArgumentValue::TextContent(child)) => {
-                self.emit_argument_content(*child, ContentMode::Text, "[", "]", wrapper_mode);
+                self.emit_argument_content(
+                    *child,
+                    ContentMode::Text,
+                    "[",
+                    "]",
+                    mode,
+                    opening_boundary,
+                );
             }
             (ArgumentKind::Optional, ArgumentValue::OperatorNameContent(child)) => {
-                self.emit_operator_name_argument_content(*child, "[", "]", wrapper_mode);
+                self.emit_operator_name_argument_content(*child, "[", "]", mode, opening_boundary);
             }
             (ArgumentKind::Mandatory | ArgumentKind::Group, value) => {
-                self.emit_scalar_wrapped(value, "{", "}", wrapper_mode)
+                self.emit_scalar_wrapped(value, "{", "}", mode, opening_boundary)
             }
             (ArgumentKind::Optional, value) => {
-                self.emit_scalar_wrapped(value, "[", "]", wrapper_mode)
+                self.emit_scalar_wrapped(value, "[", "]", mode, opening_boundary)
             }
             (ArgumentKind::Delimited { open, close }, ArgumentValue::MathContent(node))
-            | (ArgumentKind::Paired { open, close }, ArgumentValue::MathContent(node)) => {
-                self.emit_recorded_delimiters(open, close, *node, ContentMode::Math)
-            }
+            | (ArgumentKind::Paired { open, close }, ArgumentValue::MathContent(node)) => self
+                .emit_recorded_delimiters(
+                    open,
+                    close,
+                    *node,
+                    ContentMode::Math,
+                    mode,
+                    opening_boundary,
+                ),
             (ArgumentKind::Delimited { open, close }, ArgumentValue::TextContent(node))
-            | (ArgumentKind::Paired { open, close }, ArgumentValue::TextContent(node)) => {
-                self.emit_recorded_delimiters(open, close, *node, ContentMode::Text)
-            }
+            | (ArgumentKind::Paired { open, close }, ArgumentValue::TextContent(node)) => self
+                .emit_recorded_delimiters(
+                    open,
+                    close,
+                    *node,
+                    ContentMode::Text,
+                    mode,
+                    opening_boundary,
+                ),
             (ArgumentKind::Delimited { open, close }, ArgumentValue::OperatorNameContent(node))
             | (ArgumentKind::Paired { open, close }, ArgumentValue::OperatorNameContent(node)) => {
-                self.emit_operator_name_between_delimiters(open, close, *node, wrapper_mode)
+                self.emit_operator_name_between_delimiters(
+                    open,
+                    close,
+                    *node,
+                    mode,
+                    opening_boundary,
+                )
             }
             (ArgumentKind::Delimited { open, close }, value)
             | (ArgumentKind::Paired { open, close }, value) => {
-                self.emit_scalar_between_delimiters(open, close, value, wrapper_mode)
+                self.emit_scalar_between_delimiters(open, close, value, mode, opening_boundary)
             }
         }
     }
@@ -657,8 +987,16 @@ impl<'a> Serializer<'a> {
         open: &str,
         close: &str,
         wrapper_mode: ContentMode,
+        opening_boundary: BoundaryPolicy,
     ) {
-        self.emit_wrapped_content(child, wrapper_mode, content_mode, open, close);
+        self.emit_wrapped_content(
+            child,
+            wrapper_mode,
+            content_mode,
+            open,
+            close,
+            opening_boundary,
+        );
     }
 
     fn emit_operator_name_argument_content(
@@ -667,12 +1005,25 @@ impl<'a> Serializer<'a> {
         open: &str,
         close: &str,
         wrapper_mode: ContentMode,
+        opening_boundary: BoundaryPolicy,
     ) {
-        self.writer
-            .emit(wrapper_mode, AtomKind::Brace, open, self.options);
+        self.writer.emit_with_boundary(
+            wrapper_mode,
+            AtomKind::Brace,
+            SerializationTokenKind::Delimiter,
+            open,
+            opening_boundary,
+            self.options,
+        );
         self.visit_operator_name_content_node(child);
-        self.writer
-            .emit(ContentMode::Text, AtomKind::Brace, close, self.options);
+        self.writer.emit_with_boundary(
+            wrapper_mode,
+            AtomKind::Brace,
+            SerializationTokenKind::Delimiter,
+            close,
+            BoundaryPolicy::SuppressOptionalSpace,
+            self.options,
+        );
     }
 
     fn visit_scripted(
@@ -704,33 +1055,48 @@ impl<'a> Serializer<'a> {
     }
 
     fn visit_inline_math(&mut self, children: &[NodeId]) {
-        self.writer
-            .emit(ContentMode::Text, AtomKind::Dollar, "$", self.options);
+        self.writer.emit(
+            ContentMode::Text,
+            AtomKind::Dollar,
+            SerializationTokenKind::Delimiter,
+            "$",
+            self.options,
+        );
         for &child in children {
             self.visit(child, ContentMode::Math);
         }
-        self.writer
-            .emit(ContentMode::Text, AtomKind::Dollar, "$", self.options);
+        self.writer.emit(
+            ContentMode::Text,
+            AtomKind::Dollar,
+            SerializationTokenKind::Delimiter,
+            "$",
+            self.options,
+        );
     }
 
     /// Emit a single `_` or `^` followed by its braced argument.
     ///
-    /// Script spacing is controlled by emitting the marker in a synthetic
-    /// mode: `Math` triggers boundary insertion while `Text` suppresses it,
-    /// reusing the existing boundary logic without a dedicated
-    /// script-mark branch in every caller.
     fn emit_script(&mut self, marker: char, node: NodeId) {
-        let mode = match self.options.math.scripts.spacing {
-            ScriptSpacing::Spaced => ContentMode::Math,
-            ScriptSpacing::Compact => ContentMode::Text,
+        let boundary = match self.options.math.scripts.spacing {
+            ScriptSpacing::Spaced => BoundaryPolicy::Auto,
+            ScriptSpacing::Compact => BoundaryPolicy::SuppressOptionalSpace,
         };
-        self.writer.emit(
-            mode,
+        self.writer.emit_with_boundary(
+            ContentMode::Math,
             AtomKind::ScriptMark,
+            SerializationTokenKind::Character,
             &marker.to_string(),
+            boundary,
             self.options,
         );
-        self.emit_wrapped_content(node, ContentMode::Math, ContentMode::Math, "{", "}");
+        self.emit_wrapped_content(
+            node,
+            ContentMode::Math,
+            ContentMode::Math,
+            "{",
+            "}",
+            BoundaryPolicy::Auto,
+        );
     }
 
     fn emit_superscript(&mut self, node: NodeId) {
@@ -765,24 +1131,48 @@ impl<'a> Serializer<'a> {
             return;
         }
 
-        self.writer.emit(mode, kind, open, self.options);
+        self.writer.emit(
+            mode,
+            kind,
+            SerializationTokenKind::Delimiter,
+            open,
+            self.options,
+        );
         for &child in children {
             self.visit(child, mode);
         }
-        self.writer.emit(mode, kind, close, self.options);
+        self.writer.emit(
+            mode,
+            kind,
+            SerializationTokenKind::Delimiter,
+            close,
+            self.options,
+        );
     }
 
     fn emit_compact_math_brace_group(&mut self, children: &[NodeId]) {
-        self.writer
-            .emit(ContentMode::Math, AtomKind::Brace, "{", self.options);
+        self.writer.emit(
+            ContentMode::Math,
+            AtomKind::Brace,
+            SerializationTokenKind::Delimiter,
+            "{",
+            self.options,
+        );
 
-        self.writer.previous = None;
+        let pending = self.writer.begin_suppressed_boundary();
         for &child in children {
             self.visit(child, ContentMode::Math);
         }
+        self.writer.end_suppressed_boundary(pending);
 
-        self.writer
-            .emit(ContentMode::Text, AtomKind::Brace, "}", self.options);
+        self.writer.emit_with_boundary(
+            ContentMode::Math,
+            AtomKind::Brace,
+            SerializationTokenKind::Delimiter,
+            "}",
+            BoundaryPolicy::SuppressOptionalSpace,
+            self.options,
+        );
     }
 
     /// Emit `{ }` as a single pre-formatted unit.
@@ -796,13 +1186,22 @@ impl<'a> Serializer<'a> {
         open: &str,
         close: &str,
     ) {
-        if self.writer.should_insert_space(mode, kind, self.options) {
-            self.writer.output.push(' ');
-        }
-        self.writer.output.push_str(open);
+        self.writer.emit(
+            mode,
+            kind,
+            SerializationTokenKind::Delimiter,
+            open,
+            self.options,
+        );
         self.writer.output.push(' ');
-        self.writer.output.push_str(close);
-        self.writer.previous = Some(kind);
+        self.writer.emit_with_boundary(
+            mode,
+            kind,
+            SerializationTokenKind::Delimiter,
+            close,
+            BoundaryPolicy::SuppressOptionalSpace,
+            self.options,
+        );
     }
 
     /// Emit a child node inside wrapper-owned delimiters (e.g. `{ ... }`).
@@ -817,9 +1216,16 @@ impl<'a> Serializer<'a> {
         content_mode: ContentMode,
         open: &str,
         close: &str,
+        opening_boundary: BoundaryPolicy,
     ) {
-        self.writer
-            .emit(wrapper_mode, AtomKind::Brace, open, self.options);
+        self.writer.emit_with_boundary(
+            wrapper_mode,
+            AtomKind::Brace,
+            SerializationTokenKind::Delimiter,
+            open,
+            opening_boundary,
+            self.options,
+        );
 
         let compact_math_inner = matches!(content_mode, ContentMode::Math)
             && matches!(
@@ -827,9 +1233,7 @@ impl<'a> Serializer<'a> {
                 MathGroupInnerSpacing::Compact
             );
 
-        if compact_math_inner {
-            self.writer.previous = None;
-        }
+        let pending = compact_math_inner.then(|| self.writer.begin_suppressed_boundary());
 
         match self.ast.node(child) {
             Node::Group {
@@ -845,8 +1249,14 @@ impl<'a> Serializer<'a> {
                     )
                 {
                     self.writer.output.push(' ');
-                    self.writer.output.push_str(close);
-                    self.writer.previous = Some(AtomKind::Brace);
+                    self.writer.emit_with_boundary(
+                        wrapper_mode,
+                        AtomKind::Brace,
+                        SerializationTokenKind::Delimiter,
+                        close,
+                        BoundaryPolicy::SuppressOptionalSpace,
+                        self.options,
+                    );
                     return;
                 }
                 for &grandchild in children {
@@ -856,13 +1266,26 @@ impl<'a> Serializer<'a> {
             _ => self.visit(child, content_mode),
         }
 
+        if let Some(pending) = pending {
+            self.writer.end_suppressed_boundary(pending);
+        }
         let close_mode = if compact_math_inner {
-            ContentMode::Text
+            wrapper_mode
         } else {
             content_mode
         };
-        self.writer
-            .emit(close_mode, AtomKind::Brace, close, self.options);
+        self.writer.emit_with_semantic_mode(
+            EmissionModes::new(close_mode, wrapper_mode),
+            AtomKind::Brace,
+            SerializationTokenKind::Delimiter,
+            close,
+            if compact_math_inner {
+                BoundaryPolicy::SuppressOptionalSpace
+            } else {
+                BoundaryPolicy::Auto
+            },
+            self.options,
+        );
     }
 
     fn emit_infix_operand(&mut self, node: NodeId) {
@@ -871,12 +1294,24 @@ impl<'a> Serializer<'a> {
         }
 
         match self.options.math.infix.grouping {
-            InfixGrouping::AlwaysExplicit => {
-                self.emit_wrapped_content(node, ContentMode::Math, ContentMode::Math, "{", "}")
-            }
+            InfixGrouping::AlwaysExplicit => self.emit_wrapped_content(
+                node,
+                ContentMode::Math,
+                ContentMode::Math,
+                "{",
+                "}",
+                BoundaryPolicy::Auto,
+            ),
             InfixGrouping::WhenRequired => {
                 if self.infix_operand_requires_braces(node) {
-                    self.emit_wrapped_content(node, ContentMode::Math, ContentMode::Math, "{", "}");
+                    self.emit_wrapped_content(
+                        node,
+                        ContentMode::Math,
+                        ContentMode::Math,
+                        "{",
+                        "}",
+                        BoundaryPolicy::Auto,
+                    );
                 } else {
                     self.emit_unwrapped_infix_operand(node);
                 }
@@ -939,19 +1374,33 @@ impl<'a> Serializer<'a> {
         open: &str,
         close: &str,
         mode: ContentMode,
+        opening_boundary: BoundaryPolicy,
     ) {
-        if self
-            .writer
-            .should_insert_space(mode, AtomKind::Brace, self.options)
-        {
-            self.writer.output.push(' ');
-        }
-        self.writer.output.push_str(open);
-        self.writer
-            .output
-            .push_str(&self.scalar_argument_text(value));
-        self.writer.output.push_str(close);
-        self.writer.previous = Some(AtomKind::Brace);
+        self.writer.emit_with_boundary(
+            mode,
+            AtomKind::Brace,
+            SerializationTokenKind::Delimiter,
+            open,
+            opening_boundary,
+            self.options,
+        );
+        let text = self.scalar_argument_text(value);
+        self.writer.emit_with_boundary(
+            mode,
+            AtomKind::RawFragment,
+            SerializationTokenKind::Raw,
+            &text,
+            BoundaryPolicy::SuppressOptionalSpace,
+            self.options,
+        );
+        self.writer.emit_with_boundary(
+            mode,
+            AtomKind::Brace,
+            SerializationTokenKind::Delimiter,
+            close,
+            BoundaryPolicy::SuppressOptionalSpace,
+            self.options,
+        );
     }
 
     fn emit_recorded_delimiters(
@@ -959,11 +1408,13 @@ impl<'a> Serializer<'a> {
         open: &Delimiter,
         close: &Delimiter,
         node: NodeId,
-        mode: ContentMode,
+        content_mode: ContentMode,
+        wrapper_mode: ContentMode,
+        opening_boundary: BoundaryPolicy,
     ) {
-        self.emit_delimiter(open, mode);
-        self.visit_argument_content_node(node, mode);
-        self.emit_delimiter(close, mode);
+        self.emit_delimiter_with_boundary(open, content_mode, wrapper_mode, opening_boundary);
+        self.visit_argument_content_node(node, content_mode);
+        self.emit_delimiter_with_boundary(close, content_mode, wrapper_mode, BoundaryPolicy::Auto);
     }
 
     fn emit_operator_name_between_delimiters(
@@ -972,10 +1423,11 @@ impl<'a> Serializer<'a> {
         close: &Delimiter,
         node: NodeId,
         mode: ContentMode,
+        opening_boundary: BoundaryPolicy,
     ) {
-        self.emit_delimiter(open, mode);
+        self.emit_delimiter_with_boundary(open, mode, mode, opening_boundary);
         self.visit_operator_name_content_node(node);
-        self.emit_delimiter(close, ContentMode::Text);
+        self.emit_delimiter_with_boundary(close, mode, mode, BoundaryPolicy::SuppressOptionalSpace);
     }
 
     fn visit_operator_name_content_node(&mut self, node: NodeId) {
@@ -999,11 +1451,17 @@ impl<'a> Serializer<'a> {
         close: &Delimiter,
         value: &ArgumentValue,
         mode: ContentMode,
+        opening_boundary: BoundaryPolicy,
     ) {
-        self.emit_delimiter(open, mode);
+        self.emit_delimiter_with_boundary(open, mode, mode, opening_boundary);
         let text = self.scalar_argument_text(value);
-        self.writer
-            .emit(mode, AtomKind::RawFragment, &text, self.options);
+        self.writer.emit(
+            mode,
+            AtomKind::RawFragment,
+            SerializationTokenKind::Raw,
+            &text,
+            self.options,
+        );
         self.emit_delimiter(close, mode);
     }
 
@@ -1035,20 +1493,39 @@ impl<'a> Serializer<'a> {
     }
 
     fn emit_delimiter(&mut self, delimiter: &Delimiter, mode: ContentMode) {
+        self.emit_delimiter_with_boundary(delimiter, mode, mode, BoundaryPolicy::Auto);
+    }
+
+    fn emit_delimiter_with_boundary(
+        &mut self,
+        delimiter: &Delimiter,
+        spacing_mode: ContentMode,
+        semantic_mode: ContentMode,
+        boundary: BoundaryPolicy,
+    ) {
         match delimiter {
-            Delimiter::None => self
-                .writer
-                .emit(mode, AtomKind::DelimiterToken, ".", self.options),
-            Delimiter::Char(ch) => self.writer.emit(
-                mode,
+            Delimiter::None => self.writer.emit_with_semantic_mode(
+                EmissionModes::new(spacing_mode, semantic_mode),
                 AtomKind::DelimiterToken,
-                &ch.to_string(),
+                SerializationTokenKind::Delimiter,
+                ".",
+                boundary,
                 self.options,
             ),
-            Delimiter::Control(name) => self.writer.emit(
-                mode,
+            Delimiter::Char(ch) => self.writer.emit_with_semantic_mode(
+                EmissionModes::new(spacing_mode, semantic_mode),
                 AtomKind::DelimiterToken,
+                SerializationTokenKind::Delimiter,
+                &ch.to_string(),
+                boundary,
+                self.options,
+            ),
+            Delimiter::Control(name) => self.writer.emit_with_semantic_mode(
+                EmissionModes::new(spacing_mode, semantic_mode),
+                AtomKind::DelimiterToken,
+                SerializationTokenKind::Delimiter,
                 &format!(r"\{}", name),
+                boundary,
                 self.options,
             ),
         }
@@ -1082,25 +1559,45 @@ impl<'a> Serializer<'a> {
             AtomKind::MathChar
         };
         let text = serialized_char(ch, mode);
-        self.writer.emit(mode, kind, &text, self.options);
+        self.writer.emit(
+            mode,
+            kind,
+            SerializationTokenKind::Character,
+            &text,
+            self.options,
+        );
     }
 
     fn visit_prime(&mut self, count: usize, mode: ContentMode) {
         if matches!(mode, ContentMode::Math) {
-            self.writer
-                .emit(mode, AtomKind::Prime, &"'".repeat(count), self.options);
+            self.writer.emit(
+                mode,
+                AtomKind::Prime,
+                SerializationTokenKind::Character,
+                &"'".repeat(count),
+                self.options,
+            );
         } else {
-            self.writer
-                .emit(mode, AtomKind::TextChunk, &"'".repeat(count), self.options);
+            self.writer.emit(
+                mode,
+                AtomKind::TextChunk,
+                SerializationTokenKind::Character,
+                &"'".repeat(count),
+                self.options,
+            );
         }
     }
 
     fn emit_prime_marks(&mut self, count: usize) {
-        self.writer.output.push_str(&"'".repeat(count));
-        self.writer.previous = Some(AtomKind::Prime);
+        self.writer.emit_attached(
+            ContentMode::Math,
+            AtomKind::Prime,
+            SerializationTokenKind::Character,
+            &"'".repeat(count),
+        );
     }
 
-    fn finish(self) -> String {
+    fn finish(self) -> R::Output {
         self.writer.finish()
     }
 }
@@ -1139,26 +1636,63 @@ mod tests {
     #[test]
     fn test_atom_writer_glues_star_to_control_sequence() {
         let options = SerializeOptions::default();
-        let mut writer = AtomWriter::default();
+        let mut writer = AtomWriter::new(NoopRecorder);
 
         writer.emit(
             ContentMode::Math,
             AtomKind::ControlSequence,
+            SerializationTokenKind::ControlSequence,
             r"\operatorname",
             &options,
         );
-        writer.emit_star_suffix();
+        writer.emit_star_suffix(ContentMode::Math);
 
         assert_eq!(writer.finish(), r"\operatorname*");
     }
 
     #[test]
+    fn lexical_separator_overrides_suppressed_optional_space() {
+        let options = SerializeOptions::default();
+        let mut writer = AtomWriter::new(NoopRecorder);
+
+        writer.emit(
+            ContentMode::Math,
+            AtomKind::ControlSequence,
+            SerializationTokenKind::ControlSequence,
+            r"\alpha",
+            &options,
+        );
+        writer.emit_with_boundary(
+            ContentMode::Math,
+            AtomKind::MathChar,
+            SerializationTokenKind::Character,
+            "x",
+            BoundaryPolicy::SuppressOptionalSpace,
+            &options,
+        );
+
+        assert_eq!(writer.finish(), r"\alpha x");
+    }
+
+    #[test]
     fn test_atom_writer_keeps_text_chunk_compact() {
         let options = SerializeOptions::default();
-        let mut writer = AtomWriter::default();
+        let mut writer = AtomWriter::new(NoopRecorder);
 
-        writer.emit(ContentMode::Text, AtomKind::TextChunk, "abc", &options);
-        writer.emit(ContentMode::Text, AtomKind::TextChunk, " def", &options);
+        writer.emit(
+            ContentMode::Text,
+            AtomKind::TextChunk,
+            SerializationTokenKind::Text,
+            "abc",
+            &options,
+        );
+        writer.emit(
+            ContentMode::Text,
+            AtomKind::TextChunk,
+            SerializationTokenKind::Text,
+            " def",
+            &options,
+        );
 
         assert_eq!(writer.finish(), "abc def");
     }

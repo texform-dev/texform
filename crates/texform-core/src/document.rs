@@ -26,7 +26,10 @@ use crate::ast::{
 };
 use crate::parse::grammar::SpanTree;
 use crate::parse::{ParseContextId, Span};
-use crate::serialize::{SerializeError, SerializeOptions, serialize, serialize_with};
+use crate::serialize::{
+    SerializeError, SerializeOptions, TokenizedLatex, serialize, serialize_tokenized,
+    serialize_tokenized_with, serialize_with,
+};
 
 /// Process-wide unique identity for a [`Document`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -408,6 +411,25 @@ impl Document {
     /// Serialize to LaTeX with explicit style options.
     pub fn to_latex_with(&self, options: &SerializeOptions) -> Result<String, SerializeError> {
         Ok(serialize_with(&self.ast, options))
+    }
+
+    /// Serialize to canonical LaTeX and record typed tokens from the same traversal.
+    ///
+    /// Token spans are UTF-8 byte offsets into the returned LaTeX. An empty error
+    /// snippet does not produce a token; use [`Self::has_errors`] to detect error nodes.
+    pub fn to_tokenized_latex(&self) -> Result<TokenizedLatex, SerializeError> {
+        Ok(serialize_tokenized(&self.ast))
+    }
+
+    /// Serialize with explicit options and record typed tokens from the same traversal.
+    ///
+    /// Token spans are UTF-8 byte offsets into the returned LaTeX. An empty error
+    /// snippet does not produce a token; use [`Self::has_errors`] to detect error nodes.
+    pub fn to_tokenized_latex_with(
+        &self,
+        options: &SerializeOptions,
+    ) -> Result<TokenizedLatex, SerializeError> {
+        Ok(serialize_tokenized_with(&self.ast, options))
     }
 
     /// Create a detached character node.

@@ -82,6 +82,7 @@ SyntaxNode                  immutable, lossless parse snapshot (may contain Erro
 Document                    public, editable DOM; wraps an internal Ast arena
   │
   ├─ to_latex()             serialize back to LaTeX text (Error nodes round-trip their snippet)
+  ├─ to_tokenized_latex()   serialize once to canonical text plus typed output tokens
   ├─ TransformEngine::transform()    normalize via the transform engine (gated on a complete tree)
   └─ to_syntax()            convert back to a SyntaxNode for serde / transport
 ```
@@ -149,11 +150,16 @@ All user-facing editing goes through `Document` and is fallible by design:
 `Document` has two distinct output channels, named to avoid the ambiguity of a generic "serialize":
 
 - **`to_latex()` / `to_latex_with(&SerializeOptions)`** render the tree back to LaTeX *text* using the canonical serializer. There is intentionally no method named `serialize` on `Document`.
+- **`to_tokenized_latex()` / `to_tokenized_latex_with(&SerializeOptions)`** run the same canonical serializer traversal with an opt-in recorder, returning the identical LaTeX plus typed output fragments.
 - **`to_syntax()`** converts the tree to a `SyntaxNode`, which is the single serde DTO. `Document` and `Ast` do not implement serde directly; structured-data output always goes through `SyntaxNode`.
 
 The serializer covers the full node vocabulary, including emitting an `Error` node's snippet and writing `Prime` nodes back as quote shorthand. A pure prime superscript serializes compactly as `f'` or `f''`; mixed superscripts such as `f'^2` remain ordinary script groups. It is a canonical printer over the AST, not a semantic recovery layer: node-specific emitters and `SerializeOptions` may choose a textual form, but they must not reconstruct missing semantics from a concrete command name or source spelling. Information needed for correct output belongs in the AST first; examples include content mode, operator-name content, and tight argument boundaries. Wrappers that carry no distinct semantics must not make the emitted source acquire a different meaning.
 
 The serializer guarantees **text idempotency** — `serialize(parse(serialize(parse(src)))) == serialize(parse(src))`: parsing the canonical output and re-serializing always produces the same string. This is a text-level guarantee; `parse(serialize(ast))` is not required to recover the exact same AST kind. Output style is configurable through `SerializeOptions` (see the [`texform` API docs](https://docs.rs/texform) for the option axes).
+
+Serializer emissions keep semantic `ContentMode` separate from the private `BoundaryPolicy` that suppresses optional formatting space. Lexical separators required after control words take priority over that policy. Text-only serialization uses a zero-sized no-op recorder; tokenized serialization statically selects a token recorder, so both paths share one AST traversal and one boundary decision while ordinary `to_latex*` calls allocate no token vector and copy no token text.
+
+`TokenizedLatex` contains the canonical string and ordered non-empty tokens classified as `ControlSequence`, `Character`, `Delimiter`, `Text`, `Raw`, or `Error`. Each token carries its true math/text mode, its text, and a non-overlapping UTF-8 byte span into the returned string. Uncovered gaps contain only serializer-inserted separator whitespace; semantic whitespace inside `Text` or `Raw` remains in that token. Wrapper delimiters remain separate from scalar `Raw` content, escaped characters remain one `Character`, and an empty error snippet produces no token even though `Document::has_errors()` remains true. These boundaries are versioned facade behavior, not a raw-string lexer, AST node dump, rendered glyph stream, model-token vocabulary, or CDM-specific API.
 
 ## Transform Engine
 
@@ -179,6 +185,7 @@ The Python and WebAssembly bindings expose live `Document` and `Node` handles ra
 - The core `Document` stays a plain owned Rust value with no interior mutability. Sharing is provided only at the binding layer, using each runtime's native mechanism: PyO3's reference-counted pyclass cell on Python, and `Rc<RefCell<…>>` on WASM. Direct Rust users never pay for the bindings' sharing needs.
 - Borrow conflicts and misuse surface as structured host-language exceptions, never as a panic crossing the FFI boundary. A read-only (error) document raises a read-only exception, and an edit mixing nodes from two documents is rejected before reaching the core (mapping `ForeignNode` to a cross-document exception).
 - `texform::bindings` is an internal DTO support layer for reports, lookup metadata, argspec validation, and binding error metadata. Rust DTO fields use snake_case as the canonical form; Python exposes that form directly, while WASM provides the JavaScript camelCase view.
+- Tokenized serialization uses the same DTO conversion from the owning Rust result in both bindings; Python exposes `start_byte` / `end_byte`, while JavaScript exposes `startByte` / `endByte`. All are UTF-8 byte offsets rather than Python code-point or JavaScript UTF-16 indices, and neither binding re-tokenizes the LaTeX string.
 - `SyntaxNode` is not part of binding casing conversion. It remains the single tree wire format across Rust serde, Python dictionaries, JavaScript objects, and JSON fixtures.
 
 The result is a consistent editing model across Rust, Python, and JavaScript, built on one core implementation rather than three hand-written copies.

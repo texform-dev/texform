@@ -76,7 +76,9 @@ pub use error::{Error, NormalizeError, TransformBuildError, TransformError};
 pub use knowledge::{PackageInfo, list_packages};
 pub use parse_result::{ParseError, ParseResult};
 pub use parser::{Parser, ParserBuildError, ParserBuilder};
-pub use serialize::{SerializeError, SerializeOptions};
+pub use serialize::{
+    SerializationToken, SerializationTokenKind, SerializeError, SerializeOptions, TokenizedLatex,
+};
 pub use transform_engine::{NormalizeResult, TransformEngine, TransformEngineBuilder};
 
 pub use texform_core::parse::{

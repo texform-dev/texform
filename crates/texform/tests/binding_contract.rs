@@ -114,6 +114,38 @@ fn transform_report_dto_serializes_as_snake_case() {
 }
 
 #[test]
+fn tokenized_latex_dto_uses_snake_case_byte_offsets_and_closed_values() {
+    let parser = texform::Parser::builder().build().unwrap();
+    let document = parser.parse(r"\text{\%𝒜}").try_into_document().unwrap().0;
+    let result = document.to_tokenized_latex().unwrap();
+    let value = serde_json::to_value(texform::bindings::tokenized_latex_to_dto(result)).unwrap();
+
+    assert!(
+        value["tokens"]
+            .as_array()
+            .is_some_and(|tokens| !tokens.is_empty())
+    );
+    assert!(value["tokens"][0].get("start_byte").is_some());
+    assert!(value["tokens"][0].get("startByte").is_none());
+    assert!(value["tokens"].as_array().unwrap().iter().all(|token| {
+        matches!(
+            token["kind"].as_str(),
+            Some("control_sequence" | "character" | "delimiter" | "text" | "raw" | "error")
+        ) && matches!(token["mode"].as_str(), Some("math" | "text"))
+    }));
+    let unicode = value["tokens"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|token| token["text"] == "𝒜")
+        .expect("unicode token should be present");
+    assert_eq!(
+        unicode["end_byte"].as_u64().unwrap() - unicode["start_byte"].as_u64().unwrap(),
+        4
+    );
+}
+
+#[test]
 fn lookup_info_dto_reuses_stable_argspec_slots() {
     let parser = texform::Parser::builder().build().unwrap();
     let record = parser

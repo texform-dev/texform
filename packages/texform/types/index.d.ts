@@ -360,6 +360,32 @@ export interface ParseResult {
   diagnostics: ParseDiagnostic[];
 }
 
+/** Closed semantic categories emitted by canonical tokenized serialization. */
+export type SerializationTokenKind =
+  | "control_sequence"
+  | "character"
+  | "delimiter"
+  | "text"
+  | "raw"
+  | "error";
+
+/** One non-empty canonical serialization fragment. */
+export interface SerializationToken {
+  text: string;
+  /** UTF-8 byte offset, not a JavaScript UTF-16 string index. */
+  startByte: number;
+  /** UTF-8 byte offset, not a JavaScript UTF-16 string index. */
+  endByte: number;
+  kind: SerializationTokenKind;
+  mode: "math" | "text";
+}
+
+/** Canonical LaTeX and tokens produced by the same serializer traversal. */
+export interface TokenizedLatex {
+  latex: string;
+  tokens: SerializationToken[];
+}
+
 /**
  * The editable LaTeX document tree — the working format you read, mutate,
  * serialize, and transform.
@@ -739,6 +765,14 @@ export class Document {
    * ```
    */
   toLatex(options?: SerializeOptions | null): string;
+  /**
+   * Serialize canonical LaTeX together with typed output tokens.
+   *
+   * Token spans use UTF-8 byte offsets, not JavaScript UTF-16 indices. Empty
+   * error snippets produce no zero-width token; use {@link Document.hasErrors}
+   * to detect whether the document contains error nodes.
+   */
+  toTokenizedLatex(options?: SerializeOptions | null): TokenizedLatex;
 }
 
 /**

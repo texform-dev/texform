@@ -973,6 +973,24 @@ impl PyDocument {
             .map_err(|error| TexformError::new_err(error.to_string()))
     }
 
+    #[pyo3(signature = (options = None))]
+    fn to_tokenized_latex(
+        slf: &Bound<'_, Self>,
+        py: Python<'_>,
+        options: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Py<PyAny>> {
+        let options = serialize_options_from_python(options)?;
+        let result = {
+            let document = slf.try_borrow().map_err(borrow_error)?;
+            document
+                .inner
+                .to_tokenized_latex_with(&options)
+                .map_err(|error| TexformError::new_err(error.to_string()))?
+        };
+        let dto = texform::bindings::tokenized_latex_to_dto(result);
+        Ok(pythonize(py, &dto)?.unbind())
+    }
+
     fn create_char(slf: &Bound<'_, Self>, py: Python<'_>, value: &str) -> PyResult<Py<PyNode>> {
         let ch = parse_char(value)?;
         let id = {
@@ -2197,6 +2215,29 @@ mod tests {
                     .unwrap(),
                 r"\frac { a } { b }"
             );
+            let tokenized = document.call_method0("to_tokenized_latex").unwrap();
+            let tokenized = tokenized.cast::<pyo3::types::PyDict>().unwrap();
+            assert_eq!(
+                tokenized
+                    .get_item("latex")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                r"\frac { a } { b }"
+            );
+            let tokens = tokenized
+                .get_item("tokens")
+                .unwrap()
+                .unwrap()
+                .cast_into::<pyo3::types::PyList>()
+                .unwrap();
+            let first = tokens
+                .get_item(0)
+                .unwrap()
+                .cast_into::<pyo3::types::PyDict>()
+                .unwrap();
+            assert!(first.get_item("start_byte").unwrap().is_some());
             assert_eq!(
                 document
                     .call_method0("root")

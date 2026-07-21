@@ -35,6 +35,9 @@ NodeKind = Literal[
 ContextItem = dict[str, Any]
 SyntaxNode: TypeAlias = dict[str, Any]
 Span: TypeAlias = dict[str, int]
+SerializationTokenKind = Literal[
+    "control_sequence", "character", "delimiter", "text", "raw", "error"
+]
 ArgSpecKindType = Literal[
     "content",
     "operatorname",
@@ -108,6 +111,23 @@ class NodeSpanEntry(TypedDict):
 
     id: str
     span: Span
+
+
+class SerializationToken(TypedDict):
+    """One canonical serialization fragment with UTF-8 byte offsets."""
+
+    text: str
+    start_byte: int
+    end_byte: int
+    kind: SerializationTokenKind
+    mode: RuntimeContentMode
+
+
+class TokenizedLatex(TypedDict):
+    """Canonical LaTeX and tokens produced by the same serializer traversal."""
+
+    latex: str
+    tokens: list[SerializationToken]
 
 
 class PackageInfo(TypedDict):
@@ -705,6 +725,16 @@ class Document:
 
         See Also:
             SerializeOptions, serialize, Document.to_syntax
+        """
+
+    def to_tokenized_latex(
+        self, options: SerializeOptions | None = None
+    ) -> TokenizedLatex:
+        """Serialize canonical LaTeX together with typed output tokens.
+
+        ``start_byte`` and ``end_byte`` are UTF-8 byte offsets, not Python
+        string indices. Empty error snippets produce no zero-width token; use
+        ``has_errors()`` to detect whether the document contains error nodes.
         """
 
     def create_char(self, value: str) -> Node:

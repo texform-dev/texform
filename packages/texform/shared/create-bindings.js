@@ -409,6 +409,12 @@ export function createBindings({
     toLatex(options) {
       return wrapTexformError(() => this.inner.toLatex(options ?? undefined));
     }
+
+    toTokenizedLatex(options) {
+      return wrapTexformError(() =>
+        this.inner.toTokenizedLatex(options ?? undefined),
+      );
+    }
   }
 
   class Node {

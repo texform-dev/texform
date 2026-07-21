@@ -91,6 +91,16 @@ const compactLatex = doc.toLatex({
 if (defaultLatex === compactLatex) {
   throw new Error("serialize options should accept camelCase groupInnerSpacing");
 }
+const unicodeDoc = parser.parse(String.raw`\text{\%𝒜}`).document;
+const unicodeTokenized = unicodeDoc.toTokenizedLatex();
+const escaped = unicodeTokenized.tokens.find((token) => token.text === String.raw`\%`);
+const unicode = unicodeTokenized.tokens.find((token) => token.text === "𝒜");
+if (unicodeTokenized.latex !== unicodeDoc.toLatex() || escaped?.kind !== "character") {
+  throw new Error("tokenized serialization should preserve LaTeX and escaped characters");
+}
+if (!unicode || "start_byte" in unicode || unicode.endByte - unicode.startByte !== 4) {
+  throw new Error("token spans should use camelCase UTF-8 byte offsets");
+}
 
 const engine = new TransformEngine({ profile: "authoring" });
 const normalized = engine.normalize("a''");

@@ -6,10 +6,27 @@ use texform_core::{
     parse::{AllowedMode, CommandKind, ParseContext},
     serialize::{
         AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, InfixGrouping,
-        MathGroupInnerSpacing, ScriptOrder, ScriptSpacing, SerializeOptions, serialize,
+        MathGroupInnerSpacing, ScriptOrder, ScriptSpacing, SerializationTokenKind,
+        SerializeOptions, TokenizedLatex, serialize, serialize_tokenized, serialize_tokenized_with,
         serialize_with,
     },
 };
+
+fn assert_token_contract(result: &TokenizedLatex) {
+    let mut cursor = 0;
+    for token in &result.tokens {
+        assert!(token.span.start < token.span.end);
+        assert!(cursor <= token.span.start);
+        assert!(
+            result.latex[cursor..token.span.start]
+                .chars()
+                .all(char::is_whitespace)
+        );
+        assert_eq!(token.text, result.latex[token.span.clone()]);
+        cursor = token.span.end;
+    }
+    assert!(result.latex[cursor..].chars().all(char::is_whitespace));
+}
 
 fn parse_to_ast(src: &str) -> texform_core::ast::Ast {
     let document = ParseContext::shared()
@@ -62,6 +79,171 @@ fn try_into_document_returns_no_document_when_strict_parse_fails() {
 fn test_serialize_simple_math_chars() {
     let ast = parse_to_ast("ab");
     assert_eq!(serialize(&ast), "a b");
+}
+
+#[test]
+fn tokenized_text_and_inline_math_use_semantic_modes() {
+    let ast = parse_to_ast(r"\text{abc$x$}");
+    let result = serialize_tokenized(&ast);
+    assert_eq!(result.latex, serialize(&ast));
+    assert_token_contract(&result);
+
+    let tokens = result
+        .tokens
+        .iter()
+        .map(|token| (token.text.as_str(), token.kind, token.mode))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        tokens,
+        vec![
+            (
+                r"\text",
+                SerializationTokenKind::ControlSequence,
+                ContentMode::Math,
+            ),
+            ("{", SerializationTokenKind::Delimiter, ContentMode::Math),
+            ("abc", SerializationTokenKind::Text, ContentMode::Text),
+            ("$", SerializationTokenKind::Delimiter, ContentMode::Text),
+            ("x", SerializationTokenKind::Character, ContentMode::Math),
+            ("$", SerializationTokenKind::Delimiter, ContentMode::Text),
+            ("}", SerializationTokenKind::Delimiter, ContentMode::Math),
+        ]
+    );
+}
+
+#[test]
+fn tokenized_environment_and_scalar_wrappers_are_decomposed() {
+    let ast = parse_to_ast(r"\begin{array}{lc}α&𝒜\end{array}");
+    let result = serialize_tokenized(&ast);
+    assert_eq!(result.latex, serialize(&ast));
+    assert_token_contract(&result);
+
+    let begin = &result.tokens[..5];
+    assert_eq!(begin[0].text, r"\begin");
+    assert_eq!(begin[0].kind, SerializationTokenKind::ControlSequence);
+    assert_eq!(begin[1].text, "{");
+    assert_eq!(begin[1].kind, SerializationTokenKind::Delimiter);
+    assert_eq!(begin[2].text, "array");
+    assert_eq!(begin[2].kind, SerializationTokenKind::Raw);
+    assert_eq!(begin[3].text, "}");
+    assert_eq!(begin[3].kind, SerializationTokenKind::Delimiter);
+    assert_eq!(begin[4].text, "{");
+    assert_eq!(begin[4].kind, SerializationTokenKind::Delimiter);
+    assert!(
+        result
+            .tokens
+            .iter()
+            .any(|token| { token.text == "lc" && token.kind == SerializationTokenKind::Raw })
+    );
+    assert!(result.tokens.iter().any(|token| token.text == "𝒜"));
+}
+
+#[test]
+fn escaped_text_chars_remain_single_character_tokens() {
+    let result = serialize_tokenized(&parse_to_ast(r"\text{\%\$\{中}"));
+    assert_token_contract(&result);
+    let escaped = result
+        .tokens
+        .iter()
+        .filter(|token| matches!(token.text.as_str(), r"\%" | r"\$" | r"\{"))
+        .collect::<Vec<_>>();
+    assert_eq!(escaped.len(), 3);
+    assert!(
+        escaped
+            .iter()
+            .all(|token| token.kind == SerializationTokenKind::Character)
+    );
+}
+
+#[test]
+fn tokenized_options_never_change_canonical_text() {
+    let ast = parse_to_ast(r"\sqrt[3]{x_i}");
+    let mut options = SerializeOptions::default();
+    options.math.scripts.spacing = ScriptSpacing::Compact;
+    options.math.spacing.group_inner_spacing = MathGroupInnerSpacing::Compact;
+    options.math.spacing.commands = CommandSpacing::Minimal;
+
+    let result = serialize_tokenized_with(&ast, &options);
+    assert_eq!(result.latex, serialize_with(&ast, &options));
+    assert_token_contract(&result);
+    assert!(result.tokens.iter().any(|token| {
+        token.text == "_"
+            && token.kind == SerializationTokenKind::Character
+            && token.mode == ContentMode::Math
+    }));
+}
+
+#[test]
+fn paired_argument_delimiters_use_wrapper_mode() {
+    let mut ast = Ast::new();
+    let text_group = ast.new_node(Node::Group {
+        children: Vec::new(),
+        kind: GroupKind::Implicit,
+        mode: ContentMode::Text,
+    });
+    let x = ast.new_node(Node::Char('x'));
+    let paired = ast.new_node(Node::Command {
+        name: "mark".to_string(),
+        args: vec![Some(Argument {
+            kind: ArgumentKind::Paired {
+                open: texform_core::ast::Delimiter::Char('|'),
+                close: texform_core::ast::Delimiter::Char('|'),
+            },
+            no_leading_space: false,
+            value: ArgumentValue::MathContent(x),
+        })],
+        known: true,
+    });
+    ast.append_child(text_group, paired);
+    let wrapper = ast.new_node(Node::Command {
+        name: "text".to_string(),
+        args: vec![Some(Argument {
+            kind: ArgumentKind::Mandatory,
+            no_leading_space: false,
+            value: ArgumentValue::TextContent(text_group),
+        })],
+        known: true,
+    });
+    ast.append_child(ast.root(), wrapper);
+
+    let result = serialize_tokenized(&ast);
+    let delimiters = result
+        .tokens
+        .iter()
+        .filter(|token| token.text == "|")
+        .collect::<Vec<_>>();
+    assert_eq!(delimiters.len(), 2);
+    assert!(
+        delimiters
+            .iter()
+            .all(|token| token.mode == ContentMode::Text)
+    );
+    assert!(
+        result
+            .tokens
+            .iter()
+            .any(|token| { token.text == "x" && token.mode == ContentMode::Math })
+    );
+}
+
+#[test]
+fn empty_error_snippet_has_no_zero_width_token() {
+    for snippet in ["", r"\bad{"] {
+        let mut ast = Ast::new();
+        let error = ast.new_node(Node::Error {
+            message: "unexpected".to_string(),
+            snippet: snippet.to_string(),
+        });
+        ast.append_child(ast.root(), error);
+        let result = serialize_tokenized(&ast);
+        assert_token_contract(&result);
+        if snippet.is_empty() {
+            assert!(result.tokens.is_empty());
+        } else {
+            assert_eq!(result.tokens.len(), 1);
+            assert_eq!(result.tokens[0].kind, SerializationTokenKind::Error);
+        }
+    }
 }
 
 #[test]
