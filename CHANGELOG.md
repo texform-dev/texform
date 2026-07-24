@@ -5,29 +5,22 @@ All notable changes to TeXForm are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
 ## [0.3.0] - 2026-07-21
 
+This release adds a tokenized serialization channel, extends AST canonicalization with text-sequence normalization, and substantially expands the rewrite rule set — spacing, fraction and delimiter styling, negated-relation remaps, named-function operators, and more. It also renames the rule-level taxonomy on the public API and prunes several rules whose render fidelity did not hold up under corpus review.
+
 ### Added
 
-- Add tokenized serialization
-- Expand FinalizeAst with text-sequence normalization
-- Remove small-spacer-drop and demote limits rules to Corpus
-- Add 4 rules for spacing-drop group
-- Add 4 rules for fraction-style group
-- Add 2 rules for limit-placement group
-- Add duplicate-mathrel-wrapper-drop rule
-- Add 2 rules for spacing-merge group
-- Add control-space-to-tilde rule
-- Add 4 rules for not-remap group
-- Add 4 rules for fixed-delimiter-size group
-- Add reusable delimiter rewrite helpers
-- Add 2 rules for accent-size group
-- Extend operatorname canonicalization
-- Add operatorname named-function rewrite
+- Tokenized serialization. `Document::to_tokenized_latex()` (and `to_tokenized_latex_with`) returns the canonical LaTeX string alongside ordered, typed output tokens — each classified as `ControlSequence`, `Character`, `Delimiter`, `Text`, `Raw`, or `Error`, and carrying its math/text mode and a non-overlapping UTF-8 byte span into that string. Tokens are recorded during the existing serializer traversal rather than by re-lexing the output, and the feature is exposed across the Rust, Python, and JavaScript APIs while leaving text-only serialization's allocation behavior unchanged.
+- Text-sequence normalization in `FinalizeAst`. The profile-neutral canonicalization phase now merges adjacent text-mode siblings, collapses ordinary lexer whitespace runs to a single space without trimming edges, and cleans empty text. The pass re-runs after `FlattenGroups` so newly adjacent text and prime nodes are canonicalized, and its work is reported through the `normalize_text_sequences` step counter on the transform report.
+- A large batch of rewrite rules across several normalization groups: spacing drops (`\enspace`, `\quad`, `\qquad`) and merges (adjacent `\enspace` pairs, small-spacer runs); fraction styling (`\dfrac`/`\tfrac`/`\cfrac` → `\frac`, `\dbinom`/`\tbinom` → `\binom`); limit placement (`\limits`/`\nolimits` drops on audited operators); fixed delimiter sizing (`\big`–`\Bigg` size drops); negated-relation remaps (`\not=` → `\neq`, `\not\exists` → `\nexists`, `\not\in` → `\notin`, `\not\rightarrow` → `\nrightarrow`); accent sizing (`\widehat` → `\hat`, `\widetilde` → `\tilde`, the first `Equiv`-level builtins); math-mode control-space to active space; duplicate `mathrel`-wrapper drops; and named-function rewrites for plain operator names, with extended `\operatorname` canonicalization. Shared delimiter-rewrite helpers back the delimiter-oriented rules.
+
+### Changed
+
+- **Breaking:** the rule-level taxonomy is renamed from *normalization level* to *rule level* across the public API, the transform engine, the generated registry, rule metadata, and documentation. The facade now re-exports `RuleLevelSet` in place of `NormalizationLevelSet`, and the internal `NormalizationLevel` enum becomes `RuleLevel`; downstream code referring to the old names must update. Active rules are reclassified under `Authoring`, `Faithful`, `Corpus`, and `Equiv` while preserving current profile behavior.
+- `\limits`/`\nolimits` drops move from `Equiv` to `Corpus`, so they now participate in corpus normalization.
 
 ### Fixed
 
-- Remove unsafe `displaylines-to-gather-env` rewrite rule
-- Remove `repeat-spacer-collapse`
-- Remove unsafe quick-quad rewrite rules
+- Removed rewrite rules whose worst-case render fidelity did not hold across supported renderers: the `displaylines-to-gather-env` rule (its numbered `gather` output cannot preserve reading fidelity), the `repeat-spacer-collapse` rule, and the physics quick-`\quad` expansions (`qcomma-expand`, `qqtext-expand`). These forms are now preserved instead of rewritten.
 
 ## [0.2.1] - 2026-07-16
 
