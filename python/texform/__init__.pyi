@@ -1570,9 +1570,9 @@ class TransformEngine:
         """Parse a LaTeX string using the engine's bundled parser.
 
         Uses this engine's parser and default parse config. Engines default to
-        strict parsing, unlike standalone ``Parser``; pass ``config`` to loosen
-        parsing per call. A document produced here is owned by this engine and is
-        the only kind ``transform`` accepts.
+        lenient parsing; pass ``config`` to override it per call. A document
+        produced here is owned by this engine and is the only kind ``transform``
+        accepts.
 
         Args:
             src: The LaTeX source string.

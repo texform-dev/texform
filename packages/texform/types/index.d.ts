@@ -1808,8 +1808,8 @@ export class TransformEngine {
    *
    * Non-null documents from this result keep the engine's parser identity, so
    * they can be edited and then passed to {@link TransformEngine.transform}. The
-   * engine parser defaults to strict parsing, unlike standalone {@link Parser};
-   * pass `config` to override it per call.
+   * The engine parser defaults to lenient parsing; pass `config` to override it
+   * per call.
    *
    * @param src - The LaTeX source string.
    * @param config - A {@link ParseConfigInput} object, or omit/`null` for the

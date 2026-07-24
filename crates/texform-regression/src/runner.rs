@@ -20,6 +20,7 @@ pub struct FormulaResults {
 pub fn run_parser_regression(records: &[FormulaRecord]) -> Vec<FormulaResults> {
     let strict_cfg = ParseConfig::STRICT;
     let nonstrict_cfg = ParseConfig {
+        reject_unknown: false,
         abort_on_error: true,
         ..Default::default()
     };

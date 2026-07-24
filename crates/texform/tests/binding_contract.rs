@@ -175,14 +175,31 @@ fn lookup_info_dto_reuses_stable_argspec_slots() {
 }
 
 #[test]
+fn normalize_defaults_preserve_unknown_commands_in_all_profiles() {
+    for profile in [
+        texform::Profile::Authoring,
+        texform::Profile::Faithful,
+        texform::Profile::Corpus,
+        texform::Profile::Equiv,
+    ] {
+        let engine = TransformEngine::builder().profile(profile).build().unwrap();
+        let result = engine
+            .normalize("\\unknown")
+            .expect("default normalize should preserve unknown commands");
+
+        assert_eq!(result.normalized, "\\unknown", "profile: {profile:?}");
+    }
+}
+
+#[test]
 fn normalize_error_maps_parse_failure_to_binding_error_parts() {
     let engine = TransformEngine::builder()
         .profile(texform::Profile::Authoring)
         .build()
         .unwrap();
 
-    let error = match engine.normalize("\\unknown") {
-        Ok(_) => panic!("strict normalize should reject unknown commands"),
+    let error = match engine.normalize("{") {
+        Ok(_) => panic!("default normalize should reject malformed input"),
         Err(error) => error,
     };
     let parts = texform::bindings::normalize_error_to_parts(error);

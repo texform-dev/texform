@@ -45,7 +45,7 @@ impl ParseConfig {
 
     /// Both axes strict: `reject_unknown = true`, `abort_on_error = true`.
     ///
-    /// Used by normalization and other correctness-sensitive paths.
+    /// Use when unknown names must be rejected as well as other parse errors.
     pub const STRICT: Self = Self {
         reject_unknown: true,
         abort_on_error: true,
@@ -54,7 +54,7 @@ impl ParseConfig {
 
     /// Both axes lenient: `reject_unknown = false`, `abort_on_error = false`.
     ///
-    /// Default for standalone parse-only entry points and interactive tools.
+    /// Default for public parsing and normalization entry points.
     pub const LENIENT: Self = Self {
         reject_unknown: false,
         abort_on_error: false,

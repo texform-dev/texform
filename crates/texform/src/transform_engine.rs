@@ -51,7 +51,7 @@ impl TransformEngine {
     /// Start building a transform engine.
     pub fn builder() -> TransformEngineBuilder {
         TransformEngineBuilder {
-            parser: Parser::builder().default_parse_config(ParseConfig::STRICT),
+            parser: Parser::builder().default_parse_config(ParseConfig::LENIENT),
             profile: None,
             build_config: None,
             disabled_rules: Vec::new(),
@@ -181,8 +181,7 @@ impl TransformEngineBuilder {
 
     /// Set the default [`ParseConfig`] for the engine's parser.
     ///
-    /// The engine defaults to [`ParseConfig::STRICT`], since normalization
-    /// requires a complete tree.
+    /// The engine defaults to [`ParseConfig::LENIENT`].
     pub fn default_parse_config(mut self, config: ParseConfig) -> Self {
         self.parser = self.parser.default_parse_config(config);
         self

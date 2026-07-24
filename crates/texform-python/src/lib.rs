@@ -2320,7 +2320,7 @@ mod tests {
                 .call((), Some(&kwargs))
                 .unwrap();
             let error = engine
-                .call_method1("normalize", (r"\unknowncmd",))
+                .call_method1("normalize", ("{",))
                 .expect_err("normalize should raise a parse error");
 
             assert!(error.is_instance_of::<ParseError>(py));
@@ -2333,7 +2333,7 @@ mod tests {
                     .cast::<PyList>()
                     .is_ok()
             );
-            assert!(value.getattr("document").unwrap().is_none());
+            assert!(!value.getattr("document").unwrap().is_none());
         });
     }
 
@@ -2664,7 +2664,7 @@ mod tests {
 
             let result = engine
                 .call_method1("parse", (r"\unknowncmd",))
-                .expect("engine parse should return strict diagnostics");
+                .expect("engine parse should preserve unknown commands");
             let dict = result.cast::<pyo3::types::PyDict>().unwrap();
             assert_eq!(
                 dict.get_item("diagnostics")
@@ -2672,7 +2672,7 @@ mod tests {
                     .unwrap()
                     .len()
                     .unwrap(),
-                1
+                0
             );
             let result = engine
                 .call_method1("normalize", (r"\quantity{x}",))

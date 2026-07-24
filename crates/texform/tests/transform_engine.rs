@@ -186,20 +186,26 @@ fn engine_exposes_parser_metadata_queries() {
 }
 
 #[test]
-fn engine_empty_knowledge_preserves_strict_parse_default() {
-    // Empty knowledge must not loosen the TransformEngine parser's strict default.
+fn engine_empty_knowledge_preserves_default_parse_config() {
+    // Empty knowledge must not change either default parse-config axis.
     let engine = TransformEngine::builder()
         .empty_knowledge()
         .profile(Profile::Equiv)
         .build()
         .expect("engine should build");
 
-    let output = engine.parser().parse(r"\unknowncmd");
+    let unknown = engine.parser().parse(r"\unknowncmd");
+    let malformed = engine.parser().parse("{");
 
     assert!(
-        !output.diagnostics().is_empty(),
-        "empty_knowledge should not reset TransformEngine parser default to lenient"
+        unknown.diagnostics().is_empty(),
+        "default config should preserve unknown commands"
     );
+    assert!(
+        malformed.document().is_some(),
+        "default config should retain a recovery tree"
+    );
+    assert!(!malformed.diagnostics().is_empty(), "diagnostics expected");
 }
 
 #[test]
