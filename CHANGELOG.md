@@ -2,7 +2,12 @@
 
 All notable changes to TeXForm are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).## [0.4.0] - 2026-07-24
+
+### Added
+
+- **Breaking:** Default engine parsing to lenient
+
 ## [0.3.0] - 2026-07-21
 
 This release adds a tokenized serialization channel, extends AST canonicalization with text-sequence normalization, and substantially expands the rewrite rule set — spacing, fraction and delimiter styling, negated-relation remaps, named-function operators, and more. It also renames the rule-level taxonomy on the public API and prunes several rules whose render fidelity did not hold up under corpus review.
