@@ -154,7 +154,7 @@ try {
 }
 
 try {
-  engine.normalize("\\unknown");
+  engine.normalize("{");
   throw new Error("normalize should fail for invalid input");
 } catch (error) {
   if (!(error instanceof TexformParseError)) {
