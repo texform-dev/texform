@@ -229,14 +229,16 @@ fn try_unwrap(
         report.guards.preserve_group_containing_declarative_command += 1;
         return;
     }
-    if config.preserve_group_inside_env_body && in_env_body {
-        report.guards.preserve_group_inside_env_body += 1;
-        return;
-    }
-
     let Some(link) = ast.parent(node) else {
         return;
     };
+    if config.preserve_group_inside_env_body
+        && in_env_body
+        && !is_lone_prime_superscript_group(ast, node, link)
+    {
+        report.guards.preserve_group_inside_env_body += 1;
+        return;
+    }
     if !slot_can_unwrap(link.slot, child_count) {
         return;
     }
@@ -332,6 +334,18 @@ fn try_unwrap(
         | Slot::InfixRight => redirect_single_child_slot(ast, node, report),
         Slot::EnvBody => {}
     }
+}
+
+fn is_lone_prime_superscript_group(ast: &Ast, node: NodeId, link: ParentLink) -> bool {
+    // This group is script syntax, not cell structure. Keeping it would emit
+    // `^{'}`, even though the active prime character already creates a superscript.
+    if !matches!(link.slot, Slot::ScriptSup) {
+        return false;
+    }
+    let [child] = ast.children(node) else {
+        return false;
+    };
+    matches!(ast.node(*child), Node::Prime { .. })
 }
 
 fn slot_can_unwrap(slot: Slot, child_count: usize) -> bool {

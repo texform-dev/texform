@@ -63,6 +63,7 @@ fn corpus_normalize_preserves_prime_and_prefix_shorthand_contracts() {
         (r"\vec A_\mu", r"\vec { A } _ { \mu }"),
         (r"\bar C^\mu", r"\bar { C } ^ { \mu }"),
         (r"f^{\prime\prime}", "f''"),
+        (r"f^{\prime}", "f'"),
         (r"f^{'}", "f'"),
         (r"f'^2", r"f ^ { ' 2 }"),
         (r"\prime", "'"),
@@ -73,6 +74,29 @@ fn corpus_normalize_preserves_prime_and_prefix_shorthand_contracts() {
             .normalize(input)
             .unwrap_or_else(|error| panic!("normalize should succeed for {input}: {error:?}"));
         assert_eq!(result.normalized, expected, "input: {input}");
+    }
+}
+
+#[test]
+fn normalize_uses_prime_shorthand_inside_array_cells() {
+    for profile in [
+        Profile::Authoring,
+        Profile::Faithful,
+        Profile::Corpus,
+        Profile::Equiv,
+    ] {
+        let result = TransformEngine::builder()
+            .packages(&["base"])
+            .profile(profile)
+            .build()
+            .expect("engine should build")
+            .normalize(r"\begin{array}{c}f^{\prime}\end{array}")
+            .expect("normalize should succeed");
+
+        assert_eq!(
+            result.normalized, r"\begin {array} {c} f' \end {array}",
+            "profile: {profile:?}"
+        );
     }
 }
 

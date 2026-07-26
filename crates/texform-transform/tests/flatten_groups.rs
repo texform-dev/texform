@@ -226,6 +226,17 @@ fn keeps_groups_inside_environment_bodies() {
 }
 
 #[test]
+fn unwraps_lone_prime_superscript_groups_inside_environment_bodies() {
+    let outcome = run_flatten_groups(r"\begin{array}{c c}f^{'}&g^{\prime\alpha}\end{array}");
+
+    assert_eq!(
+        outcome.text,
+        r"\begin {array} {c c} f' & g ^ { \prime \alpha } \end {array}"
+    );
+    assert_eq!(outcome.report.actions.unwrapped_slot, 1);
+}
+
+#[test]
 fn keeps_delimited_groups() {
     let outcome = run_flatten_groups(r"\left(a\right)");
 
