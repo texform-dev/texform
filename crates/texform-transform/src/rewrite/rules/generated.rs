@@ -159,6 +159,10 @@ pub(crate) mod base {
             pub(crate) mod limits_drop;
             pub(crate) mod nolimits_drop;
         }
+        pub(crate) mod root_family {
+            pub(crate) mod leftroot_drop;
+            pub(crate) mod uproot_drop;
+        }
         pub(crate) mod spacing_drop {
             pub(crate) mod allowbreak_drop;
             pub(crate) mod badbreak_drop;
@@ -384,6 +388,8 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::corpus::big_class_variants::bigg_class_variants_to_bigg::BIGG_CLASS_VARIANTS_TO_BIGG,
     &base::corpus::limit_placement::limits_drop::LIMITS_DROP,
     &base::corpus::limit_placement::nolimits_drop::NOLIMITS_DROP,
+    &base::corpus::root_family::leftroot_drop::LEFTROOT_DROP,
+    &base::corpus::root_family::uproot_drop::UPROOT_DROP,
     &base::corpus::spacing_drop::allowbreak_drop::ALLOWBREAK_DROP,
     &base::corpus::spacing_drop::badbreak_drop::BADBREAK_DROP,
     &base::corpus::spacing_drop::goodbreak_drop::GOODBREAK_DROP,
