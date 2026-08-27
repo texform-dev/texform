@@ -1892,6 +1892,13 @@ fn test_whitespace_ignored_between_items() {
     }
 }
 
+#[test]
+fn carriage_return_is_ignored_like_other_whitespace() {
+    assert_same_structure("x\ry", "xy");
+    assert_same_structure("x\r\ny", "xy");
+    assert_same_structure("a+b\r\\frac{1}{2}", r"a+b\frac{1}{2}");
+}
+
 // ========================================================================
 // Stage 11 Tests (Other edge cases)
 // ========================================================================

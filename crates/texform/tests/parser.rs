@@ -100,6 +100,26 @@ fn parser_parse_uses_non_strict_recover_default() {
 }
 
 #[test]
+fn parser_parse_treats_carriage_return_as_whitespace() {
+    // Public parse() must accept CR / CRLF as ordinary whitespace, not panic.
+    let parser = Parser::builder()
+        .packages(&["base"])
+        .build()
+        .expect("parser should build");
+
+    let lf = parser.parse("x\ny");
+    let cr = parser.parse("x\ry");
+    let crlf = parser.parse("x\r\ny");
+
+    let lf_doc = lf.try_into_document().expect("LF input should parse").0;
+    let cr_doc = cr.try_into_document().expect("CR input should parse").0;
+    let crlf_doc = crlf.try_into_document().expect("CRLF input should parse").0;
+
+    assert_eq!(cr_doc.to_syntax(), lf_doc.to_syntax());
+    assert_eq!(crlf_doc.to_syntax(), lf_doc.to_syntax());
+}
+
+#[test]
 fn parser_parse_with_accepts_runtime_config() {
     let parser = Parser::builder()
         .packages(&["base"])

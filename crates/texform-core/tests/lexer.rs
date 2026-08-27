@@ -124,6 +124,44 @@ fn test_prime_token() {
 }
 
 #[test]
+fn carriage_return_tokenizes_as_whitespace() {
+    let mut lex = Token::lexer("a\rb");
+    assert_eq!(lex.next(), Some(Ok(Token::Char('a'))));
+    assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
+    assert_eq!(lex.next(), Some(Ok(Token::Char('b'))));
+    assert_eq!(lex.next(), None);
+
+    let mut lex = Token::lexer("a\r\nb");
+    assert_eq!(lex.next(), Some(Ok(Token::Char('a'))));
+    assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
+    assert_eq!(lex.next(), Some(Ok(Token::Char('b'))));
+    assert_eq!(lex.next(), None);
+
+    let mut lex = Token::lexer("a \r\n\t b");
+    assert_eq!(lex.next(), Some(Ok(Token::Char('a'))));
+    assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
+    assert_eq!(lex.next(), Some(Ok(Token::Char('b'))));
+    assert_eq!(lex.next(), None);
+}
+
+#[test]
+fn comment_stops_at_carriage_return() {
+    let mut lex = Token::lexer("%c\rnext");
+    assert_eq!(lex.next(), Some(Ok(Token::Char('n'))));
+    assert_eq!(lex.next(), Some(Ok(Token::Char('e'))));
+    assert_eq!(lex.next(), Some(Ok(Token::Char('x'))));
+    assert_eq!(lex.next(), Some(Ok(Token::Char('t'))));
+    assert_eq!(lex.next(), None);
+
+    let mut lex = Token::lexer("%c\r\nnext");
+    assert_eq!(lex.next(), Some(Ok(Token::Char('n'))));
+    assert_eq!(lex.next(), Some(Ok(Token::Char('e'))));
+    assert_eq!(lex.next(), Some(Ok(Token::Char('x'))));
+    assert_eq!(lex.next(), Some(Ok(Token::Char('t'))));
+    assert_eq!(lex.next(), None);
+}
+
+#[test]
 fn test_nbsp_whitespace() {
     let mut lex = Token::lexer("a\u{00A0}b");
     assert_eq!(lex.next(), Some(Ok(Token::Char('a'))));
@@ -140,7 +178,7 @@ fn test_nbsp_whitespace() {
 fn whitespace_predicate_matches_token_whitespaces_membership() {
     use texform_core::lexer::is_whitespace_char;
 
-    let included = [' ', '\t', '\n', '\u{000C}', '\u{00A0}'];
+    let included = [' ', '\t', '\n', '\r', '\u{000C}', '\u{00A0}'];
     for ch in included {
         assert!(is_whitespace_char(ch), "predicate should accept {ch:?}");
         let source = ch.to_string();

@@ -111,20 +111,22 @@ pub enum Token {
     Prime(usize),
 
     // --- Whitespace and Comments ---
-    /// Whitespace: spaces, tabs, newlines, form feeds, non-breaking space
+    /// Whitespace: spaces, tabs, CR/LF newlines, form feeds, non-breaking space
     /// - catcode 10: Spacer
     /// - Multiple consecutive whitespace characters are merged
+    /// - CR is treated as a line ending, matching TeX catcode 5 (end of line)
     /// - Includes U+00A0 (non-breaking space) for copy-paste behavior
     ///
     /// Character membership matches [`is_whitespace_char`].
-    #[regex(r"[ \t\n\f\u{00A0}]+")]
+    #[regex(r"[ \t\n\r\f\u{00A0}]+")]
     Whitespaces,
 
     /// Comment: % to end of line
     /// - catcode 14: Comment
     /// - Lexer consumes everything from % to line end (inclusive)
+    /// - Line endings are CR, LF, or CRLF
     /// - Comments are discarded and do not produce tokens
-    #[regex(r"%[^\n]*\n?", logos::skip)]
+    #[regex(r"%[^\r\n]*\r?\n?", logos::skip)]
     Comment,
 
     // --- Character Tokens ---
@@ -136,7 +138,7 @@ pub enum Token {
     ///
     /// Note: Control characters (catcode 9, 15) are NOT matched by any pattern
     /// and will cause lexing errors automatically:
-    /// - catcode 9 (Ignore): \x00-\x08, \x0B-\x1F (control chars except \t, \n, \f)
+    /// - catcode 9 (Ignore): \x00-\x08, \x0B-\x1F (control chars except \t, \n, \f, \r)
     /// - catcode 15 (Invalid): \x7F (DEL character)
     #[regex(r"[\x20-\x7E\u{80}-\u{10FFFF}]", priority = 1, callback = |lex| {
         let slice = lex.slice();
@@ -148,12 +150,12 @@ pub enum Token {
 /// Ordinary whitespace characters recognized by [`Token::Whitespaces`].
 ///
 /// This matches the Logos regex on [`Token::Whitespaces`] exactly: SPACE, TAB,
-/// LF, FORM FEED, and NO-BREAK SPACE. Other Unicode whitespace (for example
+/// LF, CR, FORM FEED, and NO-BREAK SPACE. Other Unicode whitespace (for example
 /// U+2007, U+202F, U+3000) is intentionally excluded and tokenizes as
 /// [`Token::Char`].
 #[inline]
 pub fn is_whitespace_char(c: char) -> bool {
-    matches!(c, ' ' | '\t' | '\n' | '\u{000C}' | '\u{00A0}')
+    matches!(c, ' ' | '\t' | '\n' | '\r' | '\u{000C}' | '\u{00A0}')
 }
 
 impl std::fmt::Display for Token {
