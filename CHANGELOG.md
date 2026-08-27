@@ -11,6 +11,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - Unwrap prime superscripts in environments
+## [0.4.1] - 2026-08-27
+
+### Added
+
+- Add 2 rules for root-family group
+
+### Fixed
+
+- Treat literal CR as whitespace
 
 ## [0.3.0] - 2026-07-21
 
