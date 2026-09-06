@@ -8,7 +8,7 @@
 //! - bidirectional navigation through parent links
 //! - safe structural edits without exposing raw mutable node access
 //!
-//! The AST owns all nodes in a [`slotmap::HopSlotMap`]. Tree edits must go
+//! The AST owns all nodes in a [`slotmap::SlotMap`]. Tree edits must go
 //! through [`Ast`] methods so `nodes`, `parent`, and detached subtree tracking
 //! stay consistent.
 //!
@@ -30,7 +30,7 @@
 
 use std::collections::HashSet;
 
-use slotmap::{HopSlotMap, SecondaryMap, new_key_type};
+use slotmap::{SecondaryMap, SlotMap, new_key_type};
 use texform_interface::syntax_node::{self, SyntaxNode};
 
 /// Re-exported content mode shared with parser syntax nodes.
@@ -323,7 +323,7 @@ impl Node {
 /// and detached subtree tracking cannot be bypassed accidentally.
 #[derive(Debug, Clone)]
 pub struct Ast {
-    nodes: HopSlotMap<NodeId, Node>,
+    nodes: SlotMap<NodeId, Node>,
     parent: SecondaryMap<NodeId, ParentLink>,
     // Detached roots are valid subtrees that currently live in the arena but
     // are not attached to the main root. This lets transforms stage nodes
@@ -340,7 +340,7 @@ impl Ast {
 
     /// Create an empty AST whose root uses the given content mode.
     pub fn with_root_mode(mode: ContentMode) -> Self {
-        let mut nodes = HopSlotMap::with_key();
+        let mut nodes = SlotMap::with_key();
         let root = nodes.insert(Node::Root {
             children: Vec::new(),
             mode,
@@ -374,7 +374,7 @@ impl Ast {
             panic!("Ast::from_syntax_root expects SyntaxNode::Root");
         };
 
-        let mut nodes = HopSlotMap::with_key();
+        let mut nodes = SlotMap::with_key();
         let mut parent = SecondaryMap::new();
         let converted_children: Vec<NodeId> = children
             .iter()
@@ -1816,7 +1816,7 @@ impl Ast {
 
     fn convert_syntax_node(
         node: &SyntaxNode,
-        nodes: &mut HopSlotMap<NodeId, Node>,
+        nodes: &mut SlotMap<NodeId, Node>,
         parent: &mut SecondaryMap<NodeId, ParentLink>,
     ) -> NodeId {
         // Conversion constructs child nodes first, then inserts the current
@@ -1925,7 +1925,7 @@ impl Ast {
 
     fn convert_argument_slot(
         slot: &syntax_node::ArgumentSlot,
-        nodes: &mut HopSlotMap<NodeId, Node>,
+        nodes: &mut SlotMap<NodeId, Node>,
         parent: &mut SecondaryMap<NodeId, ParentLink>,
     ) -> ArgumentSlot {
         slot.as_ref().map(|arg| Argument {
@@ -1954,7 +1954,7 @@ impl Ast {
 
     fn convert_argument_value(
         value: &syntax_node::ArgumentValue,
-        nodes: &mut HopSlotMap<NodeId, Node>,
+        nodes: &mut SlotMap<NodeId, Node>,
         parent: &mut SecondaryMap<NodeId, ParentLink>,
     ) -> ArgumentValue {
         match value {
