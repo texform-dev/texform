@@ -2,7 +2,7 @@
 
 wasm-bindgen bindings that back the [`texform` package on npm](https://www.npmjs.com/package/texform). Not published to crates.io.
 
-This crate compiles to the WebAssembly module wrapped by the npm package in [`packages/texform/`](../../packages/texform/), which adds the Node/bundler dual entry points and the public TypeScript declarations. Bindings layer strictly on top of the `texform` facade: live `Document` and `Node` handles delegate to the shared Rust core, and errors surface as structured JavaScript exceptions.
+This crate compiles to the WebAssembly module wrapped by the npm package in [`packages/texform/`](../../packages/texform/), which adds the Node/bundler dual entry points and the public TypeScript declarations. Live `Document` and `Node` handles expose the shared facade model, and errors surface as structured JavaScript exceptions. The binding also depends on `texform-core` and `texform-argspec` for host-language glue and generated types.
 
 ## Local development
 

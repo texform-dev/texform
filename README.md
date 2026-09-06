@@ -13,8 +13,6 @@ TeXForm parses, edits, and transforms LaTeX math, built on a structured knowledg
 
 [Playground](https://play.texform.dev) · [Architecture](ARCHITECTURE.md) · [Changelog](CHANGELOG.md)
 
-<!-- Full documentation: https://texform.dev (docsite goes live after 0.1.0) -->
-
 </div>
 
 ## Why TeXForm
@@ -50,8 +48,6 @@ Normalization has no single correct answer, so TeXForm never imposes one true fo
 </tr>
 </table>
 
-<!-- Pillar titles will link to https://texform.dev guide pages once the docsite goes live. -->
-
 ## Normalization at a glance
 
 Each `Profile` targets one downstream scenario:
@@ -74,7 +70,7 @@ The same input, normalized under different profiles (real engine output):
 
 Every profile modernizes legacy syntax like `\over`. `Authoring` keeps the author's shorthand; `Corpus` expands it into universal forms that render on any vanilla MathJax or KaTeX deployment with no extra packages — including right here on GitHub, where inputs like `\dv` and `\ket` would not render at all.
 
-The current builtin rule set has no `Equiv`-level rules, so `Corpus` and `Equiv` temporarily produce the same output. They remain distinct profiles because their intended products differ and future math-equivalence rules belong only to `Equiv`.
+`Equiv` adds rules that may discard visually salient notation choices. For example, it rewrites centered `\cfrac` forms to `\frac`, while `Corpus` retains continued-fraction styling. Use `Equiv` output as an intermediate for comparison, deduplication, or fingerprints; it is not intended as a training label for the original image.
 
 ## What's underneath
 
@@ -83,6 +79,9 @@ Behind a profile, normalization runs as a multi-phase pipeline, not a find-and-r
 - **Rewrite** applies a curated rule set in a fixed-point loop — modernizing legacy syntax, canonicalizing aliases, and expanding semantic macros, depending on the levels the profile selects.
 - **LowerAttributes** canonicalizes font and style markup, so `{\bf x}` and `\mathbf{x}` converge to a single form with declarative scope tracked correctly.
 - **FlattenGroups** strips redundant braces behind semantic and spacing guards, so flattening never changes script binding, environment cell boundaries, or atom spacing unless you opt in.
+- **FinalizeAst** canonicalizes the tree representation by merging adjacent prime nodes and normalizing text sequences. It runs before FlattenGroups and again after flattening to handle newly adjacent nodes.
+
+The execution order is LowerAttributes → Rewrite → LowerAttributes → FinalizeAst → FlattenGroups → FinalizeAst. Per-run options can disable phases; the second FinalizeAst pass runs only when FlattenGroups is enabled. Eliminated-form contracts are checked after the full pipeline.
 
 Two assets carry most of the weight, and neither existed as a reusable artifact before:
 
@@ -157,8 +156,6 @@ The Python and JavaScript bindings expose the same parser, document, and engine 
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — crate layout, pipeline, tree representations, API guarantees
 - [`TESTING.md`](TESTING.md) — how TeXForm is tested, from contract tests to corpus regression
 - [`CHANGELOG.md`](CHANGELOG.md) — release history
-
-<!-- Full documentation: https://texform.dev (docsite goes live after 0.1.0) -->
 
 ## License
 

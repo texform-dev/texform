@@ -38,8 +38,6 @@ Profiles select the normalization target: `"authoring"`, `"faithful"`, `"corpus"
 
 The JavaScript API mirrors the Rust facade one-to-one. For the full picture — the editable document tree, transform profiles, and the architecture — see the [repository README](../../README.md).
 
-<!-- Full documentation: https://texform.dev (docsite goes live after 0.1.0) -->
-
 ## License
 
 Apache-2.0.

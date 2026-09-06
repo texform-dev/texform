@@ -62,7 +62,7 @@ Arrows point from a crate to the crates it depends on. Everything below `texform
 | `texform-knowledge` | The command and environment knowledge base: which names are known, and what argument shapes they take. |
 | `texform-knowledge-macros` | Procedural macros used by the knowledge base, including compile-time argument-specification parsing for generated records. |
 | `texform-argspec` | An xparse-style argument-specification parser used to describe command signatures. |
-| `texform-interface` | Dependency-free shared types, most importantly `SyntaxNode`, the lossless parse snapshot. |
+| `texform-interface` | Shared types with no dependencies on other TeXForm crates, most importantly `SyntaxNode`, the lossless parse snapshot. |
 | `texform-python`, `texform-wasm` | Language bindings that expose the shared facade model to Python and WebAssembly. |
 | `texform-regression` | Corpus regression and data-product tooling for parser regression, transform-contract checking, and counter-map generation. Internal tooling, not part of the public API. |
 
@@ -70,7 +70,7 @@ The facade deliberately does **not** re-export the internal `Ast`, `Node`, or ar
 
 ## The Processing Pipeline
 
-A formula flows through the system in one direction, with three distinct output channels at the end:
+A formula flows through parsing into an editable document, with separate operations for text output, tokenized output, transformation, and syntax snapshots:
 
 ```text
 LaTeX source
@@ -147,7 +147,7 @@ All user-facing editing goes through `Document` and is fallible by design:
 
 ## Serialization and Serde
 
-`Document` has two distinct output channels, named to avoid the ambiguity of a generic "serialize":
+`Document` has three distinct output channels, named to avoid the ambiguity of a generic "serialize":
 
 - **`to_latex()` / `to_latex_with(&SerializeOptions)`** render the tree back to LaTeX *text* using the canonical serializer. There is intentionally no method named `serialize` on `Document`.
 - **`to_tokenized_latex()` / `to_tokenized_latex_with(&SerializeOptions)`** run the same canonical serializer traversal with an opt-in recorder, returning the identical LaTeX plus typed output fragments.

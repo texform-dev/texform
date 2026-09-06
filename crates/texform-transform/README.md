@@ -4,18 +4,21 @@ Internal implementation crate for [texform](https://crates.io/crates/texform). D
 
 A phase-oriented AST rewrite pipeline for TeXForm. It normalizes a parsed `Ast` into a canonical form so downstream consumers — formula equivalence comparison, MER tokenization, LLM pretraining corpora, polished authoring output — can work against a stable shape without re-implementing LaTeX semantics per use case. This README is the in-depth reference for the transform subsystem: rule authors and contributors should start here.
 
-The crate is a thin wrapper around five ordered phases. Callers choose a build-time [`Profile`] / [`BuildConfig`] to compile a rewrite plan, then use per-run [`TransformConfig`] values to gate phases and set runtime limits.
+The crate runs four phase implementations in a fixed order, with LowerAttributes and FinalizeAst each invoked twice in the default pipeline. Callers choose a build-time `Profile` / `BuildConfig` to compile a rewrite plan, then use per-run `TransformConfig` values to gate phases and set runtime limits.
 
 ## Quick start
 
 ```rust
+use texform_core::ast::Ast;
 use texform_core::parse::{ParseConfig, ParseContext};
 use texform_transform::{BuildConfig, Profile, TransformContext};
 
 let parse_ctx = ParseContext::from_packages(&["base", "ams"]);
-let mut ast = parse_ctx
-    .parse_to_ast(r"\frac{a}{b}", &ParseConfig::default())
+let (document, _) = parse_ctx
+    .parse(r"\frac{a}{b}", &ParseConfig::default())
+    .try_into_document()
     .expect("source should parse");
+let mut ast = Ast::from_syntax_root(&document.to_syntax());
 
 // Pick a profile. `Faithful` preserves layout while expanding commands; use
 // `Corpus` for complete canonical labels, `Equiv` for equivalence comparison, and
@@ -57,7 +60,7 @@ The crate's public surface is intentionally small:
 
 | Item | Purpose |
 |------|---------|
-| `BuildConfig::profile(profile)` | Select build-time normalization levels and default runtime config. |
+| `BuildConfig::profile(profile)` | Select build-time rule levels and default runtime config. |
 | `TransformContext::from_build_config(config, parse_ctx) -> Result<Self, TransformBuildError>` | Precompile the rewrite plan once for reuse across many ASTs. |
 | `TransformContext::run(ast, parse_ctx)` | Execute the precompiled pipeline with the profile default runtime config. |
 | `TransformContext::run_with(ast, parse_ctx, config)` | Execute the precompiled pipeline with per-run overrides. |
@@ -69,7 +72,7 @@ The rewrite phase additionally re-exports `RewriteRule`, `RuleLevel`, `RuleLevel
 
 ## Pipeline
 
-`TransformContext::run` executes a fixed sequence of phases. Normalization levels are chosen when the context is built; each run may disable rewrite / lower attributes or choose different FlattenGroups and iteration settings through `TransformConfig`.
+`TransformContext::run` executes a fixed sequence of phases. Rule levels are chosen when the context is built; each run may disable Rewrite, LowerAttributes, FinalizeAst, or FlattenGroups, or choose different preserve guards and iteration settings through `TransformConfig`.
 
 1. **LowerAttributes (pre)** — canonicalize declarative-scope commands (e.g. `\bf x`) and registered prefix wrappers (e.g. `\mathbf{x}`) into a single normal form.
 2. **Rewrite** — apply the precompiled rewrite plan in a fixed-point loop, bounded by `max_iterations`.
@@ -105,13 +108,11 @@ Each profile selects cumulative build-time rule levels and supplies a default ru
 | `Corpus` | `Authoring` + `Faithful` + `Corpus` | `STRUCTURAL_ONLY` | Complete canonical forms that remain suitable labels for the original formulas. |
 | `Equiv` | `Authoring` + `Faithful` + `Corpus` + `Equiv` | `STRUCTURAL_ONLY` | Aggressive intermediates for equivalence comparison, including projections that discard visually salient choices. |
 
-The current builtin registry has no `Equiv`-level rules, so `Corpus` and `Equiv` temporarily produce the same output. Their intended products remain different.
+The builtin registry includes `Equiv`-level rules. For example, `ams/cfrac-to-frac` rewrites `\cfrac{a}{b}` and `\cfrac[]{a}{b}` to `\frac{a}{b}`, while retaining explicitly aligned forms such as `\cfrac[l]{a}{b}` and `\cfrac[r]{a}{b}`. `Corpus` does not select this rule, so it retains continued-fraction styling.
 
 #### `RuleLevel`
 
-Every rule belongs to exactly one ordered level. A rule's level is the first
-profile that accepts the rule output as a suitable product; it is not inferred
-from render fidelity.
+Every rule belongs to exactly one ordered level. A rule's level is the first profile that accepts the rule output as a suitable product; it is not inferred from render fidelity.
 
 | Level      | Intent |
 |------------|--------|
@@ -120,9 +121,7 @@ from render fidelity.
 | `Corpus` | Complete, stable canonical forms that remain valid training labels for the original formulas; only training-irrelevant presentation variants and specialized vocabulary may collapse. |
 | `Equiv` | Output is only suitable as an equivalence-checking, deduplication, or fingerprint intermediate, not as a corpus label; it may discard visually salient presentation choices. |
 
-Classify a rule by asking which profile first accepts its output, then declare
-the rule's fidelity independently. `fidelity` may rule out profiles whose floor
-it cannot meet, but a high-fidelity rule is not automatically a lower level.
+Classify a rule by asking which profile first accepts its output, then declare the rule's fidelity independently. `fidelity` may rule out profiles whose floor it cannot meet, but a high-fidelity rule is not automatically a lower level.
 
 `Reading` fidelity is necessary but not sufficient for `Corpus`. A Corpus output must remain a credible complete label for the original formula. If a rewrite materially removes size, stretch, placement, visual hierarchy, or a notation distinction useful for training, classify it as `Equiv` even when notation identity, reading order, and structural roles remain intact. `Equiv` is a use-level rather than an alias for `Math` fidelity, so `Equiv`/`Reading` is a valid and informative combination.
 
@@ -136,9 +135,7 @@ it cannot meet, but a high-fidelity rule is not automatically a lower level.
 | `Reading` | Notation content, reading order, and structural roles are preserved; layout may change. |
 | `Math` | Mathematical meaning is preserved over the declared domain; notation and rendering may change. |
 
-`fidelity` is a metadata contract only. `texform-transform` runs no rendering
-comparison; how a downstream validator interprets a fidelity level when comparing
-rendered output is defined by that consumer, not in this crate.
+`fidelity` is a metadata contract only. `texform-transform` runs no rendering comparison; how a downstream validator interprets a fidelity level when comparing rendered output is defined by that consumer, not in this crate.
 
 `fidelity` must not fall below the rule's level floor:
 
@@ -149,9 +146,7 @@ rendered output is defined by that consumer, not in this crate.
 | `Corpus` | `Reading` |
 | `Equiv` | `Math` |
 
-Do not add a second metadata field for ordinary behavior. If a rule has an
-important gap between its worst case and usual samples, document that gap in the
-rule's top-level comment.
+Do not add a second metadata field for ordinary behavior. If a rule has an important gap between its worst case and usual samples, document that gap in the rule's top-level comment.
 
 ### `FlattenGroupsConfig`
 
@@ -236,7 +231,7 @@ pub struct TransformReport {
 - `FinalizeAstReport` — `steps` with one `applied_count` counter per cleanup step (`merge_adjacent_primes`, `normalize_text_sequences`). Counters accumulate both FinalizeAst invocations in one transform run without recounting already-canonical nodes.
 - `FlattenGroupsReport` — `actions` for the four action counters and `guards` for one hit counter per preserve guard. Hit counters are short-circuit: when several guards would apply to the same group, only the first one that matches in the internal evaluation order is incremented.
 
-The stable facade DTO used by the Python and WebAssembly bindings flattens the same information into a transport-safe shape:
+The stable facade DTO used by the Python and WebAssembly bindings flattens the same information into a transport-safe shape. The following uses Python's snake_case field names; the JavaScript API uses camelCase, including `appliedCount`, `finalizeAst`, `flattenGroups`, and `lowerAttributes`:
 
 ```text
 {
@@ -277,7 +272,7 @@ The phase runs twice in the pipeline (pre and post Rewrite) under a single `enab
 
 ### Rewrite
 
-Rules live under `src/rewrite/rules/{base, ams, braket, physics}/` and are auto-registered through `src/rewrite/rules/generated.rs` (maintained by `build.rs`). Each rule is a unit struct implementing `RewriteRule` with a static `RuleMeta` descriptor.
+Rules live under `src/rewrite/rules/<package>/<level>/<group>/` and are auto-registered through `src/rewrite/rules/generated.rs` (maintained by `build.rs`). Each rule is a unit struct implementing `RewriteRule` with a static `RuleMeta` descriptor.
 
 `RuleMeta` is the static contract used to filter and order rules, invalidate them after runtime knowledge mutations, schedule fixed-point attempts, and check eliminated forms after the full pipeline. `TransformContext::from_build_config` compiles that metadata into a `Plan`; `scheduler::drive_fixed_point` then runs the plan until no rule applies or `max_iterations` is exceeded.
 

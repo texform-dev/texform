@@ -26,7 +26,7 @@ engine.transform(&mut document)?;
 assert_eq!(document.to_latex()?, r"\frac { a } { b }");
 ```
 
-Profiles select the normalization target: `Authoring` (polished author-facing output), `Faithful` (render-faithful universal forms), `Corpus` (complete canonical training labels), and `Equiv` (an aggressive intermediate for equivalence comparison). The current builtin rule set has no `Equiv`-level rules, so `Corpus` and `Equiv` temporarily produce the same output while retaining different intended uses.
+Profiles select the normalization target: `Authoring` (polished author-facing output), `Faithful` (render-faithful universal forms), `Corpus` (complete canonical training labels), and `Equiv` (an aggressive intermediate for equivalence comparison). `Equiv` adds rules such as rewriting centered `\cfrac` forms to `\frac`, discarding continued-fraction styling that `Corpus` retains. Its output is intended for comparison, deduplication, or fingerprints rather than training labels for the original images.
 
 ## Stability
 
@@ -38,8 +38,6 @@ Profiles select the normalization target: `Authoring` (polished author-facing ou
 - [API documentation](https://docs.rs/texform)
 - [Architecture overview](../../ARCHITECTURE.md)
 - [Playground](https://play.texform.dev) — try TeXForm in the browser
-
-<!-- Full documentation: https://texform.dev (docsite goes live after 0.1.0) -->
 
 ## License
 
