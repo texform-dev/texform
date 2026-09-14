@@ -527,7 +527,9 @@ class ConfigError(TexformError):
     """Raised on invalid construction input.
 
     Triggers include an unknown knowledge package name passed to ``Parser`` or
-    ``TransformEngine`` and an unknown transform profile.
+    ``TransformEngine``, an unknown transform profile, and a per-call ``config``
+    argument (or nested ``finalize_ast`` / ``flatten_groups`` value) that is
+    neither the matching config class nor a dict.
     """
 
 
@@ -1334,6 +1336,9 @@ class Parser:
             A ``ParseResult`` dict with two keys: ``document`` (a ``Document`` or
             ``None``) and ``diagnostics`` (a list of diagnostic dicts).
 
+        Raises:
+            ConfigError: If ``config`` is neither a ``ParseConfig`` nor a dict.
+
         Examples:
             result = texform.Parser().parse(r"\\frac{x}{y}")
             document = result["document"]
@@ -1511,6 +1516,7 @@ class TransformEngine:
 
         Raises:
             ParseError: If the source does not parse into a complete tree.
+            ConfigError: If ``config`` is neither a ``TransformConfig`` nor a dict.
 
         Examples:
             engine = texform.TransformEngine(profile="corpus")
@@ -1548,6 +1554,7 @@ class TransformEngine:
             TransformError: If the document is foreign to this engine, or on a
                 contract violation.
             TexformError: If the document has parse errors.
+            ConfigError: If ``config`` is neither a ``TransformConfig`` nor a dict.
 
         Examples:
             engine = texform.TransformEngine(profile="corpus")
@@ -1581,6 +1588,9 @@ class TransformEngine:
 
         Returns:
             A ``ParseResult`` dict with ``document`` and ``diagnostics``.
+
+        Raises:
+            ConfigError: If ``config`` is neither a ``ParseConfig`` nor a dict.
 
         See Also:
             Parser.parse, TransformEngine.transform

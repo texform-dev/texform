@@ -1581,7 +1581,7 @@ fn parse_config_from_python(
         } else {
             let dict = value
                 .cast::<PyDict>()
-                .map_err(|_| ParseError::new_err("config must be a ParseConfig or dict"))?;
+                .map_err(|_| ConfigError::new_err("config must be a ParseConfig or dict"))?;
             apply_parse_config_dict(&mut parsed, dict)?;
         }
     }
@@ -1665,7 +1665,7 @@ fn apply_normalize_config_dict(
             config.transform.finalize_ast = finalize_ast.to_core();
         } else {
             let dict = finalize_ast.cast::<PyDict>().map_err(|_| {
-                ParseError::new_err("finalize_ast must be a FinalizeAstConfig or dict")
+                ConfigError::new_err("finalize_ast must be a FinalizeAstConfig or dict")
             })?;
             apply_finalize_ast_dict(&mut config.transform.finalize_ast, dict)?;
         }
@@ -1677,7 +1677,7 @@ fn apply_normalize_config_dict(
             config.transform.flatten_groups = flatten_groups.to_core();
         } else {
             let dict = flatten_groups.cast::<PyDict>().map_err(|_| {
-                ParseError::new_err("flatten_groups must be a FlattenGroupsConfig or dict")
+                ConfigError::new_err("flatten_groups must be a FlattenGroupsConfig or dict")
             })?;
             apply_flatten_groups_dict(&mut config.transform.flatten_groups, dict)?;
         }
@@ -1774,7 +1774,7 @@ fn normalize_config_from_python(
         } else {
             let dict = value
                 .cast::<PyDict>()
-                .map_err(|_| ParseError::new_err("config must be a TransformConfig or dict"))?;
+                .map_err(|_| ConfigError::new_err("config must be a TransformConfig or dict"))?;
             apply_normalize_config_dict(&mut parsed, dict)?;
         }
     }
@@ -2893,6 +2893,46 @@ mod tests {
                 .call_method1("transform", (document, "not a config"))
                 .expect_err("invalid config object should fail");
 
+            assert!(error.is_instance_of::<ConfigError>(py));
+        });
+    }
+
+    #[test]
+    fn python_invalid_per_call_config_raises_config_error() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("profile", "equiv").unwrap();
+            kwargs.set_item("packages", vec!["base"]).unwrap();
+            let engine = module
+                .getattr("TransformEngine")
+                .unwrap()
+                .call((), Some(&kwargs))
+                .unwrap();
+
+            let error = engine
+                .call_method1("parse", ("x", "not a config"))
+                .expect_err("invalid parse config should fail");
+            assert!(error.is_instance_of::<ConfigError>(py));
+
+            let error = engine
+                .call_method1("normalize", ("x", "not a config"))
+                .expect_err("invalid normalize config should fail");
+            assert!(error.is_instance_of::<ConfigError>(py));
+
+            let finalize_kwargs = pyo3::types::PyDict::new(py);
+            finalize_kwargs.set_item("finalize_ast", 42).unwrap();
+            let error = engine
+                .call_method("normalize", ("x",), Some(&finalize_kwargs))
+                .expect_err("invalid finalize_ast should fail");
+            assert!(error.is_instance_of::<ConfigError>(py));
+
+            let parser = module.getattr("Parser").unwrap().call0().unwrap();
+            let error = parser
+                .call_method1("parse", ("x", "not a config"))
+                .expect_err("invalid parser config should fail");
             assert!(error.is_instance_of::<ConfigError>(py));
         });
     }
