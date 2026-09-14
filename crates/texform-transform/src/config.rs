@@ -2,8 +2,31 @@
 
 use crate::finalize_ast::FinalizeAstConfig;
 use crate::flatten_groups::FlattenGroupsConfig;
+use crate::lower_attributes::LowerAttributesConfig;
 use crate::rewrite::plan::RuleSelection;
 use crate::rewrite::{RuleKey, RuleLevelSet};
+
+/// Per-run switches for the Rewrite phase.
+///
+/// Nested under [`TransformConfig::rewrite`] so Rewrite has the same shape as
+/// the other pipeline stages: an enable flag plus the settings that phase
+/// reads. `max_iterations` caps the fixed-point loop.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RewriteConfig {
+    /// Run the fixed-point Rewrite loop (legacy-syntax modernization, alias
+    /// canonicalization, macro expansion).
+    pub enabled: bool,
+    /// Upper bound on Rewrite fixed-point iterations before the run stops.
+    pub max_iterations: usize,
+}
+
+impl RewriteConfig {
+    /// Enabled rewrite loop with the historical 100-iteration cap.
+    pub const DEFAULT: Self = Self {
+        enabled: true,
+        max_iterations: 100,
+    };
+}
 
 /// Normalization target for a transform run.
 ///
@@ -43,18 +66,16 @@ impl Profile {
     pub const fn default_transform_config(self) -> TransformConfig {
         match self {
             Self::Authoring | Self::Faithful => TransformConfig {
-                rewrite_enabled: true,
-                lower_attributes_enabled: true,
+                lower_attributes: LowerAttributesConfig::ENABLED,
+                rewrite: RewriteConfig::DEFAULT,
                 finalize_ast: FinalizeAstConfig::ENABLED,
                 flatten_groups: FlattenGroupsConfig::STRICT,
-                max_iterations: 100,
             },
             Self::Corpus | Self::Equiv => TransformConfig {
-                rewrite_enabled: true,
-                lower_attributes_enabled: true,
+                lower_attributes: LowerAttributesConfig::ENABLED,
+                rewrite: RewriteConfig::DEFAULT,
                 finalize_ast: FinalizeAstConfig::ENABLED,
                 flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
-                max_iterations: 100,
             },
         }
     }
@@ -110,24 +131,20 @@ impl BuildConfig {
     }
 }
 
-/// Per-run switches over the transform pipeline phases.
+/// Per-run switches over the transform pipeline phases, in execution order.
 ///
 /// A [`Profile`] supplies a default `TransformConfig`; override it per call to
 /// toggle individual phases or cap the rewrite loop. Disabling a phase here
 /// skips it without changing which rule levels the profile selected.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TransformConfig {
-    /// Run the fixed-point Rewrite loop (legacy-syntax modernization, alias
-    /// canonicalization, macro expansion).
-    pub rewrite_enabled: bool,
-    /// Run the LowerAttributes phase that canonicalizes font and style markup.
-    pub lower_attributes_enabled: bool,
-    /// Configuration for the FinalizeAst phase (local AST cleanup such as
-    /// merging adjacent `Prime` nodes).
+    /// LowerAttributes phase that canonicalizes font and style markup.
+    pub lower_attributes: LowerAttributesConfig,
+    /// Rewrite phase: enablement and the fixed-point iteration cap.
+    pub rewrite: RewriteConfig,
+    /// FinalizeAst phase (local AST cleanup such as merging adjacent `Prime`
+    /// nodes).
     pub finalize_ast: FinalizeAstConfig,
-    /// Configuration for the FlattenGroups phase that strips redundant braces
-    /// behind safety guards.
+    /// FlattenGroups phase that strips redundant braces behind safety guards.
     pub flatten_groups: FlattenGroupsConfig,
-    /// Upper bound on Rewrite fixed-point iterations before the run stops.
-    pub max_iterations: usize,
 }

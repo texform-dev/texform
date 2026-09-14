@@ -377,11 +377,10 @@ macro_rules! transform_examples {
                 )
                 .expect("transform context should build");
                 let cfg = $crate::TransformConfig {
-                    rewrite_enabled: true,
-                    lower_attributes_enabled: false,
+                    lower_attributes: $crate::LowerAttributesConfig::DISABLED,
+                    rewrite: $crate::RewriteConfig::DEFAULT,
                     finalize_ast: $crate::FinalizeAstConfig::DISABLED,
                     flatten_groups: $crate::FlattenGroupsConfig::DISABLED,
-                    max_iterations: 100,
                 };
                 let parse_config = $crate::parse::ParseConfig::STRICT;
 

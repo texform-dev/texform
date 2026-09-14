@@ -155,11 +155,10 @@ pub(crate) fn run_one_rule_for_test(
         ast,
         parse_ctx,
         &crate::TransformConfig {
-            rewrite_enabled: true,
-            lower_attributes_enabled: false,
+            lower_attributes: crate::LowerAttributesConfig::DISABLED,
+            rewrite: crate::RewriteConfig::DEFAULT,
             finalize_ast: crate::FinalizeAstConfig::DISABLED,
             flatten_groups: crate::FlattenGroupsConfig::DISABLED,
-            max_iterations: 100,
         },
     )
 }

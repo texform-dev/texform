@@ -9,7 +9,7 @@
 //! path. Individual rules are addressed by [`RuleKey`]; [`rule_key_from_name`]
 //! resolves a key from its stable string name.
 
-pub use texform_transform::{Profile, RuleKey, TransformConfig};
+pub use texform_transform::{Profile, RewriteConfig, RuleKey, TransformConfig};
 
 /// Resolve a transform [`RuleKey`] from its stable string name.
 ///

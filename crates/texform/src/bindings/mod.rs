@@ -1,9 +1,17 @@
+mod input;
+mod read;
+
+pub use input::{
+    FinalizeAstConfigInput, FlattenGroupsConfigInput, LowerAttributesConfigInput,
+    NormalizeConfigInput, ParseConfigInput, RewriteConfigInput, TransformConfigInput,
+};
+pub use read::{ReadError, format_read_error, read, snake_to_camel};
+
 use crate::argspec::parsed_arg_spec_slot;
 use crate::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, Document, EditError,
-    Error, FinalizeAstConfig, FinalizeAstReport, FlattenGroupsConfig, FlattenGroupsReport,
-    FromSyntaxError, LowerAttributesConfig, LowerAttributesReport, ParseDiagnostic,
-    ParsedArgSpecSlot, SerializationTokenKind, TokenizedLatex, TransformConfig, TransformReport,
+    Error, FinalizeAstReport, FlattenGroupsReport, FromSyntaxError, LowerAttributesReport,
+    ParseDiagnostic, ParsedArgSpecSlot, SerializationTokenKind, TokenizedLatex, TransformReport,
 };
 use texform_transform::{
     Attr, AttrValue, AttributeFormCounts, MathFontValue, SizeValue, StyleValue, TextFamily,
@@ -49,168 +57,6 @@ pub fn tokenized_latex_to_dto(result: TokenizedLatex) -> TokenizedLatexDto {
                 },
             })
             .collect(),
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
-pub struct ParseConfigInput {
-    pub reject_unknown: Option<bool>,
-    pub abort_on_error: Option<bool>,
-    pub max_group_depth: Option<usize>,
-}
-
-impl ParseConfigInput {
-    pub fn into_config(
-        self,
-        mut base: texform_core::parse::ParseConfig,
-    ) -> texform_core::parse::ParseConfig {
-        if let Some(reject_unknown) = self.reject_unknown {
-            base.reject_unknown = reject_unknown;
-        }
-        if let Some(abort_on_error) = self.abort_on_error {
-            base.abort_on_error = abort_on_error;
-        }
-        if let Some(max_group_depth) = self.max_group_depth {
-            base.max_group_depth = max_group_depth;
-        }
-        base
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct LowerAttributesConfigInput {
-    pub enabled: Option<bool>,
-}
-
-impl LowerAttributesConfigInput {
-    pub fn into_config(self, mut base: LowerAttributesConfig) -> LowerAttributesConfig {
-        if let Some(enabled) = self.enabled {
-            base.enabled = enabled;
-        }
-        base
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
-pub struct RewriteConfigInput {
-    pub enabled: Option<bool>,
-    pub max_iterations: Option<usize>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
-pub struct FlattenGroupsConfigInput {
-    pub enabled: Option<bool>,
-    pub preserve_group_containing_declarative_command: Option<bool>,
-    pub preserve_group_in_script_base_slot: Option<bool>,
-    pub preserve_group_inside_env_body: Option<bool>,
-    pub preserve_group_containing_infix: Option<bool>,
-    pub preserve_group_adjacent_to_command_like: Option<bool>,
-    pub preserve_group_as_argument_of_command: Option<bool>,
-    pub preserve_group_after_scripted_command_like: Option<bool>,
-    pub preserve_empty_group: Option<bool>,
-    pub preserve_group_with_lone_atom_spacing_char: Option<bool>,
-    pub preserve_group_starting_with_atom_spacing_char: Option<bool>,
-    pub preserve_group_containing_delimited_pair: Option<bool>,
-}
-
-impl FlattenGroupsConfigInput {
-    pub fn into_config(self, mut base: FlattenGroupsConfig) -> FlattenGroupsConfig {
-        if let Some(enabled) = self.enabled {
-            base.enabled = enabled;
-        }
-        if let Some(value) = self.preserve_group_containing_declarative_command {
-            base.preserve_group_containing_declarative_command = value;
-        }
-        if let Some(value) = self.preserve_group_in_script_base_slot {
-            base.preserve_group_in_script_base_slot = value;
-        }
-        if let Some(value) = self.preserve_group_inside_env_body {
-            base.preserve_group_inside_env_body = value;
-        }
-        if let Some(value) = self.preserve_group_containing_infix {
-            base.preserve_group_containing_infix = value;
-        }
-        if let Some(value) = self.preserve_group_adjacent_to_command_like {
-            base.preserve_group_adjacent_to_command_like = value;
-        }
-        if let Some(value) = self.preserve_group_as_argument_of_command {
-            base.preserve_group_as_argument_of_command = value;
-        }
-        if let Some(value) = self.preserve_group_after_scripted_command_like {
-            base.preserve_group_after_scripted_command_like = value;
-        }
-        if let Some(value) = self.preserve_empty_group {
-            base.preserve_empty_group = value;
-        }
-        if let Some(value) = self.preserve_group_with_lone_atom_spacing_char {
-            base.preserve_group_with_lone_atom_spacing_char = value;
-        }
-        if let Some(value) = self.preserve_group_starting_with_atom_spacing_char {
-            base.preserve_group_starting_with_atom_spacing_char = value;
-        }
-        if let Some(value) = self.preserve_group_containing_delimited_pair {
-            base.preserve_group_containing_delimited_pair = value;
-        }
-        base
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct FinalizeAstConfigInput {
-    pub enabled: Option<bool>,
-}
-
-impl FinalizeAstConfigInput {
-    pub fn into_config(self, mut base: FinalizeAstConfig) -> FinalizeAstConfig {
-        if let Some(enabled) = self.enabled {
-            base.enabled = enabled;
-        }
-        base
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
-pub struct TransformConfigInput {
-    pub lower_attributes: Option<LowerAttributesConfigInput>,
-    pub rewrite: Option<RewriteConfigInput>,
-    pub finalize_ast: Option<FinalizeAstConfigInput>,
-    pub flatten_groups: Option<FlattenGroupsConfigInput>,
-}
-
-impl TransformConfigInput {
-    pub fn into_config(self) -> TransformConfig {
-        self.into_config_with_base(crate::Profile::Authoring.default_transform_config())
-    }
-
-    pub fn into_config_with_base(self, mut base: TransformConfig) -> TransformConfig {
-        if let Some(lower_attributes) = self.lower_attributes {
-            base.lower_attributes_enabled = lower_attributes
-                .into_config(LowerAttributesConfig {
-                    enabled: base.lower_attributes_enabled,
-                })
-                .enabled;
-        }
-        if let Some(rewrite) = self.rewrite {
-            if let Some(enabled) = rewrite.enabled {
-                base.rewrite_enabled = enabled;
-            }
-            if let Some(max_iterations) = rewrite.max_iterations {
-                base.max_iterations = max_iterations;
-            }
-        }
-        if let Some(finalize_ast) = self.finalize_ast {
-            base.finalize_ast = finalize_ast.into_config(base.finalize_ast);
-        }
-        if let Some(flatten_groups) = self.flatten_groups {
-            base.flatten_groups = flatten_groups.into_config(base.flatten_groups);
-        }
-        base
     }
 }
 
@@ -749,97 +595,6 @@ fn string_to_dto_token(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn parse_config_input_overrides_default_fields() {
-        let input = ParseConfigInput {
-            reject_unknown: Some(true),
-            abort_on_error: None,
-            max_group_depth: Some(7),
-        };
-
-        let config = input.into_config(texform_core::parse::ParseConfig::default());
-
-        assert!(config.reject_unknown);
-        assert!(!config.abort_on_error);
-        assert_eq!(config.max_group_depth, 7);
-    }
-
-    #[test]
-    fn transform_config_input_fills_nested_defaults() {
-        let input = TransformConfigInput {
-            lower_attributes: Some(LowerAttributesConfigInput {
-                enabled: Some(false),
-            }),
-            rewrite: None,
-            finalize_ast: None,
-            flatten_groups: Some(FlattenGroupsConfigInput {
-                enabled: Some(true),
-                preserve_empty_group: Some(false),
-                ..Default::default()
-            }),
-        };
-
-        let config = input.into_config();
-
-        assert!(!config.lower_attributes_enabled);
-        assert!(config.rewrite_enabled);
-        assert_eq!(config.max_iterations, 100);
-        assert!(config.flatten_groups.enabled);
-        assert!(!config.flatten_groups.preserve_empty_group);
-    }
-
-    #[test]
-    fn transform_config_input_deserializes_camel_case_finalize_ast() {
-        let input: TransformConfigInput = serde_json::from_value(serde_json::json!({
-            "finalizeAst": {
-                "enabled": false
-            }
-        }))
-        .unwrap();
-
-        let config = input.into_config();
-
-        assert!(!config.finalize_ast.enabled);
-    }
-
-    #[test]
-    fn transform_config_input_rejects_snake_case_finalize_ast() {
-        let error = serde_json::from_value::<TransformConfigInput>(serde_json::json!({
-            "finalize_ast": {
-                "enabled": false
-            }
-        }))
-        .expect_err("JS-facing transform config should reject snake_case fields");
-
-        assert!(error.to_string().contains("unknown field"));
-    }
-
-    #[test]
-    fn transform_config_input_deserializes_camel_case_flatten_groups() {
-        let input: TransformConfigInput = serde_json::from_value(serde_json::json!({
-            "flattenGroups": {
-                "preserveEmptyGroup": false
-            }
-        }))
-        .unwrap();
-
-        let config = input.into_config();
-
-        assert!(!config.flatten_groups.preserve_empty_group);
-    }
-
-    #[test]
-    fn transform_config_input_rejects_snake_case_flatten_groups() {
-        let error = serde_json::from_value::<TransformConfigInput>(serde_json::json!({
-            "flatten_groups": {
-                "preserve_empty_group": false
-            }
-        }))
-        .expect_err("JS-facing transform config should reject snake_case fields");
-
-        assert!(error.to_string().contains("unknown field"));
-    }
 
     #[test]
     fn transform_report_to_dto_reads_rewrite_report() {

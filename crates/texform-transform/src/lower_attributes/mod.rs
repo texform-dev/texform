@@ -305,18 +305,13 @@ impl AttributeState {
 
 /// Enablement carrier for the LowerAttributes phase.
 ///
-/// The engine gates the phase through
-/// [`TransformConfig::lower_attributes_enabled`](crate::TransformConfig::lower_attributes_enabled),
-/// not through this flag directly: when LowerAttributes is enabled the engine
-/// calls [`run`] (which then processes the whole subtree unconditionally), and
-/// when it is disabled the engine skips the call. The language bindings surface
-/// this flag as their `lower_attributes` / `lowerAttributes` config, which feeds
-/// `TransformConfig::lower_attributes_enabled`.
+/// The engine reads [`Self::enabled`] to decide whether to call [`run`].
+/// [`run`] itself does not consult this flag; it always processes the subtree
+/// it is given.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LowerAttributesConfig {
-    /// Whether the engine runs the LowerAttributes phase. Consumed via
-    /// [`TransformConfig::lower_attributes_enabled`](crate::TransformConfig::lower_attributes_enabled);
-    /// [`run`] itself does not read it.
+    /// Whether the engine runs the LowerAttributes phase. [`run`] does not
+    /// read this flag.
     pub enabled: bool,
 }
 

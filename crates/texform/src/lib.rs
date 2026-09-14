@@ -67,7 +67,9 @@ pub use argspec::{
     ArgSpecFormInfo, ArgSpecKindInfo, DelimiterTokenInfo, DelimiterTokenPairInfo,
     ParsedArgSpecSlot, RuntimeContentModeInfo, ValidateArgspecResult, validate_argspec,
 };
-pub use config::{NormalizeConfig, Profile, RuleKey, TransformConfig, rule_key_from_name};
+pub use config::{
+    NormalizeConfig, Profile, RewriteConfig, RuleKey, TransformConfig, rule_key_from_name,
+};
 pub use document::{
     ArgRef, ArgValue, DelimiterRef, DelimiterValue, Document, DocumentId, EditError,
     FromSyntaxError, GroupKindRef, NodeId, NodeKind, NodeRef, NodeSpanEntry,

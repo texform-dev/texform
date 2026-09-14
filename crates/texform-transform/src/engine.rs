@@ -22,7 +22,6 @@ use crate::ast::Ast;
 use crate::config::TransformConfig;
 use crate::context::TransformContext;
 use crate::error::TransformError;
-use crate::lower_attributes::LowerAttributesConfig;
 use crate::parse::ParseContext;
 use crate::report::TransformReport;
 use crate::{finalize_ast, flatten_groups, lower_attributes, rewrite};
@@ -35,31 +34,23 @@ pub(crate) fn execute(
 ) -> Result<TransformReport, TransformError> {
     let mut report = TransformReport::default();
 
-    if cfg.lower_attributes_enabled {
-        lower_attributes::run(
-            ast,
-            &LowerAttributesConfig::ENABLED,
-            &mut report.lower_attributes,
-        );
+    if cfg.lower_attributes.enabled {
+        lower_attributes::run(ast, &cfg.lower_attributes, &mut report.lower_attributes);
     }
 
-    if cfg.rewrite_enabled {
+    if cfg.rewrite.enabled {
         rewrite::run(
             ast,
             parse_ctx,
             tctx.rewrite_plan(),
-            cfg.max_iterations,
+            cfg.rewrite.max_iterations,
             &mut report.rewrite,
         )
         .map_err(TransformError::Rewrite)?;
     }
 
-    if cfg.lower_attributes_enabled {
-        lower_attributes::run(
-            ast,
-            &LowerAttributesConfig::ENABLED,
-            &mut report.lower_attributes,
-        );
+    if cfg.lower_attributes.enabled {
+        lower_attributes::run(ast, &cfg.lower_attributes, &mut report.lower_attributes);
     }
 
     finalize_ast::run(ast, &cfg.finalize_ast, &mut report.finalize_ast);
@@ -73,7 +64,7 @@ pub(crate) fn execute(
         finalize_ast::run(ast, &cfg.finalize_ast, &mut report.finalize_ast);
     }
 
-    if cfg.rewrite_enabled
+    if cfg.rewrite.enabled
         && let Some(violation) = rewrite::collect_eliminated_violations(
             ast,
             parse_ctx,
@@ -116,11 +107,10 @@ mod tests {
         let plan = RewritePlan::from_rules_for_tests(vec![&VB_TO_MATHBF_FOR_CONTRACT_TEST]);
         let context = TransformContext::from_rewrite_plan_for_tests(
             TransformConfig {
-                rewrite_enabled: true,
-                lower_attributes_enabled: true,
+                lower_attributes: crate::LowerAttributesConfig::ENABLED,
+                rewrite: crate::RewriteConfig::DEFAULT,
                 finalize_ast: crate::FinalizeAstConfig::ENABLED,
                 flatten_groups: FlattenGroupsConfig::DISABLED,
-                max_iterations: 100,
             },
             plan,
         );

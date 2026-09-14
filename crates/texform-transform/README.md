@@ -75,7 +75,7 @@ The rewrite phase additionally re-exports `RewriteRule`, `RuleLevel`, `RuleLevel
 `TransformContext::run` executes a fixed sequence of phases. Rule levels are chosen when the context is built; each run may disable Rewrite, LowerAttributes, FinalizeAst, or FlattenGroups, or choose different preserve guards and iteration settings through `TransformConfig`.
 
 1. **LowerAttributes (pre)** — canonicalize declarative-scope commands (e.g. `\bf x`) and registered prefix wrappers (e.g. `\mathbf{x}`) into a single normal form.
-2. **Rewrite** — apply the precompiled rewrite plan in a fixed-point loop, bounded by `max_iterations`.
+2. **Rewrite** — apply the precompiled rewrite plan in a fixed-point loop, bounded by `rewrite.max_iterations`.
 3. **LowerAttributes (post)** — re-canonicalize attribute markers introduced by rewrite rules (some Authoring / Faithful rules emit prefix wrappers that need lowering again).
 4. **FinalizeAst** — profile-neutral AST canonicalization (adjacent `Prime` merges, text-sequence normalization). Runs before FlattenGroups so merges can create single-child groups.
 5. **FlattenGroups** — remove redundant explicit and implicit groups after the earlier phases have stabilized.
@@ -89,10 +89,14 @@ Phase order is fixed; only the per-phase flags are configurable. When `flatten_g
 
 ```rust
 pub struct TransformConfig {
-    pub rewrite_enabled: bool,
-    pub lower_attributes_enabled: bool,
+    pub lower_attributes: LowerAttributesConfig,
+    pub rewrite: RewriteConfig,
     pub finalize_ast: FinalizeAstConfig,
     pub flatten_groups: FlattenGroupsConfig,
+}
+
+pub struct RewriteConfig {
+    pub enabled: bool,
     pub max_iterations: usize,
 }
 ```

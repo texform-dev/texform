@@ -126,11 +126,7 @@ impl TransformEngine {
     /// # }
     /// ```
     pub fn normalize(&self, src: &str) -> Result<NormalizeResult, Error> {
-        let config = NormalizeConfig {
-            parse: self.parser.default_parse_config().clone(),
-            transform: *self.transform.default_config(),
-        };
-        self.normalize_with(src, &config)
+        self.normalize_with(src, &self.default_normalize_config())
     }
 
     /// Parse, transform, and serialize a LaTeX formula with explicit configs.
@@ -159,6 +155,18 @@ impl TransformEngine {
     /// Default transform configuration used by [`transform`](Self::transform).
     pub fn default_transform_config(&self) -> &TransformConfig {
         self.transform.default_config()
+    }
+
+    /// Combined parse and transform defaults used by [`normalize`](Self::normalize).
+    ///
+    /// Parse defaults come from this engine's parser; transform defaults come
+    /// from the selected profile. Language bindings should take the normalize
+    /// baseline from this method rather than reassembling the two halves.
+    pub fn default_normalize_config(&self) -> NormalizeConfig {
+        NormalizeConfig {
+            parse: self.parser.default_parse_config().clone(),
+            transform: *self.transform.default_config(),
+        }
     }
 }
 

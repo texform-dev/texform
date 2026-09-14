@@ -695,7 +695,9 @@ impl TransformConfig {
             }
             _ => TransformConfigInput::default(),
         };
-        Ok(Self::from_core_config(input.into_config()))
+        Ok(Self::from_core_config(input.into_config(
+            CoreProfile::Authoring.default_transform_config(),
+        )))
     }
 
     pub fn authoring() -> TransformConfig {
@@ -766,9 +768,12 @@ impl TransformConfig {
     fn from_core_config(config: CoreTransformConfig) -> Self {
         Self {
             lower_attributes: LowerAttributesConfig {
-                enabled: config.lower_attributes_enabled,
+                enabled: config.lower_attributes.enabled,
             },
-            rewrite: RewriteConfig::from_core(config.rewrite_enabled, config.max_iterations),
+            rewrite: RewriteConfig::from_core(
+                config.rewrite.enabled,
+                config.rewrite.max_iterations,
+            ),
             finalize_ast: FinalizeAstConfig::from_core(config.finalize_ast),
             flatten_groups: FlattenGroupsConfig::from_core(config.flatten_groups),
         }
@@ -1817,10 +1822,7 @@ impl TransformEngine {
             })?;
             return normalize_result_to_js(result.normalized, &result.report);
         };
-        let mut config = texform::NormalizeConfig {
-            parse: self.inner.parser().default_parse_config().clone(),
-            transform: *self.inner.default_transform_config(),
-        };
+        let mut config = self.inner.default_normalize_config();
         if !value.is_null() && !value.is_undefined() {
             let input =
                 serde_wasm_bindgen::from_value::<NormalizeOptions>(value).map_err(|error| {
@@ -1844,13 +1846,13 @@ impl TransformEngine {
                     finalize_ast.into_config(config.transform.finalize_ast);
             }
             if let Some(rewrite_enabled) = input.rewrite_enabled {
-                config.transform.rewrite_enabled = rewrite_enabled;
+                config.transform.rewrite.enabled = rewrite_enabled;
             }
             if let Some(lower_attributes_enabled) = input.lower_attributes_enabled {
-                config.transform.lower_attributes_enabled = lower_attributes_enabled;
+                config.transform.lower_attributes.enabled = lower_attributes_enabled;
             }
             if let Some(max_iterations) = input.max_iterations {
-                config.transform.max_iterations = max_iterations;
+                config.transform.rewrite.max_iterations = max_iterations;
             }
         }
         let result = self.inner.normalize_with(src, &config).map_err(|error| {
@@ -1942,7 +1944,7 @@ fn transform_config_from_js(
     }
     let input = serde_wasm_bindgen::from_value::<TransformConfigInput>(value)
         .map_err(|error| config_error_to_js(format!("invalid transform config: {error}")))?;
-    Ok(input.into_config_with_base(base))
+    Ok(input.into_config(base))
 }
 
 #[wasm_bindgen]
@@ -2311,7 +2313,7 @@ mod tests {
             }),
             ..Default::default()
         };
-        let config = input.into_config();
+        let config = input.into_config(CoreProfile::Authoring.default_transform_config());
 
         assert!(!config.finalize_ast.enabled);
     }

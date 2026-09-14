@@ -2,7 +2,8 @@ use texform_core::ast::{ArgumentValue, Ast, GroupKind, Node, Slot};
 use texform_core::parse::{ParseConfig, ParseContext};
 use texform_core::serialize::serialize;
 use texform_transform::{
-    BuildConfig, FinalizeAstConfig, FlattenGroupsConfig, Profile, TransformConfig, TransformContext,
+    BuildConfig, FinalizeAstConfig, FlattenGroupsConfig, LowerAttributesConfig, Profile,
+    RewriteConfig, TransformConfig, TransformContext,
 };
 
 struct Outcome {
@@ -19,11 +20,13 @@ fn run_flatten_groups_with_config(src: &str, flatten_groups: FlattenGroupsConfig
     let parse_ctx = ParseContext::from_packages(&["base", "ams"]);
     let mut ast = parse_to_ast(&parse_ctx, src, &ParseConfig::default());
     let config = TransformConfig {
-        rewrite_enabled: false,
-        lower_attributes_enabled: false,
+        lower_attributes: LowerAttributesConfig::DISABLED,
+        rewrite: RewriteConfig {
+            enabled: false,
+            ..RewriteConfig::DEFAULT
+        },
         finalize_ast: FinalizeAstConfig::DISABLED,
         flatten_groups,
-        max_iterations: 100,
     };
     let context =
         TransformContext::from_build_config(BuildConfig::profile(Profile::Equiv), &parse_ctx)

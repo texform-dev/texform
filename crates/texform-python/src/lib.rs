@@ -324,7 +324,7 @@ impl PyTransformConfig {
                 PyLowerAttributesConfig::from_core(CoreLowerAttributesConfig::ENABLED)
             }),
             rewrite: rewrite.unwrap_or_else(|| {
-                PyRewriteConfig::from_core(default.rewrite_enabled, default.max_iterations)
+                PyRewriteConfig::from_core(default.rewrite.enabled, default.rewrite.max_iterations)
             }),
             finalize_ast: finalize_ast
                 .unwrap_or_else(|| PyFinalizeAstConfig::from_core(default.finalize_ast)),
@@ -366,22 +366,29 @@ impl PyTransformConfig {
         let config = profile.default_transform_config();
         Self {
             lower_attributes: PyLowerAttributesConfig {
-                enabled: config.lower_attributes_enabled,
+                enabled: config.lower_attributes.enabled,
             },
-            rewrite: PyRewriteConfig::from_core(config.rewrite_enabled, config.max_iterations),
+            rewrite: PyRewriteConfig::from_core(
+                config.rewrite.enabled,
+                config.rewrite.max_iterations,
+            ),
             finalize_ast: PyFinalizeAstConfig::from_core(config.finalize_ast),
             flatten_groups: PyFlattenGroupsConfig::from_core(config.flatten_groups),
         }
     }
 
     fn to_core(&self) -> CoreTransformConfig {
-        let mut config = CoreProfile::Authoring.default_transform_config();
-        config.lower_attributes_enabled = self.lower_attributes.enabled;
-        config.rewrite_enabled = self.rewrite.enabled;
-        config.finalize_ast = self.finalize_ast.to_core();
-        config.flatten_groups = self.flatten_groups.to_core();
-        config.max_iterations = self.rewrite.max_iterations;
-        config
+        CoreTransformConfig {
+            lower_attributes: CoreLowerAttributesConfig {
+                enabled: self.lower_attributes.enabled,
+            },
+            rewrite: texform::RewriteConfig {
+                enabled: self.rewrite.enabled,
+                max_iterations: self.rewrite.max_iterations,
+            },
+            finalize_ast: self.finalize_ast.to_core(),
+            flatten_groups: self.flatten_groups.to_core(),
+        }
     }
 }
 
@@ -1650,13 +1657,13 @@ fn apply_normalize_config_dict(
 ) -> PyResult<()> {
     apply_parse_config_dict(&mut config.parse, dict)?;
     if let Some(value) = py_optional_bool(dict, "rewrite_enabled")? {
-        config.transform.rewrite_enabled = value;
+        config.transform.rewrite.enabled = value;
     }
     if let Some(value) = py_optional_bool(dict, "lower_attributes_enabled")? {
-        config.transform.lower_attributes_enabled = value;
+        config.transform.lower_attributes.enabled = value;
     }
     if let Some(value) = py_optional_usize(dict, "max_iterations")? {
-        config.transform.max_iterations = value;
+        config.transform.rewrite.max_iterations = value;
     }
     if let Some(finalize_ast) = dict.get_item("finalize_ast")?
         && !finalize_ast.is_none()
@@ -1697,13 +1704,13 @@ fn apply_transform_config_dict(
     dict: &Bound<'_, PyDict>,
 ) -> PyResult<()> {
     if let Some(value) = py_optional_bool(dict, "rewrite_enabled")? {
-        config.rewrite_enabled = value;
+        config.rewrite.enabled = value;
     }
     if let Some(value) = py_optional_bool(dict, "lower_attributes_enabled")? {
-        config.lower_attributes_enabled = value;
+        config.lower_attributes.enabled = value;
     }
     if let Some(value) = py_optional_usize(dict, "max_iterations")? {
-        config.max_iterations = value;
+        config.rewrite.max_iterations = value;
     }
     if let Some(finalize_ast) = dict.get_item("finalize_ast")?
         && !finalize_ast.is_none()
@@ -1961,10 +1968,7 @@ impl PyTransformEngine {
         config: Option<&Bound<'_, PyAny>>,
         kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
-        let default = texform::NormalizeConfig {
-            parse: self.inner.parser().default_parse_config().clone(),
-            transform: *self.inner.default_transform_config(),
-        };
+        let default = self.inner.default_normalize_config();
         let result = match normalize_config_from_python(config, kwargs, default)? {
             Some(config) => self.inner.normalize_with(src, &config),
             None => self.inner.normalize(src),

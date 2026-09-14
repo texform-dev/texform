@@ -1,8 +1,8 @@
 use texform_core::parse::{ParseConfig, ParseContext};
 use texform_core::serialize;
 use texform_transform::{
-    BuildConfig, FinalizeAstConfig, FlattenGroupsConfig, Profile, RuleLevel, TransformConfig,
-    TransformContext,
+    BuildConfig, FinalizeAstConfig, FlattenGroupsConfig, LowerAttributesConfig, Profile,
+    RewriteConfig, RuleLevel, TransformConfig, TransformContext,
 };
 
 #[test]
@@ -63,11 +63,13 @@ fn context_always_builds_a_plan_even_when_runtime_rewrite_is_disabled() {
             &mut ast,
             &parser,
             &TransformConfig {
-                rewrite_enabled: false,
-                lower_attributes_enabled: false,
+                lower_attributes: LowerAttributesConfig::DISABLED,
+                rewrite: RewriteConfig {
+                    enabled: false,
+                    ..RewriteConfig::DEFAULT
+                },
                 finalize_ast: FinalizeAstConfig::DISABLED,
                 flatten_groups: FlattenGroupsConfig::DISABLED,
-                max_iterations: 100,
             },
         )
         .expect("transform should run");

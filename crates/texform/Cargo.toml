@@ -13,6 +13,7 @@ categories.workspace = true
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+serde_path_to_error.workspace = true
 texform-argspec.workspace = true
 texform-core.workspace = true
 texform-interface.workspace = true

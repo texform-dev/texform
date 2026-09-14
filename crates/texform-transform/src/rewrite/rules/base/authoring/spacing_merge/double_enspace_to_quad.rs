@@ -158,11 +158,10 @@ mod tests {
         )
         .expect("authoring transform context should build");
         let config = TransformConfig {
-            rewrite_enabled: true,
-            lower_attributes_enabled: false,
+            lower_attributes: crate::LowerAttributesConfig::DISABLED,
+            rewrite: crate::RewriteConfig::DEFAULT,
             finalize_ast: crate::FinalizeAstConfig::DISABLED,
             flatten_groups: crate::FlattenGroupsConfig::DISABLED,
-            max_iterations: 100,
         };
         let parse_config = texform_core::parse::ParseConfig::STRICT;
         let mut ast = crate::parse_to_ast_for_test(&parse_ctx, input, &parse_config);

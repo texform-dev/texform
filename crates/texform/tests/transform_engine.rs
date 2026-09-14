@@ -1,6 +1,6 @@
 use texform::{
-    ContentMode, FlattenGroupsConfig, NormalizeConfig, ParseConfig, Parser, Profile,
-    TransformConfig, TransformEngine, bindings::transform_report_to_dto,
+    ContentMode, FlattenGroupsConfig, LowerAttributesConfig, NormalizeConfig, ParseConfig, Parser,
+    Profile, RewriteConfig, TransformConfig, TransformEngine, bindings::transform_report_to_dto,
 };
 use texform_transform::FinalizeAstConfig;
 
@@ -34,11 +34,13 @@ fn normalize_with_can_disable_rewrite_without_rebuilding_plan() {
             &NormalizeConfig {
                 parse: ParseConfig::STRICT,
                 transform: TransformConfig {
-                    rewrite_enabled: false,
-                    lower_attributes_enabled: false,
+                    lower_attributes: LowerAttributesConfig::DISABLED,
+                    rewrite: RewriteConfig {
+                        enabled: false,
+                        ..RewriteConfig::DEFAULT
+                    },
                     finalize_ast: FinalizeAstConfig::ENABLED,
                     flatten_groups: FlattenGroupsConfig::DISABLED,
-                    max_iterations: 100,
                 },
             },
         )
@@ -160,11 +162,13 @@ fn document_transform_preserves_parse_once_workflow() {
         .transform_with(
             &mut document,
             &TransformConfig {
-                rewrite_enabled: false,
-                lower_attributes_enabled: false,
+                lower_attributes: LowerAttributesConfig::DISABLED,
+                rewrite: RewriteConfig {
+                    enabled: false,
+                    ..RewriteConfig::DEFAULT
+                },
                 finalize_ast: FinalizeAstConfig::ENABLED,
                 flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
-                max_iterations: 100,
             },
         )
         .expect("transform should succeed");

@@ -5,8 +5,8 @@ use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentValue, ContentMode, GroupKind as SyntaxGroupKind, SyntaxNode,
 };
 use texform_transform::{
-    BuildConfig, FinalizeAstConfig, FinalizeAstReport, FlattenGroupsConfig, Profile,
-    TransformConfig, TransformContext, finalize_ast,
+    BuildConfig, FinalizeAstConfig, FinalizeAstReport, FlattenGroupsConfig, LowerAttributesConfig,
+    Profile, RewriteConfig, TransformConfig, TransformContext, finalize_ast,
 };
 
 fn run_finalize(ast: &mut Ast, enabled: bool) -> FinalizeAstReport {
@@ -93,11 +93,10 @@ fn run_engine(
     let parse_ctx = ParseContext::from_packages(&["base", "ams", "textmacros"]);
     let mut ast = parse_to_ast(&parse_ctx, src);
     let config = TransformConfig {
-        rewrite_enabled: true,
-        lower_attributes_enabled: true,
+        lower_attributes: LowerAttributesConfig::ENABLED,
+        rewrite: RewriteConfig::DEFAULT,
         finalize_ast,
         flatten_groups,
-        max_iterations: 100,
     };
     let context =
         TransformContext::from_build_config(BuildConfig::profile(Profile::Equiv), &parse_ctx)
@@ -661,11 +660,13 @@ fn empty_text_group_becomes_empty_group_before_flatten_strict_and_structural() {
     // Text group under text root so FlattenGroups mode matching allows unwrap.
     let mut structural = text_root(vec![text_group(vec![SyntaxNode::Text("".into())])]);
     let structural_cfg = TransformConfig {
-        rewrite_enabled: false,
-        lower_attributes_enabled: false,
+        lower_attributes: LowerAttributesConfig::DISABLED,
+        rewrite: RewriteConfig {
+            enabled: false,
+            ..RewriteConfig::DEFAULT
+        },
         finalize_ast: FinalizeAstConfig::ENABLED,
         flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
-        max_iterations: 100,
     };
     let structural_report = context
         .run_with(&mut structural, &parse_ctx, &structural_cfg)
@@ -675,11 +676,13 @@ fn empty_text_group_becomes_empty_group_before_flatten_strict_and_structural() {
 
     let mut strict = text_root(vec![text_group(vec![SyntaxNode::Text("".into())])]);
     let strict_cfg = TransformConfig {
-        rewrite_enabled: false,
-        lower_attributes_enabled: false,
+        lower_attributes: LowerAttributesConfig::DISABLED,
+        rewrite: RewriteConfig {
+            enabled: false,
+            ..RewriteConfig::DEFAULT
+        },
         finalize_ast: FinalizeAstConfig::ENABLED,
         flatten_groups: FlattenGroupsConfig::STRICT,
-        max_iterations: 100,
     };
     let strict_engine_report = context
         .run_with(&mut strict, &parse_ctx, &strict_cfg)
@@ -756,11 +759,13 @@ fn engine_text_merge_before_flatten_can_unwrap_singleton_group() {
             &mut ast,
             &parse_ctx,
             &TransformConfig {
-                rewrite_enabled: false,
-                lower_attributes_enabled: false,
+                lower_attributes: LowerAttributesConfig::DISABLED,
+                rewrite: RewriteConfig {
+                    enabled: false,
+                    ..RewriteConfig::DEFAULT
+                },
                 finalize_ast: FinalizeAstConfig::ENABLED,
                 flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
-                max_iterations: 100,
             },
         )
         .expect("transform");
@@ -794,11 +799,13 @@ fn engine_second_finalize_merges_text_exposed_by_flatten() {
             &mut ast,
             &parse_ctx,
             &TransformConfig {
-                rewrite_enabled: false,
-                lower_attributes_enabled: false,
+                lower_attributes: LowerAttributesConfig::DISABLED,
+                rewrite: RewriteConfig {
+                    enabled: false,
+                    ..RewriteConfig::DEFAULT
+                },
                 finalize_ast: FinalizeAstConfig::ENABLED,
                 flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
-                max_iterations: 100,
             },
         )
         .expect("transform");
@@ -830,11 +837,13 @@ fn engine_second_finalize_merges_primes_exposed_by_flatten() {
             &mut ast,
             &parse_ctx,
             &TransformConfig {
-                rewrite_enabled: false,
-                lower_attributes_enabled: false,
+                lower_attributes: LowerAttributesConfig::DISABLED,
+                rewrite: RewriteConfig {
+                    enabled: false,
+                    ..RewriteConfig::DEFAULT
+                },
                 finalize_ast: FinalizeAstConfig::ENABLED,
                 flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
-                max_iterations: 100,
             },
         )
         .expect("transform");
@@ -866,11 +875,13 @@ fn engine_skips_second_finalize_when_flatten_disabled() {
             &mut ast,
             &parse_ctx,
             &TransformConfig {
-                rewrite_enabled: false,
-                lower_attributes_enabled: false,
+                lower_attributes: LowerAttributesConfig::DISABLED,
+                rewrite: RewriteConfig {
+                    enabled: false,
+                    ..RewriteConfig::DEFAULT
+                },
                 finalize_ast: FinalizeAstConfig::ENABLED,
                 flatten_groups: FlattenGroupsConfig::DISABLED,
-                max_iterations: 100,
             },
         )
         .expect("transform");
@@ -938,11 +949,13 @@ fn engine_report_accumulates_pre_and_post_without_double_counting() {
             &mut ast,
             &parse_ctx,
             &TransformConfig {
-                rewrite_enabled: false,
-                lower_attributes_enabled: false,
+                lower_attributes: LowerAttributesConfig::DISABLED,
+                rewrite: RewriteConfig {
+                    enabled: false,
+                    ..RewriteConfig::DEFAULT
+                },
                 finalize_ast: FinalizeAstConfig::ENABLED,
                 flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
-                max_iterations: 100,
             },
         )
         .expect("transform");
