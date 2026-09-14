@@ -29,6 +29,9 @@
 #[path = "arguments.rs"]
 mod arguments;
 
+use crate::parse::error::{
+    ParseFailure, custom_error, with_default_diagnostic_kind, with_diagnostic_kind,
+};
 use chumsky::{
     input::{Cursor, InputRef, Stream},
     label::LabelError,
@@ -82,7 +85,7 @@ pub(crate) struct TrackedNode {
     pub node: SyntaxNode,
     pub span: SimpleSpan,
     pub span_kids: Vec<SpanTree>,
-    diagnostics: Vec<Rich<'static, Token>>,
+    diagnostics: Vec<ParseFailure<'static>>,
 }
 
 impl TrackedNode {
@@ -96,7 +99,7 @@ impl TrackedNode {
         }
     }
 
-    pub(crate) fn with_diagnostics(mut self, diagnostics: Vec<Rich<'static, Token>>) -> Self {
+    pub(crate) fn with_diagnostics(mut self, diagnostics: Vec<ParseFailure<'static>>) -> Self {
         self.diagnostics.extend(diagnostics);
         self
     }
@@ -115,7 +118,7 @@ impl TrackedNode {
             diagnostics: self
                 .diagnostics
                 .into_iter()
-                .map(|err| shift_owned_rich_span(err, offset))
+                .map(|err| err.shifted(offset))
                 .collect(),
         }
     }
@@ -126,7 +129,7 @@ impl TrackedNode {
     /// `SyntaxNode::Root` so downstream consumers never see the root as a
     /// regular group. The returned [`SpanTree`] is rooted at the document root
     /// before it is attached to `Document` node handles.
-    pub(crate) fn finish_root(self) -> (SyntaxNode, SpanTree, Vec<Rich<'static, Token>>) {
+    pub(crate) fn finish_root(self) -> (SyntaxNode, SpanTree, Vec<ParseFailure<'static>>) {
         let root_node = match self.node {
             node @ SyntaxNode::Root { .. } => node,
             SyntaxNode::Group {
@@ -150,7 +153,7 @@ impl TrackedNode {
     /// Extract syntax nodes and one child span subtree per child, in order.
     fn decompose_children(
         children: Vec<TrackedNode>,
-    ) -> (Vec<SyntaxNode>, Vec<SpanTree>, Vec<Rich<'static, Token>>) {
+    ) -> (Vec<SyntaxNode>, Vec<SpanTree>, Vec<ParseFailure<'static>>) {
         let mut kids = Vec::with_capacity(children.len());
         let mut diagnostics = Vec::new();
         let mut nodes = Vec::with_capacity(children.len());
@@ -176,7 +179,7 @@ impl TrackedNode {
     /// contribute no span subtree, matching the consumer's recursion.
     fn decompose_args(
         slots: Vec<TrackedArgumentSlot>,
-    ) -> (Vec<ArgumentSlot>, Vec<SpanTree>, Vec<Rich<'static, Token>>) {
+    ) -> (Vec<ArgumentSlot>, Vec<SpanTree>, Vec<ParseFailure<'static>>) {
         let mut kids = Vec::new();
         let mut diagnostics = Vec::new();
         let mut out_slots = Vec::with_capacity(slots.len());
@@ -263,8 +266,8 @@ fn shift_span_tree(tree: SpanTree, offset: usize) -> SpanTree {
 
 // Nested content reparses can surface the same inner diagnostic at multiple wrapper levels.
 fn extend_unique_diagnostics(
-    diagnostics: &mut Vec<Rich<'static, Token>>,
-    incoming: impl IntoIterator<Item = Rich<'static, Token>>,
+    diagnostics: &mut Vec<ParseFailure<'static>>,
+    incoming: impl IntoIterator<Item = ParseFailure<'static>>,
 ) {
     for candidate in incoming {
         if diagnostics
@@ -277,23 +280,19 @@ fn extend_unique_diagnostics(
     }
 }
 
-fn rich_diagnostics_match(left: &Rich<'static, Token>, right: &Rich<'static, Token>) -> bool {
-    left.span() == right.span()
+fn rich_diagnostics_match(left: &ParseFailure<'static>, right: &ParseFailure<'static>) -> bool {
+    left.kind == right.kind
+        && left.direct == right.direct
+        && left.span() == right.span()
         && rich_reason_key(left) == rich_reason_key(right)
         && rich_contexts_key(left) == rich_contexts_key(right)
 }
 
-fn rich_reason_key(err: &Rich<'static, Token>) -> (Option<String>, Vec<String>, Option<String>) {
+fn rich_reason_key(err: &ParseFailure<'static>) -> (Option<String>, Vec<String>, Option<String>) {
     match err.reason() {
-        chumsky::error::RichReason::Custom(message) => (
-            Some(
-                ParseDiagnosticKind::split_message(message.as_str())
-                    .1
-                    .to_string(),
-            ),
-            Vec::new(),
-            None,
-        ),
+        chumsky::error::RichReason::Custom(message) => {
+            (Some(message.to_string()), Vec::new(), None)
+        }
         chumsky::error::RichReason::ExpectedFound { expected, found } => (
             None,
             expected.iter().map(|pattern| pattern.to_string()).collect(),
@@ -302,141 +301,20 @@ fn rich_reason_key(err: &Rich<'static, Token>) -> (Option<String>, Vec<String>, 
     }
 }
 
-fn rich_contexts_key(err: &Rich<'static, Token>) -> Vec<(String, SimpleSpan)> {
+fn rich_contexts_key(err: &ParseFailure<'static>) -> Vec<(String, SimpleSpan)> {
     err.contexts()
         .map(|(label, span)| (label.to_string(), *span))
         .collect()
-}
-
-pub(crate) fn diagnostic_kind(err: &Rich<'_, Token>) -> Option<ParseDiagnosticKind> {
-    match err.reason() {
-        chumsky::error::RichReason::Custom(message) => {
-            ParseDiagnosticKind::split_message(message.as_str()).0
-        }
-        chumsky::error::RichReason::ExpectedFound { .. } => None,
-    }
-    .or_else(|| {
-        err.contexts()
-            .find_map(|(label, _)| ParseDiagnosticKind::from_context_label(&label.to_string()))
-    })
-}
-
-fn add_contexts_to_error<'a>(
-    mut err: Rich<'a, Token>,
-    contexts: Vec<(String, SimpleSpan)>,
-) -> Rich<'a, Token> {
-    for (label, span) in contexts {
-        <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, String>>::in_context(
-            &mut err, label, span,
-        );
-    }
-    err
-}
-
-fn error_contexts(err: &Rich<'_, Token>) -> Vec<(String, SimpleSpan)> {
-    err.contexts()
-        .map(|(label, span)| (label.to_string(), *span))
-        .collect()
-}
-
-fn has_diagnostic_kind(err: &Rich<'_, Token>, kind: ParseDiagnosticKind) -> bool {
-    diagnostic_kind(err) == Some(kind)
-}
-
-pub(crate) fn custom_error<'a>(
-    span: SimpleSpan,
-    msg: impl ToString,
-    kind: ParseDiagnosticKind,
-) -> Rich<'a, Token> {
-    let mut err = Rich::custom(span, kind.wrap_message(msg.to_string()));
-    attach_diagnostic_kind(&mut err, kind, span);
-    err
-}
-
-pub(crate) fn with_default_diagnostic_kind<'a>(
-    err: Rich<'a, Token>,
-    kind: ParseDiagnosticKind,
-) -> Rich<'a, Token> {
-    if diagnostic_kind(&err).is_some() {
-        err
-    } else {
-        with_diagnostic_kind(err, kind)
-    }
-}
-
-pub(crate) fn with_diagnostic_kind<'a>(
-    err: Rich<'a, Token>,
-    kind: ParseDiagnosticKind,
-) -> Rich<'a, Token> {
-    let span = *err.span();
-    let contexts = error_contexts(&err);
-    if let chumsky::error::RichReason::Custom(message) = err.reason() {
-        let (_, public_message) = ParseDiagnosticKind::split_message(message.as_str());
-        let mut rebuilt = Rich::custom(span, kind.wrap_message(public_message));
-        attach_diagnostic_kind(&mut rebuilt, kind, span);
-        return add_contexts_to_error(rebuilt, contexts);
-    }
-
-    let mut err = err;
-    attach_diagnostic_kind(&mut err, kind, span);
-    err
-}
-
-fn attach_diagnostic_kind<'a>(
-    err: &mut Rich<'a, Token>,
-    kind: ParseDiagnosticKind,
-    span: SimpleSpan,
-) {
-    <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, String>>::in_context(
-        err,
-        kind.context_label(),
-        span,
-    );
-}
-
-pub(crate) fn shift_owned_rich_span(
-    err: Rich<'static, Token>,
-    offset: usize,
-) -> Rich<'static, Token> {
-    let shift = |span: SimpleSpan| SimpleSpan::new((), span.start + offset..span.end + offset);
-    let original_span = err.span();
-
-    let mut rebuilt = match err.reason() {
-        chumsky::error::RichReason::Custom(message) => {
-            Rich::custom(shift(*original_span), message.clone())
-        }
-        chumsky::error::RichReason::ExpectedFound { expected, found } => {
-            <Rich<'static, Token> as LabelError<
-                'static,
-                TokenStream<'static>,
-                chumsky::error::RichPattern<'static, Token>,
-            >>::expected_found(
-                expected.iter().cloned(),
-                found.clone(),
-                shift(*original_span),
-            )
-        }
-    };
-
-    for (label, span) in err.contexts() {
-        <Rich<'static, Token> as LabelError<'static, TokenStream<'static>, String>>::in_context(
-            &mut rebuilt,
-            label.to_string(),
-            shift(*span),
-        );
-    }
-
-    rebuilt
 }
 
 // Keep the original error location while attaching the outer argument wrapper as context.
 fn with_argument_context<'a>(
-    err: Rich<'a, Token>,
+    err: ParseFailure<'a>,
     label: &'static str,
     span: SimpleSpan,
-) -> Rich<'a, Token> {
-    let mut err = clone_rich_error(&err);
-    <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(&mut err, label, span);
+) -> ParseFailure<'a> {
+    let mut err = err.clone();
+    <ParseFailure<'a> as LabelError<'a, TokenStream<'a>, &str>>::in_context(&mut err, label, span);
     err
 }
 
@@ -447,7 +325,7 @@ fn parse_argument_slots<'src, 'parse>(
     text_content: ContentParser<'src>,
     args: &'static [ArgSpec],
     context_label: &'static str,
-) -> Result<Vec<TrackedArgumentSlot>, Rich<'src, Token>> {
+) -> Result<Vec<TrackedArgumentSlot>, ParseFailure<'src>> {
     let ws = insignificant_whitespace();
     let mut slots = Vec::with_capacity(args.len());
 
@@ -459,7 +337,7 @@ fn parse_argument_slots<'src, 'parse>(
         let arg_start = input.cursor();
         let parser = argument_parser(state, math_content.clone(), text_content.clone(), spec);
         let mut arg = input.parse(parser).map_err(|err| {
-            let original_kind = diagnostic_kind(&err);
+            let original_kind = err.kind;
             let arg_span = err
                 .contexts()
                 .next()
@@ -479,29 +357,6 @@ fn parse_argument_slots<'src, 'parse>(
     }
 
     Ok(slots)
-}
-
-fn clone_rich_error<'a>(err: &Rich<'a, Token>) -> Rich<'a, Token> {
-    let mut cloned = match err.reason() {
-        chumsky::error::RichReason::Custom(message) => Rich::custom(*err.span(), message.clone()),
-        chumsky::error::RichReason::ExpectedFound { expected, found } => {
-            <Rich<'a, Token> as LabelError<
-                'a,
-                TokenStream<'a>,
-                chumsky::error::RichPattern<'a, Token>,
-            >>::expected_found(expected.iter().cloned(), found.clone(), *err.span())
-        }
-    };
-
-    for (label, span) in err.contexts() {
-        <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, String>>::in_context(
-            &mut cloned,
-            label.to_string(),
-            *span,
-        );
-    }
-
-    cloned
 }
 
 /// Extension trait: convert any `Parser<..., SyntaxNode, ...>` into one that
@@ -529,7 +384,7 @@ pub(crate) type TokenStream<'a> = chumsky::input::MappedInput<
 >;
 
 /// Chumsky error extra carrying rich diagnostics.
-pub(crate) type ParserError<'a> = extra::Err<Rich<'a, Token>>;
+pub(crate) type ParserError<'a> = extra::Err<ParseFailure<'a>>;
 
 /// Mutable reference to the input stream used by imperative (`custom`) parsers.
 pub(crate) type ParserInput<'src, 'parse> =
@@ -574,7 +429,7 @@ pub(crate) trait ParserInputExt<'src, 'parse> {
         &mut self,
         start: &Cursor<'src, 'parse, TokenStream<'src>>,
         msg: impl ToString,
-    ) -> Rich<'src, Token>;
+    ) -> ParseFailure<'src>;
 
     /// Build an error for the next token without consuming it.
     ///
@@ -583,7 +438,7 @@ pub(crate) trait ParserInputExt<'src, 'parse> {
         &mut self,
         start: &Cursor<'src, 'parse, TokenStream<'src>>,
         msg: impl ToString,
-    ) -> Rich<'src, Token>;
+    ) -> ParseFailure<'src>;
 }
 
 impl<'src, 'parse> ParserInputExt<'src, 'parse> for ParserInput<'src, 'parse> {
@@ -597,8 +452,8 @@ impl<'src, 'parse> ParserInputExt<'src, 'parse> for ParserInput<'src, 'parse> {
         &mut self,
         start: &Cursor<'src, 'parse, TokenStream<'src>>,
         msg: impl ToString,
-    ) -> Rich<'src, Token> {
-        Rich::custom(self.span_from_cursor(start), msg)
+    ) -> ParseFailure<'src> {
+        ParseFailure::custom(self.span_from_cursor(start), msg)
     }
 
     #[inline]
@@ -606,9 +461,9 @@ impl<'src, 'parse> ParserInputExt<'src, 'parse> for ParserInput<'src, 'parse> {
         &mut self,
         start: &Cursor<'src, 'parse, TokenStream<'src>>,
         msg: impl ToString,
-    ) -> Rich<'src, Token> {
+    ) -> ParseFailure<'src> {
         let span = self.span_since(start);
-        Rich::custom(span, msg)
+        ParseFailure::custom(span, msg)
     }
 }
 
@@ -944,11 +799,11 @@ where
         let left = match input.parse(delimiter(ctx)) {
             Ok(left) => left,
             Err(_) => {
-                let mut err = Rich::custom(
+                let mut err = ParseFailure::custom(
                     input.span_from_cursor(&left_start),
                     "invalid \\left delimiter",
                 );
-                <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                <ParseFailure<'a> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
                     &mut err,
                     "left-delimited group",
                     input.span_from_cursor(&group_start),
@@ -963,11 +818,11 @@ where
         let children = input.parse(math_content.clone())?;
 
         if input.parse(control_seq("right")).is_err() {
-            let mut err = Rich::custom(
+            let mut err = ParseFailure::custom(
                 input.span_from_cursor(&group_start),
                 "missing \\right for \\left-delimited group",
             );
-            <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+            <ParseFailure<'a> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
                 &mut err,
                 "left-delimited group",
                 input.span_from_cursor(&group_start),
@@ -983,11 +838,11 @@ where
         let right = match input.parse(delimiter(ctx)) {
             Ok(right) => right,
             Err(_) => {
-                let mut err = Rich::custom(
+                let mut err = ParseFailure::custom(
                     input.span_from_cursor(&delimiter_start),
                     "invalid \\right delimiter",
                 );
-                <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                <ParseFailure<'a> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
                     &mut err,
                     "left-delimited group",
                     input.span_from_cursor(&group_start),
@@ -1096,7 +951,7 @@ fn braced_prime_group<'src, 'parse>(input: &mut ParserInput<'src, 'parse>) -> Op
 fn parse_scripted_components<'src, 'parse, P>(
     input: &mut ParserInput<'src, 'parse>,
     atom_for_scripts: P,
-) -> Result<ScriptComponents, Rich<'src, Token>>
+) -> Result<ScriptComponents, ParseFailure<'src>>
 where
     P: Parser<'src, TokenStream<'src>, TrackedNode, ParserError<'src>> + Clone + 'src,
 {
@@ -1278,10 +1133,12 @@ pub fn parse(
     let parser = math_block_parser(&state)
         .map_with(|tracked, e| (promote_to_root(tracked.node), e.span()))
         .then_ignore(end());
-    parser
-        .parse(token_stream)
-        .into_result()
-        .map_err(|errors| errors.into_iter().map(Rich::into_owned).collect())
+    parser.parse(token_stream).into_result().map_err(|errors| {
+        errors
+            .into_iter()
+            .map(|error| error.into_owned().into_rich())
+            .collect()
+    })
 }
 
 /// Promote the top-level implicit group produced by `math_block_parser` /
@@ -1316,7 +1173,7 @@ fn env_body_parser<'a>(
         match input.parse(body.clone()) {
             Ok(tracked) => Ok(tracked),
             Err(mut err) => {
-                <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
+                <ParseFailure<'a> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
                     &mut err,
                     "environment body",
                     input.span_from_cursor(&body_start),
@@ -1406,13 +1263,13 @@ fn is_text_hard_stop(token: &Token) -> bool {
         || matches!(token, Token::ControlSeq(name) if name == "end")
 }
 
-fn is_direct_left_group_error(err: &Rich<'_, Token>) -> bool {
-    has_diagnostic_kind(err, ParseDiagnosticKind::LeftRightDelimiter)
+fn is_direct_left_group_error(err: &ParseFailure<'_>) -> bool {
+    err.kind == Some(ParseDiagnosticKind::LeftRightDelimiter)
 }
 
-fn is_direct_environment_header_error(err: &Rich<'_, Token>) -> bool {
+fn is_direct_environment_header_error(err: &ParseFailure<'_>) -> bool {
     matches!(
-        diagnostic_kind(err),
+        err.kind,
         Some(ParseDiagnosticKind::UnknownEnvironment | ParseDiagnosticKind::EnvironmentModeError)
     )
 }
@@ -1483,19 +1340,28 @@ fn scan_environment_stack_before(src: &str, limit: usize) -> Vec<String> {
     stack
 }
 
-fn peek_environment_name_at_cursor<'src, 'parse>(
+fn peek_environment_header_at_cursor<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
     head: &'static str,
-) -> Option<String> {
+) -> Option<(String, SimpleSpan)> {
     let checkpoint = input.save();
     let ws = insignificant_whitespace();
     let result = (|| {
         input.parse(control_seq(head)).ok()?;
         let _ = input.parse(ws.clone());
-        input.parse(env_name_parser()).ok()
+        let start = input.cursor();
+        let name = input.parse(env_name_parser()).ok()?;
+        Some((name, input.span_from_cursor(&start)))
     })();
     input.rewind(checkpoint);
     result
+}
+
+fn peek_environment_name_at_cursor<'src, 'parse>(
+    input: &mut ParserInput<'src, 'parse>,
+    head: &'static str,
+) -> Option<String> {
+    peek_environment_header_at_cursor(input, head).map(|(name, _)| name)
 }
 
 fn consume_environment_end<'src, 'parse>(input: &mut ParserInput<'src, 'parse>) -> bool {
@@ -1645,12 +1511,12 @@ fn is_hard_stop_after_whitespace<'src, 'parse>(
 }
 
 fn recovery_diagnostic_from_error(
-    err: &Rich<'_, Token>,
+    err: &ParseFailure<'_>,
     message: &str,
     kind: Option<ParseDiagnosticKind>,
-) -> Rich<'static, Token> {
+) -> ParseFailure<'static> {
     let Some(kind) = kind else {
-        return clone_rich_error(err).into_owned();
+        return err.clone().into_owned();
     };
 
     match err.reason() {
@@ -1662,15 +1528,15 @@ fn recovery_diagnostic_from_error(
                     | ParseDiagnosticKind::UnclosedInlineMath
             ) =>
         {
-            with_diagnostic_kind(clone_rich_error(err), kind).into_owned()
+            with_diagnostic_kind(err.clone(), kind).into_owned()
         }
         chumsky::error::RichReason::ExpectedFound { .. } => {
             custom_error(*err.span(), message, kind).into_owned()
         }
         chumsky::error::RichReason::Custom(original_message) => {
-            let (_, public_message) = ParseDiagnosticKind::split_message(original_message.as_str());
+            let public_message = original_message.as_str();
             if public_message == message {
-                with_diagnostic_kind(clone_rich_error(err), kind).into_owned()
+                with_diagnostic_kind(err.clone(), kind).into_owned()
             } else {
                 custom_error(*err.span(), message, kind).into_owned()
             }
@@ -1683,7 +1549,7 @@ fn invalid_left_recovery_diagnostic(
     src: &str,
     search_start: usize,
     search_end: usize,
-) -> Option<Rich<'static, Token>> {
+) -> Option<ParseFailure<'static>> {
     let tokens: Vec<(Token, SimpleSpan)> = Token::lexer(src)
         .spanned()
         .map(|(token, span)| {
@@ -1763,7 +1629,7 @@ fn invalid_left_recovery_diagnostic(
     None
 }
 
-fn expected_found_control_sequence(err: &Rich<'_, Token>, expected_name: &str) -> bool {
+fn expected_found_control_sequence(err: &ParseFailure<'_>, expected_name: &str) -> bool {
     match err.reason() {
         chumsky::error::RichReason::ExpectedFound {
             found: Some(found), ..
@@ -1794,7 +1660,9 @@ where
         let item_starts_with_begin =
             matches!(input.peek().as_ref(), Some(Token::ControlSeq(name)) if name == "begin");
         let item_start_index = input.span_from_cursor(&item_start).start;
-        let opening_environment = peek_environment_name_at_cursor(input, "begin");
+        let opening_header = peek_environment_header_at_cursor(input, "begin");
+        let opening_name_span = opening_header.as_ref().map(|(_, span)| *span);
+        let opening_environment = opening_header.map(|(name, _)| name);
         let outer_environment_stack = opening_environment
             .as_ref()
             .map(|_| scan_environment_stack_before(src, item_start_index))
@@ -1819,7 +1687,7 @@ where
             return Err(err);
         }
 
-        let err_kind = diagnostic_kind(&err).or_else(|| {
+        let err_kind = err.kind.or_else(|| {
             matches!(
                 err.reason(),
                 chumsky::error::RichReason::ExpectedFound { .. }
@@ -1847,12 +1715,7 @@ where
             })
             .unwrap_or_else(|| match err.reason() {
                 chumsky::error::RichReason::ExpectedFound { .. } => (format!("{err}"), err_kind),
-                chumsky::error::RichReason::Custom(message) => (
-                    ParseDiagnosticKind::split_message(message.as_str())
-                        .1
-                        .to_string(),
-                    err_kind,
-                ),
+                chumsky::error::RichReason::Custom(message) => (message.to_string(), err_kind),
             });
         let recovery_src = src.get(item_start_index..).unwrap_or(src);
         let (message, kind) =
@@ -1939,9 +1802,9 @@ where
                 }
 
                 if !consumed {
-                    return Err(
-                        input.err_since(&start, "content recovery must consume at least one token")
-                    );
+                    return Err(input
+                        .err_since(&start, "content recovery must consume at least one token")
+                        .control());
                 }
 
                 let span = input.span_from_cursor(&start);
@@ -1959,8 +1822,14 @@ where
             || expected_found_control_sequence(&err, "end"))
         .then(|| invalid_left_recovery_diagnostic(ctx, src, item_start_index, err.span().end))
         .flatten();
-        let diagnostic = invalid_left_diagnostic
+        let mut diagnostic = invalid_left_diagnostic
             .unwrap_or_else(|| recovery_diagnostic_from_error(&err, message.as_str(), kind));
+        if diagnostic.direct.is_none()
+            && diagnostic.kind == Some(ParseDiagnosticKind::EnvironmentModeError)
+            && let Some(span) = opening_name_span
+        {
+            diagnostic = diagnostic.at_source(span);
+        }
         state.push_recovery_diagnostic(diagnostic);
         input.parse(recovery_parser)
     })
@@ -1974,13 +1843,13 @@ fn command_head_parser<'src, 'parse>(
     expected_kind: CommandKind,
     current_mode: ContentMode,
     reject_unknown: bool,
-) -> Result<(String, &'parse ActiveCommandRecord), Rich<'src, Token>> {
+) -> Result<(String, &'parse ActiveCommandRecord), ParseFailure<'src>> {
     let cmd_start = input.cursor();
     let token = input.next();
     let name = match token {
         Some(Token::ControlSeq(name)) => name,
-        Some(_) => return Err(input.err_since(&cmd_start, "not a command")),
-        None => return Err(input.err_since(&cmd_start, "not a command")),
+        Some(_) => return Err(input.err_since(&cmd_start, "not a command").control()),
+        None => return Err(input.err_since(&cmd_start, "not a command").control()),
     };
 
     let cmd_span = input.span_from_cursor(&cmd_start);
@@ -1988,7 +1857,7 @@ fn command_head_parser<'src, 'parse>(
     let meta = match lookup_command_for_parse(ctx, &name, current_mode) {
         ModeLookup::Found(meta) if meta.kind == expected_kind => meta,
         ModeLookup::Found(_) => {
-            return Err(Rich::custom(
+            return Err(ParseFailure::custom(
                 cmd_span,
                 format!("not {}", expected_kind.label()),
             ));
@@ -1998,7 +1867,8 @@ fn command_head_parser<'src, 'parse>(
                 cmd_span,
                 format!("Command \\{} is not allowed in {} mode", name, current_mode),
                 ParseDiagnosticKind::CommandModeError,
-            ));
+            )
+            .at_source(cmd_span));
         }
         ModeLookup::NotFound => {
             if reject_unknown {
@@ -2008,7 +1878,7 @@ fn command_head_parser<'src, 'parse>(
                     ParseDiagnosticKind::UnknownCommand,
                 ));
             } else {
-                return Err(Rich::custom(cmd_span, "unknown"));
+                return Err(ParseFailure::custom(cmd_span, "unknown").control());
             }
         }
     };
@@ -2230,7 +2100,7 @@ fn unknown_command_parser<'a>(
     }
     .try_map(move |name, span| {
         if matches!(name.as_str(), "begin" | "end") {
-            return Err(Rich::custom(
+            return Err(ParseFailure::custom(
                 span,
                 format!("Reserved environment delimiter: \\{}", name),
             ));
@@ -2314,7 +2184,8 @@ fn environment_parser<'a>(
                             name, current_mode
                         ),
                         ParseDiagnosticKind::EnvironmentModeError,
-                    ));
+                    )
+                    .at_source(name_span));
                 }
                 ModeLookup::NotFound => {
                     if reject_unknown {
@@ -2322,7 +2193,8 @@ fn environment_parser<'a>(
                             name_span,
                             format!("Unknown environment: {}", name),
                             ParseDiagnosticKind::UnknownEnvironment,
-                        ));
+                        )
+                        .at_source(name_span));
                     }
 
                     (vec![], false, current_mode)
@@ -2346,7 +2218,7 @@ fn environment_parser<'a>(
 
         if input.parse(control_seq("end")).is_err() {
             if is_outer_closing_boundary(input.peek().as_ref()) {
-                return Err(Rich::custom(
+                return Err(ParseFailure::custom(
                     input.span_from_cursor(&end_start),
                     missing_end_message.clone(),
                 ));
@@ -2360,7 +2232,7 @@ fn environment_parser<'a>(
             input.rewind(checkpoint);
 
             return match probe_result {
-                Ok(_) => Err(Rich::custom(
+                Ok(_) => Err(ParseFailure::custom(
                     input.span_from_cursor(&end_start),
                     missing_end_message.clone(),
                 )),
@@ -2371,7 +2243,7 @@ fn environment_parser<'a>(
 
         let end_name = input.parse(env_name_parser()).map_err(|_| {
             input.rewind(body_recovery_start.clone());
-            Rich::custom(input.span_from_cursor(&end_start), missing_end_message)
+            ParseFailure::custom(input.span_from_cursor(&end_start), missing_end_message)
         })?;
         let end_span = input.span_from_cursor(&end_start);
 
@@ -2384,7 +2256,8 @@ fn environment_parser<'a>(
                     expected_end, end_name
                 ),
                 ParseDiagnosticKind::EnvironmentNameMismatch,
-            ));
+            )
+            .at_environment(end_span, end_name, expected_end));
         }
 
         let span = input.span_from_cursor(&env_start);
@@ -2648,7 +2521,8 @@ where
             span,
             "Scripted syntax is not allowed in Text mode",
             ParseDiagnosticKind::TextScriptError,
-        ))
+        )
+        .at_source(span))
     });
 
     let explicit_group = braced_group_parser(state, ContentMode::Text, group_content);
@@ -3210,5 +3084,39 @@ pub(crate) fn content_block_parser_with_source<'a>(
             let (_, text_parser) = mode_group_parsers_with_source(state, src);
             text_parser
         }
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+    #[test]
+    fn nested_deduplication_keeps_distinct_kinds() {
+        let first = custom_error(
+            (0..1).into(),
+            "same message",
+            ParseDiagnosticKind::CommandModeError,
+        );
+        let second = custom_error(
+            (0..1).into(),
+            "same message",
+            ParseDiagnosticKind::TextScriptError,
+        );
+        let mut errors = vec![first.clone()];
+        extend_unique_diagnostics(&mut errors, [first, second]);
+        assert_eq!(errors.len(), 2);
+    }
+    #[test]
+    fn nested_deduplication_keeps_distinct_direct_positions() {
+        let first = custom_error(
+            (0..1).into(),
+            "same message",
+            ParseDiagnosticKind::CommandModeError,
+        )
+        .at_source((2..3).into());
+        let second = first.clone().at_source((4..5).into());
+        let mut errors = vec![first.clone()];
+        extend_unique_diagnostics(&mut errors, [first, second]);
+        assert_eq!(errors.len(), 2);
     }
 }

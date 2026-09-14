@@ -12,18 +12,17 @@
 //! `ParserState` is constructed once at the entry point of every parse call
 //! and threaded through the internal `custom` parser closures.
 
+use crate::parse::error::ParseFailure;
 use std::cell::{Cell, RefCell};
 
 use super::{ParseConfig, ParseContext};
-use crate::lexer::Token;
-use chumsky::error::Rich;
 
 pub(crate) struct ParserState<'a> {
     pub(crate) ctx: &'a ParseContext,
     pub(crate) config: &'a ParseConfig,
     pub(crate) src: &'a str,
     group_depth: Cell<usize>,
-    recovery_diagnostics: RefCell<Vec<Rich<'static, Token>>>,
+    recovery_diagnostics: RefCell<Vec<ParseFailure<'static>>>,
 }
 
 impl<'a> ParserState<'a> {
@@ -53,7 +52,7 @@ impl<'a> ParserState<'a> {
         Some(GroupGuard { state: self, prev })
     }
 
-    pub(crate) fn push_recovery_diagnostic(&self, diagnostic: Rich<'static, Token>) {
+    pub(crate) fn push_recovery_diagnostic(&self, diagnostic: ParseFailure<'static>) {
         let mut diagnostics = self.recovery_diagnostics.borrow_mut();
         if diagnostics
             .iter()
@@ -64,13 +63,15 @@ impl<'a> ParserState<'a> {
         diagnostics.push(diagnostic);
     }
 
-    pub(crate) fn take_recovery_diagnostics(&self) -> Vec<Rich<'static, Token>> {
+    pub(crate) fn take_recovery_diagnostics(&self) -> Vec<ParseFailure<'static>> {
         std::mem::take(&mut *self.recovery_diagnostics.borrow_mut())
     }
 }
 
-fn recovery_diagnostics_match(left: &Rich<'static, Token>, right: &Rich<'static, Token>) -> bool {
-    left.span() == right.span()
+fn recovery_diagnostics_match(left: &ParseFailure<'static>, right: &ParseFailure<'static>) -> bool {
+    left.kind == right.kind
+        && left.direct == right.direct
+        && left.span() == right.span()
         && left.reason().to_string() == right.reason().to_string()
         && left
             .contexts()
@@ -90,5 +91,48 @@ pub(crate) struct GroupGuard<'a> {
 impl Drop for GroupGuard<'_> {
     fn drop(&mut self) {
         self.state.group_depth.set(self.prev);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parse::{ParseDiagnosticKind, error::custom_error};
+    #[test]
+    fn recovery_deduplication_keeps_distinct_kinds() {
+        let ctx = ParseContext::empty();
+        let config = ParseConfig::LENIENT;
+        let state = ParserState::new(&ctx, &config, "x");
+        let first = custom_error(
+            (0..1).into(),
+            "same message",
+            ParseDiagnosticKind::CommandModeError,
+        );
+        let second = custom_error(
+            (0..1).into(),
+            "same message",
+            ParseDiagnosticKind::TextScriptError,
+        );
+        state.push_recovery_diagnostic(first.clone());
+        state.push_recovery_diagnostic(first);
+        state.push_recovery_diagnostic(second);
+        assert_eq!(state.take_recovery_diagnostics().len(), 2);
+    }
+    #[test]
+    fn recovery_deduplication_keeps_distinct_direct_positions() {
+        let ctx = ParseContext::empty();
+        let config = ParseConfig::LENIENT;
+        let state = ParserState::new(&ctx, &config, "abcde");
+        let first = custom_error(
+            (0..1).into(),
+            "same message",
+            ParseDiagnosticKind::CommandModeError,
+        )
+        .at_source((2..3).into());
+        let second = first.clone().at_source((4..5).into());
+        state.push_recovery_diagnostic(first.clone());
+        state.push_recovery_diagnostic(first);
+        state.push_recovery_diagnostic(second);
+        assert_eq!(state.take_recovery_diagnostics().len(), 2);
     }
 }

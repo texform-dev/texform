@@ -1,5 +1,7 @@
 mod config;
 mod context;
+mod diagnostics;
+mod error;
 #[doc(hidden)]
 pub mod grammar;
 mod state;

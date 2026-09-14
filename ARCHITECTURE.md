@@ -127,6 +127,8 @@ This mirrors MathJax: its rendered MathML embeds `mjx-error` nodes for unparseab
 
 Within a parser-produced `ParseResult`, `has_errors()` implies a non-empty `diagnostics` list: every recovery `Error` node is emitted alongside at least one diagnostic. The converse does not hold — diagnostics and `Error` placeholders are separate channels, so a diagnostic does not by itself make an otherwise editable tree read-only. This implication is a property of the *parser path only*, not a global invariant: `Document::from_syntax` can build a tree that `has_errors()` but has no diagnostics channel at all.
 
+The parser privately wraps Chumsky's `Rich` errors with an explicit diagnostic kind, an internal control-failure marker, and source information captured by grammar branches. This information follows error selection, recovery containers, and source offsets through nested parsing before conversion to public diagnostics; it is not part of the stable facade. Direct command, script, and environment errors use their captured positions, while generic parser errors and cases such as unclosed inline math, comment-truncated arguments, and left/right recovery still use centralized fallback logic.
+
 ## Error Nodes and `abort_on_error`
 
 Recovery `Error` nodes are produced only when `abort_on_error == false` (lenient parsing, which keeps collecting diagnostics). Under strict parsing (`abort_on_error == true`), the parser stops at the first error per item and produces no recovery `Error` nodes — with a single exception: the max-group-depth guard emits an `Error` node unconditionally.
