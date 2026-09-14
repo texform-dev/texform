@@ -41,12 +41,21 @@ fn js_set(target: &JsValue, key: &str, value: &JsValue) -> Result<(), JsValue> {
     js_sys::Reflect::set(target, &JsValue::from_str(key), value).map(|_| ())
 }
 
-fn binding_dto_to_js<T: Serialize>(value: &T) -> JsValue {
-    let value = serde_json::to_value(value).map(camelize_json_keys);
-    match value {
-        Ok(value) => to_js_value(&value).unwrap_or_else(|error| error),
-        Err(error) => JsValue::from_str(&error.to_string()),
-    }
+fn binding_dto_to_json<T: Serialize>(value: &T) -> Result<serde_json::Value, String> {
+    serde_json::to_value(value)
+        .map(camelize_json_keys)
+        .map_err(|error| error.to_string())
+}
+
+fn binding_dto_to_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
+    let value = binding_dto_to_json(value).map_err(internal_message_to_js)?;
+    to_js_value(&value).map_err(|error| {
+        internal_message_to_js(
+            error
+                .as_string()
+                .unwrap_or_else(|| "failed to convert binding DTO to JS".to_owned()),
+        )
+    })
 }
 
 fn camelize_json_keys(value: serde_json::Value) -> serde_json::Value {
@@ -855,7 +864,7 @@ impl Document {
     #[wasm_bindgen(js_name = nodeSpans)]
     pub fn node_spans(&self) -> Result<JsValue, JsValue> {
         let entries = texform::bindings::node_spans_to_dto(&*borrow_document(&self.inner)?);
-        Ok(binding_dto_to_js(&entries))
+        binding_dto_to_js(&entries)
     }
 
     #[wasm_bindgen(js_name = toLatex)]
@@ -884,9 +893,7 @@ impl Document {
                     diagnostics: Vec::new(),
                 })
             })?;
-        Ok(binding_dto_to_js(
-            &texform::bindings::tokenized_latex_to_dto(result),
-        ))
+        binding_dto_to_js(&texform::bindings::tokenized_latex_to_dto(result))
     }
 
     #[wasm_bindgen(js_name = createChar)]
@@ -1696,31 +1703,31 @@ impl Parser {
     }
 
     pub fn lookup_command(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
-        Ok(match self.lookup_command_meta(name, mode)? {
+        match self.lookup_command_meta(name, mode)? {
             Some(meta) => command_meta_to_js(meta),
-            None => JsValue::NULL,
-        })
+            None => Ok(JsValue::NULL),
+        }
     }
 
     pub fn lookup_explicit_command(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
-        Ok(match self.lookup_explicit_command_meta(name, mode)? {
+        match self.lookup_explicit_command_meta(name, mode)? {
             Some(meta) => command_meta_to_js(meta),
-            None => JsValue::NULL,
-        })
+            None => Ok(JsValue::NULL),
+        }
     }
 
     pub fn lookup_character(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
-        Ok(match self.lookup_character_meta(name, mode)? {
+        match self.lookup_character_meta(name, mode)? {
             Some(meta) => character_meta_to_js(meta),
-            None => JsValue::NULL,
-        })
+            None => Ok(JsValue::NULL),
+        }
     }
 
     pub fn lookup_env(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
-        Ok(match self.lookup_env_meta(name, mode)? {
+        match self.lookup_env_meta(name, mode)? {
             Some(meta) => env_meta_to_js(meta),
-            None => JsValue::NULL,
-        })
+            None => Ok(JsValue::NULL),
+        }
     }
 
     pub fn knows_command_name(&self, name: &str) -> bool {
@@ -1865,7 +1872,7 @@ impl TransformEngine {
             .map_err(|error| {
                 binding_error_parts_to_js(texform::bindings::normalize_error_to_parts(error))
             })?;
-        Ok(transform_report_to_js(&report))
+        transform_report_to_js(&report)
     }
 
     pub fn is_delimiter_control(&self, name: &str) -> bool {
@@ -1873,31 +1880,31 @@ impl TransformEngine {
     }
 
     pub fn lookup_command(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
-        Ok(match self.lookup_command_meta(name, mode)? {
+        match self.lookup_command_meta(name, mode)? {
             Some(meta) => command_meta_to_js(meta),
-            None => JsValue::NULL,
-        })
+            None => Ok(JsValue::NULL),
+        }
     }
 
     pub fn lookup_explicit_command(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
-        Ok(match self.lookup_explicit_command_meta(name, mode)? {
+        match self.lookup_explicit_command_meta(name, mode)? {
             Some(meta) => command_meta_to_js(meta),
-            None => JsValue::NULL,
-        })
+            None => Ok(JsValue::NULL),
+        }
     }
 
     pub fn lookup_character(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
-        Ok(match self.lookup_character_meta(name, mode)? {
+        match self.lookup_character_meta(name, mode)? {
             Some(meta) => character_meta_to_js(meta),
-            None => JsValue::NULL,
-        })
+            None => Ok(JsValue::NULL),
+        }
     }
 
     pub fn lookup_env(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
-        Ok(match self.lookup_env_meta(name, mode)? {
+        match self.lookup_env_meta(name, mode)? {
             Some(meta) => env_meta_to_js(meta),
-            None => JsValue::NULL,
-        })
+            None => Ok(JsValue::NULL),
+        }
     }
 
     pub fn knows_command_name(&self, name: &str) -> bool {
@@ -1919,7 +1926,7 @@ fn normalize_result_to_js(
 ) -> Result<JsValue, JsValue> {
     let value = js_sys::Object::new();
     js_set(value.as_ref(), "normalized", &normalized.into())?;
-    js_set(value.as_ref(), "report", &transform_report_to_js(report))?;
+    js_set(value.as_ref(), "report", &transform_report_to_js(report)?)?;
     Ok(value.into())
 }
 
@@ -2085,16 +2092,16 @@ fn parse_context_item_input(input: ContextItemInput) -> Result<ContextItem, JsVa
 }
 
 #[wasm_bindgen]
-pub fn validate_argspec(spec: &str) -> JsValue {
+pub fn validate_argspec(spec: &str) -> Result<JsValue, JsValue> {
     binding_dto_to_js(&texform::validate_argspec(spec))
 }
 
 #[wasm_bindgen(js_name = listPackages)]
-pub fn list_packages() -> JsValue {
+pub fn list_packages() -> Result<JsValue, JsValue> {
     binding_dto_to_js(&texform::bindings::list_packages_to_dto())
 }
 
-fn transform_report_to_js(report: &texform::TransformReport) -> JsValue {
+fn transform_report_to_js(report: &texform::TransformReport) -> Result<JsValue, JsValue> {
     binding_dto_to_js(&transform_report_to_dto(report))
 }
 
@@ -2186,15 +2193,15 @@ fn content_mode_to_string(mode: ContentMode) -> &'static str {
     }
 }
 
-fn command_meta_to_js(meta: &ActiveCommandRecord) -> JsValue {
+fn command_meta_to_js(meta: &ActiveCommandRecord) -> Result<JsValue, JsValue> {
     binding_dto_to_js(&texform::bindings::command_info_to_dto(meta))
 }
 
-fn env_meta_to_js(meta: &ActiveEnvironmentRecord) -> JsValue {
+fn env_meta_to_js(meta: &ActiveEnvironmentRecord) -> Result<JsValue, JsValue> {
     binding_dto_to_js(&texform::bindings::env_info_to_dto(meta))
 }
 
-fn character_meta_to_js(meta: &ActiveCharacterRecord) -> JsValue {
+fn character_meta_to_js(meta: &ActiveCharacterRecord) -> Result<JsValue, JsValue> {
     binding_dto_to_js(&texform::bindings::character_info_to_dto(meta))
 }
 
@@ -2545,5 +2552,38 @@ mod tests {
         assert_eq!(math.argspec.source, "m");
         assert_eq!(text.argspec.source, "m:T");
         assert!(ctx.knows_command_name("underline"));
+    }
+
+    struct FailingDto;
+
+    impl Serialize for FailingDto {
+        fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            Err(serde::ser::Error::custom("boom"))
+        }
+    }
+
+    #[test]
+    fn binding_dto_to_json_surfaces_serialize_errors() {
+        let error = binding_dto_to_json(&FailingDto).expect_err("serialize error should surface");
+        assert!(
+            error.contains("boom"),
+            "error should include the serialize message, got {error}"
+        );
+    }
+
+    #[test]
+    fn binding_dto_to_json_camelizes_nested_dto_keys() {
+        let value = binding_dto_to_json(&texform::validate_argspec("o m"))
+            .expect("argspec result should serialize");
+
+        assert_eq!(value["valid"], true);
+        assert_eq!(value["argCount"], 2);
+        assert!(value.get("arg_count").is_none());
+        let first_slot = &value["parsed"][0];
+        assert!(first_slot.get("noLeadingSpace").is_some());
+        assert!(first_slot.get("no_leading_space").is_none());
     }
 }
