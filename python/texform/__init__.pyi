@@ -1,5 +1,7 @@
 from typing import Any, Literal, TypeAlias, TypedDict
 
+from typing_extensions import NotRequired, Unpack
+
 TransformProfile = Literal["authoring", "faithful", "corpus", "equiv"]
 RuntimeContentMode = Literal["math", "text"]
 ParseDiagnosticKind = Literal[
@@ -32,7 +34,38 @@ NodeKind = Literal[
     "ActiveSpace",
     "Error",
 ]
-ContextItem = dict[str, Any]
+
+
+class CommandItem(TypedDict):
+    """A custom command injected into parser knowledge."""
+
+    target: Literal["command"]
+    name: str
+    kind: Literal["prefix", "infix", "declarative"]
+    allowed_mode: Literal["math", "text", "both"]
+    argspec: str
+    tags: NotRequired[list[str]]
+
+
+class EnvironmentItem(TypedDict):
+    """A custom environment injected into parser knowledge."""
+
+    target: Literal["environment"]
+    name: str
+    allowed_mode: Literal["math", "text", "both"]
+    body_mode: Literal["math", "text"]
+    argspec: str
+    tags: NotRequired[list[str]]
+
+
+class DelimiterItem(TypedDict):
+    """A custom delimiter control injected into parser knowledge."""
+
+    target: Literal["delimiter"]
+    name: str
+
+
+ContextItem: TypeAlias = CommandItem | EnvironmentItem | DelimiterItem
 SyntaxNode: TypeAlias = dict[str, Any]
 Span: TypeAlias = dict[str, int]
 SerializationTokenKind = Literal[
@@ -524,12 +557,13 @@ class EditError(TexformError):
 
 
 class ConfigError(TexformError):
-    """Raised on invalid construction input.
+    """Raised on invalid construction or per-call configuration input.
 
-    Triggers include an unknown knowledge package name passed to ``Parser`` or
-    ``TransformEngine``, an unknown transform profile, and a per-call ``config``
-    argument (or nested ``finalize_ast`` / ``flatten_groups`` value) that is
-    neither the matching config class nor a dict.
+    Triggers include an unknown knowledge package name or transform profile, a
+    ``config`` argument that is not the matching complete-config class (including
+    a dict passed as ``config``), unknown override keys, wrong scalar types
+    (string or int instead of bool, float instead of int), a list where an object
+    is expected, and a config class instance used as a nested override value.
     """
 
 
@@ -702,7 +736,7 @@ class Document:
             identifiers to source byte ranges.
         """
 
-    def to_latex(self, options: SerializeOptions | None = None) -> str:
+    def to_latex(self, **options: Unpack[SerializeOptions]) -> str:
         """Serialize the tree back to LaTeX text using the canonical serializer.
 
         ``Error`` nodes round-trip their captured source snippet verbatim, so a
@@ -713,30 +747,36 @@ class Document:
         channel.
 
         Args:
-            options: A ``SerializeOptions`` dict, or ``None`` for the default
-                (spaced) style. Unrecognized keys are ignored and keep their
-                default. See ``SerializeOptions`` for the full option axes.
+            **options: Serializer style overlays. Omitted keys and explicit
+                ``None`` keep the default (spaced) style. See
+                ``SerializeOptions`` for the full option axes.
 
         Returns:
             The serialized LaTeX string.
 
+        Raises:
+            ConfigError: If an option key is unknown or a value has the wrong
+                type.
+
         Examples:
             doc = texform.Parser().parse(r"x^2")["document"]
             doc.to_latex()                                              # 'x ^ { 2 }'
-            doc.to_latex({"math": {"scripts": {"spacing": "compact"}}})  # 'x^{ 2 }'
+            doc.to_latex(math={"scripts": {"spacing": "compact"}})       # 'x^{ 2 }'
 
         See Also:
             SerializeOptions, serialize, Document.to_syntax
         """
 
-    def to_tokenized_latex(
-        self, options: SerializeOptions | None = None
-    ) -> TokenizedLatex:
+    def to_tokenized_latex(self, **options: Unpack[SerializeOptions]) -> TokenizedLatex:
         """Serialize canonical LaTeX together with typed output tokens.
 
         ``start_byte`` and ``end_byte`` are UTF-8 byte offsets, not Python
         string indices. Empty error snippets produce no zero-width token; use
         ``has_errors()`` to detect whether the document contains error nodes.
+
+        Raises:
+            ConfigError: If an option key is unknown or a value has the wrong
+                type.
         """
 
     def create_char(self, value: str) -> Node:
@@ -1272,6 +1312,63 @@ class Node:
         """
 
 
+class ParseOverrides(TypedDict, total=False):
+    """Keyword overlays for ``parse``."""
+
+    reject_unknown: bool
+    abort_on_error: bool
+    max_group_depth: int
+
+
+class LowerAttributesOverrides(TypedDict, total=False):
+    """Keyword overlays for the LowerAttributes phase."""
+
+    enabled: bool
+
+
+class RewriteOverrides(TypedDict, total=False):
+    """Keyword overlays for the Rewrite phase."""
+
+    enabled: bool
+    max_iterations: int
+
+
+class FinalizeAstOverrides(TypedDict, total=False):
+    """Keyword overlays for the FinalizeAst phase."""
+
+    enabled: bool
+
+
+class FlattenGroupsOverrides(TypedDict, total=False):
+    """Keyword overlays for the FlattenGroups phase."""
+
+    enabled: bool
+    preserve_group_containing_declarative_command: bool
+    preserve_group_in_script_base_slot: bool
+    preserve_group_inside_env_body: bool
+    preserve_group_containing_infix: bool
+    preserve_group_adjacent_to_command_like: bool
+    preserve_group_as_argument_of_command: bool
+    preserve_group_after_scripted_command_like: bool
+    preserve_empty_group: bool
+    preserve_group_with_lone_atom_spacing_char: bool
+    preserve_group_starting_with_atom_spacing_char: bool
+    preserve_group_containing_delimited_pair: bool
+
+
+class TransformOverrides(TypedDict, total=False):
+    """Keyword overlays for ``transform``."""
+
+    lower_attributes: LowerAttributesOverrides
+    rewrite: RewriteOverrides
+    finalize_ast: FinalizeAstOverrides
+    flatten_groups: FlattenGroupsOverrides
+
+
+class NormalizeOverrides(ParseOverrides, TransformOverrides, total=False):
+    """Flat parse+transform overlays for ``normalize``."""
+
+
 class Parser:
     """Turn LaTeX source into a parse result.
 
@@ -1293,6 +1390,7 @@ class Parser:
         remove_commands: list[str] | None = None,
         remove_environments: list[str] | None = None,
         remove_delimiter_controls: list[str] | None = None,
+        default_parse_config: ParseConfig | None = None,
     ) -> None:
         """Construct a parser, optionally restricting or customizing knowledge.
 
@@ -1308,16 +1406,19 @@ class Parser:
                 knowledge.
             remove_delimiter_controls: Delimiter-control names to drop from the
                 loaded knowledge.
+            default_parse_config: Complete parse configuration used when
+                ``parse`` is called without ``config`` or overrides.
 
         Raises:
-            ConfigError: If a requested package name is unknown.
+            ConfigError: If a requested package name is unknown, or an item is
+                malformed.
         """
 
     def parse(
         self,
         src: str,
-        config: ParseConfig | dict[str, Any] | None = None,
-        **kwargs: Any,
+        config: ParseConfig | None = None,
+        **overrides: Unpack[ParseOverrides],
     ) -> ParseResult:
         """Parse a LaTeX string into a parse result.
 
@@ -1329,15 +1430,16 @@ class Parser:
 
         Args:
             src: The LaTeX source string.
-            config: A ``ParseConfig`` or an equivalent dict; ``None`` uses the
-                defaults.
+            config: A complete configuration; ``**overrides`` are layered on
+                top. ``None`` uses the parser default.
 
         Returns:
             A ``ParseResult`` dict with two keys: ``document`` (a ``Document`` or
             ``None``) and ``diagnostics`` (a list of diagnostic dicts).
 
         Raises:
-            ConfigError: If ``config`` is neither a ``ParseConfig`` nor a dict.
+            ConfigError: If ``config`` is not a ``ParseConfig``, a dict is
+                passed as ``config``, or an override key or value is invalid.
 
         Examples:
             result = texform.Parser().parse(r"\\frac{x}{y}")
@@ -1347,6 +1449,9 @@ class Parser:
         See Also:
             ParseConfig, ParseResult
         """
+
+    def default_parse_config(self) -> ParseConfig:
+        """Return a new ``ParseConfig`` holding this parser's defaults."""
 
     def lookup_command(self, name: str, mode: Literal["math", "text"]) -> dict[str, Any] | None:
         """Look up the full knowledge entry for a command in a given mode.
@@ -1456,8 +1561,14 @@ class TransformEngine:
     Examples:
         import texform
 
-        engine = texform.TransformEngine(profile="corpus")
-        engine.normalize(r"a \\over b")["normalized"]  # '\\frac { a } { b }'
+        engine = texform.TransformEngine("corpus")
+        engine.normalize(src, rewrite={"enabled": False})
+        engine.normalize(src, reject_unknown=True, flatten_groups={"enabled": False})
+        cfg = engine.default_transform_config()
+        cfg.rewrite.max_iterations = 50
+        engine.transform(doc, cfg)
+        engine.transform(doc, texform.TransformConfig.faithful(), rewrite={"enabled": False})
+        engine.transform(doc, **saved_overrides)
 
     See Also:
         TransformConfig, TransformResult, TransformReport, Parser
@@ -1472,6 +1583,7 @@ class TransformEngine:
         remove_environments: list[str] | None = None,
         remove_delimiter_controls: list[str] | None = None,
         disable_rules: list[str] | None = None,
+        default_parse_config: ParseConfig | None = None,
     ) -> None:
         """Construct a transform engine for a profile.
 
@@ -1487,16 +1599,19 @@ class TransformEngine:
             remove_delimiter_controls: Delimiter-control names to drop.
             disable_rules: Rewrite rule keys to disable, such as
                 ``"physics/dv-to-frac-d"``.
+            default_parse_config: Complete parse configuration used by
+                ``parse`` / ``normalize`` when no per-call parse overlay is given.
 
         Raises:
-            ConfigError: If the profile or a package name is unknown.
+            ConfigError: If the profile or a package name is unknown, or an item
+                is malformed.
         """
 
     def normalize(
         self,
         src: str,
-        config: TransformConfig | dict[str, Any] | None = None,
-        **kwargs: Any,
+        config: TransformConfig | None = None,
+        **overrides: Unpack[NormalizeOverrides],
     ) -> TransformResult:
         """Parse, transform, and serialize a formula in one call.
 
@@ -1507,8 +1622,8 @@ class TransformEngine:
 
         Args:
             src: The LaTeX source string.
-            config: A ``TransformConfig`` or an equivalent transform-only dict;
-                ``None`` uses the profile's defaults.
+            config: A complete configuration; it replaces only the transform
+                half of the baseline. ``**overrides`` are layered on top.
 
         Returns:
             A ``TransformResult`` dict with ``normalized`` (the canonical LaTeX
@@ -1516,7 +1631,8 @@ class TransformEngine:
 
         Raises:
             ParseError: If the source does not parse into a complete tree.
-            ConfigError: If ``config`` is neither a ``TransformConfig`` nor a dict.
+            ConfigError: If ``config`` is not a ``TransformConfig``, a dict is
+                passed as ``config``, or an override key or value is invalid.
 
         Examples:
             engine = texform.TransformEngine(profile="corpus")
@@ -1530,8 +1646,8 @@ class TransformEngine:
     def transform(
         self,
         document: Document,
-        config: TransformConfig | dict[str, Any] | None = None,
-        **kwargs: Any,
+        config: TransformConfig | None = None,
+        **overrides: Unpack[TransformOverrides],
     ) -> TransformReport:
         """Transform a live ``Document`` in place and return the report.
 
@@ -1543,9 +1659,8 @@ class TransformEngine:
 
         Args:
             document: The live ``Document`` to update in place.
-            config: A ``TransformConfig`` or equivalent transform-only dict
-                overriding the profile's transform defaults. It does not accept
-                parse options.
+            config: A complete configuration; ``**overrides`` are layered on
+                top. It does not accept parse options.
 
         Returns:
             The phase-oriented transform report dict.
@@ -1554,7 +1669,8 @@ class TransformEngine:
             TransformError: If the document is foreign to this engine, or on a
                 contract violation.
             TexformError: If the document has parse errors.
-            ConfigError: If ``config`` is neither a ``TransformConfig`` nor a dict.
+            ConfigError: If ``config`` is not a ``TransformConfig``, a dict is
+                passed as ``config``, or an override key or value is invalid.
 
         Examples:
             engine = texform.TransformEngine(profile="corpus")
@@ -1571,8 +1687,8 @@ class TransformEngine:
     def parse(
         self,
         src: str,
-        config: ParseConfig | dict[str, Any] | None = None,
-        **kwargs: Any,
+        config: ParseConfig | None = None,
+        **overrides: Unpack[ParseOverrides],
     ) -> ParseResult:
         """Parse a LaTeX string using the engine's bundled parser.
 
@@ -1583,18 +1699,25 @@ class TransformEngine:
 
         Args:
             src: The LaTeX source string.
-            config: A ``ParseConfig`` or an equivalent dict; ``None`` uses the
-                defaults.
+            config: A complete configuration; ``**overrides`` are layered on
+                top. ``None`` uses the engine default.
 
         Returns:
             A ``ParseResult`` dict with ``document`` and ``diagnostics``.
 
         Raises:
-            ConfigError: If ``config`` is neither a ``ParseConfig`` nor a dict.
+            ConfigError: If ``config`` is not a ``ParseConfig``, a dict is
+                passed as ``config``, or an override key or value is invalid.
 
         See Also:
             Parser.parse, TransformEngine.transform
         """
+
+    def default_parse_config(self) -> ParseConfig:
+        """Return a new ``ParseConfig`` holding this engine's parse defaults."""
+
+    def default_transform_config(self) -> TransformConfig:
+        """Return a new ``TransformConfig`` holding this engine's transform defaults."""
 
     def lookup_command(self, name: str, mode: Literal["math", "text"]) -> dict[str, Any] | None:
         """Look up the full knowledge entry for a command in a given mode.
@@ -1685,12 +1808,12 @@ class TransformEngine:
 
 
 class ParseConfig:
-    """Configure parser strictness along two orthogonal axes.
+    """Complete configuration; passed as ``config``, it replaces the baseline as a whole.
 
     ``reject_unknown`` and ``abort_on_error`` are independent: the former decides
     how unknown names are handled, the latter is a strictness knob for error
-    recovery. Neither is equivalent to a parsed tree's ``has_errors()``. The dict
-    form accepted by ``Parser.parse`` uses the same snake_case keys.
+    recovery. Neither is equivalent to a parsed tree's ``has_errors()``. Constructor
+    defaults match ``LENIENT`` (the parser baseline on both language bindings).
 
     Attributes:
         reject_unknown: When ``True``, an unknown command or environment becomes a
@@ -1731,7 +1854,9 @@ class ParseConfig:
 
 
 class LowerAttributesConfig:
-    """Configure the LowerAttributes phase that canonicalizes font/style markup.
+    """Complete configuration; passed as ``config``, it replaces the baseline as a whole.
+
+    Configure the LowerAttributes phase that canonicalizes font/style markup.
 
     Attributes:
         enabled: Whether the phase runs. Defaults to ``True``.
@@ -1748,7 +1873,9 @@ class LowerAttributesConfig:
 
 
 class RewriteConfig:
-    """Configure the fixed-point Rewrite phase.
+    """Complete configuration; passed as ``config``, it replaces the baseline as a whole.
+
+    Configure the fixed-point Rewrite phase.
 
     Attributes:
         enabled: Whether the phase runs. Defaults to ``True``.
@@ -1772,10 +1899,10 @@ class RewriteConfig:
 
 
 class FinalizeAstConfig:
-    """Configure the FinalizeAst phase that performs local AST cleanup.
+    """Complete configuration; passed as ``config``, it replaces the baseline as a whole.
 
-    Its first responsibility is merging adjacent ``Prime`` nodes produced by
-    rewrite rules.
+    Configure the FinalizeAst phase that performs local AST cleanup. Its first
+    responsibility is merging adjacent ``Prime`` nodes produced by rewrite rules.
 
     Attributes:
         enabled: Whether the phase runs. Defaults to ``True``.
@@ -1792,13 +1919,13 @@ class FinalizeAstConfig:
 
 
 class FlattenGroupsConfig:
-    """Configure the FlattenGroups phase that strips redundant braces.
+    """Complete configuration; passed as ``config``, it replaces the baseline as a whole.
 
-    Each ``preserve_*`` guard, when ``True``, keeps a group matching the named
-    structural condition instead of flattening it. The guards default to ``True``
-    in this constructor so flattening never changes script binding, cell
-    boundaries, or atom spacing unless you opt in; a profile may turn individual
-    guards off (``corpus``, for example, disables several).
+    Configure the FlattenGroups phase that strips redundant braces. Each
+    ``preserve_*`` guard, when ``True``, keeps a group matching the named
+    structural condition instead of flattening it. Constructor defaults equal
+    the authoring / faithful strict guard set (every guard ``True``); a profile
+    may turn individual guards off (``corpus``, for example, disables several).
 
     Attributes:
         enabled: Whether the phase runs.
@@ -1880,21 +2007,25 @@ class FlattenGroupsConfig:
 
 
 class TransformConfig:
-    """Control per-run transform pipeline switches, overriding profile defaults.
+    """Complete configuration; passed as ``config``, it replaces the baseline as a whole.
 
-    A ``TransformConfig`` composes the four per-phase configs. The dict form
-    accepted by the engine uses the same snake_case keys. The classmethods return
-    the config a given profile uses by default.
+    A ``TransformConfig`` composes the four per-phase configs. The four
+    attributes are shared references: ``cfg.rewrite.enabled = False`` is visible
+    through ``cfg.rewrite.enabled`` and takes effect when the object is passed
+    as ``config``. The classmethods return the config a given profile uses by
+    default.
 
     Attributes:
-        lower_attributes: The LowerAttributes phase config.
-        rewrite: The Rewrite phase config.
-        finalize_ast: The FinalizeAst phase config.
-        flatten_groups: The FlattenGroups phase config.
+        lower_attributes: The LowerAttributes phase config (shared reference).
+        rewrite: The Rewrite phase config (shared reference).
+        finalize_ast: The FinalizeAst phase config (shared reference).
+        flatten_groups: The FlattenGroups phase config (shared reference).
 
     Examples:
         config = texform.TransformConfig(
+            lower_attributes=texform.LowerAttributesConfig(),
             rewrite=texform.RewriteConfig(max_iterations=50),
+            finalize_ast=texform.FinalizeAstConfig(),
             flatten_groups=texform.FlattenGroupsConfig(enabled=False),
         )
 
@@ -1909,18 +2040,19 @@ class TransformConfig:
 
     def __init__(
         self,
-        lower_attributes: LowerAttributesConfig | None = None,
-        rewrite: RewriteConfig | None = None,
-        finalize_ast: FinalizeAstConfig | None = None,
-        flatten_groups: FlattenGroupsConfig | None = None,
+        *,
+        lower_attributes: LowerAttributesConfig,
+        rewrite: RewriteConfig,
+        finalize_ast: FinalizeAstConfig,
+        flatten_groups: FlattenGroupsConfig,
     ) -> None:
-        """Construct a transform configuration, leaving unset phases at default.
+        """Construct a transform configuration. All four phases are required.
 
         Args:
-            lower_attributes: The LowerAttributes phase config, or ``None``.
-            rewrite: The Rewrite phase config, or ``None``.
-            finalize_ast: The FinalizeAst phase config, or ``None``.
-            flatten_groups: The FlattenGroups phase config, or ``None``.
+            lower_attributes: The LowerAttributes phase config.
+            rewrite: The Rewrite phase config.
+            finalize_ast: The FinalizeAst phase config.
+            flatten_groups: The FlattenGroups phase config.
         """
 
     @classmethod
@@ -2031,6 +2163,9 @@ ScriptOrder = Literal["sub_first", "sup_first"]
 """Order of subscript and superscript in serialized output: ``"sub_first"``
 writes ``x _ { i } ^ { 2 }``; ``"sup_first"`` writes ``x ^ { 2 } _ { i }``."""
 
+InfixGrouping = Literal["always_explicit", "when_required"]
+"""Whether math infix operands are always braced or only when needed."""
+
 EnvironmentNameSpacing = Literal["spaced", "compact"]
 """Spacing after ``\\begin`` / ``\\end``: ``"spaced"`` writes
 ``\\begin {matrix}``; ``"compact"`` writes ``\\begin{matrix}``."""
@@ -2068,12 +2203,24 @@ class MathScriptOptions(TypedDict, total=False):
     order: ScriptOrder
 
 
+class MathInfixOptions(TypedDict, total=False):
+    """Math infix options for the serializer. Omitted keys keep their default.
+
+    Attributes:
+        grouping: Whether infix operands are always braced. Default
+            ``"when_required"``.
+    """
+
+    grouping: InfixGrouping
+
+
 class MathSerializeOptions(TypedDict, total=False):
-    """Math-mode serialization options, grouping spacing and script axes.
+    """Math-mode serialization options, grouping spacing, script, and infix axes.
 
     Attributes:
         spacing: Spacing axes (commands, group inner spacing, adjacent chars).
         scripts: Script axes (spacing and order).
+        infix: Infix grouping axis.
 
     See Also:
         SerializeOptions
@@ -2081,6 +2228,7 @@ class MathSerializeOptions(TypedDict, total=False):
 
     spacing: MathSpacingOptions
     scripts: MathScriptOptions
+    infix: MathInfixOptions
 
 
 class EnvironmentSerializeOptions(TypedDict, total=False):
@@ -2112,19 +2260,19 @@ class SyntaxSerializeOptions(TypedDict, total=False):
 class SerializeOptions(TypedDict, total=False):
     """Options controlling serialized LaTeX output style.
 
-    A nested dict keyed by snake_case names. An unrecognized key — including a
-    camelCase key meant for the JavaScript binding — is silently ignored, so the
-    corresponding axis keeps its default. Passed to ``Document.to_latex`` and
-    ``serialize``. For a task-oriented walkthrough, see the Serialization guide.
+    A nested dict keyed by snake_case names. Passed as keywords to
+    ``Document.to_latex`` and ``serialize``. Unknown keys and wrong types raise
+    ``ConfigError``. For a task-oriented walkthrough, see the Serialization
+    guide.
 
     Attributes:
-        math: Math-mode spacing and script options.
+        math: Math-mode spacing, script, and infix options.
         syntax: Syntactic (environment) options.
 
     Examples:
         result = texform.Parser().parse(r"x_i^2")
         syntax = result["document"].to_syntax()
-        texform.serialize(syntax, {"math": {"scripts": {"order": "sup_first"}}})  # 'x ^ { 2 } _ { i }'
+        texform.serialize(syntax, math={"scripts": {"order": "sup_first"}})  # 'x ^ { 2 } _ { i }'
 
     See Also:
         Document.to_latex, serialize
@@ -2134,33 +2282,34 @@ class SerializeOptions(TypedDict, total=False):
     syntax: SyntaxSerializeOptions
 
 
-def serialize(node: SyntaxNode, options: SerializeOptions | None = None) -> str:
+def serialize(node: SyntaxNode, **options: Unpack[SerializeOptions]) -> str:
     """Render a ``SyntaxNode`` dict to LaTeX text using the canonical serializer.
 
     This is the free-function counterpart to ``Document.to_latex()``; both take
-    the same options dict. ``Error`` nodes round-trip their captured snippet, pure
-    prime superscripts serialize compactly as ``f'`` / ``f''``, and the serializer
-    guarantees text idempotency. For the conceptual model, see the Serialization
-    guide.
+    the same keyword options. ``Error`` nodes round-trip their captured snippet,
+    pure prime superscripts serialize compactly as ``f'`` / ``f''``, and the
+    serializer guarantees text idempotency. For the conceptual model, see the
+    Serialization guide.
 
     Args:
         node: A ``SyntaxNode`` dict, typically from ``Document.to_syntax()`` or a
             stored snapshot.
-        options: A ``SerializeOptions`` dict, or ``None`` for the default (spaced)
-            style. Keys are snake_case; an unrecognized key (including a camelCase
-            key meant for the JavaScript binding) is silently ignored, so that
-            axis keeps its default.
+        **options: Serializer style overlays. Omitted keys and explicit ``None``
+            keep the default (spaced) style.
 
     Returns:
         The serialized LaTeX string.
+
+    Raises:
+        ConfigError: If an option key is unknown or a value has the wrong type.
 
     Examples:
         result = texform.Parser().parse(r"x^2")
         document = result["document"]
         assert document is not None
         syntax = document.to_syntax()
-        texform.serialize(syntax)                                                 # 'x ^ { 2 }'
-        texform.serialize(syntax, {"math": {"scripts": {"spacing": "compact"}}})  # 'x^{ 2 }'
+        texform.serialize(syntax)                                            # 'x ^ { 2 }'
+        texform.serialize(syntax, math={"scripts": {"spacing": "compact"}})  # 'x^{ 2 }'
 
     See Also:
         SerializeOptions, Document.to_latex

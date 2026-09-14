@@ -1270,6 +1270,7 @@ version = "0.4.0"
 dependencies = [
  "pyo3",
  "pythonize",
+ "serde",
  "serde_json",
  "texform",
 ]

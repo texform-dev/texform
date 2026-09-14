@@ -2,10 +2,13 @@ use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use pythonize::{depythonize, pythonize};
-use texform::{
-    FinalizeAstConfig as CoreFinalizeAstConfig, FlattenGroupsConfig as CoreFlattenGroupsConfig,
-    LowerAttributesConfig as CoreLowerAttributesConfig, ParseConfig as CoreParseConfig,
-    Profile as CoreProfile, TransformConfig as CoreTransformConfig,
+
+mod config;
+
+use config::{
+    PyFinalizeAstConfig, PyFlattenGroupsConfig, PyLowerAttributesConfig, PyParseConfig,
+    PyRewriteConfig, PyTransformConfig, context_items_from_python, normalize_config_from_python,
+    parse_config_from_python, serialize_options_from_python, transform_config_from_python,
 };
 
 pyo3::create_exception!(texform, TexformError, PyException);
@@ -13,384 +16,6 @@ pyo3::create_exception!(texform, ParseError, TexformError);
 pyo3::create_exception!(texform, EditError, TexformError);
 pyo3::create_exception!(texform, ConfigError, TexformError);
 pyo3::create_exception!(texform, TransformError, TexformError);
-
-#[pyclass(name = "ParseConfig")]
-#[derive(Clone, Debug)]
-struct PyParseConfig {
-    #[pyo3(get, set)]
-    reject_unknown: bool,
-    #[pyo3(get, set)]
-    abort_on_error: bool,
-    #[pyo3(get, set)]
-    max_group_depth: usize,
-}
-
-#[pymethods]
-impl PyParseConfig {
-    #[new]
-    #[pyo3(signature = (reject_unknown = false, abort_on_error = false, max_group_depth = 128))]
-    fn new(reject_unknown: bool, abort_on_error: bool, max_group_depth: usize) -> Self {
-        Self {
-            reject_unknown,
-            abort_on_error,
-            max_group_depth,
-        }
-    }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "ParseConfig(reject_unknown={}, abort_on_error={}, max_group_depth={})",
-            self.reject_unknown, self.abort_on_error, self.max_group_depth
-        )
-    }
-}
-
-impl PyParseConfig {
-    fn to_core(&self) -> CoreParseConfig {
-        CoreParseConfig {
-            reject_unknown: self.reject_unknown,
-            abort_on_error: self.abort_on_error,
-            max_group_depth: self.max_group_depth,
-        }
-    }
-}
-
-#[pyclass(name = "LowerAttributesConfig")]
-#[derive(Clone, Debug)]
-struct PyLowerAttributesConfig {
-    #[pyo3(get, set)]
-    enabled: bool,
-}
-
-#[pymethods]
-impl PyLowerAttributesConfig {
-    #[new]
-    #[pyo3(signature = (enabled = true))]
-    fn new(enabled: bool) -> Self {
-        Self { enabled }
-    }
-
-    fn __repr__(&self) -> String {
-        format!("LowerAttributesConfig(enabled={})", self.enabled)
-    }
-}
-
-impl PyLowerAttributesConfig {
-    fn from_core(config: CoreLowerAttributesConfig) -> Self {
-        Self {
-            enabled: config.enabled,
-        }
-    }
-}
-
-#[pyclass(name = "RewriteConfig")]
-#[derive(Clone, Debug)]
-struct PyRewriteConfig {
-    #[pyo3(get, set)]
-    enabled: bool,
-    #[pyo3(get, set)]
-    max_iterations: usize,
-}
-
-#[pymethods]
-impl PyRewriteConfig {
-    #[new]
-    #[pyo3(signature = (enabled = true, max_iterations = 100))]
-    fn new(enabled: bool, max_iterations: usize) -> Self {
-        Self {
-            enabled,
-            max_iterations,
-        }
-    }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "RewriteConfig(enabled={}, max_iterations={})",
-            self.enabled, self.max_iterations
-        )
-    }
-}
-
-impl PyRewriteConfig {
-    fn from_core(enabled: bool, max_iterations: usize) -> Self {
-        Self {
-            enabled,
-            max_iterations,
-        }
-    }
-}
-
-#[pyclass(name = "FinalizeAstConfig")]
-#[derive(Clone, Debug)]
-struct PyFinalizeAstConfig {
-    #[pyo3(get, set)]
-    enabled: bool,
-}
-
-#[pymethods]
-impl PyFinalizeAstConfig {
-    #[new]
-    #[pyo3(signature = (enabled = true))]
-    fn new(enabled: bool) -> Self {
-        Self { enabled }
-    }
-
-    fn __repr__(&self) -> String {
-        format!("FinalizeAstConfig(enabled={})", self.enabled)
-    }
-}
-
-impl PyFinalizeAstConfig {
-    fn from_core(config: CoreFinalizeAstConfig) -> Self {
-        Self {
-            enabled: config.enabled,
-        }
-    }
-
-    fn to_core(&self) -> CoreFinalizeAstConfig {
-        CoreFinalizeAstConfig {
-            enabled: self.enabled,
-        }
-    }
-}
-
-#[pyclass(name = "FlattenGroupsConfig")]
-#[derive(Clone, Debug)]
-struct PyFlattenGroupsConfig {
-    #[pyo3(get, set)]
-    enabled: bool,
-    #[pyo3(get, set)]
-    preserve_group_containing_declarative_command: bool,
-    #[pyo3(get, set)]
-    preserve_group_in_script_base_slot: bool,
-    #[pyo3(get, set)]
-    preserve_group_inside_env_body: bool,
-    #[pyo3(get, set)]
-    preserve_group_containing_infix: bool,
-    #[pyo3(get, set)]
-    preserve_group_adjacent_to_command_like: bool,
-    #[pyo3(get, set)]
-    preserve_group_as_argument_of_command: bool,
-    #[pyo3(get, set)]
-    preserve_group_after_scripted_command_like: bool,
-    #[pyo3(get, set)]
-    preserve_empty_group: bool,
-    #[pyo3(get, set)]
-    preserve_group_with_lone_atom_spacing_char: bool,
-    #[pyo3(get, set)]
-    preserve_group_starting_with_atom_spacing_char: bool,
-    #[pyo3(get, set)]
-    preserve_group_containing_delimited_pair: bool,
-}
-
-#[pymethods]
-impl PyFlattenGroupsConfig {
-    #[new]
-    #[pyo3(signature = (
-        enabled = true,
-        preserve_group_containing_declarative_command = true,
-        preserve_group_in_script_base_slot = true,
-        preserve_group_inside_env_body = true,
-        preserve_group_containing_infix = true,
-        preserve_group_adjacent_to_command_like = true,
-        preserve_group_as_argument_of_command = true,
-        preserve_group_after_scripted_command_like = true,
-        preserve_empty_group = true,
-        preserve_group_with_lone_atom_spacing_char = true,
-        preserve_group_starting_with_atom_spacing_char = true,
-        preserve_group_containing_delimited_pair = true
-    ))]
-    #[allow(clippy::too_many_arguments)]
-    fn new(
-        enabled: bool,
-        preserve_group_containing_declarative_command: bool,
-        preserve_group_in_script_base_slot: bool,
-        preserve_group_inside_env_body: bool,
-        preserve_group_containing_infix: bool,
-        preserve_group_adjacent_to_command_like: bool,
-        preserve_group_as_argument_of_command: bool,
-        preserve_group_after_scripted_command_like: bool,
-        preserve_empty_group: bool,
-        preserve_group_with_lone_atom_spacing_char: bool,
-        preserve_group_starting_with_atom_spacing_char: bool,
-        preserve_group_containing_delimited_pair: bool,
-    ) -> Self {
-        Self {
-            enabled,
-            preserve_group_containing_declarative_command,
-            preserve_group_in_script_base_slot,
-            preserve_group_inside_env_body,
-            preserve_group_containing_infix,
-            preserve_group_adjacent_to_command_like,
-            preserve_group_as_argument_of_command,
-            preserve_group_after_scripted_command_like,
-            preserve_empty_group,
-            preserve_group_with_lone_atom_spacing_char,
-            preserve_group_starting_with_atom_spacing_char,
-            preserve_group_containing_delimited_pair,
-        }
-    }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "FlattenGroupsConfig(enabled={}, preserve_group_containing_declarative_command={}, preserve_group_in_script_base_slot={}, preserve_group_inside_env_body={}, preserve_group_containing_infix={}, preserve_group_adjacent_to_command_like={}, preserve_group_as_argument_of_command={}, preserve_group_after_scripted_command_like={}, preserve_empty_group={}, preserve_group_with_lone_atom_spacing_char={}, preserve_group_starting_with_atom_spacing_char={}, preserve_group_containing_delimited_pair={})",
-            self.enabled,
-            self.preserve_group_containing_declarative_command,
-            self.preserve_group_in_script_base_slot,
-            self.preserve_group_inside_env_body,
-            self.preserve_group_containing_infix,
-            self.preserve_group_adjacent_to_command_like,
-            self.preserve_group_as_argument_of_command,
-            self.preserve_group_after_scripted_command_like,
-            self.preserve_empty_group,
-            self.preserve_group_with_lone_atom_spacing_char,
-            self.preserve_group_starting_with_atom_spacing_char,
-            self.preserve_group_containing_delimited_pair
-        )
-    }
-}
-
-impl PyFlattenGroupsConfig {
-    fn from_core(config: CoreFlattenGroupsConfig) -> Self {
-        Self {
-            enabled: config.enabled,
-            preserve_group_containing_declarative_command: config
-                .preserve_group_containing_declarative_command,
-            preserve_group_in_script_base_slot: config.preserve_group_in_script_base_slot,
-            preserve_group_inside_env_body: config.preserve_group_inside_env_body,
-            preserve_group_containing_infix: config.preserve_group_containing_infix,
-            preserve_group_adjacent_to_command_like: config.preserve_group_adjacent_to_command_like,
-            preserve_group_as_argument_of_command: config.preserve_group_as_argument_of_command,
-            preserve_group_after_scripted_command_like: config
-                .preserve_group_after_scripted_command_like,
-            preserve_empty_group: config.preserve_empty_group,
-            preserve_group_with_lone_atom_spacing_char: config
-                .preserve_group_with_lone_atom_spacing_char,
-            preserve_group_starting_with_atom_spacing_char: config
-                .preserve_group_starting_with_atom_spacing_char,
-            preserve_group_containing_delimited_pair: config
-                .preserve_group_containing_delimited_pair,
-        }
-    }
-
-    fn to_core(&self) -> CoreFlattenGroupsConfig {
-        CoreFlattenGroupsConfig {
-            enabled: self.enabled,
-            preserve_group_containing_declarative_command: self
-                .preserve_group_containing_declarative_command,
-            preserve_group_in_script_base_slot: self.preserve_group_in_script_base_slot,
-            preserve_group_inside_env_body: self.preserve_group_inside_env_body,
-            preserve_group_containing_infix: self.preserve_group_containing_infix,
-            preserve_group_adjacent_to_command_like: self.preserve_group_adjacent_to_command_like,
-            preserve_group_as_argument_of_command: self.preserve_group_as_argument_of_command,
-            preserve_group_after_scripted_command_like: self
-                .preserve_group_after_scripted_command_like,
-            preserve_empty_group: self.preserve_empty_group,
-            preserve_group_with_lone_atom_spacing_char: self
-                .preserve_group_with_lone_atom_spacing_char,
-            preserve_group_starting_with_atom_spacing_char: self
-                .preserve_group_starting_with_atom_spacing_char,
-            preserve_group_containing_delimited_pair: self.preserve_group_containing_delimited_pair,
-        }
-    }
-}
-
-#[pyclass(name = "TransformConfig")]
-#[derive(Clone, Debug)]
-struct PyTransformConfig {
-    #[pyo3(get, set)]
-    lower_attributes: PyLowerAttributesConfig,
-    #[pyo3(get, set)]
-    rewrite: PyRewriteConfig,
-    #[pyo3(get, set)]
-    finalize_ast: PyFinalizeAstConfig,
-    #[pyo3(get, set)]
-    flatten_groups: PyFlattenGroupsConfig,
-}
-
-#[pymethods]
-impl PyTransformConfig {
-    #[new]
-    #[pyo3(signature = (lower_attributes = None, rewrite = None, finalize_ast = None, flatten_groups = None))]
-    fn new(
-        lower_attributes: Option<PyLowerAttributesConfig>,
-        rewrite: Option<PyRewriteConfig>,
-        finalize_ast: Option<PyFinalizeAstConfig>,
-        flatten_groups: Option<PyFlattenGroupsConfig>,
-    ) -> Self {
-        let default = CoreProfile::Authoring.default_transform_config();
-        Self {
-            lower_attributes: lower_attributes.unwrap_or_else(|| {
-                PyLowerAttributesConfig::from_core(CoreLowerAttributesConfig::ENABLED)
-            }),
-            rewrite: rewrite.unwrap_or_else(|| {
-                PyRewriteConfig::from_core(default.rewrite.enabled, default.rewrite.max_iterations)
-            }),
-            finalize_ast: finalize_ast
-                .unwrap_or_else(|| PyFinalizeAstConfig::from_core(default.finalize_ast)),
-            flatten_groups: flatten_groups
-                .unwrap_or_else(|| PyFlattenGroupsConfig::from_core(default.flatten_groups)),
-        }
-    }
-
-    #[classmethod]
-    fn authoring(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        Self::from_profile(CoreProfile::Authoring)
-    }
-
-    #[classmethod]
-    fn faithful(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        Self::from_profile(CoreProfile::Faithful)
-    }
-
-    #[classmethod]
-    fn corpus(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        Self::from_profile(CoreProfile::Corpus)
-    }
-
-    #[classmethod]
-    fn equiv(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        Self::from_profile(CoreProfile::Equiv)
-    }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "TransformConfig(lower_attributes={:?}, rewrite={:?}, finalize_ast={:?}, flatten_groups={:?})",
-            self.lower_attributes, self.rewrite, self.finalize_ast, self.flatten_groups
-        )
-    }
-}
-
-impl PyTransformConfig {
-    fn from_profile(profile: CoreProfile) -> Self {
-        let config = profile.default_transform_config();
-        Self {
-            lower_attributes: PyLowerAttributesConfig {
-                enabled: config.lower_attributes.enabled,
-            },
-            rewrite: PyRewriteConfig::from_core(
-                config.rewrite.enabled,
-                config.rewrite.max_iterations,
-            ),
-            finalize_ast: PyFinalizeAstConfig::from_core(config.finalize_ast),
-            flatten_groups: PyFlattenGroupsConfig::from_core(config.flatten_groups),
-        }
-    }
-
-    fn to_core(&self) -> CoreTransformConfig {
-        CoreTransformConfig {
-            lower_attributes: CoreLowerAttributesConfig {
-                enabled: self.lower_attributes.enabled,
-            },
-            rewrite: texform::RewriteConfig {
-                enabled: self.rewrite.enabled,
-                max_iterations: self.rewrite.max_iterations,
-            },
-            finalize_ast: self.finalize_ast.to_core(),
-            flatten_groups: self.flatten_groups.to_core(),
-        }
-    }
-}
 
 fn parse_context(packages: Option<Vec<String>>) -> PyResult<texform::Parser> {
     let mut builder = texform::Parser::builder();
@@ -419,55 +44,6 @@ fn profile_from_name(name: &str) -> PyResult<texform::Profile> {
     }
 }
 
-fn py_optional_bool(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<bool>> {
-    Ok(match dict.get_item(key)? {
-        Some(value) if !value.is_none() => Some(value.extract::<bool>()?),
-        _ => None,
-    })
-}
-
-fn py_optional_usize(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<usize>> {
-    Ok(match dict.get_item(key)? {
-        Some(value) if !value.is_none() => Some(value.extract::<usize>()?),
-        _ => None,
-    })
-}
-
-fn py_required_string(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<String> {
-    dict.get_item(key)?
-        .ok_or_else(|| ParseError::new_err(format!("context item missing `{key}`")))?
-        .extract::<String>()
-}
-
-fn py_optional_strings(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<Vec<String>> {
-    Ok(match dict.get_item(key)? {
-        Some(value) if !value.is_none() => value.extract::<Vec<String>>()?,
-        _ => Vec::new(),
-    })
-}
-
-fn py_command_kind(value: &str) -> PyResult<texform::CommandKind> {
-    match value {
-        "prefix" => Ok(texform::CommandKind::Prefix),
-        "infix" => Ok(texform::CommandKind::Infix),
-        "declarative" => Ok(texform::CommandKind::Declarative),
-        other => Err(ConfigError::new_err(format!(
-            "unsupported command kind: {other}"
-        ))),
-    }
-}
-
-fn py_allowed_mode(value: &str) -> PyResult<texform::AllowedMode> {
-    match value {
-        "math" => Ok(texform::AllowedMode::Math),
-        "text" => Ok(texform::AllowedMode::Text),
-        "both" => Ok(texform::AllowedMode::Both),
-        other => Err(ConfigError::new_err(format!(
-            "unsupported allowed mode: {other}"
-        ))),
-    }
-}
-
 fn py_content_mode(value: &str) -> PyResult<texform::ContentMode> {
     match value {
         "math" => Ok(texform::ContentMode::Math),
@@ -485,44 +61,13 @@ fn content_mode_to_str(value: texform::ContentMode) -> &'static str {
     }
 }
 
-fn py_context_item(py: Python<'_>, item: &Py<PyAny>) -> PyResult<texform::ContextItem> {
-    let value = item.bind(py);
-    let dict = value
-        .cast::<PyDict>()
-        .map_err(|_| ParseError::new_err("context item must be a dict"))?;
-    match py_required_string(dict, "target")?.as_str() {
-        "command" => Ok(texform::CommandItem::new(
-            py_required_string(dict, "name")?,
-            py_command_kind(&py_required_string(dict, "kind")?)?,
-            py_allowed_mode(&py_required_string(dict, "allowed_mode")?)?,
-            py_required_string(dict, "argspec")?,
-        )
-        .with_tags(py_optional_strings(dict, "tags")?)
-        .into()),
-        "environment" => Ok(texform::EnvironmentItem::new(
-            py_required_string(dict, "name")?,
-            py_allowed_mode(&py_required_string(dict, "allowed_mode")?)?,
-            py_content_mode(&py_required_string(dict, "body_mode")?)?,
-            py_required_string(dict, "argspec")?,
-        )
-        .with_tags(py_optional_strings(dict, "tags")?)
-        .into()),
-        "delimiter" => {
-            Ok(texform::DelimiterControlItem::new(py_required_string(dict, "name")?).into())
-        }
-        other => Err(ParseError::new_err(format!(
-            "unsupported context item target: {other}"
-        ))),
-    }
-}
-
 fn parser_builder_with_options(
-    py: Python<'_>,
     packages: Option<Vec<String>>,
-    items: Option<Vec<Py<PyAny>>>,
+    items: Option<&Bound<'_, PyAny>>,
     remove_commands: Option<Vec<String>>,
     remove_environments: Option<Vec<String>>,
     remove_delimiter_controls: Option<Vec<String>>,
+    default_parse_config: Option<PyRef<'_, PyParseConfig>>,
 ) -> PyResult<texform::ParserBuilder> {
     let mut builder = texform::Parser::builder();
     if let Some(packages) = packages {
@@ -533,8 +78,11 @@ fn parser_builder_with_options(
             builder.packages(refs.as_slice())
         };
     }
-    for item in items.unwrap_or_default() {
-        builder = builder.item(py_context_item(py, &item)?);
+    if let Some(config) = default_parse_config {
+        builder = builder.default_parse_config(config.to_core());
+    }
+    for item in context_items_from_python(items)? {
+        builder = builder.item(item);
     }
     for name in remove_commands.unwrap_or_default() {
         builder = builder.remove_command(name);
@@ -549,13 +97,13 @@ fn parser_builder_with_options(
 }
 
 fn engine_builder_with_options(
-    py: Python<'_>,
     mut builder: texform::TransformEngineBuilder,
     packages: Option<Vec<String>>,
-    items: Option<Vec<Py<PyAny>>>,
+    items: Option<&Bound<'_, PyAny>>,
     remove_commands: Option<Vec<String>>,
     remove_environments: Option<Vec<String>>,
     remove_delimiter_controls: Option<Vec<String>>,
+    default_parse_config: Option<PyRef<'_, PyParseConfig>>,
 ) -> PyResult<texform::TransformEngineBuilder> {
     if let Some(packages) = packages {
         let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
@@ -565,8 +113,11 @@ fn engine_builder_with_options(
             builder.packages(refs.as_slice())
         };
     }
-    for item in items.unwrap_or_default() {
-        builder = builder.item(py_context_item(py, &item)?);
+    if let Some(config) = default_parse_config {
+        builder = builder.default_parse_config(config.to_core());
+    }
+    for item in context_items_from_python(items)? {
+        builder = builder.item(item);
     }
     for name in remove_commands.unwrap_or_default() {
         builder = builder.remove_command(name);
@@ -970,8 +521,8 @@ impl PyDocument {
         Ok(pythonize(py, &entries)?.unbind())
     }
 
-    #[pyo3(signature = (options = None))]
-    fn to_latex(slf: &Bound<'_, Self>, options: Option<&Bound<'_, PyAny>>) -> PyResult<String> {
+    #[pyo3(signature = (**options))]
+    fn to_latex(slf: &Bound<'_, Self>, options: Option<&Bound<'_, PyDict>>) -> PyResult<String> {
         let options = serialize_options_from_python(options)?;
         let document = slf.try_borrow().map_err(borrow_error)?;
         document
@@ -980,11 +531,11 @@ impl PyDocument {
             .map_err(|error| TexformError::new_err(error.to_string()))
     }
 
-    #[pyo3(signature = (options = None))]
+    #[pyo3(signature = (**options))]
     fn to_tokenized_latex(
         slf: &Bound<'_, Self>,
         py: Python<'_>,
-        options: Option<&Bound<'_, PyAny>>,
+        options: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
         let options = serialize_options_from_python(options)?;
         let result = {
@@ -1557,240 +1108,6 @@ impl PyNode {
     }
 }
 
-fn apply_parse_config_dict(config: &mut CoreParseConfig, dict: &Bound<'_, PyDict>) -> PyResult<()> {
-    if let Some(reject_unknown) = py_optional_bool(dict, "reject_unknown")? {
-        config.reject_unknown = reject_unknown;
-    }
-    if let Some(abort_on_error) = py_optional_bool(dict, "abort_on_error")? {
-        config.abort_on_error = abort_on_error;
-    }
-    if let Some(max_group_depth) = py_optional_usize(dict, "max_group_depth")? {
-        config.max_group_depth = max_group_depth;
-    }
-    Ok(())
-}
-
-fn parse_config_from_python(
-    config: Option<&Bound<'_, PyAny>>,
-    kwargs: Option<&Bound<'_, PyDict>>,
-    default: CoreParseConfig,
-) -> PyResult<Option<CoreParseConfig>> {
-    if config.is_none() && kwargs.map(|dict| dict.len()).unwrap_or(0) == 0 {
-        return Ok(None);
-    }
-
-    let mut parsed = default;
-    if let Some(value) = config {
-        if value.is_none() {
-            // Keep the default.
-        } else if let Ok(config) = value.extract::<PyRef<'_, PyParseConfig>>() {
-            parsed = config.to_core();
-        } else {
-            let dict = value
-                .cast::<PyDict>()
-                .map_err(|_| ConfigError::new_err("config must be a ParseConfig or dict"))?;
-            apply_parse_config_dict(&mut parsed, dict)?;
-        }
-    }
-    if let Some(kwargs) = kwargs {
-        apply_parse_config_dict(&mut parsed, kwargs)?;
-    }
-    Ok(Some(parsed))
-}
-
-fn apply_flatten_groups_dict(
-    config: &mut CoreFlattenGroupsConfig,
-    dict: &Bound<'_, PyDict>,
-) -> PyResult<()> {
-    if let Some(value) = py_optional_bool(dict, "enabled")? {
-        config.enabled = value;
-    }
-    if let Some(value) = py_optional_bool(dict, "preserve_group_containing_declarative_command")? {
-        config.preserve_group_containing_declarative_command = value;
-    }
-    if let Some(value) = py_optional_bool(dict, "preserve_group_in_script_base_slot")? {
-        config.preserve_group_in_script_base_slot = value;
-    }
-    if let Some(value) = py_optional_bool(dict, "preserve_group_inside_env_body")? {
-        config.preserve_group_inside_env_body = value;
-    }
-    if let Some(value) = py_optional_bool(dict, "preserve_group_containing_infix")? {
-        config.preserve_group_containing_infix = value;
-    }
-    if let Some(value) = py_optional_bool(dict, "preserve_group_adjacent_to_command_like")? {
-        config.preserve_group_adjacent_to_command_like = value;
-    }
-    if let Some(value) = py_optional_bool(dict, "preserve_group_as_argument_of_command")? {
-        config.preserve_group_as_argument_of_command = value;
-    }
-    if let Some(value) = py_optional_bool(dict, "preserve_group_after_scripted_command_like")? {
-        config.preserve_group_after_scripted_command_like = value;
-    }
-    if let Some(value) = py_optional_bool(dict, "preserve_empty_group")? {
-        config.preserve_empty_group = value;
-    }
-    if let Some(value) = py_optional_bool(dict, "preserve_group_with_lone_atom_spacing_char")? {
-        config.preserve_group_with_lone_atom_spacing_char = value;
-    }
-    if let Some(value) = py_optional_bool(dict, "preserve_group_starting_with_atom_spacing_char")? {
-        config.preserve_group_starting_with_atom_spacing_char = value;
-    }
-    if let Some(value) = py_optional_bool(dict, "preserve_group_containing_delimited_pair")? {
-        config.preserve_group_containing_delimited_pair = value;
-    }
-    Ok(())
-}
-
-fn apply_finalize_ast_dict(
-    config: &mut CoreFinalizeAstConfig,
-    dict: &Bound<'_, PyDict>,
-) -> PyResult<()> {
-    if let Some(value) = py_optional_bool(dict, "enabled")? {
-        config.enabled = value;
-    }
-    Ok(())
-}
-
-fn apply_normalize_config_dict(
-    config: &mut texform::NormalizeConfig,
-    dict: &Bound<'_, PyDict>,
-) -> PyResult<()> {
-    apply_parse_config_dict(&mut config.parse, dict)?;
-    if let Some(value) = py_optional_bool(dict, "rewrite_enabled")? {
-        config.transform.rewrite.enabled = value;
-    }
-    if let Some(value) = py_optional_bool(dict, "lower_attributes_enabled")? {
-        config.transform.lower_attributes.enabled = value;
-    }
-    if let Some(value) = py_optional_usize(dict, "max_iterations")? {
-        config.transform.rewrite.max_iterations = value;
-    }
-    if let Some(finalize_ast) = dict.get_item("finalize_ast")?
-        && !finalize_ast.is_none()
-    {
-        if let Ok(finalize_ast) = finalize_ast.extract::<PyRef<'_, PyFinalizeAstConfig>>() {
-            config.transform.finalize_ast = finalize_ast.to_core();
-        } else {
-            let dict = finalize_ast.cast::<PyDict>().map_err(|_| {
-                ConfigError::new_err("finalize_ast must be a FinalizeAstConfig or dict")
-            })?;
-            apply_finalize_ast_dict(&mut config.transform.finalize_ast, dict)?;
-        }
-    }
-    if let Some(flatten_groups) = dict.get_item("flatten_groups")?
-        && !flatten_groups.is_none()
-    {
-        if let Ok(flatten_groups) = flatten_groups.extract::<PyRef<'_, PyFlattenGroupsConfig>>() {
-            config.transform.flatten_groups = flatten_groups.to_core();
-        } else {
-            let dict = flatten_groups.cast::<PyDict>().map_err(|_| {
-                ConfigError::new_err("flatten_groups must be a FlattenGroupsConfig or dict")
-            })?;
-            apply_flatten_groups_dict(&mut config.transform.flatten_groups, dict)?;
-        }
-    }
-    if let Some(parse_config) = dict.get_item("parse_config")?
-        && !parse_config.is_none()
-        && let Some(parsed) =
-            parse_config_from_python(Some(&parse_config), None, config.parse.clone())?
-    {
-        config.parse = parsed;
-    }
-    Ok(())
-}
-
-fn apply_transform_config_dict(
-    config: &mut CoreTransformConfig,
-    dict: &Bound<'_, PyDict>,
-) -> PyResult<()> {
-    if let Some(value) = py_optional_bool(dict, "rewrite_enabled")? {
-        config.rewrite.enabled = value;
-    }
-    if let Some(value) = py_optional_bool(dict, "lower_attributes_enabled")? {
-        config.lower_attributes.enabled = value;
-    }
-    if let Some(value) = py_optional_usize(dict, "max_iterations")? {
-        config.rewrite.max_iterations = value;
-    }
-    if let Some(finalize_ast) = dict.get_item("finalize_ast")?
-        && !finalize_ast.is_none()
-    {
-        if let Ok(finalize_ast) = finalize_ast.extract::<PyRef<'_, PyFinalizeAstConfig>>() {
-            config.finalize_ast = finalize_ast.to_core();
-        } else {
-            let dict = finalize_ast.cast::<PyDict>().map_err(|_| {
-                ConfigError::new_err("finalize_ast must be a FinalizeAstConfig or dict")
-            })?;
-            apply_finalize_ast_dict(&mut config.finalize_ast, dict)?;
-        }
-    }
-    if let Some(flatten_groups) = dict.get_item("flatten_groups")?
-        && !flatten_groups.is_none()
-    {
-        if let Ok(flatten_groups) = flatten_groups.extract::<PyRef<'_, PyFlattenGroupsConfig>>() {
-            config.flatten_groups = flatten_groups.to_core();
-        } else {
-            let dict = flatten_groups.cast::<PyDict>().map_err(|_| {
-                ConfigError::new_err("flatten_groups must be a FlattenGroupsConfig or dict")
-            })?;
-            apply_flatten_groups_dict(&mut config.flatten_groups, dict)?;
-        }
-    }
-    Ok(())
-}
-
-fn transform_config_from_python(
-    config: Option<&Bound<'_, PyAny>>,
-    kwargs: Option<&Bound<'_, PyDict>>,
-    default: CoreTransformConfig,
-) -> PyResult<CoreTransformConfig> {
-    let mut parsed = default;
-    if let Some(value) = config {
-        if value.is_none() {
-            // Keep the default.
-        } else if let Ok(transform) = value.extract::<PyRef<'_, PyTransformConfig>>() {
-            parsed = transform.to_core();
-        } else {
-            let dict = value
-                .cast::<PyDict>()
-                .map_err(|_| ConfigError::new_err("config must be a TransformConfig or dict"))?;
-            apply_transform_config_dict(&mut parsed, dict)?;
-        }
-    }
-    if let Some(kwargs) = kwargs {
-        apply_transform_config_dict(&mut parsed, kwargs)?;
-    }
-    Ok(parsed)
-}
-
-fn normalize_config_from_python(
-    config: Option<&Bound<'_, PyAny>>,
-    kwargs: Option<&Bound<'_, PyDict>>,
-    default: texform::NormalizeConfig,
-) -> PyResult<Option<texform::NormalizeConfig>> {
-    if config.is_none() && kwargs.map(|dict| dict.len()).unwrap_or(0) == 0 {
-        return Ok(None);
-    }
-
-    let mut parsed = default;
-    if let Some(value) = config {
-        if value.is_none() {
-            // Keep the default.
-        } else if let Ok(transform) = value.extract::<PyRef<'_, PyTransformConfig>>() {
-            parsed.transform = transform.to_core();
-        } else {
-            let dict = value
-                .cast::<PyDict>()
-                .map_err(|_| ConfigError::new_err("config must be a TransformConfig or dict"))?;
-            apply_normalize_config_dict(&mut parsed, dict)?;
-        }
-    }
-    if let Some(kwargs) = kwargs {
-        apply_normalize_config_dict(&mut parsed, kwargs)?;
-    }
-    Ok(Some(parsed))
-}
-
 #[pyclass(name = "Parser")]
 struct PyParser {
     inner: texform::Parser,
@@ -1805,23 +1122,24 @@ impl PyParser {
         remove_commands = None,
         remove_environments = None,
         remove_delimiter_controls = None,
+        default_parse_config = None,
     ))]
     #[allow(clippy::too_many_arguments)]
     fn new(
-        py: Python<'_>,
         packages: Option<Vec<String>>,
-        items: Option<Vec<Py<PyAny>>>,
+        items: Option<&Bound<'_, PyAny>>,
         remove_commands: Option<Vec<String>>,
         remove_environments: Option<Vec<String>>,
         remove_delimiter_controls: Option<Vec<String>>,
+        default_parse_config: Option<PyRef<'_, PyParseConfig>>,
     ) -> PyResult<Self> {
         let builder = parser_builder_with_options(
-            py,
             packages,
             items,
             remove_commands,
             remove_environments,
             remove_delimiter_controls,
+            default_parse_config,
         )?;
         Ok(Self {
             inner: builder
@@ -1830,20 +1148,21 @@ impl PyParser {
         })
     }
 
-    #[pyo3(signature = (src, config = None, **kwargs))]
+    #[pyo3(signature = (src, config = None, **overrides))]
     fn parse(
         &self,
         py: Python<'_>,
         src: &str,
         config: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
+        overrides: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
-        let default = self.inner.default_parse_config().clone();
-        let output = match parse_config_from_python(config, kwargs, default)? {
-            Some(config) => self.inner.parse_with(src, &config),
-            None => self.inner.parse(src),
-        };
-        parse_result_to_python(py, output)
+        let config =
+            parse_config_from_python(config, overrides, self.inner.default_parse_config().clone())?;
+        parse_result_to_python(py, self.inner.parse_with(src, &config))
+    }
+
+    fn default_parse_config(&self) -> PyParseConfig {
+        PyParseConfig::from_core(self.inner.default_parse_config().clone())
     }
 
     fn lookup_command(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
@@ -1928,25 +1247,26 @@ impl PyTransformEngine {
         remove_environments = None,
         remove_delimiter_controls = None,
         disable_rules = None,
+        default_parse_config = None,
     ))]
     fn new(
-        py: Python<'_>,
         profile: &str,
         packages: Option<Vec<String>>,
-        items: Option<Vec<Py<PyAny>>>,
+        items: Option<&Bound<'_, PyAny>>,
         remove_commands: Option<Vec<String>>,
         remove_environments: Option<Vec<String>>,
         remove_delimiter_controls: Option<Vec<String>>,
         disable_rules: Option<Vec<String>>,
+        default_parse_config: Option<PyRef<'_, PyParseConfig>>,
     ) -> PyResult<Self> {
         let mut builder = engine_builder_with_options(
-            py,
             texform::TransformEngine::builder().profile(profile_from_name(profile)?),
             packages,
             items,
             remove_commands,
             remove_environments,
             remove_delimiter_controls,
+            default_parse_config,
         )?;
         for rule in disable_rules.unwrap_or_default() {
             builder = builder
@@ -1960,36 +1280,36 @@ impl PyTransformEngine {
         })
     }
 
-    #[pyo3(signature = (src, config = None, **kwargs))]
+    #[pyo3(signature = (src, config = None, **overrides))]
     fn normalize(
         &self,
         py: Python<'_>,
         src: &str,
         config: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
+        overrides: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
-        let default = self.inner.default_normalize_config();
-        let result = match normalize_config_from_python(config, kwargs, default)? {
-            Some(config) => self.inner.normalize_with(src, &config),
-            None => self.inner.normalize(src),
-        }
-        .map_err(|error| {
+        let config =
+            normalize_config_from_python(config, overrides, self.inner.default_normalize_config())?;
+        let result = self.inner.normalize_with(src, &config).map_err(|error| {
             binding_error_parts_to_py(py, texform::bindings::normalize_error_to_parts(error))
                 .unwrap_or_else(|error| error)
         })?;
         transform_result_to_python(py, result.normalized, &result.report)
     }
 
-    #[pyo3(signature = (document, config = None, **kwargs))]
+    #[pyo3(signature = (document, config = None, **overrides))]
     fn transform(
         &self,
         py: Python<'_>,
         document: &Bound<'_, PyDocument>,
         config: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
+        overrides: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
-        let config =
-            transform_config_from_python(config, kwargs, *self.inner.default_transform_config())?;
+        let config = transform_config_from_python(
+            config,
+            overrides,
+            *self.inner.default_transform_config(),
+        )?;
         let report = {
             let mut document = document.try_borrow_mut().map_err(borrow_error)?;
             self.inner.transform_with(&mut document.inner, &config)
@@ -2001,20 +1321,28 @@ impl PyTransformEngine {
         transform_report_to_python(py, &report)
     }
 
-    #[pyo3(signature = (src, config = None, **kwargs))]
+    #[pyo3(signature = (src, config = None, **overrides))]
     fn parse(
         &self,
         py: Python<'_>,
         src: &str,
         config: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
+        overrides: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
-        let default = self.inner.parser().default_parse_config().clone();
-        let output = match parse_config_from_python(config, kwargs, default)? {
-            Some(config) => self.inner.parser().parse_with(src, &config),
-            None => self.inner.parser().parse(src),
-        };
-        parse_result_to_python(py, output)
+        let config = parse_config_from_python(
+            config,
+            overrides,
+            self.inner.parser().default_parse_config().clone(),
+        )?;
+        parse_result_to_python(py, self.inner.parser().parse_with(src, &config))
+    }
+
+    fn default_parse_config(&self) -> PyParseConfig {
+        PyParseConfig::from_core(self.inner.parser().default_parse_config().clone())
+    }
+
+    fn default_transform_config(&self, py: Python<'_>) -> PyResult<PyTransformConfig> {
+        PyTransformConfig::from_core(py, *self.inner.default_transform_config())
     }
 
     fn lookup_command(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
@@ -2113,19 +1441,9 @@ fn transform_report_to_python(
     Ok(pythonize(py, &texform::bindings::transform_report_to_dto(report))?.unbind())
 }
 
-fn serialize_options_from_python(
-    options: Option<&Bound<'_, PyAny>>,
-) -> PyResult<texform::SerializeOptions> {
-    match options {
-        Some(value) if !value.is_none() => depythonize(value)
-            .map_err(|error| ParseError::new_err(format!("invalid serialize options: {error}"))),
-        _ => Ok(texform::SerializeOptions::default()),
-    }
-}
-
 #[pyfunction]
-#[pyo3(signature = (node, options = None))]
-fn serialize(node: &Bound<'_, PyAny>, options: Option<&Bound<'_, PyAny>>) -> PyResult<String> {
+#[pyo3(signature = (node, **options))]
+fn serialize(node: &Bound<'_, PyAny>, options: Option<&Bound<'_, PyDict>>) -> PyResult<String> {
     let node = depythonize::<texform::SyntaxNode>(node)
         .map_err(|error| ParseError::new_err(format!("invalid syntax node: {error}")))?;
     let options = serialize_options_from_python(options)?;
@@ -2253,10 +1571,10 @@ mod tests {
                 "Root"
             );
 
-            let config = pyo3::types::PyDict::new(py);
-            config.set_item("reject_unknown", true).unwrap();
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("reject_unknown", true).unwrap();
             let result = parser
-                .call_method1("parse", (r"\unknowncmd", config))
+                .call_method("parse", (r"\unknowncmd",), Some(&kwargs))
                 .expect("diagnostics should be returned instead of raised");
             let dict = result.cast::<pyo3::types::PyDict>().unwrap();
             let document = dict.get_item("document").unwrap().unwrap();
@@ -2409,10 +1727,10 @@ mod tests {
             _native(&module).expect("init module");
 
             let parser = module.getattr("Parser").unwrap().call0().unwrap();
-            let config = PyDict::new(py);
-            config.set_item("reject_unknown", true).unwrap();
+            let kwargs = PyDict::new(py);
+            kwargs.set_item("reject_unknown", true).unwrap();
             let result = parser
-                .call_method1("parse", (r"\unknowncmd", config))
+                .call_method("parse", (r"\unknowncmd",), Some(&kwargs))
                 .unwrap();
             let dict = result.cast::<PyDict>().unwrap();
             let document = dict.get_item("document").unwrap().unwrap();
@@ -2528,7 +1846,7 @@ mod tests {
     }
 
     #[test]
-    fn python_parser_supports_dict_and_kwarg_config_overrides() {
+    fn python_parser_supports_kwarg_overrides_and_rejects_dict_config() {
         Python::attach(|py| {
             let module = PyModule::new(py, "_native").expect("module");
             _native(&module).expect("init module");
@@ -2536,11 +1854,11 @@ mod tests {
             let parser_cls = module.getattr("Parser").unwrap();
             let parser = parser_cls.call0().unwrap();
 
-            let config = pyo3::types::PyDict::new(py);
-            config.set_item("reject_unknown", true).unwrap();
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("reject_unknown", true).unwrap();
             let result = parser
-                .call_method1("parse", (r"\unknowncmd", config))
-                .expect("reject_unknown dict config should return diagnostics");
+                .call_method("parse", (r"\unknowncmd",), Some(&kwargs))
+                .expect("reject_unknown override should return diagnostics");
             let dict = result.cast::<pyo3::types::PyDict>().unwrap();
             assert!(
                 dict.get_item("document")
@@ -2557,14 +1875,24 @@ mod tests {
                 1
             );
 
-            let config = pyo3::types::PyDict::new(py);
-            config.set_item("reject_unknown", true).unwrap();
+            let config_cls = module.getattr("ParseConfig").unwrap();
+            let config_kwargs = pyo3::types::PyDict::new(py);
+            config_kwargs.set_item("reject_unknown", true).unwrap();
+            let config = config_cls.call((), Some(&config_kwargs)).unwrap();
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs.set_item("config", config).unwrap();
             kwargs.set_item("reject_unknown", false).unwrap();
             parser
                 .call_method("parse", (r"\unknowncmd",), Some(&kwargs))
-                .expect("kwargs should override config dict");
+                .expect("kwargs should overlay a complete ParseConfig");
+
+            let dict = pyo3::types::PyDict::new(py);
+            dict.set_item("reject_unknown", true).unwrap();
+            let error = parser
+                .call_method1("parse", (r"\unknowncmd", dict))
+                .expect_err("dict as config should fail");
+            assert!(error.is_instance_of::<ConfigError>(py));
+            assert!(error.to_string().contains("**overrides"));
         });
     }
 
@@ -2694,7 +2022,7 @@ mod tests {
     }
 
     #[test]
-    fn python_engine_normalize_kwargs_override_config_dict() {
+    fn python_engine_normalize_kwargs_disable_pipeline() {
         Python::attach(|py| {
             let module = PyModule::new(py, "_native").expect("module");
             _native(&module).expect("init module");
@@ -2710,19 +2038,20 @@ mod tests {
                 .call((), Some(&kwargs))
                 .unwrap();
 
-            let config = pyo3::types::PyDict::new(py);
-            config.set_item("rewrite_enabled", true).unwrap();
-            let call_kwargs = pyo3::types::PyDict::new(py);
-            call_kwargs.set_item("config", config).unwrap();
-            call_kwargs.set_item("rewrite_enabled", false).unwrap();
-            call_kwargs
-                .set_item("lower_attributes_enabled", false)
-                .unwrap();
+            let rewrite = pyo3::types::PyDict::new(py);
+            rewrite.set_item("enabled", false).unwrap();
+            let lower_attributes = pyo3::types::PyDict::new(py);
+            lower_attributes.set_item("enabled", false).unwrap();
             let finalize_ast = pyo3::types::PyDict::new(py);
             finalize_ast.set_item("enabled", false).unwrap();
-            call_kwargs.set_item("finalize_ast", finalize_ast).unwrap();
             let flatten_groups = pyo3::types::PyDict::new(py);
             flatten_groups.set_item("enabled", false).unwrap();
+            let call_kwargs = pyo3::types::PyDict::new(py);
+            call_kwargs.set_item("rewrite", rewrite).unwrap();
+            call_kwargs
+                .set_item("lower_attributes", lower_attributes)
+                .unwrap();
+            call_kwargs.set_item("finalize_ast", finalize_ast).unwrap();
             call_kwargs
                 .set_item("flatten_groups", flatten_groups)
                 .unwrap();
@@ -2764,15 +2093,23 @@ mod tests {
                 .get_item("document")
                 .unwrap()
                 .unwrap();
-            let config = pyo3::types::PyDict::new(py);
-            config.set_item("rewrite_enabled", false).unwrap();
-            config.set_item("lower_attributes_enabled", false).unwrap();
+            let rewrite = pyo3::types::PyDict::new(py);
+            rewrite.set_item("enabled", false).unwrap();
+            let lower_attributes = pyo3::types::PyDict::new(py);
+            lower_attributes.set_item("enabled", false).unwrap();
             let flatten_groups = pyo3::types::PyDict::new(py);
             flatten_groups.set_item("enabled", true).unwrap();
-            config.set_item("flatten_groups", flatten_groups).unwrap();
+            let overrides = pyo3::types::PyDict::new(py);
+            overrides.set_item("rewrite", rewrite).unwrap();
+            overrides
+                .set_item("lower_attributes", lower_attributes)
+                .unwrap();
+            overrides
+                .set_item("flatten_groups", flatten_groups)
+                .unwrap();
 
             let report = engine
-                .call_method1("transform", (&document, config))
+                .call_method("transform", (&document,), Some(&overrides))
                 .expect("transform should succeed");
 
             assert_eq!(
@@ -3102,19 +2439,121 @@ mod tests {
     }
 
     #[test]
-    fn python_module_transform_config_repr_mentions_children() {
+    fn python_module_transform_config_repr_is_python_literal() {
         Python::attach(|py| {
             let module = PyModule::new(py, "_native").expect("module");
             _native(&module).expect("init module");
 
             let config_cls = module.getattr("TransformConfig").unwrap();
             let config = config_cls.call_method0("authoring").unwrap();
-            let repr = config.call_method0("__repr__").unwrap();
-            let repr = repr.extract::<String>().unwrap();
+            let repr = config
+                .call_method0("__repr__")
+                .unwrap()
+                .extract::<String>()
+                .unwrap();
 
-            assert!(repr.contains("lower_attributes"));
-            assert!(repr.contains("finalize_ast"));
-            assert!(repr.contains("flatten_groups"));
+            assert!(repr.starts_with("TransformConfig("), "{repr}");
+            assert!(
+                repr.contains("LowerAttributesConfig(enabled=True)"),
+                "{repr}"
+            );
+            assert!(
+                repr.contains("RewriteConfig(enabled=True, max_iterations=100)"),
+                "{repr}"
+            );
+            assert!(!repr.contains("Py"), "{repr}");
+        });
+    }
+
+    #[test]
+    fn python_nested_rewrite_assignment_persists() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let kwargs = PyDict::new(py);
+            kwargs.set_item("profile", "corpus").unwrap();
+            let engine = module
+                .getattr("TransformEngine")
+                .unwrap()
+                .call((), Some(&kwargs))
+                .unwrap();
+            let cfg = engine.call_method0("default_transform_config").unwrap();
+            cfg.getattr("rewrite")
+                .unwrap()
+                .setattr("enabled", false)
+                .unwrap();
+            assert!(
+                !cfg.getattr("rewrite")
+                    .unwrap()
+                    .getattr("enabled")
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap()
+            );
+
+            let parsed = engine.call_method1("parse", (r"a \over b",)).unwrap();
+            let document = parsed
+                .cast::<PyDict>()
+                .unwrap()
+                .get_item("document")
+                .unwrap()
+                .unwrap();
+            engine
+                .call_method1("transform", (&document, &cfg))
+                .expect("complete config should replace the baseline");
+            let latex = document
+                .call_method0("to_latex")
+                .unwrap()
+                .extract::<String>()
+                .unwrap();
+            assert!(latex.contains(r"\over"), "{latex}");
+        });
+    }
+
+    #[test]
+    fn python_default_parse_config_is_lenient_and_replaceable() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let parser = module.getattr("Parser").unwrap().call0().unwrap();
+            let default = parser.call_method0("default_parse_config").unwrap();
+            assert!(
+                !default
+                    .getattr("reject_unknown")
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap()
+            );
+
+            let config_cls = module.getattr("ParseConfig").unwrap();
+            let config_kwargs = PyDict::new(py);
+            config_kwargs.set_item("reject_unknown", true).unwrap();
+            let strict = config_cls.call((), Some(&config_kwargs)).unwrap();
+            let ctor = PyDict::new(py);
+            ctor.set_item("default_parse_config", strict).unwrap();
+            let strict_parser = module
+                .getattr("Parser")
+                .unwrap()
+                .call((), Some(&ctor))
+                .unwrap();
+            let result = strict_parser
+                .call_method1("parse", (r"\notknown",))
+                .unwrap();
+            let document = result
+                .cast::<PyDict>()
+                .unwrap()
+                .get_item("document")
+                .unwrap()
+                .unwrap();
+            assert!(
+                document
+                    .call_method0("has_errors")
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap()
+            );
         });
     }
 
