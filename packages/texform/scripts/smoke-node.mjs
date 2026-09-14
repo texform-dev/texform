@@ -124,6 +124,32 @@ if (!("flattenGroups" in transformReport)) {
   throw new Error("transform report should be camelCase");
 }
 
+const corpusEngine = new TransformEngine({ profile: "corpus" });
+const flattenSrc = String.raw`a {} b + \sin {x}`;
+const unconfiguredNormalized = corpusEngine.normalize(flattenSrc).normalized;
+const enabledNormalized = corpusEngine.normalize(flattenSrc, {
+  flattenGroups: { enabled: true },
+}).normalized;
+if (
+  unconfiguredNormalized !== String.raw`a b + \sin x` ||
+  enabledNormalized !== unconfiguredNormalized
+) {
+  throw new Error(
+    "corpus normalize flattenGroups overlay should keep profile defaults",
+  );
+}
+const preserveEmptyNormalized = corpusEngine.normalize(flattenSrc, {
+  flattenGroups: { preserveEmptyGroup: true },
+}).normalized;
+if (
+  !preserveEmptyNormalized.includes("{ }") ||
+  !preserveEmptyNormalized.includes(String.raw`\sin x`)
+) {
+  throw new Error(
+    "corpus normalize flattenGroups should honor an explicit guard override",
+  );
+}
+
 try {
   const syntaxDoc = Document.fromSyntax(engine.parse("x").document.toSyntax());
   engine.transform(syntaxDoc);

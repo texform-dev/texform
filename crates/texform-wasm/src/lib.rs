@@ -1837,7 +1837,7 @@ impl TransformEngine {
             }
             if let Some(flatten_groups) = input.flatten_groups {
                 config.transform.flatten_groups =
-                    flatten_groups.into_config(CoreFlattenGroupsConfig::STRICT);
+                    flatten_groups.into_config(config.transform.flatten_groups);
             }
             if let Some(finalize_ast) = input.finalize_ast {
                 config.transform.finalize_ast =
