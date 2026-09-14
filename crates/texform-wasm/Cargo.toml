@@ -16,6 +16,3 @@ serde_json.workspace = true
 wasm-bindgen.workspace = true
 serde-wasm-bindgen.workspace = true
 texform.workspace = true
-texform-argspec.workspace = true
-texform-core = { workspace = true, features = ["tsify"] }
-tsify-next.workspace = true

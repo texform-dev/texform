@@ -1,15 +1,16 @@
 use crate::{
-    FinalizeAstConfig, FlattenGroupsConfig, LowerAttributesConfig, NormalizeConfig, ParseConfig,
-    RewriteConfig, TransformConfig,
+    AllowedMode, CommandItem, CommandKind, ContentMode, ContextItem, DelimiterControlItem,
+    EnvironmentItem, FinalizeAstConfig, FlattenGroupsConfig, LowerAttributesConfig,
+    NormalizeConfig, ParseConfig, RewriteConfig, SerializeOptions, TransformConfig,
+};
+use texform_core::serialize::{
+    AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, EnvironmentSerializeOptions,
+    InfixGrouping, MathGroupInnerSpacing, MathInfixOptions, MathScriptOptions,
+    MathSerializeOptions, MathSpacingOptions, ScriptOrder, ScriptSpacing, SyntaxSerializeOptions,
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(
-    default,
-    rename_all = "camelCase",
-    deny_unknown_fields,
-    expecting = "an object"
-)]
+#[serde(default, deny_unknown_fields, expecting = "an object")]
 pub struct ParseConfigInput {
     pub reject_unknown: Option<bool>,
     pub abort_on_error: Option<bool>,
@@ -61,12 +62,7 @@ impl LowerAttributesConfigInput {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(
-    default,
-    rename_all = "camelCase",
-    deny_unknown_fields,
-    expecting = "an object"
-)]
+#[serde(default, deny_unknown_fields, expecting = "an object")]
 pub struct RewriteConfigInput {
     pub enabled: Option<bool>,
     pub max_iterations: Option<usize>,
@@ -92,12 +88,7 @@ impl RewriteConfigInput {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(
-    default,
-    rename_all = "camelCase",
-    deny_unknown_fields,
-    expecting = "an object"
-)]
+#[serde(default, deny_unknown_fields, expecting = "an object")]
 pub struct FlattenGroupsConfigInput {
     pub enabled: Option<bool>,
     pub preserve_group_containing_declarative_command: Option<bool>,
@@ -208,12 +199,7 @@ impl FinalizeAstConfigInput {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(
-    default,
-    rename_all = "camelCase",
-    deny_unknown_fields,
-    expecting = "an object"
-)]
+#[serde(default, deny_unknown_fields, expecting = "an object")]
 pub struct TransformConfigInput {
     pub lower_attributes: Option<LowerAttributesConfigInput>,
     pub rewrite: Option<RewriteConfigInput>,
@@ -254,12 +240,7 @@ impl TransformConfigInput {
 
 /// Flat union of parse and transform overlays: the `normalize` shape in both bindings.
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(
-    default,
-    rename_all = "camelCase",
-    deny_unknown_fields,
-    expecting = "an object"
-)]
+#[serde(default, deny_unknown_fields, expecting = "an object")]
 pub struct NormalizeConfigInput {
     pub reject_unknown: Option<bool>,
     pub abort_on_error: Option<bool>,
@@ -300,6 +281,319 @@ impl NormalizeConfigInput {
             rewrite: transform.rewrite,
             finalize_ast: transform.finalize_ast,
             flatten_groups: transform.flatten_groups,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(default, deny_unknown_fields, expecting = "an object")]
+pub struct SerializeOptionsInput {
+    pub math: Option<MathSerializeOptionsInput>,
+    pub syntax: Option<SyntaxSerializeOptionsInput>,
+}
+
+impl SerializeOptionsInput {
+    pub fn into_config(self, base: SerializeOptions) -> SerializeOptions {
+        SerializeOptions {
+            math: self.math.unwrap_or_default().into_config(base.math),
+            syntax: self.syntax.unwrap_or_default().into_config(base.syntax),
+        }
+    }
+
+    pub fn from_config(config: SerializeOptions) -> Self {
+        Self {
+            math: Some(MathSerializeOptionsInput::from_config(config.math)),
+            syntax: Some(SyntaxSerializeOptionsInput::from_config(config.syntax)),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(default, deny_unknown_fields, expecting = "an object")]
+pub struct MathSerializeOptionsInput {
+    pub spacing: Option<MathSpacingOptionsInput>,
+    pub scripts: Option<MathScriptOptionsInput>,
+    pub infix: Option<MathInfixOptionsInput>,
+}
+
+impl MathSerializeOptionsInput {
+    pub fn into_config(self, base: MathSerializeOptions) -> MathSerializeOptions {
+        MathSerializeOptions {
+            spacing: self.spacing.unwrap_or_default().into_config(base.spacing),
+            scripts: self.scripts.unwrap_or_default().into_config(base.scripts),
+            infix: self.infix.unwrap_or_default().into_config(base.infix),
+        }
+    }
+
+    pub fn from_config(config: MathSerializeOptions) -> Self {
+        Self {
+            spacing: Some(MathSpacingOptionsInput::from_config(config.spacing)),
+            scripts: Some(MathScriptOptionsInput::from_config(config.scripts)),
+            infix: Some(MathInfixOptionsInput::from_config(config.infix)),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(default, deny_unknown_fields, expecting = "an object")]
+pub struct MathSpacingOptionsInput {
+    pub commands: Option<CommandSpacing>,
+    pub group_inner_spacing: Option<MathGroupInnerSpacing>,
+    pub adjacent_chars: Option<AdjacentCharSpacing>,
+}
+
+impl MathSpacingOptionsInput {
+    pub fn into_config(self, mut base: MathSpacingOptions) -> MathSpacingOptions {
+        if let Some(commands) = self.commands {
+            base.commands = commands;
+        }
+        if let Some(group_inner_spacing) = self.group_inner_spacing {
+            base.group_inner_spacing = group_inner_spacing;
+        }
+        if let Some(adjacent_chars) = self.adjacent_chars {
+            base.adjacent_chars = adjacent_chars;
+        }
+        base
+    }
+
+    pub fn from_config(config: MathSpacingOptions) -> Self {
+        Self {
+            commands: Some(config.commands),
+            group_inner_spacing: Some(config.group_inner_spacing),
+            adjacent_chars: Some(config.adjacent_chars),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(default, deny_unknown_fields, expecting = "an object")]
+pub struct MathScriptOptionsInput {
+    pub spacing: Option<ScriptSpacing>,
+    pub order: Option<ScriptOrder>,
+}
+
+impl MathScriptOptionsInput {
+    pub fn into_config(self, mut base: MathScriptOptions) -> MathScriptOptions {
+        if let Some(spacing) = self.spacing {
+            base.spacing = spacing;
+        }
+        if let Some(order) = self.order {
+            base.order = order;
+        }
+        base
+    }
+
+    pub fn from_config(config: MathScriptOptions) -> Self {
+        Self {
+            spacing: Some(config.spacing),
+            order: Some(config.order),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(default, deny_unknown_fields, expecting = "an object")]
+pub struct MathInfixOptionsInput {
+    pub grouping: Option<InfixGrouping>,
+}
+
+impl MathInfixOptionsInput {
+    pub fn into_config(self, mut base: MathInfixOptions) -> MathInfixOptions {
+        if let Some(grouping) = self.grouping {
+            base.grouping = grouping;
+        }
+        base
+    }
+
+    pub fn from_config(config: MathInfixOptions) -> Self {
+        Self {
+            grouping: Some(config.grouping),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(default, deny_unknown_fields, expecting = "an object")]
+pub struct SyntaxSerializeOptionsInput {
+    pub environments: Option<EnvironmentSerializeOptionsInput>,
+}
+
+impl SyntaxSerializeOptionsInput {
+    pub fn into_config(self, base: SyntaxSerializeOptions) -> SyntaxSerializeOptions {
+        SyntaxSerializeOptions {
+            environments: self
+                .environments
+                .unwrap_or_default()
+                .into_config(base.environments),
+        }
+    }
+
+    pub fn from_config(config: SyntaxSerializeOptions) -> Self {
+        Self {
+            environments: Some(EnvironmentSerializeOptionsInput::from_config(
+                config.environments,
+            )),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(default, deny_unknown_fields, expecting = "an object")]
+pub struct EnvironmentSerializeOptionsInput {
+    pub name_spacing: Option<EnvironmentNameSpacing>,
+}
+
+impl EnvironmentSerializeOptionsInput {
+    pub fn into_config(self, mut base: EnvironmentSerializeOptions) -> EnvironmentSerializeOptions {
+        if let Some(name_spacing) = self.name_spacing {
+            base.name_spacing = name_spacing;
+        }
+        base
+    }
+
+    pub fn from_config(config: EnvironmentSerializeOptions) -> Self {
+        Self {
+            name_spacing: Some(config.name_spacing),
+        }
+    }
+}
+
+/// Discriminator for a flat [`ContextItemInput`].
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextTarget {
+    Command,
+    Environment,
+    Delimiter,
+}
+
+/// Binding-side command kind so `"prefix"` / `"infix"` / `"declarative"` deserialize.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextCommandKind {
+    Prefix,
+    Infix,
+    Declarative,
+}
+
+impl From<ContextCommandKind> for CommandKind {
+    fn from(kind: ContextCommandKind) -> Self {
+        match kind {
+            ContextCommandKind::Prefix => CommandKind::Prefix,
+            ContextCommandKind::Infix => CommandKind::Infix,
+            ContextCommandKind::Declarative => CommandKind::Declarative,
+        }
+    }
+}
+
+/// Binding-side allowed mode so `"math"` / `"text"` / `"both"` deserialize.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextAllowedMode {
+    Math,
+    Text,
+    Both,
+}
+
+impl From<ContextAllowedMode> for AllowedMode {
+    fn from(mode: ContextAllowedMode) -> Self {
+        match mode {
+            ContextAllowedMode::Math => AllowedMode::Math,
+            ContextAllowedMode::Text => AllowedMode::Text,
+            ContextAllowedMode::Both => AllowedMode::Both,
+        }
+    }
+}
+
+/// Binding-side content mode so `"math"` / `"text"` deserialize.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextContentMode {
+    Math,
+    Text,
+}
+
+impl From<ContextContentMode> for ContentMode {
+    fn from(mode: ContextContentMode) -> Self {
+        match mode {
+            ContextContentMode::Math => ContentMode::Math,
+            ContextContentMode::Text => ContentMode::Text,
+        }
+    }
+}
+
+/// Flat knowledge-item overlay. `target` and `name` are required; other fields
+/// are checked per target in [`TryFrom`].
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields, expecting = "an object")]
+pub struct ContextItemInput {
+    pub target: ContextTarget,
+    pub name: String,
+    #[serde(default)]
+    pub kind: Option<ContextCommandKind>,
+    #[serde(default)]
+    pub allowed_mode: Option<ContextAllowedMode>,
+    #[serde(default)]
+    pub body_mode: Option<ContextContentMode>,
+    #[serde(default)]
+    pub argspec: Option<String>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+}
+
+fn required_field<T>(name: &str, value: Option<T>, target: &str) -> Result<T, String> {
+    value.ok_or_else(|| format!("`{name}` is required for target `{target}`"))
+}
+
+fn reject_field<T>(name: &str, value: Option<T>, target: &str) -> Result<(), String> {
+    if value.is_some() {
+        Err(format!("`{name}` is not allowed for target `{target}`"))
+    } else {
+        Ok(())
+    }
+}
+
+impl TryFrom<ContextItemInput> for ContextItem {
+    type Error = String;
+
+    fn try_from(input: ContextItemInput) -> Result<Self, Self::Error> {
+        match input.target {
+            ContextTarget::Command => {
+                reject_field("body_mode", input.body_mode, "command")?;
+                let argspec = required_field("argspec", input.argspec, "command")?;
+                let kind = required_field("kind", input.kind, "command")?;
+                let allowed_mode = required_field("allowed_mode", input.allowed_mode, "command")?;
+                Ok(
+                    CommandItem::new(input.name, kind.into(), allowed_mode.into(), argspec)
+                        .with_tags(input.tags.unwrap_or_default())
+                        .into(),
+                )
+            }
+            ContextTarget::Environment => {
+                reject_field("kind", input.kind, "environment")?;
+                let allowed_mode =
+                    required_field("allowed_mode", input.allowed_mode, "environment")?;
+                let body_mode = required_field("body_mode", input.body_mode, "environment")?;
+                let argspec = required_field("argspec", input.argspec, "environment")?;
+                Ok(
+                    EnvironmentItem::new(
+                        input.name,
+                        allowed_mode.into(),
+                        body_mode.into(),
+                        argspec,
+                    )
+                    .with_tags(input.tags.unwrap_or_default())
+                    .into(),
+                )
+            }
+            ContextTarget::Delimiter => {
+                reject_field("kind", input.kind, "delimiter")?;
+                reject_field("allowed_mode", input.allowed_mode, "delimiter")?;
+                reject_field("body_mode", input.body_mode, "delimiter")?;
+                reject_field("argspec", input.argspec, "delimiter")?;
+                reject_field("tags", input.tags, "delimiter")?;
+                Ok(DelimiterControlItem::new(input.name).into())
+            }
         }
     }
 }
@@ -543,9 +837,9 @@ mod tests {
     }
 
     #[test]
-    fn transform_config_input_deserializes_camel_case_finalize_ast() {
+    fn transform_config_input_deserializes_snake_case_finalize_ast() {
         let input: TransformConfigInput = serde_json::from_value(serde_json::json!({
-            "finalizeAst": {
+            "finalize_ast": {
                 "enabled": false
             }
         }))
@@ -557,10 +851,10 @@ mod tests {
     }
 
     #[test]
-    fn transform_config_input_deserializes_camel_case_flatten_groups() {
+    fn transform_config_input_deserializes_snake_case_flatten_groups() {
         let input: TransformConfigInput = serde_json::from_value(serde_json::json!({
-            "flattenGroups": {
-                "preserveEmptyGroup": false
+            "flatten_groups": {
+                "preserve_empty_group": false
             }
         }))
         .unwrap();
@@ -623,6 +917,164 @@ mod tests {
         assert_eq!(
             NormalizeConfigInput::from_config(cfg.clone()).into_config(other),
             cfg
+        );
+    }
+
+    #[test]
+    fn serialize_options_input_default_leaves_base_unchanged() {
+        let base = SerializeOptions::default();
+        assert_eq!(
+            SerializeOptionsInput::default().into_config(base.clone()),
+            base
+        );
+    }
+
+    #[test]
+    fn serialize_options_input_partial_overlay_changes_only_set_leaf() {
+        let base = SerializeOptions::default();
+        let out = SerializeOptionsInput {
+            math: Some(MathSerializeOptionsInput {
+                scripts: Some(MathScriptOptionsInput {
+                    order: Some(ScriptOrder::SupFirst),
+                    spacing: None,
+                }),
+                ..Default::default()
+            }),
+            syntax: None,
+        }
+        .into_config(base.clone());
+
+        assert_eq!(out.math.scripts.order, ScriptOrder::SupFirst);
+        assert_eq!(out.math.scripts.spacing, base.math.scripts.spacing);
+        assert_eq!(out.math.spacing, base.math.spacing);
+        assert_eq!(out.math.infix, base.math.infix);
+        assert_eq!(out.syntax, base.syntax);
+    }
+
+    #[test]
+    fn serialize_options_input_from_config_into_config_is_identity() {
+        let mut cfg = SerializeOptions::default();
+        cfg.math.scripts.order = ScriptOrder::SupFirst;
+        cfg.syntax.environments.name_spacing = EnvironmentNameSpacing::Compact;
+        assert_eq!(
+            SerializeOptionsInput::from_config(cfg.clone())
+                .into_config(SerializeOptions::default()),
+            cfg
+        );
+    }
+
+    fn command_item() -> ContextItemInput {
+        ContextItemInput {
+            target: ContextTarget::Command,
+            name: "foo".into(),
+            kind: Some(ContextCommandKind::Prefix),
+            allowed_mode: Some(ContextAllowedMode::Math),
+            body_mode: None,
+            argspec: Some("m".into()),
+            tags: Some(vec!["t".into()]),
+        }
+    }
+
+    #[test]
+    fn context_item_input_command_converts() {
+        let item = ContextItem::try_from(command_item()).unwrap();
+        match item {
+            ContextItem::Command(command) => {
+                assert_eq!(command.name, "foo");
+                assert_eq!(command.kind, CommandKind::Prefix);
+                assert_eq!(command.allowed_mode, AllowedMode::Math);
+                assert_eq!(command.spec, "m");
+                assert_eq!(command.tags, vec!["t"]);
+            }
+            other => panic!("expected command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn context_item_input_environment_converts() {
+        let item = ContextItem::try_from(ContextItemInput {
+            target: ContextTarget::Environment,
+            name: "bar".into(),
+            kind: None,
+            allowed_mode: Some(ContextAllowedMode::Both),
+            body_mode: Some(ContextContentMode::Text),
+            argspec: Some("".into()),
+            tags: None,
+        })
+        .unwrap();
+        match item {
+            ContextItem::Environment(environment) => {
+                assert_eq!(environment.name, "bar");
+                assert_eq!(environment.allowed_mode, AllowedMode::Both);
+                assert_eq!(environment.body_mode, ContentMode::Text);
+                assert_eq!(environment.spec, "");
+                assert!(environment.tags.is_empty());
+            }
+            other => panic!("expected environment, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn context_item_input_delimiter_converts() {
+        let item = ContextItem::try_from(ContextItemInput {
+            target: ContextTarget::Delimiter,
+            name: "langle".into(),
+            kind: None,
+            allowed_mode: None,
+            body_mode: None,
+            argspec: None,
+            tags: None,
+        })
+        .unwrap();
+        match item {
+            ContextItem::DelimiterControl(delimiter) => {
+                assert_eq!(delimiter.name, "langle");
+            }
+            other => panic!("expected delimiter, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn context_item_input_command_requires_argspec() {
+        let mut input = command_item();
+        input.argspec = None;
+        let error = ContextItem::try_from(input).unwrap_err();
+        assert_eq!(error, "`argspec` is required for target `command`");
+    }
+
+    #[test]
+    fn context_item_input_command_rejects_body_mode() {
+        let mut input = command_item();
+        input.body_mode = Some(ContextContentMode::Math);
+        let error = ContextItem::try_from(input).unwrap_err();
+        assert_eq!(error, "`body_mode` is not allowed for target `command`");
+    }
+
+    #[test]
+    fn context_item_input_rejects_sequence() {
+        let error =
+            crate::bindings::read::<ContextItemInput>(serde_json::json!(["command", "foo"]))
+                .expect_err("sequence should be rejected");
+        assert!(
+            error
+                .inner()
+                .to_string()
+                .contains("invalid type: sequence, expected an object"),
+            "{}",
+            error.inner()
+        );
+    }
+
+    #[test]
+    fn context_item_input_requires_name() {
+        let error = crate::bindings::read::<ContextItemInput>(serde_json::json!({
+            "target": "command"
+        }))
+        .expect_err("missing name should fail");
+        assert!(
+            error.inner().to_string().contains("missing field `name`"),
+            "{}",
+            error.inner()
         );
     }
 }

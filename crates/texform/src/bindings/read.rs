@@ -537,18 +537,6 @@ mod tests {
         order: Option<ScriptOrder>,
     }
 
-    #[derive(Debug, Default, Deserialize)]
-    #[serde(default, deny_unknown_fields, expecting = "an object")]
-    struct SnakeFlatten {
-        preserve_empty_group: Option<bool>,
-    }
-
-    #[derive(Debug, Default, Deserialize)]
-    #[serde(default, deny_unknown_fields, expecting = "an object")]
-    struct SnakeTransform {
-        flatten_groups: Option<SnakeFlatten>,
-    }
-
     fn expect_sequence(result: Result<impl std::fmt::Debug, ReadError>) {
         let error = result.expect_err("sequence should be rejected");
         assert!(
@@ -562,14 +550,17 @@ mod tests {
     }
 
     #[test]
-    fn unknown_key_path_uses_camel_case_input_names() {
+    fn unknown_key_path_uses_snake_case_input_names() {
         let error = read::<TransformConfigInput>(json!({
-            "flattenGroups": {
-                "preserveEmptyGruop": true
+            "flatten_groups": {
+                "preserve_empty_gruop": true
             }
         }))
         .expect_err("typo should be rejected");
-        assert_eq!(error.path().to_string(), "flattenGroups.preserveEmptyGruop");
+        assert_eq!(
+            error.path().to_string(),
+            "flatten_groups.preserve_empty_gruop"
+        );
         assert!(error.inner().to_string().starts_with("unknown field"));
     }
 
@@ -635,7 +626,7 @@ mod tests {
         );
 
         let bool_int = read::<TransformConfigInput>(json!({
-            "rewrite": { "maxIterations": true }
+            "rewrite": { "max_iterations": true }
         }))
         .expect_err("bool integer should fail");
         assert!(
@@ -645,7 +636,7 @@ mod tests {
         );
 
         let float_int = read::<TransformConfigInput>(json!({
-            "rewrite": { "maxIterations": 1.0 }
+            "rewrite": { "max_iterations": 1.0 }
         }))
         .expect_err("float integer should fail");
         assert!(
@@ -656,17 +647,17 @@ mod tests {
     }
 
     #[test]
-    fn format_read_error_identity_keeps_camel_case_unknown_field() {
+    fn format_read_error_identity_keeps_snake_case_unknown_field() {
         let error = read::<TransformConfigInput>(json!({
-            "flattenGroups": {
-                "preserveEmptyGruop": true
+            "flatten_groups": {
+                "preserve_empty_gruop": true
             }
         }))
         .unwrap_err();
         let message = format_read_error(&error, "transform config", |key| key.to_owned());
         assert!(
             message.starts_with(
-                "invalid transform config: flattenGroups.preserveEmptyGruop: unknown field `preserveEmptyGruop`"
+                "invalid transform config: flatten_groups.preserve_empty_gruop: unknown field `preserve_empty_gruop`"
             ),
             "{message}"
         );
@@ -674,7 +665,7 @@ mod tests {
 
     #[test]
     fn format_read_error_renames_unknown_field_tokens() {
-        let error = read::<SnakeTransform>(json!({
+        let error = read::<TransformConfigInput>(json!({
             "flatten_groups": {
                 "preserve_empty_gruop": true
             }
@@ -698,8 +689,29 @@ mod tests {
             "{camel}"
         );
         assert!(
-            camel.contains("expected `preserveEmptyGroup`"),
+            camel.contains("preserveGroupContainingDeclarativeCommand"),
             "expected-field list should be renamed too: {camel}"
+        );
+    }
+
+    #[test]
+    fn format_read_error_camelizes_transform_config_unknown_field() {
+        let error = read::<TransformConfigInput>(json!({
+            "flatten_groups": {
+                "preserve_empty_gruop": true
+            }
+        }))
+        .unwrap_err();
+        let message = format_read_error(&error, "transform config", snake_to_camel);
+        assert!(
+            message.starts_with(
+                "invalid transform config: flattenGroups.preserveEmptyGruop: unknown field `preserveEmptyGruop`, expected one of `enabled`"
+            ),
+            "{message}"
+        );
+        assert!(
+            message.contains("preserveGroupContainingDeclarativeCommand"),
+            "{message}"
         );
     }
 

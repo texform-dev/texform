@@ -131,6 +131,10 @@ export function createBindings({
       );
     }
 
+    defaultParseConfig() {
+      return wrapTexformError(() => this.inner.defaultParseConfig());
+    }
+
     lookupCommand(name, mode) {
       return wrapTexformError(() => this.inner.lookup_command(name, mode));
     }
@@ -183,6 +187,14 @@ export function createBindings({
       return wrapTexformError(() =>
         wrapParseResult(this.inner.parse(src, options ?? undefined)),
       );
+    }
+
+    defaultParseConfig() {
+      return wrapTexformError(() => this.inner.defaultParseConfig());
+    }
+
+    defaultTransformConfig() {
+      return wrapTexformError(() => this.inner.defaultTransformConfig());
     }
 
     normalize(src, options) {

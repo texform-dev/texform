@@ -1314,9 +1314,6 @@ dependencies = [
  "serde-wasm-bindgen",
  "serde_json",
  "texform",
- "texform-argspec",
- "texform-core",
- "tsify-next",
  "wasm-bindgen",
 ]
 

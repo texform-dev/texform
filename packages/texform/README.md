@@ -31,6 +31,8 @@ Profiles select the normalization target: `"authoring"`, `"faithful"`, `"corpus"
 - The package ships two entry points for loading the WebAssembly module. The default `texform` import resolves to the Node entry in Node.js and to the bundler entry in browser-oriented bundlers; `texform/node` and `texform/bundler` force one explicitly.
 - The bundler entry initializes the WebAssembly module at module load time and expects a modern bundler with support for top-level `await` and `.wasm` assets (e.g. Vite, webpack 5).
 - All names follow JavaScript conventions: methods and fields are camelCase (`toLatex`, `validateArgspec` returns `argCount`), and missing values are `null`.
+- Parse, transform, normalize, and serialize take camelCase overlay objects. `null` / `undefined` / omitted means not set. Unknown keys, snake_case keys, arrays in object positions, and wrong scalar types throw `TexformConfigError` with a field path. Enum string values stay snake_case (`"sub_first"`).
+- `parser.defaultParseConfig()`, `engine.defaultParseConfig()`, and `engine.defaultTransformConfig()` return the complete defaults actually in force.
 - Parse and edit errors throw structured exceptions (`TexformParseError` and friends); no Rust panic ever crosses the boundary.
 - TypeScript declarations are bundled — no separate `@types` package.
 

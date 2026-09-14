@@ -2,23 +2,26 @@ use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use serde::{Deserialize, Serialize};
-use texform::bindings::{
-    FinalizeAstConfigInput, FlattenGroupsConfigInput, LowerAttributesConfigInput, ParseConfigInput,
-    RewriteConfigInput, TransformConfigInput, transform_report_to_dto,
-};
+use texform::bindings::{ParseConfigInput, TransformConfigInput, transform_report_to_dto};
 use texform::{
-    ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, AllowedMode, ArgRef,
-    ArgValue, CommandItem, CommandKind, ContentMode, ContextItem, DelimiterControlItem,
-    DelimiterRef, DelimiterValue, EnvironmentItem, ParseConfig, ParserBuildError, SerializeOptions,
-    SyntaxNode,
-};
-use texform::{
-    FinalizeAstConfig as CoreFinalizeAstConfig, FlattenGroupsConfig as CoreFlattenGroupsConfig,
-    LowerAttributesConfig as CoreLowerAttributesConfig, Profile as CoreProfile,
-    TransformConfig as CoreTransformConfig,
+    ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, ArgRef, ArgValue,
+    ContentMode, DelimiterRef, DelimiterValue, SyntaxNode,
 };
 use wasm_bindgen::prelude::*;
+
+mod config;
+mod dto;
+
+#[cfg(test)]
+use config::{ParserOptions, parser_from_options};
+use config::{
+    engine_from_js, normalize_config_from_js, parse_config_from_js, parser_from_js,
+    serialize_options_from_js, transform_config_from_js,
+};
+use dto::{
+    binding_dto_to_js, binding_error_parts_to_js, binding_error_to_js, config_error_to_js,
+    edit_message_to_js, internal_message_to_js, js_set, parse_message_to_js, to_js_value,
+};
 
 type SharedDocument = Rc<RefCell<texform::Document>>;
 type NodeHandleEntry = (SharedDocument, texform::NodeId);
@@ -26,770 +29,6 @@ type NodeHandleEntry = (SharedDocument, texform::NodeId);
 thread_local! {
     static NEXT_NODE_HANDLE: Cell<u32> = const { Cell::new(1) };
     static NODE_HANDLES: RefCell<HashMap<u32, NodeHandleEntry>> = RefCell::new(HashMap::new());
-}
-
-fn to_js_value<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
-    let serializer = serde_wasm_bindgen::Serializer::new()
-        .serialize_missing_as_null(true)
-        .serialize_maps_as_objects(true);
-    value
-        .serialize(&serializer)
-        .map_err(|error| JsValue::from_str(&error.to_string()))
-}
-
-fn js_set(target: &JsValue, key: &str, value: &JsValue) -> Result<(), JsValue> {
-    js_sys::Reflect::set(target, &JsValue::from_str(key), value).map(|_| ())
-}
-
-fn binding_dto_to_json<T: Serialize>(value: &T) -> Result<serde_json::Value, String> {
-    serde_json::to_value(value)
-        .map(camelize_json_keys)
-        .map_err(|error| error.to_string())
-}
-
-fn binding_dto_to_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
-    let value = binding_dto_to_json(value).map_err(internal_message_to_js)?;
-    to_js_value(&value).map_err(|error| {
-        internal_message_to_js(
-            error
-                .as_string()
-                .unwrap_or_else(|| "failed to convert binding DTO to JS".to_owned()),
-        )
-    })
-}
-
-fn camelize_json_keys(value: serde_json::Value) -> serde_json::Value {
-    match value {
-        serde_json::Value::Object(map) => serde_json::Value::Object(
-            map.into_iter()
-                .map(|(key, value)| (snake_to_camel(&key), camelize_json_keys(value)))
-                .collect(),
-        ),
-        serde_json::Value::Array(items) => {
-            serde_json::Value::Array(items.into_iter().map(camelize_json_keys).collect())
-        }
-        other => other,
-    }
-}
-
-fn snake_to_camel(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    let mut upper_next = false;
-    for ch in value.chars() {
-        if ch == '_' {
-            upper_next = true;
-        } else if upper_next {
-            out.push(ch.to_ascii_uppercase());
-            upper_next = false;
-        } else {
-            out.push(ch);
-        }
-    }
-    out
-}
-
-fn binding_error_to_js(error: texform::bindings::BindingErrorDto) -> JsValue {
-    binding_error_parts_to_js(texform::bindings::BindingErrorParts {
-        error,
-        document: None,
-    })
-}
-
-fn binding_error_parts_to_js(parts: texform::bindings::BindingErrorParts) -> JsValue {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        js_error_message(&parts.error.message)
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        let error = js_sys::Error::new(&parts.error.message);
-        error.set_name(binding_error_name(parts.error.kind));
-        let value: JsValue = error.into();
-        if let Err(error) = js_set(&value, "kind", &parts.error.kind.into()) {
-            return error;
-        }
-        if parts.error.kind == "parse" {
-            let diagnostics = to_js_value(&parts.error.diagnostics).unwrap_or(JsValue::NULL);
-            let document = match parts.document {
-                Some(document) => Document::from_core(document).into(),
-                None => JsValue::NULL,
-            };
-            if let Err(error) = js_set(&value, "diagnostics", &diagnostics) {
-                return error;
-            }
-            if let Err(error) = js_set(&value, "document", &document) {
-                return error;
-            }
-        }
-        value
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-fn binding_error_name(kind: &str) -> &'static str {
-    match kind {
-        "parse" => "TexformParseError",
-        "edit" => "TexformEditError",
-        "config" => "TexformConfigError",
-        "transform" => "TexformTransformError",
-        _ => "TexformError",
-    }
-}
-
-fn config_error_to_js(message: impl Into<String>) -> JsValue {
-    binding_error_to_js(texform::bindings::config_error_to_dto(message))
-}
-
-fn parse_message_to_js(message: impl Into<String>) -> JsValue {
-    binding_error_to_js(texform::bindings::BindingErrorDto {
-        kind: "parse",
-        message: message.into(),
-        diagnostics: Vec::new(),
-    })
-}
-
-fn edit_message_to_js(message: impl Into<String>) -> JsValue {
-    binding_error_to_js(texform::bindings::BindingErrorDto {
-        kind: "edit",
-        message: message.into(),
-        diagnostics: Vec::new(),
-    })
-}
-
-fn internal_message_to_js(message: impl Into<String>) -> JsValue {
-    binding_error_to_js(texform::bindings::BindingErrorDto {
-        kind: "internal",
-        message: message.into(),
-        diagnostics: Vec::new(),
-    })
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(
-    tag = "target",
-    rename_all = "lowercase",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
-)]
-enum ContextItemInput {
-    Command {
-        name: String,
-        kind: String,
-        allowed_mode: String,
-        argspec: String,
-        tags: Option<Vec<String>>,
-    },
-    Environment {
-        name: String,
-        allowed_mode: String,
-        body_mode: String,
-        argspec: String,
-        tags: Option<Vec<String>>,
-    },
-    Delimiter {
-        name: String,
-    },
-}
-
-#[wasm_bindgen]
-pub struct LowerAttributesConfig {
-    enabled: bool,
-}
-
-#[wasm_bindgen]
-impl LowerAttributesConfig {
-    #[wasm_bindgen(constructor)]
-    pub fn new(args: Option<JsValue>) -> Result<LowerAttributesConfig, JsValue> {
-        let input = match args {
-            Some(value) if !value.is_null() && !value.is_undefined() => {
-                serde_wasm_bindgen::from_value::<LowerAttributesConfigInput>(value).map_err(
-                    |error| config_error_to_js(format!("invalid lowerAttributes config: {error}")),
-                )?
-            }
-            _ => LowerAttributesConfigInput::default(),
-        };
-        Ok(Self {
-            enabled: input.enabled.unwrap_or(true),
-        })
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn enabled(&self) -> bool {
-        self.enabled
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_enabled(&mut self, enabled: bool) {
-        self.enabled = enabled;
-    }
-}
-
-impl LowerAttributesConfig {
-    fn from_core(config: CoreLowerAttributesConfig) -> Self {
-        Self {
-            enabled: config.enabled,
-        }
-    }
-
-    fn to_core(&self) -> CoreLowerAttributesConfig {
-        CoreLowerAttributesConfig {
-            enabled: self.enabled,
-        }
-    }
-}
-
-#[wasm_bindgen]
-pub struct RewriteConfig {
-    enabled: bool,
-    max_iterations: usize,
-}
-
-#[wasm_bindgen]
-impl RewriteConfig {
-    #[wasm_bindgen(constructor)]
-    pub fn new(args: Option<JsValue>) -> Result<RewriteConfig, JsValue> {
-        let input = match args {
-            Some(value) if !value.is_null() && !value.is_undefined() => {
-                serde_wasm_bindgen::from_value::<RewriteConfigInput>(value).map_err(|error| {
-                    config_error_to_js(format!("invalid rewrite config: {error}"))
-                })?
-            }
-            _ => RewriteConfigInput::default(),
-        };
-        Ok(Self {
-            enabled: input.enabled.unwrap_or(true),
-            max_iterations: input.max_iterations.unwrap_or(100),
-        })
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn enabled(&self) -> bool {
-        self.enabled
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_enabled(&mut self, enabled: bool) {
-        self.enabled = enabled;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn max_iterations(&self) -> usize {
-        self.max_iterations
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_max_iterations(&mut self, max_iterations: usize) {
-        self.max_iterations = max_iterations;
-    }
-}
-
-impl RewriteConfig {
-    fn from_core(enabled: bool, max_iterations: usize) -> Self {
-        Self {
-            enabled,
-            max_iterations,
-        }
-    }
-}
-
-#[wasm_bindgen]
-pub struct FinalizeAstConfig {
-    enabled: bool,
-}
-
-#[wasm_bindgen]
-impl FinalizeAstConfig {
-    #[wasm_bindgen(constructor)]
-    pub fn new(args: Option<JsValue>) -> Result<FinalizeAstConfig, JsValue> {
-        let input = match args {
-            Some(value) if !value.is_null() && !value.is_undefined() => {
-                serde_wasm_bindgen::from_value::<FinalizeAstConfigInput>(value).map_err(
-                    |error| config_error_to_js(format!("invalid finalizeAst config: {error}")),
-                )?
-            }
-            _ => FinalizeAstConfigInput::default(),
-        };
-        Ok(Self {
-            enabled: input.enabled.unwrap_or(true),
-        })
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn enabled(&self) -> bool {
-        self.enabled
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_enabled(&mut self, enabled: bool) {
-        self.enabled = enabled;
-    }
-}
-
-impl FinalizeAstConfig {
-    fn from_core(config: CoreFinalizeAstConfig) -> Self {
-        Self {
-            enabled: config.enabled,
-        }
-    }
-
-    fn to_core(&self) -> CoreFinalizeAstConfig {
-        CoreFinalizeAstConfig {
-            enabled: self.enabled,
-        }
-    }
-}
-
-#[wasm_bindgen]
-pub struct FlattenGroupsConfig {
-    enabled: bool,
-    preserve_group_containing_declarative_command: bool,
-    preserve_group_in_script_base_slot: bool,
-    preserve_group_inside_env_body: bool,
-    preserve_group_containing_infix: bool,
-    preserve_group_adjacent_to_command_like: bool,
-    preserve_group_as_argument_of_command: bool,
-    preserve_group_after_scripted_command_like: bool,
-    preserve_empty_group: bool,
-    preserve_group_with_lone_atom_spacing_char: bool,
-    preserve_group_starting_with_atom_spacing_char: bool,
-    preserve_group_containing_delimited_pair: bool,
-}
-
-#[wasm_bindgen]
-impl FlattenGroupsConfig {
-    #[wasm_bindgen(constructor)]
-    pub fn new(args: Option<JsValue>) -> Result<FlattenGroupsConfig, JsValue> {
-        let input = match args {
-            Some(value) if !value.is_null() && !value.is_undefined() => {
-                serde_wasm_bindgen::from_value::<FlattenGroupsConfigInput>(value).map_err(
-                    |error| config_error_to_js(format!("invalid flattenGroups config: {error}")),
-                )?
-            }
-            _ => FlattenGroupsConfigInput::default(),
-        };
-        Ok(Self {
-            enabled: input.enabled.unwrap_or(true),
-            preserve_group_containing_declarative_command: input
-                .preserve_group_containing_declarative_command
-                .unwrap_or(true),
-            preserve_group_in_script_base_slot: input
-                .preserve_group_in_script_base_slot
-                .unwrap_or(true),
-            preserve_group_inside_env_body: input.preserve_group_inside_env_body.unwrap_or(true),
-            preserve_group_containing_infix: input.preserve_group_containing_infix.unwrap_or(true),
-            preserve_group_adjacent_to_command_like: input
-                .preserve_group_adjacent_to_command_like
-                .unwrap_or(true),
-            preserve_group_as_argument_of_command: input
-                .preserve_group_as_argument_of_command
-                .unwrap_or(true),
-            preserve_group_after_scripted_command_like: input
-                .preserve_group_after_scripted_command_like
-                .unwrap_or(true),
-            preserve_empty_group: input.preserve_empty_group.unwrap_or(true),
-            preserve_group_with_lone_atom_spacing_char: input
-                .preserve_group_with_lone_atom_spacing_char
-                .unwrap_or(true),
-            preserve_group_starting_with_atom_spacing_char: input
-                .preserve_group_starting_with_atom_spacing_char
-                .unwrap_or(true),
-            preserve_group_containing_delimited_pair: input
-                .preserve_group_containing_delimited_pair
-                .unwrap_or(true),
-        })
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn enabled(&self) -> bool {
-        self.enabled
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_enabled(&mut self, value: bool) {
-        self.enabled = value;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn preserve_group_containing_declarative_command(&self) -> bool {
-        self.preserve_group_containing_declarative_command
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_preserve_group_containing_declarative_command(&mut self, value: bool) {
-        self.preserve_group_containing_declarative_command = value;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn preserve_group_in_script_base_slot(&self) -> bool {
-        self.preserve_group_in_script_base_slot
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_preserve_group_in_script_base_slot(&mut self, value: bool) {
-        self.preserve_group_in_script_base_slot = value;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn preserve_group_inside_env_body(&self) -> bool {
-        self.preserve_group_inside_env_body
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_preserve_group_inside_env_body(&mut self, value: bool) {
-        self.preserve_group_inside_env_body = value;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn preserve_group_containing_infix(&self) -> bool {
-        self.preserve_group_containing_infix
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_preserve_group_containing_infix(&mut self, value: bool) {
-        self.preserve_group_containing_infix = value;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn preserve_group_adjacent_to_command_like(&self) -> bool {
-        self.preserve_group_adjacent_to_command_like
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_preserve_group_adjacent_to_command_like(&mut self, value: bool) {
-        self.preserve_group_adjacent_to_command_like = value;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn preserve_group_as_argument_of_command(&self) -> bool {
-        self.preserve_group_as_argument_of_command
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_preserve_group_as_argument_of_command(&mut self, value: bool) {
-        self.preserve_group_as_argument_of_command = value;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn preserve_group_after_scripted_command_like(&self) -> bool {
-        self.preserve_group_after_scripted_command_like
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_preserve_group_after_scripted_command_like(&mut self, value: bool) {
-        self.preserve_group_after_scripted_command_like = value;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn preserve_empty_group(&self) -> bool {
-        self.preserve_empty_group
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_preserve_empty_group(&mut self, value: bool) {
-        self.preserve_empty_group = value;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn preserve_group_with_lone_atom_spacing_char(&self) -> bool {
-        self.preserve_group_with_lone_atom_spacing_char
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_preserve_group_with_lone_atom_spacing_char(&mut self, value: bool) {
-        self.preserve_group_with_lone_atom_spacing_char = value;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn preserve_group_starting_with_atom_spacing_char(&self) -> bool {
-        self.preserve_group_starting_with_atom_spacing_char
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_preserve_group_starting_with_atom_spacing_char(&mut self, value: bool) {
-        self.preserve_group_starting_with_atom_spacing_char = value;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn preserve_group_containing_delimited_pair(&self) -> bool {
-        self.preserve_group_containing_delimited_pair
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_preserve_group_containing_delimited_pair(&mut self, value: bool) {
-        self.preserve_group_containing_delimited_pair = value;
-    }
-}
-
-impl FlattenGroupsConfig {
-    fn from_core(config: CoreFlattenGroupsConfig) -> Self {
-        Self {
-            enabled: config.enabled,
-            preserve_group_containing_declarative_command: config
-                .preserve_group_containing_declarative_command,
-            preserve_group_in_script_base_slot: config.preserve_group_in_script_base_slot,
-            preserve_group_inside_env_body: config.preserve_group_inside_env_body,
-            preserve_group_containing_infix: config.preserve_group_containing_infix,
-            preserve_group_adjacent_to_command_like: config.preserve_group_adjacent_to_command_like,
-            preserve_group_as_argument_of_command: config.preserve_group_as_argument_of_command,
-            preserve_group_after_scripted_command_like: config
-                .preserve_group_after_scripted_command_like,
-            preserve_empty_group: config.preserve_empty_group,
-            preserve_group_with_lone_atom_spacing_char: config
-                .preserve_group_with_lone_atom_spacing_char,
-            preserve_group_starting_with_atom_spacing_char: config
-                .preserve_group_starting_with_atom_spacing_char,
-            preserve_group_containing_delimited_pair: config
-                .preserve_group_containing_delimited_pair,
-        }
-    }
-
-    fn to_core(&self) -> CoreFlattenGroupsConfig {
-        CoreFlattenGroupsConfig {
-            enabled: self.enabled,
-            preserve_group_containing_declarative_command: self
-                .preserve_group_containing_declarative_command,
-            preserve_group_in_script_base_slot: self.preserve_group_in_script_base_slot,
-            preserve_group_inside_env_body: self.preserve_group_inside_env_body,
-            preserve_group_containing_infix: self.preserve_group_containing_infix,
-            preserve_group_adjacent_to_command_like: self.preserve_group_adjacent_to_command_like,
-            preserve_group_as_argument_of_command: self.preserve_group_as_argument_of_command,
-            preserve_group_after_scripted_command_like: self
-                .preserve_group_after_scripted_command_like,
-            preserve_empty_group: self.preserve_empty_group,
-            preserve_group_with_lone_atom_spacing_char: self
-                .preserve_group_with_lone_atom_spacing_char,
-            preserve_group_starting_with_atom_spacing_char: self
-                .preserve_group_starting_with_atom_spacing_char,
-            preserve_group_containing_delimited_pair: self.preserve_group_containing_delimited_pair,
-        }
-    }
-}
-
-#[wasm_bindgen]
-pub struct TransformConfig {
-    lower_attributes: LowerAttributesConfig,
-    rewrite: RewriteConfig,
-    finalize_ast: FinalizeAstConfig,
-    flatten_groups: FlattenGroupsConfig,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
-struct TransformEngineOptions {
-    packages: Option<Vec<String>>,
-    items: Option<Vec<ContextItemInput>>,
-    remove_commands: Option<Vec<String>>,
-    remove_environments: Option<Vec<String>>,
-    remove_delimiter_controls: Option<Vec<String>>,
-    disable_rules: Option<Vec<String>>,
-    profile: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
-struct ParserOptions {
-    packages: Option<Vec<String>>,
-    items: Option<Vec<ContextItemInput>>,
-    remove_commands: Option<Vec<String>>,
-    remove_environments: Option<Vec<String>>,
-    remove_delimiter_controls: Option<Vec<String>>,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
-struct NormalizeOptions {
-    reject_unknown: Option<bool>,
-    abort_on_error: Option<bool>,
-    max_group_depth: Option<usize>,
-    flatten_groups: Option<FlattenGroupsConfigInput>,
-    finalize_ast: Option<FinalizeAstConfigInput>,
-    rewrite_enabled: Option<bool>,
-    lower_attributes_enabled: Option<bool>,
-    max_iterations: Option<usize>,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
-struct SerializeOptionsInput {
-    math: MathSerializeOptionsInput,
-    syntax: SyntaxSerializeOptionsInput,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
-struct MathSerializeOptionsInput {
-    spacing: MathSpacingOptionsInput,
-    scripts: MathScriptOptionsInput,
-    infix: MathInfixOptionsInput,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
-struct MathSpacingOptionsInput {
-    commands: texform_core::serialize::CommandSpacing,
-    group_inner_spacing: texform_core::serialize::MathGroupInnerSpacing,
-    adjacent_chars: texform_core::serialize::AdjacentCharSpacing,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
-struct MathScriptOptionsInput {
-    spacing: texform_core::serialize::ScriptSpacing,
-    order: texform_core::serialize::ScriptOrder,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
-struct MathInfixOptionsInput {
-    grouping: texform_core::serialize::InfixGrouping,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
-struct SyntaxSerializeOptionsInput {
-    environments: EnvironmentSerializeOptionsInput,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
-struct EnvironmentSerializeOptionsInput {
-    name_spacing: texform_core::serialize::EnvironmentNameSpacing,
-}
-
-impl SerializeOptionsInput {
-    fn into_core(self) -> SerializeOptions {
-        SerializeOptions {
-            math: texform_core::serialize::MathSerializeOptions {
-                spacing: texform_core::serialize::MathSpacingOptions {
-                    commands: self.math.spacing.commands,
-                    group_inner_spacing: self.math.spacing.group_inner_spacing,
-                    adjacent_chars: self.math.spacing.adjacent_chars,
-                },
-                scripts: texform_core::serialize::MathScriptOptions {
-                    spacing: self.math.scripts.spacing,
-                    order: self.math.scripts.order,
-                },
-                infix: texform_core::serialize::MathInfixOptions {
-                    grouping: self.math.infix.grouping,
-                },
-            },
-            syntax: texform_core::serialize::SyntaxSerializeOptions {
-                environments: texform_core::serialize::EnvironmentSerializeOptions {
-                    name_spacing: self.syntax.environments.name_spacing,
-                },
-            },
-        }
-    }
-}
-
-#[wasm_bindgen]
-impl TransformConfig {
-    #[wasm_bindgen(constructor)]
-    pub fn new(args: Option<JsValue>) -> Result<TransformConfig, JsValue> {
-        let input = match args {
-            Some(value) if !value.is_null() && !value.is_undefined() => {
-                serde_wasm_bindgen::from_value::<TransformConfigInput>(value).map_err(|error| {
-                    config_error_to_js(format!("invalid transform config: {error}"))
-                })?
-            }
-            _ => TransformConfigInput::default(),
-        };
-        Ok(Self::from_core_config(input.into_config(
-            CoreProfile::Authoring.default_transform_config(),
-        )))
-    }
-
-    pub fn authoring() -> TransformConfig {
-        Self::from_profile(CoreProfile::Authoring)
-    }
-
-    pub fn corpus() -> TransformConfig {
-        Self::from_profile(CoreProfile::Corpus)
-    }
-
-    pub fn faithful() -> TransformConfig {
-        Self::from_profile(CoreProfile::Faithful)
-    }
-
-    pub fn equiv() -> TransformConfig {
-        Self::from_profile(CoreProfile::Equiv)
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn lower_attributes(&self) -> LowerAttributesConfig {
-        LowerAttributesConfig::from_core(self.lower_attributes.to_core())
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_lower_attributes(&mut self, lower_attributes: LowerAttributesConfig) {
-        self.lower_attributes = lower_attributes;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn rewrite(&self) -> RewriteConfig {
-        RewriteConfig {
-            enabled: self.rewrite.enabled,
-            max_iterations: self.rewrite.max_iterations,
-        }
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_rewrite(&mut self, rewrite: RewriteConfig) {
-        self.rewrite = rewrite;
-    }
-
-    #[wasm_bindgen(getter, js_name = finalizeAst)]
-    pub fn finalize_ast(&self) -> FinalizeAstConfig {
-        FinalizeAstConfig::from_core(self.finalize_ast.to_core())
-    }
-
-    #[wasm_bindgen(setter, js_name = finalizeAst)]
-    pub fn set_finalize_ast(&mut self, finalize_ast: FinalizeAstConfig) {
-        self.finalize_ast = finalize_ast;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn flatten_groups(&self) -> FlattenGroupsConfig {
-        FlattenGroupsConfig::from_core(self.flatten_groups.to_core())
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_flatten_groups(&mut self, flatten_groups: FlattenGroupsConfig) {
-        self.flatten_groups = flatten_groups;
-    }
-}
-
-impl TransformConfig {
-    fn from_profile(profile: CoreProfile) -> Self {
-        Self::from_core_config(profile.default_transform_config())
-    }
-
-    fn from_core_config(config: CoreTransformConfig) -> Self {
-        Self {
-            lower_attributes: LowerAttributesConfig {
-                enabled: config.lower_attributes.enabled,
-            },
-            rewrite: RewriteConfig::from_core(
-                config.rewrite.enabled,
-                config.rewrite.max_iterations,
-            ),
-            finalize_ast: FinalizeAstConfig::from_core(config.finalize_ast),
-            flatten_groups: FlattenGroupsConfig::from_core(config.flatten_groups),
-        }
-    }
-}
-
-fn profile_from_name(name: &str) -> Result<texform::Profile, JsValue> {
-    match name {
-        "authoring" => Ok(texform::Profile::Authoring),
-        "faithful" => Ok(texform::Profile::Faithful),
-        "corpus" => Ok(texform::Profile::Corpus),
-        "equiv" => Ok(texform::Profile::Equiv),
-        other => Err(config_error_to_js(format!(
-            "unknown transform profile: {other}"
-        ))),
-    }
 }
 
 #[wasm_bindgen]
@@ -874,7 +113,7 @@ impl Document {
 
     #[wasm_bindgen(js_name = toLatex)]
     pub fn to_latex(&self, options: Option<JsValue>) -> Result<String, JsValue> {
-        let options = parse_serialize_options(options)?;
+        let options = serialize_options_from_js(options)?;
         borrow_document(&self.inner)?
             .to_latex_with(&options)
             .map_err(|error| {
@@ -888,7 +127,7 @@ impl Document {
 
     #[wasm_bindgen(js_name = toTokenizedLatex)]
     pub fn to_tokenized_latex(&self, options: Option<JsValue>) -> Result<JsValue, JsValue> {
-        let options = parse_serialize_options(options)?;
+        let options = serialize_options_from_js(options)?;
         let result = borrow_document(&self.inner)?
             .to_tokenized_latex_with(&options)
             .map_err(|error| {
@@ -1091,7 +330,7 @@ impl Document {
 }
 
 impl Document {
-    fn from_core(document: texform::Document) -> Self {
+    pub(crate) fn from_core(document: texform::Document) -> Self {
         Self {
             inner: Rc::new(RefCell::new(document)),
         }
@@ -1394,11 +633,6 @@ fn edit_error_to_js(error: texform::EditError) -> JsValue {
     binding_error_to_js(texform::bindings::edit_error_to_dto(error))
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-fn js_error_message(_message: &str) -> JsValue {
-    JsValue::NULL
-}
-
 fn parse_single_char(value: &str, method: &str) -> Result<char, String> {
     let mut chars = value.chars();
     let Some(ch) = chars.next() else {
@@ -1656,40 +890,9 @@ pub struct Parser {
 impl Parser {
     #[wasm_bindgen(constructor)]
     pub fn new(args: Option<JsValue>) -> Result<Parser, JsValue> {
-        let input = match args {
-            Some(value) if !value.is_null() && !value.is_undefined() => {
-                serde_wasm_bindgen::from_value::<ParserOptions>(value).map_err(|error| {
-                    config_error_to_js(format!("invalid parser options: {error}"))
-                })?
-            }
-            _ => ParserOptions::default(),
-        };
-        let mut builder = match input.packages {
-            Some(pkgs) => {
-                let refs: Vec<&str> = pkgs.iter().map(String::as_str).collect();
-                if refs.is_empty() {
-                    texform::Parser::builder().empty_knowledge()
-                } else {
-                    texform::Parser::builder().packages(refs.as_slice())
-                }
-            }
-            _ => texform::Parser::builder(),
-        };
-        for item in input.items.unwrap_or_default() {
-            builder = builder.item(parse_context_item_input(item)?);
-        }
-        for name in input.remove_commands.unwrap_or_default() {
-            builder = builder.remove_command(name);
-        }
-        for name in input.remove_environments.unwrap_or_default() {
-            builder = builder.remove_environment(name);
-        }
-        for name in input.remove_delimiter_controls.unwrap_or_default() {
-            builder = builder.remove_delimiter_control(name);
-        }
-
-        let inner = builder.build().map_err(parse_context_build_error_to_js)?;
-        Ok(Parser { inner })
+        Ok(Parser {
+            inner: parser_from_js(args)?,
+        })
     }
 
     pub fn is_delimiter_control(&self, name: &str) -> bool {
@@ -1702,9 +905,11 @@ impl Parser {
         parse_result_to_js(self.inner.parse_with(src, &config))
     }
 
-    #[wasm_bindgen(js_name = parseWith)]
-    pub fn parse_with(&self, src: &str, config: Option<JsValue>) -> Result<JsValue, JsValue> {
-        self.parse(src, config)
+    #[wasm_bindgen(js_name = defaultParseConfig)]
+    pub fn default_parse_config(&self) -> Result<JsValue, JsValue> {
+        binding_dto_to_js(&ParseConfigInput::from_config(
+            self.inner.default_parse_config().clone(),
+        ))
     }
 
     pub fn lookup_command(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
@@ -1757,50 +962,8 @@ pub struct TransformEngine {
 impl TransformEngine {
     #[wasm_bindgen(constructor)]
     pub fn new(args: Option<JsValue>) -> Result<TransformEngine, JsValue> {
-        let input = match args {
-            Some(value) if !value.is_null() && !value.is_undefined() => {
-                serde_wasm_bindgen::from_value::<TransformEngineOptions>(value).map_err(
-                    |error| {
-                        config_error_to_js(format!("invalid transform engine options: {error}"))
-                    },
-                )?
-            }
-            _ => TransformEngineOptions::default(),
-        };
-        let profile = input
-            .profile
-            .as_deref()
-            .ok_or_else(|| config_error_to_js("profile is required"))?;
-        let mut builder = texform::TransformEngine::builder().profile(profile_from_name(profile)?);
-        if let Some(packages) = input.packages {
-            let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
-            builder = if refs.is_empty() {
-                builder.empty_knowledge()
-            } else {
-                builder.packages(refs.as_slice())
-            };
-        }
-        for item in input.items.unwrap_or_default() {
-            builder = builder.item(parse_context_item_input(item)?);
-        }
-        for name in input.remove_commands.unwrap_or_default() {
-            builder = builder.remove_command(name);
-        }
-        for name in input.remove_environments.unwrap_or_default() {
-            builder = builder.remove_environment(name);
-        }
-        for name in input.remove_delimiter_controls.unwrap_or_default() {
-            builder = builder.remove_delimiter_control(name);
-        }
-        for name in input.disable_rules.unwrap_or_default() {
-            builder = builder
-                .disable_rule_by_name(&name)
-                .map_err(|error| config_error_to_js(error.to_string()))?;
-        }
         Ok(Self {
-            inner: builder
-                .build()
-                .map_err(|error| config_error_to_js(error.to_string()))?,
+            inner: engine_from_js(args)?,
         })
     }
 
@@ -1810,51 +973,22 @@ impl TransformEngine {
         parse_result_to_js(self.inner.parser().parse_with(src, &config))
     }
 
-    #[wasm_bindgen(js_name = parseWith)]
-    pub fn parse_with(&self, src: &str, config: Option<JsValue>) -> Result<JsValue, JsValue> {
-        self.parse(src, config)
+    #[wasm_bindgen(js_name = defaultParseConfig)]
+    pub fn default_parse_config(&self) -> Result<JsValue, JsValue> {
+        binding_dto_to_js(&ParseConfigInput::from_config(
+            self.inner.parser().default_parse_config().clone(),
+        ))
+    }
+
+    #[wasm_bindgen(js_name = defaultTransformConfig)]
+    pub fn default_transform_config(&self) -> Result<JsValue, JsValue> {
+        binding_dto_to_js(&TransformConfigInput::from_config(
+            *self.inner.default_transform_config(),
+        ))
     }
 
     pub fn normalize(&self, src: &str, options: Option<JsValue>) -> Result<JsValue, JsValue> {
-        let Some(value) = options else {
-            let result = self.inner.normalize(src).map_err(|error| {
-                binding_error_parts_to_js(texform::bindings::normalize_error_to_parts(error))
-            })?;
-            return normalize_result_to_js(result.normalized, &result.report);
-        };
-        let mut config = self.inner.default_normalize_config();
-        if !value.is_null() && !value.is_undefined() {
-            let input =
-                serde_wasm_bindgen::from_value::<NormalizeOptions>(value).map_err(|error| {
-                    config_error_to_js(format!("invalid normalize options: {error}"))
-                })?;
-            if let Some(reject_unknown) = input.reject_unknown {
-                config.parse.reject_unknown = reject_unknown;
-            }
-            if let Some(abort_on_error) = input.abort_on_error {
-                config.parse.abort_on_error = abort_on_error;
-            }
-            if let Some(max_group_depth) = input.max_group_depth {
-                config.parse.max_group_depth = max_group_depth;
-            }
-            if let Some(flatten_groups) = input.flatten_groups {
-                config.transform.flatten_groups =
-                    flatten_groups.into_config(config.transform.flatten_groups);
-            }
-            if let Some(finalize_ast) = input.finalize_ast {
-                config.transform.finalize_ast =
-                    finalize_ast.into_config(config.transform.finalize_ast);
-            }
-            if let Some(rewrite_enabled) = input.rewrite_enabled {
-                config.transform.rewrite.enabled = rewrite_enabled;
-            }
-            if let Some(lower_attributes_enabled) = input.lower_attributes_enabled {
-                config.transform.lower_attributes.enabled = lower_attributes_enabled;
-            }
-            if let Some(max_iterations) = input.max_iterations {
-                config.transform.rewrite.max_iterations = max_iterations;
-            }
-        }
+        let config = normalize_config_from_js(options, self.inner.default_normalize_config())?;
         let result = self.inner.normalize_with(src, &config).map_err(|error| {
             binding_error_parts_to_js(texform::bindings::normalize_error_to_parts(error))
         })?;
@@ -1932,26 +1066,11 @@ fn normalize_result_to_js(
     Ok(value.into())
 }
 
-fn transform_config_from_js(
-    value: Option<JsValue>,
-    base: CoreTransformConfig,
-) -> Result<CoreTransformConfig, JsValue> {
-    let Some(value) = value else {
-        return Ok(base);
-    };
-    if value.is_null() || value.is_undefined() {
-        return Ok(base);
-    }
-    let input = serde_wasm_bindgen::from_value::<TransformConfigInput>(value)
-        .map_err(|error| config_error_to_js(format!("invalid transform config: {error}")))?;
-    Ok(input.into_config(base))
-}
-
 #[wasm_bindgen]
 pub fn serialize(node: JsValue, options: Option<JsValue>) -> Result<String, JsValue> {
     let node = serde_wasm_bindgen::from_value::<SyntaxNode>(node)
         .map_err(|error| parse_message_to_js(format!("invalid syntax node: {error}")))?;
-    let options = parse_serialize_options(options)?;
+    let options = serialize_options_from_js(options)?;
     texform::Document::from_syntax(&node)
         .map_err(|error| binding_error_to_js(texform::bindings::from_syntax_error_to_dto(error)))?
         .to_latex_with(&options)
@@ -1967,23 +1086,9 @@ pub fn serialize(node: JsValue, options: Option<JsValue>) -> Result<String, JsVa
 impl Parser {
     #[cfg(test)]
     fn from_options(input: ParserOptions) -> Result<Parser, JsValue> {
-        let mut builder = match input.packages {
-            Some(pkgs) => {
-                let refs: Vec<&str> = pkgs.iter().map(String::as_str).collect();
-                if refs.is_empty() {
-                    texform::Parser::builder().empty_knowledge()
-                } else {
-                    texform::Parser::builder().packages(refs.as_slice())
-                }
-            }
-            _ => texform::Parser::builder(),
-        };
-        for item in input.items.unwrap_or_default() {
-            builder = builder.item(parse_context_item_input(item)?);
-        }
-
-        let inner = builder.build().map_err(parse_context_build_error_to_js)?;
-        Ok(Parser { inner })
+        Ok(Parser {
+            inner: parser_from_options(input)?,
+        })
     }
 
     fn lookup_command_meta(
@@ -2061,38 +1166,6 @@ impl TransformEngine {
     }
 }
 
-fn parse_context_item_input(input: ContextItemInput) -> Result<ContextItem, JsValue> {
-    match input {
-        ContextItemInput::Command {
-            name,
-            kind,
-            allowed_mode,
-            argspec,
-            tags,
-        } => {
-            let kind = parse_command_kind(kind.as_str())?;
-            let allowed_mode = parse_allowed_mode(allowed_mode.as_str())?;
-            Ok(CommandItem::new(name, kind, allowed_mode, argspec)
-                .with_tags(tags.unwrap_or_default())
-                .into())
-        }
-        ContextItemInput::Environment {
-            name,
-            allowed_mode,
-            body_mode,
-            argspec,
-            tags,
-        } => {
-            let allowed_mode = parse_allowed_mode(allowed_mode.as_str())?;
-            let body_mode = parse_content_mode(body_mode.as_str())?;
-            Ok(EnvironmentItem::new(name, allowed_mode, body_mode, argspec)
-                .with_tags(tags.unwrap_or_default())
-                .into())
-        }
-        ContextItemInput::Delimiter { name } => Ok(DelimiterControlItem::new(name).into()),
-    }
-}
-
 #[wasm_bindgen]
 pub fn validate_argspec(spec: &str) -> Result<JsValue, JsValue> {
     binding_dto_to_js(&texform::validate_argspec(spec))
@@ -2105,36 +1178,6 @@ pub fn list_packages() -> Result<JsValue, JsValue> {
 
 fn transform_report_to_js(report: &texform::TransformReport) -> Result<JsValue, JsValue> {
     binding_dto_to_js(&transform_report_to_dto(report))
-}
-
-fn format_parse_context_build_error(error: ParserBuildError) -> String {
-    error.to_string()
-}
-
-fn parse_context_build_error_to_js(error: ParserBuildError) -> JsValue {
-    config_error_to_js(format_parse_context_build_error(error))
-}
-
-fn parse_config_from_js(value: Option<JsValue>, base: ParseConfig) -> Result<ParseConfig, JsValue> {
-    match value {
-        Some(value) if !value.is_null() && !value.is_undefined() => {
-            serde_wasm_bindgen::from_value::<ParseConfigInput>(value)
-                .map(|input| input.into_config(base))
-                .map_err(|error| config_error_to_js(format!("invalid parse config: {error}")))
-        }
-        _ => Ok(base),
-    }
-}
-
-fn parse_serialize_options(value: Option<JsValue>) -> Result<SerializeOptions, JsValue> {
-    match value {
-        Some(value) if !value.is_null() && !value.is_undefined() => {
-            serde_wasm_bindgen::from_value::<SerializeOptionsInput>(value)
-                .map(SerializeOptionsInput::into_core)
-                .map_err(|error| config_error_to_js(format!("invalid serialize options: {error}")))
-        }
-        _ => Ok(SerializeOptions::default()),
-    }
 }
 
 fn parse_result_parts(
@@ -2154,28 +1197,6 @@ fn parse_result_to_js(result: texform::ParseResult) -> Result<JsValue, JsValue> 
     js_set(value.as_ref(), "document", &document)?;
     js_set(value.as_ref(), "diagnostics", &diagnostics)?;
     Ok(value.into())
-}
-
-fn parse_command_kind(value: &str) -> Result<CommandKind, JsValue> {
-    match value {
-        "prefix" => Ok(CommandKind::Prefix),
-        "infix" => Ok(CommandKind::Infix),
-        "declarative" => Ok(CommandKind::Declarative),
-        _ => Err(config_error_to_js(format!(
-            "unsupported command kind: {value}"
-        ))),
-    }
-}
-
-fn parse_allowed_mode(value: &str) -> Result<AllowedMode, JsValue> {
-    match value {
-        "math" => Ok(AllowedMode::Math),
-        "text" => Ok(AllowedMode::Text),
-        "both" => Ok(AllowedMode::Both),
-        _ => Err(config_error_to_js(format!(
-            "unsupported allowed mode: {value}"
-        ))),
-    }
 }
 
 fn parse_content_mode(value: &str) -> Result<ContentMode, JsValue> {
@@ -2210,6 +1231,7 @@ fn character_meta_to_js(meta: &ActiveCharacterRecord) -> Result<JsValue, JsValue
 #[cfg(test)]
 mod tests {
     use super::*;
+    use texform::{AllowedMode, CommandItem, CommandKind, ParseConfig};
 
     #[test]
     fn package_load_build_errors_use_facade_error_text() {
@@ -2217,9 +1239,8 @@ mod tests {
             .packages(&["missing"])
             .build()
             .expect_err("missing package should fail");
-        let error = format_parse_context_build_error(error);
 
-        assert_eq!(error, "unknown package: missing");
+        assert_eq!(error.to_string(), "unknown package: missing");
     }
 
     #[test]
@@ -2234,7 +1255,7 @@ mod tests {
             ))
             .build()
             .expect_err("invalid item should fail");
-        let error = format_parse_context_build_error(error);
+        let error = error.to_string();
 
         assert!(error.contains("foo"));
         assert!(error.contains("invalid argspec"));
@@ -2246,18 +1267,12 @@ mod tests {
             Parser::from_options(ParserOptions::default()).expect("default parser should build");
         let empty_packages_ctx = Parser::from_options(ParserOptions {
             packages: Some(vec![]),
-            items: None,
-            remove_commands: None,
-            remove_environments: None,
-            remove_delimiter_controls: None,
+            ..Default::default()
         })
         .expect("empty package list parser should build");
         let explicit_braket_ctx = Parser::from_options(ParserOptions {
             packages: Some(vec!["braket".into()]),
-            items: None,
-            remove_commands: None,
-            remove_environments: None,
-            remove_delimiter_controls: None,
+            ..Default::default()
         })
         .expect("explicit braket parse context should build");
 
@@ -2308,21 +1323,14 @@ mod tests {
     #[test]
     fn transform_config_input_accepts_finalize_ast() {
         let input = TransformConfigInput {
-            finalize_ast: Some(FinalizeAstConfigInput {
+            finalize_ast: Some(texform::bindings::FinalizeAstConfigInput {
                 enabled: Some(false),
             }),
             ..Default::default()
         };
-        let config = input.into_config(CoreProfile::Authoring.default_transform_config());
+        let config = input.into_config(texform::Profile::Authoring.default_transform_config());
 
         assert!(!config.finalize_ast.enabled);
-    }
-
-    #[test]
-    fn wasm_transform_config_exposes_finalize_ast() {
-        let config = TransformConfig::corpus();
-
-        assert!(config.finalize_ast().enabled());
     }
 
     #[test]
@@ -2489,21 +1497,18 @@ mod tests {
     }
 
     #[test]
-    fn normalize_options_can_disable_finalize_ast() {
-        let mut config = texform::NormalizeConfig {
+    fn normalize_config_input_can_disable_finalize_ast() {
+        let base = texform::NormalizeConfig {
             parse: ParseConfig::LENIENT,
-            transform: CoreProfile::Corpus.default_transform_config(),
+            transform: texform::Profile::Corpus.default_transform_config(),
         };
-        let input = NormalizeOptions {
-            finalize_ast: Some(FinalizeAstConfigInput {
+        let input = texform::bindings::NormalizeConfigInput {
+            finalize_ast: Some(texform::bindings::FinalizeAstConfigInput {
                 enabled: Some(false),
             }),
             ..Default::default()
         };
-
-        if let Some(finalize_ast) = input.finalize_ast {
-            config.transform.finalize_ast = finalize_ast.into_config(config.transform.finalize_ast);
-        }
+        let config = input.into_config(base);
 
         assert!(!config.transform.finalize_ast.enabled);
     }
@@ -2535,10 +1540,7 @@ mod tests {
     fn lookup_command_is_mode_specific() {
         let ctx = Parser::from_options(ParserOptions {
             packages: Some(vec!["base".into(), "textmacros".into()]),
-            items: None,
-            remove_commands: None,
-            remove_environments: None,
-            remove_delimiter_controls: None,
+            ..Default::default()
         })
         .expect("parse context should build");
 
@@ -2554,38 +1556,5 @@ mod tests {
         assert_eq!(math.argspec.source, "m");
         assert_eq!(text.argspec.source, "m:T");
         assert!(ctx.knows_command_name("underline"));
-    }
-
-    struct FailingDto;
-
-    impl Serialize for FailingDto {
-        fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer,
-        {
-            Err(serde::ser::Error::custom("boom"))
-        }
-    }
-
-    #[test]
-    fn binding_dto_to_json_surfaces_serialize_errors() {
-        let error = binding_dto_to_json(&FailingDto).expect_err("serialize error should surface");
-        assert!(
-            error.contains("boom"),
-            "error should include the serialize message, got {error}"
-        );
-    }
-
-    #[test]
-    fn binding_dto_to_json_camelizes_nested_dto_keys() {
-        let value = binding_dto_to_json(&texform::validate_argspec("o m"))
-            .expect("argspec result should serialize");
-
-        assert_eq!(value["valid"], true);
-        assert_eq!(value["argCount"], 2);
-        assert!(value.get("arg_count").is_none());
-        let first_slot = &value["parsed"][0];
-        assert!(first_slot.get("noLeadingSpace").is_some());
-        assert!(first_slot.get("no_leading_space").is_none());
     }
 }

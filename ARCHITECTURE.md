@@ -27,8 +27,6 @@ graph TD
 
     py --> facade
     wasm --> facade
-    wasm --> core
-    wasm --> argspec
     facade --> transform
     facade --> core
     facade --> knowledge
@@ -186,7 +184,7 @@ The Python and WebAssembly bindings expose live `Document` and `Node` handles ra
 - A binding `Node` is a cheap handle — a shared reference to its owning document plus a `NodeId`. All reads and edits delegate back to the document; the tree is never cloned.
 - The core `Document` stays a plain owned Rust value with no interior mutability. Sharing is provided only at the binding layer, using each runtime's native mechanism: PyO3's reference-counted pyclass cell on Python, and `Rc<RefCell<…>>` on WASM. Direct Rust users never pay for the bindings' sharing needs.
 - Borrow conflicts and misuse surface as structured host-language exceptions, never as a panic crossing the FFI boundary. A read-only (error) document raises a read-only exception, and an edit mixing nodes from two documents is rejected before reaching the core (mapping `ForeignNode` to a cross-document exception).
-- `texform::bindings` is an internal DTO support layer for reports, lookup metadata, argspec validation, and binding error metadata. Rust DTO fields use snake_case as the canonical form; Python exposes that form directly, while WASM provides the JavaScript camelCase view.
+- `texform::bindings` is an internal DTO support layer for reports, lookup metadata, argspec validation, binding error metadata, and the shared config overlay records. Rust DTO and overlay fields use snake_case as the canonical form; Python exposes that form directly, while WASM converts JavaScript camelCase keys at the boundary and rejects snake_case keys. Parse, transform, normalize, and serialize in JavaScript accept overlay objects; unknown keys, type errors, and arrays in object positions throw `TexformConfigError` with a camelCase path. `defaultParseConfig` / `defaultTransformConfig` return the complete defaults actually in force.
 - Tokenized serialization uses the same DTO conversion from the owning Rust result in both bindings; Python exposes `start_byte` / `end_byte`, while JavaScript exposes `startByte` / `endByte`. All are UTF-8 byte offsets rather than Python code-point or JavaScript UTF-16 indices, and neither binding re-tokenizes the LaTeX string.
 - `SyntaxNode` is not part of binding casing conversion. It remains the single tree wire format across Rust serde, Python dictionaries, JavaScript objects, and JSON fixtures.
 

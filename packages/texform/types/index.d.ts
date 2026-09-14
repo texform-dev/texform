@@ -8,11 +8,14 @@
 export type ArgumentSlot = Argument | null | undefined;
 
 /**
- * Parser strictness configuration, as a plain object with camelCase keys.
+ * Parser strictness configuration overlay, as a plain object with camelCase
+ * keys. All fields are optional; `null` / `undefined` means not set. Unknown
+ * keys, snake_case keys, arrays in object positions, and wrong scalar types
+ * throw {@link TexformConfigError} with a path.
  *
- * The two boolean axes are orthogonal: {@link ParseConfigInput.rejectUnknown}
+ * The two boolean axes are orthogonal: {@link ParseConfig.rejectUnknown}
  * controls how unknown names are handled, while
- * {@link ParseConfigInput.abortOnError} controls whether the parser stops at
+ * {@link ParseConfig.abortOnError} controls whether the parser stops at
  * the first error or keeps recovering. Neither implies the other, and neither
  * is equivalent to the resulting tree's {@link Document.hasErrors} signal.
  *
@@ -24,7 +27,7 @@ export type ArgumentSlot = Argument | null | undefined;
  * });
  * ```
  */
-export interface ParseConfigInput {
+export interface ParseConfig {
   /**
    * Reject unknown command and environment names. Default `false`.
    *
@@ -464,7 +467,7 @@ export class Document {
    * Whether the tree contains any `Error` placeholder node.
    *
    * This is a cheap O(1) signal, independent of the
-   * {@link ParseConfigInput.abortOnError} parse-strictness knob and separate
+   * {@link ParseConfig.abortOnError} parse-strictness knob and separate
    * from structural validity. A tree that has errors is read-only.
    *
    * @returns `true` if any `Error` node is present.
@@ -1063,9 +1066,9 @@ export class TexformParseError extends TexformError {
 export class TexformEditError extends TexformError {}
 
 /**
- * Thrown on invalid construction input, such as an unknown package name or an
- * unknown transform profile passed to {@link Parser} or
- * {@link TransformEngine}.
+ * Thrown on invalid construction or per-call configuration: unknown package or
+ * profile names, unknown or snake_case keys, arrays in object positions, and
+ * wrong scalar types. Messages include a camelCase field path.
  */
 export class TexformConfigError extends TexformError {}
 
@@ -1223,7 +1226,8 @@ export interface CharacterInfo {
  *
  * A `command` entry carries its kind, allowed mode, and `argspec`; an
  * `environment` entry additionally carries its `bodyMode`; a `delimiter` entry
- * registers a delimiter-control name.
+ * registers a delimiter-control name. Unknown keys and disallowed fields throw
+ * {@link TexformConfigError}.
  */
 export type ContextItem =
   | {
@@ -1279,6 +1283,13 @@ export type ScriptSpacing = "spaced" | "compact";
 export type ScriptOrder = "sub_first" | "sup_first";
 
 /**
+ * Bracing of infix operands (`\over`, `\atop`, ...): `"when_required"` braces
+ * an operand only when the surrounding syntax needs it; `"always_explicit"`
+ * braces every non-empty operand.
+ */
+export type InfixGrouping = "always_explicit" | "when_required";
+
+/**
  * Spacing after `\begin` / `\end`: `"spaced"` writes `\begin {matrix}`;
  * `"compact"` writes `\begin{matrix}`.
  */
@@ -1311,7 +1322,17 @@ export interface MathScriptOptions {
 }
 
 /**
- * Math-mode serialization options, grouping spacing and script axes.
+ * Math infix options for the serializer. Omitted keys keep their default.
+ *
+ * @see {@link MathSerializeOptions}
+ */
+export interface MathInfixOptions {
+  /** Bracing of infix operands. Default `"when_required"`. */
+  grouping?: InfixGrouping;
+}
+
+/**
+ * Math-mode serialization options, grouping spacing, script, and infix axes.
  *
  * @see {@link SerializeOptions}
  */
@@ -1320,6 +1341,8 @@ export interface MathSerializeOptions {
   spacing?: MathSpacingOptions;
   /** Script axes (spacing and order). */
   scripts?: MathScriptOptions;
+  /** Infix axes (operand bracing). */
+  infix?: MathInfixOptions;
 }
 
 /**
@@ -1345,11 +1368,12 @@ export interface SyntaxSerializeOptions {
 /**
  * Options controlling serialized LaTeX output style.
  *
- * A nested object keyed by camelCase names. An unrecognized key — including a
- * snake_case key meant for the Python binding — is silently ignored, so the
- * corresponding axis keeps its default. Passed to {@link Document.toLatex} and
- * {@link serialize}. For a task-oriented walkthrough, see the Serialization
- * guide.
+ * A nested object keyed by camelCase names. `null` / `undefined` / omitted
+ * means "not set" at that layer. Unknown keys, snake_case keys, arrays in
+ * object positions, and wrong scalar types throw {@link TexformConfigError}
+ * with a field path. Enum string values stay snake_case (`"sub_first"`).
+ * Passed to {@link Document.toLatex} and {@link serialize}. For a
+ * task-oriented walkthrough, see the Serialization guide.
  *
  * @example
  * ```ts
@@ -1476,11 +1500,21 @@ export interface ValidateArgspecResult {
 }
 
 /**
+ * Recursively required form of an overlay config. Used for
+ * {@link Parser.defaultParseConfig} and {@link TransformEngine.defaultTransformConfig}.
+ */
+export type Complete<T> = {
+  [K in keyof T]-?: NonNullable<T[K]> extends object
+    ? Complete<NonNullable<T[K]>>
+    : NonNullable<T[K]>;
+};
+
+/**
  * Per-run switches for the LowerAttributes phase.
  *
- * @see {@link TransformConfigInput}
+ * @see {@link TransformConfig}
  */
-export interface LowerAttributesConfigInput {
+export interface LowerAttributesConfig {
   /** Whether the phase runs. Defaults to the profile's setting. */
   enabled?: boolean;
 }
@@ -1488,9 +1522,9 @@ export interface LowerAttributesConfigInput {
 /**
  * Per-run switches for the fixed-point Rewrite phase.
  *
- * @see {@link TransformConfigInput}
+ * @see {@link TransformConfig}
  */
-export interface RewriteConfigInput {
+export interface RewriteConfig {
   /** Whether the phase runs. When `false`, legacy syntax is left untouched. */
   enabled?: boolean;
   /** Cap on Rewrite fixed-point passes. */
@@ -1500,9 +1534,9 @@ export interface RewriteConfigInput {
 /**
  * Per-run switches for the FinalizeAst phase.
  *
- * @see {@link TransformConfigInput}
+ * @see {@link TransformConfig}
  */
-export interface FinalizeAstConfigInput {
+export interface FinalizeAstConfig {
   /** Whether the phase runs. Defaults to enabled in every public profile. */
   enabled?: boolean;
 }
@@ -1515,15 +1549,17 @@ export interface FinalizeAstConfigInput {
  * flattening it. Omitted keys fall back to the profile's defaults — for
  * example, `corpus` turns several guards off.
  *
- * @see {@link TransformConfigInput}
+ * @see {@link TransformConfig}
  */
-export interface FlattenGroupsConfigInput {
+export interface FlattenGroupsConfig {
   /** Whether the phase runs. */
   enabled?: boolean;
   /** Keep a group that is empty. */
   preserveEmptyGroup?: boolean;
   /** Keep a group adjacent to a command-like node. */
   preserveGroupAdjacentToCommandLike?: boolean;
+  /** Keep a group used as a command argument. */
+  preserveGroupAsArgumentOfCommand?: boolean;
   /** Keep a group following a scripted command-like node. */
   preserveGroupAfterScriptedCommandLike?: boolean;
   /** Keep a group containing a declarative command. */
@@ -1548,27 +1584,26 @@ export interface FlattenGroupsConfigInput {
  *
  * Each field controls one pipeline phase. This is the transform-only shape; it
  * does not accept parser-strictness keys (those belong to
- * {@link NormalizeOptions}).
+ * {@link NormalizeConfig}).
  *
- * @see {@link TransformOptions}
+ * Every field is an optional overlay key: `null` / `undefined` / omitted keeps
+ * the profile's value. Unknown keys, snake_case keys, arrays in object
+ * positions, and wrong scalar types throw {@link TexformConfigError} with a
+ * camelCase field path. Read the effective defaults with
+ * {@link TransformEngine.defaultTransformConfig}.
+ *
+ * @see {@link NormalizeConfig}
  */
-export interface TransformConfigInput {
+export interface TransformConfig {
   /** LowerAttributes phase switches. */
-  lowerAttributes?: LowerAttributesConfigInput;
+  lowerAttributes?: LowerAttributesConfig;
   /** Rewrite phase switches. */
-  rewrite?: RewriteConfigInput;
+  rewrite?: RewriteConfig;
   /** FinalizeAst phase switches. */
-  finalizeAst?: FinalizeAstConfigInput;
+  finalizeAst?: FinalizeAstConfig;
   /** FlattenGroups phase switches. */
-  flattenGroups?: FlattenGroupsConfigInput;
+  flattenGroups?: FlattenGroupsConfig;
 }
-
-/**
- * Options accepted by {@link TransformEngine.transform}. An alias of
- * {@link TransformConfigInput} — the same nested per-phase shape, with no parse
- * options.
- */
-export type TransformOptions = TransformConfigInput;
 
 /**
  * Normalization profile passed to {@link TransformEngineOptions}: `"authoring"`,
@@ -1597,6 +1632,8 @@ export interface ParserOptions {
   removeEnvironments?: string[];
   /** Delimiter-control names to drop from the loaded knowledge. */
   removeDelimiterControls?: string[];
+  /** Overlay applied to {@link ParseConfig} `LENIENT` as this parser's default. */
+  defaultParseConfig?: ParseConfig | null;
 }
 
 /**
@@ -1611,35 +1648,20 @@ export interface TransformEngineOptions extends ParserOptions {
 }
 
 /**
- * Per-run options for {@link TransformEngine.normalize}, overriding the
- * profile's defaults.
- *
- * A single flat object (the JavaScript binding has no `TransformConfig` class).
- * It extends {@link ParseConfigInput}, so it also accepts the parser-strictness
- * keys (`rejectUnknown`, `abortOnError`, `maxGroupDepth`), which apply to the
- * parse that precedes normalization.
+ * Per-run overlay for {@link TransformEngine.normalize}: parse keys from
+ * {@link ParseConfig} plus transform keys from {@link TransformConfig},
+ * flattened together. `null` / `undefined` / omitted means not set.
  *
  * @example
  * ```ts
  * const engine = new TransformEngine({ profile: 'corpus' });
  * engine.normalize(String.raw`a \over b`, {
- *   maxIterations: 50,
+ *   rewrite: { maxIterations: 50 },
  *   flattenGroups: { enabled: false },
  * });
  * ```
  */
-export interface NormalizeOptions extends ParseConfigInput {
-  /** FlattenGroups phase switches. */
-  flattenGroups?: FlattenGroupsConfigInput;
-  /** FinalizeAst phase switches. */
-  finalizeAst?: FinalizeAstConfigInput;
-  /** Whether the fixed-point Rewrite phase runs. Default `true`. */
-  rewriteEnabled?: boolean;
-  /** Whether font/style canonicalization runs. Default `true`. */
-  lowerAttributesEnabled?: boolean;
-  /** Cap on Rewrite fixed-point passes. Default `100`. */
-  maxIterations?: number;
-}
+export interface NormalizeConfig extends ParseConfig, TransformConfig {}
 
 /**
  * A knowledge-driven LaTeX parser.
@@ -1758,7 +1780,7 @@ export class Parser {
    * (`''`) yields a clean, complete document, not `null`.
    *
    * @param src - The LaTeX source string.
-   * @param config - A {@link ParseConfigInput} object, or omit/`null` for the
+   * @param config - A {@link ParseConfig} overlay, or omit/`null` for the
    *   defaults.
    * @returns The parse result (`document` and `diagnostics`).
    * @example
@@ -1768,7 +1790,14 @@ export class Parser {
    * const diagnostics = result.diagnostics;
    * ```
    */
-  parse(src: string, config?: ParseConfigInput | null): ParseResult;
+  parse(src: string, config?: ParseConfig | null): ParseResult;
+  /**
+   * Return this parser's complete default {@link ParseConfig}.
+   *
+   * Every field is present (see {@link Complete}). Use it as a starting point
+   * when you want to change one key and pass the rest through.
+   */
+  defaultParseConfig(): Complete<ParseConfig>;
 }
 
 /**
@@ -1812,11 +1841,20 @@ export class TransformEngine {
    * per call.
    *
    * @param src - The LaTeX source string.
-   * @param config - A {@link ParseConfigInput} object, or omit/`null` for the
+   * @param config - A {@link ParseConfig} overlay, or omit/`null` for the
    *   defaults.
    * @returns The parse result (`document` and `diagnostics`).
    */
-  parse(src: string, config?: ParseConfigInput | null): ParseResult;
+  parse(src: string, config?: ParseConfig | null): ParseResult;
+  /**
+   * Return this engine's complete default {@link ParseConfig}.
+   */
+  defaultParseConfig(): Complete<ParseConfig>;
+  /**
+   * Return this engine's complete default {@link TransformConfig} for its
+   * profile.
+   */
+  defaultTransformConfig(): Complete<TransformConfig>;
   /**
    * Parse, normalize, and serialize a formula in one call.
    *
@@ -1825,8 +1863,9 @@ export class TransformEngine {
    * partial `document`. Empty input is complete and normalizes normally.
    *
    * @param src - The LaTeX source string.
-   * @param options - A {@link NormalizeOptions} object overriding the profile's
-   *   defaults, or omit/`null` to use them.
+   * @param config - A {@link NormalizeConfig} overlay, or omit/`null` to use
+   *   the engine defaults. The same `{ rewrite: { enabled: false } }` shape is
+   *   accepted by {@link TransformEngine.transform}.
    * @returns The normalized string and its {@link TransformReport}.
    * @example
    * ```ts
@@ -1835,7 +1874,7 @@ export class TransformEngine {
    * // '\\frac { \\mathrm { d } f } { \\mathrm { d } x }'
    * ```
    */
-  normalize(src: string, options?: NormalizeOptions | null): TransformResult;
+  normalize(src: string, config?: NormalizeConfig | null): TransformResult;
   /**
    * Transform a live {@link Document} in place and return the report.
    *
@@ -1847,9 +1886,9 @@ export class TransformEngine {
    * transformed; this precondition error is surfaced as {@link TexformError}.
    *
    * @param document - The live document to update in place.
-   * @param options - A {@link TransformOptions} object overriding the profile's
-   *   transform defaults, or omit/`null` to use them. It uses the nested
-   *   per-phase shape and does not accept parse options.
+   * @param config - A {@link TransformConfig} overlay, or omit/`null` to use
+   *   the profile defaults. Nested per-phase shape; does not accept parse
+   *   options.
    * @returns The phase-oriented transform report.
    * @example
    * ```ts
@@ -1862,7 +1901,7 @@ export class TransformEngine {
    * }
    * ```
    */
-  transform(document: Document, options?: TransformOptions | null): TransformReport;
+  transform(document: Document, config?: TransformConfig | null): TransformReport;
   /**
    * Whether `name` is a delimiter-control command. See
    * {@link Parser.isDelimiterControl}.

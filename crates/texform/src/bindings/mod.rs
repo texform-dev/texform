@@ -2,8 +2,11 @@ mod input;
 mod read;
 
 pub use input::{
-    FinalizeAstConfigInput, FlattenGroupsConfigInput, LowerAttributesConfigInput,
-    NormalizeConfigInput, ParseConfigInput, RewriteConfigInput, TransformConfigInput,
+    ContextItemInput, ContextTarget, EnvironmentSerializeOptionsInput, FinalizeAstConfigInput,
+    FlattenGroupsConfigInput, LowerAttributesConfigInput, MathInfixOptionsInput,
+    MathScriptOptionsInput, MathSerializeOptionsInput, MathSpacingOptionsInput,
+    NormalizeConfigInput, ParseConfigInput, RewriteConfigInput, SerializeOptionsInput,
+    SyntaxSerializeOptionsInput, TransformConfigInput,
 };
 pub use read::{ReadError, format_read_error, read, snake_to_camel};
 

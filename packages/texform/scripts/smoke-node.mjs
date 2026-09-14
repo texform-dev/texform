@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import {
   Document,
   Node,
@@ -253,3 +254,164 @@ const basePackage = packages.find((info) => info.name === "base");
 if (!basePackage || basePackage.commands <= 0 || basePackage.environments <= 0) {
   throw new Error("listPackages should report base with record counts");
 }
+
+const flattenStrict = {
+  enabled: true,
+  preserveGroupContainingDeclarativeCommand: true,
+  preserveGroupInScriptBaseSlot: true,
+  preserveGroupInsideEnvBody: true,
+  preserveGroupContainingInfix: true,
+  preserveGroupAdjacentToCommandLike: true,
+  preserveGroupAsArgumentOfCommand: true,
+  preserveGroupAfterScriptedCommandLike: true,
+  preserveEmptyGroup: true,
+  preserveGroupWithLoneAtomSpacingChar: true,
+  preserveGroupStartingWithAtomSpacingChar: true,
+  preserveGroupContainingDelimitedPair: true,
+};
+const flattenStructuralOnly = {
+  enabled: true,
+  preserveGroupContainingDeclarativeCommand: true,
+  preserveGroupInScriptBaseSlot: true,
+  preserveGroupInsideEnvBody: true,
+  preserveGroupContainingInfix: true,
+  preserveGroupAdjacentToCommandLike: false,
+  preserveGroupAsArgumentOfCommand: false,
+  preserveGroupAfterScriptedCommandLike: false,
+  preserveEmptyGroup: false,
+  preserveGroupWithLoneAtomSpacingChar: false,
+  preserveGroupStartingWithAtomSpacingChar: false,
+  preserveGroupContainingDelimitedPair: false,
+};
+const expectedTransformDefaults = {
+  authoring: {
+    lowerAttributes: { enabled: true },
+    rewrite: { enabled: true, maxIterations: 100 },
+    finalizeAst: { enabled: true },
+    flattenGroups: flattenStrict,
+  },
+  faithful: {
+    lowerAttributes: { enabled: true },
+    rewrite: { enabled: true, maxIterations: 100 },
+    finalizeAst: { enabled: true },
+    flattenGroups: flattenStrict,
+  },
+  corpus: {
+    lowerAttributes: { enabled: true },
+    rewrite: { enabled: true, maxIterations: 100 },
+    finalizeAst: { enabled: true },
+    flattenGroups: flattenStructuralOnly,
+  },
+  equiv: {
+    lowerAttributes: { enabled: true },
+    rewrite: { enabled: true, maxIterations: 100 },
+    finalizeAst: { enabled: true },
+    flattenGroups: flattenStructuralOnly,
+  },
+};
+
+const expectedParseDefaults = {
+  rejectUnknown: false,
+  abortOnError: false,
+  maxGroupDepth: 128,
+};
+
+assert.deepEqual(parser.defaultParseConfig(), expectedParseDefaults);
+assert.deepEqual(engine.defaultParseConfig(), expectedParseDefaults);
+
+for (const profile of Object.keys(expectedTransformDefaults)) {
+  const profiled = new TransformEngine({ profile });
+  assert.deepEqual(
+    profiled.defaultTransformConfig(),
+    expectedTransformDefaults[profile],
+    `defaultTransformConfig() for ${profile}`,
+  );
+}
+
+function expectError(fn, ctor) {
+  try {
+    fn();
+  } catch (error) {
+    assert.ok(error instanceof ctor, error);
+    return error;
+  }
+  assert.fail(`expected ${ctor.name}`);
+}
+
+const rewriteOff = { rewrite: { enabled: false } };
+const overSrc = String.raw`a \over b`;
+const normalizedWithRewriteOff = engine.normalize(overSrc, rewriteOff).normalized;
+const parsedOver = engine.parse(overSrc).document;
+engine.transform(parsedOver, rewriteOff);
+assert.equal(normalizedWithRewriteOff, parsedOver.toLatex());
+
+const rewriteEnabledError = expectError(
+  () => engine.normalize(overSrc, { rewriteEnabled: false }),
+  TexformConfigError,
+);
+assert.match(rewriteEnabledError.message, /rewriteEnabled/);
+
+const snakeKeyError = expectError(
+  () => engine.normalize(overSrc, { flatten_groups: { enabled: false } }),
+  TexformConfigError,
+);
+assert.match(snakeKeyError.message, /flatten_groups/);
+assert.match(snakeKeyError.message, /camelCase/);
+
+const typoError = expectError(
+  () => engine.normalize(overSrc, { flattenGroups: { preserveEmptyGruop: true } }),
+  TexformConfigError,
+);
+assert.match(typoError.message, /flattenGroups\.preserveEmptyGruop/);
+assert.match(typoError.message, /preserveGroupContainingDeclarativeCommand/);
+
+const rewriteArrayError = expectError(
+  () => engine.normalize(overSrc, { rewrite: [] }),
+  TexformConfigError,
+);
+assert.match(rewriteArrayError.message, /expected an object/);
+
+const topArrayError = expectError(() => engine.normalize(overSrc, []), TexformConfigError);
+assert.match(topArrayError.message, /expected an object/);
+
+expectError(
+  () => engine.normalize(overSrc, { rewrite: { enabled: "yes" } }),
+  TexformConfigError,
+);
+
+const omittedNormalize = engine.normalize(overSrc).normalized;
+assert.equal(engine.normalize(overSrc, { rewrite: undefined }).normalized, omittedNormalize);
+assert.equal(engine.normalize(overSrc, { rewrite: null }).normalized, omittedNormalize);
+
+const defaultLatexAgain = doc.toLatex();
+assert.equal(doc.toLatex({ math: undefined }), defaultLatexAgain);
+assert.equal(doc.toLatex({ math: null }), defaultLatexAgain);
+
+const supFirstError = expectError(
+  () => doc.toLatex({ math: { scripts: { order: "supFirst" } } }),
+  TexformConfigError,
+);
+assert.match(supFirstError.message, /sub_first/);
+assert.match(supFirstError.message, /sup_first/);
+
+expectError(
+  () => doc.toLatex({ math: { scripts: { ordre: "sup_first" } } }),
+  TexformConfigError,
+);
+
+expectError(
+  () =>
+    new TransformEngine({
+      profile: "corpus",
+      defaultParseConfig: { rejectUnknown: true },
+    }).normalize(String.raw`\notknown`),
+  TexformParseError,
+);
+
+expectError(() => new Parser({ items: [["command", "foo"]] }), TexformConfigError);
+
+const missingArgspec = expectError(
+  () => new Parser({ items: [{ target: "command", name: "foo" }] }),
+  TexformConfigError,
+);
+assert.match(missingArgspec.message, /argspec/);
