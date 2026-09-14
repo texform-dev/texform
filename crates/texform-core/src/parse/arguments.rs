@@ -11,7 +11,7 @@
 //! avoids exposing delimiter nesting to the main combinator graph.
 
 use crate::parse::error::ParseFailure;
-use chumsky::{label::LabelError, prelude::*};
+use chumsky::prelude::*;
 
 use crate::column_parser::parse_column_template;
 use crate::dimension::is_valid_dimension_unit;
@@ -271,11 +271,6 @@ fn normalized_inner_generic_message(err: &ParseFailure<'static>) -> String {
     }
 }
 
-// Owned tokens can be reused in the enclosing parser lifetime.
-fn rebuild_owned_rich<'src>(err: &ParseFailure<'static>) -> ParseFailure<'src> {
-    err.clone().into_owned()
-}
-
 /// Keep this predicate intentionally narrow so we do not swallow generic parse
 /// errors that still carry useful information away from the subparse tail.
 fn is_trailing_outer_error(
@@ -386,7 +381,7 @@ fn parse_tokens_as_content<'src, 'parse>(
         });
 
     if let Some(inner_error) = propagated_error {
-        return Err(rebuild_owned_rich(inner_error));
+        return Err(inner_error.clone().into_owned());
     }
 
     let generic_error = diagnostics
@@ -404,7 +399,7 @@ fn parse_tokens_as_content<'src, 'parse>(
 
     if let Some(generic_error) = generic_error {
         if state.config.reject_unknown {
-            return Err(rebuild_owned_rich(generic_error));
+            return Err(generic_error.clone().into_owned());
         }
 
         let snippet = tokens_to_string(tokens.as_slice());
@@ -1362,13 +1357,7 @@ fn keyval_value<'a>(
 
         validate_keyval(&raw).map_err(|msg| {
             let span = input.span_from_cursor(&start);
-            let mut err = ParseFailure::custom(span, msg);
-            <ParseFailure<'a> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
-                &mut err,
-                "argument value",
-                span,
-            );
-            err
+            ParseFailure::custom(span, msg).with_context("argument value", span)
         })?;
 
         Ok(normalize_keyval_string(&raw))
@@ -1435,6 +1424,7 @@ pub(crate) fn fold_items(mode: ContentMode, items: Vec<SyntaxNode>) -> SyntaxNod
 #[cfg(test)]
 mod diagnostic_tests {
     use super::*;
+    use chumsky::label::LabelError;
     #[test]
     fn trailing_error_filter_uses_control_marker_instead_of_message() {
         let trailing = <ParseFailure<'static> as LabelError<'static, TokenStream<'static>, &str>>::expected_found(["end"], None, (5..6).into());

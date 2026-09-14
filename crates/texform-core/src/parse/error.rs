@@ -65,6 +65,56 @@ impl<'a> ParseFailure<'a> {
         self.is_control = true;
         self
     }
+    pub(crate) fn with_context(mut self, label: &'static str, span: SimpleSpan) -> Self {
+        <Self as LabelError<'a, TokenStream<'a>, &str>>::in_context(&mut self, label, span);
+        self
+    }
+
+    /// Tree aggregation distinguishes custom reasons from expected/found errors.
+    pub(crate) fn matches_tree_diagnostic(&self, other: &Self) -> bool {
+        self.same_source(other)
+            && match (self.reason(), other.reason()) {
+                (RichReason::Custom(left), RichReason::Custom(right)) => left == right,
+                (
+                    RichReason::ExpectedFound {
+                        expected: left,
+                        found: left_found,
+                    },
+                    RichReason::ExpectedFound {
+                        expected: right,
+                        found: right_found,
+                    },
+                ) => {
+                    left.iter()
+                        .map(ToString::to_string)
+                        .eq(right.iter().map(ToString::to_string))
+                        && left_found.as_deref().map(ToString::to_string)
+                            == right_found.as_deref().map(ToString::to_string)
+                }
+                _ => false,
+            }
+            && self.same_contexts(other)
+    }
+
+    /// Recovery keeps its existing rendered-reason comparison, even across reason variants.
+    pub(crate) fn matches_recovery_diagnostic(&self, other: &Self) -> bool {
+        self.same_source(other)
+            && self.reason().to_string() == other.reason().to_string()
+            && self.same_contexts(other)
+    }
+
+    fn same_source(&self, other: &Self) -> bool {
+        self.kind == other.kind && self.direct == other.direct && self.span() == other.span()
+    }
+
+    fn same_contexts(&self, other: &Self) -> bool {
+        self.contexts()
+            .map(|(label, span)| (label.to_string(), *span))
+            .eq(other
+                .contexts()
+                .map(|(label, span)| (label.to_string(), *span)))
+    }
+
     pub(crate) fn into_rich(self) -> Rich<'a, Token> {
         self.rich
     }
@@ -228,6 +278,41 @@ mod tests {
             message,
             ParseDiagnosticKind::CommandModeError,
         )
+    }
+    #[test]
+    fn diagnostic_matching_preserves_tree_and_recovery_reason_rules() {
+        let expected = generic("item");
+        let custom = ParseFailure::custom(*expected.span(), expected.reason().to_string());
+        assert!(!expected.matches_tree_diagnostic(&custom));
+        assert!(expected.matches_recovery_diagnostic(&custom));
+
+        // Existing tree matching compares rendered patterns, not RichPattern variants.
+        let token = <Failure as LabelError<
+            'static,
+            TokenStream<'static>,
+            RichPattern<'static, Token>,
+        >>::expected_found(
+            [RichPattern::Token(Token::Char('x').into())],
+            None,
+            (2..3).into(),
+        );
+        let label = generic("'x'");
+        assert!(token.matches_tree_diagnostic(&label));
+        assert!(token.matches_recovery_diagnostic(&label));
+    }
+
+    #[test]
+    fn context_attachment_preserves_origin_and_distinguishes_diagnostics() {
+        let original = direct("inner error").at_source((7..9).into());
+        let contextual = original.clone().with_context("argument", (5..10).into());
+        assert_eq!(contextual.span(), original.span());
+        assert_eq!(contextual.direct, original.direct);
+        assert_eq!(contextual.kind, original.kind);
+        assert!(!contextual.matches_tree_diagnostic(&original));
+        assert!(!contextual.matches_recovery_diagnostic(&original));
+        let repeated = contextual.clone().with_context("argument", (5..10).into());
+        assert!(contextual.matches_tree_diagnostic(&repeated));
+        assert!(contextual.matches_recovery_diagnostic(&repeated));
     }
     #[test]
     fn metadata_follows_selected_reason_in_both_merge_directions() {

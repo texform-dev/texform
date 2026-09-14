@@ -34,7 +34,6 @@ use crate::parse::error::{
 };
 use chumsky::{
     input::{Cursor, InputRef, Stream},
-    label::LabelError,
     prelude::*,
 };
 use logos::Logos;
@@ -272,50 +271,12 @@ fn extend_unique_diagnostics(
     for candidate in incoming {
         if diagnostics
             .iter()
-            .any(|existing| rich_diagnostics_match(existing, &candidate))
+            .any(|existing| existing.matches_tree_diagnostic(&candidate))
         {
             continue;
         }
         diagnostics.push(candidate);
     }
-}
-
-fn rich_diagnostics_match(left: &ParseFailure<'static>, right: &ParseFailure<'static>) -> bool {
-    left.kind == right.kind
-        && left.direct == right.direct
-        && left.span() == right.span()
-        && rich_reason_key(left) == rich_reason_key(right)
-        && rich_contexts_key(left) == rich_contexts_key(right)
-}
-
-fn rich_reason_key(err: &ParseFailure<'static>) -> (Option<String>, Vec<String>, Option<String>) {
-    match err.reason() {
-        chumsky::error::RichReason::Custom(message) => {
-            (Some(message.to_string()), Vec::new(), None)
-        }
-        chumsky::error::RichReason::ExpectedFound { expected, found } => (
-            None,
-            expected.iter().map(|pattern| pattern.to_string()).collect(),
-            found.as_ref().map(|token| token.to_string()),
-        ),
-    }
-}
-
-fn rich_contexts_key(err: &ParseFailure<'static>) -> Vec<(String, SimpleSpan)> {
-    err.contexts()
-        .map(|(label, span)| (label.to_string(), *span))
-        .collect()
-}
-
-// Keep the original error location while attaching the outer argument wrapper as context.
-fn with_argument_context<'a>(
-    err: ParseFailure<'a>,
-    label: &'static str,
-    span: SimpleSpan,
-) -> ParseFailure<'a> {
-    let mut err = err.clone();
-    <ParseFailure<'a> as LabelError<'a, TokenStream<'a>, &str>>::in_context(&mut err, label, span);
-    err
 }
 
 fn parse_argument_slots<'src, 'parse>(
@@ -343,7 +304,7 @@ fn parse_argument_slots<'src, 'parse>(
                 .next()
                 .map(|(_, span)| *span)
                 .unwrap_or_else(|| input.span_from_cursor(&arg_start));
-            let err = with_argument_context(err, context_label, arg_span);
+            let err = err.with_context(context_label, arg_span);
             if let Some(kind) = original_kind {
                 with_diagnostic_kind(err, kind)
             } else {
@@ -799,15 +760,11 @@ where
         let left = match input.parse(delimiter(ctx)) {
             Ok(left) => left,
             Err(_) => {
-                let mut err = ParseFailure::custom(
+                let err = ParseFailure::custom(
                     input.span_from_cursor(&left_start),
                     "invalid \\left delimiter",
-                );
-                <ParseFailure<'a> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
-                    &mut err,
-                    "left-delimited group",
-                    input.span_from_cursor(&group_start),
-                );
+                )
+                .with_context("left-delimited group", input.span_from_cursor(&group_start));
                 return Err(with_diagnostic_kind(
                     err,
                     ParseDiagnosticKind::LeftRightDelimiter,
@@ -818,15 +775,11 @@ where
         let children = input.parse(math_content.clone())?;
 
         if input.parse(control_seq("right")).is_err() {
-            let mut err = ParseFailure::custom(
+            let err = ParseFailure::custom(
                 input.span_from_cursor(&group_start),
                 "missing \\right for \\left-delimited group",
-            );
-            <ParseFailure<'a> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
-                &mut err,
-                "left-delimited group",
-                input.span_from_cursor(&group_start),
-            );
+            )
+            .with_context("left-delimited group", input.span_from_cursor(&group_start));
             return Err(with_diagnostic_kind(
                 err,
                 ParseDiagnosticKind::LeftRightDelimiter,
@@ -838,15 +791,11 @@ where
         let right = match input.parse(delimiter(ctx)) {
             Ok(right) => right,
             Err(_) => {
-                let mut err = ParseFailure::custom(
+                let err = ParseFailure::custom(
                     input.span_from_cursor(&delimiter_start),
                     "invalid \\right delimiter",
-                );
-                <ParseFailure<'a> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
-                    &mut err,
-                    "left-delimited group",
-                    input.span_from_cursor(&group_start),
-                );
+                )
+                .with_context("left-delimited group", input.span_from_cursor(&group_start));
                 return Err(with_diagnostic_kind(
                     err,
                     ParseDiagnosticKind::LeftRightDelimiter,
@@ -1172,13 +1121,8 @@ fn env_body_parser<'a>(
         let body_start = input.cursor();
         match input.parse(body.clone()) {
             Ok(tracked) => Ok(tracked),
-            Err(mut err) => {
-                <ParseFailure<'a> as LabelError<'a, TokenStream<'a>, &str>>::in_context(
-                    &mut err,
-                    "environment body",
-                    input.span_from_cursor(&body_start),
-                );
-                Err(err)
+            Err(err) => {
+                Err(err.with_context("environment body", input.span_from_cursor(&body_start)))
             }
         }
     })

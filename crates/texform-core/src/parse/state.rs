@@ -56,7 +56,7 @@ impl<'a> ParserState<'a> {
         let mut diagnostics = self.recovery_diagnostics.borrow_mut();
         if diagnostics
             .iter()
-            .any(|existing| recovery_diagnostics_match(existing, &diagnostic))
+            .any(|existing| existing.matches_recovery_diagnostic(&diagnostic))
         {
             return;
         }
@@ -66,19 +66,6 @@ impl<'a> ParserState<'a> {
     pub(crate) fn take_recovery_diagnostics(&self) -> Vec<ParseFailure<'static>> {
         std::mem::take(&mut *self.recovery_diagnostics.borrow_mut())
     }
-}
-
-fn recovery_diagnostics_match(left: &ParseFailure<'static>, right: &ParseFailure<'static>) -> bool {
-    left.kind == right.kind
-        && left.direct == right.direct
-        && left.span() == right.span()
-        && left.reason().to_string() == right.reason().to_string()
-        && left
-            .contexts()
-            .map(|(label, span)| (label.to_string(), *span))
-            .eq(right
-                .contexts()
-                .map(|(label, span)| (label.to_string(), *span)))
 }
 
 /// RAII handle returned by [`ParserState::enter_group`]. Restores the
