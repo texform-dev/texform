@@ -2,7 +2,7 @@
 
 Internal implementation crate for [texform](https://crates.io/crates/texform). Do not depend on this crate directly — its API has no stability guarantees and may change in any release. Use the `texform` facade crate instead.
 
-A phase-oriented AST rewrite pipeline for TeXForm. It normalizes a parsed `Ast` into a canonical form so downstream consumers — formula equivalence comparison, MER tokenization, LLM pretraining corpora, polished authoring output — can work against a stable shape without re-implementing LaTeX semantics per use case. This README is the in-depth reference for the transform subsystem: rule authors and contributors should start here.
+A phase-oriented AST rewrite pipeline. This guide owns phase behavior, profile selection, and fidelity definitions. For rule metadata and authoring, use the [rule guide](src/rewrite/rules/README.md).
 
 The crate runs four phase implementations in a fixed order, with LowerAttributes and FinalizeAst each invoked twice in the default pipeline. Callers choose a build-time `Profile` / `BuildConfig` to compile a rewrite plan, then use per-run `TransformConfig` values to gate phases and set runtime limits.
 
@@ -40,21 +40,9 @@ println!(
 );
 ```
 
-For repeated transforms with the same configuration, build a context once and reuse it:
+Build a context once and reuse it for repeated transforms with the same profile and knowledge base.
 
-```rust
-use texform_transform::{BuildConfig, Profile, TransformContext};
-
-let context = TransformContext::from_build_config(
-    BuildConfig::profile(Profile::Faithful),
-    &parse_ctx,
-)?;
-for mut ast in batch {
-    let _report = context.run(&mut ast, &parse_ctx)?;
-}
-```
-
-## Public API
+## Internal API
 
 The crate's public surface is intentionally small:
 
@@ -68,7 +56,7 @@ The crate's public surface is intentionally small:
 | `TransformReport` | Per-phase reports aggregated across the run. |
 | `TransformError` / `TransformBuildError` | Build-time and run-time error types. |
 
-The rewrite phase additionally re-exports `RewriteRule`, `RuleLevel`, `RuleLevelSet`, `RuleKey`, `RuleMeta`, `RuleFidelity`, `RuleTarget`, `RuleTargetKey`, `RuleTargetKind`, `Plan as RewritePlan` and related items for callers that need to introspect rules.
+See [crate exports](src/lib.rs) for the internal Rust surface.
 
 ## Pipeline
 
@@ -87,19 +75,7 @@ Phase order is fixed; only the per-phase flags are configurable. When `flatten_g
 
 ### `TransformConfig`
 
-```rust
-pub struct TransformConfig {
-    pub lower_attributes: LowerAttributesConfig,
-    pub rewrite: RewriteConfig,
-    pub finalize_ast: FinalizeAstConfig,
-    pub flatten_groups: FlattenGroupsConfig,
-}
-
-pub struct RewriteConfig {
-    pub enabled: bool,
-    pub max_iterations: usize,
-}
-```
+Per-run configuration nests `lower_attributes`, `rewrite`, `finalize_ast`, and `flatten_groups`. Each phase has an enable flag; Rewrite also carries `max_iterations`. Start from the selected profile's defaults when changing individual options. Rust callers pass a complete `TransformConfig`. Bindings merge partial overrides onto a base config. See [config.rs](src/config.rs) for fields and constructors.
 
 ### Profiles
 
@@ -111,8 +87,6 @@ Each profile selects cumulative build-time rule levels and supplies a default ru
 | `Faithful` | `Authoring` + `Faithful` | `STRICT` | Render-faithful universal forms. |
 | `Corpus` | `Authoring` + `Faithful` + `Corpus` | `STRUCTURAL_ONLY` | Complete canonical forms that remain suitable labels for the original formulas. |
 | `Equiv` | `Authoring` + `Faithful` + `Corpus` + `Equiv` | `STRUCTURAL_ONLY` | Aggressive intermediates for equivalence comparison, including projections that discard visually salient choices. |
-
-The builtin registry includes `Equiv`-level rules. For example, `ams/cfrac-to-frac` rewrites `\cfrac{a}{b}` and `\cfrac[]{a}{b}` to `\frac{a}{b}`, while retaining explicitly aligned forms such as `\cfrac[l]{a}{b}` and `\cfrac[r]{a}{b}`. `Corpus` does not select this rule, so it retains continued-fraction styling.
 
 #### `RuleLevel`
 
@@ -174,7 +148,7 @@ These actions are the default behavior. Eleven configuration flags (ten independ
 |---|----------------------------------------------------|----------|----------------------|-------------------------------------------------------------------------------------------------------|
 | 1 | `preserve_group_containing_declarative_command`    | Semantic | `{\bf x} y`          | Groups whose subtree contains a declarative command (e.g. `\cal`, `\bf`), to avoid leaking declarative scope into following siblings. |
 | 2 | `preserve_group_in_script_base_slot`               | Semantic | `{ab}^2`             | Groups occupying a `ScriptBase` slot, to avoid changing which atom subscripts or superscripts attach to. |
-| 3 | `preserve_group_inside_env_body`                   | Semantic | `\begin{matrix} {a} & b \end{matrix}` | All groups inside an environment body, to preserve cell boundaries and intra-cell spacing.  |
+| 3 | `preserve_group_inside_env_body` | Semantic | `\begin{matrix} {a} & b \end{matrix}` | Groups inside an environment body, except a lone `Prime` in a superscript slot, to preserve cell boundaries and intra-cell spacing. |
 | 4 | `preserve_group_containing_infix`                  | Semantic | `{a \over b}`        | `GroupChild`s whose subtree contains an `\over`-style infix, to preserve the infix scope.            |
 | 5 | `preserve_group_adjacent_to_command_like`          | Spacing  | `\cos{A}`, `{\int}`  | `GroupChild`s whose preceding sibling or first child is command-like.                                |
 | 6 | `preserve_group_as_argument_of_command`               | Spacing  | `\overline{{\sum}}`  | Risky singleton groups directly used as arguments of commands, preserving one spacing boundary while still flattening redundant nesting. |
@@ -195,74 +169,13 @@ This sub-flag does not gate any group on its own; it only refines the classifica
 
 #### Preset values
 
-The preserve guards are wired to presets via two named constants:
-
-- `FlattenGroupsConfig::STRICT` — all guards on. Used by `AUTHORING` and `FAITHFUL`.
-- `FlattenGroupsConfig::STRUCTURAL_ONLY` — only semantic guards on; all spacing guards off. Used by `CORPUS` and `EQUIV`.
-
-| Field                                              | Category | `AUTHORING` / `FAITHFUL` (STRICT) | `CORPUS` / `EQUIV` (STRUCTURAL_ONLY) |
-|----------------------------------------------------|----------|:-------------------------------:|:------------------------------------------:|
-| `enabled`                                          | –        | ✓                               | ✓                                          |
-| `preserve_group_containing_declarative_command`    | Semantic | ✓                               | ✓                                          |
-| `preserve_group_in_script_base_slot`               | Semantic | ✓                               | ✓                                          |
-| `preserve_group_inside_env_body`                   | Semantic | ✓                               | ✓                                          |
-| `preserve_group_containing_infix`                  | Semantic | ✓                               | ✓                                          |
-| `preserve_group_adjacent_to_command_like`          | Spacing  | ✓                               | –                                          |
-| `preserve_group_as_argument_of_command`               | Spacing  | ✓                               | –                                          |
-| `preserve_group_after_scripted_command_like`       | Spacing  | ✓                               | –                                          |
-| `preserve_empty_group`                             | Spacing  | ✓                               | –                                          |
-| `preserve_group_with_lone_atom_spacing_char`       | Spacing  | ✓                               | –                                          |
-| `preserve_group_starting_with_atom_spacing_char`   | Spacing  | ✓                               | –                                          |
-| `preserve_group_containing_delimited_pair`         | Spacing  | ✓                               | –                                          |
-
-Additional constants: `ENABLED` (alias for `STRICT`), `DISABLED` (no flattening at all), `DEFAULTS` (= `STRICT`).
+`STRICT` enables all preserve guards; `STRUCTURAL_ONLY` keeps semantic guards and disables spacing guards. Profiles select them as shown above. `ENABLED` and `DEFAULTS` alias `STRICT`; `DISABLED` skips FlattenGroups. See [FlattenGroups configuration](src/flatten_groups/mod.rs) for exact fields and presets.
 
 ## Reports
 
-`TransformReport` aggregates per-phase reports for observability and diagnostics:
+[TransformReport](src/report.rs) contains one report per phase. LowerAttributes and FinalizeAst accumulate their multiple invocations in the same report; already-canonical nodes are not recounted by FinalizeAst. Rewrite records iterations and per-rule outcomes. FlattenGroups counts the first matching preserve guard for a group; when command adjacency is established through a scripted base, both `preserve_group_adjacent_to_command_like` and its `preserve_group_after_scripted_command_like` sub-flag are incremented.
 
-```rust
-pub struct TransformReport {
-    pub lower_attributes: LowerAttributesReport,
-    pub rewrite: RewriteReport,
-    pub finalize_ast: FinalizeAstReport,
-    pub flatten_groups: FlattenGroupsReport,
-}
-```
-
-- `LowerAttributesReport` — `attributes` (`HashMap<AttributeSet, AttributeStat>`) plus `eliminated_empty_segments`; each attribute stat has `consumed`, `redundant`, and `emitted` counts split into `declaratives` and `prefixes`. The report aggregates all LowerAttributes invocations in one transform run, so the default pipeline combines pre-Rewrite and post-Rewrite counts.
-- `RewriteReport` — `iterations` (fixed-point iteration count) and `rules` (`Vec<RewriteRuleStat>` with `key`, `applied_count`, `skipped_count` per rule that was attempted at least once).
-- `FinalizeAstReport` — `steps` with one `applied_count` counter per cleanup step (`merge_adjacent_primes`, `normalize_text_sequences`). Counters accumulate both FinalizeAst invocations in one transform run without recounting already-canonical nodes.
-- `FlattenGroupsReport` — `actions` for the four action counters and `guards` for one hit counter per preserve guard. Hit counters are short-circuit: when several guards would apply to the same group, only the first one that matches in the internal evaluation order is incremented.
-
-The stable facade DTO used by the Python and WebAssembly bindings flattens the same information into a transport-safe shape. The following uses Python's snake_case field names; the JavaScript API uses camelCase, including `appliedCount`, `finalizeAst`, `flattenGroups`, and `lowerAttributes`:
-
-```text
-{
-  iterations,
-  rules: [{ key, applied_count, skipped_count }],
-  finalize_ast: {
-    steps: {
-      merge_adjacent_primes: { applied_count },
-      normalize_text_sequences: { applied_count }
-    }
-  },
-  flatten_groups: {
-    actions: { removed_empty, replaced_single_child, inlined_multi_child, unwrapped_slot },
-    guards: { preserve_group_* }
-  },
-  lower_attributes: {
-    attributes: [{
-      attr,
-      value,
-      consumed: { declaratives, prefixes },
-      redundant: { declaratives, prefixes },
-      emitted: { declaratives, prefixes }
-    }],
-    eliminated_empty_segments
-  }
-}
-```
+Bindings use a transport DTO rather than the Rust report layout. Keep changes synchronized with [shared binding DTOs](../texform/src/bindings/mod.rs), [Python stubs](../../python/texform/__init__.pyi), and [TypeScript declarations](../../packages/texform/types/index.d.ts).
 
 ## Phase internals
 
@@ -299,47 +212,11 @@ The `slot_can_unwrap` helper restricts redirect-style unwrapping to single-child
 
 ## Errors
 
-```rust
-pub enum TransformError {
-    Build(TransformBuildError),
-    Rewrite(RewriteError),
-}
-
-pub enum TransformBuildError {
-    Rewrite(PlanBuildError),
-}
-
-pub enum RewriteError {
-    Rule { rule: RuleKey, kind: RuleError },
-    ContractViolation { target: RuleTargetKey, node_name: Option<String> },
-    MaxIterationsExceeded { max_iterations: usize },
-}
-
-pub enum RuleError {
-    InvalidNodeShape { message: String },
-    MissingMetadata { name: String },
-}
-```
-
-`TransformBuildError` is raised by `TransformContext::from_build_config` when the rewrite plan cannot be assembled, for example when a required package is missing. All other errors surface during execution.
+Build errors reject invalid rewrite plans; run errors report rule failures, exhausted iteration limits, or residual eliminated forms. See [engine errors](src/error.rs) and [rewrite errors](src/rewrite/mod.rs) for variants. Errors must propagate through the facade and bindings rather than becoming successful reports.
 
 ## Tests
 
-Integration tests cover the phases and their interactions:
-
-- `tests/flatten_groups.rs` — preserve-guard toggles, `STRICT` vs `STRUCTURAL_ONLY`, action and per-guard counters.
-- `tests/lower_attributes.rs` — declarative consumption, prefix wrapping, inherited-state absorption.
-- `tests/finalize_ast.rs` — adjacent-`Prime` merging and the phase gate.
-- `tests/rewrite_rule.rs` — single-rule execution and metadata contracts.
-- `tests/rewrite_context.rs` — the `RuleContext` AST view exposed to rules.
-- `tests/transform_contract.rs` — eliminated-form contract checking across the pipeline.
-- `tests/config_model.rs` — profile and config invariants.
-
-Run with:
-
-```sh
-cargo test -p texform-transform
-```
+Keep individual rule cases inline and phase/interaction tests under `tests/`. Run `cargo test -p texform-transform` for the subsystem. Follow [TESTING.md](../../TESTING.md) for facade coverage and the required full corpus contract check.
 
 ## See also
 

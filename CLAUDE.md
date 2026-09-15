@@ -1,1 +1,1 @@
-See @README.md and @AGENTS.md for the main project documentation and guidance.
+See @AGENTS.md for project guidance and task-specific documentation links.

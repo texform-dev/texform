@@ -19,6 +19,12 @@ merge the release PR
 
 ## Cut a release
 
+### Changelog policy
+
+`release-plz` generates `CHANGELOG.md` in the release PR. During normal development, do not edit it or add an `Unreleased` section. Conventional Commit types control inclusion: `feat` becomes Added, `fix` becomes Fixed, and `perf` becomes Changed; supporting types are omitted. The `!` marker identifies breaking changes. Polish generated entries and add missing binding changes during release review.
+
+### Review and publish
+
 `release-plz` keeps a release PR open and up to date on every push to `main`. Merging it is what publishes: the `release` job runs when a pull request whose head branch starts with `release-plz-` is merged into `main`, reading the merged-PR event directly. To ship, review and merge it.
 
 1. **Review the version bump.** It should move together across `Cargo.toml`, `CHANGELOG.md`, and `packages/texform/package.json` (the npm version is applied by a workflow step).

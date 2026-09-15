@@ -1,90 +1,60 @@
 # Testing
 
-This document defines how TeXForm is tested: what each layer of tests is for, where tests live, how to write them, and where our confidence actually comes from. It complements the short "Testing and Validation" note in [`AGENTS.md`](AGENTS.md).
+Choose checks by the behavior affected. This guide owns test placement and validation requirements; [regression/README.md](regression/README.md) owns corpus commands and result handling. Run commands from the repository root.
 
-The guiding idea: **only the `texform` facade is a public, stability-guaranteed surface** (see `AGENTS.md` → Open-Source API Quality). Everything else is internal. Our test strategy follows directly from that boundary.
+## Test Placement
 
-## Two Layers of Tests
+| Behavior | Location and purpose |
+| --- | --- |
+| Stable Rust API | `crates/texform/tests/`: contract tests through the public facade |
+| Internal implementation | Internal crate `tests/`, or inline tests when private access is needed |
+| Individual rewrite rule | Inline `transform_examples!` golden tests and focused edge cases in the rule file |
+| Phase scheduling, guards, and rule interactions | `crates/texform-transform/tests/` |
+| Python conversion and exception behavior | Embedded Python tests in `crates/texform-python/src/` |
+| JavaScript runtime behavior | `packages/texform/scripts/smoke-node.mjs` against rebuilt WASM |
+| TypeScript declarations | `packages/texform/type-tests/` and the package type check |
 
-We distinguish two kinds of tests by *intent*, not by mechanism.
+Facade contract tests define compatibility promises; changing their expectations requires a deliberate public behavior change. Internal tests verify correctness without freezing internal APIs. Binding tests protect host-language behavior that Rust facade tests cannot exercise.
 
-**Contract tests** live only in the facade crate `texform` (`crates/texform/tests/`). They freeze the externally guaranteed behavior of the public API and are the compatibility promise we keep after open-sourcing. Treat them as load-bearing: a contract test changing its expectations means a public behavior changed, which is a deliberate, reviewable event. Write them by exercising the public API with real inputs and asserting observable results — not by pinning internal details. When the locked behavior is subtle, add a short comment naming the promise being protected.
+Rule golden tests check implementation against the rule definition; they do not independently establish that the definition preserves rendering or meaning. Rule correctness also requires review and corpus validation. Put individual rule regressions in rule or phase tests rather than expanding facade tests with internal cases.
 
-**Implementation tests** live in the internal crates (`texform-core`, `texform-transform`, `texform-knowledge`, ...), either in `tests/` or inline. They verify that internal logic is correct. They carry **no external guarantee** and may be freely added, rewritten, or deleted as the implementation evolves. Do not treat them as a frozen interface.
+## Writing Tests
 
-The practical consequence: interface-freezing assertions belong in the facade. An internal crate should not contain tests whose only purpose is to pin down a detail "so it never changes" — that detail is not a promise we make.
+- Name the behavior, condition, and expected result. Use clear inputs and observable assertions; cover relevant happy paths, boundaries, and regressions.
+- Organize integration tests by behavior or subsystem, not by mirroring source files. Use inline tests for private invariants and shared support modules for repeated setup.
+- Keep each test focused. Avoid constant-value assertions, unrelated formatting checks, and tests that merely reproduce the implementation.
+- Explain subtle contract guarantees briefly. Do not add tests solely to raise coverage or impose a test-first workflow on trivial changes.
 
-## Where Tests Live
+## Required Checks
 
-- **Inline `#[cfg(test)] mod tests`** for unit tests that need access to private items. Keep these close to the code they exercise.
-- **`tests/`** for black-box integration tests that go through a crate's public API.
-- **Prefer not to depend on private methods.** Reach for inline tests only when you genuinely need to lock an internal invariant; otherwise test through the public surface.
-- Organize `tests/` **by behavior or subsystem**, not by mirroring `src/`. One test file may cover several source files, and one subsystem may be split across several test files. We do not maintain a 1:1 `src ↔ tests` mapping.
-- "Which source isn't tested?" is answered by the coverage report (see below), not by a mirrored file layout.
+For Rust changes, run focused crate tests during development. Before handing off changes spanning crates or public behavior, run the workspace suite and the Rust checks used by CI:
 
-## Naming and Authoring
+```bash
+cargo fmt --all --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --workspace
+```
 
-- Name a test for the **behavior, condition, and expectation** it checks, e.g. `parse_unknown_command_preserves_node`.
-- Follow arrange–act–assert. Keep each test focused on a single behavior; don't bundle unrelated assertions.
-- Put shared setup in a `tests/support/` (or `common/`) module so the test body stays focused on input → assertion. `crates/texform-core/tests/support/mod.rs` is the reference example; extend the same pattern to other crates rather than duplicating setup.
-- **Don't assert obvious constant values** (fixed strings, hard-coded identifiers) as if they were guarantees, especially in internal crates. Such tests pin trivia without verifying behavior.
-- Don't over-specify: avoid assertions that lock formatting or structure unrelated to what the test is actually checking.
+Additional checks depend on the change:
 
-## Where Confidence Comes From
+| Change | Required validation |
+| --- | --- |
+| Significant parser behavior | Run corpus regression before and after; compare parser error rates and investigate changes |
+| Transform rules, metadata (`triggers`, `consumes`, `produces`, level or fidelity), profiles/build config, phase or rewrite scheduling, shared helpers, or contract exceptions | Run the full `transform_contract` across configured datasets before merging; a focused probe is sufficient only during development |
+| Python API, conversion, or packaging | Follow [Python development](crates/texform-python/README.md), including embedded tests and extension smoke check |
+| WASM API, shared DTOs, npm wrapper, or TypeScript declarations | Follow [WASM development](crates/texform-wasm/README.md), including rebuild, type check, and Node smoke test |
+| Documentation only | Check local links, command accuracy, and `git diff --check`; executable suites are needed only if behavior is also changed |
 
-All TeXForm in-repo tests belong to the **Regression** role: they can fail a local test run, a hook, or CI because TeXForm itself regressed.
+Corpus failures need investigation before baseline or allow-list changes. A transform execution error or an unlisted eliminated-form violation fails the transform gate. Do not add broad or unexplained exceptions. Ensure the intended datasets actually ran; a successful process exit alone does not establish full corpus coverage. See the [regression guide](regression/README.md) for diagnostic reruns.
 
-| Layer | What It Checks | Failure Meaning | Location |
-|-------|----------------|-----------------|----------|
-| Implementation tests | Internal crate logic | This implementation is wrong. | Internal crate `tests/` and inline tests |
-| Rule inline golden tests | Representative input-to-output examples for one rewrite rule | The implementation drifted from the verified rule definition. | `transform_examples!` in rule files |
-| Phase tests | Phase scheduling, multi-rule interaction, and guards | The phase behavior is wrong. | `tests/<phase>.rs` |
-| Facade contract tests | Public API behavior, wrapper fidelity, and error mapping | The public interface contract changed or broke. | `crates/texform/tests/` |
-| Corpus regression | Parser error-rate regression over real corpora | The parser regressed relative to the tracked baseline. | `crates/texform-regression` |
-| Transform contract regression | Full-pipeline eliminated-form contract over real corpora | A rewrite rule's declared eliminated form remains after normalization. | `crates/texform-regression` |
+## Hooks and CI
 
-Corpus regression is our closest analog to a conformance suite. `parser_regression` compares current parser error rates against tracked summaries; absolute parse failures are expected because real corpora are noisy, while a worse rate relative to baseline is a regression. See [`regression/README.md`](regression/README.md).
+[Pre-commit hooks](.pre-commit-config.yaml) run Rust formatting, clippy, and parser regression refresh for Rust changes. Refresh may update tracked parser summaries; review those changes. Hooks do not run the unit-test suite or `transform_contract`.
 
-`transform_contract` is the corpus gate for transform eliminated-form contracts. It parses and normalizes real formulas, then checks the same eliminated-form collector used by the runtime after the full pipeline has completed. Allow-listed exceptions live in `regression/contract_exceptions.yaml`; new unlisted violations should be triaged from the generated detail files before changing the allow-list.
-
-`transform_contract` is intentionally not in the pre-commit hook. Run it manually for transform rule changes, rule metadata changes, transform profile/build-config changes, rewrite scheduling changes, shared transform helper changes, or edits to `regression/contract_exceptions.yaml`. A focused development probe can use `cargo run --release -p texform-regression --bin transform_contract -- --dataset lf80m-benchmarks --dry-run`; before merging transform-related changes, run the full `cargo run --release -p texform-regression --bin transform_contract -- --dry-run`.
-
-`transform_examples!` golden tests are not an independent oracle. Their expected output comes from verified rule definitions, so they lock implementation-to-definition consistency. They catch "the rule implementation drifted from the verified definition"; they do not prove that the definition itself was correct. Definition correctness is established by review and corpus validation outside this repository.
-
-Facade tests do not carry transform correctness. A facade failure means the public API contract, wrapper behavior, or error mapping broke. A single rewrite rule bug belongs in that rule's inline golden tests or the relevant phase tests.
-
-## Recommended Techniques
-
-These are encouraged where they fit; they are not mandatory across the board.
-
-- **Snapshot testing (`insta`).** Parser ASTs, serializer output, and formatter results are natural fits — snapshots are easier to maintain than long hand-written `assert_eq!` chains. Caveat: snapshot tests may need to be skipped under `miri`; verify this if `miri` is introduced.
-- **Fuzz regression corpus.** When fuzzing surfaces a crash or pathological input in the lexer/parser, check the minimized case into a regression corpus so it stays covered.
-
-## Anti-Patterns
-
-- Asserting obvious constant values instead of behavior.
-- Repeated setup that buries the test in boilerplate instead of using a helper.
-- Depending on private implementation details to make an external guarantee.
-- Interface-freezing assertions inside an internal crate (treating an internal detail as a public promise).
-- One test covering several unrelated concerns.
-- Assertions that lock formatting or structure irrelevant to the behavior under test.
-- Writing tests with no verification value just to raise a coverage number.
-
-## Good Tests
-
-- Focus on one behavior with clear inputs.
-- Reuse helpers so the body is input → assertion.
-- Cover the happy path, important edge cases, and regressions introduced by the change.
-- For contract tests: stable, and commented with the public promise they protect.
+[CI](.github/workflows/ci.yml) runs the Rust checks above, verifies the parser probe dataset against its tracked baseline, builds and imports a Python wheel, and rebuilds WASM for TypeScript and Node checks. The Python wheel smoke check verifies installation and parser construction, not the full Python API. The full transform corpus check remains manual.
 
 ## Coverage
 
-Coverage is a **secondary signal**, used to find untested code — not a gate.
+Use `cargo-llvm-cov` line coverage to locate untested behavior; coverage is not a merge gate and has no percentage target. Region coverage is observational only.
 
-- Use `cargo-llvm-cov` for local inspection. Read it as **line coverage**; treat region coverage as observation only.
-- There is **no CI coverage threshold**. We do not block merges on a percentage, and we do not chase a number.
-- **Never write meaningless tests to raise coverage.** A lower number with honest tests is better than a high number padded with trivia.
-- Exclude code that line coverage cannot meaningfully measure, via `cargo llvm-cov --ignore-filename-regex`:
-  - FFI bindings (`texform-python`, `texform-wasm`) — exclude from core Rust coverage; validate them with binding-level Python/JS integration tests when those are added.
-  - The procedural-macro crate (`texform-knowledge-macros`) and `trybuild` UI tests.
-  - Generated code (`generated.rs`, e.g. `texform-knowledge`'s `builtin/generated.rs`).
+Exclude FFI bindings, procedural macros and `trybuild` tests, and generated code from core Rust coverage using `--ignore-filename-regex`. Validate bindings with their dedicated tests instead. Add meaningful assertions for uncovered behavior, not tests designed only to increase the number.

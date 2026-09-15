@@ -78,6 +78,17 @@ impl std::fmt::Display for SerializeError {
 impl std::error::Error for SerializeError {}
 
 /// Canonical LaTeX and the typed tokens recorded during the same serialization pass.
+///
+/// Token categories and boundaries are part of the stable `texform` facade
+/// contract. Tokens are ordered and non-empty; gaps contain only inserted
+/// separator whitespace, while semantic whitespace remains inside its token.
+///
+/// - Wrapper delimiters are separate tokens from scalar
+///   [`SerializationTokenKind::Raw`] content.
+/// - An escaped character is one [`SerializationTokenKind::Character`] token,
+///   including its escape sequence.
+/// - An empty error snippet emits no token. The document still contains an
+///   error node, so its `has_errors()` remains true.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TokenizedLatex {
     pub latex: String,
@@ -85,6 +96,10 @@ pub struct TokenizedLatex {
 }
 
 /// A non-empty canonical serialization fragment and its UTF-8 byte span.
+///
+/// `span` indexes the returned [`TokenizedLatex::latex`] string and selects
+/// exactly `text`. Spans do not overlap. `mode` records the semantic math/text
+/// mode, independently of formatting whitespace policy.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SerializationToken {
     pub text: String,

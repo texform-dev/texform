@@ -1,95 +1,103 @@
-# Regression Data
+# Regression Data and Commands
 
-This directory contains corpus inputs and tracked regression outputs for `texform-regression`.
+Corpus inputs and tracked summaries live here; the binaries are implemented in `crates/texform-regression`. [TESTING.md](../TESTING.md) defines when checks are required. Run the commands below from the repository root.
 
-## Layout
+## Data Preparation
 
-- `data/` — tracked Parquet datasets used by corpus regression
-- `datasets.yaml` — slug-to-file mapping consumed by `texform-regression`
-- `results/` — current summaries, ignored commit snapshots, counter-map working files
+`datasets.yaml` maps dataset slugs to Git LFS Parquet files under `data/`. Each record contains `formula_id` and `formula`; IDs use the first 12 hex characters of the normalized formula SHA-256, while deduplication uses the full hash.
 
-Each dataset parquet stores `formula_id` and `formula`.
-`formula_id` is the first 12 hex chars of the normalized formula SHA-256, while dedup still uses the full hash.
-
-Before running corpus regression, materialize the dataset files with Git LFS:
+Materialize LFS files before running checks:
 
 ```bash
-# from texform repo root
-git lfs install && git lfs pull
+git lfs install
+git lfs pull
 ```
 
-## Dataset Provenance
+Inspect the selected and processed datasets in the output. Missing files or unresolved LFS pointers can be skipped; a partial run does not satisfy a full-corpus check.
 
-- `unimer`
-  Source: https://huggingface.co/datasets/wanderkid/UniMER_Dataset
+| Dataset | Provenance |
+| --- | --- |
+| `unimer` | [UniMER](https://huggingface.co/datasets/wanderkid/UniMER_Dataset) |
+| `wikipedia` | Formulas from `enwiki-20250820-pages-articles-multistream` |
+| `linxy` | [LaTeX OCR](https://huggingface.co/datasets/linxy/LaTeX_OCR) |
+| `lf80m-benchmarks` | Benchmark configs from [latex-formulas-80M](https://huggingface.co/datasets/OleehyO/latex-formulas-80M) |
 
-- `wikipedia`
-  Source: formulas extracted from `enwiki-20250820-pages-articles-multistream`
+## Parser Regression
 
-- `linxy`
-  Source: https://huggingface.co/datasets/linxy/LaTeX_OCR
-
-- `lf80m-benchmarks`
-  Source: benchmark configs from https://huggingface.co/datasets/OleehyO/latex-formulas-80M
-
-## Run
+For significant parser changes, run before and after and compare error rates. Real corpora contain invalid input, so absolute parse failures are expected; investigate increased failure rates and changed diagnostics.
 
 ```bash
-# from texform repo root
+cargo run --release -p texform-regression --bin parser_regression -- run --dry-run
+```
 
-# run all datasets
-cargo run --release -p texform-regression --bin parser_regression -- run
+`run --dry-run` prints results without writing files. Plain `run` writes summaries and commit details; neither is a substitute for checking results against the baseline. Use `verify` for an automated comparison with tracked summaries:
 
-# run one dataset
-cargo run --release -p texform-regression --bin parser_regression -- run --dataset lf80m-benchmarks
-
-# emit a flat per-failure errors.jsonl without the per-commit snapshot (for downstream consumers)
-cargo run --release -p texform-regression --bin parser_regression -- run --dataset lf80m-benchmarks --emit-errors --skip-commit-results --results-root <dir>
-
-# refresh all tracked parser regression results
-cargo run --release -p texform-regression --bin parser_regression -- refresh
-
-# pre-commit refresh: check one probe dataset first, then refresh all results if it changed or is missing
-cargo run --release -p texform-regression --bin parser_regression -- refresh --probe-dataset lf80m-benchmarks
-
-# CI verification: check one dataset against tracked results without writing files
+```bash
 cargo run --release -p texform-regression --bin parser_regression -- verify --dataset lf80m-benchmarks
+```
 
-# run the transform eliminated-form contract gate
-cargo run --release -p texform-regression --bin transform_contract
+Verification requires matching stored results, so an intentional improvement can also require a baseline refresh. Investigate differences first, then refresh and review the tracked summary diff:
 
-# run a small transform contract probe
-cargo run --release -p texform-regression --bin transform_contract -- --dataset lf80m-benchmarks --limit 1000
+```bash
+cargo run --release -p texform-regression --bin parser_regression -- refresh
+```
 
-# dump per-dataset counter map shards for downstream analysis
-# each dataset is sliced into fixed-size chunks; every chunk runs in a fresh
-# `--direct` child process so allocator retention cannot accumulate across the run
+`run` selects all configured datasets by default; use `--dataset` to narrow it. `verify` requires at least one `--dataset`; repeat the option to check multiple datasets. The pre-commit hook uses `refresh --probe-dataset lf80m-benchmarks`, refreshing all datasets only if the probe changes or is missing. CI verifies the probe dataset; neither replaces the required before/after review for significant parser changes.
+
+To generate failure details without overwriting tracked results:
+
+```bash
+cargo run --release -p texform-regression --bin parser_regression -- run --dataset lf80m-benchmarks --emit-errors --skip-commit-results --results-root .tmp/parser-diagnostics
+```
+
+This writes a flat `errors.jsonl` and summaries under the supplied ignored `.tmp/` result root. Records include dataset, formula ID, source, strict/nonstrict mode, and diagnostics.
+
+## Transform Contract
+
+The checker runs the Corpus profile and verifies declared eliminated forms after the full pipeline. Transform execution errors and unlisted contract violations cause failure. It does not validate rendering fidelity or replace tests for other profiles.
+
+A development probe:
+
+```bash
+cargo run --release -p texform-regression --bin transform_contract -- --dataset lf80m-benchmarks --dry-run
+```
+
+The full check required before merging transform changes:
+
+```bash
+cargo run --release -p texform-regression --bin transform_contract -- --dry-run
+```
+
+`--dry-run` writes no summary or detail files. If it fails, rerun the affected dataset without `--dry-run`, using a separate result root to preserve tracked summaries:
+
+```bash
+cargo run --release -p texform-regression --bin transform_contract -- --dataset lf80m-benchmarks --results-root .tmp/transform-diagnostics
+```
+
+Inspect that run's `commits/<hash>[-dirty]/violations.jsonl` and `errors.jsonl`; do not use stale files from an earlier run. Repeated diagnostic runs at the same commit reuse those paths. `--limit` is useful for probes but does not satisfy the full check.
+
+`contract_exceptions.yaml` matches dataset, formula ID, 1-based occurrence within the same formula/target/node tuple, target kind/name, and optional node name. Each exception needs an English reason. Triage the actual violation before changing this allow-list; do not add broad exceptions to make a check pass.
+
+## Counter Maps
+
+`counter_dump` produces per-formula target counters for downstream analysis; it is not a correctness gate.
+
+```bash
 cargo run --release -p texform-regression --bin counter_dump
 ```
 
-## Results
+Each dataset is divided into chunks processed in fresh child processes to limit allocator retention. Small datasets produce `results/counter_map/<slug>.parquet`; larger ones produce `results/counter_map/<slug>/part-<offset>-<limit>.parquet`. Consumers can read either layout as a Parquet dataset without merging shards.
 
-- `results/parser_regression/summary.json` — tracked current parser regression summary; per-dataset entries live under `datasets`
-- `results/parser_regression/commits/<hash>/<slug>/summary.json` — ignored per-dataset snapshot for that commit
-- `results/parser_regression/commits/<hash>/<slug>/errors.jsonl` — ignored strict and nonstrict failures with `dataset`, `formula_id`, `formula`, `mode`, and full diagnostics
-- `results/parser_regression/errors.jsonl` — same per-failure records, written flat under the results root when `--emit-errors` is passed, independent of the per-commit snapshot tree (for downstream consumers that only need failure diagnostics)
-- `results/transform_contract/summary.json` — tracked current transform eliminated-form contract summary
-- `results/transform_contract/commits/<hash>[-dirty]/violations.jsonl` — ignored formula-level transform contract violations
-- `results/transform_contract/commits/<hash>[-dirty]/errors.jsonl` — ignored parse and non-contract transform errors
-- `results/counter_map/` — per-formula target counter rows for downstream analysis. The layout switches by dataset size:
-  - `results/counter_map/<slug>.parquet` when the dataset fits in a single chunk (the conventional small-dataset layout);
-  - `results/counter_map/<slug>/part-<offset>-<limit>.parquet` when the dataset spans multiple chunks. Downstream consumers (Polars / PyArrow / DuckDB) read either form as a parquet dataset, so no merge step is needed.
+## Result Locations
 
-`<hash>` is the HEAD of this texform repository, even when the command is invoked from another directory with
-`--manifest-path`.
+Paths below are relative to this directory and describe default result roots. `--results-root` redirects a command's summaries and details.
 
-`summary.json` is intentionally stable enough to track in git; run timings, formula-level detail, and
-rule attribution stay out of this file. The transform contract summary contains `schema_version`,
-`metadata`, `checked_formulas`, parser/transform/contract error counts, `violating_formulas`,
-`violations`, exception counts, `unexpected_violations`, and a `verdict`.
-Formula-level detail stays in the ignored `commits/<hash>[-dirty]/` directory.
+| Path | Contents |
+| --- | --- |
+| `results/parser_regression/summary.json` | Tracked parser summary, with per-dataset entries |
+| `results/parser_regression/commits/<hash>[-dirty]/<slug>/` | Ignored per-dataset summaries and `errors.jsonl` |
+| `results/transform_contract/summary.json` | Tracked counts, exceptions, and verdict |
+| `results/transform_contract/commits/<hash>[-dirty]/` | Ignored `violations.jsonl` and `errors.jsonl` |
+| `results/counter_map/` | Counter-map data products |
 
-`contract_exceptions.yaml` is the transform contract allow-list. Exceptions are matched by dataset,
-formula id, 1-based occurrence within the same formula/target/node tuple, target kind, target name,
-and optional node name; each entry must include an English reason. Do not add broad exceptions for
-new violations without first triaging the generated detail files.
+The commit hash belongs to this texform repository even when invoked elsewhere with `--manifest-path`. Tracked summaries omit volatile timings and formula-level details. Plain transform runs write the tracked summary; use a separate result root for diagnosis and review any intentional summary refresh.

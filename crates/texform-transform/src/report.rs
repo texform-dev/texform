@@ -19,7 +19,7 @@ pub struct TransformReport {
     pub lower_attributes: LowerAttributesReport,
     /// Fixed-point iteration count and per-rule application counts.
     pub rewrite: RewriteReport,
-    /// Local AST cleanup counts (currently adjacent-`Prime` merging).
+    /// Counts for local AST canonicalization steps.
     pub finalize_ast: FinalizeAstReport,
     /// Group-flattening action counts and per-guard hit counts.
     pub flatten_groups: FlattenGroupsReport,

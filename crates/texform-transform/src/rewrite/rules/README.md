@@ -1,30 +1,20 @@
 # Transform Rules
 
-This directory stores concrete transform rules.
+This guide owns rewrite-rule layout, metadata, and authoring conventions. Read the [transform reference](../../../README.md) for phase behavior, profile definitions, and fidelity.
 
 ## Attribute Markers
 
-Do not add one-off transform rules for declarative-scope commands such as
-`\bf`, `\rm`, `\large`, or `\displaystyle`, or for registered prefix wrappers
-such as `\mathbf` and `\textbf`. These markers are handled by the dedicated
-LowerAttributes phase before and after normal rule execution. The data source
-for that phase is `src/lower_attributes/data.yaml`.
+Do not add one-off transform rules for declarative-scope commands such as `\bf`, `\rm`, `\large`, or `\displaystyle`, or for registered prefix wrappers such as `\mathbf` and `\textbf`. These markers are handled by the dedicated LowerAttributes phase before and after normal rule execution. The data source for that phase is `src/lower_attributes/data.yaml`.
 
-Ordinary rewrite rules can assume registered attribute markers have already
-been lowered to the canonical form by the time they run.
+Ordinary rewrite rules can assume registered attribute markers have already been lowered to the canonical form by the time they run.
 
 ## Adding a New Rule
 
-1. Create a new `.rs` file under the package/level/group layout, for example
-   `base/authoring/over_family/over_to_frac.rs` or
-   `physics/authoring/trace_alias/trace_to_tr.rs`.
-2. Define and export exactly one `pub static MY_RULE: MyRuleType` where the
-   constant name is the UPPER_SNAKE_CASE form of the file stem.
+1. Create a new `.rs` file under the package/level/group layout, for example `base/authoring/over_family/over_to_frac.rs` or `physics/authoring/trace_alias/trace_to_tr.rs`.
+2. Define and export exactly one `pub static MY_RULE: MyRuleType` where the constant name is the UPPER_SNAKE_CASE form of the file stem.
 3. That's it — the build script auto-discovers the file and registers it.
 
-No manual edits to `mod.rs` are required. The `build.rs` at the crate root
-scans this directory at compile time, generates a standard Rust module tree in
-`generated.rs`, and aggregates every rule constant into `ALL_RULES`.
+No manual edits to `mod.rs` are required. The `build.rs` at the crate root scans this directory at compile time, generates a standard Rust module tree in `generated.rs`, and aggregates every rule constant into `ALL_RULES`.
 
 ## File Layout
 
@@ -36,9 +26,7 @@ Keep the following pieces together in that file:
 2. Small rule-local helpers
 3. Inline tests under `#[cfg(test)] mod tests`
 
-`mod.rs` only contains `include!("generated.rs")`; the generated file is
-tracked so release verification can confirm it is up to date without modifying
-the package source. Do not edit the generated registry by hand.
+`mod.rs` only contains `include!("generated.rs")`; the generated file is tracked so release verification can confirm it is up to date without modifying the package source. Do not edit the generated registry by hand.
 
 Rules use this directory structure:
 
@@ -48,17 +36,10 @@ Rules use this directory structure:
 
 - `package` is the owning rule package, such as `base`, `ams`, or `physics`.
 - `level` is the rule level: `authoring`, `faithful`, `corpus`, or `equiv`.
-- `directory_group` is the Rust module path segment for a human-readable group.
-  It must be snake_case. It is not part of `RuleMeta` and does not affect
-  scheduling.
-- `rule_file_stem` is the rule id/rule name with `-` converted to `_`.
-  Uppercase letters from the rule id are preserved, for example
-  `implies-to-Longrightarrow` becomes `implies_to_Longrightarrow.rs`.
+- `directory_group` is the Rust module path segment for a human-readable group. It must be snake_case. It is not part of `RuleMeta` and does not affect scheduling.
+- `rule_file_stem` is the rule id/rule name with `-` converted to `_`. Uppercase letters from the rule id are preserved, for example `implies-to-Longrightarrow` becomes `implies_to_Longrightarrow.rs`.
 
-Rule group directories must use standard snake_case Rust module names. Rule
-file stems must be valid Rust module names and may contain ASCII uppercase
-letters when the rule id does. Group names written as dash slugs elsewhere are
-converted to snake_case Rust path segments here.
+Rule group directories must use standard snake_case Rust module names. Rule file stems must be valid Rust module names and may contain ASCII uppercase letters when the rule id does. Group names written as dash slugs elsewhere are converted to snake_case Rust path segments here.
 
 The rule key remains `<package>/<name>`, independent of the directory group.
 
@@ -71,8 +52,7 @@ fn meta(&self) -> &'static RuleMeta {
 }
 ```
 
-This keeps the metadata physically close to the trait implementation without
-adding another file-level symbol for every rule.
+This keeps the metadata physically close to the trait implementation without adding another file-level symbol for every rule.
 
 For repeated rule shells, prefer the crate-private authoring macros:
 
@@ -80,14 +60,11 @@ For repeated rule shells, prefer the crate-private authoring macros:
 use crate::rewrite::{alias_rule, char_targets, cmd_targets, define_rule, env_targets};
 ```
 
-These macros are intentionally local to `texform-transform`; they are
-ergonomics helpers for builtin rules, not a public rule-definition API.
+These macros are intentionally local to `texform-transform`; they are ergonomics helpers for builtin rules, not a public rule-definition API.
 
 ## Metadata and the rewrite contract
 
-`RuleMeta` is a **static plan contract**, not a runtime audit log of every
-target `apply` inspects. Define the consumes set as
-`C = eliminates ∪ touches`; the engine uses the metadata as follows:
+`RuleMeta` is a **static plan contract**, not a runtime audit log of every target `apply` inspects. Define the consumes set as `C = eliminates ∪ touches`; the engine uses the metadata as follows:
 
 | Layer | Fields | Engine behavior |
 | --- | --- | --- |
@@ -97,55 +74,28 @@ target `apply` inspects. Define the consumes set as
 | Dependency ordering | `produces`, `C` | Add `A → B` when `produces(A) ∩ C(B)` is non-empty, then reject cycles |
 | Output contract | `eliminates` | After the full pipeline, reject output in which an eliminated target remains |
 
-`Plan::build` validates non-empty triggers, `triggers ⊆ C`, the fidelity floor,
-package and produced-target availability, and an acyclic dependency graph. It
-does not infer `enabled_by_packages` or enforce a unique eliminate owner; those
-are repository authoring and registry-validation concerns.
+`Plan::build` validates non-empty triggers, `triggers ⊆ C`, the fidelity floor, package and produced-target availability, and an acyclic dependency graph. It does not infer `enabled_by_packages` or enforce a unique eliminate owner; those are repository authoring and registry-validation concerns.
 
-Domain guards such as whitelists, neighbor-class checks, and package-owner
-predicates stay in the rule body and tests when `apply` validates them at
-runtime. They are not metadata merely because the implementation inspects them.
+Domain guards such as whitelists, neighbor-class checks, and package-owner predicates stay in the rule body and tests when `apply` validates them at runtime. They are not metadata merely because the implementation inspects them.
 
 ### `eliminates` vs `touches`
 
-- **`eliminates`**: targets the enabled rewrite pipeline **promises** to remove
-  from successful output in the rule's declared domain. These targets alone
-  feed `collect_eliminated_violations`. If a valid input branch intentionally
-  returns `Skipped` and may preserve the same target, use a touches-only
-  conditional rule instead. A transform error aborts the pipeline and is not a
-  residual-target contract case.
-- **`touches`**: static **structural partners** in the rewrite shape that the
-  rule rewrites, splits, or co-consumes without promising global elimination.
-  They join `C` for trigger-membership validation, dependency ordering, and
-  runtime-mutation invalidation. They are not eliminate owners and are not
-  checked after the fixed point.
+- **`eliminates`**: targets the enabled rewrite pipeline **promises** to remove from successful output in the rule's declared domain. These targets alone feed `collect_eliminated_violations`. If a valid input branch intentionally returns `Skipped` and may preserve the same target, use a touches-only conditional rule instead. A transform error aborts the pipeline and is not a residual-target contract case.
+- **`touches`**: static **structural partners** in the rewrite shape that the rule rewrites, splits, or co-consumes without promising global elimination. They join `C` for trigger-membership validation, dependency ordering, and runtime-mutation invalidation. They are not eliminate owners and are not checked after the fixed point.
 
-**Put in `touches`:** fixed partners or separators in multi-command forms
-(`buildrel` + `over`, `root` + `of`, plain-TeX matrix bodies + `cr`); sibling
-targets co-consumed with the trigger (`not` + `in`); the partial source itself
-when the rule only rewrites some occurrences (`dots` → `ldots`/`cdots`).
+**Put in `touches`:** fixed partners or separators in multi-command forms (`buildrel` + `over`, `root` + `of`, plain-TeX matrix bodies + `cr`); sibling targets co-consumed with the trigger (`not` + `in`); the partial source itself when the rule only rewrites some occurrences (`dots` → `ldots`/`cdots`).
 
-**Do not put in `touches`:** eligibility / classification / adjacency probes
-resolved only by runtime predicates (for example the atom after `\dots`, or an
-operator whitelist checked before dropping `\limits`). Document those in the
-rule comment and tests.
+**Do not put in `touches`:** eligibility / classification / adjacency probes resolved only by runtime predicates (for example the atom after `\dots`, or an operator whitelist checked before dropping `\limits`). Document those in the rule comment and tests.
 
-Over-declaring `touches` invents false dependency edges and makes any runtime
-mutation of those names disable the entire rule. Under-declaring it hides
-structural partners or leaves a trigger outside `C`.
+Over-declaring `touches` invents false dependency edges and makes any runtime mutation of those names disable the entire rule. Under-declaring it hides structural partners or leaves a trigger outside `C`.
 
 ### Scheduling with `triggers`
 
-`RuleMeta.triggers` is the required scheduling entry list. The engine attempts
-the rule only on nodes matching `triggers`.
+`RuleMeta.triggers` is the required scheduling entry list. The engine attempts the rule only on nodes matching `triggers`.
 
-For ordinary single-target rules, set `triggers` to the eliminated target. Use
-a smaller trigger list when a rule consumes multiple targets but has a smaller
-natural entry point. Examples include owner-command structures such as
-`\buildrel ... \over ...` and `\root ... \of ...`.
+For ordinary single-target rules, set `triggers` to the eliminated target. Use a smaller trigger list when a rule consumes multiple targets but has a smaller natural entry point. Examples include owner-command structures such as `\buildrel ... \over ...` and `\root ... \of ...`.
 
-Do not use `triggers` to hide dependencies. Every trigger target must also
-appear in `eliminates` or `touches`.
+Do not use `triggers` to hide dependencies. Every trigger target must also appear in `eliminates` or `touches`.
 
 ```rust
 triggers: cmd_targets![&base::cmd::OVER],
@@ -163,17 +113,11 @@ consumes: RuleConsumes {
 },
 ```
 
-Here `cmd:over` is a touched separator inside the structure, not a global
-eliminated-form contract owned by `buildrel-expand`.
+Here `cmd:over` is a touched separator inside the structure, not a global eliminated-form contract owned by `buildrel-expand`.
 
 ### Touches-only rules
 
-When `eliminates` is empty and `touches` is non-empty, every `RuleEffect::Applied`
-must strictly decrease a well-founded measure (eligible trigger count, adjacent
-chunk size, wrapper nesting depth, and so on). Non-matching nodes stay unchanged
-and return `Skipped`. Plan acyclicity does not prove single-rule convergence;
-the static graph only sees `produces` vs `eliminates ∪ touches`, not arbitrary
-AST rewrites inside `apply`.
+When `eliminates` is empty and `touches` is non-empty, every `RuleEffect::Applied` must strictly decrease a well-founded measure (eligible trigger count, adjacent chunk size, wrapper nesting depth, and so on). Non-matching nodes stay unchanged and return `Skipped`. Plan acyclicity does not prove single-rule convergence; the static graph only sees `produces` vs `eliminates ∪ touches`, not arbitrary AST rewrites inside `apply`.
 
 ## Builtin Record Imports
 
@@ -185,8 +129,7 @@ use texform_knowledge::builtin::ams;
 use texform_knowledge::builtin::bboldx;
 ```
 
-When referencing builtin records in consumes or produces, always use
-the package-qualified path:
+When referencing builtin records in consumes or produces, always use the package-qualified path:
 
 ```rust
 RuleTarget::Command(&base::cmd::FRAC)
@@ -194,15 +137,11 @@ RuleTarget::Environment(&ams::env::ALIGN)
 RuleTarget::Character(&bboldx::chars::BBDOTLESSI)
 ```
 
-The target contract is package-insensitive: each target means `kind + name`.
-The package-qualified Rust path exists because `RuleTarget` stores a concrete
-builtin record reference. For each `kind + name`, choose the first package that
-defines that record in texform package import order.
+The target contract is package-insensitive: each target means `kind + name`. The package-qualified Rust path exists because `RuleTarget` stores a concrete builtin record reference.
 
 ## Package Variants
 
-Do not duplicate same-name package variants in rule metadata. `RuleConsumes`
-and `RuleProduces` are interpreted as `kind + name`, so each target appears once:
+Do not duplicate same-name package variants in rule metadata. `RuleConsumes` and `RuleProduces` are interpreted as `kind + name`, so each target appears once:
 
 ```rust
 use texform_knowledge::builtin::base;
@@ -216,27 +155,20 @@ produces: RuleProduces {
 },
 ```
 
-If the same command, environment, or character name exists in multiple packages,
-choose the first builtin record by texform package import order.
-`enabled_by_packages` declares which input packages make the rule loadable; it
-does not constrain which package supplies a produced target.
+If the same command, environment, or character name exists in multiple packages, choose the first builtin record by texform package import order. `enabled_by_packages` declares which input packages make the rule loadable; it does not constrain which package supplies a produced target.
 
 Package-specific split decisions are based on structural signatures:
 
 1. Commands use `CommandKind + argspec.source + allowed_mode`
 2. Environments use `argspec.source + body_mode`
-3. Same signature means one rule with all matching packages in
-   `enabled_by_packages`
+3. Same signature means one rule with all matching packages in `enabled_by_packages`
 4. Different signatures mean separate rules
 
-The transform plan collapses every target to `RuleTargetKey` (`kind + name`) for
-topological sort, cleanup-boundary checks, mutation filtering, and
-eliminated-form derivation.
+The transform plan collapses every target to `RuleTargetKey` (`kind + name`) for topological sort, cleanup-boundary checks, mutation filtering, and eliminated-form derivation.
 
 ## define_rule!
 
-Use `define_rule!` when the rule metadata is regular but the AST rewrite logic
-still needs ordinary Rust code:
+Use `define_rule!` when the rule metadata is regular but the AST rewrite logic still needs ordinary Rust code:
 
 ```rust
 define_rule! {
@@ -246,6 +178,7 @@ define_rule! {
         summary: "Rewrite infix \\over into prefix \\frac",
         fidelity: Reading,
         enabled_by_packages: [Base],
+        triggers: cmd_targets![&base::cmd::OVER],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::OVER],
             touches: &[],
@@ -266,27 +199,19 @@ Prefer this macro for rules that:
 2. Need shape validation with `RuleContext`
 3. Need bespoke matching logic beyond simple rename canonicalization
 
-The inline form exposes `Self::KEY`, and rule bodies should bind a scoped
-context with `cx.for_rule(Self::KEY)` for shape checks and argument extraction.
-The explicit rule variable remains available for rare cases that need the full
-rule value.
+The inline form exposes `Self::KEY`, and rule bodies should bind a scoped context with `cx.for_rule(Self::KEY)` for shape checks and argument extraction. The explicit rule variable remains available for rare cases that need the full rule value.
 
-When IDE navigation matters more than keeping the body inline, use the
-`apply_fn: path` variant and move the rewrite code into a normal function.
+When IDE navigation matters more than keeping the body inline, use the `apply_fn: path` variant and move the rewrite code into a normal function.
 
 ## Choosing `level` and `fidelity`
 
 Classify a rule by asking which profile first accepts its output as a suitable product, then declare the strongest fidelity guaranteed over its declared domain. `fidelity` does not determine `level`: a rule may provide a stronger guarantee than its level requires.
 
-A rule's `fidelity` is the worst-case equivalence guarantee over its declared input domain and must not fall below its level's floor. See `RuleFidelity` in the `texform-transform`
-README for the fidelity ladder, the per-level floor table, and how to document a
-rule whose worst case is rarer than its usual behavior.
+See [RuleFidelity](../../../README.md#rulefidelity) for the fidelity ladder, per-level floors, and documenting worst-case behavior. Keep these definitions in the transform reference rather than duplicating them per rule.
 
 ## alias_rule!
 
-Use `alias_rule!` only for prefix-command canonicalization where aliases and
-the canonical command share the same `allowed_mode` and `argspec.source`, and
-the rule only renames the command:
+Use `alias_rule!` only for prefix-command canonicalization where aliases and the canonical command share the same `allowed_mode` and `argspec.source`, and the rule only renames the command:
 
 ```rust
 alias_rule! {
@@ -313,9 +238,7 @@ alias_rule! {
 3. `argspec.source` must match
 4. The alias list must be non-empty and must not contain the canonical command
 
-`alias_rule!` declares aliases as eliminated commands and the canonical command
-as the produced command. The engine attempts the rule when the current node
-matches one of the alias command names.
+`alias_rule!` declares aliases as eliminated commands and the canonical command as the produced command. The engine attempts the rule when the current node matches one of the alias command names.
 
 Do not use `alias_rule!` for:
 
@@ -334,9 +257,7 @@ env_targets![&ams::env::ALIGN]
 char_targets![&bboldx::chars::BBDOTLESSI]
 ```
 
-These macros only wrap builtin paths into `RuleTarget::*` arrays. They do not
-infer package variants, enabled packages, canonical forms, or any other rule
-semantics.
+These macros only wrap builtin paths into `RuleTarget::*` arrays. They do not infer package variants, enabled packages, canonical forms, or any other rule semantics.
 
 ## Shared Helper Imports
 
@@ -356,31 +277,6 @@ let subject = infix.subject();
 cx.for_rule(Self::KEY).expect_no_args(infix.args, &subject)?;
 ```
 
-Preferred style:
+## Testing a Rule
 
-1. Keep package prefixes for builtin records, such as `base::cmd::OVER`
-2. Import shared constructor helpers directly, such as `prefix_command_node` and `mandatory_content_slot`
-3. Prefer `RuleContext` match helpers and scoped shape helpers over open-coded `match` + repeated error construction
-
-## Transform Profiles
-
-Use `BuildConfig` to select a profile and narrow rules in tests and examples:
-
-```rust
-let context = TransformContext::from_build_config(
-    BuildConfig::profile(Profile::Authoring).only_rule_for_tests(OVER_TO_FRAC.meta().key),
-    &parse_ctx,
-)?;
-let report = context.run(&mut ast, &parse_ctx)?;
-```
-
-Profiles select rewrite rules by rule level before rule-specific filters are applied:
-
-- `Authoring` includes `RuleLevel::Authoring`
-- `Faithful` includes `RuleLevel::Authoring` and `RuleLevel::Faithful`
-- `Corpus` includes `RuleLevel::Authoring`, `RuleLevel::Faithful`, and `RuleLevel::Corpus`
-- `Equiv` includes all levels
-
-Rule-specific filters are allowlists or denylists inside the selected profile;
-they do not enable a `faithful`, `corpus`, or `equiv` rule when the profile level
-set excludes it.
+Use `BuildConfig::profile(...).only_rule_for_tests(...)` to isolate a rule within a profile that selects its level. Rule filters narrow the selected profile; they cannot enable an excluded level. Add inline golden tests and focused guard/convergence cases, then follow [TESTING.md](../../../../../TESTING.md) for phase tests and corpus validation.
