@@ -183,12 +183,18 @@ pub struct ActiveEnvironmentRecord {
     pub from_packages: &'static [&'static str],
 }
 
+/// Rendering attributes attached to a named character or delimiter record.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct CharacterAttributes {
+    /// MathML `mathvariant` hint such as `italic` or `bold`, when specified.
     pub mathvariant: Option<String>,
+    /// TeX atom class such as `ORD` or `OP`, when specified.
     pub tex_class: Option<String>,
+    /// Whether the character can stretch as a delimiter.
     pub stretchy: Option<bool>,
+    /// Whether scripts should move to a more conventional position.
     pub move_sup_sub: Option<bool>,
+    /// Whether the character is a large operator that takes display-style limits.
     pub large_op: Option<bool>,
 }
 

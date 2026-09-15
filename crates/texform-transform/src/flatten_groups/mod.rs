@@ -77,11 +77,14 @@ impl FlattenGroupsConfig {
         preserve_group_starting_with_atom_spacing_char: false,
         preserve_group_containing_delimited_pair: false,
     };
+    /// Phase on with every preserve guard: alias of [`Self::STRICT`].
     pub const ENABLED: Self = Self::STRICT;
+    /// Phase off. Guard fields are copied from [`Self::STRICT`] but unused while disabled.
     pub const DISABLED: Self = Self {
         enabled: false,
         ..Self::STRICT
     };
+    /// Historical default: same as [`Self::STRICT`].
     pub const DEFAULTS: Self = Self::STRICT;
 }
 

@@ -91,7 +91,9 @@ impl std::error::Error for SerializeError {}
 ///   error node, so its `has_errors()` remains true.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TokenizedLatex {
+    /// Canonical LaTeX string, identical to [`Document::to_latex`].
     pub latex: String,
+    /// Non-empty fragments covering `latex`, in order. Empty error snippets emit no token.
     pub tokens: Vec<SerializationToken>,
 }
 
@@ -102,20 +104,30 @@ pub struct TokenizedLatex {
 /// mode, independently of formatting whitespace policy.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SerializationToken {
+    /// Fragment text, exactly the slice `latex[span]`.
     pub text: String,
+    /// UTF-8 byte range into [`TokenizedLatex::latex`]; spans do not overlap.
     pub span: Range<usize>,
+    /// Semantic category of the fragment.
     pub kind: SerializationTokenKind,
+    /// Semantic math/text mode, independent of spacing policy.
     pub mode: ContentMode,
 }
 
 /// Stable semantic categories for canonical serialization fragments.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SerializationTokenKind {
+    /// A control sequence such as `\frac` or `\,`, including the leading backslash.
     ControlSequence,
+    /// A single character atom, including script markers such as `_` and `^`.
     Character,
+    /// A structural delimiter such as `{`, `}`, `[`, or `]`.
     Delimiter,
+    /// A verbatim text-mode chunk that the serializer does not split or respace.
     Text,
+    /// A source fragment emitted without further classification (dimension, environment name, ...).
     Raw,
+    /// A recovered error snippet. Empty snippets emit no token.
     Error,
 }
 
@@ -136,8 +148,11 @@ pub struct SerializeOptions {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MathSerializeOptions {
+    /// Command, group-inner, and adjacent-character spacing axes.
     pub spacing: MathSpacingOptions,
+    /// Script-marker spacing and subscript/superscript order.
     pub scripts: MathScriptOptions,
+    /// Whether infix operands are always braced or only when required.
     pub infix: MathInfixOptions,
 }
 
@@ -145,6 +160,7 @@ pub struct MathSerializeOptions {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MathInfixOptions {
+    /// Brace policy for math infix operands such as `\over`.
     pub grouping: InfixGrouping,
 }
 
@@ -152,8 +168,11 @@ pub struct MathInfixOptions {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MathSpacingOptions {
+    /// Space between a command and the following structural token.
     pub commands: CommandSpacing,
+    /// Padding inside math brace groups and wrapper-owned argument braces.
     pub group_inner_spacing: MathGroupInnerSpacing,
+    /// Explicit space between adjacent math character atoms (digits stay glued).
     pub adjacent_chars: AdjacentCharSpacing,
 }
 
@@ -161,7 +180,9 @@ pub struct MathSpacingOptions {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MathScriptOptions {
+    /// Spaces immediately around `_` and `^` markers.
     pub spacing: ScriptSpacing,
+    /// Fixed output order of subscript and superscript.
     pub order: ScriptOrder,
 }
 
@@ -169,6 +190,7 @@ pub struct MathScriptOptions {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SyntaxSerializeOptions {
+    /// Mode-independent environment-header formatting.
     pub environments: EnvironmentSerializeOptions,
 }
 
@@ -176,6 +198,7 @@ pub struct SyntaxSerializeOptions {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct EnvironmentSerializeOptions {
+    /// Space between `\begin` / `\end` and the name brace.
     pub name_spacing: EnvironmentNameSpacing,
 }
 
@@ -189,8 +212,10 @@ pub struct EnvironmentSerializeOptions {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CommandSpacing {
+    /// Insert a space between a command and the following structural token (`\frac { a }`).
     #[default]
     Spaced,
+    /// Omit that command-to-structure space (`\frac{ a }`) while still separating a following letter from the control-sequence name.
     Minimal,
 }
 
@@ -205,8 +230,10 @@ pub enum CommandSpacing {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MathGroupInnerSpacing {
+    /// Pad inside math braces: `{ a }`, `{ }`, `x ^ { 2 }`.
     #[default]
     Padded,
+    /// Compact inside math braces: `{a}`, `{}`, `x ^ {2}`.
     Compact,
 }
 
@@ -218,8 +245,10 @@ pub enum MathGroupInnerSpacing {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AdjacentCharSpacing {
+    /// Separate adjacent math character atoms: `a b c + d`.
     #[default]
     Spaced,
+    /// Glue adjacent math character atoms: `abc+d`. Digits stay glued in either mode.
     Compact,
 }
 
@@ -231,8 +260,10 @@ pub enum AdjacentCharSpacing {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScriptSpacing {
+    /// Space around script markers: `x _ { i }`.
     #[default]
     Spaced,
+    /// Tight script markers: `x_{ i }`. Inner brace spacing still follows group rules.
     Compact,
 }
 
@@ -242,8 +273,10 @@ pub enum ScriptSpacing {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScriptOrder {
+    /// Write the subscript before the superscript: `x _ { i } ^ { 2 }`.
     #[default]
     SubFirst,
+    /// Write the superscript before the subscript: `x ^ { 2 } _ { i }`.
     SupFirst,
 }
 
@@ -251,7 +284,9 @@ pub enum ScriptOrder {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InfixGrouping {
+    /// Always wrap infix operands in explicit braces.
     AlwaysExplicit,
+    /// Brace infix operands only when required for correct structure.
     #[default]
     WhenRequired,
 }
@@ -264,8 +299,10 @@ pub enum InfixGrouping {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EnvironmentNameSpacing {
+    /// Space before the name brace: `\begin {matrix}`.
     #[default]
     Spaced,
+    /// Tight name brace: `\begin{matrix}`. Independent of [`CommandSpacing`].
     Compact,
 }
 

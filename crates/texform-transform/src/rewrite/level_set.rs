@@ -10,19 +10,26 @@ use super::rule::RuleLevel;
 pub struct RuleLevelSet(u8);
 
 impl RuleLevelSet {
+    /// Bit for the Authoring rule level. This is a single level, not the cumulative Authoring profile set.
     pub const AUTHORING: Self = Self(1 << 0);
+    /// Bit for the Faithful rule level. Profiles accumulate this with [`Self::AUTHORING`].
     pub const FAITHFUL: Self = Self(1 << 1);
+    /// Bit for the Corpus rule level. Profiles accumulate this with Authoring and Faithful.
     pub const CORPUS: Self = Self(1 << 2);
+    /// Bit for the Equiv rule level. The Equiv profile enables every public level.
     pub const EQUIV: Self = Self(1 << 3);
 
+    /// Empty set: no rewrite rule fires.
     pub const fn empty() -> Self {
         Self(0)
     }
 
+    /// Bitwise union of two sets. Used to build the cumulative profile sets.
     pub const fn union(self, other: Self) -> Self {
         Self(self.0 | other.0)
     }
 
+    /// Whether `level`'s bit is set.
     pub const fn contains(self, level: RuleLevel) -> bool {
         let bit = match level {
             RuleLevel::Authoring => 1 << 0,

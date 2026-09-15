@@ -170,38 +170,47 @@ pub enum ArgValue {
 }
 
 impl ArgValue {
+    /// Math-mode content argument whose body is the subtree at `id`.
     pub fn math(id: NodeId) -> Self {
         Self::Math(id)
     }
 
+    /// Text-mode content argument whose body is the subtree at `id`.
     pub fn text(id: NodeId) -> Self {
         Self::Text(id)
     }
 
+    /// Delimiter argument, such as one side of a paired form.
     pub fn delimiter(delimiter: DelimiterValue) -> Self {
         Self::Delimiter(delimiter)
     }
 
+    /// Control-sequence name argument, stored without the leading backslash.
     pub fn cs_name(value: impl Into<String>) -> Self {
         Self::CSName(value.into())
     }
 
+    /// Raw dimension argument, kept as its source text (for example `2pt`).
     pub fn dimension(value: impl Into<String>) -> Self {
         Self::Dimension(value.into())
     }
 
+    /// Raw integer argument, kept as its source text.
     pub fn integer(value: impl Into<String>) -> Self {
         Self::Integer(value.into())
     }
 
+    /// Raw key-value argument, kept as its source text.
     pub fn key_val(value: impl Into<String>) -> Self {
         Self::KeyVal(value.into())
     }
 
+    /// Column-specification argument, kept as its source text.
     pub fn column(value: impl Into<String>) -> Self {
         Self::Column(value.into())
     }
 
+    /// Boolean argument, primarily backing a star slot.
     pub fn boolean(value: bool) -> Self {
         Self::Boolean(value)
     }

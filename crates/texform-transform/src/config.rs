@@ -49,6 +49,7 @@ pub enum Profile {
 }
 
 impl Profile {
+    /// Cumulative rule levels this profile enables. Each profile adds its same-named level to everything the previous one enables.
     pub const fn rule_levels(self) -> RuleLevelSet {
         match self {
             Self::Authoring => RuleLevelSet::AUTHORING,
@@ -63,6 +64,7 @@ impl Profile {
         }
     }
 
+    /// Per-run [`TransformConfig`] this profile uses. Authoring and Faithful keep every FlattenGroups guard; Corpus and Equiv use the structural-only subset.
     pub const fn default_transform_config(self) -> TransformConfig {
         match self {
             Self::Authoring | Self::Faithful => TransformConfig {
