@@ -627,10 +627,13 @@ class ParseError(TexformError):
 
     ``TransformEngine.normalize`` raises this on input that cannot produce a
     complete tree, and ``count_targets`` raises it when the source does not parse
-    into a complete tree. In the current Python build, cross-document edit misuse
-    also surfaces as ``ParseError`` (message ``"node belongs to a different
-    document"``) rather than ``EditError``. The exception carries the diagnostics
-    and the partial document for inspection.
+    into a complete tree. The exception then carries the diagnostics and the
+    partial document for inspection.
+
+    Attaching a node that belongs to another document currently also raises
+    ``ParseError`` (message ``"node belongs to a different document"``), not
+    ``EditError``. That path is a binding check, not a parse failure, and does
+    not populate ``diagnostics`` / ``document``.
 
     Attributes:
         diagnostics: The diagnostics describing the parse failure.
@@ -647,6 +650,10 @@ class EditError(TexformError):
     Triggers include editing a read-only (error) tree, detaching or removing the
     root node, an out-of-bounds index, and a wrong container shape. The edit is
     rejected before it can corrupt the tree.
+
+    Attaching a node that belongs to another document does not currently raise
+    ``EditError``; it raises ``ParseError`` with the message ``"node belongs to
+    a different document"``.
     """
 
 
@@ -693,7 +700,7 @@ class Document:
         doc.to_latex()  # '\\frac { x } { y }'
 
     See Also:
-        Node, Parser, ParseResult
+        Node, Parser, ParseResult, Parsing
     """
 
     def __init__(self) -> None:
@@ -1585,7 +1592,7 @@ class Parser:
         parser.parse(r"\\frac{x}{y}", config=texform.ParseConfig(reject_unknown=True))
 
     See Also:
-        ParseConfig, Document, ParseResult
+        ParseConfig, Document, ParseResult, Parsing
     """
 
     def __init__(
@@ -1756,8 +1763,8 @@ class TransformEngine:
     """Normalize a formula into the canonical form selected by a profile.
 
     The engine runs a multi-phase pipeline (LowerAttributes, a fixed-point
-    Rewrite loop, FinalizeAst, FlattenGroups). A profile picks normalization
-    levels; ``TransformConfig`` is nested by phase and controls per-run switches
+    Rewrite loop, FinalizeAst, FlattenGroups). A profile picks rule levels;
+    ``TransformConfig`` is nested by phase and controls per-run switches
     without changing the selected rule set. The engine also bundles a parser, so
     it exposes ``parse`` and the same knowledge-base lookups as ``Parser``.
 
@@ -1790,7 +1797,7 @@ class TransformEngine:
         engine.transform(result["document"], texform.TransformConfig.faithful(), rewrite={"enabled": False})
 
     See Also:
-        TransformConfig, TransformResult, TransformReport, Parser
+        TransformConfig, TransformResult, TransformReport, Parser, Transforms
     """
 
     def __init__(
@@ -2352,9 +2359,10 @@ def count_targets(
 ) -> dict[str, int]:
     """Count command, environment, and character targets in a LaTeX formula.
 
-    This is a Python-only helper for corpus analysis. It parses the source and
-    reports aggregate counts rather than returning a tree, so it requires a
-    complete parse.
+    This is a Python-only helper for corpus analysis. The JavaScript binding
+    does not provide an equivalent function. It parses the source and reports
+    aggregate counts rather than returning a tree, so it requires a complete
+    parse.
 
     Args:
         src: The LaTeX source string.
@@ -2437,7 +2445,9 @@ ScriptOrder = Literal["sub_first", "sup_first"]
 writes ``x _ { i } ^ { 2 }``; ``"sup_first"`` writes ``x ^ { 2 } _ { i }``."""
 
 InfixGrouping = Literal["always_explicit", "when_required"]
-"""Whether math infix operands are always braced or only when needed."""
+"""Bracing of infix operands (``\\over``, ``\\atop``, ...):
+``"when_required"`` braces an operand only when the surrounding syntax needs
+it; ``"always_explicit"`` braces every non-empty operand."""
 
 EnvironmentNameSpacing = Literal["spaced", "compact"]
 """Spacing after ``\\begin`` / ``\\end``: ``"spaced"`` writes
@@ -2585,5 +2595,5 @@ def serialize(node: SyntaxNode, **options: Unpack[SerializeOptions]) -> str:
         texform.serialize(syntax, math={"scripts": {"spacing": "compact"}})  # 'x^{ 2 }'
 
     See Also:
-        SerializeOptions, Document.to_latex
+        SerializeOptions, Document.to_latex, Serialization
     """

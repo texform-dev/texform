@@ -411,6 +411,7 @@ export interface TokenizedLatex {
  *
  * @see {@link Node}
  * @see {@link TransformEngine}
+ * @see {@link Parsing}
  * @example
  * ```ts
  * import { Document } from 'texform';
@@ -451,7 +452,19 @@ export class Document {
    * ```
    */
   static fromSyntax(node: SyntaxNode): Document;
+  /**
+   * Release the WASM handle for this document immediately.
+   *
+   * Prefer a `using` declaration so `[Symbol.dispose]()` runs at scope exit.
+   * After `free()`, further use is invalid. Skipping `free()` is safe:
+   * garbage collection still reclaims the handle, just not at a determined
+   * time. Call `free()` (or use `using`) when many short-lived documents
+   * would otherwise accumulate WASM memory.
+   */
   free(): void;
+  /**
+   * Release the WASM handle. Same as {@link Document.free}; used by `using`.
+   */
   [Symbol.dispose](): void;
   /**
    * Return the root {@link Node} of the tree.
@@ -762,6 +775,7 @@ export class Document {
    * `Document`. For the full option axes, see the Serialization guide and
    * {@link SerializeOptions}.
    *
+   * @see {@link Serialization}
    * @param options - A {@link SerializeOptions} object, or omit/`null` for the
    *   default (spaced) style.
    * @returns The canonical LaTeX string.
@@ -823,7 +837,18 @@ export interface NodeSpanEntry {
  * ```
  */
 export class Node {
+  /**
+   * Release this node handle's WASM wrapper immediately.
+   *
+   * This does not free the owning {@link Document}. Prefer a `using`
+   * declaration so `[Symbol.dispose]()` runs at scope exit. After `free()`,
+   * further use of this handle is invalid. Skipping `free()` is safe:
+   * garbage collection still reclaims the wrapper.
+   */
   free(): void;
+  /**
+   * Release this handle. Same as {@link Node.free}; used by `using`.
+   */
   [Symbol.dispose](): void;
   /**
    * The node's kind, read as a property (not a method).
@@ -1050,9 +1075,10 @@ export class Node {
  * Base class for every error the library throws.
  *
  * `TexformError` extends the built-in `Error`, so a single `catch` with an
- * `instanceof TexformError` check catches all library errors. The {@link kind}
- * discriminator identifies which subsystem raised it.
+ * `instanceof TexformError` check catches all library errors. The
+ * {@link TexformError.kind} discriminator identifies which subsystem raised it.
  *
+ * @see {@link TexformError.kind}
  * @see {@link TexformParseError}
  * @see {@link TexformEditError}
  * @see {@link TexformConfigError}
@@ -1397,6 +1423,7 @@ export interface SyntaxSerializeOptions {
  * Passed to {@link Document.toLatex} and {@link serialize}. For a
  * task-oriented walkthrough, see the Serialization guide.
  *
+ * @see {@link Serialization}
  * @example
  * ```ts
  * const result = new Parser().parse(String.raw`x_i^2`);
@@ -1524,8 +1551,11 @@ export interface ValidateArgspecResult {
 /**
  * Recursively required form of an overlay config. Used for
  * {@link Parser.defaultParseConfig} and {@link TransformEngine.defaultTransformConfig}.
+ *
+ * Not a public export: callers read the filled object from those methods and
+ * do not need to name this helper.
  */
-export type Complete<T> = {
+type Complete<T> = {
   [K in keyof T]-?: NonNullable<T[K]> extends object
     ? Complete<NonNullable<T[K]>>
     : NonNullable<T[K]>;
@@ -1703,6 +1733,7 @@ export interface NormalizeConfig extends ParseConfig, TransformConfig {}
  * because it conflicts with `physics`), not every built-in package.
  *
  * @see {@link TransformEngine}
+ * @see {@link Parsing}
  * @example
  * ```ts
  * import { Parser } from 'texform';
@@ -1721,7 +1752,19 @@ export class Parser {
    *   the default runtime packages with no customization.
    */
   constructor(options?: ParserOptions | null);
+  /**
+   * Release the WASM handle for this parser immediately.
+   *
+   * Prefer a `using` declaration so `[Symbol.dispose]()` runs at scope exit.
+   * After `free()`, further use is invalid. Skipping `free()` is safe:
+   * garbage collection still reclaims the handle, just not at a determined
+   * time. Call `free()` (or use `using`) when many short-lived parsers
+   * would otherwise accumulate WASM memory.
+   */
   free(): void;
+  /**
+   * Release the WASM handle. Same as {@link Parser.free}; used by `using`.
+   */
   [Symbol.dispose](): void;
   /**
    * Whether `name` is a delimiter-control command (such as `langle`).
@@ -1825,8 +1868,8 @@ export class Parser {
   /**
    * Return this parser's complete default {@link ParseConfig}.
    *
-   * Every field is present (see {@link Complete}). Use it as a starting point
-   * when you want to change one key and pass the rest through.
+   * Every field is present. Use it as a starting point when you want to
+   * change one key and pass the rest through.
    */
   defaultParseConfig(): Complete<ParseConfig>;
 }
@@ -1854,6 +1897,7 @@ export class Parser {
  *
  * @see {@link Parser}
  * @see {@link Document}
+ * @see {@link Transforms}
  * @example
  * ```ts
  * import { TransformEngine } from 'texform';
@@ -1872,7 +1916,19 @@ export class TransformEngine {
    *   required; an unknown profile throws {@link TexformConfigError}.
    */
   constructor(options: TransformEngineOptions);
+  /**
+   * Release the WASM handle for this engine immediately.
+   *
+   * Prefer a `using` declaration so `[Symbol.dispose]()` runs at scope exit.
+   * After `free()`, further use is invalid. Skipping `free()` is safe:
+   * garbage collection still reclaims the handle, just not at a determined
+   * time. Call `free()` (or use `using`) when many short-lived engines
+   * would otherwise accumulate WASM memory.
+   */
   free(): void;
+  /**
+   * Release the WASM handle. Same as {@link TransformEngine.free}; used by `using`.
+   */
   [Symbol.dispose](): void;
   /**
    * Parse a LaTeX string into a {@link ParseResult}, using this engine's parser.
@@ -2053,6 +2109,7 @@ export function serialize(node: SyntaxNode, options?: SerializeOptions | null): 
  * through the `valid` / `error` fields of the result. For the notation
  * semantics, see the Argspec guide.
  *
+ * @see {@link Argspec}
  * @param spec - The argspec string, such as `'o m'`, `'s m{}'`, or
  *   `` `d<(,)><[,]>` ``.
  * @returns A {@link ValidateArgspecResult} describing validity and slots.
