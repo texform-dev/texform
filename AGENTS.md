@@ -114,33 +114,23 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 - `perf` — a performance improvement (grouped under **Changed**).
 - `docs`, `chore`, `ci`, `test`, `style`, `refactor`, `build`, `revert` — supporting changes; these are omitted from the changelog.
 
-Append `!` after the type/scope to mark a breaking change, e.g. `feat(transform)!: ...`.
+Append `!` after the type/scope to mark a breaking change.
 
 ### Scopes
 
-Prefer an existing scope naming the affected area: `core`, `parser`, `serializer`, `document`, `transform`, `rule`, `specs`, `knowledge`, `argspec`, `interface`, `regression`, `bindings`, `python`, `wasm`. Omit the scope only when a change genuinely spans multiple areas.
+Prefer an existing scope for the main change: `core`, `parser`, `serializer`, `document`, `transform`, `rule`, `specs`, `knowledge`, `argspec`, `interface`, `regression`, `bindings`, `python`, `wasm`. Omit the scope when no single area dominates.
 
-`core` is deliberately broad — the `texform-core` crate covers the parser, the AST, `Document`, and the serializer. Prefer a more specific scope for the part you actually touch (`parser`, `serializer`, `document`, ...) and reserve `core` for changes that genuinely span several of them or that sit in shared internals with no narrower home.
+Prefer a specific scope over `core`; use `core` for shared internals or changes spanning multiple parts of `texform-core`.
 
 ### Subject
 
-Keep the subject short, imperative, and lower-case after the type/scope prefix. Use backticks around code identifiers — commands, types, methods — in the subject:
-
-```bash
-git commit -m 'feat(bindings): add `TransformEngine.transform`'
-git commit -m 'feat(transform)!: reject foreign documents in `TransformEngine::transform`'
-git commit -m 'fix(parser): preserve unknown `\left...\right` spans'
-```
+Keep the subject short, imperative, and lower-case after the type/scope prefix. State the main change without listing secondary changes. Use backticks around code identifiers.
 
 ### Body
 
-Whenever a commit is more than a trivial one-liner, add a body after a blank line that explains the change beyond what the subject already says. A good body covers three things:
+For nontrivial changes, add a brief body explaining the motivation and resulting behavior without repeating the subject. Prefer one or two short paragraphs, or one short opening paragraph followed by two or three concise bullets. Keep each bullet to one key point.
 
-- **Motivation** — why the change is needed: the bug's wrong behavior, the missing capability, or the constraint being satisfied. For a fix, give the concrete trigger and the incorrect result so the before/after is unambiguous.
-- **What changed** — the mechanism or approach, described at the level of modules and concepts rather than restating the diff.
-- **Why it matters** — the resulting behavior or guarantee, when it is not already obvious from the subject.
-
-Write the body as short prose, or as a Markdown unordered list with one bullet per important change when a commit carries several. Only truly trivial commits (typo fixes, mechanical renames) may keep the subject alone.
+For fixes, identify the trigger and incorrect behavior. For breaking changes, retain the main migration instructions. Omit implementation inventories, exhaustive API lists, routine test summaries, and development history; include details only when they explain an important constraint or trade-off. Keep commit messages concise rather than turning them into documentation.
 
 ## Maintenance Notes
 
