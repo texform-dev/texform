@@ -11,6 +11,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - Unwrap prime superscripts in environments
+## [0.5.0] - 2026-09-15
+
+### Added
+
+- **Breaking:** Unify configuration inputs
+- **Breaking:** Organize `TransformConfig` by phase
+- Add 2 rules for root-family group
+
+### Fixed
+
+- Preserve structured diagnostic kinds and source spans
+- Treat literal CR as whitespace
 
 ## [0.3.0] - 2026-07-21
 
