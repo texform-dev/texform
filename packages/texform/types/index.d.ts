@@ -374,18 +374,23 @@ export type SerializationTokenKind =
 
 /** One non-empty canonical serialization fragment. */
 export interface SerializationToken {
+  /** Fragment text, exactly the slice `latex.slice(startByte, endByte)`. */
   text: string;
-  /** UTF-8 byte offset, not a JavaScript UTF-16 string index. */
+  /** Inclusive UTF-8 byte offset into {@link TokenizedLatex.latex}, not a JavaScript UTF-16 index. */
   startByte: number;
-  /** UTF-8 byte offset, not a JavaScript UTF-16 string index. */
+  /** Exclusive UTF-8 byte offset into {@link TokenizedLatex.latex}, not a JavaScript UTF-16 index. */
   endByte: number;
+  /** Semantic category of the fragment. */
   kind: SerializationTokenKind;
+  /** Semantic math/text mode of the fragment, independent of spacing policy. */
   mode: "math" | "text";
 }
 
 /** Canonical LaTeX and tokens produced by the same serializer traversal. */
 export interface TokenizedLatex {
+  /** Canonical LaTeX string, identical to {@link Document.toLatex}. */
   latex: string;
+  /** Non-empty fragments covering `latex`, in order. Empty error snippets emit no token. */
   tokens: SerializationToken[];
 }
 
@@ -774,6 +779,16 @@ export class Document {
    * Token spans use UTF-8 byte offsets, not JavaScript UTF-16 indices. Empty
    * error snippets produce no zero-width token; use {@link Document.hasErrors}
    * to detect whether the document contains error nodes.
+   *
+   * @param options - Serializer style overlay. Same axes as {@link Document.toLatex}.
+   *   `null` / `undefined` / omitted keeps the default (spaced) style.
+   * @returns Canonical LaTeX plus typed fragments from the same traversal.
+   * @example
+   * ```ts
+   * const tok = new Parser().parse('x^2').document!.toTokenizedLatex();
+   * tok.latex; // 'x ^ { 2 }'
+   * tok.tokens[0].kind; // 'character'
+   * ```
    */
   toTokenizedLatex(options?: SerializeOptions | null): TokenizedLatex;
 }
@@ -799,6 +814,13 @@ export interface NodeSpanEntry {
  * the `create*` staging constructors, and the navigation members below.
  *
  * @see {@link Document}
+ * @example
+ * ```ts
+ * const doc = new Parser().parse(String.raw`\frac{x}{y}`).document!;
+ * const cmd = doc.root().children()[0];
+ * cmd.kind; // 'command'
+ * cmd.isCommand('frac'); // true
+ * ```
  */
 export class Node {
   free(): void;
@@ -1672,12 +1694,21 @@ export interface NormalizeConfig extends ParseConfig, TransformConfig {}
  * input; failures surface in the result. For the conceptual model, see the
  * Parsing guide.
  *
+ * Since 0.4.0 the default is {@link ParseConfig} `LENIENT`
+ * (`rejectUnknown: false`, `abortOnError: false`). Per-call `config` is a
+ * camelCase overlay object: `null` / `undefined` / omitted means not set.
+ * Unknown keys, snake_case keys, arrays in object positions, and wrong scalar
+ * types throw {@link TexformConfigError} with a camelCase path. Omit `packages`
+ * to load the default runtime packages (six packages; `braket` is omitted
+ * because it conflicts with `physics`), not every built-in package.
+ *
  * @see {@link TransformEngine}
  * @example
  * ```ts
  * import { Parser } from 'texform';
  *
  * const parser = new Parser();
+ * parser.parse(String.raw`\frac{x}{y}`).document?.toLatex(); // '\\frac { x } { y }'
  * const restricted = new Parser({ packages: ['base', 'ams'] });
  * ```
  */
@@ -1812,6 +1843,15 @@ export class Parser {
  * profiles, the multi-phase pipeline, and the eliminated-form contract — see the
  * Transforms guide.
  *
+ * Since 0.4.0 the bundled parser defaults to lenient {@link ParseConfig}, and
+ * transform options are a nested camelCase overlay ({@link TransformConfig} /
+ * {@link NormalizeConfig}), not flat `rewriteEnabled` / `maxIterations` keys.
+ * `null` / `undefined` / omitted means not set. Unknown keys, snake_case keys,
+ * arrays in object positions, and wrong scalar types throw
+ * {@link TexformConfigError} with a camelCase path. There is no complete
+ * config class on the JavaScript surface; read the effective defaults with
+ * {@link TransformEngine.defaultTransformConfig}.
+ *
  * @see {@link Parser}
  * @see {@link Document}
  * @example
@@ -1819,6 +1859,8 @@ export class Parser {
  * import { TransformEngine } from 'texform';
  *
  * const engine = new TransformEngine({ profile: 'corpus' });
+ * engine.normalize(String.raw`a \over b`).normalized; // '\\frac { a } { b }'
+ * engine.normalize(String.raw`a \over b`, { rewrite: { enabled: false } });
  * ```
  */
 export class TransformEngine {

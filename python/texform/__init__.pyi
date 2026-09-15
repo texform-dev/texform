@@ -3,7 +3,9 @@ from typing import Any, Literal, TypeAlias, TypedDict
 from typing_extensions import NotRequired, Unpack
 
 TransformProfile = Literal["authoring", "faithful", "corpus", "equiv"]
+"""Normalization profile name: ``"authoring"``, ``"faithful"``, ``"corpus"``, or ``"equiv"``."""
 RuntimeContentMode = Literal["math", "text"]
+"""Runtime content mode reported by the tree API: ``"math"`` or ``"text"``."""
 ParseDiagnosticKind = Literal[
     "ambiguous-infix",
     "argument-validation",
@@ -20,6 +22,7 @@ ParseDiagnosticKind = Literal[
     "unknown-command",
     "unknown-environment",
 ]
+"""Category of a parse diagnostic, such as ``"unknown-command"`` or ``"argument-validation"``."""
 NodeKind = Literal[
     "Root",
     "Group",
@@ -34,10 +37,23 @@ NodeKind = Literal[
     "ActiveSpace",
     "Error",
 ]
+"""Node kind as reported by ``Node.kind()``. Python uses PascalCase (``"Root"``, ``"Command"``, ``"ActiveSpace"``)."""
 
 
 class CommandItem(TypedDict):
-    """A custom command injected into parser knowledge."""
+    """A custom command injected into parser knowledge.
+
+    Attributes:
+        target: Discriminator; always ``"command"``.
+        name: Command name without the leading backslash.
+        kind: Syntactic role: ``"prefix"``, ``"infix"``, or ``"declarative"``.
+        allowed_mode: Modes in which the command is valid: ``"math"``, ``"text"``,
+            or ``"both"``.
+        argspec: xparse-style argument specification, such as ``"m m"`` or
+            ``"o m"``.
+        tags: Optional free-form classification tags carried into the knowledge
+            entry.
+    """
 
     target: Literal["command"]
     name: str
@@ -48,7 +64,16 @@ class CommandItem(TypedDict):
 
 
 class EnvironmentItem(TypedDict):
-    """A custom environment injected into parser knowledge."""
+    """A custom environment injected into parser knowledge.
+
+    Attributes:
+        target: Discriminator; always ``"environment"``.
+        name: Environment name as written in ``\\begin{...}``.
+        allowed_mode: Modes in which the environment may appear.
+        body_mode: Content mode of the environment body (``"math"`` or ``"text"``).
+        argspec: xparse-style argument specification for the environment header.
+        tags: Optional free-form classification tags.
+    """
 
     target: Literal["environment"]
     name: str
@@ -59,18 +84,28 @@ class EnvironmentItem(TypedDict):
 
 
 class DelimiterItem(TypedDict):
-    """A custom delimiter control injected into parser knowledge."""
+    """A custom delimiter control injected into parser knowledge.
+
+    Attributes:
+        target: Discriminator; always ``"delimiter"``.
+        name: Delimiter-control name without the leading backslash (for example
+            ``"langle"``).
+    """
 
     target: Literal["delimiter"]
     name: str
 
 
 ContextItem: TypeAlias = CommandItem | EnvironmentItem | DelimiterItem
+"""A knowledge-injection item: a command, environment, or delimiter-control dict."""
 SyntaxNode: TypeAlias = dict[str, Any]
+"""Lossless parse snapshot as a plain dict. The tagged-union shape is documented on the TypeScript ``SyntaxNode`` type; Python keeps this alias unexpanded."""
 Span: TypeAlias = dict[str, int]
+"""Half-open UTF-8 byte range ``{"start": int, "end": int}`` into the source."""
 SerializationTokenKind = Literal[
     "control_sequence", "character", "delimiter", "text", "raw", "error"
 ]
+"""Semantic category of one canonical serialization fragment."""
 ArgSpecKindType = Literal[
     "content",
     "operatorname",
@@ -82,7 +117,9 @@ ArgSpecKindType = Literal[
     "column",
     "star",
 ]
+"""Value kind of one parsed argspec slot (content, delimiter, star, ...)."""
 ArgSpecFormType = Literal["standard", "star", "group", "delimited", "paired"]
+"""Surface form of one parsed argspec slot (mandatory, optional group, paired, ...)."""
 
 
 class ParseDiagnostic(TypedDict, total=False):
@@ -147,7 +184,20 @@ class NodeSpanEntry(TypedDict):
 
 
 class SerializationToken(TypedDict):
-    """One canonical serialization fragment with UTF-8 byte offsets."""
+    """One canonical serialization fragment with UTF-8 byte offsets.
+
+    ``start_byte`` / ``end_byte`` index the accompanying ``TokenizedLatex.latex``
+    string and are UTF-8 byte offsets, not Python code-point indices. Spans do
+    not overlap. Empty error snippets emit no token.
+
+    Attributes:
+        text: The fragment text, exactly the slice ``latex[start_byte:end_byte]``.
+        start_byte: Inclusive UTF-8 byte offset into the canonical LaTeX string.
+        end_byte: Exclusive UTF-8 byte offset into the canonical LaTeX string.
+        kind: Semantic category of the fragment (control sequence, character, ...).
+        mode: Semantic math/text mode of the fragment, independent of spacing
+            policy.
+    """
 
     text: str
     start_byte: int
@@ -157,7 +207,15 @@ class SerializationToken(TypedDict):
 
 
 class TokenizedLatex(TypedDict):
-    """Canonical LaTeX and tokens produced by the same serializer traversal."""
+    """Canonical LaTeX and tokens produced by the same serializer traversal.
+
+    Text and tokenized output share one traversal and spacing policy; this is
+    not a second lexer pass.
+
+    Attributes:
+        latex: The canonical LaTeX string, identical to ``Document.to_latex()``.
+        tokens: Non-empty fragments covering that string, in order.
+    """
 
     latex: str
     tokens: list[SerializationToken]
@@ -319,20 +377,34 @@ class ValidateArgspecResult(TypedDict):
 
 
 class DelimiterNone(TypedDict):
-    """A delimiter value meaning "no delimiter" (e.g. an open `.` in `\\left.`)."""
+    """A delimiter value meaning "no delimiter" (e.g. an open `.` in `\\left.`).
+
+    Attributes:
+        kind: Discriminator; always ``"None"``.
+    """
 
     kind: Literal["None"]
 
 
 class DelimiterChar(TypedDict):
-    """A delimiter that is a single literal character, such as ``(`` or ``|``."""
+    """A delimiter that is a single literal character, such as ``(`` or ``|``.
+
+    Attributes:
+        kind: Discriminator; always ``"Char"``.
+        value: The literal delimiter character.
+    """
 
     kind: Literal["Char"]
     value: str
 
 
 class DelimiterControl(TypedDict):
-    """A delimiter that is a control sequence, such as ``langle`` or ``lvert``."""
+    """A delimiter that is a control sequence, such as ``langle`` or ``lvert``.
+
+    Attributes:
+        kind: Discriminator; always ``"Control"``.
+        value: Control-sequence name without the leading backslash.
+    """
 
     kind: Literal["Control"]
     value: str
@@ -343,13 +415,21 @@ DelimiterValue: TypeAlias = DelimiterNone | DelimiterChar | DelimiterControl
 
 
 class GroupKindExplicit(TypedDict):
-    """A group written with explicit braces ``{ ... }``."""
+    """A group written with explicit braces ``{ ... }``.
+
+    Attributes:
+        kind: Discriminator; always ``"Explicit"``.
+    """
 
     kind: Literal["Explicit"]
 
 
 class GroupKindImplicit(TypedDict):
-    """A group with no surrounding braces, inferred from structure."""
+    """A group with no surrounding braces, inferred from structure.
+
+    Attributes:
+        kind: Discriminator; always ``"Implicit"``.
+    """
 
     kind: Literal["Implicit"]
 
@@ -358,6 +438,7 @@ class GroupKindDelimited(TypedDict):
     """A group bounded by a delimiter pair, such as ``\\left( ... \\right)``.
 
     Attributes:
+        kind: Discriminator; always ``"Delimited"``.
         left: The opening delimiter value.
         right: The closing delimiter value.
     """
@@ -368,7 +449,11 @@ class GroupKindDelimited(TypedDict):
 
 
 class GroupKindInlineMath(TypedDict):
-    """A group introduced by inline math shift, such as ``$ ... $`` in text mode."""
+    """A group introduced by inline math shift, such as ``$ ... $`` in text mode.
+
+    Attributes:
+        kind: Discriminator; always ``"InlineMath"``.
+    """
 
     kind: Literal["InlineMath"]
 
@@ -383,6 +468,7 @@ class MathArg(TypedDict):
     """A command argument carrying math-mode content.
 
     Attributes:
+        kind: Discriminator; always ``"Math"``.
         node: The live argument-body ``Node``.
     """
 
@@ -394,6 +480,7 @@ class TextArg(TypedDict):
     """A command argument carrying text-mode content.
 
     Attributes:
+        kind: Discriminator; always ``"Text"``.
         node: The live argument-body ``Node``.
     """
 
@@ -405,6 +492,7 @@ class DelimiterArg(TypedDict):
     """A command argument that is a single delimiter token.
 
     Attributes:
+        kind: Discriminator; always ``"Delimiter"``.
         value: The delimiter value.
     """
 
@@ -416,6 +504,7 @@ class CSNameArg(TypedDict):
     """A command argument that is a control-sequence name.
 
     Attributes:
+        kind: Discriminator; always ``"CSName"``.
         value: The control-sequence name without the leading backslash.
     """
 
@@ -427,6 +516,7 @@ class DimensionArg(TypedDict):
     """A command argument that is a TeX dimension, such as ``2pt``.
 
     Attributes:
+        kind: Discriminator; always ``"Dimension"``.
         value: The dimension as written.
     """
 
@@ -438,6 +528,7 @@ class IntegerArg(TypedDict):
     """A command argument that is an integer literal.
 
     Attributes:
+        kind: Discriminator; always ``"Integer"``.
         value: The integer as written.
     """
 
@@ -449,6 +540,7 @@ class KeyValArg(TypedDict):
     """A command argument that is a ``key=value`` list.
 
     Attributes:
+        kind: Discriminator; always ``"KeyVal"``.
         value: The raw key-value text.
     """
 
@@ -460,6 +552,7 @@ class ColumnArg(TypedDict):
     """A command argument that is a tabular column specification.
 
     Attributes:
+        kind: Discriminator; always ``"Column"``.
         value: The column specification as written.
     """
 
@@ -471,6 +564,7 @@ class BooleanArg(TypedDict):
     """A command argument that is a star flag, modeled as a boolean.
 
     Attributes:
+        kind: Discriminator; always ``"Boolean"``.
         value: ``True`` when the star was present.
     """
 
@@ -774,9 +868,22 @@ class Document:
         string indices. Empty error snippets produce no zero-width token; use
         ``has_errors()`` to detect whether the document contains error nodes.
 
+        Args:
+            options: Serializer style overlays. Same axes as ``to_latex``.
+                Omitted keys and explicit ``None`` keep the default (spaced)
+                style.
+
+        Returns:
+            A ``TokenizedLatex`` dict with ``latex`` and ``tokens``.
+
         Raises:
             ConfigError: If an option key is unknown or a value has the wrong
                 type.
+
+        Examples:
+            tok = texform.Parser().parse(r"x^2")["document"].to_tokenized_latex()
+            tok["latex"]  # 'x ^ { 2 }'
+            tok["tokens"][0]["kind"]  # 'character'
         """
 
     def create_char(self, value: str) -> Node:
@@ -1050,6 +1157,12 @@ class Node:
     ``Document.find_commands()``, the ``create_*`` staging constructors, and the
     navigation methods here.
 
+    Examples:
+        doc = texform.Parser().parse(r"\\frac{x}{y}")["document"]
+        cmd = doc.root().children()[0]
+        cmd.kind()  # 'Command'
+        cmd.is_command("frac")  # True
+
     See Also:
         Document
     """
@@ -1313,7 +1426,18 @@ class Node:
 
 
 class ParseOverrides(TypedDict, total=False):
-    """Keyword overlays for ``parse``."""
+    """Keyword overlays for ``parse``. Omitted keys keep the baseline.
+
+    These are overlay keys, not a complete ``ParseConfig``. Passing a dict as
+    the ``config`` argument still raises ``ConfigError``; use these keys as
+    keywords (``parse(src, reject_unknown=True)``) or expand a saved dict with
+    ``**overrides``.
+
+    Attributes:
+        reject_unknown: Overlay for ``ParseConfig.reject_unknown``.
+        abort_on_error: Overlay for ``ParseConfig.abort_on_error``.
+        max_group_depth: Overlay for ``ParseConfig.max_group_depth``.
+    """
 
     reject_unknown: bool
     abort_on_error: bool
@@ -1321,26 +1445,72 @@ class ParseOverrides(TypedDict, total=False):
 
 
 class LowerAttributesOverrides(TypedDict, total=False):
-    """Keyword overlays for the LowerAttributes phase."""
+    """Keyword overlays for the LowerAttributes phase.
+
+    Nested under ``transform`` / ``normalize`` as ``lower_attributes={...}``.
+    The nested value must be a dict, not a ``LowerAttributesConfig`` instance.
+
+    Attributes:
+        enabled: Overlay for ``LowerAttributesConfig.enabled``.
+    """
 
     enabled: bool
 
 
 class RewriteOverrides(TypedDict, total=False):
-    """Keyword overlays for the Rewrite phase."""
+    """Keyword overlays for the Rewrite phase.
+
+    Nested under ``transform`` / ``normalize`` as ``rewrite={...}``. The nested
+    value must be a dict, not a ``RewriteConfig`` instance.
+
+    Attributes:
+        enabled: Overlay for ``RewriteConfig.enabled``.
+        max_iterations: Overlay for ``RewriteConfig.max_iterations``.
+    """
 
     enabled: bool
     max_iterations: int
 
 
 class FinalizeAstOverrides(TypedDict, total=False):
-    """Keyword overlays for the FinalizeAst phase."""
+    """Keyword overlays for the FinalizeAst phase.
+
+    Nested under ``transform`` / ``normalize`` as ``finalize_ast={...}``. The
+    nested value must be a dict, not a ``FinalizeAstConfig`` instance.
+
+    Attributes:
+        enabled: Overlay for ``FinalizeAstConfig.enabled``.
+    """
 
     enabled: bool
 
 
 class FlattenGroupsOverrides(TypedDict, total=False):
-    """Keyword overlays for the FlattenGroups phase."""
+    """Keyword overlays for the FlattenGroups phase.
+
+    Nested under ``transform`` / ``normalize`` as ``flatten_groups={...}``. The
+    nested value must be a dict, not a ``FlattenGroupsConfig`` instance.
+
+    Attributes:
+        enabled: Overlay for ``FlattenGroupsConfig.enabled``.
+        preserve_group_containing_declarative_command: Overlay for the same-named
+            guard.
+        preserve_group_in_script_base_slot: Overlay for the same-named guard.
+        preserve_group_inside_env_body: Overlay for the same-named guard.
+        preserve_group_containing_infix: Overlay for the same-named guard.
+        preserve_group_adjacent_to_command_like: Overlay for the same-named
+            guard.
+        preserve_group_as_argument_of_command: Overlay for the same-named guard.
+        preserve_group_after_scripted_command_like: Overlay for the same-named
+            guard.
+        preserve_empty_group: Overlay for the same-named guard.
+        preserve_group_with_lone_atom_spacing_char: Overlay for the same-named
+            guard.
+        preserve_group_starting_with_atom_spacing_char: Overlay for the
+            same-named guard.
+        preserve_group_containing_delimited_pair: Overlay for the same-named
+            guard.
+    """
 
     enabled: bool
     preserve_group_containing_declarative_command: bool
@@ -1357,7 +1527,17 @@ class FlattenGroupsOverrides(TypedDict, total=False):
 
 
 class TransformOverrides(TypedDict, total=False):
-    """Keyword overlays for ``transform``."""
+    """Keyword overlays for ``transform``.
+
+    Each nested value must be a dict of that phase's overlay keys, not a
+    complete phase-config class instance.
+
+    Attributes:
+        lower_attributes: Overlay dict for the LowerAttributes phase.
+        rewrite: Overlay dict for the Rewrite phase.
+        finalize_ast: Overlay dict for the FinalizeAst phase.
+        flatten_groups: Overlay dict for the FlattenGroups phase.
+    """
 
     lower_attributes: LowerAttributesOverrides
     rewrite: RewriteOverrides
@@ -1366,7 +1546,18 @@ class TransformOverrides(TypedDict, total=False):
 
 
 class NormalizeOverrides(ParseOverrides, TransformOverrides, total=False):
-    """Flat parse+transform overlays for ``normalize``."""
+    """Flat parse+transform overlays for ``normalize``.
+
+    Combines ``ParseOverrides`` keys with nested phase overlays from
+    ``TransformOverrides``. A dict passed as ``config`` still raises
+    ``ConfigError``; these keys are keywords only
+    (``normalize(src, rewrite={"enabled": False}, reject_unknown=True)``).
+
+    Examples:
+        engine = texform.TransformEngine(profile="corpus")
+        engine.normalize(r"a \\over b", reject_unknown=True)["normalized"]
+        # '\\frac { a } { b }'
+    """
 
 
 class Parser:
@@ -1377,7 +1568,21 @@ class Parser:
     input and never fabricates a placeholder tree; instead it reports diagnostics
     and, in lenient mode, preserves unparseable fragments as ``Error`` nodes.
 
+    Since 0.4.0 the default parse configuration is ``LENIENT``
+    (``reject_unknown=False``, ``abort_on_error=False``). Per-call ``config``
+    must be a complete ``ParseConfig`` instance; a dict passed as ``config``
+    raises ``ConfigError``. Other keywords are overlays
+    (``parse(src, reject_unknown=True)``). ``packages=None`` loads the default
+    runtime packages (six packages; ``braket`` is omitted because it conflicts
+    with ``physics``), not every built-in package.
+
     For the conceptual model, see the Parsing guide.
+
+    Examples:
+        parser = texform.Parser()
+        result = parser.parse(r"\\frac{x}{y}")
+        result["document"].to_latex()  # '\\frac { x } { y }'
+        parser.parse(r"\\frac{x}{y}", config=texform.ParseConfig(reject_unknown=True))
 
     See Also:
         ParseConfig, Document, ParseResult
@@ -1430,8 +1635,11 @@ class Parser:
 
         Args:
             src: The LaTeX source string.
-            config: A complete configuration; ``**overrides`` are layered on
-                top. ``None`` uses the parser default.
+            config: A complete ``ParseConfig``; ``**overrides`` are layered on
+                top. ``None`` uses the parser default. A dict here raises
+                ``ConfigError``.
+            overrides: Keyword overlay from ``ParseOverrides``. Nested values
+                must be dicts, not config class instances.
 
         Returns:
             A ``ParseResult`` dict with two keys: ``document`` (a ``Document`` or
@@ -1549,9 +1757,19 @@ class TransformEngine:
 
     The engine runs a multi-phase pipeline (LowerAttributes, a fixed-point
     Rewrite loop, FinalizeAst, FlattenGroups). A profile picks normalization
-    levels; ``TransformConfig`` controls per-run switches. The engine also bundles
-    a parser, so it exposes ``parse`` and the same knowledge-base lookups as
-    ``Parser``.
+    levels; ``TransformConfig`` is nested by phase and controls per-run switches
+    without changing the selected rule set. The engine also bundles a parser, so
+    it exposes ``parse`` and the same knowledge-base lookups as ``Parser``.
+
+    Since 0.4.0 the bundled parser defaults to ``ParseConfig`` ``LENIENT``, and
+    ``TransformConfig`` is the nested four-phase object (not flat
+    ``rewrite_enabled`` / ``max_iterations`` keys). Per-call ``config`` must be a
+    complete ``TransformConfig`` (or ``ParseConfig`` on ``parse``); a dict
+    passed as ``config`` raises ``ConfigError``. Other keywords are overlays
+    (``normalize(src, rewrite={"enabled": False})``). Nested overlay values must
+    be dicts, not phase-config class instances. Construct a full object with
+    ``TransformConfig(...)`` (all four phases required) or the profile
+    classmethods ``authoring()`` / ``faithful()`` / ``corpus()`` / ``equiv()``.
 
     Normalization is gated on a complete tree: an incomplete parse raises
     ``ParseError``, since normalizing a tree with holes is meaningless. For the
@@ -1561,14 +1779,15 @@ class TransformEngine:
     Examples:
         import texform
 
-        engine = texform.TransformEngine("corpus")
-        engine.normalize(src, rewrite={"enabled": False})
-        engine.normalize(src, reject_unknown=True, flatten_groups={"enabled": False})
+        engine = texform.TransformEngine(profile="corpus")
+        engine.normalize(r"a \\over b")["normalized"]  # '\\frac { a } { b }'
+        engine.normalize(r"a \\over b", rewrite={"enabled": False})
+        engine.normalize(r"a \\over b", reject_unknown=True, flatten_groups={"enabled": False})
         cfg = engine.default_transform_config()
         cfg.rewrite.max_iterations = 50
-        engine.transform(doc, cfg)
-        engine.transform(doc, texform.TransformConfig.faithful(), rewrite={"enabled": False})
-        engine.transform(doc, **saved_overrides)
+        result = engine.parse(r"a \\over b")
+        engine.transform(result["document"], cfg)
+        engine.transform(result["document"], texform.TransformConfig.faithful(), rewrite={"enabled": False})
 
     See Also:
         TransformConfig, TransformResult, TransformReport, Parser
@@ -1622,8 +1841,12 @@ class TransformEngine:
 
         Args:
             src: The LaTeX source string.
-            config: A complete configuration; it replaces only the transform
-                half of the baseline. ``**overrides`` are layered on top.
+            config: A complete ``TransformConfig``; it replaces only the
+                transform half of the baseline. ``**overrides`` are layered on
+                top. A dict here raises ``ConfigError``.
+            overrides: Keyword overlay from ``NormalizeOverrides`` (parse keys
+                plus nested phase dicts). Nested values must be dicts, not
+                config class instances.
 
         Returns:
             A ``TransformResult`` dict with ``normalized`` (the canonical LaTeX
@@ -1659,8 +1882,11 @@ class TransformEngine:
 
         Args:
             document: The live ``Document`` to update in place.
-            config: A complete configuration; ``**overrides`` are layered on
-                top. It does not accept parse options.
+            config: A complete ``TransformConfig``; ``**overrides`` are layered
+                on top. It does not accept parse options. A dict here raises
+                ``ConfigError``.
+            overrides: Keyword overlay from ``TransformOverrides``. Nested
+                values must be dicts, not config class instances.
 
         Returns:
             The phase-oriented transform report dict.
@@ -1699,8 +1925,10 @@ class TransformEngine:
 
         Args:
             src: The LaTeX source string.
-            config: A complete configuration; ``**overrides`` are layered on
-                top. ``None`` uses the engine default.
+            config: A complete ``ParseConfig``; ``**overrides`` are layered on
+                top. ``None`` uses the engine default. A dict here raises
+                ``ConfigError``.
+            overrides: Keyword overlay from ``ParseOverrides``.
 
         Returns:
             A ``ParseResult`` dict with ``document`` and ``diagnostics``.
@@ -1808,12 +2036,18 @@ class TransformEngine:
 
 
 class ParseConfig:
-    """Complete configuration; passed as ``config``, it replaces the baseline as a whole.
+    """Complete parse configuration. The only accepted ``config=`` type for parse.
+
+    Since 0.4.0 this is a complete configuration class, not a dict. Passing a
+    dict as ``config`` raises ``ConfigError``; use keyword overlays
+    (``parse(src, reject_unknown=True)``) or construct this class and pass it as
+    ``config``. Constructor defaults match ``LENIENT`` (the parser and engine
+    baseline on both language bindings): ``reject_unknown=False``,
+    ``abort_on_error=False``, ``max_group_depth=128``.
 
     ``reject_unknown`` and ``abort_on_error`` are independent: the former decides
     how unknown names are handled, the latter is a strictness knob for error
-    recovery. Neither is equivalent to a parsed tree's ``has_errors()``. Constructor
-    defaults match ``LENIENT`` (the parser baseline on both language bindings).
+    recovery. Neither is equivalent to a parsed tree's ``has_errors()``.
 
     Attributes:
         reject_unknown: When ``True``, an unknown command or environment becomes a
@@ -1826,6 +2060,12 @@ class ParseConfig:
             this setting.
         max_group_depth: The maximum group nesting depth before the parser aborts a
             group. Defaults to ``128``.
+
+    Examples:
+        cfg = texform.ParseConfig()
+        cfg.reject_unknown  # False
+        cfg.abort_on_error  # False
+        texform.Parser().parse(r"x", config=texform.ParseConfig(reject_unknown=True))
 
     See Also:
         Parser
@@ -1854,12 +2094,19 @@ class ParseConfig:
 
 
 class LowerAttributesConfig:
-    """Complete configuration; passed as ``config``, it replaces the baseline as a whole.
+    """Complete LowerAttributes phase configuration.
 
-    Configure the LowerAttributes phase that canonicalizes font/style markup.
+    This is a nested field of ``TransformConfig``, not a dict overlay. Pass the
+    parent ``TransformConfig`` as ``config``; to overlay only this phase use
+    ``lower_attributes={"enabled": False}``. A dict passed as ``config`` on
+    ``transform`` / ``normalize`` raises ``ConfigError``.
 
     Attributes:
         enabled: Whether the phase runs. Defaults to ``True``.
+
+    Examples:
+        texform.LowerAttributesConfig().enabled  # True
+        texform.LowerAttributesConfig(enabled=False).enabled  # False
     """
 
     enabled: bool
@@ -1873,13 +2120,21 @@ class LowerAttributesConfig:
 
 
 class RewriteConfig:
-    """Complete configuration; passed as ``config``, it replaces the baseline as a whole.
+    """Complete Rewrite phase configuration.
 
-    Configure the fixed-point Rewrite phase.
+    Nested under ``TransformConfig.rewrite``. Disabling this phase leaves
+    legacy syntax such as ``\\over`` untouched; it does not change which rule
+    levels the profile selected. Overlay with ``rewrite={"enabled": False}``;
+    do not pass this class as a nested overlay value.
 
     Attributes:
         enabled: Whether the phase runs. Defaults to ``True``.
         max_iterations: The cap on fixed-point passes. Defaults to ``100``.
+
+    Examples:
+        cfg = texform.RewriteConfig(max_iterations=50)
+        cfg.enabled  # True
+        cfg.max_iterations  # 50
     """
 
     enabled: bool
@@ -1899,13 +2154,17 @@ class RewriteConfig:
 
 
 class FinalizeAstConfig:
-    """Complete configuration; passed as ``config``, it replaces the baseline as a whole.
+    """Complete FinalizeAst phase configuration.
 
-    Configure the FinalizeAst phase that performs local AST cleanup. Its first
-    responsibility is merging adjacent ``Prime`` nodes produced by rewrite rules.
+    Nested under ``TransformConfig.finalize_ast``. The phase performs local AST
+    cleanup such as merging adjacent ``Prime`` nodes and normalizing text
+    sequences. Overlay with ``finalize_ast={"enabled": False}``.
 
     Attributes:
         enabled: Whether the phase runs. Defaults to ``True``.
+
+    Examples:
+        texform.FinalizeAstConfig().enabled  # True
     """
 
     enabled: bool
@@ -1919,13 +2178,14 @@ class FinalizeAstConfig:
 
 
 class FlattenGroupsConfig:
-    """Complete configuration; passed as ``config``, it replaces the baseline as a whole.
+    """Complete FlattenGroups phase configuration.
 
-    Configure the FlattenGroups phase that strips redundant braces. Each
-    ``preserve_*`` guard, when ``True``, keeps a group matching the named
-    structural condition instead of flattening it. Constructor defaults equal
-    the authoring / faithful strict guard set (every guard ``True``); a profile
-    may turn individual guards off (``corpus``, for example, disables several).
+    Nested under ``TransformConfig.flatten_groups``. Each ``preserve_*`` guard,
+    when ``True``, keeps a group matching the named structural condition instead
+    of flattening it. Constructor defaults equal the authoring / faithful strict
+    guard set (every guard ``True``); the ``corpus`` and ``equiv`` profiles use
+    a structural-only subset. Overlay with ``flatten_groups={"enabled": False}``;
+    a dict passed as ``config`` still raises ``ConfigError``.
 
     Attributes:
         enabled: Whether the phase runs.
@@ -1950,6 +2210,11 @@ class FlattenGroupsConfig:
             with an atom-spacing character.
         preserve_group_containing_delimited_pair: Keep a group containing a
             delimited pair such as ``\\left( ... \\right)``.
+
+    Examples:
+        texform.FlattenGroupsConfig().enabled  # True
+        texform.FlattenGroupsConfig(enabled=False).enabled  # False
+        texform.TransformConfig.corpus().flatten_groups.preserve_empty_group  # False
     """
 
     enabled: bool
@@ -2007,13 +2272,19 @@ class FlattenGroupsConfig:
 
 
 class TransformConfig:
-    """Complete configuration; passed as ``config``, it replaces the baseline as a whole.
+    """Complete transform configuration, nested by pipeline phase.
 
-    A ``TransformConfig`` composes the four per-phase configs. The four
-    attributes are shared references: ``cfg.rewrite.enabled = False`` is visible
-    through ``cfg.rewrite.enabled`` and takes effect when the object is passed
-    as ``config``. The classmethods return the config a given profile uses by
-    default.
+    Since 0.4.0 this is the only accepted ``config=`` type for ``transform`` /
+    ``normalize``. A dict passed as ``config`` raises ``ConfigError``; use
+    keyword overlays (``normalize(src, rewrite={"enabled": False})``) or
+    construct this class. The constructor requires all four phase configs; the
+    classmethods ``authoring()`` / ``faithful()`` / ``corpus()`` / ``equiv()``
+    return the defaults a profile actually uses.
+
+    The four attributes are shared references: ``cfg.rewrite.enabled = False``
+    is visible through ``cfg.rewrite.enabled`` and takes effect when the object
+    is passed as ``config``. Nested overlay values must be dicts, not these
+    phase-config instances.
 
     Attributes:
         lower_attributes: The LowerAttributes phase config (shared reference).
@@ -2028,6 +2299,8 @@ class TransformConfig:
             finalize_ast=texform.FinalizeAstConfig(),
             flatten_groups=texform.FlattenGroupsConfig(enabled=False),
         )
+        config.rewrite.max_iterations  # 50
+        texform.TransformConfig.corpus().flatten_groups.preserve_empty_group  # False
 
     See Also:
         TransformEngine, RewriteConfig, LowerAttributesConfig, FinalizeAstConfig, FlattenGroupsConfig
