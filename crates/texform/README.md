@@ -2,7 +2,7 @@
 
 > **The missing foundation for LaTeX formula processing.**
 
-TeXForm parses, edits, and transforms LaTeX math, built on a structured knowledge base of 530+ command and environment specifications across 7 LaTeX packages, validated against MathJax, KaTeX, and XeTeX.
+TeXForm parses, edits, and transforms LaTeX math, built on a structured knowledge base of 600+ command and environment specifications across 7 LaTeX packages, validated against MathJax, KaTeX, and XeTeX.
 
 This crate is the public TeXForm facade — the only crate with a stability guarantee. It exposes the full API surface: a parse-only `Parser`, an editable `Document` tree, a profile-based `TransformEngine`, canonical serialization, and `validate_argspec`.
 

@@ -4,7 +4,7 @@
 
 **The missing foundation for LaTeX formula processing.**
 
-TeXForm parses, edits, and transforms LaTeX math, built on a structured knowledge base of 530+ command and environment specifications across 7 LaTeX packages, validated against MathJax, KaTeX, and XeTeX. One Rust core, available in Rust, Python, and JavaScript.
+TeXForm parses, edits, and transforms LaTeX math, built on a structured knowledge base of 600+ command and environment specifications across 7 LaTeX packages, validated against MathJax, KaTeX, and XeTeX. One Rust core, available in Rust, Python, and JavaScript.
 
 [![crates.io](https://img.shields.io/crates/v/texform.svg)](https://crates.io/crates/texform)
 [![PyPI](https://img.shields.io/pypi/v/texform.svg)](https://pypi.org/project/texform/)
