@@ -1,4 +1,7 @@
-use texform::{Document, ParseConfig, ParseDiagnostic, ParseResult, Parser, Span};
+use texform::{
+    Document, EditError, Error, ParseConfig, ParseDiagnostic, ParseResult, Parser, Profile, Span,
+    TransformEngine,
+};
 
 fn parser() -> Parser {
     Parser::builder()
@@ -209,6 +212,44 @@ fn text_script_diagnostics_keep_unicode_byte_offsets() {
             }
         }
     }
+}
+
+#[test]
+fn recovered_unknown_command_before_group_is_read_only_and_not_transformable() {
+    let engine = TransformEngine::builder()
+        .profile(Profile::Equiv)
+        .build()
+        .expect("engine should build");
+    let output = engine.parser().parse_with(
+        r"\mycmd{x}",
+        &ParseConfig {
+            reject_unknown: true,
+            abort_on_error: false,
+            ..ParseConfig::default()
+        },
+    );
+
+    assert!(output.has_errors());
+    assert_eq!(
+        output.diagnostics()[0].kind,
+        Some(texform::ParseDiagnosticKind::UnknownCommand)
+    );
+
+    let (Some(mut document), _) = output.into_parts() else {
+        panic!("reject+recover should keep a partial document");
+    };
+    assert!(document.has_errors());
+    assert!(document.is_read_only());
+
+    let root = document.root().id();
+    assert_eq!(
+        document.append_child(root, root),
+        Err(EditError::ReadOnlyDocument)
+    );
+    assert!(matches!(
+        engine.transform(&mut document),
+        Err(Error::IncompleteTree)
+    ));
 }
 
 fn assert_final_z(output: &ParseResult) {

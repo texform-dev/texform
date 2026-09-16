@@ -10,7 +10,7 @@ use texform_core::parse::{
     AllowedMode, CommandKind, ContextItem, ParseConfig, ParseContext, ParseDiagnosticKind,
     ParseResult,
 };
-use texform_interface::syntax_node::{ArgumentValue, SyntaxNode};
+use texform_interface::syntax_node::{ArgumentValue, GroupKind, SyntaxNode};
 
 fn parse_shared(src: &str, config: &ParseConfig) -> ParseResult {
     ParseContext::shared().parse(src, config)
@@ -925,5 +925,489 @@ mod parser_diagnostic_regressions {
             },
             other => panic!("expected root node, got {other:?}"),
         }
+    }
+}
+
+fn reject_recover_config() -> ParseConfig {
+    ParseConfig {
+        reject_unknown: true,
+        abort_on_error: false,
+        ..Default::default()
+    }
+}
+
+fn root_child_nodes(output: &ParseResult) -> Vec<SyntaxNode> {
+    match output
+        .document()
+        .unwrap_or_else(|| panic!("expected a document, diagnostics={:?}", output.diagnostics))
+        .to_syntax()
+    {
+        SyntaxNode::Root { children, .. } => children,
+        other => panic!("expected root node, got {other:?}"),
+    }
+}
+
+fn assert_error_snippet(node: &SyntaxNode, snippet: &str) {
+    match node {
+        SyntaxNode::Error {
+            snippet: actual, ..
+        } => assert_eq!(actual, snippet),
+        other => panic!("expected Error({snippet:?}), got {other:?}"),
+    }
+}
+
+fn assert_explicit_group_chars(node: &SyntaxNode, chars: &[char]) {
+    match node {
+        SyntaxNode::Group {
+            kind: GroupKind::Explicit,
+            children,
+            ..
+        } => {
+            let actual: Vec<char> = children
+                .iter()
+                .map(|child| match child {
+                    SyntaxNode::Char(c) => *c,
+                    other => panic!("expected char child, got {other:?}"),
+                })
+                .collect();
+            assert_eq!(actual, chars);
+        }
+        other => panic!("expected explicit group, got {other:?}"),
+    }
+}
+
+fn diagnostic_kinds(output: &ParseResult) -> Vec<Option<ParseDiagnosticKind>> {
+    output.diagnostics.iter().map(|d| d.kind).collect()
+}
+
+#[test]
+fn unknown_command_alone_is_recovered_under_reject() {
+    let src = r"\mycmd";
+    let output = parse_shared(src, &reject_recover_config());
+    let children = root_child_nodes(&output);
+    assert_eq!(children.len(), 1);
+    assert_error_snippet(&children[0], r"\mycmd");
+    assert!(output.document().unwrap().has_errors());
+    assert!(output.document().unwrap().errors().next().is_some());
+    assert_eq!(
+        diagnostic_kinds(&output),
+        vec![Some(ParseDiagnosticKind::UnknownCommand)]
+    );
+    assert_eq!(output.diagnostics[0].span.start, 0);
+    assert_eq!(output.diagnostics[0].span.end, 6);
+}
+
+#[test]
+fn unknown_command_before_balanced_group_keeps_the_group() {
+    let src = r"\mycmd{x}";
+    let output = parse_shared(src, &reject_recover_config());
+    let children = root_child_nodes(&output);
+    assert_eq!(children.len(), 2, "{children:?}");
+    assert_error_snippet(&children[0], r"\mycmd");
+    assert_explicit_group_chars(&children[1], &['x']);
+    assert_eq!(
+        output.document().unwrap().to_latex().expect("serialize"),
+        r"\mycmd { x }"
+    );
+    assert!(output.document().unwrap().has_errors());
+    assert!(output.document().unwrap().errors().next().is_some());
+    assert_eq!(output.diagnostics.len(), 1, "{:?}", output.diagnostics);
+    assert_eq!(
+        output.diagnostics[0].kind,
+        Some(ParseDiagnosticKind::UnknownCommand)
+    );
+    assert_eq!(output.diagnostics[0].span.start, 0);
+    assert_eq!(output.diagnostics[0].span.end, 6);
+}
+
+#[test]
+fn unknown_command_before_group_keeps_following_siblings() {
+    let src = r"\mycmd{x}+y";
+    let output = parse_shared(src, &reject_recover_config());
+    let children = root_child_nodes(&output);
+    assert_eq!(children.len(), 4, "{children:?}");
+    assert_error_snippet(&children[0], r"\mycmd");
+    assert_explicit_group_chars(&children[1], &['x']);
+    assert_eq!(children[2], SyntaxNode::Char('+'));
+    assert_eq!(children[3], SyntaxNode::Char('y'));
+    assert_eq!(
+        diagnostic_kinds(&output),
+        vec![Some(ParseDiagnosticKind::UnknownCommand)]
+    );
+}
+
+#[test]
+fn unknown_command_before_nested_group_keeps_inner_group() {
+    let src = r"\mycmd{{x}}";
+    let output = parse_shared(src, &reject_recover_config());
+    let children = root_child_nodes(&output);
+    assert_eq!(children.len(), 2, "{children:?}");
+    assert_error_snippet(&children[0], r"\mycmd");
+    match &children[1] {
+        SyntaxNode::Group {
+            kind: GroupKind::Explicit,
+            children: outer,
+            ..
+        } => {
+            assert_eq!(outer.len(), 1);
+            assert_explicit_group_chars(&outer[0], &['x']);
+        }
+        other => panic!("expected outer group, got {other:?}"),
+    }
+}
+
+#[test]
+fn unknown_command_inside_outer_group_recovers_locally() {
+    let src = r"{\mycmd{x}}";
+    let output = parse_shared(src, &reject_recover_config());
+    let children = root_child_nodes(&output);
+    assert_eq!(children.len(), 1, "{children:?}");
+    match &children[0] {
+        SyntaxNode::Group {
+            kind: GroupKind::Explicit,
+            children: inner,
+            ..
+        } => {
+            assert_eq!(inner.len(), 2, "{inner:?}");
+            assert_error_snippet(&inner[0], r"\mycmd");
+            assert_explicit_group_chars(&inner[1], &['x']);
+        }
+        other => panic!("expected group, got {other:?}"),
+    }
+    assert_eq!(
+        diagnostic_kinds(&output),
+        vec![Some(ParseDiagnosticKind::UnknownCommand)]
+    );
+}
+
+#[test]
+fn adjacent_unknown_commands_before_group_keep_both_diagnostics() {
+    let src = r"\mycmd\other{x}";
+    let output = parse_shared(src, &reject_recover_config());
+    let children = root_child_nodes(&output);
+    assert_eq!(children.len(), 3, "{children:?}");
+    assert_error_snippet(&children[0], r"\mycmd");
+    assert_error_snippet(&children[1], r"\other");
+    assert_explicit_group_chars(&children[2], &['x']);
+    assert_eq!(output.diagnostics.len(), 2, "{:?}", output.diagnostics);
+    assert_eq!(
+        output.diagnostics[0].kind,
+        Some(ParseDiagnosticKind::UnknownCommand)
+    );
+    assert_eq!(output.diagnostics[0].span.start, 0);
+    assert_eq!(output.diagnostics[0].span.end, 6);
+    assert_eq!(
+        output.diagnostics[1].kind,
+        Some(ParseDiagnosticKind::UnknownCommand)
+    );
+    assert_eq!(output.diagnostics[1].span.start, 6);
+    assert_eq!(output.diagnostics[1].span.end, 12);
+}
+
+#[test]
+fn unknown_command_group_spans_use_utf8_bytes() {
+    let src = r"\mycmd{é}";
+    let output = parse_shared(src, &reject_recover_config());
+    let children = root_child_nodes(&output);
+    assert_eq!(children.len(), 2, "{children:?}");
+    assert_error_snippet(&children[0], r"\mycmd");
+    match &children[1] {
+        SyntaxNode::Group {
+            kind: GroupKind::Explicit,
+            children: inner,
+            ..
+        } => {
+            assert_eq!(inner, &vec![SyntaxNode::Char('é')]);
+        }
+        other => panic!("expected group, got {other:?}"),
+    }
+    assert_eq!(src.len(), 10);
+    assert_eq!(&src[6..10], "{é}");
+    assert_eq!(
+        output.diagnostics[0].kind,
+        Some(ParseDiagnosticKind::UnknownCommand)
+    );
+    assert_eq!(output.diagnostics[0].span.start, 0);
+    assert_eq!(output.diagnostics[0].span.end, 6);
+}
+
+fn sqrt_arg_children(node: &SyntaxNode) -> Vec<SyntaxNode> {
+    match node {
+        SyntaxNode::Command { name, args, .. } => {
+            assert_eq!(name, "sqrt");
+            let content = args.iter().find_map(|slot| match slot.as_ref()?.value {
+                ArgumentValue::MathContent(ref node) => Some(node.clone()),
+                _ => None,
+            });
+            match content {
+                Some(SyntaxNode::Group { children, .. }) => children,
+                Some(other) => panic!("expected math group content, got {other:?}"),
+                None => panic!("expected sqrt math argument, got {args:?}"),
+            }
+        }
+        other => panic!("expected \\sqrt, got {other:?}"),
+    }
+}
+
+#[test]
+fn unknown_command_inside_sqrt_argument_recovers_locally() {
+    let src = r"\sqrt{\mycmd{x}}";
+    let output = parse_shared(src, &reject_recover_config());
+    let children = root_child_nodes(&output);
+    assert_eq!(children.len(), 1, "{children:?}");
+    let arg_children = sqrt_arg_children(&children[0]);
+    assert_eq!(arg_children.len(), 2, "{arg_children:?}");
+    assert_error_snippet(&arg_children[0], r"\mycmd");
+    assert_explicit_group_chars(&arg_children[1], &['x']);
+    assert_eq!(output.diagnostics.len(), 1, "{:?}", output.diagnostics);
+    assert_eq!(
+        output.diagnostics[0].kind,
+        Some(ParseDiagnosticKind::UnknownCommand)
+    );
+    assert!(output.document().unwrap().has_errors());
+}
+
+fn command_is_unknown(node: &SyntaxNode, name: &str) -> bool {
+    match node {
+        SyntaxNode::Command {
+            name: node_name,
+            known,
+            ..
+        } if node_name == name => !*known,
+        SyntaxNode::Root { children, .. } | SyntaxNode::Group { children, .. } => {
+            children.iter().any(|child| command_is_unknown(child, name))
+        }
+        SyntaxNode::Command { args, .. } => args.iter().any(|slot| {
+            slot.as_ref().is_some_and(|arg| match &arg.value {
+                ArgumentValue::MathContent(node)
+                | ArgumentValue::TextContent(node)
+                | ArgumentValue::OperatorNameContent(node) => command_is_unknown(node, name),
+                _ => false,
+            })
+        }),
+        _ => false,
+    }
+}
+
+fn assert_lenient_unknown_command(src: &str, names: &[&str]) {
+    let output = parse_shared(src, &ParseConfig::LENIENT);
+    assert!(
+        output.diagnostics.is_empty(),
+        "{src}: {:?}",
+        output.diagnostics
+    );
+    assert!(!output.document().unwrap().has_errors());
+    let syntax = output.document().unwrap().to_syntax();
+    assert!(
+        !contains_error_node(&syntax),
+        "{src} should not produce Error nodes: {syntax:?}"
+    );
+    for name in names {
+        assert!(
+            contains_command_named(&syntax, name),
+            "{src} should keep unknown command \\{name}: {syntax:?}"
+        );
+        assert!(
+            command_is_unknown(&syntax, name),
+            "{src} should keep \\{name} as known: false: {syntax:?}"
+        );
+    }
+}
+
+fn assert_abort_unknown_command_only(src: &str) {
+    let output = parse_shared(src, &ParseConfig::STRICT);
+    assert!(
+        output.document().is_none(),
+        "{src} abort mode should not recover a document: {:?}",
+        output.document().map(|d| d.to_syntax())
+    );
+    assert!(!output.diagnostics.is_empty(), "{src}");
+    assert!(
+        output
+            .diagnostics
+            .iter()
+            .all(|d| d.kind == Some(ParseDiagnosticKind::UnknownCommand)),
+        "{src}: {:?}",
+        output.diagnostics
+    );
+}
+
+#[test]
+fn unknown_command_inputs_stay_lenient_and_abort_unchanged() {
+    let cases: &[(&str, &[&str])] = &[
+        (r"\mycmd", &["mycmd"]),
+        (r"\mycmd{x}", &["mycmd"]),
+        (r"\mycmd{x}+y", &["mycmd"]),
+        (r"\mycmd{{x}}", &["mycmd"]),
+        (r"{\mycmd{x}}", &["mycmd"]),
+        (r"\mycmd\other{x}", &["mycmd", "other"]),
+        (r"\mycmd{é}", &["mycmd"]),
+        (r"\sqrt{\mycmd{x}}", &["mycmd"]),
+    ];
+    for (src, names) in cases {
+        assert_lenient_unknown_command(src, names);
+        assert_abort_unknown_command_only(src);
+    }
+}
+
+#[test]
+fn unclosed_frac_does_not_report_environment_name_mismatch() {
+    let src = r"\frac{a}{b";
+    for config in [reject_recover_config(), ParseConfig::LENIENT] {
+        let output = parse_shared(src, &config);
+        assert!(
+            output.document().is_none(),
+            "document=None is acceptable; got {:?}",
+            output.document().map(|d| d.to_syntax())
+        );
+        assert!(
+            output
+                .diagnostics
+                .iter()
+                .any(|d| d.kind == Some(ParseDiagnosticKind::ArgumentValidation)
+                    && d.message.contains("unclosed brace argument")),
+            "{config:?}: {:?}",
+            output.diagnostics
+        );
+        assert!(
+            output
+                .diagnostics
+                .iter()
+                .all(|d| d.kind != Some(ParseDiagnosticKind::EnvironmentNameMismatch)),
+            "{config:?}: {:?}",
+            output.diagnostics
+        );
+    }
+}
+
+#[test]
+fn environment_name_mismatch_still_reported_for_begin_end() {
+    let src = r"\begin{matrix}a\end{pmatrix}";
+    for config in [reject_recover_config(), ParseConfig::LENIENT] {
+        let output = parse_shared(src, &config);
+        assert!(output.document().is_some(), "{config:?}");
+        assert!(output.document().unwrap().has_errors());
+        assert!(
+            output.diagnostics.iter().any(|d| d.kind
+                == Some(ParseDiagnosticKind::EnvironmentNameMismatch)
+                && d.message.contains("expected \\end{matrix}")
+                && d.message.contains("found \\end{pmatrix}")),
+            "{config:?}: {:?}",
+            output.diagnostics
+        );
+    }
+}
+
+fn assert_missing_script(
+    src: &str,
+    config: &ParseConfig,
+    message: &str,
+    expect_document: bool,
+    found: Option<&str>,
+) {
+    let output = parse_shared(src, config);
+    if expect_document {
+        let document = output.document().expect(src);
+        assert!(document.has_errors(), "{src}");
+        assert!(contains_error_node(&document.to_syntax()), "{src}");
+    } else {
+        assert!(output.document().is_none(), "{src}");
+    }
+    let diagnostic = output
+        .diagnostics
+        .iter()
+        .find(|d| d.message == message)
+        .unwrap_or_else(|| panic!("{src}: {:?}", output.diagnostics));
+    assert_eq!(
+        diagnostic.kind,
+        Some(ParseDiagnosticKind::RawExpectedFound),
+        "{src}: {diagnostic:?}"
+    );
+    assert!(
+        !diagnostic.expected.is_empty(),
+        "{src}: expected must be non-empty"
+    );
+    assert_eq!(diagnostic.found.as_deref(), found, "{src}");
+}
+
+#[test]
+fn missing_script_content_reports_raw_expected_found() {
+    for config in [reject_recover_config(), ParseConfig::LENIENT] {
+        assert_missing_script("x^", &config, "Missing superscript content", true, None);
+        assert_missing_script("x_", &config, "Missing subscript content", true, None);
+        assert_missing_script(
+            "{x^}",
+            &config,
+            "Missing superscript content",
+            true,
+            Some("}"),
+        );
+    }
+    assert_missing_script(
+        "x^",
+        &ParseConfig::STRICT,
+        "Missing superscript content",
+        false,
+        None,
+    );
+}
+
+#[test]
+fn valid_scripts_remain_diagnostic_free() {
+    for src in [r"x^{a}", r"x_{a}", r"x^{}", r"x^2_i", r"f'^2"] {
+        for config in [
+            reject_recover_config(),
+            ParseConfig::LENIENT,
+            ParseConfig::STRICT,
+        ] {
+            let output = parse_shared(src, &config);
+            assert!(
+                output.diagnostics.is_empty(),
+                "{src} {config:?}: {:?}",
+                output.diagnostics
+            );
+            let document = output.document().unwrap_or_else(|| panic!("{src}"));
+            assert!(!document.has_errors(), "{src}");
+        }
+    }
+}
+
+#[test]
+fn text_mode_script_stays_text_script_error() {
+    let output = parse_shared(r"\text{x^2}", &reject_recover_config());
+    assert_eq!(output.diagnostics.len(), 1, "{:?}", output.diagnostics);
+    assert_eq!(
+        output.diagnostics[0].kind,
+        Some(ParseDiagnosticKind::TextScriptError)
+    );
+    assert_eq!(
+        output.diagnostics[0].message,
+        "Scripted syntax is not allowed in Text mode"
+    );
+}
+
+#[test]
+fn deep_unclosed_groups_and_empty_input_finish_quickly() {
+    let empty = parse_shared("", &ParseConfig::LENIENT);
+    assert!(empty.document().is_some());
+    assert!(empty.diagnostics.is_empty());
+    assert!(!empty.document().unwrap().has_errors());
+
+    for src in ["{{{{x".to_string(), "{".repeat(18) + "x"] {
+        let started = Instant::now();
+        let output = parse_shared(&src, &ParseConfig::LENIENT);
+        let elapsed = started.elapsed();
+        assert!(
+            output.document().is_some(),
+            "{src}: recovery should keep a partial tree"
+        );
+        assert!(
+            !output.diagnostics.is_empty(),
+            "{src}: unclosed groups should report diagnostics"
+        );
+        assert!(
+            elapsed < Duration::from_millis(250),
+            "{src}: elapsed={elapsed:?}"
+        );
     }
 }

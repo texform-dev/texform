@@ -119,8 +119,11 @@ fn parse_diagnostic_priority(diagnostic: &ParseDiagnostic, raw_eof: bool) -> u8 
 
 /// Best-effort fallback for chumsky-generated `ExpectedFound` errors that carry
 /// no explicit `ParseDiagnosticKind`.  The heuristics here match the token
-/// patterns that chumsky emits for known parser structures (e.g. `}` from an
-/// environment-name mismatch, `\begin` from an unknown environment).
+/// patterns that chumsky emits for known parser structures (e.g. `$` from an
+/// unexpected math shift, `\begin` from an unknown environment). A stray `}`
+/// is a generic expected/found mismatch: genuine `\begin`/`\end` name
+/// mismatches already set [`ParseDiagnosticKind::EnvironmentNameMismatch`]
+/// explicitly at the environment parser.
 fn infer_raw_diagnostic_kind(err: &ParseFailure<'_>) -> Option<ParseDiagnosticKind> {
     use chumsky::error::{RichPattern, RichReason};
     let RichReason::ExpectedFound { expected, found } = err.reason() else {
@@ -137,7 +140,6 @@ fn infer_raw_diagnostic_kind(err: &ParseFailure<'_>) -> Option<ParseDiagnosticKi
     }
     match found {
         Some(Token::MathShift) => Some(ParseDiagnosticKind::UnexpectedMathShift),
-        Some(Token::RBrace) => Some(ParseDiagnosticKind::EnvironmentNameMismatch),
         Some(Token::ControlSeq(name)) if name == "begin" => {
             Some(ParseDiagnosticKind::UnknownEnvironment)
         }
@@ -158,6 +160,7 @@ fn supplement_diagnostic_contexts(
 
     supplement_unclosed_inline_math_message(kind, src, diagnostic);
     supplement_unexpected_math_shift_message(kind, src, diagnostic);
+    supplement_missing_script_content_message(kind, src, diagnostic);
     let mut normalized_eof = supplement_generic_unclosed_message(kind, src, raw_eof, diagnostic);
     if !direct {
         normalized_eof |=
@@ -314,6 +317,27 @@ fn supplement_unexpected_math_shift_message(
     };
     diagnostic.expected.clear();
     diagnostic.found = Some("$".to_string());
+}
+
+fn supplement_missing_script_content_message(
+    kind: Option<ParseDiagnosticKind>,
+    src: &str,
+    diagnostic: &mut ParseDiagnostic,
+) {
+    if kind != Some(ParseDiagnosticKind::RawExpectedFound) {
+        return;
+    }
+    let expected = match diagnostic.message.as_str() {
+        "Missing superscript content" => "superscript content",
+        "Missing subscript content" => "subscript content",
+        _ => return,
+    };
+    diagnostic.expected = vec![expected.to_string()];
+    if diagnostic.found.is_none() && diagnostic.span.start < diagnostic.span.end {
+        diagnostic.found = src
+            .get(diagnostic.span.start..diagnostic.span.end)
+            .map(ToString::to_string);
+    }
 }
 
 fn supplement_generic_unclosed_message(

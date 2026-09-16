@@ -890,6 +890,64 @@ fn braced_prime_group<'src, 'parse>(input: &mut ParserInput<'src, 'parse>) -> Op
     ))
 }
 
+/// Tokens that can never start a script operand. `]` and `&` are valid math
+/// atoms, so they are not treated as boundaries even though they close
+/// optional arguments or alignment cells.
+fn is_script_operand_boundary(token: Option<&Token>) -> bool {
+    match token {
+        None | Some(Token::RBrace | Token::MathShift | Token::Superscript | Token::Subscript) => {
+            true
+        }
+        Some(Token::ControlSeq(name)) => matches!(name.as_str(), "right" | "end"),
+        Some(_) => false,
+    }
+}
+
+/// Fail at the operand position before the atom parser so `command_head_parser`'s
+/// internal `not a command` control failure does not become the public message.
+fn parse_script_operand<'src, 'parse, P>(
+    input: &mut ParserInput<'src, 'parse>,
+    atom_for_scripts: P,
+    expected: &'static str,
+) -> Result<TrackedNode, ParseFailure<'src>>
+where
+    P: Parser<'src, TokenStream<'src>, TrackedNode, ParserError<'src>> + Clone + 'src,
+{
+    let ws = insignificant_whitespace();
+    let _ = input.parse(ws);
+    if is_script_operand_boundary(input.peek().as_ref()) {
+        return Err(missing_script_operand_failure(input, expected));
+    }
+    input.parse(atom_for_scripts)
+}
+
+/// Span is the found token when one is present, or a zero-width point at the
+/// operand start on EOF. The token itself is not consumed.
+fn missing_script_operand_failure<'src, 'parse>(
+    input: &mut ParserInput<'src, 'parse>,
+    expected: &'static str,
+) -> ParseFailure<'src> {
+    let checkpoint = input.save();
+    let start = input.cursor();
+    let found_token = input.next();
+    let span = match &found_token {
+        Some(_) => input.span_from_cursor(&start),
+        None => {
+            let pos = input.span_from_cursor(&start).start;
+            SimpleSpan::new((), pos..pos)
+        }
+    };
+    input.rewind(checkpoint);
+    // Custom wins chumsky merge against generic ExpectedFound alternatives
+    // (including "not a command" and "expected something else"). Expected/found
+    // are restored from this message and span in diagnostics.rs.
+    custom_error(
+        span,
+        format!("Missing {expected}"),
+        ParseDiagnosticKind::RawExpectedFound,
+    )
+}
+
 /// Imperative parser that greedily collects `^`, `_`, and prime tokens after
 /// an atom, producing [`ScriptComponents`].
 ///
@@ -952,14 +1010,19 @@ where
                 input.next();
                 let tracked = match braced_prime_group(input) {
                     Some(group) => group,
-                    None => input.parse(atom_for_scripts.clone())?,
+                    None => parse_script_operand(
+                        input,
+                        atom_for_scripts.clone(),
+                        "superscript content",
+                    )?,
                 };
                 let span = input.span_from_cursor(&marker_start);
                 Some((ScriptMarker::Sup, TrackedNode { span, ..tracked }))
             }
             Some(Token::Subscript) => {
                 input.next();
-                let tracked = input.parse(atom_for_scripts.clone())?;
+                let tracked =
+                    parse_script_operand(input, atom_for_scripts.clone(), "subscript content")?;
                 let span = input.span_from_cursor(&marker_start);
                 Some((ScriptMarker::Sub, TrackedNode { span, ..tracked }))
             }
@@ -1664,6 +1727,11 @@ where
         let recovery_src = src.get(item_start_index..).unwrap_or(src);
         let (message, kind) =
             normalize_recovery_message(ctx, current_mode, recovery_src, message, kind);
+        // Only treat the unknown command as the item head. A failure that
+        // originated deeper (for example a shorthand argument `\frac \mycmd b`)
+        // keeps the existing consume-until-hard-stop recovery.
+        let stop_after_command_token = kind == Some(ParseDiagnosticKind::UnknownCommand)
+            && err.span().start == item_start_index;
 
         let recovery_parser = custom({
             let message = message.clone();
@@ -1740,6 +1808,13 @@ where
                         Some(_) => {
                             let _ = input.next();
                             consumed = true;
+                            // An unknown command has no argspec, so a following
+                            // group is not its argument and must remain
+                            // parseable; consuming into the group would leave
+                            // an unmatched `}`.
+                            if stop_after_command_token {
+                                break;
+                            }
                         }
                         None => break,
                     }
@@ -1877,7 +1952,7 @@ where
     P: Parser<'a, TokenStream<'a>, Vec<TrackedNode>, ParserError<'a>> + Clone + 'a,
 {
     let atom = math_atom_parser(state, group_content, math_content, text_content);
-    scripted_atom_parser(atom)
+    scripted_atom_parser(state, atom)
 }
 
 /// Parse a single math item in argument contexts.
@@ -1910,7 +1985,7 @@ fn math_atom_argument_parser<'a>(
     text_content: ContentParser<'a>,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     let atom = math_atom_parser(state, math_content.clone(), math_content, text_content);
-    let scripted = scripted_atom_parser(atom.clone());
+    let scripted = scripted_atom_parser(state, atom.clone());
     let leading_script_marker = insignificant_whitespace()
         .ignore_then(select! {
             Token::Superscript => (),
@@ -2304,11 +2379,25 @@ where
     })
 }
 
+/// Recognise the failure produced by [`missing_script_operand_failure`].
+fn is_missing_script_content_error(err: &ParseFailure<'_>) -> bool {
+    err.kind == Some(ParseDiagnosticKind::RawExpectedFound)
+        && matches!(
+            err.reason(),
+            chumsky::error::RichReason::Custom(message)
+                if message == "Missing superscript content"
+                    || message == "Missing subscript content"
+        )
+}
+
 /// Wrap a base atom with script parsing (`^`, `_`, primes).
 ///
 /// This parser allows leading whitespace before script atoms but does not
-/// consume trailing whitespace after the parsed item.
+/// consume trailing whitespace after the parsed item. A script marker with no
+/// operand is reported here and, unless `abort_on_error` is set, replaced by
+/// an `Error` node covering the base and the marker.
 fn scripted_atom_parser<'a, P>(
+    state: &'a ParserState<'a>,
     atom: P,
 ) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone
 where
@@ -2318,7 +2407,29 @@ where
     let atom_for_scripts = ws.ignore_then(atom.clone());
     custom(move |input| {
         let start = input.cursor();
-        let components = parse_scripted_components(input, atom_for_scripts.clone())?;
+        let components = match parse_scripted_components(input, atom_for_scripts.clone()) {
+            Ok(components) => components,
+            Err(err) if is_missing_script_content_error(&err) => {
+                // custom() records this failure at the atom start, so a later
+                // generic ExpectedFound would replace it. Publish the diagnostic
+                // here; recover locally unless abort_on_error forbids new recovery.
+                let diagnostic = err.clone().into_owned();
+                let message = diagnostic.to_string();
+                state.push_recovery_diagnostic(diagnostic);
+                if state.config.abort_on_error {
+                    return Err(err);
+                }
+                let span = input.span_from_cursor(&start);
+                return Ok(TrackedNode::leaf(
+                    SyntaxNode::Error {
+                        message,
+                        snippet: slice_snippet(state.src, span),
+                    },
+                    span,
+                ));
+            }
+            Err(err) => return Err(err),
+        };
 
         if components.subscript.is_none() && components.superscript.is_none() {
             return Ok(components.base);
