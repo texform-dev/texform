@@ -93,3 +93,68 @@ fn document_exposes_stable_tokenized_serialization_contract() {
         document.to_latex_with(&options).unwrap()
     );
 }
+
+#[test]
+fn middle_delimiter_serializes_bare_and_is_text_idempotent() {
+    let parser = texform::Parser::builder()
+        .packages(&["base"])
+        .build()
+        .expect("parser should build");
+    let parsed = parser.parse(r"\left\langle a\middle\vert b\right\rangle");
+    assert!(
+        parsed.diagnostics().is_empty(),
+        "unexpected diagnostics: {:?}",
+        parsed.diagnostics()
+    );
+    let document = parsed
+        .try_into_document()
+        .expect("parse should produce a document")
+        .0;
+
+    let latex = document.to_latex().expect("document should serialize");
+    assert!(
+        latex.contains(r"\middle \vert"),
+        "expected a bare middle delimiter, got {latex}"
+    );
+    assert!(
+        !latex.contains(r"{\vert}"),
+        "mandatory delimiter must not be brace-wrapped, got {latex}"
+    );
+
+    let again = parser
+        .parse(&latex)
+        .try_into_document()
+        .expect("serialized output should parse")
+        .0;
+    assert_eq!(
+        again
+            .to_latex()
+            .expect("reserialized document should serialize"),
+        latex
+    );
+}
+
+#[test]
+fn bigl_non_ascii_token_spans_use_utf8_byte_offsets() {
+    let parser = texform::Parser::builder()
+        .packages(&["base"])
+        .build()
+        .expect("parser should build");
+    let document = parser
+        .parse(r"\bigl( é \bigr)")
+        .try_into_document()
+        .expect("parse should produce a document")
+        .0;
+
+    let result = document
+        .to_tokenized_latex()
+        .expect("document should serialize with tokens");
+    assert_eq!(result.latex, document.to_latex().unwrap());
+    assert_token_contract(&result);
+    assert!(
+        result
+            .tokens
+            .iter()
+            .any(|token| { token.text == "é" && token.kind == SerializationTokenKind::Character })
+    );
+}

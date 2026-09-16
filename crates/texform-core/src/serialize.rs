@@ -984,6 +984,14 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             (ArgumentKind::Optional, ArgumentValue::OperatorNameContent(child)) => {
                 self.emit_operator_name_argument_content(*child, "[", "]", mode, opening_boundary);
             }
+            // A mandatory delimiter slot consumes a bare delimiter token in TeX
+            // (`\middle\vert`, `\big(`, `\atopwithdelims()`). MathJax rejects a
+            // braced delimiter for `\middle`, `\left`/`\right`, and the
+            // `\...withdelims` family, so only the Group form (which required
+            // braces in the source) keeps its braces.
+            (ArgumentKind::Mandatory, ArgumentValue::Delimiter(delimiter)) => {
+                self.emit_delimiter_with_boundary(delimiter, mode, mode, opening_boundary)
+            }
             (ArgumentKind::Mandatory | ArgumentKind::Group, value) => {
                 self.emit_scalar_wrapped(value, "{", "}", mode, opening_boundary)
             }

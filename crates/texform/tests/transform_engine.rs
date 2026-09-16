@@ -80,6 +80,51 @@ fn corpus_normalize_preserves_prime_and_prefix_shorthand_contracts() {
 }
 
 #[test]
+fn braket_normalize_emits_bare_middle_vert_except_authoring() {
+    for profile in [Profile::Faithful, Profile::Corpus, Profile::Equiv] {
+        let result = TransformEngine::builder()
+            .packages(&["base", "physics"])
+            .profile(profile)
+            .build()
+            .expect("engine should build")
+            .normalize(r"\braket{a}{b}")
+            .expect("normalize should succeed");
+
+        assert!(
+            result.normalized.contains(r"\middle \vert"),
+            "{profile:?} output: {}",
+            result.normalized
+        );
+        assert!(
+            !result.normalized.contains(r"{\vert}"),
+            "{profile:?} output: {}",
+            result.normalized
+        );
+    }
+
+    let authoring = TransformEngine::builder()
+        .packages(&["base", "physics"])
+        .profile(Profile::Authoring)
+        .build()
+        .expect("engine should build")
+        .normalize(r"\braket{a}{b}")
+        .expect("normalize should succeed");
+    assert_eq!(authoring.normalized, r"\braket { a } { b }");
+
+    let corpus = TransformEngine::builder()
+        .packages(&["base", "physics"])
+        .profile(Profile::Corpus)
+        .build()
+        .expect("engine should build")
+        .normalize(r"\braket{a|b}")
+        .expect("normalize should succeed");
+    assert_eq!(
+        corpus.normalized,
+        r"\left \langle a | b \middle \vert a | b \right \rangle"
+    );
+}
+
+#[test]
 fn normalize_uses_prime_shorthand_inside_array_cells() {
     for profile in [
         Profile::Authoring,

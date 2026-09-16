@@ -672,8 +672,113 @@ fn test_serialize_other_scalar_argument_variants() {
 
     assert_eq!(
         serialize(&ast),
-        r"\label {sec:intro} \romannumeral {12} \arraycols {lcr} \delim {\langle}"
+        r"\label {sec:intro} \romannumeral {12} \arraycols {lcr} \delim \langle"
     );
+}
+
+#[test]
+fn test_serialize_mandatory_delimiter_emits_bare_token() {
+    let mut ast = Ast::new();
+    let root = ast.root();
+
+    let control = ast.new_node(Node::Command {
+        name: "delim".to_string(),
+        args: vec![Some(Argument {
+            kind: ArgumentKind::Mandatory,
+            no_leading_space: false,
+            value: ArgumentValue::Delimiter(texform_core::ast::Delimiter::Control(
+                "vert".to_string(),
+            )),
+        })],
+        known: true,
+    });
+    let paren = ast.new_node(Node::Command {
+        name: "delim".to_string(),
+        args: vec![Some(Argument {
+            kind: ArgumentKind::Mandatory,
+            no_leading_space: false,
+            value: ArgumentValue::Delimiter(texform_core::ast::Delimiter::Char('(')),
+        })],
+        known: true,
+    });
+    let empty = ast.new_node(Node::Command {
+        name: "delim".to_string(),
+        args: vec![Some(Argument {
+            kind: ArgumentKind::Mandatory,
+            no_leading_space: false,
+            value: ArgumentValue::Delimiter(texform_core::ast::Delimiter::None),
+        })],
+        known: true,
+    });
+
+    ast.append_child(root, control);
+    ast.append_child(root, paren);
+    ast.append_child(root, empty);
+
+    assert_eq!(serialize(&ast), r"\delim \vert \delim ( \delim .");
+
+    let result = serialize_tokenized(&ast);
+    assert_eq!(result.latex, serialize(&ast));
+    assert_token_contract(&result);
+    assert!(result.tokens.iter().any(|token| {
+        token.text == r"\vert" && token.kind == SerializationTokenKind::Delimiter
+    }));
+}
+
+#[test]
+fn test_serialize_group_and_optional_delimiter_keep_wrappers() {
+    let mut ast = Ast::new();
+    let root = ast.root();
+
+    let group = ast.new_node(Node::Command {
+        name: "gdelim".to_string(),
+        args: vec![Some(Argument {
+            kind: ArgumentKind::Group,
+            no_leading_space: false,
+            value: ArgumentValue::Delimiter(texform_core::ast::Delimiter::Char('|')),
+        })],
+        known: true,
+    });
+    let optional = ast.new_node(Node::Command {
+        name: "odelim".to_string(),
+        args: vec![Some(Argument {
+            kind: ArgumentKind::Optional,
+            no_leading_space: false,
+            value: ArgumentValue::Delimiter(texform_core::ast::Delimiter::Char('|')),
+        })],
+        known: true,
+    });
+
+    ast.append_child(root, group);
+    ast.append_child(root, optional);
+
+    assert_eq!(serialize(&ast), r"\gdelim {|} \odelim [|]");
+}
+
+#[test]
+fn test_serialize_control_delimiter_keeps_space_before_letter() {
+    let mut ast = Ast::new();
+    let root = ast.root();
+    let command = ast.new_node(Node::Command {
+        name: "big".to_string(),
+        args: vec![Some(Argument {
+            kind: ArgumentKind::Mandatory,
+            no_leading_space: false,
+            value: ArgumentValue::Delimiter(texform_core::ast::Delimiter::Control(
+                "langle".to_string(),
+            )),
+        })],
+        known: true,
+    });
+    let letter = ast.new_node(Node::Char('a'));
+    ast.append_child(root, command);
+    ast.append_child(root, letter);
+
+    assert_eq!(serialize(&ast), r"\big \langle a");
+
+    let result = serialize_tokenized(&ast);
+    assert_eq!(result.latex, serialize(&ast));
+    assert_token_contract(&result);
 }
 
 #[test]

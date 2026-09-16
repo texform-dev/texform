@@ -106,7 +106,7 @@ fn build_command_with_public_delimiter_value() {
     let root = doc.root().id();
     doc.append_child(root, cmd).unwrap();
 
-    assert_eq!(doc.to_latex().unwrap(), r"\mystery {\langle}");
+    assert_eq!(doc.to_latex().unwrap(), r"\mystery \langle");
 }
 
 #[test]
