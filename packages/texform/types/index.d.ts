@@ -374,7 +374,7 @@ export type SerializationTokenKind =
 
 /** One non-empty canonical serialization fragment. */
 export interface SerializationToken {
-  /** Fragment text, exactly the slice `latex.slice(startByte, endByte)`. */
+  /** Fragment text, decoded from bytes `[startByte, endByte)` of the UTF-8 encoding of `latex`. */
   text: string;
   /** Inclusive UTF-8 byte offset into {@link TokenizedLatex.latex}, not a JavaScript UTF-16 index. */
   startByte: number;
@@ -390,7 +390,7 @@ export interface SerializationToken {
 export interface TokenizedLatex {
   /** Canonical LaTeX string, identical to {@link Document.toLatex}. */
   latex: string;
-  /** Non-empty fragments covering `latex`, in order. Empty error snippets emit no token. */
+  /** Ordered, non-overlapping, non-empty fragments. Gaps contain serializer-inserted spacing. Empty error snippets emit no token. */
   tokens: SerializationToken[];
 }
 
@@ -1729,8 +1729,10 @@ export interface NormalizeConfig extends ParseConfig, TransformConfig {}
  * camelCase overlay object: `null` / `undefined` / omitted means not set.
  * Unknown keys, snake_case keys, arrays in object positions, and wrong scalar
  * types throw {@link TexformConfigError} with a camelCase path. Omit `packages`
- * to load the default runtime packages (six packages; `braket` is omitted
- * because it conflicts with `physics`), not every built-in package.
+ * to load the default runtime packages (six packages, excluding `braket`),
+ * not every built-in package. Loading `braket` together with `physics` is
+ * allowed, but `physics` overrides their shared command definitions. Built-in
+ * packages are imported in a fixed order, regardless of the supplied list order.
  *
  * @see {@link TransformEngine}
  * @see {@link Parsing}

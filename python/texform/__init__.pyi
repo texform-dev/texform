@@ -191,7 +191,8 @@ class SerializationToken(TypedDict):
     not overlap. Empty error snippets emit no token.
 
     Attributes:
-        text: The fragment text, exactly the slice ``latex[start_byte:end_byte]``.
+        text: The UTF-8 decoding of the byte slice
+            ``latex.encode("utf-8")[start_byte:end_byte]``.
         start_byte: Inclusive UTF-8 byte offset into the canonical LaTeX string.
         end_byte: Exclusive UTF-8 byte offset into the canonical LaTeX string.
         kind: Semantic category of the fragment (control sequence, character, ...).
@@ -214,7 +215,8 @@ class TokenizedLatex(TypedDict):
 
     Attributes:
         latex: The canonical LaTeX string, identical to ``Document.to_latex()``.
-        tokens: Non-empty fragments covering that string, in order.
+        tokens: Ordered, non-overlapping, non-empty fragments. Gaps between
+            spans contain serializer-inserted spacing.
     """
 
     latex: str
@@ -858,6 +860,8 @@ class Document:
         Raises:
             ConfigError: If an option key is unknown or a value has the wrong
                 type.
+            TypeError: If options are passed as a positional dict instead of
+                keyword arguments. Use ``doc.to_latex(**options)`` for a dict.
 
         Examples:
             doc = texform.Parser().parse(r"x^2")["document"]
@@ -1580,8 +1584,10 @@ class Parser:
     must be a complete ``ParseConfig`` instance; a dict passed as ``config``
     raises ``ConfigError``. Other keywords are overlays
     (``parse(src, reject_unknown=True)``). ``packages=None`` loads the default
-    runtime packages (six packages; ``braket`` is omitted because it conflicts
-    with ``physics``), not every built-in package.
+    runtime packages (six packages, excluding ``braket``), not every built-in
+    package. Loading ``braket`` together with ``physics`` is allowed, but
+    ``physics`` overrides their shared command definitions. Built-in packages
+    are imported in a fixed order, regardless of the supplied list order.
 
     For the conceptual model, see the Parsing guide.
 
@@ -2333,6 +2339,11 @@ class TransformConfig:
             rewrite: The Rewrite phase config.
             finalize_ast: The FinalizeAst phase config.
             flatten_groups: The FlattenGroups phase config.
+
+        Raises:
+            TypeError: If a required phase argument is missing. Start with a
+                profile classmethod such as ``TransformConfig.corpus()`` to
+                change only selected fields.
         """
 
     @classmethod
