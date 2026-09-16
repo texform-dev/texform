@@ -632,11 +632,6 @@ class ParseError(TexformError):
     into a complete tree. The exception then carries the diagnostics and the
     partial document for inspection.
 
-    Attaching a node that belongs to another document currently also raises
-    ``ParseError`` (message ``"node belongs to a different document"``), not
-    ``EditError``. That path is a binding check, not a parse failure, and does
-    not populate ``diagnostics`` / ``document``.
-
     Attributes:
         diagnostics: The diagnostics describing the parse failure.
         document: The partial ``Document``, or ``None`` when no tree was produced.
@@ -650,12 +645,9 @@ class EditError(TexformError):
     """Raised by a ``Document`` editing method on an invalid edit.
 
     Triggers include editing a read-only (error) tree, detaching or removing the
-    root node, an out-of-bounds index, and a wrong container shape. The edit is
-    rejected before it can corrupt the tree.
-
-    Attaching a node that belongs to another document does not currently raise
-    ``EditError``; it raises ``ParseError`` with the message ``"node belongs to
-    a different document"``.
+    root node, an out-of-bounds index, a wrong container shape, and attaching a
+    node that belongs to another document. The edit is rejected before it can
+    corrupt the tree.
     """
 
 
@@ -673,9 +665,10 @@ class ConfigError(TexformError):
 class TransformError(TexformError):
     """Raised on a transform-engine failure.
 
-    Triggers include an eliminated-form contract violation, and — in the Python
-    build — passing ``TransformEngine.transform`` a foreign document not produced
-    by that engine's own ``parse``.
+    Triggers include an eliminated-form contract violation, passing
+    ``TransformEngine.transform`` a document that ``has_errors()``, and — in the
+    Python build — passing a foreign document not produced by that engine's own
+    ``parse``.
     """
 
 
@@ -1891,7 +1884,7 @@ class TransformEngine:
         ``parse``. A document from ``Document()``, ``Document.from_syntax()``, or
         another parser can still be edited and serialized, but ``transform``
         rejects it with ``TransformError``. The document must also be complete;
-        a document that ``has_errors()`` is rejected with ``TexformError``.
+        a document that ``has_errors()`` is rejected with ``TransformError``.
 
         Args:
             document: The live ``Document`` to update in place.
@@ -1905,9 +1898,8 @@ class TransformEngine:
             The phase-oriented transform report dict.
 
         Raises:
-            TransformError: If the document is foreign to this engine, or on a
-                contract violation.
-            TexformError: If the document has parse errors.
+            TransformError: If the document is foreign to this engine, has parse
+                errors, or on a contract violation.
             ConfigError: If ``config`` is not a ``TransformConfig``, a dict is
                 passed as ``config``, or an override key or value is invalid.
 

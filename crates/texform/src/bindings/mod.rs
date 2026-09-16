@@ -294,7 +294,7 @@ pub fn normalize_error_to_parts(error: crate::NormalizeError) -> BindingErrorPar
             },
             document: None,
         },
-        Error::ForeignDocument | Error::Transform(_) => BindingErrorParts {
+        Error::ForeignDocument | Error::IncompleteTree | Error::Transform(_) => BindingErrorParts {
             error: BindingErrorDto {
                 kind: "transform",
                 message: error.to_string(),
@@ -302,7 +302,7 @@ pub fn normalize_error_to_parts(error: crate::NormalizeError) -> BindingErrorPar
             },
             document: None,
         },
-        Error::IncompleteTree | Error::Serialize(_) => BindingErrorParts {
+        Error::Serialize(_) => BindingErrorParts {
             error: BindingErrorDto {
                 kind: "internal",
                 message: error.to_string(),

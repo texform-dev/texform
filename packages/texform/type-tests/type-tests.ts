@@ -6,6 +6,9 @@ import type {
   TransformEngine,
 } from "../types/index.d.ts";
 
+// @ts-expect-error — Complete is file-local, not part of the public API
+import type { Complete } from "../types/index.d.ts";
+
 declare const engine: TransformEngine;
 declare const parser: Parser;
 declare const src: string;
@@ -14,6 +17,11 @@ declare const doc: Document;
 const e: boolean = engine.defaultTransformConfig().rewrite.enabled;
 const n: number = engine.defaultTransformConfig().rewrite.maxIterations;
 const p: number = parser.defaultParseConfig().maxGroupDepth;
+
+const parseDefaults: ReturnType<Parser["defaultParseConfig"]> = parser.defaultParseConfig();
+const transformDefaults: ReturnType<TransformEngine["defaultTransformConfig"]> =
+  engine.defaultTransformConfig();
+const flattenEnabled: boolean = engine.defaultTransformConfig().flattenGroups.enabled;
 
 const overrides: TransformConfig = { rewrite: { enabled: false } };
 engine.normalize(src, overrides);
@@ -30,3 +38,6 @@ engine.transform(doc, { rewrite: { enabled: "yes" } });
 void e;
 void n;
 void p;
+void parseDefaults;
+void transformDefaults;
+void flattenEnabled;

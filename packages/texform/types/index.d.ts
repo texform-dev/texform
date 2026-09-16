@@ -1122,8 +1122,8 @@ export class TexformConfigError extends TexformError {}
 
 /**
  * Thrown on a transform-engine failure, such as an eliminated-form contract
- * violation, or passing a foreign document to
- * {@link TransformEngine.transform}.
+ * violation, passing a foreign document to {@link TransformEngine.transform},
+ * or passing a document that {@link Document.hasErrors}.
  */
 export class TexformTransformError extends TexformError {}
 
@@ -1983,7 +1983,7 @@ export class TransformEngine {
    * `new Document()` or {@link Document.fromSyntax} can be edited and
    * serialized, but `transform` rejects it with {@link TexformTransformError}.
    * A document that {@link Document.hasErrors} is read-only and cannot be
-   * transformed; this precondition error is surfaced as {@link TexformError}.
+   * transformed; this precondition error is surfaced as {@link TexformTransformError}.
    *
    * @param document - The live document to update in place.
    * @param config - A {@link TransformConfig} overlay, or omit/`null` to use
@@ -2153,3 +2153,8 @@ export interface PackageInfo {
  * ```
  */
 export function listPackages(): PackageInfo[];
+
+// A .d.ts module implicitly exports every top-level declaration unless it
+// contains an explicit `export {}`. This keeps file-local helpers such as
+// `Complete` out of the public API.
+export {};

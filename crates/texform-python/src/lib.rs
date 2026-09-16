@@ -245,7 +245,7 @@ fn ensure_same_py_document(
     if same_py_document(py, left, right) {
         Ok(())
     } else {
-        Err(ParseError::new_err("node belongs to a different document"))
+        Err(EditError::new_err("node belongs to a different document"))
     }
 }
 
@@ -1660,6 +1660,36 @@ mod tests {
     }
 
     #[test]
+    fn python_normalize_incomplete_input_with_abort_off_is_parse_error() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let kwargs = PyDict::new(py);
+            kwargs.set_item("profile", "corpus").unwrap();
+            kwargs.set_item("packages", vec!["base"]).unwrap();
+            let engine = module
+                .getattr("TransformEngine")
+                .unwrap()
+                .call((), Some(&kwargs))
+                .unwrap();
+            let overrides = PyDict::new(py);
+            overrides.set_item("abort_on_error", false).unwrap();
+            let error = engine
+                .call_method("normalize", (r"\sqrt[",), Some(&overrides))
+                .expect_err("normalize should raise a parse error");
+
+            assert!(error.is_instance_of::<ParseError>(py));
+            assert!(error.is_instance_of::<TexformError>(py));
+            let value = error.value(py);
+            let diagnostics = value.getattr("diagnostics").unwrap();
+            assert!(diagnostics.cast::<PyList>().is_ok());
+            assert!(diagnostics.len().unwrap() > 0);
+            assert!(!value.getattr("document").unwrap().is_none());
+        });
+    }
+
+    #[test]
     fn python_rejects_cross_document_nodes() {
         Python::attach(|py| {
             let module = PyModule::new(py, "_native").expect("module");
@@ -1669,12 +1699,65 @@ mod tests {
             let first = document_cls.call0().unwrap();
             let second = document_cls.call0().unwrap();
             let root = first.call_method0("root").unwrap();
+            let local = first.call_method1("create_char", ("a",)).unwrap();
+            first
+                .call_method1("append_child", (&root, &local))
+                .expect("same-document child should attach");
             let foreign = second.call_method1("create_char", ("x",)).unwrap();
+            let first_latex = first
+                .call_method0("to_latex")
+                .unwrap()
+                .extract::<String>()
+                .unwrap();
+            let second_latex = second
+                .call_method0("to_latex")
+                .unwrap()
+                .extract::<String>()
+                .unwrap();
 
             let error = first
-                .call_method1("append_child", (root, foreign))
+                .call_method1("append_child", (&root, &foreign))
                 .expect_err("foreign child should be rejected");
+            assert!(error.is_instance_of::<EditError>(py));
             assert!(error.to_string().contains("different document"));
+            assert_eq!(
+                first
+                    .call_method0("to_latex")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                first_latex
+            );
+            assert_eq!(
+                second
+                    .call_method0("to_latex")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                second_latex
+            );
+
+            let error = first
+                .call_method1("replace_with", (&local, &foreign))
+                .expect_err("foreign replacement should be rejected");
+            assert!(error.is_instance_of::<EditError>(py));
+            assert!(error.to_string().contains("different document"));
+            assert_eq!(
+                first
+                    .call_method0("to_latex")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                first_latex
+            );
+            assert_eq!(
+                second
+                    .call_method0("to_latex")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                second_latex
+            );
         });
     }
 
@@ -2200,6 +2283,62 @@ mod tests {
                 .expect_err("documents from another engine must not be transformed");
 
             assert!(error.is_instance_of::<TransformError>(py));
+        });
+    }
+
+    #[test]
+    fn python_engine_transform_rejects_document_with_parse_errors() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let kwargs = PyDict::new(py);
+            kwargs.set_item("profile", "corpus").unwrap();
+            kwargs.set_item("packages", vec!["base"]).unwrap();
+            let engine = module
+                .getattr("TransformEngine")
+                .unwrap()
+                .call((), Some(&kwargs))
+                .unwrap();
+
+            let parse_kwargs = PyDict::new(py);
+            parse_kwargs.set_item("abort_on_error", false).unwrap();
+            let parsed = engine
+                .call_method("parse", (r"\frac{a}{b}\sqrt[",), Some(&parse_kwargs))
+                .unwrap();
+            let document = parsed
+                .cast::<PyDict>()
+                .unwrap()
+                .get_item("document")
+                .unwrap()
+                .unwrap();
+            assert!(
+                document
+                    .call_method0("has_errors")
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap()
+            );
+            let latex_before = document
+                .call_method0("to_latex")
+                .unwrap()
+                .extract::<String>()
+                .unwrap();
+
+            let error = engine
+                .call_method1("transform", (document.clone(),))
+                .expect_err("documents with parse errors must not be transformed");
+
+            assert!(error.is_instance_of::<TransformError>(py));
+            assert!(error.is_instance_of::<TexformError>(py));
+            assert_eq!(
+                document
+                    .call_method0("to_latex")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                latex_before
+            );
         });
     }
 

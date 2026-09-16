@@ -171,6 +171,47 @@ try {
   }
 }
 
+const incompleteEngine = new TransformEngine({ profile: "corpus", packages: ["base"] });
+const incompleteDocument = incompleteEngine.parse(String.raw`\frac{a}{b}\sqrt[`, {
+  abortOnError: false,
+}).document;
+if (!incompleteDocument.hasErrors()) {
+  throw new Error("incomplete parse should produce a document with errors");
+}
+const incompleteLatex = incompleteDocument.toLatex();
+try {
+  incompleteEngine.transform(incompleteDocument);
+  throw new Error("engine.transform should reject documents with parse errors");
+} catch (error) {
+  if (!(error instanceof TexformTransformError)) {
+    throw error;
+  }
+  if (error.kind !== "transform") {
+    throw new Error("incomplete-document transform should expose transform kind");
+  }
+  if (incompleteDocument.toLatex() !== incompleteLatex) {
+    throw new Error("rejected transform should leave the document unchanged");
+  }
+}
+
+try {
+  incompleteEngine.normalize(String.raw`\sqrt[`, { abortOnError: false });
+  throw new Error("normalize should fail for incomplete input");
+} catch (error) {
+  if (!(error instanceof TexformParseError)) {
+    throw error;
+  }
+  if (error.kind !== "parse") {
+    throw new Error("normalize incomplete input should expose parse kind");
+  }
+  if (!Array.isArray(error.diagnostics) || error.diagnostics.length === 0) {
+    throw new Error("parse error diagnostics missing");
+  }
+  if (error.document == null) {
+    throw new Error("parse error document missing");
+  }
+}
+
 try {
   new TransformEngine({ profile: "__bad__" });
   throw new Error("unknown transform profile should fail");
