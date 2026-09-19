@@ -1197,7 +1197,7 @@ dependencies = [
 
 [[package]]
 name = "texform"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1211,14 +1211,14 @@ dependencies = [
 
 [[package]]
 name = "texform-argspec"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "texform-interface",
 ]
 
 [[package]]
 name = "texform-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "ariadne",
  "chumsky",
@@ -1235,7 +1235,7 @@ dependencies = [
 
 [[package]]
 name = "texform-interface"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1245,7 +1245,7 @@ dependencies = [
 
 [[package]]
 name = "texform-knowledge"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_yaml",
@@ -1256,7 +1256,7 @@ dependencies = [
 
 [[package]]
 name = "texform-knowledge-macros"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1266,7 +1266,7 @@ dependencies = [
 
 [[package]]
 name = "texform-python"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "pyo3",
  "pythonize",
@@ -1277,7 +1277,7 @@ dependencies = [
 
 [[package]]
 name = "texform-regression"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -1297,7 +1297,7 @@ dependencies = [
 
 [[package]]
 name = "texform-transform"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_yaml",
@@ -1308,7 +1308,7 @@ dependencies = [
 
 [[package]]
 name = "texform-wasm"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "js-sys",
  "serde",
