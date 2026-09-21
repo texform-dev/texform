@@ -43,7 +43,7 @@ jobs:
           manylinux: auto
       - name: Smoke test wheel
         run: |
-          pip install texform --no-index --find-links dist
+          pip install dist/*.whl
           python -c 'import texform; texform.Parser(); print("texform ok")'
 
   npm-binding:

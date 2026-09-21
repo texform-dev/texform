@@ -74,19 +74,19 @@ jobs:
         if: matrix.smoke == 'native'
         shell: bash
         run: |
-          pip install texform --no-index --find-links dist
+          pip install dist/*.whl
           python -c "$PY_SMOKE"
       - name: Smoke test (qemu arm64)
         if: matrix.smoke == 'qemu-arm64'
         run: |
           docker run --rm --privileged tonistiigi/binfmt:latest@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0 --install arm64
           docker run --rm --platform linux/arm64 -v "$PWD/dist:/dist:ro" python:3.12-bookworm@sha256:218a88a57964084b18fe70190b9d5cc6543b24126c3206c3d3e707db8e0c3c25 \
-            sh -c "pip install texform --no-index --find-links /dist && python -c '$PY_SMOKE'"
+            sh -c "pip install /dist/*.whl && python -c '$PY_SMOKE'"
       - name: Smoke test (alpine musl)
         if: matrix.smoke == 'alpine'
         run: |
           docker run --rm -v "$PWD/dist:/dist:ro" python:3.12-alpine@sha256:dbb1970cc04ce7d381c65efe8309c0c03d463e5b35c88f14d721796ad24cfbfd \
-            sh -c "pip install texform --no-index --find-links /dist && python -c '$PY_SMOKE'"
+            sh -c "pip install /dist/*.whl && python -c '$PY_SMOKE'"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: wheels-${{ matrix.name }}
