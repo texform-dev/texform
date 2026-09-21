@@ -4,9 +4,8 @@ use crate::{
     NormalizeConfig, ParseConfig, RewriteConfig, SerializeOptions, TransformConfig,
 };
 use texform_core::serialize::{
-    AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, EnvironmentSerializeOptions,
-    InfixGrouping, MathGroupInnerSpacing, MathInfixOptions, MathScriptOptions,
-    MathSerializeOptions, MathSpacingOptions, ScriptOrder, ScriptSpacing, SyntaxSerializeOptions,
+    AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, InfixGrouping,
+    MathGroupInnerSpacing, ScriptOrder, ScriptSpacing,
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -288,172 +287,50 @@ impl NormalizeConfigInput {
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(default, deny_unknown_fields, expecting = "an object")]
 pub struct SerializeOptionsInput {
-    pub math: Option<MathSerializeOptionsInput>,
-    pub syntax: Option<SyntaxSerializeOptionsInput>,
+    pub command_spacing: Option<CommandSpacing>,
+    pub group_inner_spacing: Option<MathGroupInnerSpacing>,
+    pub adjacent_char_spacing: Option<AdjacentCharSpacing>,
+    pub script_spacing: Option<ScriptSpacing>,
+    pub script_order: Option<ScriptOrder>,
+    pub infix_operand_grouping: Option<InfixGrouping>,
+    pub environment_name_spacing: Option<EnvironmentNameSpacing>,
 }
 
 impl SerializeOptionsInput {
-    pub fn into_config(self, base: SerializeOptions) -> SerializeOptions {
-        SerializeOptions {
-            math: self.math.unwrap_or_default().into_config(base.math),
-            syntax: self.syntax.unwrap_or_default().into_config(base.syntax),
-        }
-    }
-
-    pub fn from_config(config: SerializeOptions) -> Self {
-        Self {
-            math: Some(MathSerializeOptionsInput::from_config(config.math)),
-            syntax: Some(SyntaxSerializeOptionsInput::from_config(config.syntax)),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, deny_unknown_fields, expecting = "an object")]
-pub struct MathSerializeOptionsInput {
-    pub spacing: Option<MathSpacingOptionsInput>,
-    pub scripts: Option<MathScriptOptionsInput>,
-    pub infix: Option<MathInfixOptionsInput>,
-}
-
-impl MathSerializeOptionsInput {
-    pub fn into_config(self, base: MathSerializeOptions) -> MathSerializeOptions {
-        MathSerializeOptions {
-            spacing: self.spacing.unwrap_or_default().into_config(base.spacing),
-            scripts: self.scripts.unwrap_or_default().into_config(base.scripts),
-            infix: self.infix.unwrap_or_default().into_config(base.infix),
-        }
-    }
-
-    pub fn from_config(config: MathSerializeOptions) -> Self {
-        Self {
-            spacing: Some(MathSpacingOptionsInput::from_config(config.spacing)),
-            scripts: Some(MathScriptOptionsInput::from_config(config.scripts)),
-            infix: Some(MathInfixOptionsInput::from_config(config.infix)),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, deny_unknown_fields, expecting = "an object")]
-pub struct MathSpacingOptionsInput {
-    pub commands: Option<CommandSpacing>,
-    pub group_inner_spacing: Option<MathGroupInnerSpacing>,
-    pub adjacent_chars: Option<AdjacentCharSpacing>,
-}
-
-impl MathSpacingOptionsInput {
-    pub fn into_config(self, mut base: MathSpacingOptions) -> MathSpacingOptions {
-        if let Some(commands) = self.commands {
-            base.commands = commands;
+    pub fn into_config(self, mut base: SerializeOptions) -> SerializeOptions {
+        if let Some(command_spacing) = self.command_spacing {
+            base.command_spacing = command_spacing;
         }
         if let Some(group_inner_spacing) = self.group_inner_spacing {
             base.group_inner_spacing = group_inner_spacing;
         }
-        if let Some(adjacent_chars) = self.adjacent_chars {
-            base.adjacent_chars = adjacent_chars;
+        if let Some(adjacent_char_spacing) = self.adjacent_char_spacing {
+            base.adjacent_char_spacing = adjacent_char_spacing;
+        }
+        if let Some(script_spacing) = self.script_spacing {
+            base.script_spacing = script_spacing;
+        }
+        if let Some(script_order) = self.script_order {
+            base.script_order = script_order;
+        }
+        if let Some(infix_operand_grouping) = self.infix_operand_grouping {
+            base.infix_operand_grouping = infix_operand_grouping;
+        }
+        if let Some(environment_name_spacing) = self.environment_name_spacing {
+            base.environment_name_spacing = environment_name_spacing;
         }
         base
     }
 
-    pub fn from_config(config: MathSpacingOptions) -> Self {
+    pub fn from_config(config: SerializeOptions) -> Self {
         Self {
-            commands: Some(config.commands),
+            command_spacing: Some(config.command_spacing),
             group_inner_spacing: Some(config.group_inner_spacing),
-            adjacent_chars: Some(config.adjacent_chars),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, deny_unknown_fields, expecting = "an object")]
-pub struct MathScriptOptionsInput {
-    pub spacing: Option<ScriptSpacing>,
-    pub order: Option<ScriptOrder>,
-}
-
-impl MathScriptOptionsInput {
-    pub fn into_config(self, mut base: MathScriptOptions) -> MathScriptOptions {
-        if let Some(spacing) = self.spacing {
-            base.spacing = spacing;
-        }
-        if let Some(order) = self.order {
-            base.order = order;
-        }
-        base
-    }
-
-    pub fn from_config(config: MathScriptOptions) -> Self {
-        Self {
-            spacing: Some(config.spacing),
-            order: Some(config.order),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, deny_unknown_fields, expecting = "an object")]
-pub struct MathInfixOptionsInput {
-    pub grouping: Option<InfixGrouping>,
-}
-
-impl MathInfixOptionsInput {
-    pub fn into_config(self, mut base: MathInfixOptions) -> MathInfixOptions {
-        if let Some(grouping) = self.grouping {
-            base.grouping = grouping;
-        }
-        base
-    }
-
-    pub fn from_config(config: MathInfixOptions) -> Self {
-        Self {
-            grouping: Some(config.grouping),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, deny_unknown_fields, expecting = "an object")]
-pub struct SyntaxSerializeOptionsInput {
-    pub environments: Option<EnvironmentSerializeOptionsInput>,
-}
-
-impl SyntaxSerializeOptionsInput {
-    pub fn into_config(self, base: SyntaxSerializeOptions) -> SyntaxSerializeOptions {
-        SyntaxSerializeOptions {
-            environments: self
-                .environments
-                .unwrap_or_default()
-                .into_config(base.environments),
-        }
-    }
-
-    pub fn from_config(config: SyntaxSerializeOptions) -> Self {
-        Self {
-            environments: Some(EnvironmentSerializeOptionsInput::from_config(
-                config.environments,
-            )),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, deny_unknown_fields, expecting = "an object")]
-pub struct EnvironmentSerializeOptionsInput {
-    pub name_spacing: Option<EnvironmentNameSpacing>,
-}
-
-impl EnvironmentSerializeOptionsInput {
-    pub fn into_config(self, mut base: EnvironmentSerializeOptions) -> EnvironmentSerializeOptions {
-        if let Some(name_spacing) = self.name_spacing {
-            base.name_spacing = name_spacing;
-        }
-        base
-    }
-
-    pub fn from_config(config: EnvironmentSerializeOptions) -> Self {
-        Self {
-            name_spacing: Some(config.name_spacing),
+            adjacent_char_spacing: Some(config.adjacent_char_spacing),
+            script_spacing: Some(config.script_spacing),
+            script_order: Some(config.script_order),
+            infix_operand_grouping: Some(config.infix_operand_grouping),
+            environment_name_spacing: Some(config.environment_name_spacing),
         }
     }
 }
@@ -933,29 +810,27 @@ mod tests {
     fn serialize_options_input_partial_overlay_changes_only_set_leaf() {
         let base = SerializeOptions::default();
         let out = SerializeOptionsInput {
-            math: Some(MathSerializeOptionsInput {
-                scripts: Some(MathScriptOptionsInput {
-                    order: Some(ScriptOrder::SupFirst),
-                    spacing: None,
-                }),
-                ..Default::default()
-            }),
-            syntax: None,
+            script_order: Some(ScriptOrder::SupFirst),
+            ..Default::default()
         }
         .into_config(base.clone());
 
-        assert_eq!(out.math.scripts.order, ScriptOrder::SupFirst);
-        assert_eq!(out.math.scripts.spacing, base.math.scripts.spacing);
-        assert_eq!(out.math.spacing, base.math.spacing);
-        assert_eq!(out.math.infix, base.math.infix);
-        assert_eq!(out.syntax, base.syntax);
+        assert_eq!(out.script_order, ScriptOrder::SupFirst);
+        assert_eq!(out.script_spacing, base.script_spacing);
+        assert_eq!(out.command_spacing, base.command_spacing);
+        assert_eq!(out.group_inner_spacing, base.group_inner_spacing);
+        assert_eq!(out.adjacent_char_spacing, base.adjacent_char_spacing);
+        assert_eq!(out.infix_operand_grouping, base.infix_operand_grouping);
+        assert_eq!(out.environment_name_spacing, base.environment_name_spacing);
     }
 
     #[test]
     fn serialize_options_input_from_config_into_config_is_identity() {
-        let mut cfg = SerializeOptions::default();
-        cfg.math.scripts.order = ScriptOrder::SupFirst;
-        cfg.syntax.environments.name_spacing = EnvironmentNameSpacing::Compact;
+        let cfg = SerializeOptions {
+            script_order: ScriptOrder::SupFirst,
+            environment_name_spacing: EnvironmentNameSpacing::Compact,
+            ..SerializeOptions::default()
+        };
         assert_eq!(
             SerializeOptionsInput::from_config(cfg.clone())
                 .into_config(SerializeOptions::default()),

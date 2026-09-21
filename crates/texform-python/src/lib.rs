@@ -2539,6 +2539,90 @@ mod tests {
     }
 
     #[test]
+    fn python_serialize_options_accept_flat_kwargs_and_reject_nested_keys() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let parser = module.getattr("Parser").unwrap().call0().unwrap();
+            let parsed = parser.call_method1("parse", ("x_i^2",)).unwrap();
+            let document = parsed
+                .cast::<pyo3::types::PyDict>()
+                .unwrap()
+                .get_item("document")
+                .unwrap()
+                .unwrap();
+
+            let default = document
+                .call_method0("to_latex")
+                .unwrap()
+                .extract::<String>()
+                .unwrap();
+            assert_eq!(default, "x _ { i } ^ { 2 }");
+
+            let kwargs = PyDict::new(py);
+            kwargs.set_item("script_spacing", "compact").unwrap();
+            kwargs.set_item("script_order", "sup_first").unwrap();
+            let compact = document
+                .call_method("to_latex", (), Some(&kwargs))
+                .unwrap()
+                .extract::<String>()
+                .unwrap();
+            assert_eq!(compact, "x^{ 2 }_{ i }");
+
+            let none_kwargs = PyDict::new(py);
+            none_kwargs.set_item("script_order", py.None()).unwrap();
+            let omitted = document
+                .call_method("to_latex", (), Some(&none_kwargs))
+                .unwrap()
+                .extract::<String>()
+                .unwrap();
+            assert_eq!(omitted, default);
+
+            let nested = PyDict::new(py);
+            let math = PyDict::new(py);
+            math.set_item("scripts", PyDict::new(py)).unwrap();
+            nested.set_item("math", math).unwrap();
+            let error = document
+                .call_method("to_latex", (), Some(&nested))
+                .expect_err("legacy nested keys should fail");
+            assert!(error.is_instance_of::<ConfigError>(py));
+            let message = error.to_string();
+            assert!(message.contains("unknown field `math`"), "{message}");
+            assert!(message.contains("script_order"), "{message}");
+
+            let misspelled = PyDict::new(py);
+            misspelled.set_item("script_ordre", "sup_first").unwrap();
+            let error = document
+                .call_method("to_latex", (), Some(&misspelled))
+                .expect_err("unknown field should fail");
+            assert!(error.is_instance_of::<ConfigError>(py));
+            assert!(error.to_string().contains("script_ordre"), "{}", error);
+
+            let camel = PyDict::new(py);
+            camel.set_item("scriptOrder", "sup_first").unwrap();
+            let error = document
+                .call_method("to_latex", (), Some(&camel))
+                .expect_err("camelCase keys should fail in Python");
+            assert!(error.is_instance_of::<ConfigError>(py));
+
+            let syntax = document.call_method0("to_syntax").unwrap();
+            let serialize_kwargs = PyDict::new(py);
+            serialize_kwargs
+                .set_item("group_inner_spacing", "compact")
+                .unwrap();
+            let serialized = module
+                .getattr("serialize")
+                .unwrap()
+                .call((syntax,), Some(&serialize_kwargs))
+                .unwrap()
+                .extract::<String>()
+                .unwrap();
+            assert_eq!(serialized, "x _ {i} ^ {2}");
+        });
+    }
+
+    #[test]
     fn python_module_profile_names_use_faithful_and_reject_corpus_drop() {
         Python::attach(|py| {
             let module = PyModule::new(py, "_native").expect("module");

@@ -783,7 +783,7 @@ export class Document {
    * ```ts
    * const doc = new Parser().parse(String.raw`x^2`).document;
    * doc.toLatex();                                              // 'x ^ { 2 }'
-   * doc.toLatex({ math: { scripts: { spacing: 'compact' } } }); // 'x^{ 2 }'
+   * doc.toLatex({ scriptSpacing: 'compact' }); // 'x^{ 2 }'
    * ```
    */
   toLatex(options?: SerializeOptions | null): string;
@@ -1344,84 +1344,14 @@ export type InfixGrouping = "always_explicit" | "when_required";
 export type EnvironmentNameSpacing = "spaced" | "compact";
 
 /**
- * Math spacing options for the serializer. Omitted keys keep their default.
- *
- * @see {@link MathSerializeOptions}
- */
-export interface MathSpacingOptions {
-  /** Spacing around control sequences. Default `"spaced"`. */
-  commands?: CommandSpacing;
-  /** Inner spacing of math groups. Default `"padded"`. */
-  groupInnerSpacing?: MathGroupInnerSpacing;
-  /** Spacing between adjacent characters. Default `"spaced"`. */
-  adjacentChars?: AdjacentCharSpacing;
-}
-
-/**
- * Math script options for the serializer. Omitted keys keep their default.
- *
- * @see {@link MathSerializeOptions}
- */
-export interface MathScriptOptions {
-  /** Spacing around script operators. Default `"spaced"`. */
-  spacing?: ScriptSpacing;
-  /** Order of subscript and superscript. Default `"sub_first"`. */
-  order?: ScriptOrder;
-}
-
-/**
- * Math infix options for the serializer. Omitted keys keep their default.
- *
- * @see {@link MathSerializeOptions}
- */
-export interface MathInfixOptions {
-  /** Bracing of infix operands. Default `"when_required"`. */
-  grouping?: InfixGrouping;
-}
-
-/**
- * Math-mode serialization options, grouping spacing, script, and infix axes.
- *
- * @see {@link SerializeOptions}
- */
-export interface MathSerializeOptions {
-  /** Spacing axes (commands, group inner spacing, adjacent chars). */
-  spacing?: MathSpacingOptions;
-  /** Script axes (spacing and order). */
-  scripts?: MathScriptOptions;
-  /** Infix axes (operand bracing). */
-  infix?: MathInfixOptions;
-}
-
-/**
- * Serialization options for environment markup.
- *
- * @see {@link SyntaxSerializeOptions}
- */
-export interface EnvironmentSerializeOptions {
-  /** Spacing after `\begin` / `\end`. Default `"spaced"`. */
-  nameSpacing?: EnvironmentNameSpacing;
-}
-
-/**
- * Serialization options for syntactic (non-math-spacing) constructs.
- *
- * @see {@link SerializeOptions}
- */
-export interface SyntaxSerializeOptions {
-  /** Environment serialization options. */
-  environments?: EnvironmentSerializeOptions;
-}
-
-/**
  * Options controlling serialized LaTeX output style.
  *
- * A nested object keyed by camelCase names. `null` / `undefined` / omitted
- * means "not set" at that layer. Unknown keys, snake_case keys, arrays in
- * object positions, and wrong scalar types throw {@link TexformConfigError}
- * with a field path. Enum string values stay snake_case (`"sub_first"`).
- * Passed to {@link Document.toLatex} and {@link serialize}. For a
- * task-oriented walkthrough, see the Serialization guide.
+ * A flat object keyed by camelCase names. `null` / `undefined` / omitted means
+ * "not set". Unknown keys, snake_case keys, arrays in object positions, and
+ * wrong scalar types throw {@link TexformConfigError} with a field path. Enum
+ * string values stay snake_case (`"sub_first"`). Passed to
+ * {@link Document.toLatex} and {@link serialize}. For a task-oriented
+ * walkthrough, see the Serialization guide.
  *
  * @see {@link Serialization}
  * @example
@@ -1429,14 +1359,24 @@ export interface SyntaxSerializeOptions {
  * const result = new Parser().parse(String.raw`x_i^2`);
  * if (!result.document) throw new Error('parse failed');
  * const syntax = result.document.toSyntax();
- * serialize(syntax, { math: { scripts: { order: 'sup_first' } } }); // 'x ^ { 2 } _ { i }'
+ * serialize(syntax, { scriptOrder: 'sup_first' }); // 'x ^ { 2 } _ { i }'
  * ```
  */
 export interface SerializeOptions {
-  /** Math-mode spacing and script options. */
-  math?: MathSerializeOptions;
-  /** Syntactic (environment) options. */
-  syntax?: SyntaxSerializeOptions;
+  /** Spacing around control sequences. Default `"spaced"`. */
+  commandSpacing?: CommandSpacing | null;
+  /** Inner spacing of math groups. Default `"padded"`. */
+  groupInnerSpacing?: MathGroupInnerSpacing | null;
+  /** Spacing between adjacent characters. Default `"spaced"`. */
+  adjacentCharSpacing?: AdjacentCharSpacing | null;
+  /** Spacing around script operators. Default `"spaced"`. */
+  scriptSpacing?: ScriptSpacing | null;
+  /** Order of subscript and superscript. Default `"sub_first"`. */
+  scriptOrder?: ScriptOrder | null;
+  /** Bracing of infix operands. Default `"when_required"`. */
+  infixOperandGrouping?: InfixGrouping | null;
+  /** Spacing after `\begin` / `\end`. Default `"spaced"`. */
+  environmentNameSpacing?: EnvironmentNameSpacing | null;
 }
 
 /**
@@ -2098,7 +2038,7 @@ export class TransformEngine {
  * if (!result.document) throw new Error('parse failed');
  * const syntax = result.document.toSyntax();
  * serialize(syntax);                                                // 'x ^ { 2 }'
- * serialize(syntax, { math: { scripts: { spacing: 'compact' } } }); // 'x^{ 2 }'
+ * serialize(syntax, { scriptSpacing: 'compact' }); // 'x^{ 2 }'
  * ```
  */
 export function serialize(node: SyntaxNode, options?: SerializeOptions | null): string;

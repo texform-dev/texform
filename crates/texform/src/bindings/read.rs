@@ -508,7 +508,7 @@ mod tests {
 
     use super::*;
     use crate::bindings::input::{
-        FlattenGroupsConfigInput, RewriteConfigInput, TransformConfigInput,
+        FlattenGroupsConfigInput, RewriteConfigInput, SerializeOptionsInput, TransformConfigInput,
     };
 
     #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -739,5 +739,24 @@ mod tests {
         assert_eq!(input.enabled, None);
         let rewrite = read::<RewriteConfigInput>(json!({ "enabled": null })).unwrap();
         assert_eq!(rewrite.enabled, None);
+    }
+
+    #[test]
+    fn serialize_options_reject_legacy_nested_keys() {
+        let error = read::<SerializeOptionsInput>(json!({
+            "math": { "scripts": { "order": "sup_first" } }
+        }))
+        .expect_err("legacy nested keys should be rejected");
+        let message = format_read_error(&error, "serialize options", |key| key.to_owned());
+        assert!(message.contains("unknown field `math`"), "{message}");
+        assert!(message.contains("script_order"), "{message}");
+    }
+
+    #[test]
+    fn serialize_options_null_leaf_is_equivalent_to_omitted() {
+        let omitted = read::<SerializeOptionsInput>(json!({})).unwrap();
+        let explicit_null = read::<SerializeOptionsInput>(json!({ "script_order": null })).unwrap();
+        assert_eq!(omitted, explicit_null);
+        assert_eq!(explicit_null.script_order, None);
     }
 }

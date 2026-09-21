@@ -87,7 +87,7 @@ if (!(doc.root() instanceof Node)) {
 }
 const defaultLatex = doc.toLatex();
 const compactLatex = doc.toLatex({
-  math: { spacing: { groupInnerSpacing: "compact" } },
+  groupInnerSpacing: "compact",
 });
 if (defaultLatex === compactLatex) {
   throw new Error("serialize options should accept camelCase groupInnerSpacing");
@@ -425,18 +425,25 @@ assert.equal(engine.normalize(overSrc, { rewrite: undefined }).normalized, omitt
 assert.equal(engine.normalize(overSrc, { rewrite: null }).normalized, omittedNormalize);
 
 const defaultLatexAgain = doc.toLatex();
-assert.equal(doc.toLatex({ math: undefined }), defaultLatexAgain);
-assert.equal(doc.toLatex({ math: null }), defaultLatexAgain);
+assert.equal(doc.toLatex({ scriptSpacing: undefined }), defaultLatexAgain);
+assert.equal(doc.toLatex({ scriptSpacing: null }), defaultLatexAgain);
 
-const supFirstError = expectError(
-  () => doc.toLatex({ math: { scripts: { order: "supFirst" } } }),
+const nestedError = expectError(
+  () => doc.toLatex({ math: { scripts: { order: "sup_first" } } }),
   TexformConfigError,
 );
+assert.match(nestedError.message, /unknown field `math`/);
+
+const supFirstError = expectError(
+  () => doc.toLatex({ scriptOrder: "supFirst" }),
+  TexformConfigError,
+);
+assert.match(supFirstError.message, /scriptOrder/);
 assert.match(supFirstError.message, /sub_first/);
 assert.match(supFirstError.message, /sup_first/);
 
 expectError(
-  () => doc.toLatex({ math: { scripts: { ordre: "sup_first" } } }),
+  () => doc.toLatex({ scriptOrdre: "sup_first" }),
   TexformConfigError,
 );
 

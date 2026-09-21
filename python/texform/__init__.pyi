@@ -859,7 +859,7 @@ class Document:
         Examples:
             doc = texform.Parser().parse(r"x^2")["document"]
             doc.to_latex()                                              # 'x ^ { 2 }'
-            doc.to_latex(math={"scripts": {"spacing": "compact"}})       # 'x^{ 2 }'
+            doc.to_latex(script_spacing="compact")                           # 'x^{ 2 }'
 
         See Also:
             SerializeOptions, serialize, Document.to_syntax
@@ -2457,115 +2457,39 @@ EnvironmentNameSpacing = Literal["spaced", "compact"]
 ``\\begin {matrix}``; ``"compact"`` writes ``\\begin{matrix}``."""
 
 
-class MathSpacingOptions(TypedDict, total=False):
-    """Math spacing options for the serializer. Omitted keys keep their default.
-
-    Attributes:
-        commands: Spacing around control sequences. Default ``"spaced"``.
-        group_inner_spacing: Inner spacing of math groups. Default ``"padded"``.
-        adjacent_chars: Spacing between adjacent characters. Default ``"spaced"``.
-
-    See Also:
-        MathSerializeOptions
-    """
-
-    commands: CommandSpacing
-    group_inner_spacing: MathGroupInnerSpacing
-    adjacent_chars: AdjacentCharSpacing
-
-
-class MathScriptOptions(TypedDict, total=False):
-    """Math script options for the serializer. Omitted keys keep their default.
-
-    Attributes:
-        spacing: Spacing around script operators. Default ``"spaced"``.
-        order: Order of subscript and superscript. Default ``"sub_first"``.
-
-    See Also:
-        MathSerializeOptions
-    """
-
-    spacing: ScriptSpacing
-    order: ScriptOrder
-
-
-class MathInfixOptions(TypedDict, total=False):
-    """Math infix options for the serializer. Omitted keys keep their default.
-
-    Attributes:
-        grouping: Whether infix operands are always braced. Default
-            ``"when_required"``.
-    """
-
-    grouping: InfixGrouping
-
-
-class MathSerializeOptions(TypedDict, total=False):
-    """Math-mode serialization options, grouping spacing, script, and infix axes.
-
-    Attributes:
-        spacing: Spacing axes (commands, group inner spacing, adjacent chars).
-        scripts: Script axes (spacing and order).
-        infix: Infix grouping axis.
-
-    See Also:
-        SerializeOptions
-    """
-
-    spacing: MathSpacingOptions
-    scripts: MathScriptOptions
-    infix: MathInfixOptions
-
-
-class EnvironmentSerializeOptions(TypedDict, total=False):
-    """Serialization options for environment markup.
-
-    Attributes:
-        name_spacing: Spacing after ``\\begin`` / ``\\end``. Default ``"spaced"``.
-
-    See Also:
-        SyntaxSerializeOptions
-    """
-
-    name_spacing: EnvironmentNameSpacing
-
-
-class SyntaxSerializeOptions(TypedDict, total=False):
-    """Serialization options for syntactic (non-math-spacing) constructs.
-
-    Attributes:
-        environments: Environment serialization options.
-
-    See Also:
-        SerializeOptions
-    """
-
-    environments: EnvironmentSerializeOptions
-
-
 class SerializeOptions(TypedDict, total=False):
     """Options controlling serialized LaTeX output style.
 
-    A nested dict keyed by snake_case names. Passed as keywords to
+    A flat dict keyed by snake_case names. Passed as keywords to
     ``Document.to_latex`` and ``serialize``. Unknown keys and wrong types raise
     ``ConfigError``. For a task-oriented walkthrough, see the Serialization
     guide.
 
     Attributes:
-        math: Math-mode spacing, script, and infix options.
-        syntax: Syntactic (environment) options.
+        command_spacing: Spacing around control sequences. Default ``"spaced"``.
+        group_inner_spacing: Inner spacing of math groups. Default ``"padded"``.
+        adjacent_char_spacing: Spacing between adjacent characters. Default ``"spaced"``.
+        script_spacing: Spacing around script operators. Default ``"spaced"``.
+        script_order: Order of subscript and superscript. Default ``"sub_first"``.
+        infix_operand_grouping: Bracing of infix operands. Default ``"when_required"``.
+        environment_name_spacing: Spacing after ``\\begin`` / ``\\end``. Default ``"spaced"``.
 
     Examples:
         result = texform.Parser().parse(r"x_i^2")
         syntax = result["document"].to_syntax()
-        texform.serialize(syntax, math={"scripts": {"order": "sup_first"}})  # 'x ^ { 2 } _ { i }'
+        texform.serialize(syntax, script_order="sup_first")  # 'x ^ { 2 } _ { i }'
 
     See Also:
         Document.to_latex, serialize
     """
 
-    math: MathSerializeOptions
-    syntax: SyntaxSerializeOptions
+    command_spacing: CommandSpacing | None
+    group_inner_spacing: MathGroupInnerSpacing | None
+    adjacent_char_spacing: AdjacentCharSpacing | None
+    script_spacing: ScriptSpacing | None
+    script_order: ScriptOrder | None
+    infix_operand_grouping: InfixGrouping | None
+    environment_name_spacing: EnvironmentNameSpacing | None
 
 
 def serialize(node: SyntaxNode, **options: Unpack[SerializeOptions]) -> str:
@@ -2595,7 +2519,7 @@ def serialize(node: SyntaxNode, **options: Unpack[SerializeOptions]) -> str:
         assert document is not None
         syntax = document.to_syntax()
         texform.serialize(syntax)                                            # 'x ^ { 2 }'
-        texform.serialize(syntax, math={"scripts": {"spacing": "compact"}})  # 'x^{ 2 }'
+        texform.serialize(syntax, script_spacing="compact")                  # 'x^{ 2 }'
 
     See Also:
         SerializeOptions, Document.to_latex, Serialization

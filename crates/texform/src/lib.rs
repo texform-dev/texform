@@ -79,7 +79,9 @@ pub use knowledge::{PackageInfo, list_packages};
 pub use parse_result::{ParseError, ParseResult};
 pub use parser::{Parser, ParserBuildError, ParserBuilder};
 pub use serialize::{
-    SerializationToken, SerializationTokenKind, SerializeError, SerializeOptions, TokenizedLatex,
+    AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, InfixGrouping,
+    MathGroupInnerSpacing, ScriptOrder, ScriptSpacing, SerializationToken, SerializationTokenKind,
+    SerializeError, SerializeOptions, TokenizedLatex,
 };
 pub use transform_engine::{NormalizeResult, TransformEngine, TransformEngineBuilder};
 

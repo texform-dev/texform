@@ -95,6 +95,42 @@ fn document_exposes_stable_tokenized_serialization_contract() {
 }
 
 #[test]
+fn serialize_options_are_constructible_from_the_facade() {
+    use texform::{Parser, ScriptOrder, ScriptSpacing, SerializeOptions};
+
+    let parser = Parser::builder().build().expect("parser should build");
+    let document = parser
+        .parse("x_i^2")
+        .try_into_document()
+        .expect("parse should produce a document")
+        .0;
+    let options = SerializeOptions {
+        script_spacing: ScriptSpacing::Compact,
+        script_order: ScriptOrder::SupFirst,
+        ..SerializeOptions::default()
+    };
+
+    assert_eq!(
+        document
+            .to_latex_with(&options)
+            .expect("document should serialize"),
+        "x^{ 2 }_{ i }"
+    );
+}
+
+#[test]
+fn serialize_options_serde_rejects_unknown_nested_keys() {
+    let error = serde_json::from_value::<SerializeOptions>(serde_json::json!({
+        "math": { "scripts": { "order": "sup_first" } }
+    }))
+    .unwrap_err();
+    assert!(
+        error.to_string().contains("unknown field `math`"),
+        "{error}"
+    );
+}
+
+#[test]
 fn middle_delimiter_serializes_bare_and_is_text_idempotent() {
     let parser = texform::Parser::builder()
         .packages(&["base"])

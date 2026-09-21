@@ -30,6 +30,15 @@ engine.transform(doc, overrides);
 const parseOverrides: ParseConfig = { rejectUnknown: true };
 parser.parse(src, parseOverrides);
 
+const serializeOptions = { scriptSpacing: "compact" as const, scriptOrder: "sup_first" as const };
+doc.toLatex(serializeOptions);
+doc.toTokenizedLatex({ groupInnerSpacing: "compact" });
+
+// @ts-expect-error — nested math.scripts is no longer a serialize option
+doc.toLatex({ math: { scripts: { order: "sup_first" } } });
+// @ts-expect-error — snake_case keys are not accepted in JavaScript
+doc.toLatex({ script_spacing: "compact" });
+
 // @ts-expect-error — flat rewriteEnabled is not a normalize overlay key
 engine.normalize(src, { rewriteEnabled: false });
 // @ts-expect-error — enabled must be a boolean

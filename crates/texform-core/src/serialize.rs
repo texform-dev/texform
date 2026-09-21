@@ -131,75 +131,28 @@ pub enum SerializationTokenKind {
     Error,
 }
 
-/// Top-level serialization options, grouped by scope.
+/// Top-level serialization options.
 ///
-/// `math.*` controls math-mode-specific behavior; `syntax.*` controls
-/// structural LaTeX syntax that is mode-independent.
+/// Every axis is a top-level field. Omitted keys deserialize to the default;
+/// unknown keys, including the former nested `math` / `syntax` objects, are
+/// rejected.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct SerializeOptions {
-    /// Math-mode-specific output controls (spacing, scripts, infix grouping).
-    pub math: MathSerializeOptions,
-    /// Mode-independent structural syntax controls (e.g. environment headers).
-    pub syntax: SyntaxSerializeOptions,
-}
-
-/// Math-mode serialization options.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct MathSerializeOptions {
-    /// Command, group-inner, and adjacent-character spacing axes.
-    pub spacing: MathSpacingOptions,
-    /// Script-marker spacing and subscript/superscript order.
-    pub scripts: MathScriptOptions,
-    /// Whether infix operands are always braced or only when required.
-    pub infix: MathInfixOptions,
-}
-
-/// Infix serialization options for math mode.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct MathInfixOptions {
-    /// Brace policy for math infix operands such as `\over`.
-    pub grouping: InfixGrouping,
-}
-
-/// Spacing controls within math mode.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct MathSpacingOptions {
     /// Space between a command and the following structural token.
-    pub commands: CommandSpacing,
+    pub command_spacing: CommandSpacing,
     /// Padding inside math brace groups and wrapper-owned argument braces.
     pub group_inner_spacing: MathGroupInnerSpacing,
     /// Explicit space between adjacent math character atoms (digits stay glued).
-    pub adjacent_chars: AdjacentCharSpacing,
-}
-
-/// Sub/superscript formatting controls.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct MathScriptOptions {
+    pub adjacent_char_spacing: AdjacentCharSpacing,
     /// Spaces immediately around `_` and `^` markers.
-    pub spacing: ScriptSpacing,
+    pub script_spacing: ScriptSpacing,
     /// Fixed output order of subscript and superscript.
-    pub order: ScriptOrder,
-}
-
-/// Structural syntax options (mode-independent).
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct SyntaxSerializeOptions {
-    /// Mode-independent environment-header formatting.
-    pub environments: EnvironmentSerializeOptions,
-}
-
-/// Environment header formatting options.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct EnvironmentSerializeOptions {
+    pub script_order: ScriptOrder,
+    /// Brace policy for math infix operands such as `\over`.
+    pub infix_operand_grouping: InfixGrouping,
     /// Space between `\begin` / `\end` and the name brace.
-    pub name_spacing: EnvironmentNameSpacing,
+    pub environment_name_spacing: EnvironmentNameSpacing,
 }
 
 /// Whether to insert a space between a command and the following structural
@@ -603,7 +556,7 @@ impl<R: Recorder> AtomWriter<R> {
         if matches!(prev, AtomKind::ControlSequence) {
             return match next {
                 AtomKind::Brace | AtomKind::DelimiterToken => {
-                    matches!(options.math.spacing.commands, CommandSpacing::Spaced)
+                    matches!(options.command_spacing, CommandSpacing::Spaced)
                 }
                 _ => true,
             };
@@ -616,10 +569,7 @@ impl<R: Recorder> AtomWriter<R> {
         if matches!(prev, AtomKind::MathChar | AtomKind::MathDigit)
             && matches!(next, AtomKind::MathChar | AtomKind::MathDigit)
         {
-            return matches!(
-                options.math.spacing.adjacent_chars,
-                AdjacentCharSpacing::Spaced
-            );
+            return matches!(options.adjacent_char_spacing, AdjacentCharSpacing::Spaced);
         }
 
         // Prime marks attach tightly to the preceding atom. A following atom
@@ -635,7 +585,7 @@ impl<R: Recorder> AtomWriter<R> {
             );
         }
         if matches!(prev, AtomKind::Prime) && matches!(next, AtomKind::ScriptMark) {
-            return matches!(options.math.scripts.spacing, ScriptSpacing::Spaced);
+            return matches!(options.script_spacing, ScriptSpacing::Spaced);
         }
         if matches!(prev, AtomKind::Prime) {
             return true;
@@ -647,7 +597,7 @@ impl<R: Recorder> AtomWriter<R> {
         }
 
         if matches!(prev, AtomKind::ScriptMark) || matches!(next, AtomKind::ScriptMark) {
-            return matches!(options.math.scripts.spacing, ScriptSpacing::Spaced);
+            return matches!(options.script_spacing, ScriptSpacing::Spaced);
         }
 
         true
@@ -753,7 +703,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             GroupKind::Explicit | GroupKind::Implicit => {
                 if matches!(child_mode, ContentMode::Math)
                     && matches!(
-                        self.options.math.spacing.group_inner_spacing,
+                        self.options.group_inner_spacing,
                         MathGroupInnerSpacing::Compact
                     )
                 {
@@ -880,7 +830,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         );
 
         if matches!(
-            self.options.syntax.environments.name_spacing,
+            self.options.environment_name_spacing,
             EnvironmentNameSpacing::Spaced
         ) {
             self.writer.output.push(' ');
@@ -1094,7 +1044,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     ) {
         self.visit(base, ContentMode::Math);
 
-        match self.options.math.scripts.order {
+        match self.options.script_order {
             ScriptOrder::SubFirst => {
                 if let Some(node) = subscript {
                     self.emit_script('_', node);
@@ -1137,7 +1087,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     /// Emit a single `_` or `^` followed by its braced argument.
     ///
     fn emit_script(&mut self, marker: char, node: NodeId) {
-        let boundary = match self.options.math.scripts.spacing {
+        let boundary = match self.options.script_spacing {
             ScriptSpacing::Spaced => BoundaryPolicy::Auto,
             ScriptSpacing::Compact => BoundaryPolicy::SuppressOptionalSpace,
         };
@@ -1183,7 +1133,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             && matches!(mode, ContentMode::Math)
             && matches!(kind, AtomKind::Brace)
             && matches!(
-                self.options.math.spacing.group_inner_spacing,
+                self.options.group_inner_spacing,
                 MathGroupInnerSpacing::Padded
             )
         {
@@ -1289,7 +1239,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
 
         let compact_math_inner = matches!(content_mode, ContentMode::Math)
             && matches!(
-                self.options.math.spacing.group_inner_spacing,
+                self.options.group_inner_spacing,
                 MathGroupInnerSpacing::Compact
             );
 
@@ -1304,7 +1254,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 if children.is_empty()
                     && matches!(*child_mode, ContentMode::Math)
                     && matches!(
-                        self.options.math.spacing.group_inner_spacing,
+                        self.options.group_inner_spacing,
                         MathGroupInnerSpacing::Padded
                     )
                 {
@@ -1353,7 +1303,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             return;
         }
 
-        match self.options.math.infix.grouping {
+        match self.options.infix_operand_grouping {
             InfixGrouping::AlwaysExplicit => self.emit_wrapped_content(
                 node,
                 ContentMode::Math,
