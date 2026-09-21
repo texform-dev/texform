@@ -22,6 +22,12 @@ const parseDefaults: ReturnType<Parser["defaultParseConfig"]> = parser.defaultPa
 const transformDefaults: ReturnType<TransformEngine["defaultTransformConfig"]> =
   engine.defaultTransformConfig();
 const flattenEnabled: boolean = engine.defaultTransformConfig().flattenGroups.enabled;
+const flattenSpacing: boolean =
+  engine.defaultTransformConfig().flattenGroups.preserveRenderedSpacing;
+const completeFlatten: Complete<TransformConfig>["flattenGroups"] =
+  engine.defaultTransformConfig().flattenGroups;
+const completeFlattenEnabled: boolean = completeFlatten.enabled;
+const completeFlattenSpacing: boolean = completeFlatten.preserveRenderedSpacing;
 
 const overrides: TransformConfig = { rewrite: { enabled: false } };
 engine.normalize(src, overrides);
@@ -43,6 +49,12 @@ doc.toLatex({ script_spacing: "compact" });
 engine.normalize(src, { rewriteEnabled: false });
 // @ts-expect-error — enabled must be a boolean
 engine.transform(doc, { rewrite: { enabled: "yes" } });
+// @ts-expect-error — old FlattenGroups preserve* keys are not on the public interface
+engine.transform(doc, { flattenGroups: { preserveEmptyGroup: true } });
+engine.transform(doc, { flattenGroups: { enabled: null, preserveRenderedSpacing: null } });
+engine.transform(doc, { flattenGroups: null });
+engine.normalize(src, { flattenGroups: { enabled: null } });
+engine.normalize(src, { flattenGroups: null });
 
 void e;
 void n;
@@ -50,3 +62,6 @@ void p;
 void parseDefaults;
 void transformDefaults;
 void flattenEnabled;
+void flattenSpacing;
+void completeFlattenEnabled;
+void completeFlattenSpacing;

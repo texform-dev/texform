@@ -64,7 +64,7 @@ Arrows point from a crate to the crates it depends on. Everything below `texform
 | `texform-python`, `texform-wasm` | Language bindings that expose the shared facade model to Python and WebAssembly. |
 | `texform-regression` | Corpus regression and data-product tooling for parser regression, transform-contract checking, and counter-map generation. Internal tooling, not part of the public API. |
 
-The facade deliberately does **not** re-export the internal `Ast`, `Node`, or arena types. Users get a single editable tree type — `Document` — and never touch the panic-contract arena underneath it.
+The facade deliberately does **not** re-export the internal `Ast`, `Node`, or arena types. Users get a single editable tree type — `Document` — and never touch the panic-contract arena underneath it. Hidden research and test entries may still be callable on the facade; they are omitted from the public rustdoc and carry no compatibility promise.
 
 ## The Processing Pipeline
 

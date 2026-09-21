@@ -1496,38 +1496,15 @@ class FlattenGroupsOverrides(TypedDict, total=False):
     nested value must be a dict, not a ``FlattenGroupsConfig`` instance.
 
     Attributes:
-        enabled: Overlay for ``FlattenGroupsConfig.enabled``.
-        preserve_group_containing_declarative_command: Overlay for the same-named
-            guard.
-        preserve_group_in_script_base_slot: Overlay for the same-named guard.
-        preserve_group_inside_env_body: Overlay for the same-named guard.
-        preserve_group_containing_infix: Overlay for the same-named guard.
-        preserve_group_adjacent_to_command_like: Overlay for the same-named
-            guard.
-        preserve_group_as_argument_of_command: Overlay for the same-named guard.
-        preserve_group_after_scripted_command_like: Overlay for the same-named
-            guard.
-        preserve_empty_group: Overlay for the same-named guard.
-        preserve_group_with_lone_atom_spacing_char: Overlay for the same-named
-            guard.
-        preserve_group_starting_with_atom_spacing_char: Overlay for the
-            same-named guard.
-        preserve_group_containing_delimited_pair: Overlay for the same-named
-            guard.
+        enabled: Overlay for ``FlattenGroupsConfig.enabled``. ``None`` leaves
+            the current value unchanged.
+        preserve_rendered_spacing: Overlay for
+            ``FlattenGroupsConfig.preserve_rendered_spacing``. ``None`` leaves
+            the current value unchanged.
     """
 
-    enabled: bool
-    preserve_group_containing_declarative_command: bool
-    preserve_group_in_script_base_slot: bool
-    preserve_group_inside_env_body: bool
-    preserve_group_containing_infix: bool
-    preserve_group_adjacent_to_command_like: bool
-    preserve_group_as_argument_of_command: bool
-    preserve_group_after_scripted_command_like: bool
-    preserve_empty_group: bool
-    preserve_group_with_lone_atom_spacing_char: bool
-    preserve_group_starting_with_atom_spacing_char: bool
-    preserve_group_containing_delimited_pair: bool
+    enabled: bool | None
+    preserve_rendered_spacing: bool | None
 
 
 class TransformOverrides(TypedDict, total=False):
@@ -1546,7 +1523,7 @@ class TransformOverrides(TypedDict, total=False):
     lower_attributes: LowerAttributesOverrides
     rewrite: RewriteOverrides
     finalize_ast: FinalizeAstOverrides
-    flatten_groups: FlattenGroupsOverrides
+    flatten_groups: FlattenGroupsOverrides | None
 
 
 class NormalizeOverrides(ParseOverrides, TransformOverrides, total=False):
@@ -2185,94 +2162,43 @@ class FinalizeAstConfig:
 class FlattenGroupsConfig:
     """Complete FlattenGroups phase configuration.
 
-    Nested under ``TransformConfig.flatten_groups``. Each ``preserve_*`` guard,
-    when ``True``, keeps a group matching the named structural condition instead
-    of flattening it. Constructor defaults equal the authoring / faithful strict
-    guard set (every guard ``True``); the ``corpus`` and ``equiv`` profiles use
-    a structural-only subset. Overlay with ``flatten_groups={"enabled": False}``;
-    a dict passed as ``config`` still raises ``ConfigError``.
+    Nested under ``TransformConfig.flatten_groups``. ``enabled`` governs whether
+    the phase runs. ``preserve_rendered_spacing`` keeps groups whose only
+    public-facing effect is rendered math spacing; it does not control
+    serializer source whitespace (see ``SerializeOptions``). Structural guards
+    stay on even when ``preserve_rendered_spacing`` is ``False``. Constructor
+    defaults match the authoring / faithful strict pair (both ``True``); the
+    ``corpus`` and ``equiv`` profiles leave ``preserve_rendered_spacing`` off.
+    Overlay with ``flatten_groups={"enabled": False}``; a dict passed as
+    ``config`` still raises ``ConfigError``.
 
     Attributes:
-        enabled: Whether the phase runs.
-        preserve_group_containing_declarative_command: Keep a group holding a
-            declarative command, whose scope braces are meaningful.
-        preserve_group_in_script_base_slot: Keep a group used as a script base, so
-            script binding is not changed.
-        preserve_group_inside_env_body: Keep a group inside an environment body, so
-            cell boundaries are not changed.
-        preserve_group_containing_infix: Keep a group containing an infix operator
-            such as ``\\over``.
-        preserve_group_adjacent_to_command_like: Keep a group adjacent to a
-            command-like node where flattening would change association.
-        preserve_group_as_argument_of_command: Keep a group serving as a command
-            argument.
-        preserve_group_after_scripted_command_like: Keep a group following a
-            scripted command-like node.
-        preserve_empty_group: Keep an empty group ``{}``.
-        preserve_group_with_lone_atom_spacing_char: Keep a group whose sole content
-            is an atom-spacing character.
-        preserve_group_starting_with_atom_spacing_char: Keep a group that begins
-            with an atom-spacing character.
-        preserve_group_containing_delimited_pair: Keep a group containing a
-            delimited pair such as ``\\left( ... \\right)``.
+        enabled: Whether the phase runs. Defaults to ``True``.
+        preserve_rendered_spacing: Keep groups whose only public-facing effect
+            is rendered math spacing. Defaults to ``True``. This is not
+            serializer source spacing.
 
     Examples:
         texform.FlattenGroupsConfig().enabled  # True
+        texform.FlattenGroupsConfig().preserve_rendered_spacing  # True
         texform.FlattenGroupsConfig(enabled=False).enabled  # False
-        texform.TransformConfig.corpus().flatten_groups.preserve_empty_group  # False
+        texform.TransformConfig.corpus().flatten_groups.preserve_rendered_spacing  # False
     """
 
     enabled: bool
-    preserve_group_containing_declarative_command: bool
-    preserve_group_in_script_base_slot: bool
-    preserve_group_inside_env_body: bool
-    preserve_group_containing_infix: bool
-    preserve_group_adjacent_to_command_like: bool
-    preserve_group_as_argument_of_command: bool
-    preserve_group_after_scripted_command_like: bool
-    preserve_empty_group: bool
-    preserve_group_with_lone_atom_spacing_char: bool
-    preserve_group_starting_with_atom_spacing_char: bool
-    preserve_group_containing_delimited_pair: bool
+    preserve_rendered_spacing: bool
 
     def __init__(
         self,
         enabled: bool = True,
-        preserve_group_containing_declarative_command: bool = True,
-        preserve_group_in_script_base_slot: bool = True,
-        preserve_group_inside_env_body: bool = True,
-        preserve_group_containing_infix: bool = True,
-        preserve_group_adjacent_to_command_like: bool = True,
-        preserve_group_as_argument_of_command: bool = True,
-        preserve_group_after_scripted_command_like: bool = True,
-        preserve_empty_group: bool = True,
-        preserve_group_with_lone_atom_spacing_char: bool = True,
-        preserve_group_starting_with_atom_spacing_char: bool = True,
-        preserve_group_containing_delimited_pair: bool = True,
+        preserve_rendered_spacing: bool = True,
     ) -> None:
         """Construct a FlattenGroups phase configuration.
 
         Args:
             enabled: Whether the phase runs.
-            preserve_group_containing_declarative_command: Keep a group holding a
-                declarative command.
-            preserve_group_in_script_base_slot: Keep a group used as a script base.
-            preserve_group_inside_env_body: Keep a group inside an environment body.
-            preserve_group_containing_infix: Keep a group containing an infix
-                operator.
-            preserve_group_adjacent_to_command_like: Keep a group adjacent to a
-                command-like node.
-            preserve_group_as_argument_of_command: Keep a group serving as a command
-                argument.
-            preserve_group_after_scripted_command_like: Keep a group following a
-                scripted command-like node.
-            preserve_empty_group: Keep an empty group.
-            preserve_group_with_lone_atom_spacing_char: Keep a group whose sole
-                content is an atom-spacing character.
-            preserve_group_starting_with_atom_spacing_char: Keep a group beginning
-                with an atom-spacing character.
-            preserve_group_containing_delimited_pair: Keep a group containing a
-                delimited pair.
+            preserve_rendered_spacing: Keep groups whose only public-facing
+                effect is rendered math spacing.
         """
 
 
@@ -2305,7 +2231,7 @@ class TransformConfig:
             flatten_groups=texform.FlattenGroupsConfig(enabled=False),
         )
         config.rewrite.max_iterations  # 50
-        texform.TransformConfig.corpus().flatten_groups.preserve_empty_group  # False
+        texform.TransformConfig.corpus().flatten_groups.preserve_rendered_spacing  # False
 
     See Also:
         TransformEngine, RewriteConfig, LowerAttributesConfig, FinalizeAstConfig, FlattenGroupsConfig

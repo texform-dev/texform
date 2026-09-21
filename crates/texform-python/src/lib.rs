@@ -7,8 +7,9 @@ mod config;
 
 use config::{
     PyFinalizeAstConfig, PyFlattenGroupsConfig, PyLowerAttributesConfig, PyParseConfig,
-    PyRewriteConfig, PyTransformConfig, context_items_from_python, normalize_config_from_python,
-    parse_config_from_python, serialize_options_from_python, transform_config_from_python,
+    PyRewriteConfig, PyTransformConfig, context_items_from_python, from_python,
+    normalize_config_from_python, parse_config_from_python, serialize_options_from_python,
+    transform_config_from_python,
 };
 
 pyo3::create_exception!(texform, TexformError, PyException);
@@ -1294,6 +1295,39 @@ impl PyTransformEngine {
             binding_error_parts_to_py(py, texform::bindings::normalize_error_to_parts(error))
                 .unwrap_or_else(|error| error)
         })?;
+        transform_result_to_python(py, result.normalized, &result.report)
+    }
+
+    // Unstable research entry: omitted from the public stub. Always validates
+    // `guards` even when FlattenGroups is disabled for this call.
+    #[pyo3(signature = (source, config = None, *, guards, **overrides))]
+    fn _normalize_with_flatten_groups_guards(
+        &self,
+        py: Python<'_>,
+        source: &str,
+        config: Option<&Bound<'_, PyAny>>,
+        guards: &Bound<'_, PyAny>,
+        overrides: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Py<PyAny>> {
+        if guards.cast::<PyDict>().is_err() {
+            return Err(ConfigError::new_err(format!(
+                "invalid guards: unsupported value of type `{}`; pass a dict",
+                match guards.get_type().name() {
+                    Ok(name) => name.to_string(),
+                    Err(_) => "unknown".to_string(),
+                }
+            )));
+        }
+        let overlay = from_python::<texform::FlattenGroupsGuardsOverlay>(guards, "guards")?;
+        let config =
+            normalize_config_from_python(config, overrides, self.inner.default_normalize_config())?;
+        let result = self
+            .inner
+            .normalize_with_flatten_groups_guards(source, &config, &overlay)
+            .map_err(|error| {
+                binding_error_parts_to_py(py, texform::bindings::normalize_error_to_parts(error))
+                    .unwrap_or_else(|error| error)
+            })?;
         transform_result_to_python(py, result.normalized, &result.report)
     }
 
@@ -2631,11 +2665,31 @@ mod tests {
             let config_cls = module.getattr("TransformConfig").unwrap();
             assert!(config_cls.call_method0("corpus_drop").is_err());
 
+            let standalone = module
+                .getattr("FlattenGroupsConfig")
+                .unwrap()
+                .call0()
+                .unwrap();
+            assert!(
+                standalone
+                    .getattr("enabled")
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap()
+            );
+            assert!(
+                standalone
+                    .getattr("preserve_rendered_spacing")
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap()
+            );
+
             let faithful = config_cls.call_method0("faithful").unwrap();
             let faithful_flatten_groups = faithful.getattr("flatten_groups").unwrap();
             assert!(
                 faithful_flatten_groups
-                    .getattr("preserve_group_adjacent_to_command_like")
+                    .getattr("preserve_rendered_spacing")
                     .unwrap()
                     .extract::<bool>()
                     .unwrap()
@@ -2646,19 +2700,129 @@ mod tests {
 
             assert!(
                 !flatten_groups
-                    .getattr("preserve_group_adjacent_to_command_like")
-                    .unwrap()
-                    .extract::<bool>()
-                    .unwrap()
-            );
-            assert!(
-                flatten_groups
-                    .getattr("preserve_group_containing_infix")
+                    .getattr("preserve_rendered_spacing")
                     .unwrap()
                     .extract::<bool>()
                     .unwrap()
             );
         });
+    }
+
+    fn run_flatten_groups_python_test(source: &std::ffi::CStr) {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+            let globals = PyDict::new(py);
+            globals.set_item("texform", module).unwrap();
+            py.run(source, Some(&globals), None).unwrap();
+        });
+    }
+
+    #[test]
+    fn python_research_overlays_preserve_defaults_and_reports() {
+        run_flatten_groups_python_test(
+            cr#"
+for profile in ("authoring", "faithful", "corpus", "equiv"):
+    engine = texform.TransformEngine(profile, packages=["base"])
+    source = r"a{} + {+}"
+    baseline = engine.normalize(source)
+    research = engine._normalize_with_flatten_groups_guards
+    assert research(source, guards={}) == baseline
+    kept = research(source, guards={"empty_group": True})
+    removed = research(source, guards={"empty_group": False})
+    assert kept["normalized"] != removed["normalized"]
+    assert engine.normalize(source) == baseline
+"#,
+        );
+    }
+
+    #[test]
+    fn python_research_rejects_invalid_guards_even_when_disabled() {
+        run_flatten_groups_python_test(
+            cr#"
+engine = texform.TransformEngine("authoring", packages=["base"])
+for enabled in (True, False):
+    for guards, field in (
+        ({"preserve_empty_group": False}, "preserve_empty_group"),
+        ({"empty_group": None}, "empty_group"),
+        ({"empty_group": 1}, "empty_group"),
+        ({"empty_group": "false"}, "empty_group"),
+        (["not", "a", "dict"], "guards"),
+        (None, "guards"),
+    ):
+        try:
+            engine._normalize_with_flatten_groups_guards(
+                "x", guards=guards, flatten_groups={"enabled": enabled}
+            )
+        except texform.ConfigError as error:
+            assert "guards" in str(error) and field in str(error), str(error)
+        else:
+            raise AssertionError((enabled, guards))
+"#,
+        );
+    }
+
+    #[test]
+    fn python_normalize_rejects_all_old_flatten_groups_keys() {
+        run_flatten_groups_python_test(
+            cr#"
+engine = texform.TransformEngine("authoring", packages=["base"])
+for key in (
+    "preserve_group_containing_declarative_command",
+    "preserve_group_in_script_base_slot",
+    "preserve_group_inside_env_body",
+    "preserve_group_containing_infix",
+    "preserve_group_adjacent_to_command_like",
+    "preserve_group_after_scripted_command_like",
+    "preserve_group_as_argument_of_command",
+    "preserve_empty_group",
+    "preserve_group_with_lone_atom_spacing_char",
+    "preserve_group_starting_with_atom_spacing_char",
+    "preserve_group_containing_delimited_pair",
+):
+    try:
+        engine.normalize("x", flatten_groups={key: False})
+    except texform.ConfigError as error:
+        assert key in str(error), str(error)
+    else:
+        raise AssertionError(key)
+"#,
+        );
+    }
+
+    #[test]
+    fn python_flatten_groups_null_overlays_do_not_override() {
+        run_flatten_groups_python_test(
+            cr#"
+for profile in ("authoring", "corpus"):
+    engine = texform.TransformEngine(profile, packages=["base"])
+    source = r"a{} + \cos{A}"
+    baseline = engine.normalize(source)
+    for overlay in (None, {"enabled": None, "preserve_rendered_spacing": None}):
+        assert engine.normalize(source, flatten_groups=overlay) == baseline
+"#,
+        );
+    }
+
+    #[test]
+    fn python_research_respects_complete_config_then_kwargs() {
+        run_flatten_groups_python_test(
+            cr#"
+engine = texform.TransformEngine("authoring", packages=["base"])
+source = r"\cos{A} + a{}"
+research = engine._normalize_with_flatten_groups_guards
+for profile, spacing, expected in (
+    ("authoring", False, r"\cos A + a"),
+    ("corpus", True, engine.normalize(source)["normalized"]),
+):
+    config = getattr(texform.TransformConfig, profile)()
+    assert research(source, config, guards={}) == engine.normalize(source, config)
+    result = research(
+        source, config, guards={}, flatten_groups={"preserve_rendered_spacing": spacing}
+    )
+    assert result["normalized"] == expected
+"#,
+        );
     }
 
     #[test]

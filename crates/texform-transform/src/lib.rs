@@ -23,7 +23,8 @@ pub use finalize_ast::{
     FinalizeAstConfig, FinalizeAstReport, FinalizeAstStepReport, FinalizeAstStepReports,
 };
 pub use flatten_groups::{
-    FlattenGroupsActionCounts, FlattenGroupsConfig, FlattenGroupsGuardCounts, FlattenGroupsReport,
+    FlattenGroupsActionCounts, FlattenGroupsConfig, FlattenGroupsGuardCounts, FlattenGroupsGuards,
+    FlattenGroupsGuardsOverlay, FlattenGroupsReport,
 };
 pub use lower_attributes::{
     Attr, AttrValue, AttributeFormCounts, AttributeSet, AttributeStat, LowerAttributesConfig,

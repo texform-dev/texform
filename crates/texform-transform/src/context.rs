@@ -44,6 +44,21 @@ impl TransformContext {
         engine::execute(self, ast, parse_ctx, config)
     }
 
+    /// Run with a sparse FlattenGroups research overlay.
+    ///
+    /// Unstable: this entry is for internal experiments and may change without
+    /// notice. `enabled=false` still skips FlattenGroups; the overlay cannot
+    /// re-enable the phase.
+    pub fn run_with_flatten_groups_guards(
+        &self,
+        ast: &mut Ast,
+        parse_ctx: &ParseContext,
+        config: &TransformConfig,
+        overlay: &crate::flatten_groups::FlattenGroupsGuardsOverlay,
+    ) -> Result<TransformReport, TransformError> {
+        engine::execute_with_flatten_groups_overlay(self, ast, parse_ctx, config, Some(overlay))
+    }
+
     pub fn default_config(&self) -> &TransformConfig {
         &self.default_config
     }

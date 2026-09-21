@@ -219,7 +219,7 @@ mod tests {
         let converted = snakeize_json_keys(
             json!({
                 "flattenGroups": {
-                    "preserveEmptyGroup": true
+                    "preserveRenderedSpacing": true
                 },
                 "rewrite": { "maxIterations": 4, "enabled": false }
             }),
@@ -230,7 +230,7 @@ mod tests {
         assert_eq!(
             converted,
             json!({
-                "flatten_groups": { "preserve_empty_group": true },
+                "flatten_groups": { "preserve_rendered_spacing": true },
                 "rewrite": { "max_iterations": 4, "enabled": false }
             })
         );
@@ -246,15 +246,15 @@ mod tests {
         assert_eq!(top, ("flatten_groups".into(), "flatten_groups".into()));
 
         let nested = snakeize_json_keys(
-            json!({ "flattenGroups": { "preserve_empty_group": true } }),
+            json!({ "flattenGroups": { "preserve_rendered_spacing": true } }),
             &mut Vec::new(),
         )
         .expect_err("nested snake_case should be rejected");
         assert_eq!(
             nested,
             (
-                "flattenGroups.preserve_empty_group".into(),
-                "preserve_empty_group".into()
+                "flattenGroups.preserve_rendered_spacing".into(),
+                "preserve_rendered_spacing".into()
             )
         );
     }

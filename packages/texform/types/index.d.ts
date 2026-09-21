@@ -1536,38 +1536,26 @@ export interface FinalizeAstConfig {
 /**
  * Per-run switches for the FlattenGroups phase (redundant-brace removal).
  *
- * `enabled` governs whether the phase runs; each `preserve*` guard, when
- * `true`, keeps a group matching the named structural condition instead of
- * flattening it. Omitted keys fall back to the profile's defaults — for
- * example, `corpus` turns several guards off.
+ * `enabled` governs whether the phase runs. `preserveRenderedSpacing` keeps
+ * groups whose only public-facing effect is rendered math spacing; it does
+ * not control serializer source whitespace ({@link SerializeOptions}
+ * `*Spacing` fields). Structural guards stay on even when
+ * `preserveRenderedSpacing` is `false`. Omitted keys fall back to the
+ * profile's defaults — for example, `corpus` leaves
+ * `preserveRenderedSpacing` off.
  *
  * @see {@link TransformConfig}
  */
 export interface FlattenGroupsConfig {
-  /** Whether the phase runs. */
-  enabled?: boolean;
-  /** Keep a group that is empty. */
-  preserveEmptyGroup?: boolean;
-  /** Keep a group adjacent to a command-like node. */
-  preserveGroupAdjacentToCommandLike?: boolean;
-  /** Keep a group used as a command argument. */
-  preserveGroupAsArgumentOfCommand?: boolean;
-  /** Keep a group following a scripted command-like node. */
-  preserveGroupAfterScriptedCommandLike?: boolean;
-  /** Keep a group containing a declarative command. */
-  preserveGroupContainingDeclarativeCommand?: boolean;
-  /** Keep a group containing a delimited pair. */
-  preserveGroupContainingDelimitedPair?: boolean;
-  /** Keep a group containing an infix operator. */
-  preserveGroupContainingInfix?: boolean;
-  /** Keep a group occupying a script base slot. */
-  preserveGroupInScriptBaseSlot?: boolean;
-  /** Keep a group inside an environment body. */
-  preserveGroupInsideEnvBody?: boolean;
-  /** Keep a group that starts with an atom-spacing character. */
-  preserveGroupStartingWithAtomSpacingChar?: boolean;
-  /** Keep a group whose sole child is an atom-spacing character. */
-  preserveGroupWithLoneAtomSpacingChar?: boolean;
+  /** Whether the phase runs. `null` / omitted keeps the profile value. */
+  enabled?: boolean | null;
+  /**
+   * Keep groups whose only public-facing effect is rendered math spacing.
+   *
+   * This is not serializer source spacing. Structural guards stay on even
+   * when this is `false`. `null` / omitted keeps the profile value.
+   */
+  preserveRenderedSpacing?: boolean | null;
 }
 
 /**
@@ -1593,8 +1581,8 @@ export interface TransformConfig {
   rewrite?: RewriteConfig;
   /** FinalizeAst phase switches. */
   finalizeAst?: FinalizeAstConfig;
-  /** FlattenGroups phase switches. */
-  flattenGroups?: FlattenGroupsConfig;
+  /** FlattenGroups phase switches. `null` keeps the profile's FlattenGroups values. */
+  flattenGroups?: FlattenGroupsConfig | null;
 }
 
 /**

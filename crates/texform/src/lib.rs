@@ -7,6 +7,10 @@
 //! this facade alone. See the project `ARCHITECTURE.md` for the full crate
 //! layout and the pipeline a formula travels through.
 //!
+//! Hidden research and test hooks on this facade are callable but carry no
+//! compatibility promise. They are omitted from the public rustdoc and are
+//! not part of the stable surface.
+//!
 //! # The two entry points
 //!
 //! - [`Parser`] parses LaTeX into an editable [`Document`] without normalizing
@@ -101,3 +105,5 @@ pub use texform_transform::{
     LowerAttributesReport, MathFontValue, RewriteReport, RewriteRuleStat, RuleLevelSet, SizeValue,
     StyleValue, TextFamily, TextSeries, TextShape, TransformReport,
 };
+#[doc(hidden)]
+pub use texform_transform::{FlattenGroupsGuards, FlattenGroupsGuardsOverlay};

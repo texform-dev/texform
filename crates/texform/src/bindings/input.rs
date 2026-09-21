@@ -90,17 +90,7 @@ impl RewriteConfigInput {
 #[serde(default, deny_unknown_fields, expecting = "an object")]
 pub struct FlattenGroupsConfigInput {
     pub enabled: Option<bool>,
-    pub preserve_group_containing_declarative_command: Option<bool>,
-    pub preserve_group_in_script_base_slot: Option<bool>,
-    pub preserve_group_inside_env_body: Option<bool>,
-    pub preserve_group_containing_infix: Option<bool>,
-    pub preserve_group_adjacent_to_command_like: Option<bool>,
-    pub preserve_group_as_argument_of_command: Option<bool>,
-    pub preserve_group_after_scripted_command_like: Option<bool>,
-    pub preserve_empty_group: Option<bool>,
-    pub preserve_group_with_lone_atom_spacing_char: Option<bool>,
-    pub preserve_group_starting_with_atom_spacing_char: Option<bool>,
-    pub preserve_group_containing_delimited_pair: Option<bool>,
+    pub preserve_rendered_spacing: Option<bool>,
 }
 
 impl FlattenGroupsConfigInput {
@@ -108,38 +98,8 @@ impl FlattenGroupsConfigInput {
         if let Some(value) = self.enabled {
             base.enabled = value;
         }
-        if let Some(value) = self.preserve_group_containing_declarative_command {
-            base.preserve_group_containing_declarative_command = value;
-        }
-        if let Some(value) = self.preserve_group_in_script_base_slot {
-            base.preserve_group_in_script_base_slot = value;
-        }
-        if let Some(value) = self.preserve_group_inside_env_body {
-            base.preserve_group_inside_env_body = value;
-        }
-        if let Some(value) = self.preserve_group_containing_infix {
-            base.preserve_group_containing_infix = value;
-        }
-        if let Some(value) = self.preserve_group_adjacent_to_command_like {
-            base.preserve_group_adjacent_to_command_like = value;
-        }
-        if let Some(value) = self.preserve_group_as_argument_of_command {
-            base.preserve_group_as_argument_of_command = value;
-        }
-        if let Some(value) = self.preserve_group_after_scripted_command_like {
-            base.preserve_group_after_scripted_command_like = value;
-        }
-        if let Some(value) = self.preserve_empty_group {
-            base.preserve_empty_group = value;
-        }
-        if let Some(value) = self.preserve_group_with_lone_atom_spacing_char {
-            base.preserve_group_with_lone_atom_spacing_char = value;
-        }
-        if let Some(value) = self.preserve_group_starting_with_atom_spacing_char {
-            base.preserve_group_starting_with_atom_spacing_char = value;
-        }
-        if let Some(value) = self.preserve_group_containing_delimited_pair {
-            base.preserve_group_containing_delimited_pair = value;
+        if let Some(value) = self.preserve_rendered_spacing {
+            base.preserve_rendered_spacing = value;
         }
         base
     }
@@ -147,31 +107,7 @@ impl FlattenGroupsConfigInput {
     pub fn from_config(config: FlattenGroupsConfig) -> Self {
         Self {
             enabled: Some(config.enabled),
-            preserve_group_containing_declarative_command: Some(
-                config.preserve_group_containing_declarative_command,
-            ),
-            preserve_group_in_script_base_slot: Some(config.preserve_group_in_script_base_slot),
-            preserve_group_inside_env_body: Some(config.preserve_group_inside_env_body),
-            preserve_group_containing_infix: Some(config.preserve_group_containing_infix),
-            preserve_group_adjacent_to_command_like: Some(
-                config.preserve_group_adjacent_to_command_like,
-            ),
-            preserve_group_as_argument_of_command: Some(
-                config.preserve_group_as_argument_of_command,
-            ),
-            preserve_group_after_scripted_command_like: Some(
-                config.preserve_group_after_scripted_command_like,
-            ),
-            preserve_empty_group: Some(config.preserve_empty_group),
-            preserve_group_with_lone_atom_spacing_char: Some(
-                config.preserve_group_with_lone_atom_spacing_char,
-            ),
-            preserve_group_starting_with_atom_spacing_char: Some(
-                config.preserve_group_starting_with_atom_spacing_char,
-            ),
-            preserve_group_containing_delimited_pair: Some(
-                config.preserve_group_containing_delimited_pair,
-            ),
+            preserve_rendered_spacing: Some(config.preserve_rendered_spacing),
         }
     }
 }
@@ -613,14 +549,11 @@ mod tests {
     fn flatten_groups_input_partial_overlay() {
         let out = FlattenGroupsConfigInput {
             enabled: Some(false),
-            preserve_empty_group: Some(true),
-            ..Default::default()
+            preserve_rendered_spacing: Some(true),
         }
         .into_config(FlattenGroupsConfig::STRUCTURAL_ONLY);
         assert!(!out.enabled);
-        assert!(out.preserve_empty_group);
-        assert!(out.preserve_group_containing_declarative_command);
-        assert!(!out.preserve_group_adjacent_to_command_like);
+        assert!(out.preserve_rendered_spacing);
     }
 
     #[test]
@@ -667,8 +600,7 @@ mod tests {
             finalize_ast: None,
             flatten_groups: Some(FlattenGroupsConfigInput {
                 enabled: Some(true),
-                preserve_empty_group: Some(false),
-                ..Default::default()
+                preserve_rendered_spacing: Some(false),
             }),
         };
 
@@ -678,7 +610,7 @@ mod tests {
         assert!(config.rewrite.enabled);
         assert_eq!(config.rewrite.max_iterations, 100);
         assert!(config.flatten_groups.enabled);
-        assert!(!config.flatten_groups.preserve_empty_group);
+        assert!(!config.flatten_groups.preserve_rendered_spacing);
     }
 
     #[test]
@@ -731,14 +663,55 @@ mod tests {
     fn transform_config_input_deserializes_snake_case_flatten_groups() {
         let input: TransformConfigInput = serde_json::from_value(serde_json::json!({
             "flatten_groups": {
-                "preserve_empty_group": false
+                "preserve_rendered_spacing": false
             }
         }))
         .unwrap();
 
         let config = input.into_config(authoring());
 
-        assert!(!config.flatten_groups.preserve_empty_group);
+        assert!(!config.flatten_groups.preserve_rendered_spacing);
+    }
+
+    #[test]
+    fn flatten_groups_input_rejects_old_guard_fields() {
+        let error = serde_json::from_value::<FlattenGroupsConfigInput>(serde_json::json!({
+            "preserve_empty_group": true
+        }))
+        .expect_err("old guard fields must be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("unknown field `preserve_empty_group`"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn flatten_groups_guards_overlay_rejects_null_int_and_old_names() {
+        use texform_transform::FlattenGroupsGuardsOverlay;
+
+        let null_err = serde_json::from_value::<FlattenGroupsGuardsOverlay>(serde_json::json!({
+            "empty_group": null
+        }))
+        .expect_err("null must be rejected");
+        assert!(null_err.to_string().contains("boolean"), "{null_err}");
+
+        let int_err = serde_json::from_value::<FlattenGroupsGuardsOverlay>(serde_json::json!({
+            "empty_group": 0
+        }))
+        .expect_err("int must be rejected");
+        assert!(int_err.to_string().contains("invalid type"), "{int_err}");
+
+        let old_err = serde_json::from_value::<FlattenGroupsGuardsOverlay>(serde_json::json!({
+            "preserve_empty_group": false
+        }))
+        .expect_err("old names must be rejected");
+        assert!(old_err.to_string().contains("unknown field"), "{old_err}");
+
+        let empty = serde_json::from_value::<FlattenGroupsGuardsOverlay>(serde_json::json!({}))
+            .expect("empty overlay is valid");
+        assert_eq!(empty, FlattenGroupsGuardsOverlay::default());
     }
 
     #[test]

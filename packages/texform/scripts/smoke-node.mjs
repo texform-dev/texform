@@ -139,15 +139,15 @@ if (
     "corpus normalize flattenGroups overlay should keep profile defaults",
   );
 }
-const preserveEmptyNormalized = corpusEngine.normalize(flattenSrc, {
-  flattenGroups: { preserveEmptyGroup: true },
+const preserveSpacingNormalized = corpusEngine.normalize(flattenSrc, {
+  flattenGroups: { preserveRenderedSpacing: true },
 }).normalized;
 if (
-  !preserveEmptyNormalized.includes("{ }") ||
-  !preserveEmptyNormalized.includes(String.raw`\sin x`)
+  !preserveSpacingNormalized.includes("{ }") ||
+  !preserveSpacingNormalized.includes(String.raw`\sin {`)
 ) {
   throw new Error(
-    "corpus normalize flattenGroups should honor an explicit guard override",
+    "corpus normalize flattenGroups should honor an explicit preserveRenderedSpacing override",
   );
 }
 
@@ -298,31 +298,11 @@ if (!basePackage || basePackage.commands <= 0 || basePackage.environments <= 0) 
 
 const flattenStrict = {
   enabled: true,
-  preserveGroupContainingDeclarativeCommand: true,
-  preserveGroupInScriptBaseSlot: true,
-  preserveGroupInsideEnvBody: true,
-  preserveGroupContainingInfix: true,
-  preserveGroupAdjacentToCommandLike: true,
-  preserveGroupAsArgumentOfCommand: true,
-  preserveGroupAfterScriptedCommandLike: true,
-  preserveEmptyGroup: true,
-  preserveGroupWithLoneAtomSpacingChar: true,
-  preserveGroupStartingWithAtomSpacingChar: true,
-  preserveGroupContainingDelimitedPair: true,
+  preserveRenderedSpacing: true,
 };
 const flattenStructuralOnly = {
   enabled: true,
-  preserveGroupContainingDeclarativeCommand: true,
-  preserveGroupInScriptBaseSlot: true,
-  preserveGroupInsideEnvBody: true,
-  preserveGroupContainingInfix: true,
-  preserveGroupAdjacentToCommandLike: false,
-  preserveGroupAsArgumentOfCommand: false,
-  preserveGroupAfterScriptedCommandLike: false,
-  preserveEmptyGroup: false,
-  preserveGroupWithLoneAtomSpacingChar: false,
-  preserveGroupStartingWithAtomSpacingChar: false,
-  preserveGroupContainingDelimitedPair: false,
+  preserveRenderedSpacing: false,
 };
 const expectedTransformDefaults = {
   authoring: {
@@ -404,7 +384,39 @@ const typoError = expectError(
   TexformConfigError,
 );
 assert.match(typoError.message, /flattenGroups\.preserveEmptyGruop/);
-assert.match(typoError.message, /preserveGroupContainingDeclarativeCommand/);
+assert.match(typoError.message, /preserveRenderedSpacing/);
+assert.doesNotMatch(typoError.message, /preserveEmptyGroup/);
+assert.doesNotMatch(typoError.message, /preserveGroupContainingDeclarativeCommand/);
+
+const oldFlattenKeys = [
+  "preserveGroupContainingDeclarativeCommand",
+  "preserveGroupInScriptBaseSlot",
+  "preserveGroupInsideEnvBody",
+  "preserveGroupContainingInfix",
+  "preserveGroupAdjacentToCommandLike",
+  "preserveGroupAfterScriptedCommandLike",
+  "preserveGroupAsArgumentOfCommand",
+  "preserveEmptyGroup",
+  "preserveGroupWithLoneAtomSpacingChar",
+  "preserveGroupStartingWithAtomSpacingChar",
+  "preserveGroupContainingDelimitedPair",
+];
+for (const key of oldFlattenKeys) {
+  const error = expectError(
+    () => engine.normalize(overSrc, { flattenGroups: { [key]: false } }),
+    TexformConfigError,
+  );
+  assert.match(error.message, new RegExp(key));
+}
+
+const flattenNullOmitted = engine.normalize(overSrc).normalized;
+assert.equal(
+  engine.normalize(overSrc, {
+    flattenGroups: { enabled: null, preserveRenderedSpacing: null },
+  }).normalized,
+  flattenNullOmitted,
+);
+assert.equal(engine.normalize(overSrc, { flattenGroups: null }).normalized, flattenNullOmitted);
 
 const rewriteArrayError = expectError(
   () => engine.normalize(overSrc, { rewrite: [] }),

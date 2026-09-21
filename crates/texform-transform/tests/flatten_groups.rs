@@ -2,8 +2,8 @@ use texform_core::ast::{ArgumentValue, Ast, GroupKind, Node, Slot};
 use texform_core::parse::{ParseConfig, ParseContext};
 use texform_core::serialize::serialize;
 use texform_transform::{
-    BuildConfig, FinalizeAstConfig, FlattenGroupsConfig, LowerAttributesConfig, Profile,
-    RewriteConfig, TransformConfig, TransformContext,
+    BuildConfig, FinalizeAstConfig, FlattenGroupsConfig, FlattenGroupsGuardsOverlay,
+    LowerAttributesConfig, Profile, RewriteConfig, TransformConfig, TransformContext,
 };
 
 struct Outcome {
@@ -16,7 +16,25 @@ fn run_flatten_groups(src: &str) -> Outcome {
     run_flatten_groups_with_config(src, FlattenGroupsConfig::ENABLED)
 }
 
-fn run_flatten_groups_with_config(src: &str, flatten_groups: FlattenGroupsConfig) -> Outcome {
+fn run_flatten_groups_with_config(src: &str, config: FlattenGroupsConfig) -> Outcome {
+    run_flatten_groups_case(src, config, None)
+}
+
+fn run_flatten_groups_with_overlay(
+    src: &str,
+    config: FlattenGroupsConfig,
+    configure: impl FnOnce(&mut FlattenGroupsGuardsOverlay),
+) -> Outcome {
+    let mut overlay = FlattenGroupsGuardsOverlay::default();
+    configure(&mut overlay);
+    run_flatten_groups_case(src, config, Some(overlay))
+}
+
+fn run_flatten_groups_case(
+    src: &str,
+    flatten_groups: FlattenGroupsConfig,
+    overlay: Option<FlattenGroupsGuardsOverlay>,
+) -> Outcome {
     let parse_ctx = ParseContext::from_packages(&["base", "ams"]);
     let mut ast = parse_to_ast(&parse_ctx, src, &ParseConfig::default());
     let config = TransformConfig {
@@ -31,13 +49,16 @@ fn run_flatten_groups_with_config(src: &str, flatten_groups: FlattenGroupsConfig
     let context =
         TransformContext::from_build_config(BuildConfig::profile(Profile::Equiv), &parse_ctx)
             .expect("transform context should build");
-    let report = context
-        .run_with(&mut ast, &parse_ctx, &config)
-        .expect("transform should succeed")
-        .flatten_groups;
+    let report = match overlay {
+        Some(overlay) => {
+            context.run_with_flatten_groups_guards(&mut ast, &parse_ctx, &config, &overlay)
+        }
+        None => context.run_with(&mut ast, &parse_ctx, &config),
+    }
+    .expect("transform should succeed")
+    .flatten_groups;
     ast.assert_invariants();
     let text = serialize(&ast);
-
     Outcome { ast, report, text }
 }
 
@@ -386,24 +407,28 @@ fn structural_only_still_keeps_semantic_guard_cases() {
 
 #[test]
 fn individual_guard_toggles_affect_only_their_cases() {
-    let mut cfg = FlattenGroupsConfig::STRICT;
-    cfg.preserve_group_adjacent_to_command_like = false;
-    let outcome = run_flatten_groups_with_config(r"\cos{A} + {a}", cfg);
+    let outcome =
+        run_flatten_groups_with_overlay(r"\cos{A} + {a}", FlattenGroupsConfig::STRICT, |guards| {
+            guards.command_contact = Some(false)
+        });
     assert_eq!(outcome.text, r"\cos A + a");
     assert_eq!(outcome.report.actions.replaced_single_child, 2);
 
-    cfg = FlattenGroupsConfig::STRICT;
-    cfg.preserve_group_as_argument_of_command = false;
-    let outcome = run_flatten_groups_with_config(r"\overline{{\sum}} + {a}", cfg);
+    let outcome = run_flatten_groups_with_overlay(
+        r"\overline{{\sum}} + {a}",
+        FlattenGroupsConfig::STRICT,
+        |guards| guards.command_argument = Some(false),
+    );
     assert_eq!(outcome.text, r"\overline { \sum } + a");
     assert_eq!(
         outcome.report.guards.preserve_group_as_argument_of_command,
         0
     );
 
-    cfg = FlattenGroupsConfig::STRICT;
-    cfg.preserve_empty_group = false;
-    let outcome = run_flatten_groups_with_config(r"a{} + {+}", cfg);
+    let outcome =
+        run_flatten_groups_with_overlay(r"a{} + {+}", FlattenGroupsConfig::STRICT, |guards| {
+            guards.empty_group = Some(false)
+        });
     assert_eq!(outcome.text, r"a + { + }");
     assert_eq!(outcome.report.actions.removed_empty, 1);
     assert_eq!(
@@ -414,9 +439,10 @@ fn individual_guard_toggles_affect_only_their_cases() {
         1
     );
 
-    cfg = FlattenGroupsConfig::STRICT;
-    cfg.preserve_group_with_lone_atom_spacing_char = false;
-    let outcome = run_flatten_groups_with_config(r"{+} + {-n}", cfg);
+    let outcome =
+        run_flatten_groups_with_overlay(r"{+} + {-n}", FlattenGroupsConfig::STRICT, |guards| {
+            guards.lone_atom_spacing_char = Some(false)
+        });
     assert_eq!(outcome.text, r"+ + { - n }");
     assert_eq!(outcome.report.actions.replaced_single_child, 1);
     assert_eq!(
@@ -427,9 +453,10 @@ fn individual_guard_toggles_affect_only_their_cases() {
         1
     );
 
-    cfg = FlattenGroupsConfig::STRICT;
-    cfg.preserve_group_starting_with_atom_spacing_char = false;
-    let outcome = run_flatten_groups_with_config(r"{+} + {-n}", cfg);
+    let outcome =
+        run_flatten_groups_with_overlay(r"{+} + {-n}", FlattenGroupsConfig::STRICT, |guards| {
+            guards.leading_atom_spacing_char = Some(false)
+        });
     assert_eq!(outcome.text, r"{ + } + - n");
     assert_eq!(
         outcome
@@ -440,31 +467,37 @@ fn individual_guard_toggles_affect_only_their_cases() {
     );
     assert_eq!(outcome.report.actions.inlined_multi_child, 1);
 
-    cfg = FlattenGroupsConfig::STRICT;
-    cfg.preserve_group_containing_delimited_pair = false;
-    let outcome = run_flatten_groups_with_config(r"f{\left(x\right)} + {a}", cfg);
+    let outcome = run_flatten_groups_with_overlay(
+        r"f{\left(x\right)} + {a}",
+        FlattenGroupsConfig::STRICT,
+        |guards| guards.delimited_pair = Some(false),
+    );
     assert_eq!(outcome.text, r"f \left ( x \right ) + a");
     assert_eq!(outcome.report.actions.replaced_single_child, 2);
 }
 
 #[test]
 fn semantic_guard_toggles_affect_their_cases() {
-    let mut cfg = FlattenGroupsConfig::STRICT;
-    cfg.preserve_group_containing_declarative_command = false;
-    cfg.preserve_group_adjacent_to_command_like = false;
-    let outcome = run_flatten_groups_with_config(r"{\cal M} + {a}", cfg);
+    let outcome =
+        run_flatten_groups_with_overlay(r"{\cal M} + {a}", FlattenGroupsConfig::STRICT, |guards| {
+            guards.declarative_scope = Some(false);
+            guards.command_contact = Some(false);
+        });
     assert_eq!(outcome.text, r"\cal M + a");
     assert_eq!(outcome.report.actions.inlined_multi_child, 1);
 
-    cfg = FlattenGroupsConfig::STRICT;
-    cfg.preserve_group_containing_infix = false;
-    let outcome = run_flatten_groups_with_config(r"{a \over b}, c", cfg);
+    let outcome =
+        run_flatten_groups_with_overlay(r"{a \over b}, c", FlattenGroupsConfig::STRICT, |guards| {
+            guards.infix_scope = Some(false)
+        });
     assert_eq!(outcome.text, r"a \over b , c");
     assert_eq!(outcome.report.guards.preserve_group_containing_infix, 0);
 
-    cfg = FlattenGroupsConfig::STRICT;
-    cfg.preserve_group_inside_env_body = false;
-    let outcome = run_flatten_groups_with_config(r"\begin{matrix}{x}\end{matrix}", cfg);
+    let outcome = run_flatten_groups_with_overlay(
+        r"\begin{matrix}{x}\end{matrix}",
+        FlattenGroupsConfig::STRICT,
+        |guards| guards.env_body = Some(false),
+    );
     assert_eq!(outcome.text, r"\begin {matrix} x \end {matrix}");
     assert_eq!(outcome.report.actions.replaced_single_child, 1);
 }
@@ -531,9 +564,10 @@ fn script_base_non_atomic_groups_are_preserved() {
 
 #[test]
 fn script_base_guard_can_be_disabled() {
-    let mut cfg = FlattenGroupsConfig::STRICT;
-    cfg.preserve_group_in_script_base_slot = false;
-    let outcome = run_flatten_groups_with_config(r"{x_i}^2", cfg);
+    let outcome =
+        run_flatten_groups_with_overlay(r"{x_i}^2", FlattenGroupsConfig::STRICT, |guards| {
+            guards.script_base = Some(false)
+        });
 
     assert_eq!(outcome.text, r"x _ { i } ^ { 2 }");
     assert_eq!(outcome.report.actions.unwrapped_slot, 1);
@@ -600,4 +634,108 @@ fn prime_group_is_not_preserved_as_atom_spacing_char_or_command_contact() {
             .preserve_group_adjacent_to_command_like,
         0
     );
+}
+
+#[test]
+fn empty_research_overlay_matches_public_config() {
+    let public =
+        run_flatten_groups_with_config(r"{\cal M} + \cos{A} + {}", FlattenGroupsConfig::STRICT);
+    let overlay = run_flatten_groups_with_overlay(
+        r"{\cal M} + \cos{A} + {}",
+        FlattenGroupsConfig::STRICT,
+        |_| {},
+    );
+    assert_eq!(overlay.text, public.text);
+    assert_eq!(overlay.ast.to_syntax_root(), public.ast.to_syntax_root());
+    assert_eq!(overlay.report, public.report);
+}
+
+#[test]
+fn strict_spacing_ablation_and_structural_reenable() {
+    let ablated = run_flatten_groups_with_overlay(
+        r"\cos{A} + {} + {+}",
+        FlattenGroupsConfig::STRICT,
+        |guards| {
+            guards.command_contact = Some(false);
+            guards.empty_group = Some(false);
+            guards.lone_atom_spacing_char = Some(false);
+        },
+    );
+    assert_eq!(ablated.text, r"\cos A + + +");
+
+    let reenabled =
+        run_flatten_groups_with_overlay(r"a{}", FlattenGroupsConfig::STRUCTURAL_ONLY, |guards| {
+            guards.empty_group = Some(true)
+        });
+    assert_eq!(reenabled.text, r"a { }");
+    assert_eq!(reenabled.report.guards.preserve_empty_group, 1);
+}
+
+#[test]
+fn cross_hit_cos_plus_needs_both_spacing_guards_off() {
+    for (contact, lone_atom, text, contact_count, atom_count) in [
+        (false, true, r"\cos { + }", 0, 1),
+        (true, false, r"\cos { + }", 1, 0),
+        (false, false, r"\cos +", 0, 0),
+    ] {
+        let outcome =
+            run_flatten_groups_with_overlay(r"\cos{+}", FlattenGroupsConfig::STRICT, |guards| {
+                guards.command_contact = Some(contact);
+                guards.lone_atom_spacing_char = Some(lone_atom);
+            });
+        assert_eq!(outcome.text, text);
+        let counts = outcome.report.guards;
+        assert_eq!(
+            counts.preserve_group_adjacent_to_command_like,
+            contact_count
+        );
+        assert_eq!(
+            counts.preserve_group_with_lone_atom_spacing_char,
+            atom_count
+        );
+    }
+}
+
+#[test]
+fn scripted_subflag_depends_on_command_contact() {
+    for contact in [false, true] {
+        for scripted in [false, true] {
+            let outcome = run_flatten_groups_with_overlay(
+                r"\sum_i{(x_i)}",
+                FlattenGroupsConfig::STRICT,
+                |guards| {
+                    guards.command_contact = Some(contact);
+                    guards.command_like_includes_scripted_base = Some(scripted);
+                },
+            );
+            let preserved = contact && scripted;
+            assert_eq!(
+                outcome.text,
+                if preserved {
+                    r"\sum _ { i } { ( x _ { i } ) }"
+                } else {
+                    r"\sum _ { i } ( x _ { i } )"
+                }
+            );
+            let counts = outcome.report.guards;
+            assert_eq!(
+                counts.preserve_group_adjacent_to_command_like,
+                usize::from(preserved)
+            );
+            assert_eq!(
+                counts.preserve_group_after_scripted_command_like,
+                usize::from(preserved)
+            );
+        }
+    }
+}
+
+#[test]
+fn disabled_phase_skips_flatten_even_with_overlay() {
+    let outcome =
+        run_flatten_groups_with_overlay(r"{{a}}", FlattenGroupsConfig::DISABLED, |guards| {
+            guards.empty_group = Some(false)
+        });
+    assert_eq!(outcome.text, "{ { a } }");
+    assert_eq!(outcome.report.actions.replaced_single_child, 0);
 }

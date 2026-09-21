@@ -1,91 +1,186 @@
 //! FlattenGroups removes structurally redundant explicit and implicit groups.
 
+use serde::{Deserialize, Deserializer};
+
 use crate::ast::{ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, ParentLink, Slot};
 
-/// Per-run switches for the FlattenGroups phase: the master gate plus one
-/// preserve guard per situation where flattening would be unsafe. Use the
-/// `STRICT` / `STRUCTURAL_ONLY` presets rather than setting fields by hand.
+/// Public per-run switches for FlattenGroups: whether the phase runs, and
+/// whether rendered-spacing groups are kept.
+///
+/// Structural guards always stay on for this public config. Fine-grained
+/// per-guard control is not part of the stable API.
+/// `preserve_rendered_spacing` does not control serializer source spacing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FlattenGroupsConfig {
     /// Run the phase when `true`; skip it entirely when `false`.
     pub enabled: bool,
-    /// Semantic guard. Keep groups whose subtree contains a declarative command
-    /// (for example `\cal` or `\bf`) to avoid leaking declarative scope into
-    /// following siblings.
-    pub preserve_group_containing_declarative_command: bool,
-    /// Semantic guard. Keep groups occupying a `ScriptBase` slot to avoid
-    /// changing which atom subscripts or superscripts attach to.
-    pub preserve_group_in_script_base_slot: bool,
-    /// Semantic guard. Keep all groups inside an environment body to preserve
-    /// cell boundaries and intra-cell spacing.
-    pub preserve_group_inside_env_body: bool,
-    /// Semantic guard. Keep a `GroupChild` whose subtree contains an
-    /// `\over`-style infix to preserve the infix scope.
-    pub preserve_group_containing_infix: bool,
-    /// Spacing guard. Keep a `GroupChild` when its preceding sibling or its
-    /// first child is command-like.
-    pub preserve_group_adjacent_to_command_like: bool,
-    /// Spacing guard. Keep a risky group directly used as an argument of a
-    /// command to preserve one spacing boundary without preserving redundant
-    /// nesting.
-    pub preserve_group_as_argument_of_command: bool,
-    /// Spacing guard (sub-flag). Recurse through `Scripted` bases when
-    /// classifying "command-like" for the adjacency check above.
-    pub preserve_group_after_scripted_command_like: bool,
-    /// Spacing guard. Keep empty `GroupChild`s (`{}`) to preserve spacing and
-    /// kerning effects.
-    pub preserve_empty_group: bool,
-    /// Spacing guard. Keep singleton groups containing only one math
-    /// atom-spacing character.
-    pub preserve_group_with_lone_atom_spacing_char: bool,
-    /// Spacing guard. Keep multi-child `GroupChild`s whose first child is a
-    /// math atom-spacing character.
-    pub preserve_group_starting_with_atom_spacing_char: bool,
-    /// Spacing guard. Keep a `GroupChild` whose subtree contains a
-    /// `\left...\right` delimited group.
-    pub preserve_group_containing_delimited_pair: bool,
+    /// Keep groups whose only public-facing effect is rendered math spacing.
+    ///
+    /// This does not control serializer source whitespace (`SerializeOptions`
+    /// `*_spacing` fields). Structural guards stay on even when this is `false`.
+    pub preserve_rendered_spacing: bool,
 }
 
 impl FlattenGroupsConfig {
-    /// All preserve guards on.
+    /// Phase on with rendered-spacing protection: every internal guard is on.
     pub const STRICT: Self = Self {
         enabled: true,
-        preserve_group_containing_declarative_command: true,
-        preserve_group_in_script_base_slot: true,
-        preserve_group_inside_env_body: true,
-        preserve_group_containing_infix: true,
-        preserve_group_adjacent_to_command_like: true,
-        preserve_group_as_argument_of_command: true,
-        preserve_group_after_scripted_command_like: true,
-        preserve_empty_group: true,
-        preserve_group_with_lone_atom_spacing_char: true,
-        preserve_group_starting_with_atom_spacing_char: true,
-        preserve_group_containing_delimited_pair: true,
+        preserve_rendered_spacing: true,
     };
-    /// Only Semantic guards on. All Spacing guards off.
+    /// Phase on without rendered-spacing protection: only structural guards stay on.
     pub const STRUCTURAL_ONLY: Self = Self {
         enabled: true,
-        preserve_group_containing_declarative_command: true,
-        preserve_group_in_script_base_slot: true,
-        preserve_group_inside_env_body: true,
-        preserve_group_containing_infix: true,
-        preserve_group_adjacent_to_command_like: false,
-        preserve_group_as_argument_of_command: false,
-        preserve_group_after_scripted_command_like: false,
-        preserve_empty_group: false,
-        preserve_group_with_lone_atom_spacing_char: false,
-        preserve_group_starting_with_atom_spacing_char: false,
-        preserve_group_containing_delimited_pair: false,
+        preserve_rendered_spacing: false,
     };
     /// Phase on with every preserve guard: alias of [`Self::STRICT`].
     pub const ENABLED: Self = Self::STRICT;
-    /// Phase off. Guard fields are copied from [`Self::STRICT`] but unused while disabled.
+    /// Phase off. `preserve_rendered_spacing` is copied from [`Self::STRICT`] but unused while disabled.
     pub const DISABLED: Self = Self {
         enabled: false,
         ..Self::STRICT
     };
     /// Historical default: same as [`Self::STRICT`].
     pub const DEFAULTS: Self = Self::STRICT;
+}
+
+/// Complete FlattenGroups protection set for one run.
+///
+/// This type is an unstable research/internal surface. Field names, layout, and
+/// the run-with-guards entry may change without notice. Doc comments describe
+/// the actual trigger, not every overlapping case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FlattenGroupsGuards {
+    /// Keep a group when its subtree contains a declarative command such as
+    /// `\cal` or `\bf`, so flattening would leak that scope into following siblings.
+    pub declarative_scope: bool,
+    /// Keep a group occupying a `ScriptBase` slot when its child is not an
+    /// atomic base, so flattening would change which atom a script attaches to.
+    pub script_base: bool,
+    /// Keep a group inside an environment body, except a lone `Prime` in a
+    /// superscript slot, so cell boundaries and intra-cell spacing stay intact.
+    pub env_body: bool,
+    /// Keep a `GroupChild` whose subtree contains an `\over`-style infix, so
+    /// flattening would change the infix scope.
+    pub infix_scope: bool,
+    /// Keep a `GroupChild` when its preceding sibling or first child is
+    /// command-like (`group_child_touches_command` / `CommandContact`).
+    pub command_contact: bool,
+    /// Refines [`Self::command_contact`]: also treat a `Scripted` node as
+    /// command-like when that classification walks through its base. Has no
+    /// independent effect when `command_contact` is `false`.
+    pub command_like_includes_scripted_base: bool,
+    /// Keep a group in an `Argument` slot that has exactly one child whose
+    /// subtree contains a command-like node, preserving one spacing boundary.
+    pub command_argument: bool,
+    /// Keep an empty `GroupChild` (`{}`) for its spacing / kerning effect.
+    pub empty_group: bool,
+    /// Keep a singleton group whose only child is one math atom-spacing
+    /// character (`= < > + - , : ; . / * ! ? | ·`).
+    pub lone_atom_spacing_char: bool,
+    /// Keep a multi-child `GroupChild` whose first child is a math atom-spacing
+    /// character.
+    pub leading_atom_spacing_char: bool,
+    /// Keep a `GroupChild` whose subtree contains a `\left...\right` delimited pair.
+    pub delimited_pair: bool,
+}
+
+impl FlattenGroupsGuards {
+    /// Expand a public FlattenGroups strategy into the complete guard set.
+    ///
+    /// Unstable research/internal helper. The four structural guards are always
+    /// `true`. The seven spacing-related switches follow
+    /// [`FlattenGroupsConfig::preserve_rendered_spacing`].
+    pub const fn from_config(config: FlattenGroupsConfig) -> Self {
+        Self {
+            declarative_scope: true,
+            script_base: true,
+            env_body: true,
+            infix_scope: true,
+            command_contact: config.preserve_rendered_spacing,
+            command_like_includes_scripted_base: config.preserve_rendered_spacing,
+            command_argument: config.preserve_rendered_spacing,
+            empty_group: config.preserve_rendered_spacing,
+            lone_atom_spacing_char: config.preserve_rendered_spacing,
+            leading_atom_spacing_char: config.preserve_rendered_spacing,
+            delimited_pair: config.preserve_rendered_spacing,
+        }
+    }
+
+    /// Apply a sparse research overlay. Omitted fields keep the expanded values.
+    pub fn apply_overlay(&mut self, overlay: FlattenGroupsGuardsOverlay) {
+        if let Some(value) = overlay.declarative_scope {
+            self.declarative_scope = value;
+        }
+        if let Some(value) = overlay.script_base {
+            self.script_base = value;
+        }
+        if let Some(value) = overlay.env_body {
+            self.env_body = value;
+        }
+        if let Some(value) = overlay.infix_scope {
+            self.infix_scope = value;
+        }
+        if let Some(value) = overlay.command_contact {
+            self.command_contact = value;
+        }
+        if let Some(value) = overlay.command_like_includes_scripted_base {
+            self.command_like_includes_scripted_base = value;
+        }
+        if let Some(value) = overlay.command_argument {
+            self.command_argument = value;
+        }
+        if let Some(value) = overlay.empty_group {
+            self.empty_group = value;
+        }
+        if let Some(value) = overlay.lone_atom_spacing_char {
+            self.lone_atom_spacing_char = value;
+        }
+        if let Some(value) = overlay.leading_atom_spacing_char {
+            self.leading_atom_spacing_char = value;
+        }
+        if let Some(value) = overlay.delimited_pair {
+            self.delimited_pair = value;
+        }
+    }
+}
+
+/// Sparse overlay over [`FlattenGroupsGuards`].
+///
+/// Unstable research/internal input. Present keys must be booleans; JSON `null`
+/// and implicit conversions are rejected. Omitted keys keep the expanded value.
+/// This type is not a public compatibility surface.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(default, deny_unknown_fields, expecting = "an object")]
+pub struct FlattenGroupsGuardsOverlay {
+    #[serde(deserialize_with = "require_present_bool")]
+    pub declarative_scope: Option<bool>,
+    #[serde(deserialize_with = "require_present_bool")]
+    pub script_base: Option<bool>,
+    #[serde(deserialize_with = "require_present_bool")]
+    pub env_body: Option<bool>,
+    #[serde(deserialize_with = "require_present_bool")]
+    pub infix_scope: Option<bool>,
+    #[serde(deserialize_with = "require_present_bool")]
+    pub command_contact: Option<bool>,
+    #[serde(deserialize_with = "require_present_bool")]
+    pub command_like_includes_scripted_base: Option<bool>,
+    #[serde(deserialize_with = "require_present_bool")]
+    pub command_argument: Option<bool>,
+    #[serde(deserialize_with = "require_present_bool")]
+    pub empty_group: Option<bool>,
+    #[serde(deserialize_with = "require_present_bool")]
+    pub lone_atom_spacing_char: Option<bool>,
+    #[serde(deserialize_with = "require_present_bool")]
+    pub leading_atom_spacing_char: Option<bool>,
+    #[serde(deserialize_with = "require_present_bool")]
+    pub delimited_pair: Option<bool>,
+}
+
+fn require_present_bool<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    bool::deserialize(deserializer).map(Some)
 }
 
 /// What the FlattenGroups phase did: how many groups it flattened, and how
@@ -116,8 +211,9 @@ pub struct FlattenGroupsActionCounts {
 
 /// How often each preserve guard prevented a group from being flattened.
 ///
-/// Each field corresponds to the same-named flag on [`FlattenGroupsConfig`]
-/// and counts the structural situation that flag protects.
+/// Counter names keep the historical `preserve_*` report contract. They map
+/// one-to-one onto [`FlattenGroupsGuards`] fields and still count the first
+/// matching situation in evaluation order.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FlattenGroupsGuardCounts {
     /// Group kept because its subtree holds a declarative command, so
@@ -153,12 +249,8 @@ pub struct FlattenGroupsGuardCounts {
     pub preserve_group_containing_delimited_pair: usize,
 }
 
-pub fn run(ast: &mut Ast, config: &FlattenGroupsConfig, report: &mut FlattenGroupsReport) {
-    if !config.enabled {
-        return;
-    }
-
-    visit(ast, ast.root(), false, config, report);
+pub fn run(ast: &mut Ast, guards: &FlattenGroupsGuards, report: &mut FlattenGroupsReport) {
+    visit(ast, ast.root(), false, guards, report);
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -172,7 +264,7 @@ fn visit(
     ast: &mut Ast,
     node: NodeId,
     in_env_body: bool,
-    config: &FlattenGroupsConfig,
+    guards: &FlattenGroupsGuards,
     report: &mut FlattenGroupsReport,
 ) -> SubtreeFlags {
     let edges = ast.edges(node);
@@ -193,7 +285,7 @@ fn visit(
                 ast,
                 child,
                 in_env_body || slot == Slot::EnvBody,
-                config,
+                guards,
                 report,
             );
             flags.has_declarative |= child_flags.has_declarative;
@@ -203,7 +295,7 @@ fn visit(
     }
 
     if ast.contains(node) {
-        try_unwrap(ast, node, flags, in_env_body, config, report);
+        try_unwrap(ast, node, flags, in_env_body, guards, report);
     }
 
     flags
@@ -214,7 +306,7 @@ fn try_unwrap(
     node: NodeId,
     flags: SubtreeFlags,
     in_env_body: bool,
-    config: &FlattenGroupsConfig,
+    guards: &FlattenGroupsGuards,
     report: &mut FlattenGroupsReport,
 ) {
     let (kind, mode, child_count) = match ast.node(node) {
@@ -228,46 +320,37 @@ fn try_unwrap(
     if !matches!(kind, GroupKind::Explicit | GroupKind::Implicit) {
         return;
     }
-    if config.preserve_group_containing_declarative_command && flags.has_declarative {
+    if guards.declarative_scope && flags.has_declarative {
         report.guards.preserve_group_containing_declarative_command += 1;
         return;
     }
     let Some(link) = ast.parent(node) else {
         return;
     };
-    if config.preserve_group_inside_env_body
-        && in_env_body
-        && !is_lone_prime_superscript_group(ast, node, link)
-    {
+    if guards.env_body && in_env_body && !is_lone_prime_superscript_group(ast, node, link) {
         report.guards.preserve_group_inside_env_body += 1;
         return;
     }
     if !slot_can_unwrap(link.slot, child_count) {
         return;
     }
-    if matches!(link.slot, Slot::GroupChild(_))
-        && config.preserve_group_containing_infix
-        && flags.has_infix
-    {
+    if matches!(link.slot, Slot::GroupChild(_)) && guards.infix_scope && flags.has_infix {
         report.guards.preserve_group_containing_infix += 1;
         return;
     }
-    if matches!(link.slot, Slot::GroupChild(_))
-        && config.preserve_group_containing_delimited_pair
-        && flags.has_delimited
-    {
+    if matches!(link.slot, Slot::GroupChild(_)) && guards.delimited_pair && flags.has_delimited {
         report.guards.preserve_group_containing_delimited_pair += 1;
         return;
     }
     if let Slot::GroupChild(index) = link.slot
-        && config.preserve_group_adjacent_to_command_like
+        && guards.command_contact
     {
         let command_contact = group_child_touches_command(
             ast,
             node,
             link.parent,
             index,
-            config.preserve_group_after_scripted_command_like,
+            guards.command_like_includes_scripted_base,
         );
         if command_contact.touches_command {
             report.guards.preserve_group_adjacent_to_command_like += 1;
@@ -282,22 +365,21 @@ fn try_unwrap(
         .first()
         .is_some_and(|child| is_atom_spacing_char(ast, *child));
     if matches!(link.slot, Slot::GroupChild(_)) {
-        if config.preserve_empty_group && child_count == 0 {
+        if guards.empty_group && child_count == 0 {
             report.guards.preserve_empty_group += 1;
             return;
         }
-        if config.preserve_group_with_lone_atom_spacing_char && child_count == 1 && first_is_atom {
+        if guards.lone_atom_spacing_char && child_count == 1 && first_is_atom {
             report.guards.preserve_group_with_lone_atom_spacing_char += 1;
             return;
         }
-        if config.preserve_group_starting_with_atom_spacing_char && child_count > 1 && first_is_atom
-        {
+        if guards.leading_atom_spacing_char && child_count > 1 && first_is_atom {
             report.guards.preserve_group_starting_with_atom_spacing_char += 1;
             return;
         }
     }
     if matches!(link.slot, Slot::ScriptBase)
-        && config.preserve_group_with_lone_atom_spacing_char
+        && guards.lone_atom_spacing_char
         && child_count == 1
         && first_is_atom
     {
@@ -305,7 +387,7 @@ fn try_unwrap(
         return;
     }
     if matches!(link.slot, Slot::Argument(_))
-        && config.preserve_group_as_argument_of_command
+        && guards.command_argument
         && group_as_argument_of_command_needs_boundary(ast, node)
     {
         report.guards.preserve_group_as_argument_of_command += 1;
@@ -320,7 +402,7 @@ fn try_unwrap(
     }
 
     if matches!(link.slot, Slot::ScriptBase)
-        && config.preserve_group_in_script_base_slot
+        && guards.script_base
         && !is_atomic_base(ast, ast.children(node)[0])
     {
         report.guards.preserve_group_in_script_base_slot += 1;

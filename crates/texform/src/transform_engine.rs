@@ -88,18 +88,22 @@ impl TransformEngine {
         document: &mut Document,
         config: &TransformConfig,
     ) -> Result<TransformReport, Error> {
-        if document.parse_context_id() != Some(self.parser.inner().id()) {
-            return Err(Error::ForeignDocument);
-        }
-        if document.has_errors() {
-            return Err(Error::IncompleteTree);
-        }
+        self.transform_document(document, config, &Default::default())
+    }
 
-        Ok(self.transform.run_with(
-            document.core_mut().__texform_engine_ast_mut(),
-            self.parser.inner(),
-            config,
-        )?)
+    /// Unstable research entry: apply a sparse FlattenGroups guard overlay.
+    ///
+    /// This method is not part of the stable facade. It does not change engine
+    /// defaults, cannot re-enable a disabled FlattenGroups phase, and still
+    /// enforces document ownership, completeness, and slot/mode/contract checks.
+    #[doc(hidden)]
+    pub fn transform_with_flatten_groups_guards(
+        &self,
+        document: &mut Document,
+        config: &TransformConfig,
+        overlay: &texform_transform::FlattenGroupsGuardsOverlay,
+    ) -> Result<TransformReport, Error> {
+        self.transform_document(document, config, overlay)
     }
 
     /// Parse, transform, and serialize a LaTeX formula.
@@ -141,11 +145,54 @@ impl TransformEngine {
         src: &str,
         config: &NormalizeConfig,
     ) -> Result<NormalizeResult, Error> {
+        self.normalize_source(src, config, &Default::default())
+    }
+
+    /// Unstable research entry for string-to-string FlattenGroups guard overlays.
+    ///
+    /// This method is not part of the stable facade and may change without notice.
+    #[doc(hidden)]
+    pub fn normalize_with_flatten_groups_guards(
+        &self,
+        src: &str,
+        config: &NormalizeConfig,
+        overlay: &texform_transform::FlattenGroupsGuardsOverlay,
+    ) -> Result<NormalizeResult, Error> {
+        self.normalize_source(src, config, overlay)
+    }
+
+    fn transform_document(
+        &self,
+        document: &mut Document,
+        config: &TransformConfig,
+        overlay: &texform_transform::FlattenGroupsGuardsOverlay,
+    ) -> Result<TransformReport, Error> {
+        if document.parse_context_id() != Some(self.parser.inner().id()) {
+            return Err(Error::ForeignDocument);
+        }
+        if document.has_errors() {
+            return Err(Error::IncompleteTree);
+        }
+
+        Ok(self.transform.run_with_flatten_groups_guards(
+            document.core_mut().__texform_engine_ast_mut(),
+            self.parser.inner(),
+            config,
+            overlay,
+        )?)
+    }
+
+    fn normalize_source(
+        &self,
+        src: &str,
+        config: &NormalizeConfig,
+        overlay: &texform_transform::FlattenGroupsGuardsOverlay,
+    ) -> Result<NormalizeResult, Error> {
         let (mut document, _) = self
             .parser
             .parse_with(src, &config.parse)
             .try_into_document()?;
-        let report = self.transform_with(&mut document, &config.transform)?;
+        let report = self.transform_document(&mut document, &config.transform, overlay)?;
         Ok(NormalizeResult {
             normalized: document.to_latex()?,
             report,

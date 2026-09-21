@@ -689,7 +689,7 @@ mod tests {
             "{camel}"
         );
         assert!(
-            camel.contains("preserveGroupContainingDeclarativeCommand"),
+            camel.contains("preserveRenderedSpacing"),
             "expected-field list should be renamed too: {camel}"
         );
     }
@@ -705,14 +705,11 @@ mod tests {
         let message = format_read_error(&error, "transform config", snake_to_camel);
         assert!(
             message.starts_with(
-                "invalid transform config: flattenGroups.preserveEmptyGruop: unknown field `preserveEmptyGruop`, expected one of `enabled`"
+                "invalid transform config: flattenGroups.preserveEmptyGruop: unknown field `preserveEmptyGruop`, expected `enabled` or `preserveRenderedSpacing`"
             ),
             "{message}"
         );
-        assert!(
-            message.contains("preserveGroupContainingDeclarativeCommand"),
-            "{message}"
-        );
+        assert!(message.contains("preserveRenderedSpacing"), "{message}");
     }
 
     #[test]
@@ -735,10 +732,17 @@ mod tests {
 
     #[test]
     fn flatten_groups_input_roundtrips_null_enabled() {
-        let input = read::<FlattenGroupsConfigInput>(json!({ "enabled": null })).unwrap();
+        let input = read::<FlattenGroupsConfigInput>(json!({
+            "enabled": null,
+            "preserve_rendered_spacing": null
+        }))
+        .unwrap();
         assert_eq!(input.enabled, None);
+        assert_eq!(input.preserve_rendered_spacing, None);
         let rewrite = read::<RewriteConfigInput>(json!({ "enabled": null })).unwrap();
         assert_eq!(rewrite.enabled, None);
+        let transform = read::<TransformConfigInput>(json!({ "flatten_groups": null })).unwrap();
+        assert_eq!(transform.flatten_groups, None);
     }
 
     #[test]

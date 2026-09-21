@@ -60,7 +60,7 @@ See [crate exports](src/lib.rs) for the internal Rust surface.
 
 ## Pipeline
 
-`TransformContext::run` executes a fixed sequence of phases. Rule levels are chosen when the context is built; each run may disable Rewrite, LowerAttributes, FinalizeAst, or FlattenGroups, or choose different preserve guards and iteration settings through `TransformConfig`.
+`TransformContext::run` executes a fixed sequence of phases. Rule levels are chosen when the context is built; each run may disable Rewrite, LowerAttributes, FinalizeAst, or FlattenGroups, or choose FlattenGroups spacing strategy and iteration settings through `TransformConfig`.
 
 1. **LowerAttributes (pre)** — canonicalize declarative-scope commands (e.g. `\bf x`) and registered prefix wrappers (e.g. `\mathbf{x}`) into a single normal form.
 2. **Rewrite** — apply the precompiled rewrite plan in a fixed-point loop, bounded by `rewrite.max_iterations`.
@@ -128,7 +128,14 @@ Do not add a second metadata field for ordinary behavior. If a rule has an impor
 
 ### `FlattenGroupsConfig`
 
-FlattenGroups removes structurally redundant `Explicit` and `Implicit` groups. The four core actions are:
+FlattenGroups removes structurally redundant `Explicit` and `Implicit` groups. The public per-run type has two fields:
+
+| Field | Meaning |
+| --- | --- |
+| `enabled` | Run the phase when `true`; skip it entirely when `false`. |
+| `preserve_rendered_spacing` | Keep groups whose only public-facing effect is rendered math spacing. This does not control serializer source whitespace. Structural guards stay on even when this is `false`. |
+
+The four core actions are:
 
 | Action                  | Trigger                                                                                          |
 |-------------------------|--------------------------------------------------------------------------------------------------|
@@ -137,39 +144,59 @@ FlattenGroups removes structurally redundant `Explicit` and `Implicit` groups. T
 | `inlined_multi_child`   | Multi-child `GroupChild` is spliced into its parent's child sequence.                            |
 | `unwrapped_slot`        | Single-child group occupying an `Argument` / `ScriptSub` / `ScriptSup` / `Infix*` slot is unwrapped. |
 
-These actions are the default behavior. Eleven configuration flags (ten independent **preserve guards** plus one sub-flag) gate the actions in specific contexts. Each preserve guard belongs to one of two categories:
+These actions are the default behavior. Each preserve predicate belongs to one of two categories:
 
-- **Semantic guards** — disabling them changes script binding, environment cell boundaries, declarative scope, or infix scope. Both parsed semantics and rendered output change.
-- **Spacing guards** — disabling them only affects atom-spacing and unary/binary classification context. Parsed semantics are unchanged; rendered output may differ by a thin space.
+- **Semantic / structural guards** — disabling them changes script binding, environment cell boundaries, declarative scope, or infix scope. Both parsed semantics and rendered output change. A public config keeps these on whenever the phase runs.
+- **Spacing guards** — disabling them only affects atom-spacing and unary/binary classification context. Parsed semantics are unchanged; rendered output may differ by a thin space. They follow `preserve_rendered_spacing`.
 
-#### Preserve guards
+Fine-grained per-guard control is not a public API. It lives on the internal `FlattenGroupsGuards` type.
 
-| # | Field                                              | Category | Example              | What the guard preserves                                                                              |
-|---|----------------------------------------------------|----------|----------------------|-------------------------------------------------------------------------------------------------------|
-| 1 | `preserve_group_containing_declarative_command`    | Semantic | `{\bf x} y`          | Groups whose subtree contains a declarative command (e.g. `\cal`, `\bf`), to avoid leaking declarative scope into following siblings. |
-| 2 | `preserve_group_in_script_base_slot`               | Semantic | `{ab}^2`             | Groups occupying a `ScriptBase` slot, to avoid changing which atom subscripts or superscripts attach to. |
-| 3 | `preserve_group_inside_env_body` | Semantic | `\begin{matrix} {a} & b \end{matrix}` | Groups inside an environment body, except a lone `Prime` in a superscript slot, to preserve cell boundaries and intra-cell spacing. |
-| 4 | `preserve_group_containing_infix`                  | Semantic | `{a \over b}`        | `GroupChild`s whose subtree contains an `\over`-style infix, to preserve the infix scope.            |
-| 5 | `preserve_group_adjacent_to_command_like`          | Spacing  | `\cos{A}`, `{\int}`  | `GroupChild`s whose preceding sibling or first child is command-like.                                |
-| 6 | `preserve_group_as_argument_of_command`               | Spacing  | `\overline{{\sum}}`  | Risky singleton groups directly used as arguments of commands, preserving one spacing boundary while still flattening redundant nesting. |
-| 7 | `preserve_empty_group`                             | Spacing  | `{}`                 | Empty `GroupChild`s, to preserve spacing / kerning effects.                                          |
-| 8 | `preserve_group_with_lone_atom_spacing_char`       | Spacing  | `{+}`, `{,}`, `{*}_N`, `{·}m` | Singleton groups containing only one math atom-spacing character.                                    |
-| 9 | `preserve_group_starting_with_atom_spacing_char`   | Spacing  | `{+x}`, `{,y}`       | Multi-child `GroupChild`s whose first child is a math atom-spacing character.                        |
-| 10 | `preserve_group_containing_delimited_pair`        | Spacing  | `{\left( a \right)}` | `GroupChild`s whose subtree contains a `\left…\right` delimited group.                               |
+#### Preset values
+
+`STRICT` sets `enabled` and `preserve_rendered_spacing` to `true` (every internal guard on). `STRUCTURAL_ONLY` keeps the phase on and sets `preserve_rendered_spacing` to `false` (only structural guards stay on). Profiles select them as shown above. `ENABLED` and `DEFAULTS` alias `STRICT`; `DISABLED` skips FlattenGroups. See [FlattenGroups configuration](src/flatten_groups/mod.rs) for exact fields and presets.
+
+### `FlattenGroupsGuards` (internal / unstable)
+
+`FlattenGroupsGuards` is the complete per-run protection set. It is an unstable research/internal surface: field names, layout, and the run-with-guards entry may change without notice. Public callers should use `FlattenGroupsConfig` only.
+
+| Field | Category | Example | What the guard preserves |
+| --- | --- | --- | --- |
+| `declarative_scope` | Semantic | `{\bf x} y` | Groups whose subtree contains a declarative command (e.g. `\cal`, `\bf`), to avoid leaking declarative scope into following siblings. |
+| `script_base` | Semantic | `{ab}^2` | Groups occupying a `ScriptBase` slot, to avoid changing which atom subscripts or superscripts attach to. |
+| `env_body` | Semantic | `\begin{matrix} {a} & b \end{matrix}` | Groups inside an environment body, except a lone `Prime` in a superscript slot, to preserve cell boundaries and intra-cell spacing. |
+| `infix_scope` | Semantic | `{a \over b}` | `GroupChild`s whose subtree contains an `\over`-style infix, to preserve the infix scope. |
+| `command_contact` | Spacing | `\cos{A}`, `{\int}` | `GroupChild`s whose preceding sibling or first child is command-like. |
+| `command_argument` | Spacing | `\overline{{\sum}}` | Risky singleton groups directly used as arguments of commands, preserving one spacing boundary while still flattening redundant nesting. |
+| `empty_group` | Spacing | `{}` | Empty `GroupChild`s, to preserve spacing / kerning effects. |
+| `lone_atom_spacing_char` | Spacing | `{+}`, `{,}`, `{*}_N`, `{·}m` | Singleton groups containing only one math atom-spacing character. |
+| `leading_atom_spacing_char` | Spacing | `{+x}`, `{,y}` | Multi-child `GroupChild`s whose first child is a math atom-spacing character. |
+| `delimited_pair` | Spacing | `{\left( a \right)}` | `GroupChild`s whose subtree contains a `\left…\right` delimited group. |
 
 Atom-spacing characters: `= < > + - , : ; . / * ! ? | ·`.
 
 #### Sub-flag
 
-| Field                                              | Depends on                                | Example     | Effect                                                                                                                                            |
-|----------------------------------------------------|-------------------------------------------|-------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
-| `preserve_group_after_scripted_command_like`       | `preserve_group_adjacent_to_command_like` | `\sin^2{x}` | When classifying "command-like" for the adjacency check, recurse through `Scripted` bases. Disabled, `\sin^2` (a `Scripted` node) is no longer treated as command-like and the trailing `{x}` is flattened. |
+| Field | Depends on | Example | Effect |
+| --- | --- | --- | --- |
+| `command_like_includes_scripted_base` | `command_contact` | `\sin^2{x}` | When classifying "command-like" for the adjacency check, recurse through `Scripted` bases. Disabled, `\sin^2` (a `Scripted` node) is no longer treated as command-like and the trailing `{x}` is flattened. |
 
-This sub-flag does not gate any group on its own; it only refines the classification used by guard #5. When `preserve_group_adjacent_to_command_like` is `false`, the sub-flag has no effect.
+This sub-flag does not gate any group on its own; it only refines the classification used by `command_contact`. When `command_contact` is `false`, the sub-flag has no effect.
 
-#### Preset values
+Report action names and guard **counters** keep the historical `preserve_*` contract. They map one-to-one onto `FlattenGroupsGuards` fields and still count the first matching situation in evaluation order:
 
-`STRICT` enables all preserve guards; `STRUCTURAL_ONLY` keeps semantic guards and disables spacing guards. Profiles select them as shown above. `ENABLED` and `DEFAULTS` alias `STRICT`; `DISABLED` skips FlattenGroups. See [FlattenGroups configuration](src/flatten_groups/mod.rs) for exact fields and presets.
+| Internal field | Report counter |
+| --- | --- |
+| `declarative_scope` | `preserve_group_containing_declarative_command` |
+| `script_base` | `preserve_group_in_script_base_slot` |
+| `env_body` | `preserve_group_inside_env_body` |
+| `infix_scope` | `preserve_group_containing_infix` |
+| `command_contact` | `preserve_group_adjacent_to_command_like` |
+| `command_like_includes_scripted_base` | `preserve_group_after_scripted_command_like` |
+| `command_argument` | `preserve_group_as_argument_of_command` |
+| `empty_group` | `preserve_empty_group` |
+| `lone_atom_spacing_char` | `preserve_group_with_lone_atom_spacing_char` |
+| `leading_atom_spacing_char` | `preserve_group_starting_with_atom_spacing_char` |
+| `delimited_pair` | `preserve_group_containing_delimited_pair` |
 
 ## Reports
 
@@ -205,7 +232,7 @@ A single recursive traversal (`visit` → `try_unwrap` in `src/flatten_groups/mo
 
 1. Collects subtree-wide flags (`has_declarative`, `has_infix`, `has_delimited`) on the way down.
 2. Tracks the `in_env_body` context flag through `Slot::EnvBody` edges.
-3. On the way back up, calls `try_unwrap` to check whether the current group should be flattened. Each preserve guard short-circuits with an early return that increments its hit counter; the first matching guard wins.
+3. On the way back up, calls `try_unwrap` to check whether the current group should be flattened. Each `FlattenGroupsGuards` predicate (`declarative_scope`, `script_base`, `env_body`, `infix_scope`, `command_contact`, `command_argument`, `empty_group`, `lone_atom_spacing_char`, `leading_atom_spacing_char`, `delimited_pair`) short-circuits with an early return that increments its historical `preserve_*` hit counter; the first matching guard wins. `command_like_includes_scripted_base` only refines the `command_contact` classification.
 4. If no guard fires and the group's content mode matches its parent's context mode, the group is unwrapped via either `unwrap_group_child` (multi-child splice) or `redirect_single_child_slot` (single-child slot replacement).
 
 The `slot_can_unwrap` helper restricts redirect-style unwrapping to single-child groups in `Argument`, `Script*`, and `Infix*` slots; `EnvBody` slots are never unwrapped.

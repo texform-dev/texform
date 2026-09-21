@@ -22,6 +22,7 @@ use crate::ast::Ast;
 use crate::config::TransformConfig;
 use crate::context::TransformContext;
 use crate::error::TransformError;
+use crate::flatten_groups::FlattenGroupsGuardsOverlay;
 use crate::parse::ParseContext;
 use crate::report::TransformReport;
 use crate::{finalize_ast, flatten_groups, lower_attributes, rewrite};
@@ -31,6 +32,16 @@ pub(crate) fn execute(
     ast: &mut Ast,
     parse_ctx: &ParseContext,
     cfg: &TransformConfig,
+) -> Result<TransformReport, TransformError> {
+    execute_with_flatten_groups_overlay(tctx, ast, parse_ctx, cfg, None)
+}
+
+pub(crate) fn execute_with_flatten_groups_overlay(
+    tctx: &TransformContext,
+    ast: &mut Ast,
+    parse_ctx: &ParseContext,
+    cfg: &TransformConfig,
+    flatten_groups_overlay: Option<&FlattenGroupsGuardsOverlay>,
 ) -> Result<TransformReport, TransformError> {
     let mut report = TransformReport::default();
 
@@ -56,7 +67,12 @@ pub(crate) fn execute(
     finalize_ast::run(ast, &cfg.finalize_ast, &mut report.finalize_ast);
 
     if cfg.flatten_groups.enabled {
-        flatten_groups::run(ast, &cfg.flatten_groups, &mut report.flatten_groups);
+        let mut guards =
+            crate::flatten_groups::FlattenGroupsGuards::from_config(cfg.flatten_groups);
+        if let Some(overlay) = flatten_groups_overlay {
+            guards.apply_overlay(*overlay);
+        }
+        flatten_groups::run(ast, &guards, &mut report.flatten_groups);
         // FlattenGroups can expose new adjacent Prime / Text nodes. Re-run the
         // same idempotent FinalizeAst pass so sequence canonicalization is the
         // last AST mutation. Skip when FlattenGroups is off: the first pass
