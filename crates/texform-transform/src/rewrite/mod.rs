@@ -64,15 +64,15 @@ impl RewriteReport {
             .expect("newly inserted rule stat must exist")
     }
 
-    pub fn mark_rule_applied(&mut self, key: RuleKey) {
+    pub(crate) fn mark_rule_applied(&mut self, key: RuleKey) {
         self.stat_mut(key).applied_count += 1;
     }
 
-    pub fn mark_rule_skipped(&mut self, key: RuleKey) {
+    pub(crate) fn mark_rule_skipped(&mut self, key: RuleKey) {
         self.stat_mut(key).skipped_count += 1;
     }
 
-    pub fn record_iteration(&mut self, iterations: usize) {
+    pub(crate) fn record_iteration(&mut self, iterations: usize) {
         self.iterations = iterations;
     }
 }
@@ -127,16 +127,19 @@ impl std::error::Error for RewriteError {}
 
 use crate::ast::Ast;
 use crate::parse::ParseContext;
+use crate::report::ReportRecorder;
 
-/// Applies rewrite rules to an AST and records what changed.
+/// Applies rewrite rules to an AST.
+///
+/// Rule counts are written to `recorder` only when that recorder is collecting.
 pub fn run(
     ast: &mut Ast,
     parse_ctx: &ParseContext,
     plan: &Plan,
     max_iterations: usize,
-    report: &mut RewriteReport,
+    recorder: &mut ReportRecorder,
 ) -> Result<(), RewriteError> {
-    scheduler::drive_fixed_point(ast, parse_ctx, plan, max_iterations, report)
+    scheduler::drive_fixed_point(ast, parse_ctx, plan, max_iterations, recorder)
 }
 
 #[cfg(test)]
@@ -151,7 +154,7 @@ pub(crate) fn run_one_rule_for_test(
         .only_rule_for_tests(rule.meta().key);
     let context = crate::TransformContext::from_build_config(build_config, parse_ctx)
         .map_err(crate::TransformError::Build)?;
-    context.run_with(
+    context.run_with_report(
         ast,
         parse_ctx,
         &crate::TransformConfig {

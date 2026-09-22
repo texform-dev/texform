@@ -40,7 +40,7 @@ fn transform_updates_document_in_place() {
     let root_id = document.root().id();
 
     let report = engine
-        .transform_with(
+        .transform_with_report(
             &mut document,
             &TransformConfig {
                 lower_attributes: LowerAttributesConfig::DISABLED,
@@ -111,19 +111,11 @@ fn normalize_uses_finalize_ast_by_default() {
     let engine = engine();
 
     let result = engine
-        .normalize(r"f^{\prime\prime}")
+        .normalize_with_report(r"f^{\prime\prime}", &engine.default_normalize_config())
         .expect("normalize should succeed");
 
     assert_eq!(result.normalized, "f''");
-    assert_eq!(
-        result
-            .report
-            .finalize_ast
-            .steps
-            .merge_adjacent_primes
-            .applied_count,
-        1
-    );
+    assert_eq!(result.report.finalize_ast.prime_run_merges, 1);
 }
 
 #[test]
@@ -131,7 +123,7 @@ fn normalize_can_disable_finalize_ast_explicitly() {
     let engine = engine();
 
     let result = engine
-        .normalize_with(
+        .normalize_with_report(
             r"f^{\prime\prime}",
             &NormalizeConfig {
                 parse: ParseConfig::STRICT,
@@ -146,24 +138,8 @@ fn normalize_can_disable_finalize_ast_explicitly() {
         .expect("normalize should succeed");
 
     assert_eq!(result.normalized, r"f ^ { '' }");
-    assert_eq!(
-        result
-            .report
-            .finalize_ast
-            .steps
-            .merge_adjacent_primes
-            .applied_count,
-        0
-    );
-    assert_eq!(
-        result
-            .report
-            .finalize_ast
-            .steps
-            .normalize_text_sequences
-            .applied_count,
-        0
-    );
+    assert_eq!(result.report.finalize_ast.prime_run_merges, 0);
+    assert_eq!(result.report.finalize_ast.text_normalizations, 0);
 }
 
 #[test]
@@ -180,14 +156,12 @@ fn normalize_collapses_text_whitespace_without_trimming_edges() {
 
     // Collapse ordinary whitespace runs; keep a single leading/trailing space.
     assert!(
-        result.normalized.contains(" a b "),
-        "expected collapsed edge-preserving spaces in {}",
-        result.normalized
+        result.contains(" a b "),
+        "expected collapsed edge-preserving spaces in {result}"
     );
     assert!(
-        !result.normalized.contains("  "),
-        "normalized output should not keep double spaces: {}",
-        result.normalized
+        !result.contains("  "),
+        "normalized output should not keep double spaces: {result}"
     );
 }
 
@@ -201,17 +175,9 @@ fn normalize_merges_text_fragments_exposed_by_flatten_groups() {
 
     // Nested text groups flatten into one sequence; post-FinalizeAst merges them.
     let result = engine
-        .normalize(r"\text{a{b}c}")
+        .normalize_with_report(r"\text{a{b}c}", &engine.default_normalize_config())
         .expect("normalize should succeed");
 
     assert_eq!(result.normalized, r"\text {abc}");
-    assert_eq!(
-        result
-            .report
-            .finalize_ast
-            .steps
-            .normalize_text_sequences
-            .applied_count,
-        1
-    );
+    assert_eq!(result.report.finalize_ast.text_normalizations, 1);
 }

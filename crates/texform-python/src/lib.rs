@@ -1288,18 +1288,39 @@ impl PyTransformEngine {
         src: &str,
         config: Option<&Bound<'_, PyAny>>,
         overrides: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<String> {
+        // Plain path returns text only. It shares config parsing with
+        // `normalize_with_report` and does not build a report DTO.
+        let config =
+            normalize_config_from_python(config, overrides, self.inner.default_normalize_config())?;
+        self.inner.normalize_with(src, &config).map_err(|error| {
+            binding_error_parts_to_py(py, texform::bindings::normalize_error_to_parts(error))
+                .unwrap_or_else(|error| error)
+        })
+    }
+
+    #[pyo3(signature = (src, config = None, **overrides))]
+    fn normalize_with_report(
+        &self,
+        py: Python<'_>,
+        src: &str,
+        config: Option<&Bound<'_, PyAny>>,
+        overrides: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
         let config =
             normalize_config_from_python(config, overrides, self.inner.default_normalize_config())?;
-        let result = self.inner.normalize_with(src, &config).map_err(|error| {
-            binding_error_parts_to_py(py, texform::bindings::normalize_error_to_parts(error))
-                .unwrap_or_else(|error| error)
-        })?;
-        transform_result_to_python(py, result.normalized, &result.report)
+        let result = self
+            .inner
+            .normalize_with_report(src, &config)
+            .map_err(|error| {
+                binding_error_parts_to_py(py, texform::bindings::normalize_error_to_parts(error))
+                    .unwrap_or_else(|error| error)
+            })?;
+        normalize_report_result_to_python(py, result.normalized, &result.report)
     }
 
-    // Unstable research entry: omitted from the public stub. Always validates
-    // `guards` even when FlattenGroups is disabled for this call.
+    // Unstable research entry: omitted from the public stub. Always collects a
+    // report and always validates `guards`, even when FlattenGroups is disabled.
     #[pyo3(signature = (source, config = None, *, guards, **overrides))]
     fn _normalize_with_flatten_groups_guards(
         &self,
@@ -1328,11 +1349,37 @@ impl PyTransformEngine {
                 binding_error_parts_to_py(py, texform::bindings::normalize_error_to_parts(error))
                     .unwrap_or_else(|error| error)
             })?;
-        transform_result_to_python(py, result.normalized, &result.report)
+        normalize_report_result_to_python(py, result.normalized, &result.report)
     }
 
     #[pyo3(signature = (document, config = None, **overrides))]
     fn transform(
+        &self,
+        py: Python<'_>,
+        document: &Bound<'_, PyDocument>,
+        config: Option<&Bound<'_, PyAny>>,
+        overrides: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        // Plain path returns None. It shares config parsing with
+        // `transform_with_report` and does not build a report DTO.
+        let config = transform_config_from_python(
+            config,
+            overrides,
+            *self.inner.default_transform_config(),
+        )?;
+        {
+            let mut document = document.try_borrow_mut().map_err(borrow_error)?;
+            self.inner.transform_with(&mut document.inner, &config)
+        }
+        .map_err(|error| {
+            binding_error_parts_to_py(py, texform::bindings::normalize_error_to_parts(error))
+                .unwrap_or_else(|error| error)
+        })?;
+        Ok(())
+    }
+
+    #[pyo3(signature = (document, config = None, **overrides))]
+    fn transform_with_report(
         &self,
         py: Python<'_>,
         document: &Bound<'_, PyDocument>,
@@ -1346,7 +1393,8 @@ impl PyTransformEngine {
         )?;
         let report = {
             let mut document = document.try_borrow_mut().map_err(borrow_error)?;
-            self.inner.transform_with(&mut document.inner, &config)
+            self.inner
+                .transform_with_report(&mut document.inner, &config)
         }
         .map_err(|error| {
             binding_error_parts_to_py(py, texform::bindings::normalize_error_to_parts(error))
@@ -1457,10 +1505,10 @@ impl PyTransformEngine {
     }
 }
 
-fn transform_result_to_python(
+fn normalize_report_result_to_python(
     py: Python<'_>,
     normalized: String,
-    report: &texform::TransformReport,
+    report: &texform::diagnostics::TransformReport,
 ) -> PyResult<Py<PyAny>> {
     let out = PyDict::new(py);
     out.set_item("normalized", normalized)?;
@@ -1470,7 +1518,7 @@ fn transform_result_to_python(
 
 fn transform_report_to_python(
     py: Python<'_>,
-    report: &texform::TransformReport,
+    report: &texform::diagnostics::TransformReport,
 ) -> PyResult<Py<PyAny>> {
     Ok(pythonize(py, &texform::bindings::transform_report_to_dto(report))?.unbind())
 }
@@ -1883,16 +1931,8 @@ mod tests {
             let result = engine
                 .call_method1("normalize", (r"\quantity{x}",))
                 .unwrap();
-            let dict = result.cast::<pyo3::types::PyDict>().unwrap();
 
-            assert_eq!(
-                dict.get_item("normalized")
-                    .unwrap()
-                    .unwrap()
-                    .extract::<String>()
-                    .unwrap(),
-                r"\qty { x }"
-            );
+            assert_eq!(result.extract::<String>().unwrap(), r"\qty { x }");
         });
     }
 
@@ -2126,15 +2166,7 @@ mod tests {
             let result = engine
                 .call_method1("normalize", (r"\quantity{x}",))
                 .expect("normalize should use facade default");
-            let dict = result.cast::<pyo3::types::PyDict>().unwrap();
-            assert_eq!(
-                dict.get_item("normalized")
-                    .unwrap()
-                    .unwrap()
-                    .extract::<String>()
-                    .unwrap(),
-                r"\qty { x }"
-            );
+            assert_eq!(result.extract::<String>().unwrap(), r"\qty { x }");
         });
     }
 
@@ -2176,15 +2208,7 @@ mod tests {
             let result = engine
                 .call_method("normalize", (r"\quantity{x}",), Some(&call_kwargs))
                 .expect("normalize should accept kwargs");
-            let dict = result.cast::<pyo3::types::PyDict>().unwrap();
-            assert_eq!(
-                dict.get_item("normalized")
-                    .unwrap()
-                    .unwrap()
-                    .extract::<String>()
-                    .unwrap(),
-                r"\quantity { x }"
-            );
+            assert_eq!(result.extract::<String>().unwrap(), r"\quantity { x }");
         });
     }
 
@@ -2225,9 +2249,10 @@ mod tests {
                 .set_item("flatten_groups", flatten_groups)
                 .unwrap();
 
-            let report = engine
+            let transformed = engine
                 .call_method("transform", (&document,), Some(&overrides))
                 .expect("transform should succeed");
+            assert!(transformed.is_none());
 
             assert_eq!(
                 document
@@ -2237,13 +2262,27 @@ mod tests {
                     .unwrap(),
                 "x"
             );
-            assert!(
-                report
-                    .cast::<pyo3::types::PyDict>()
+
+            let parsed_again = engine.call_method1("parse", ("{{x}}",)).unwrap();
+            let reported = parsed_again
+                .cast::<pyo3::types::PyDict>()
+                .unwrap()
+                .get_item("document")
+                .unwrap()
+                .unwrap();
+            let report = engine
+                .call_method("transform_with_report", (&reported,), Some(&overrides))
+                .expect("transform with report should succeed");
+            let report = report.cast::<pyo3::types::PyDict>().unwrap();
+            assert!(report.get_item("flatten_groups").unwrap().is_some());
+            assert!(report.get_item("iterations").unwrap().is_none());
+            assert_eq!(
+                reported
+                    .call_method0("to_latex")
                     .unwrap()
-                    .get_item("flatten_groups")
-                    .unwrap()
-                    .is_some()
+                    .extract::<String>()
+                    .unwrap(),
+                "x"
             );
         });
     }
@@ -2398,15 +2437,31 @@ mod tests {
                 .unwrap()
                 .unwrap();
 
-            let error = engine
+            let transformed = engine
                 .call_method1("transform", (document.clone(), py.None()))
                 .expect("None config should be accepted");
-            assert!(error.cast::<pyo3::types::PyDict>().is_ok());
+            assert!(transformed.is_none());
+
+            let parsed_again = engine.call_method1("parse", ("x",)).unwrap();
+            let reported = parsed_again
+                .cast::<pyo3::types::PyDict>()
+                .unwrap()
+                .get_item("document")
+                .unwrap()
+                .unwrap();
+            let report = engine
+                .call_method1("transform_with_report", (reported.clone(), py.None()))
+                .expect("None config should be accepted by the report path");
+            assert!(report.cast::<pyo3::types::PyDict>().is_ok());
 
             let error = engine
                 .call_method1("transform", (document, "not a config"))
                 .expect_err("invalid config object should fail");
+            assert!(error.is_instance_of::<ConfigError>(py));
 
+            let error = engine
+                .call_method1("transform_with_report", (reported, "not a config"))
+                .expect_err("invalid report config object should fail");
             assert!(error.is_instance_of::<ConfigError>(py));
         });
     }
@@ -2434,6 +2489,11 @@ mod tests {
             let error = engine
                 .call_method1("normalize", ("x", "not a config"))
                 .expect_err("invalid normalize config should fail");
+            assert!(error.is_instance_of::<ConfigError>(py));
+
+            let error = engine
+                .call_method1("normalize_with_report", ("x", "not a config"))
+                .expect_err("invalid normalize report config should fail");
             assert!(error.is_instance_of::<ConfigError>(py));
 
             let finalize_kwargs = pyo3::types::PyDict::new(py);
@@ -2466,9 +2526,14 @@ mod tests {
                 .call((), Some(&kwargs))
                 .unwrap();
 
-            let result = engine
+            let plain = engine
                 .call_method1("normalize", (r"f^{\prime\prime}",))
                 .expect("normalize should use default FinalizeAst");
+            assert_eq!(plain.extract::<String>().unwrap(), "f''");
+
+            let result = engine
+                .call_method1("normalize_with_report", (r"f^{\prime\prime}",))
+                .expect("normalize with report should use default FinalizeAst");
             let dict = result.cast::<pyo3::types::PyDict>().unwrap();
             assert_eq!(
                 dict.get_item("normalized")
@@ -2476,12 +2541,22 @@ mod tests {
                     .unwrap()
                     .extract::<String>()
                     .unwrap(),
-                "f''"
+                plain.extract::<String>().unwrap()
             );
             let report_value = dict.get_item("report").unwrap().unwrap();
             let report = report_value.cast::<pyo3::types::PyDict>().unwrap();
-            assert!(report.get_item("finalize_ast").unwrap().is_some());
+            let finalize_ast = report.get_item("finalize_ast").unwrap().unwrap();
+            let finalize_ast = finalize_ast.cast::<pyo3::types::PyDict>().unwrap();
+            assert!(finalize_ast.get_item("prime_run_merges").unwrap().is_some());
+            assert!(
+                finalize_ast
+                    .get_item("text_normalizations")
+                    .unwrap()
+                    .is_some()
+            );
+            assert!(finalize_ast.get_item("steps").unwrap().is_none());
             assert!(report.get_item("finalizeAst").unwrap().is_none());
+            assert!(report.get_item("iterations").unwrap().is_none());
 
             let finalize_ast = pyo3::types::PyDict::new(py);
             finalize_ast.set_item("enabled", false).unwrap();
@@ -2490,9 +2565,18 @@ mod tests {
             let disabled = engine
                 .call_method("normalize", (r"f^{\prime\prime}",), Some(&call_kwargs))
                 .expect("normalize should accept finalize_ast kwargs");
-            let disabled = disabled.cast::<pyo3::types::PyDict>().unwrap();
+            assert_eq!(disabled.extract::<String>().unwrap(), r"f ^ { '' }");
+            let disabled_report = engine
+                .call_method(
+                    "normalize_with_report",
+                    (r"f^{\prime\prime}",),
+                    Some(&call_kwargs),
+                )
+                .expect("report path should accept the same finalize_ast kwargs");
             assert_eq!(
-                disabled
+                disabled_report
+                    .cast::<pyo3::types::PyDict>()
+                    .unwrap()
                     .get_item("normalized")
                     .unwrap()
                     .unwrap()
@@ -2726,11 +2810,16 @@ for profile in ("authoring", "faithful", "corpus", "equiv"):
     engine = texform.TransformEngine(profile, packages=["base"])
     source = r"a{} + {+}"
     baseline = engine.normalize(source)
+    reported = engine.normalize_with_report(source)
     research = engine._normalize_with_flatten_groups_guards
-    assert research(source, guards={}) == baseline
+    assert isinstance(baseline, str)
+    assert research(source, guards={}) == reported
+    assert reported["normalized"] == baseline
     kept = research(source, guards={"empty_group": True})
     removed = research(source, guards={"empty_group": False})
     assert kept["normalized"] != removed["normalized"]
+    assert "guard_hits" in kept["report"]["flatten_groups"]
+    assert "guards" not in kept["report"]["flatten_groups"]
     assert engine.normalize(source) == baseline
 "#,
         );
@@ -2813,14 +2902,118 @@ source = r"\cos{A} + a{}"
 research = engine._normalize_with_flatten_groups_guards
 for profile, spacing, expected in (
     ("authoring", False, r"\cos A + a"),
-    ("corpus", True, engine.normalize(source)["normalized"]),
+    ("corpus", True, engine.normalize(source)),
 ):
     config = getattr(texform.TransformConfig, profile)()
-    assert research(source, config, guards={}) == engine.normalize(source, config)
+    assert research(source, config, guards={})["normalized"] == engine.normalize(source, config)
+    assert research(source, config, guards={}) == engine.normalize_with_report(source, config)
     result = research(
         source, config, guards={}, flatten_groups={"preserve_rendered_spacing": spacing}
     )
     assert result["normalized"] == expected
+"#,
+        );
+    }
+
+    #[test]
+    fn python_report_paths_match_plain_results_without_residue() {
+        run_flatten_groups_python_test(
+            cr#"
+engine = texform.TransformEngine("corpus", packages=["base", "physics"])
+source = r"\quantity{{\bf x}} + a \over b"
+plain = engine.normalize(source)
+first = engine.normalize_with_report(source)
+assert isinstance(plain, str) and first["normalized"] == plain
+try:
+    engine.normalize("{")
+except texform.ParseError:
+    pass
+else:
+    raise AssertionError("invalid source should fail")
+assert engine.normalize(source) == plain
+second = engine.normalize_with_report(source)
+assert second == first
+
+report = first["report"]
+assert set(report) == {"lower_attributes", "rewrite", "finalize_ast", "flatten_groups"}
+assert set(report["rewrite"]) == {"iterations", "rules"}
+assert report["rewrite"]["iterations"] > 0
+rules = report["rewrite"]["rules"]
+assert rules == sorted(rules, key=lambda item: item["key"])
+assert any(rule["applied_count"] > 0 for rule in rules)
+for rule in rules:
+    assert set(rule) == {"key", "applied_count", "skipped_count"}
+assert set(report["finalize_ast"]) == {"prime_run_merges", "text_normalizations"}
+assert "steps" not in report["finalize_ast"]
+flatten = report["flatten_groups"]
+assert set(flatten["actions"]) == {
+    "removed_empty",
+    "replaced_single_child",
+    "inlined_multi_child",
+    "unwrapped_slot",
+}
+assert set(flatten["guard_hits"]) == {
+    "declarative_scope",
+    "script_base",
+    "env_body",
+    "infix_scope",
+    "command_contact",
+    "command_argument",
+    "command_contact_via_scripted_base",
+    "empty_group",
+    "lone_atom_spacing_char",
+    "leading_atom_spacing_char",
+    "delimited_pair",
+}
+attributes = report["lower_attributes"]["attributes"]
+assert attributes == sorted(attributes, key=lambda item: (item["attr"], item["value"]))
+assert attributes
+for item in attributes:
+    assert set(item) == {"attr", "value", "consumed", "redundant", "emitted"}
+    for bucket in ("consumed", "redundant", "emitted"):
+        assert set(item[bucket]) == {"declaratives", "prefixes"}
+
+off = {"rewrite": {"enabled": False}}
+disabled = engine.normalize(source, **off)
+disabled_report = engine.normalize_with_report(source, **off)
+assert disabled == disabled_report["normalized"]
+assert disabled != plain
+assert disabled_report["report"]["rewrite"]["iterations"] == 0
+assert disabled_report["report"]["rewrite"]["rules"] == []
+for method in (engine.normalize, engine.normalize_with_report):
+    try:
+        method(source, rewrite="no")
+    except texform.ConfigError:
+        pass
+    else:
+        raise AssertionError(method)
+
+def fresh():
+    return engine.parse(source)["document"]
+
+document = fresh()
+assert engine.transform(document) is None
+assert document.to_latex() == plain
+incomplete = engine.parse(r"\sqrt[", abort_on_error=False)["document"]
+before = incomplete.to_latex()
+try:
+    engine.transform_with_report(incomplete)
+except texform.TransformError:
+    pass
+else:
+    raise AssertionError("incomplete document")
+assert incomplete.to_latex() == before
+foreign = texform.Document.from_syntax(fresh().to_syntax())
+try:
+    engine.transform_with_report(foreign)
+except texform.TransformError:
+    pass
+else:
+    raise AssertionError("foreign document")
+again = fresh()
+assert engine.transform_with_report(again) == report
+assert again.to_latex() == plain
+assert engine.transform_with_report(fresh()) == report
 "#,
         );
     }

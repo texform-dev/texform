@@ -10,11 +10,11 @@ use texform_transform::{
 };
 
 fn run_finalize(ast: &mut Ast, enabled: bool) -> FinalizeAstReport {
-    let mut report = FinalizeAstReport::default();
+    let mut recorder = texform_transform::report::ReportRecorder::collecting();
     let config = FinalizeAstConfig { enabled };
-    finalize_ast::run(ast, &config, &mut report);
+    finalize_ast::run(ast, &config, &mut recorder);
     ast.assert_invariants();
-    report
+    recorder.into_report().finalize_ast
 }
 
 fn ast_from(children: Vec<SyntaxNode>) -> Ast {
@@ -102,7 +102,7 @@ fn run_engine(
         TransformContext::from_build_config(BuildConfig::profile(Profile::Equiv), &parse_ctx)
             .expect("transform context should build");
     let report = context
-        .run_with(&mut ast, &parse_ctx, &config)
+        .run_with_report(&mut ast, &parse_ctx, &config)
         .expect("transform should succeed");
     ast.assert_invariants();
     let text = serialize(&ast);
@@ -125,8 +125,8 @@ fn disabled_config_leaves_adjacent_primes_unchanged() {
             SyntaxNode::Prime { count: 2 },
         ]
     );
-    assert_eq!(report.steps.merge_adjacent_primes.applied_count, 0);
-    assert_eq!(report.steps.normalize_text_sequences.applied_count, 0);
+    assert_eq!(report.prime_run_merges, 0);
+    assert_eq!(report.text_normalizations, 0);
 }
 
 #[test]
@@ -152,7 +152,7 @@ fn enabled_config_merges_adjacent_primes_in_same_sequence() {
             SyntaxNode::Prime { count: 3 },
         ]
     );
-    assert_eq!(report.steps.merge_adjacent_primes.applied_count, 2);
+    assert_eq!(report.prime_run_merges, 2);
 }
 
 #[test]
@@ -166,7 +166,7 @@ fn one_contiguous_prime_run_counts_as_one_action() {
     let report = run_finalize(&mut ast, true);
 
     assert_eq!(root_children(&ast), vec![SyntaxNode::Prime { count: 5 }]);
-    assert_eq!(report.steps.merge_adjacent_primes.applied_count, 1);
+    assert_eq!(report.prime_run_merges, 1);
 }
 
 #[test]
@@ -224,7 +224,7 @@ fn recursively_enters_math_arguments_scripts_and_environment_body() {
         ),
         other => panic!("expected environment node, got {other:?}"),
     }
-    assert_eq!(report.steps.merge_adjacent_primes.applied_count, 3);
+    assert_eq!(report.prime_run_merges, 3);
 }
 
 #[test]
@@ -256,7 +256,7 @@ fn does_not_merge_across_containers_or_slots() {
             },
         ]
     );
-    assert_eq!(report.steps.merge_adjacent_primes.applied_count, 0);
+    assert_eq!(report.prime_run_merges, 0);
 }
 
 #[test]
@@ -299,7 +299,7 @@ fn ignores_text_mode_sequences_and_prime_commands_for_prime_merge() {
             },
         ]
     );
-    assert_eq!(report.steps.merge_adjacent_primes.applied_count, 0);
+    assert_eq!(report.prime_run_merges, 0);
 }
 
 #[test]
@@ -311,7 +311,7 @@ fn merges_adjacent_text_in_text_mode_root_and_group() {
     ]);
     let root_report = run_finalize(&mut root, true);
     assert_eq!(root_children(&root), vec![SyntaxNode::Text("abc".into())]);
-    assert_eq!(root_report.steps.normalize_text_sequences.applied_count, 1);
+    assert_eq!(root_report.text_normalizations, 1);
 
     let mut nested = ast_from(vec![text_group(vec![
         SyntaxNode::Text("x".into()),
@@ -322,10 +322,7 @@ fn merges_adjacent_text_in_text_mode_root_and_group() {
         root_children(&nested),
         vec![text_group(vec![SyntaxNode::Text("xy".into())])]
     );
-    assert_eq!(
-        nested_report.steps.normalize_text_sequences.applied_count,
-        1
-    );
+    assert_eq!(nested_report.text_normalizations, 1);
 }
 
 #[test]
@@ -346,7 +343,7 @@ fn collapses_singleton_text_whitespace_without_trimming_edges() {
             vec![SyntaxNode::Text(expected.into())],
             "input {input:?}"
         );
-        assert_eq!(report.steps.normalize_text_sequences.applied_count, 1);
+        assert_eq!(report.text_normalizations, 1);
     }
 }
 
@@ -362,7 +359,7 @@ fn collapses_whitespace_across_adjacent_text_boundaries() {
     let report = run_finalize(&mut ast, true);
 
     assert_eq!(root_children(&ast), vec![SyntaxNode::Text("a b ".into())]);
-    assert_eq!(report.steps.normalize_text_sequences.applied_count, 1);
+    assert_eq!(report.text_normalizations, 1);
 }
 
 #[test]
@@ -377,7 +374,7 @@ fn preserves_non_lexer_unicode_whitespace() {
         root_children(&ast),
         vec![SyntaxNode::Text("a\u{2007}\u{202F}\u{3000} b".into())]
     );
-    assert_eq!(report.steps.normalize_text_sequences.applied_count, 1);
+    assert_eq!(report.text_normalizations, 1);
 }
 
 #[test]
@@ -424,7 +421,7 @@ fn non_text_children_block_text_merge() {
             SyntaxNode::Text("f".into()),
         ]
     );
-    assert_eq!(report.steps.normalize_text_sequences.applied_count, 0);
+    assert_eq!(report.text_normalizations, 0);
 }
 
 #[test]
@@ -447,8 +444,8 @@ fn does_not_merge_text_across_arguments_or_slots() {
     let report = run_finalize(&mut ast, true);
     let report2 = run_finalize(&mut two_args, true);
 
-    assert_eq!(report.steps.normalize_text_sequences.applied_count, 0);
-    assert_eq!(report2.steps.normalize_text_sequences.applied_count, 0);
+    assert_eq!(report.text_normalizations, 0);
+    assert_eq!(report2.text_normalizations, 0);
     match &root_children(&two_args)[0] {
         SyntaxNode::Command { args, .. } => {
             assert_eq!(
@@ -476,7 +473,7 @@ fn deletes_empty_text_from_sequence_but_keeps_space_text() {
         root_children(&with_empties),
         vec![SyntaxNode::Text("a".into())]
     );
-    assert_eq!(empty_report.steps.normalize_text_sequences.applied_count, 1);
+    assert_eq!(empty_report.text_normalizations, 1);
 
     let mut space_only = text_root(vec![
         SyntaxNode::Text(" ".into()),
@@ -487,7 +484,7 @@ fn deletes_empty_text_from_sequence_but_keeps_space_text() {
         root_children(&space_only),
         vec![SyntaxNode::Text(" ".into())]
     );
-    assert_eq!(space_report.steps.normalize_text_sequences.applied_count, 1);
+    assert_eq!(space_report.text_normalizations, 1);
 
     let mut all_empty = text_root(vec![
         SyntaxNode::Text("".into()),
@@ -495,13 +492,7 @@ fn deletes_empty_text_from_sequence_but_keeps_space_text() {
     ]);
     let all_empty_report = run_finalize(&mut all_empty, true);
     assert_eq!(root_children(&all_empty), vec![]);
-    assert_eq!(
-        all_empty_report
-            .steps
-            .normalize_text_sequences
-            .applied_count,
-        1
-    );
+    assert_eq!(all_empty_report.text_normalizations, 1);
 }
 
 #[test]
@@ -519,7 +510,7 @@ fn text_content_slot_normalizes_and_replaces_empty_with_implicit_group() {
         ),
         other => panic!("expected command, got {other:?}"),
     }
-    assert_eq!(report.steps.normalize_text_sequences.applied_count, 1);
+    assert_eq!(report.text_normalizations, 1);
 
     let mut canonical = ast_from(vec![SyntaxNode::Command {
         name: "text".to_string(),
@@ -527,13 +518,7 @@ fn text_content_slot_normalizes_and_replaces_empty_with_implicit_group() {
         known: true,
     }]);
     let canonical_report = run_finalize(&mut canonical, true);
-    assert_eq!(
-        canonical_report
-            .steps
-            .normalize_text_sequences
-            .applied_count,
-        0
-    );
+    assert_eq!(canonical_report.text_normalizations, 0);
 
     let mut empty = ast_from(vec![SyntaxNode::Command {
         name: "text".to_string(),
@@ -548,7 +533,7 @@ fn text_content_slot_normalizes_and_replaces_empty_with_implicit_group() {
         ),
         other => panic!("expected command, got {other:?}"),
     }
-    assert_eq!(empty_report.steps.normalize_text_sequences.applied_count, 1);
+    assert_eq!(empty_report.text_normalizations, 1);
 
     let mut already_empty_group = ast_from(vec![SyntaxNode::Command {
         name: "text".to_string(),
@@ -556,10 +541,7 @@ fn text_content_slot_normalizes_and_replaces_empty_with_implicit_group() {
         known: true,
     }]);
     let already_report = run_finalize(&mut already_empty_group, true);
-    assert_eq!(
-        already_report.steps.normalize_text_sequences.applied_count,
-        0
-    );
+    assert_eq!(already_report.text_normalizations, 0);
 }
 
 #[test]
@@ -575,7 +557,7 @@ fn math_mode_sequences_do_not_merge_adjacent_text() {
         root_children(&ast),
         vec![SyntaxNode::Text("a".into()), SyntaxNode::Text("b".into()),]
     );
-    assert_eq!(report.steps.normalize_text_sequences.applied_count, 0);
+    assert_eq!(report.text_normalizations, 0);
 }
 
 #[test]
@@ -594,7 +576,7 @@ fn disabled_config_leaves_text_sequences_unchanged() {
             SyntaxNode::Text("\tb".into()),
         ]
     );
-    assert_eq!(report.steps.normalize_text_sequences.applied_count, 0);
+    assert_eq!(report.text_normalizations, 0);
 }
 
 #[test]
@@ -605,19 +587,27 @@ fn second_finalize_on_canonical_ast_is_idempotent() {
         SyntaxNode::Text("".into()),
     ]);
 
-    let first = run_finalize(&mut ast, true);
+    let mut first_recorder = texform_transform::report::ReportRecorder::collecting();
+    finalize_ast::run(&mut ast, &FinalizeAstConfig::ENABLED, &mut first_recorder);
+    ast.assert_invariants();
     let after_first = root_children(&ast);
-    let first_text = first.steps.normalize_text_sequences.applied_count;
+    let first_text = first_recorder
+        .into_report()
+        .finalize_ast
+        .text_normalizations;
     assert!(first_text > 0);
 
-    let mut report = first;
-    finalize_ast::run(&mut ast, &FinalizeAstConfig::ENABLED, &mut report);
+    let mut second_recorder = texform_transform::report::ReportRecorder::collecting();
+    finalize_ast::run(&mut ast, &FinalizeAstConfig::ENABLED, &mut second_recorder);
     ast.assert_invariants();
 
     assert_eq!(root_children(&ast), after_first);
     assert_eq!(
-        report.steps.normalize_text_sequences.applied_count,
-        first_text
+        second_recorder
+            .into_report()
+            .finalize_ast
+            .text_normalizations,
+        0
     );
 }
 
@@ -642,7 +632,7 @@ fn one_changed_text_run_counts_as_one_action() {
             SyntaxNode::Text("cd".into()),
         ]
     );
-    assert_eq!(report.steps.normalize_text_sequences.applied_count, 2);
+    assert_eq!(report.text_normalizations, 2);
 }
 
 #[test]
@@ -650,7 +640,7 @@ fn empty_text_group_becomes_empty_group_before_flatten_strict_and_structural() {
     let mut pre = text_root(vec![text_group(vec![SyntaxNode::Text("".into())])]);
     let pre_report = run_finalize(&mut pre, true);
     assert_eq!(root_children(&pre), vec![text_group(vec![])]);
-    assert_eq!(pre_report.steps.normalize_text_sequences.applied_count, 1);
+    assert_eq!(pre_report.text_normalizations, 1);
 
     let parse_ctx = ParseContext::from_packages(&["base", "ams", "textmacros"]);
     let context =
@@ -669,7 +659,7 @@ fn empty_text_group_becomes_empty_group_before_flatten_strict_and_structural() {
         flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
     };
     let structural_report = context
-        .run_with(&mut structural, &parse_ctx, &structural_cfg)
+        .run_with_report(&mut structural, &parse_ctx, &structural_cfg)
         .expect("structural transform");
     assert_eq!(root_children(&structural), vec![]);
     assert!(structural_report.flatten_groups.actions.removed_empty >= 1);
@@ -685,17 +675,11 @@ fn empty_text_group_becomes_empty_group_before_flatten_strict_and_structural() {
         flatten_groups: FlattenGroupsConfig::STRICT,
     };
     let strict_engine_report = context
-        .run_with(&mut strict, &parse_ctx, &strict_cfg)
+        .run_with_report(&mut strict, &parse_ctx, &strict_cfg)
         .expect("strict transform");
     assert_eq!(root_children(&strict), vec![text_group(vec![])]);
     assert_eq!(strict_engine_report.flatten_groups.actions.removed_empty, 0);
-    assert!(
-        strict_engine_report
-            .flatten_groups
-            .guards
-            .preserve_empty_group
-            >= 1
-    );
+    assert!(strict_engine_report.flatten_groups.guard_hits.empty_group >= 1);
 }
 
 #[test]
@@ -711,7 +695,7 @@ fn wide_text_sequence_stays_linear() {
     let mut ast = text_root(children);
     let report = run_finalize(&mut ast, true);
     assert_eq!(root_children(&ast).len(), 1);
-    assert_eq!(report.steps.normalize_text_sequences.applied_count, 1);
+    assert_eq!(report.text_normalizations, 1);
     match &root_children(&ast)[0] {
         SyntaxNode::Text(text) => {
             assert!(text.starts_with("a b"));
@@ -731,14 +715,7 @@ fn engine_prime_merge_then_flatten_keeps_double_prime_shorthand() {
     );
 
     assert_eq!(text, "f''");
-    assert_eq!(
-        report
-            .finalize_ast
-            .steps
-            .merge_adjacent_primes
-            .applied_count,
-        1
-    );
+    assert_eq!(report.finalize_ast.prime_run_merges, 1);
 }
 
 #[test]
@@ -755,7 +732,7 @@ fn engine_text_merge_before_flatten_can_unwrap_singleton_group() {
         SyntaxNode::Text("b".into()),
     ])]);
     let report = context
-        .run_with(
+        .run_with_report(
             &mut ast,
             &parse_ctx,
             &TransformConfig {
@@ -771,14 +748,7 @@ fn engine_text_merge_before_flatten_can_unwrap_singleton_group() {
         .expect("transform");
 
     assert_eq!(root_children(&ast), vec![SyntaxNode::Text("ab".into())]);
-    assert_eq!(
-        report
-            .finalize_ast
-            .steps
-            .normalize_text_sequences
-            .applied_count,
-        1
-    );
+    assert_eq!(report.finalize_ast.text_normalizations, 1);
     assert!(report.flatten_groups.actions.replaced_single_child >= 1);
 }
 
@@ -795,7 +765,7 @@ fn engine_second_finalize_merges_text_exposed_by_flatten() {
         SyntaxNode::Text("c".into()),
     ]);
     let report = context
-        .run_with(
+        .run_with_report(
             &mut ast,
             &parse_ctx,
             &TransformConfig {
@@ -811,14 +781,7 @@ fn engine_second_finalize_merges_text_exposed_by_flatten() {
         .expect("transform");
 
     assert_eq!(root_children(&ast), vec![SyntaxNode::Text("abc".into())]);
-    assert!(
-        report
-            .finalize_ast
-            .steps
-            .normalize_text_sequences
-            .applied_count
-            >= 1
-    );
+    assert!(report.finalize_ast.text_normalizations >= 1);
 }
 
 #[test]
@@ -833,7 +796,7 @@ fn engine_second_finalize_merges_primes_exposed_by_flatten() {
         SyntaxNode::Prime { count: 1 },
     ]);
     let report = context
-        .run_with(
+        .run_with_report(
             &mut ast,
             &parse_ctx,
             &TransformConfig {
@@ -849,14 +812,7 @@ fn engine_second_finalize_merges_primes_exposed_by_flatten() {
         .expect("transform");
 
     assert_eq!(root_children(&ast), vec![SyntaxNode::Prime { count: 4 }]);
-    assert_eq!(
-        report
-            .finalize_ast
-            .steps
-            .merge_adjacent_primes
-            .applied_count,
-        1
-    );
+    assert_eq!(report.finalize_ast.prime_run_merges, 1);
 }
 
 #[test]
@@ -871,7 +827,7 @@ fn engine_skips_second_finalize_when_flatten_disabled() {
         SyntaxNode::Text("c".into()),
     ]);
     let report = context
-        .run_with(
+        .run_with_report(
             &mut ast,
             &parse_ctx,
             &TransformConfig {
@@ -895,14 +851,7 @@ fn engine_skips_second_finalize_when_flatten_disabled() {
             SyntaxNode::Text("c".into()),
         ]
     );
-    assert_eq!(
-        report
-            .finalize_ast
-            .steps
-            .normalize_text_sequences
-            .applied_count,
-        0
-    );
+    assert_eq!(report.finalize_ast.text_normalizations, 0);
 }
 
 #[test]
@@ -914,22 +863,8 @@ fn engine_finalize_disabled_leaves_flatten_independent() {
     );
 
     assert_ne!(text, "f''");
-    assert_eq!(
-        report
-            .finalize_ast
-            .steps
-            .merge_adjacent_primes
-            .applied_count,
-        0
-    );
-    assert_eq!(
-        report
-            .finalize_ast
-            .steps
-            .normalize_text_sequences
-            .applied_count,
-        0
-    );
+    assert_eq!(report.finalize_ast.prime_run_merges, 0);
+    assert_eq!(report.finalize_ast.text_normalizations, 0);
 }
 
 #[test]
@@ -945,7 +880,7 @@ fn engine_report_accumulates_pre_and_post_without_double_counting() {
         SyntaxNode::Text("d".into()),
     ]);
     let report = context
-        .run_with(
+        .run_with_report(
             &mut ast,
             &parse_ctx,
             &TransformConfig {
@@ -963,12 +898,5 @@ fn engine_report_accumulates_pre_and_post_without_double_counting() {
     assert_eq!(root_children(&ast), vec![SyntaxNode::Text("a bcd".into())]);
     // pre: merge "a "/"\tb" → 1; post: merge exposed adjacency → 1; no recount of
     // already-canonical fragments from the first pass.
-    assert_eq!(
-        report
-            .finalize_ast
-            .steps
-            .normalize_text_sequences
-            .applied_count,
-        2
-    );
+    assert_eq!(report.finalize_ast.text_normalizations, 2);
 }

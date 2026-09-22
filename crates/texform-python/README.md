@@ -19,6 +19,8 @@ Release wheels are built with `maturin build --release`; packaging metadata live
 
 Keep the Rust binding, `python/texform/__init__.pyi`, package exports, and user-facing examples consistent. Shared configuration input and DTO definitions live in `crates/texform/src/bindings/`; changes there may require JavaScript validation too.
 
+Plain `normalize` returns `str` and plain `transform` returns `None`. `normalize_with_report` and `transform_with_report` reuse those config parsers and return the diagnostic DTO. The plain path does not build that DTO. `_normalize_with_flatten_groups_guards` keeps its name and always returns a report.
+
 Run the embedded Python tests, then check the rebuilt extension from the repository root:
 
 ```bash

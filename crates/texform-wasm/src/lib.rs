@@ -987,15 +987,45 @@ impl TransformEngine {
         ))
     }
 
-    pub fn normalize(&self, src: &str, options: Option<JsValue>) -> Result<JsValue, JsValue> {
+    pub fn normalize(&self, src: &str, options: Option<JsValue>) -> Result<String, JsValue> {
+        // Plain path returns text only. It shares config parsing with
+        // `normalizeWithReport` and does not build a report DTO.
         let config = normalize_config_from_js(options, self.inner.default_normalize_config())?;
-        let result = self.inner.normalize_with(src, &config).map_err(|error| {
+        self.inner.normalize_with(src, &config).map_err(|error| {
             binding_error_parts_to_js(texform::bindings::normalize_error_to_parts(error))
-        })?;
-        normalize_result_to_js(result.normalized, &result.report)
+        })
     }
 
-    pub fn transform(
+    #[wasm_bindgen(js_name = normalizeWithReport)]
+    pub fn normalize_with_report(
+        &self,
+        src: &str,
+        options: Option<JsValue>,
+    ) -> Result<JsValue, JsValue> {
+        let config = normalize_config_from_js(options, self.inner.default_normalize_config())?;
+        let result = self
+            .inner
+            .normalize_with_report(src, &config)
+            .map_err(|error| {
+                binding_error_parts_to_js(texform::bindings::normalize_error_to_parts(error))
+            })?;
+        normalize_report_result_to_js(result.normalized, &result.report)
+    }
+
+    pub fn transform(&self, document: &Document, config: Option<JsValue>) -> Result<(), JsValue> {
+        // Plain path returns undefined. It shares config parsing with
+        // `transformWithReport` and does not build a report DTO.
+        let config = transform_config_from_js(config, *self.inner.default_transform_config())?;
+        let mut document = borrow_document_mut(&document.inner)?;
+        self.inner
+            .transform_with(&mut document, &config)
+            .map_err(|error| {
+                binding_error_parts_to_js(texform::bindings::normalize_error_to_parts(error))
+            })
+    }
+
+    #[wasm_bindgen(js_name = transformWithReport)]
+    pub fn transform_with_report(
         &self,
         document: &Document,
         config: Option<JsValue>,
@@ -1004,7 +1034,7 @@ impl TransformEngine {
         let mut document = borrow_document_mut(&document.inner)?;
         let report = self
             .inner
-            .transform_with(&mut document, &config)
+            .transform_with_report(&mut document, &config)
             .map_err(|error| {
                 binding_error_parts_to_js(texform::bindings::normalize_error_to_parts(error))
             })?;
@@ -1056,9 +1086,9 @@ impl TransformEngine {
     }
 }
 
-fn normalize_result_to_js(
+fn normalize_report_result_to_js(
     normalized: String,
-    report: &texform::TransformReport,
+    report: &texform::diagnostics::TransformReport,
 ) -> Result<JsValue, JsValue> {
     let value = js_sys::Object::new();
     js_set(value.as_ref(), "normalized", &normalized.into())?;
@@ -1176,7 +1206,9 @@ pub fn list_packages() -> Result<JsValue, JsValue> {
     binding_dto_to_js(&texform::bindings::list_packages_to_dto())
 }
 
-fn transform_report_to_js(report: &texform::TransformReport) -> Result<JsValue, JsValue> {
+fn transform_report_to_js(
+    report: &texform::diagnostics::TransformReport,
+) -> Result<JsValue, JsValue> {
     binding_dto_to_js(&transform_report_to_dto(report))
 }
 
@@ -1354,22 +1386,38 @@ mod tests {
                 .0,
         );
 
-        let report = engine
-            .transform(
-                &document,
-                Some(
-                    serde_wasm_bindgen::to_value(&serde_json::json!({
-                        "rewrite": { "enabled": false },
-                        "lowerAttributes": { "enabled": false },
-                        "flattenGroups": { "enabled": true },
-                    }))
-                    .expect("config should serialize"),
-                ),
-            )
+        let config = Some(
+            serde_wasm_bindgen::to_value(&serde_json::json!({
+                "rewrite": { "enabled": false },
+                "lowerAttributes": { "enabled": false },
+                "flattenGroups": { "enabled": true },
+            }))
+            .expect("config should serialize"),
+        );
+        engine
+            .transform(&document, config.clone())
             .expect("transform should succeed");
 
         assert_eq!(document.to_latex(None).unwrap(), "x");
+
+        let reported = Document::from_core(
+            engine
+                .inner
+                .parser()
+                .parse("{{x}}")
+                .try_into_document()
+                .expect("parse should succeed")
+                .0,
+        );
+        let report = engine
+            .transform_with_report(&reported, config)
+            .expect("transform with report should succeed");
+        let flatten_groups =
+            js_sys::Reflect::get(&report, &JsValue::from_str("flattenGroups")).unwrap();
         assert!(js_sys::Reflect::has(&report, &JsValue::from_str("flattenGroups")).unwrap());
+        assert!(js_sys::Reflect::has(&flatten_groups, &JsValue::from_str("guardHits")).unwrap());
+        assert!(!js_sys::Reflect::has(&report, &JsValue::from_str("iterations")).unwrap());
+        assert_eq!(reported.to_latex(None).unwrap(), "x");
     }
 
     #[test]

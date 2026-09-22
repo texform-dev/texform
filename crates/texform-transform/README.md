@@ -29,9 +29,11 @@ let context = TransformContext::from_build_config(
 )
 .expect("transform context should build");
 
+// `run` / `run_with` return `()` and do not collect counters.
+// `run_with_report` is the same pipeline and returns this call's report.
 let report = context
-    .run(&mut ast, &parse_ctx)
-    .expect("transform should succeed");
+    .run_with_report(&mut ast, &parse_ctx, context.default_config())
+    .expect("reported transform should succeed");
 
 println!("rewrite iterations: {}", report.rewrite.iterations);
 println!(
@@ -50,17 +52,18 @@ The crate's public surface is intentionally small:
 |------|---------|
 | `BuildConfig::profile(profile)` | Select build-time rule levels and default runtime config. |
 | `TransformContext::from_build_config(config, parse_ctx) -> Result<Self, TransformBuildError>` | Precompile the rewrite plan once for reuse across many ASTs. |
-| `TransformContext::run(ast, parse_ctx)` | Execute the precompiled pipeline with the profile default runtime config. |
-| `TransformContext::run_with(ast, parse_ctx, config)` | Execute the precompiled pipeline with per-run overrides. |
+| `TransformContext::run(ast, parse_ctx)` | Execute the precompiled pipeline with the profile default runtime config. Returns `()` and does not collect a report. |
+| `TransformContext::run_with(ast, parse_ctx, config)` | Execute the precompiled pipeline with per-run overrides. Returns `()` and does not collect a report. |
+| `TransformContext::run_with_report(ast, parse_ctx, config)` | Same execution as `run_with`, returning the diagnostic `TransformReport` for that call. Pass `default_config()` for profile defaults. |
 | `TransformConfig` | Runtime phase gates, FlattenGroups behavior, and max rewrite iterations. |
-| `TransformReport` | Per-phase reports aggregated across the run. |
+| `TransformReport` | Per-phase diagnostic counters for one collecting call. |
 | `TransformError` / `TransformBuildError` | Build-time and run-time error types. |
 
 See [crate exports](src/lib.rs) for the internal Rust surface.
 
 ## Pipeline
 
-`TransformContext::run` executes a fixed sequence of phases. Rule levels are chosen when the context is built; each run may disable Rewrite, LowerAttributes, FinalizeAst, or FlattenGroups, or choose FlattenGroups spacing strategy and iteration settings through `TransformConfig`.
+`TransformContext::run` and `run_with` execute a fixed sequence of phases and return `()`. `run_with_report` uses that same sequence and returns counters. Rule levels are chosen when the context is built; each run may disable Rewrite, LowerAttributes, FinalizeAst, or FlattenGroups, or choose FlattenGroups spacing strategy and iteration settings through `TransformConfig`.
 
 1. **LowerAttributes (pre)** — canonicalize declarative-scope commands (e.g. `\bf x`) and registered prefix wrappers (e.g. `\mathbf{x}`) into a single normal form.
 2. **Rewrite** — apply the precompiled rewrite plan in a fixed-point loop, bounded by `rewrite.max_iterations`.
@@ -182,27 +185,29 @@ Atom-spacing characters: `= < > + - , : ; . / * ! ? | ·`.
 
 This sub-flag does not gate any group on its own; it only refines the classification used by `command_contact`. When `command_contact` is `false`, the sub-flag has no effect.
 
-Report action names and guard **counters** keep the historical `preserve_*` contract. They map one-to-one onto `FlattenGroupsGuards` fields and still count the first matching situation in evaluation order:
+Guard hit counters use the names below. They still count the first matching situation in evaluation order. `command_contact_via_scripted_base` is the Scripted-base subset of `command_contact`: it is incremented together with `command_contact` and is not a separate guard. The configuration switch that enables that classification remains `command_like_includes_scripted_base`.
 
-| Internal field | Report counter |
+| Guard or sub-count | `guard_hits` field |
 | --- | --- |
-| `declarative_scope` | `preserve_group_containing_declarative_command` |
-| `script_base` | `preserve_group_in_script_base_slot` |
-| `env_body` | `preserve_group_inside_env_body` |
-| `infix_scope` | `preserve_group_containing_infix` |
-| `command_contact` | `preserve_group_adjacent_to_command_like` |
-| `command_like_includes_scripted_base` | `preserve_group_after_scripted_command_like` |
-| `command_argument` | `preserve_group_as_argument_of_command` |
-| `empty_group` | `preserve_empty_group` |
-| `lone_atom_spacing_char` | `preserve_group_with_lone_atom_spacing_char` |
-| `leading_atom_spacing_char` | `preserve_group_starting_with_atom_spacing_char` |
-| `delimited_pair` | `preserve_group_containing_delimited_pair` |
+| `declarative_scope` | `declarative_scope` |
+| `script_base` | `script_base` |
+| `env_body` | `env_body` |
+| `infix_scope` | `infix_scope` |
+| `command_contact` | `command_contact` |
+| Scripted-base subset of `command_contact` | `command_contact_via_scripted_base` |
+| `command_argument` | `command_argument` |
+| `empty_group` | `empty_group` |
+| `lone_atom_spacing_char` | `lone_atom_spacing_char` |
+| `leading_atom_spacing_char` | `leading_atom_spacing_char` |
+| `delimited_pair` | `delimited_pair` |
 
 ## Reports
 
-[TransformReport](src/report.rs) contains one report per phase. LowerAttributes and FinalizeAst accumulate their multiple invocations in the same report; already-canonical nodes are not recounted by FinalizeAst. Rewrite records iterations and per-rule outcomes. FlattenGroups counts the first matching preserve guard for a group; when command adjacency is established through a scripted base, both `preserve_group_adjacent_to_command_like` and its `preserve_group_after_scripted_command_like` sub-flag are incremented.
+[TransformReport](src/report.rs) contains one report per phase. LowerAttributes and FinalizeAst accumulate their multiple invocations in the same report; already-canonical nodes are not recounted by FinalizeAst. LowerAttributes still sums the pre- and post-Rewrite passes, including consumed forms that are emitted again, so a non-zero counter does not by itself mean the serialized output changed. Rewrite records iterations, including the final unchanged convergence check, and per-rule applied or skipped outcomes. FinalizeAst records `prime_run_merges` and `text_normalizations`. FlattenGroups records actions and `guard_hits`; when command adjacency is established through a scripted base, both `command_contact` and `command_contact_via_scripted_base` increment. A disabled phase stays present as zeros or empty containers.
 
-Bindings use a transport DTO rather than the Rust report layout. Keep changes synchronized with [shared binding DTOs](../texform/src/bindings/mod.rs), [Python stubs](../../python/texform/__init__.pyi), and [TypeScript declarations](../../packages/texform/types/index.d.ts).
+`run` and `run_with` do not allocate that report. Report-only scans, including fully absorbed prefix checks and trailing empty-segment diffs, run only for `run_with_report` and the research guard overlay. The scheduler records Applied and Skipped results; rule contexts do not.
+
+Bindings use a transport DTO with the same four-phase hierarchy. Rules are sorted by key and attributes by axis then value. Keep changes synchronized with [shared binding DTOs](../texform/src/bindings/mod.rs); host Python stubs and TypeScript declarations mirror that DTO.
 
 ## Phase internals
 
@@ -212,7 +217,7 @@ Two sub-modules drive this phase: `lower_attributes/codegen.rs` and build-time g
 
 Attributes are modeled as a structured `AttributeSet` (`Attr` × `AttrValue`) covering math font, math size, math style, text family, text series, text shape, and text size. Inherited state is tracked across container boundaries so that nested declarations, prefix wrappers, and empty trailing segments normalize cleanly.
 
-The phase runs twice in the pipeline (pre and post Rewrite) under a single `enabled` switch because rewrite rules may emit prefix wrappers as their right-hand side; the post-pass re-canonicalizes those into the same normal form as the pre-pass. `LowerAttributesReport` uses a single cumulative counter set for both invocations.
+The phase runs twice in the pipeline (pre and post Rewrite) under a single `enabled` switch because rewrite rules may emit prefix wrappers as their right-hand side; the post-pass re-canonicalizes those into the same normal form as the pre-pass. `LowerAttributesReport` uses a single cumulative counter set for both invocations. Turning Rewrite off does not change that double-pass schedule when LowerAttributes itself stays enabled.
 
 ### Rewrite
 
@@ -232,7 +237,7 @@ A single recursive traversal (`visit` → `try_unwrap` in `src/flatten_groups/mo
 
 1. Collects subtree-wide flags (`has_declarative`, `has_infix`, `has_delimited`) on the way down.
 2. Tracks the `in_env_body` context flag through `Slot::EnvBody` edges.
-3. On the way back up, calls `try_unwrap` to check whether the current group should be flattened. Each `FlattenGroupsGuards` predicate (`declarative_scope`, `script_base`, `env_body`, `infix_scope`, `command_contact`, `command_argument`, `empty_group`, `lone_atom_spacing_char`, `leading_atom_spacing_char`, `delimited_pair`) short-circuits with an early return that increments its historical `preserve_*` hit counter; the first matching guard wins. `command_like_includes_scripted_base` only refines the `command_contact` classification.
+3. On the way back up, calls `try_unwrap` to check whether the current group should be flattened. Each `FlattenGroupsGuards` predicate (`declarative_scope`, `script_base`, `env_body`, `infix_scope`, `command_contact`, `command_argument`, `empty_group`, `lone_atom_spacing_char`, `leading_atom_spacing_char`, `delimited_pair`) short-circuits with an early return that increments the matching `guard_hits` counter; the first matching guard wins. `command_like_includes_scripted_base` only refines the `command_contact` classification, and a hit through that refinement also increments `command_contact_via_scripted_base`.
 4. If no guard fires and the group's content mode matches its parent's context mode, the group is unwrapped via either `unwrap_group_child` (multi-child splice) or `redirect_single_child_slot` (single-child slot replacement).
 
 The `slot_can_unwrap` helper restricts redirect-style unwrapping to single-child groups in `Argument`, `Script*`, and `Infix*` slots; `EnvBody` slots are never unwrapped.

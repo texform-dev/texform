@@ -250,73 +250,186 @@ class ErrorParts(TypedDict):
     snippet: str
 
 
-class FinalizeAstStepReport(TypedDict):
-    """The per-step report for one FinalizeAst cleanup step.
+class AttributeFormCounts(TypedDict):
+    """Counts of one attribute form, split by carrier.
 
     Attributes:
-        applied_count: The number of times the step changed the tree.
+        declaratives: Count carried by declarative markup such as ``{\\bf ...}``.
+        prefixes: Count carried by prefix commands such as ``\\mathbf{...}``.
     """
 
+    declaratives: int
+    prefixes: int
+
+
+class AttributeStat(TypedDict):
+    """Activity for one ``(attr, value)`` pair in LowerAttributes.
+
+    Attributes:
+        attr: Stable attribute name, such as ``"math_font"`` or ``"text_size"``.
+        value: Stable value token for that attribute.
+        consumed: Input forms consumed by the phase.
+        redundant: Consumed forms that did not change the emitted attribute state.
+        emitted: Canonical forms emitted by the phase.
+    """
+
+    attr: str
+    value: str
+    consumed: AttributeFormCounts
+    redundant: AttributeFormCounts
+    emitted: AttributeFormCounts
+
+
+class LowerAttributesReport(TypedDict):
+    """The LowerAttributes phase report.
+
+    Attributes:
+        attributes: Per-attribute activity, sorted by ``attr`` then ``value``.
+        eliminated_empty_segments: Empty attribute segments removed by the phase.
+    """
+
+    attributes: list[AttributeStat]
+    eliminated_empty_segments: int
+
+
+class RewriteRuleStat(TypedDict):
+    """One rewrite rule's outcome for a single call.
+
+    Attributes:
+        key: Stable rule key.
+        applied_count: Times the rule applied.
+        skipped_count: Times the scheduler matched the rule and ``apply`` returned
+            skipped.
+    """
+
+    key: str
     applied_count: int
+    skipped_count: int
 
 
-class FinalizeAstStepReports(TypedDict):
-    """The set of FinalizeAst step reports.
+class RewriteReport(TypedDict):
+    """The Rewrite phase report.
 
     Attributes:
-        merge_adjacent_primes: The report for merging adjacent ``Prime`` nodes
-            produced by rewrite rules.
-        normalize_text_sequences: The report for text-sequence merge, ordinary
-            whitespace collapse, and empty-text cleanup.
+        iterations: Fixed-point passes, including the final unchanged convergence
+            check. Zero when the phase is disabled or no rules are scheduled.
+        rules: Rules that recorded activity, sorted by ``key``.
     """
 
-    merge_adjacent_primes: FinalizeAstStepReport
-    normalize_text_sequences: FinalizeAstStepReport
+    iterations: int
+    rules: list[RewriteRuleStat]
 
 
 class FinalizeAstReport(TypedDict):
     """The FinalizeAst phase report.
 
     Attributes:
-        steps: The per-step reports for this phase.
+        prime_run_merges: Contiguous ``Prime`` runs merged. Each run counts once.
+        text_normalizations: Text segments or text argument slots whose content
+            changed.
     """
 
-    steps: FinalizeAstStepReports
+    prime_run_merges: int
+    text_normalizations: int
+
+
+class FlattenGroupsActionCounts(TypedDict):
+    """Flatten actions that changed the tree.
+
+    Attributes:
+        removed_empty: Empty groups removed.
+        replaced_single_child: Groups replaced by their only child.
+        inlined_multi_child: Multi-child groups inlined into the parent.
+        unwrapped_slot: Slot wrappers removed.
+    """
+
+    removed_empty: int
+    replaced_single_child: int
+    inlined_multi_child: int
+    unwrapped_slot: int
+
+
+class FlattenGroupsGuardCounts(TypedDict):
+    """Preserve-guard hits for one FlattenGroups run.
+
+    A hit is the first guard branch reached for a group, plus the scripted-base
+    sub-count. ``command_contact_via_scripted_base`` is also included in
+    ``command_contact``. These counters are not a partition of preserved groups.
+
+    Attributes:
+        declarative_scope: Declarative-scope protection.
+        script_base: Script-base protection.
+        env_body: Environment-body protection.
+        infix_scope: Infix-scope protection.
+        command_contact: Command-contact protection.
+        command_argument: Command-argument boundary protection.
+        command_contact_via_scripted_base: Command contact established through a
+            scripted base.
+        empty_group: Empty-group protection.
+        lone_atom_spacing_char: Single spacing-character protection.
+        leading_atom_spacing_char: Leading spacing-character protection.
+        delimited_pair: Delimited-pair protection.
+    """
+
+    declarative_scope: int
+    script_base: int
+    env_body: int
+    infix_scope: int
+    command_contact: int
+    command_argument: int
+    command_contact_via_scripted_base: int
+    empty_group: int
+    lone_atom_spacing_char: int
+    leading_atom_spacing_char: int
+    delimited_pair: int
+
+
+class FlattenGroupsReport(TypedDict):
+    """The FlattenGroups phase report.
+
+    Attributes:
+        actions: Flatten actions that changed the tree.
+        guard_hits: Preserve-guard hits for this call.
+    """
+
+    actions: FlattenGroupsActionCounts
+    guard_hits: FlattenGroupsGuardCounts
 
 
 class TransformReport(TypedDict):
-    """The phase-oriented report of a transform run.
+    """Diagnostic report for one explicit report call.
 
-    The fields mirror the engine's phases. The Python report keeps snake_case
-    field names; the JavaScript binding exposes the same data with camelCase keys.
+    Output text and errors follow the ordinary transform contract. Report
+    fields, phase divisions, and these counters are diagnostic: they are not
+    part of the stable compatibility promise. A disabled phase stays present as
+    zeros or an empty list. The Python report uses snake_case; JavaScript
+    exposes the same data in camelCase.
 
     Attributes:
-        iterations: The number of fixed-point passes the Rewrite phase ran.
-        rules: Per-rule entries, each a dict with ``key``, ``applied_count``, and
-            ``skipped_count``.
-        finalize_ast: The FinalizeAst phase report.
-        flatten_groups: The FlattenGroups phase report, with an ``actions`` dict
-            and a ``guards`` dict counting each preserve guard that fired.
-        lower_attributes: The LowerAttributes phase report, with an ``attributes``
-            list and ``eliminated_empty_segments``.
+        lower_attributes: LowerAttributes activity, summed across its two passes.
+        rewrite: Rewrite iterations and per-rule outcomes.
+        finalize_ast: Prime merges and text normalizations.
+        flatten_groups: Flatten actions and guard hits.
 
     See Also:
-        TransformEngine, TransformResult
+        NormalizeReportResult, TransformEngine
     """
 
-    iterations: int
-    rules: list[dict[str, Any]]
+    lower_attributes: LowerAttributesReport
+    rewrite: RewriteReport
     finalize_ast: FinalizeAstReport
-    flatten_groups: dict[str, Any]
-    lower_attributes: dict[str, Any]
+    flatten_groups: FlattenGroupsReport
 
 
-class TransformResult(TypedDict):
-    """The result of ``TransformEngine.normalize``: the output plus its report.
+class NormalizeReportResult(TypedDict):
+    """Text plus the diagnostic report from one explicit normalize report call.
+
+    Plain ``normalize`` returns the string directly and does not build this
+    object.
 
     Attributes:
         normalized: The canonical LaTeX string.
-        report: The phase-oriented transform report.
+        report: The diagnostic transform report for this call.
 
     See Also:
         TransformReport
@@ -1536,7 +1649,7 @@ class NormalizeOverrides(ParseOverrides, TransformOverrides, total=False):
 
     Examples:
         engine = texform.TransformEngine(profile="corpus")
-        engine.normalize(r"a \\over b", reject_unknown=True)["normalized"]
+        engine.normalize(r"a \\over b", reject_unknown=True)
         # '\\frac { a } { b }'
     """
 
@@ -1763,17 +1876,19 @@ class TransformEngine:
         import texform
 
         engine = texform.TransformEngine(profile="corpus")
-        engine.normalize(r"a \\over b")["normalized"]  # '\\frac { a } { b }'
+        engine.normalize(r"a \\over b")  # '\\frac { a } { b }'
         engine.normalize(r"a \\over b", rewrite={"enabled": False})
         engine.normalize(r"a \\over b", reject_unknown=True, flatten_groups={"enabled": False})
+        reported = engine.normalize_with_report(r"a \\over b")
+        reported["normalized"]  # '\\frac { a } { b }'
         cfg = engine.default_transform_config()
         cfg.rewrite.max_iterations = 50
         result = engine.parse(r"a \\over b")
         engine.transform(result["document"], cfg)
-        engine.transform(result["document"], texform.TransformConfig.faithful(), rewrite={"enabled": False})
+        engine.transform_with_report(result["document"], texform.TransformConfig.faithful(), rewrite={"enabled": False})
 
     See Also:
-        TransformConfig, TransformResult, TransformReport, Parser, Transforms
+        TransformConfig, NormalizeReportResult, TransformReport, Parser, Transforms
     """
 
     def __init__(
@@ -1814,13 +1929,14 @@ class TransformEngine:
         src: str,
         config: TransformConfig | None = None,
         **overrides: Unpack[NormalizeOverrides],
-    ) -> TransformResult:
+    ) -> str:
         """Parse, transform, and serialize a formula in one call.
 
         Normalization is gated on a complete tree. If the input cannot produce a
         complete tree, ``normalize`` raises ``ParseError`` carrying the
         diagnostics and the partial document. Empty input is complete and
-        normalizes normally.
+        normalizes normally. This path returns the canonical string and does
+        not build a report.
 
         Args:
             src: The LaTeX source string.
@@ -1832,8 +1948,7 @@ class TransformEngine:
                 config class instances.
 
         Returns:
-            A ``TransformResult`` dict with ``normalized`` (the canonical LaTeX
-            string) and ``report`` (the phase-oriented transform report).
+            The canonical LaTeX string.
 
         Raises:
             ParseError: If the source does not parse into a complete tree.
@@ -1842,11 +1957,42 @@ class TransformEngine:
 
         Examples:
             engine = texform.TransformEngine(profile="corpus")
-            engine.normalize(r"\\dv{f}{x}")["normalized"]
+            engine.normalize(r"\\dv{f}{x}")
             # '\\frac { \\mathrm { d } f } { \\mathrm { d } x }'
 
         See Also:
-            TransformEngine.transform, TransformResult
+            TransformEngine.normalize_with_report, TransformEngine.transform
+        """
+
+    def normalize_with_report(
+        self,
+        src: str,
+        config: TransformConfig | None = None,
+        **overrides: Unpack[NormalizeOverrides],
+    ) -> NormalizeReportResult:
+        """Parse, transform, and serialize a formula, returning text and a report.
+
+        Accepts the same source, ``config``, and keyword overlays as
+        ``normalize``. Output text and errors follow that contract. The report
+        is diagnostic: its fields, phase divisions, and counters are not part
+        of the stable compatibility promise. A failure does not return a
+        partial report.
+
+        Args:
+            src: The LaTeX source string.
+            config: A complete ``TransformConfig``, with the same meaning as on
+                ``normalize``.
+            overrides: Keyword overlay from ``NormalizeOverrides``.
+
+        Returns:
+            A ``NormalizeReportResult`` dict with ``normalized`` and ``report``.
+
+        Raises:
+            ParseError: If the source does not parse into a complete tree.
+            ConfigError: If ``config`` or an override is invalid.
+
+        See Also:
+            TransformEngine.normalize, TransformReport
         """
 
     def transform(
@@ -1854,14 +2000,15 @@ class TransformEngine:
         document: Document,
         config: TransformConfig | None = None,
         **overrides: Unpack[TransformOverrides],
-    ) -> TransformReport:
-        """Transform a live ``Document`` in place and return the report.
+    ) -> None:
+        """Transform a live ``Document`` in place.
 
         ``transform`` accepts only documents produced by this engine's own
         ``parse``. A document from ``Document()``, ``Document.from_syntax()``, or
         another parser can still be edited and serialized, but ``transform``
         rejects it with ``TransformError``. The document must also be complete;
         a document that ``has_errors()`` is rejected with ``TransformError``.
+        This path returns ``None`` and does not build a report.
 
         Args:
             document: The live ``Document`` to update in place.
@@ -1872,7 +2019,7 @@ class TransformEngine:
                 values must be dicts, not config class instances.
 
         Returns:
-            The phase-oriented transform report dict.
+            ``None``.
 
         Raises:
             TransformError: If the document is foreign to this engine, has parse
@@ -1885,11 +2032,42 @@ class TransformEngine:
             result = engine.parse(r"a \\over b")
             document = result["document"]
             assert document is not None
-            report = engine.transform(document)
+            engine.transform(document)
             document.to_latex()  # '\\frac { a } { b }'
 
         See Also:
-            TransformEngine.normalize, TransformReport
+            TransformEngine.transform_with_report, TransformEngine.normalize
+        """
+
+    def transform_with_report(
+        self,
+        document: Document,
+        config: TransformConfig | None = None,
+        **overrides: Unpack[TransformOverrides],
+    ) -> TransformReport:
+        """Transform a live ``Document`` in place and return its diagnostic report.
+
+        Accepts the same document, ``config``, and keyword overlays as
+        ``transform``. Document ownership, completeness, and errors follow that
+        contract. The report is diagnostic and is not part of the stable
+        compatibility promise. A failure does not return a partial report.
+
+        Args:
+            document: The live ``Document`` to update in place.
+            config: A complete ``TransformConfig``, with the same meaning as on
+                ``transform``.
+            overrides: Keyword overlay from ``TransformOverrides``.
+
+        Returns:
+            The diagnostic transform report dict.
+
+        Raises:
+            TransformError: If the document is foreign to this engine, has parse
+                errors, or on a contract violation.
+            ConfigError: If ``config`` or an override is invalid.
+
+        See Also:
+            TransformEngine.transform, TransformReport
         """
 
     def parse(

@@ -2,8 +2,8 @@
 //!
 //! This module provides [`RuleContext`], the runtime context object passed to
 //! [`RewriteRule::apply()`](super::rule::RewriteRule::apply) during AST
-//! transformation. It bundles mutable AST access with knowledge-base lookups,
-//! validation helpers, and statistics tracking.
+//! transformation. It bundles mutable AST access with knowledge-base lookups
+//! and validation helpers.
 //!
 //! It also defines a family of read-only *view* structs ([`CommandView`],
 //! [`InfixView`], [`DeclarativeView`], [`EnvironmentView`]) that the
@@ -16,8 +16,8 @@ use std::ops::Deref;
 use crate::ast::{ArgumentKind, ArgumentSlot, ArgumentValue, Ast, Delimiter, Node, NodeId};
 use crate::knowledge::{KnowledgeBase, lookup_command_node_name, lookup_environment_node_name};
 use crate::parse::ContentMode;
+use crate::rewrite::RuleError;
 use crate::rewrite::rule::RuleKey;
-use crate::rewrite::{RewriteReport, RuleError};
 use texform_knowledge::specs::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, BuiltinCommandRecord,
     BuiltinEnvironmentRecord,
@@ -82,16 +82,15 @@ pub struct EnvironmentView<'a> {
 /// The runtime context object passed to [`RewriteRule::apply()`](super::rule::RewriteRule::apply).
 ///
 /// It bundles mutable AST access with knowledge-base lookups, node-shape
-/// validation helpers, and statistics tracking. Rules receive a mutable
-/// reference to this context and use it both to inspect the current tree
-/// and to record replacement nodes.
+/// validation helpers. Rules receive a mutable reference to this context and
+/// use it both to inspect the current tree and to record replacement nodes.
 ///
 /// `ast` is intentionally public because many transforms need unrestricted
 /// structural mutation, not just a narrow helper surface. The tradeoff is that
 /// rules can also violate AST invariants if they misuse low-level operations,
 /// so debug builds re-run [`Ast::assert_invariants()`](crate::ast::Ast::assert_invariants)
-/// after every successful rewrite. Knowledge-base access, transform-context
-/// queries, and report mutation stay mediated through methods because those interactions are
+/// after every successful rewrite. Knowledge-base access and transform-context
+/// queries stay mediated through methods because those interactions are
 /// semantic rather than structural.
 pub struct RuleContext<'a> {
     /// Mutable access to the AST being transformed.
@@ -101,7 +100,6 @@ pub struct RuleContext<'a> {
     pub ast: &'a mut Ast,
     math_kb: &'a KnowledgeBase,
     text_kb: &'a KnowledgeBase,
-    report: &'a mut RewriteReport,
 }
 
 /// A read-only scoped context bound to a rule key for diagnostics and slot extraction.
@@ -264,17 +262,11 @@ impl RuleScopedContext<'_, '_> {
 }
 
 impl<'a> RuleContext<'a> {
-    pub fn new(
-        ast: &'a mut Ast,
-        math_kb: &'a KnowledgeBase,
-        text_kb: &'a KnowledgeBase,
-        report: &'a mut RewriteReport,
-    ) -> Self {
+    pub fn new(ast: &'a mut Ast, math_kb: &'a KnowledgeBase, text_kb: &'a KnowledgeBase) -> Self {
         Self {
             ast,
             math_kb,
             text_kb,
-            report,
         }
     }
 
@@ -321,16 +313,6 @@ impl<'a> RuleContext<'a> {
     /// Looks up an environment record by name directly in the selected knowledge-base lane.
     pub fn lookup_env(&self, name: &str, mode: ContentMode) -> Option<&ActiveEnvironmentRecord> {
         self.kb_for(mode).lookup_env(name)
-    }
-
-    /// Records that a rule was successfully applied, incrementing its count in the report.
-    pub fn mark_rule_applied(&mut self, key: RuleKey) {
-        self.report.mark_rule_applied(key);
-    }
-
-    /// Records that a rule was attempted after consumed target matching but made no change.
-    pub fn mark_rule_skipped(&mut self, key: RuleKey) {
-        self.report.mark_rule_skipped(key);
     }
 
     /// Returns the AST node for the given identifier.
@@ -468,7 +450,7 @@ mod tests {
     use super::*;
     use crate::ast::Argument;
     use crate::parse::ParseContext;
-    use crate::rewrite::{PackageName, RewriteReport, RuleKey};
+    use crate::rewrite::{PackageName, RuleKey};
 
     const TEST_RULE: RuleKey = RuleKey {
         package: PackageName::Base,
@@ -478,17 +460,11 @@ mod tests {
     #[test]
     fn extracts_common_prefix_argument_shapes() {
         let parse_ctx = ParseContext::from_packages(&["base"]);
-        let mut report = RewriteReport::default();
         let mut ast = Ast::new();
         let required = ast.new_node(Node::Char('x'));
         let optional = ast.new_node(Node::Char('2'));
         let grouped = ast.new_node(Node::Char('t'));
-        let cx = RuleContext::new(
-            &mut ast,
-            parse_ctx.math_kb(),
-            parse_ctx.text_kb(),
-            &mut report,
-        );
+        let cx = RuleContext::new(&mut ast, parse_ctx.math_kb(), parse_ctx.text_kb());
 
         let star = Some(Argument::from_value(
             ArgumentKind::Star,
@@ -575,14 +551,8 @@ mod tests {
     #[test]
     fn rejects_invalid_mandatory_delimiter_shapes() {
         let parse_ctx = ParseContext::from_packages(&["base"]);
-        let mut report = RewriteReport::default();
         let mut ast = Ast::new();
-        let cx = RuleContext::new(
-            &mut ast,
-            parse_ctx.math_kb(),
-            parse_ctx.text_kb(),
-            &mut report,
-        );
+        let cx = RuleContext::new(&mut ast, parse_ctx.math_kb(), parse_ctx.text_kb());
         let scoped = cx.for_rule(TEST_RULE);
         let optional_delimiter = Some(Argument::from_value(
             ArgumentKind::Optional,

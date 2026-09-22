@@ -437,6 +437,9 @@ impl Ast {
     }
 
     /// Check whether `id` still exists in the arena.
+    // FlattenGroups calls these accessors once per node. Keep them inline so the
+    // Python cdylib leaves the call inside that walk.
+    #[inline]
     pub fn contains(&self, id: NodeId) -> bool {
         self.nodes.contains_key(id)
     }
@@ -455,6 +458,8 @@ impl Ast {
     /// # Panics
     ///
     /// Panics if `id` is invalid.
+    // See `contains`: keep the per-node borrow in the FlattenGroups walk.
+    #[inline]
     pub fn node(&self, id: NodeId) -> &Node {
         self.nodes.get(id).expect("Invalid NodeId")
     }
@@ -487,6 +492,8 @@ impl Ast {
     /// Root, detached roots, and invalid or removed IDs return `None`. Callers
     /// that need to distinguish a valid detached root from an invalid ID should
     /// check [`Ast::contains`] first.
+    // See `contains`: keep the per-node parent lookup in the FlattenGroups walk.
+    #[inline]
     pub fn parent(&self, id: NodeId) -> Option<ParentLink> {
         self.parent.get(id).copied()
     }
@@ -512,6 +519,8 @@ impl Ast {
     /// # Panics
     ///
     /// Panics if `id` is invalid.
+    // See `contains`: keep the per-node child slice in the FlattenGroups walk.
+    #[inline]
     pub fn children(&self, id: NodeId) -> &[NodeId] {
         match self.node(id) {
             Node::Root { children, .. } | Node::Group { children, .. } => children,
@@ -544,6 +553,8 @@ impl Ast {
     /// # Panics
     ///
     /// Panics if `id` is invalid.
+    // See `contains`: keep the per-node edge list in the FlattenGroups walk.
+    #[inline]
     pub fn edges(&self, id: NodeId) -> Vec<(NodeId, Slot)> {
         Self::node_edges(self.node(id))
     }

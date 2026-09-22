@@ -359,7 +359,7 @@ mod tests {
         )
         .expect("transform context should build");
         let report = context
-            .run(&mut ast, &parse_ctx)
+            .run_with_report(&mut ast, &parse_ctx, context.default_config())
             .expect("transform should succeed");
         let actual = crate::serialize::serialize(&ast);
         let expected_ast = crate::parse_to_ast_for_test(&parse_ctx, r"A_n \mathrel{\mathop{=}\limits^{n\to\infty}} B_n", &texform_core::parse::ParseConfig::STRICT);

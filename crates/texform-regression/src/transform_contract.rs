@@ -400,7 +400,7 @@ fn run_formula(
 
     let transform_result = transform_ctx.run(document.__texform_engine_ast_mut(), parse_ctx);
     match transform_result {
-        Ok(_) => FormulaOutcome {
+        Ok(()) => FormulaOutcome {
             parse_error: None,
             transform_error: None,
             violations: Vec::new(),

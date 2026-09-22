@@ -5,21 +5,22 @@ use std::collections::HashMap;
 use crate::ast::{Ast, NodeId, NodeKind};
 use crate::knowledge::{lookup_command_node_name, lookup_environment_node_name};
 use crate::parse::{ContentMode, ParseContext};
+use crate::report::ReportRecorder;
+use crate::rewrite::RewriteError;
 use crate::rewrite::plan::Plan;
 use crate::rewrite::rule::{RuleEffect, RuleMeta, RuleTarget, RuleTargetKey, RuleTargetKind};
 use crate::rewrite::rule_context::RuleContext;
-use crate::rewrite::{RewriteError, RewriteReport};
 
 pub(super) fn drive_fixed_point(
     ast: &mut Ast,
     parse_ctx: &ParseContext,
     plan: &Plan,
     max_iterations: usize,
-    report: &mut RewriteReport,
+    recorder: &mut ReportRecorder,
 ) -> Result<(), RewriteError> {
     let rules = plan.rules();
     if rules.is_empty() {
-        report.record_iteration(0);
+        recorder.record_rewrite_iterations(0);
         return Ok(());
     }
 
@@ -36,7 +37,7 @@ pub(super) fn drive_fixed_point(
         let snapshot = preorder_snapshot(ast);
 
         {
-            let mut cx = RuleContext::new(ast, parse_ctx.math_kb(), parse_ctx.text_kb(), report);
+            let mut cx = RuleContext::new(ast, parse_ctx.math_kb(), parse_ctx.text_kb());
             for node_id in snapshot {
                 if !cx.ast.contains(node_id) {
                     continue;
@@ -65,20 +66,20 @@ pub(super) fn drive_fixed_point(
                             })?;
                     match result {
                         RuleEffect::Applied => {
-                            cx.mark_rule_applied(rule.meta().key);
+                            recorder.record_rule_applied(rule.meta().key);
                             #[cfg(debug_assertions)]
                             cx.ast.assert_invariants();
                             changed = true;
                             break;
                         }
-                        RuleEffect::Skipped => cx.mark_rule_skipped(rule.meta().key),
+                        RuleEffect::Skipped => recorder.record_rule_skipped(rule.meta().key),
                     }
                 }
             }
         }
 
         if !changed {
-            report.record_iteration(iteration + 1);
+            recorder.record_rewrite_iterations(iteration + 1);
             return Ok(());
         }
 

@@ -87,30 +87,22 @@ fn validate_argspec_failure_keeps_all_fields_present() {
 
 #[test]
 fn transform_report_dto_serializes_as_snake_case() {
-    let mut report = texform::TransformReport::default();
-    report
-        .finalize_ast
-        .steps
-        .merge_adjacent_primes
-        .applied_count = 1;
-    report
-        .finalize_ast
-        .steps
-        .normalize_text_sequences
-        .applied_count = 3;
+    let mut report = texform::diagnostics::TransformReport::default();
+    report.finalize_ast.prime_run_merges = 1;
+    report.finalize_ast.text_normalizations = 3;
+    report.rewrite.iterations = 2;
 
     let value = serde_json::to_value(texform::bindings::transform_report_to_dto(&report)).unwrap();
 
     assert!(value.get("finalize_ast").is_some());
     assert!(value.get("finalizeAst").is_none());
-    assert_eq!(
-        value["finalize_ast"]["steps"]["merge_adjacent_primes"]["applied_count"],
-        1
-    );
-    assert_eq!(
-        value["finalize_ast"]["steps"]["normalize_text_sequences"]["applied_count"],
-        3
-    );
+    assert!(value.get("rewrite").is_some());
+    assert!(value.get("iterations").is_none());
+    assert_eq!(value["finalize_ast"]["prime_run_merges"], 1);
+    assert_eq!(value["finalize_ast"]["text_normalizations"], 3);
+    assert_eq!(value["rewrite"]["iterations"], 2);
+    assert!(value["flatten_groups"].get("guard_hits").is_some());
+    assert!(value["flatten_groups"].get("guards").is_none());
 }
 
 #[test]
@@ -187,7 +179,7 @@ fn normalize_defaults_preserve_unknown_commands_in_all_profiles() {
             .normalize("\\unknown")
             .expect("default normalize should preserve unknown commands");
 
-        assert_eq!(result.normalized, "\\unknown", "profile: {profile:?}");
+        assert_eq!(result, "\\unknown", "profile: {profile:?}");
     }
 }
 

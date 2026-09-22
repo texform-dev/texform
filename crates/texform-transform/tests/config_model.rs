@@ -59,7 +59,7 @@ fn context_always_builds_a_plan_even_when_runtime_rewrite_is_disabled() {
         .0;
     let mut ast = texform_core::ast::Ast::from_syntax_root(&document.to_syntax());
     let report = context
-        .run_with(
+        .run_with_report(
             &mut ast,
             &parser,
             &TransformConfig {

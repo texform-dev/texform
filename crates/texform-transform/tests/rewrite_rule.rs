@@ -12,7 +12,7 @@ fn prime_character_alias_rewrites_command_to_prime_node() {
     let mut ast = parse_to_ast(&parse_ctx, r"\prime");
 
     let report = context
-        .run(&mut ast, &parse_ctx)
+        .run_with_report(&mut ast, &parse_ctx, context.default_config())
         .expect("transform should succeed");
 
     assert!(

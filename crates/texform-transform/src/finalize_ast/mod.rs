@@ -9,6 +9,7 @@
 use texform_core::lexer::is_whitespace_char;
 
 use crate::ast::{ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, ParentLink, Slot};
+use crate::report::ReportRecorder;
 
 /// Per-run switch for the FinalizeAst phase.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -25,34 +26,23 @@ impl FinalizeAstConfig {
 }
 
 /// What the FinalizeAst phase changed in the tree.
+///
+/// Counts accumulate across the pre- and post-FlattenGroups invocations.
+/// Already-canonical nodes are not counted again.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FinalizeAstReport {
-    /// Per-step counters for the phase's cleanup passes.
-    pub steps: FinalizeAstStepReports,
+    /// Each contiguous run of adjacent `Prime` nodes merged into one node.
+    pub prime_run_merges: usize,
+    /// Each text sequence or text-argument slot whose content changed.
+    pub text_normalizations: usize,
 }
 
-/// One report per FinalizeAst cleanup step.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct FinalizeAstStepReports {
-    /// Counter for merging runs of adjacent `Prime` nodes into one.
-    pub merge_adjacent_primes: FinalizeAstStepReport,
-    /// Counter for text-sequence merge, whitespace collapse, and empty-text cleanup.
-    pub normalize_text_sequences: FinalizeAstStepReport,
-}
-
-/// Activity counter for a single FinalizeAst step.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct FinalizeAstStepReport {
-    /// Number of times the step rewrote part of the tree.
-    pub applied_count: usize,
-}
-
-pub fn run(ast: &mut Ast, config: &FinalizeAstConfig, report: &mut FinalizeAstReport) {
+pub fn run(ast: &mut Ast, config: &FinalizeAstConfig, recorder: &mut ReportRecorder) {
     if !config.enabled {
         return;
     }
 
-    visit(ast, ast.root(), report);
+    visit(ast, ast.root(), recorder);
     // Debug-only structural contract check. `assert_invariants` is an
     // O(n * branching) full-tree sweep, so running it on every transform made
     // long, wide formulas quadratic in release. The rewrite scheduler gates its
@@ -61,28 +51,28 @@ pub fn run(ast: &mut Ast, config: &FinalizeAstConfig, report: &mut FinalizeAstRe
     ast.assert_invariants();
 }
 
-fn visit(ast: &mut Ast, node: NodeId, report: &mut FinalizeAstReport) {
+fn visit(ast: &mut Ast, node: NodeId, recorder: &mut ReportRecorder) {
     if is_math_sequence_container(ast, node) {
-        merge_adjacent_primes(ast, node, report);
+        merge_adjacent_primes(ast, node, recorder);
     }
     if is_text_sequence_container(ast, node) {
-        normalize_text_sequences(ast, node, report);
+        normalize_text_sequences(ast, node, recorder);
         for child in ast.children(node).to_vec() {
             if ast.contains(child) && !matches!(ast.node(child), Node::Text(_)) {
-                visit(ast, child, report);
+                visit(ast, child, recorder);
             }
         }
         return;
     }
 
     if matches!(ast.node(node), Node::Text(_)) && is_text_content_argument(ast, node) {
-        normalize_text_content_slot(ast, node, report);
+        normalize_text_content_slot(ast, node, recorder);
         return;
     }
 
     for (child, _) in ast.edges(node) {
         if ast.contains(child) {
-            visit(ast, child, report);
+            visit(ast, child, recorder);
         }
     }
 }
@@ -136,7 +126,7 @@ fn is_text_content_argument(ast: &Ast, node: NodeId) -> bool {
     )
 }
 
-fn merge_adjacent_primes(ast: &mut Ast, parent: NodeId, report: &mut FinalizeAstReport) {
+fn merge_adjacent_primes(ast: &mut Ast, parent: NodeId, recorder: &mut ReportRecorder) {
     let children = ast.children(parent).to_vec();
     let mut next_children = Vec::with_capacity(children.len());
     let mut index = 0;
@@ -150,7 +140,7 @@ fn merge_adjacent_primes(ast: &mut Ast, parent: NodeId, report: &mut FinalizeAst
         };
 
         next_children.push(ast.new_node(Node::Prime { count }));
-        report.steps.merge_adjacent_primes.applied_count += 1;
+        recorder.record_prime_run_merge();
         changed = true;
         index = next_index;
     }
@@ -181,7 +171,7 @@ fn collect_prime_run(ast: &Ast, children: &[NodeId], start: usize) -> Option<(us
     (index > start + 1).then_some((count, index))
 }
 
-fn normalize_text_sequences(ast: &mut Ast, parent: NodeId, report: &mut FinalizeAstReport) {
+fn normalize_text_sequences(ast: &mut Ast, parent: NodeId, recorder: &mut ReportRecorder) {
     let children = ast.children(parent).to_vec();
     let mut next_children = Vec::with_capacity(children.len());
     let mut index = 0;
@@ -203,7 +193,7 @@ fn normalize_text_sequences(ast: &mut Ast, parent: NodeId, report: &mut Finalize
 
         if normalized.is_empty() {
             // Drop the whole empty run from the sequence container.
-            report.steps.normalize_text_sequences.applied_count += 1;
+            recorder.record_text_normalization();
             changed = true;
             index = run_end;
             continue;
@@ -217,7 +207,7 @@ fn normalize_text_sequences(ast: &mut Ast, parent: NodeId, report: &mut Finalize
         }
 
         next_children.push(ast.new_node(Node::Text(normalized)));
-        report.steps.normalize_text_sequences.applied_count += 1;
+        recorder.record_text_normalization();
         changed = true;
         index = run_end;
     }
@@ -249,7 +239,7 @@ fn collect_text_run(ast: &Ast, children: &[NodeId], start: usize) -> Option<(usi
     Some((end, normalize_whitespace(&joined)))
 }
 
-fn normalize_text_content_slot(ast: &mut Ast, node: NodeId, report: &mut FinalizeAstReport) {
+fn normalize_text_content_slot(ast: &mut Ast, node: NodeId, recorder: &mut ReportRecorder) {
     let text = match ast.node(node) {
         Node::Text(text) => text.clone(),
         _ => return,
@@ -265,7 +255,7 @@ fn normalize_text_content_slot(ast: &mut Ast, node: NodeId, report: &mut Finaliz
                 children: Vec::new(),
             },
         );
-        report.steps.normalize_text_sequences.applied_count += 1;
+        recorder.record_text_normalization();
         return;
     }
 
@@ -274,7 +264,7 @@ fn normalize_text_content_slot(ast: &mut Ast, node: NodeId, report: &mut Finaliz
     }
 
     ast.replace_node(node, Node::Text(normalized));
-    report.steps.normalize_text_sequences.applied_count += 1;
+    recorder.record_text_normalization();
 }
 
 fn normalize_whitespace(input: &str) -> String {

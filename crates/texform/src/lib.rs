@@ -44,8 +44,8 @@
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let engine = TransformEngine::builder().profile(Profile::Corpus).build()?;
-//! let result = engine.normalize(r"a \over b")?;
-//! assert_eq!(result.normalized, r"\frac { a } { b }");
+//! let normalized = engine.normalize(r"a \over b")?;
+//! assert_eq!(normalized, r"\frac { a } { b }");
 //!
 //! let (mut document, _) = engine.parser().parse(r"a \over b").try_into_document()?;
 //! engine.transform(&mut document)?;
@@ -59,6 +59,7 @@ pub mod argspec;
 #[doc(hidden)]
 pub mod bindings;
 pub mod config;
+pub mod diagnostics;
 pub mod document;
 pub mod error;
 pub mod knowledge;
@@ -87,7 +88,7 @@ pub use serialize::{
     MathGroupInnerSpacing, ScriptOrder, ScriptSpacing, SerializationToken, SerializationTokenKind,
     SerializeError, SerializeOptions, TokenizedLatex,
 };
-pub use transform_engine::{NormalizeResult, TransformEngine, TransformEngineBuilder};
+pub use transform_engine::{TransformEngine, TransformEngineBuilder};
 
 pub use texform_core::parse::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveDelimiterRecord, ActiveEnvironmentRecord,
@@ -99,11 +100,7 @@ pub use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentSlot, ArgumentValue, Delimiter, GroupKind, SyntaxNode,
 };
 pub use texform_transform::{
-    Attr, AttrValue, AttributeFormCounts, AttributeSet, AttributeStat, FinalizeAstConfig,
-    FinalizeAstReport, FinalizeAstStepReport, FinalizeAstStepReports, FlattenGroupsActionCounts,
-    FlattenGroupsConfig, FlattenGroupsGuardCounts, FlattenGroupsReport, LowerAttributesConfig,
-    LowerAttributesReport, MathFontValue, RewriteReport, RewriteRuleStat, RuleLevelSet, SizeValue,
-    StyleValue, TextFamily, TextSeries, TextShape, TransformReport,
+    FinalizeAstConfig, FlattenGroupsConfig, LowerAttributesConfig, RuleLevelSet,
 };
 #[doc(hidden)]
 pub use texform_transform::{FlattenGroupsGuards, FlattenGroupsGuardsOverlay};

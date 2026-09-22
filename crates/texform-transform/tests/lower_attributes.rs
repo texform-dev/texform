@@ -9,8 +9,8 @@ use texform_core::parse::{ParseConfig, ParseContext};
 use texform_core::serialize::serialize;
 use texform_transform::lower_attributes::MathFontValue;
 use texform_transform::{
-    Attr, AttrValue, AttributeSet, BuildConfig, LowerAttributesConfig, LowerAttributesReport,
-    Profile, RuleLevel, RuleLevelSet, TransformContext,
+    Attr, AttrValue, AttributeSet, BuildConfig, LowerAttributesConfig, Profile, RuleLevel,
+    RuleLevelSet, TransformContext,
 };
 
 struct Outcome {
@@ -181,12 +181,13 @@ fn post_pass_normalizes_prefixes_created_by_apply_rules() {
 fn lower_attributes_report_counts_declarative_and_prefix_forms_for_same_attribute() {
     let parse_ctx = ParseContext::from_packages(&["base", "textmacros"]);
     let mut ast = parse_to_ast(&parse_ctx, r"\bf \mathbf{x}");
-    let mut report = LowerAttributesReport::default();
+    let mut recorder = texform_transform::report::ReportRecorder::collecting();
     texform_transform::lower_attributes::run(
         &mut ast,
         &LowerAttributesConfig::ENABLED,
-        &mut report,
+        &mut recorder,
     );
+    let report = recorder.into_report().lower_attributes;
     let bold = AttributeSet::new(
         Attr::MathFont,
         AttrValue::MathFont(MathFontValue("VARIANT.BOLD")),
@@ -206,12 +207,13 @@ fn lower_attributes_report_counts_declarative_and_prefix_forms_for_same_attribut
 fn lower_attributes_report_counts_empty_prefix_body_as_redundant() {
     let parse_ctx = ParseContext::from_packages(&["base", "textmacros"]);
     let mut ast = parse_to_ast(&parse_ctx, r"\mathbf{}");
-    let mut report = LowerAttributesReport::default();
+    let mut recorder = texform_transform::report::ReportRecorder::collecting();
     texform_transform::lower_attributes::run(
         &mut ast,
         &LowerAttributesConfig::ENABLED,
-        &mut report,
+        &mut recorder,
     );
+    let report = recorder.into_report().lower_attributes;
     let bold = AttributeSet::new(
         Attr::MathFont,
         AttrValue::MathFont(MathFontValue("VARIANT.BOLD")),

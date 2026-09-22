@@ -5,7 +5,7 @@ use crate::config::{BuildConfig, TransformConfig};
 use crate::engine;
 use crate::error::{TransformBuildError, TransformError};
 use crate::parse::ParseContext;
-use crate::report::TransformReport;
+use crate::report::{ReportRecorder, TransformReport};
 use crate::rewrite;
 
 pub struct TransformContext {
@@ -27,11 +27,7 @@ impl TransformContext {
         })
     }
 
-    pub fn run(
-        &self,
-        ast: &mut Ast,
-        parse_ctx: &ParseContext,
-    ) -> Result<TransformReport, TransformError> {
+    pub fn run(&self, ast: &mut Ast, parse_ctx: &ParseContext) -> Result<(), TransformError> {
         self.run_with(ast, parse_ctx, &self.default_config)
     }
 
@@ -40,15 +36,31 @@ impl TransformContext {
         ast: &mut Ast,
         parse_ctx: &ParseContext,
         config: &TransformConfig,
+    ) -> Result<(), TransformError> {
+        let mut recorder = ReportRecorder::disabled();
+        engine::execute(self, ast, parse_ctx, config, None, &mut recorder)
+    }
+
+    /// Execute the pipeline and return the diagnostic report for this call.
+    ///
+    /// Pass [`Self::default_config`] when the profile defaults should apply.
+    /// A failed run does not return a partial report.
+    pub fn run_with_report(
+        &self,
+        ast: &mut Ast,
+        parse_ctx: &ParseContext,
+        config: &TransformConfig,
     ) -> Result<TransformReport, TransformError> {
-        engine::execute(self, ast, parse_ctx, config)
+        let mut recorder = ReportRecorder::collecting();
+        engine::execute(self, ast, parse_ctx, config, None, &mut recorder)?;
+        Ok(recorder.into_report())
     }
 
     /// Run with a sparse FlattenGroups research overlay.
     ///
     /// Unstable: this entry is for internal experiments and may change without
-    /// notice. `enabled=false` still skips FlattenGroups; the overlay cannot
-    /// re-enable the phase.
+    /// notice. It always collects a report. `enabled=false` still skips
+    /// FlattenGroups; the overlay cannot re-enable the phase.
     pub fn run_with_flatten_groups_guards(
         &self,
         ast: &mut Ast,
@@ -56,7 +68,9 @@ impl TransformContext {
         config: &TransformConfig,
         overlay: &crate::flatten_groups::FlattenGroupsGuardsOverlay,
     ) -> Result<TransformReport, TransformError> {
-        engine::execute_with_flatten_groups_overlay(self, ast, parse_ctx, config, Some(overlay))
+        let mut recorder = ReportRecorder::collecting();
+        engine::execute(self, ast, parse_ctx, config, Some(overlay), &mut recorder)?;
+        Ok(recorder.into_report())
     }
 
     pub fn default_config(&self) -> &TransformConfig {

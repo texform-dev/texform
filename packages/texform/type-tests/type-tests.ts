@@ -1,9 +1,11 @@
 import type {
   Document,
+  NormalizeReportResult,
   ParseConfig,
   Parser,
   TransformConfig,
   TransformEngine,
+  TransformReport,
 } from "../types/index.d.ts";
 
 // @ts-expect-error — Complete is file-local, not part of the public API
@@ -56,6 +58,30 @@ engine.transform(doc, { flattenGroups: null });
 engine.normalize(src, { flattenGroups: { enabled: null } });
 engine.normalize(src, { flattenGroups: null });
 
+const normalizedText: string = engine.normalize(src, overrides);
+const transformed: void = engine.transform(doc, overrides);
+const reported: NormalizeReportResult = engine.normalizeWithReport(src, overrides);
+const transformReport: TransformReport = engine.transformWithReport(doc, overrides);
+const primeMerges: number = reported.report.finalizeAst.primeRunMerges;
+const textNormalizations: number = reported.report.finalizeAst.textNormalizations;
+const iterations: number = transformReport.rewrite.iterations;
+const applied: number = transformReport.rewrite.rules[0].appliedCount;
+const viaScripted: number = transformReport.flattenGroups.guardHits.commandContactViaScriptedBase;
+const declaratives: number = reported.report.lowerAttributes.attributes[0].consumed.declaratives;
+
+// @ts-expect-error — plain normalize returns a string
+engine.normalize(src).normalized;
+// @ts-expect-error — plain transform returns void
+engine.transform(doc).rewrite;
+// @ts-expect-error — iterations live under rewrite
+reported.report.iterations;
+// @ts-expect-error — guard counters live under guardHits
+reported.report.flattenGroups.guards;
+// @ts-expect-error — FinalizeAst no longer nests steps
+reported.report.finalizeAst.steps;
+// @ts-expect-error — TransformResult was removed
+type RemovedReportResult = import("../types/index.d.ts").TransformResult;
+
 void e;
 void n;
 void p;
@@ -65,3 +91,13 @@ void flattenEnabled;
 void flattenSpacing;
 void completeFlattenEnabled;
 void completeFlattenSpacing;
+void normalizedText;
+void transformed;
+void reported;
+void transformReport;
+void primeMerges;
+void textNormalizations;
+void iterations;
+void applied;
+void viaScripted;
+void declaratives;

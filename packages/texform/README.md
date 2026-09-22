@@ -13,8 +13,8 @@ import { TransformEngine } from "texform";
 
 // Normalize a formula into a canonical form chosen by profile.
 const engine = new TransformEngine({ profile: "corpus" });
-const result = engine.normalize("a \\over b");
-console.assert(result.normalized === "\\frac { a } { b }");
+const normalized = engine.normalize("a \\over b");
+console.assert(normalized === "\\frac { a } { b }");
 
 // Parse through the engine, transform the live document in place, then serialize.
 const parsed = engine.parse("a \\over b");
@@ -28,6 +28,8 @@ Profiles select the normalization target: `"authoring"`, `"faithful"`, `"corpus"
 
 ## JavaScript-specific notes
 
+- `normalize` returns a string. `transform` updates the document and returns `undefined`.
+- `normalizeWithReport` returns `{ normalized, report }`. `transformWithReport` returns the report object. Both accept the same camelCase overlays as the plain methods. Output text and errors follow the ordinary transform contract. Report fields, phase divisions, and counters are diagnostic and are not a stable compatibility promise.
 - The package ships two entry points for loading the WebAssembly module. The default `texform` import resolves to the Node entry in Node.js and to the bundler entry in browser-oriented bundlers; `texform/node` and `texform/bundler` force one explicitly.
 - The bundler entry initializes the WebAssembly module at module load time and expects a modern bundler with support for top-level `await` and `.wasm` assets (e.g. Vite, webpack 5).
 - All names follow JavaScript conventions: methods and fields are camelCase (`toLatex`, `validateArgspec` returns `argCount`), and missing values are `null`.

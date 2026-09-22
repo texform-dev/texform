@@ -105,32 +105,54 @@ if (!unicode || "start_byte" in unicode || unicode.endByte - unicode.startByte !
 
 const engine = new TransformEngine({ profile: "authoring" });
 const normalized = engine.normalize("a''");
-if (!("finalizeAst" in normalized.report)) {
-  throw new Error("report should be camelCase");
+if (typeof normalized !== "string") {
+  throw new Error("normalize should return a string");
 }
-if ("lower_attributes" in normalized.report) {
+const reportedPrimes = engine.normalizeWithReport("a''");
+if (reportedPrimes.normalized !== normalized) {
+  throw new Error("normalizeWithReport should match plain normalize");
+}
+if (!("primeRunMerges" in reportedPrimes.report.finalizeAst)) {
+  throw new Error("report should expose finalizeAst.primeRunMerges");
+}
+if ("steps" in reportedPrimes.report.finalizeAst || "iterations" in reportedPrimes.report) {
+  throw new Error("report leaked the old shape");
+}
+if ("lower_attributes" in reportedPrimes.report) {
   throw new Error("report leaked snake_case");
 }
 
 const liveParsed = engine.parse("{{x}}").document;
-const transformReport = engine.transform(liveParsed, {
+const transformed = engine.transform(liveParsed, {
   rewrite: { enabled: false },
   lowerAttributes: { enabled: false },
   flattenGroups: { enabled: true },
 });
+if (transformed !== undefined) {
+  throw new Error("transform should return undefined");
+}
 if (liveParsed.toLatex() !== "x") {
   throw new Error("engine.transform should update documents in place");
 }
-if (!("flattenGroups" in transformReport)) {
-  throw new Error("transform report should be camelCase");
+const reportedLive = engine.parse("{{x}}").document;
+const transformReport = engine.transformWithReport(reportedLive, {
+  rewrite: { enabled: false },
+  lowerAttributes: { enabled: false },
+  flattenGroups: { enabled: true },
+});
+if (reportedLive.toLatex() !== "x") {
+  throw new Error("transformWithReport should update documents in place");
+}
+if (!("guardHits" in transformReport.flattenGroups)) {
+  throw new Error("transform report should expose flattenGroups.guardHits");
 }
 
 const corpusEngine = new TransformEngine({ profile: "corpus" });
 const flattenSrc = String.raw`a {} b + \sin {x}`;
-const unconfiguredNormalized = corpusEngine.normalize(flattenSrc).normalized;
+const unconfiguredNormalized = corpusEngine.normalize(flattenSrc);
 const enabledNormalized = corpusEngine.normalize(flattenSrc, {
   flattenGroups: { enabled: true },
-}).normalized;
+});
 if (
   unconfiguredNormalized !== String.raw`a b + \sin x` ||
   enabledNormalized !== unconfiguredNormalized
@@ -141,7 +163,7 @@ if (
 }
 const preserveSpacingNormalized = corpusEngine.normalize(flattenSrc, {
   flattenGroups: { preserveRenderedSpacing: true },
-}).normalized;
+});
 if (
   !preserveSpacingNormalized.includes("{ }") ||
   !preserveSpacingNormalized.includes(String.raw`\sin {`)
@@ -361,7 +383,7 @@ function expectError(fn, ctor) {
 
 const rewriteOff = { rewrite: { enabled: false } };
 const overSrc = String.raw`a \over b`;
-const normalizedWithRewriteOff = engine.normalize(overSrc, rewriteOff).normalized;
+const normalizedWithRewriteOff = engine.normalize(overSrc, rewriteOff);
 const parsedOver = engine.parse(overSrc).document;
 engine.transform(parsedOver, rewriteOff);
 assert.equal(normalizedWithRewriteOff, parsedOver.toLatex());
@@ -409,14 +431,14 @@ for (const key of oldFlattenKeys) {
   assert.match(error.message, new RegExp(key));
 }
 
-const flattenNullOmitted = engine.normalize(overSrc).normalized;
+const flattenNullOmitted = engine.normalize(overSrc);
 assert.equal(
   engine.normalize(overSrc, {
     flattenGroups: { enabled: null, preserveRenderedSpacing: null },
-  }).normalized,
+  }),
   flattenNullOmitted,
 );
-assert.equal(engine.normalize(overSrc, { flattenGroups: null }).normalized, flattenNullOmitted);
+assert.equal(engine.normalize(overSrc, { flattenGroups: null }), flattenNullOmitted);
 
 const rewriteArrayError = expectError(
   () => engine.normalize(overSrc, { rewrite: [] }),
@@ -432,9 +454,9 @@ expectError(
   TexformConfigError,
 );
 
-const omittedNormalize = engine.normalize(overSrc).normalized;
-assert.equal(engine.normalize(overSrc, { rewrite: undefined }).normalized, omittedNormalize);
-assert.equal(engine.normalize(overSrc, { rewrite: null }).normalized, omittedNormalize);
+const omittedNormalize = engine.normalize(overSrc);
+assert.equal(engine.normalize(overSrc, { rewrite: undefined }), omittedNormalize);
+assert.equal(engine.normalize(overSrc, { rewrite: null }), omittedNormalize);
 
 const defaultLatexAgain = doc.toLatex();
 assert.equal(doc.toLatex({ scriptSpacing: undefined }), defaultLatexAgain);
@@ -475,3 +497,93 @@ const missingArgspec = expectError(
   TexformConfigError,
 );
 assert.match(missingArgspec.message, /argspec/);
+
+const reportSource = String.raw`a \over b + {\bf x}`;
+const plainReportText = engine.normalize(reportSource);
+const firstReport = engine.normalizeWithReport(reportSource);
+assert.equal(typeof plainReportText, "string");
+assert.equal(firstReport.normalized, plainReportText);
+assert.deepEqual(Object.keys(firstReport.report).sort(), [
+  "finalizeAst",
+  "flattenGroups",
+  "lowerAttributes",
+  "rewrite",
+]);
+assert.deepEqual(Object.keys(firstReport.report.rewrite).sort(), ["iterations", "rules"]);
+assert.ok(firstReport.report.rewrite.iterations > 0);
+const ruleKeys = firstReport.report.rewrite.rules.map((rule) => rule.key);
+assert.deepEqual(ruleKeys, [...ruleKeys].sort());
+assert.ok(firstReport.report.rewrite.rules.some((rule) => rule.appliedCount > 0));
+for (const rule of firstReport.report.rewrite.rules) {
+  assert.deepEqual(Object.keys(rule).sort(), ["appliedCount", "key", "skippedCount"]);
+}
+assert.deepEqual(Object.keys(firstReport.report.finalizeAst).sort(), [
+  "primeRunMerges",
+  "textNormalizations",
+]);
+assert.equal("steps" in firstReport.report.finalizeAst, false);
+assert.deepEqual(Object.keys(firstReport.report.flattenGroups.actions).sort(), [
+  "inlinedMultiChild",
+  "removedEmpty",
+  "replacedSingleChild",
+  "unwrappedSlot",
+]);
+assert.deepEqual(Object.keys(firstReport.report.flattenGroups.guardHits).sort(), [
+  "commandArgument",
+  "commandContact",
+  "commandContactViaScriptedBase",
+  "declarativeScope",
+  "delimitedPair",
+  "emptyGroup",
+  "envBody",
+  "infixScope",
+  "leadingAtomSpacingChar",
+  "loneAtomSpacingChar",
+  "scriptBase",
+]);
+assert.equal("guards" in firstReport.report.flattenGroups, false);
+const attributeStats = firstReport.report.lowerAttributes.attributes;
+assert.deepEqual(
+  attributeStats.map((item) => [item.attr, item.value]),
+  [...attributeStats]
+    .map((item) => [item.attr, item.value])
+    .sort((left, right) => left[0].localeCompare(right[0]) || left[1].localeCompare(right[1])),
+);
+for (const item of attributeStats) {
+  for (const bucket of ["consumed", "redundant", "emitted"]) {
+    assert.deepEqual(Object.keys(item[bucket]).sort(), ["declaratives", "prefixes"]);
+  }
+}
+
+const rewriteDisabled = { rewrite: { enabled: false } };
+const disabledText = engine.normalize(reportSource, rewriteDisabled);
+const disabledReport = engine.normalizeWithReport(reportSource, rewriteDisabled);
+assert.equal(disabledText, disabledReport.normalized);
+assert.notEqual(disabledText, plainReportText);
+assert.equal(disabledReport.report.rewrite.iterations, 0);
+assert.deepEqual(disabledReport.report.rewrite.rules, []);
+for (const method of [engine.normalize.bind(engine), engine.normalizeWithReport.bind(engine)]) {
+  expectError(() => method(reportSource, { rewriteEnabled: false }), TexformConfigError);
+  expectError(() => method(reportSource, { rewrite: { enabled: "yes" } }), TexformConfigError);
+}
+
+expectError(() => engine.normalize("{"), TexformParseError);
+const afterFailure = engine.normalizeWithReport(reportSource);
+assert.equal(afterFailure.normalized, plainReportText);
+assert.deepEqual(afterFailure.report, firstReport.report);
+assert.equal(engine.normalize(reportSource), plainReportText);
+
+const freshDocument = () => engine.parse(reportSource).document;
+const transformedDocument = freshDocument();
+assert.equal(engine.transform(transformedDocument), undefined);
+assert.equal(transformedDocument.toLatex(), plainReportText);
+const incompleteForReport = engine.parse(String.raw`\sqrt[`, { abortOnError: false }).document;
+const incompleteBefore = incompleteForReport.toLatex();
+expectError(() => engine.transformWithReport(incompleteForReport), TexformTransformError);
+assert.equal(incompleteForReport.toLatex(), incompleteBefore);
+const foreignForReport = Document.fromSyntax(freshDocument().toSyntax());
+expectError(() => engine.transformWithReport(foreignForReport), TexformTransformError);
+const reportedDocument = freshDocument();
+assert.deepEqual(engine.transformWithReport(reportedDocument), firstReport.report);
+assert.equal(reportedDocument.toLatex(), plainReportText);
+assert.deepEqual(engine.transformWithReport(freshDocument()), firstReport.report);

@@ -100,7 +100,7 @@ pip install texform
 import texform
 
 engine = texform.TransformEngine(profile="corpus")
-assert engine.normalize(r"a \over b")["normalized"] == r"\frac { a } { b }"
+assert engine.normalize(r"a \over b") == r"\frac { a } { b }"
 
 parsed = engine.parse(r"a \over b")
 if parsed["document"] is not None:
@@ -119,7 +119,7 @@ npm install texform
 import { TransformEngine } from "texform";
 
 const engine = new TransformEngine({ profile: "corpus" });
-console.assert(engine.normalize("a \\over b").normalized === "\\frac { a } { b }");
+console.assert(engine.normalize("a \\over b") === "\\frac { a } { b }");
 
 const parsed = engine.parse("a \\over b");
 if (parsed.document) {
@@ -138,8 +138,8 @@ cargo add texform
 use texform::{Profile, TransformEngine};
 
 let engine = TransformEngine::builder().profile(Profile::Corpus).build()?;
-let result = engine.normalize(r"a \over b")?;
-assert_eq!(result.normalized, r"\frac { a } { b }");
+let normalized = engine.normalize(r"a \over b")?;
+assert_eq!(normalized, r"\frac { a } { b }");
 
 let (mut document, _) = engine.parser().parse(r"a \over b").try_into_document()?;
 engine.transform(&mut document)?;

@@ -16,7 +16,7 @@ This runs `wasm-pack build` for both the `nodejs` and `web` targets and copies t
 
 ## API changes and validation
 
-Keep exported WASM shapes, `packages/texform/shared/create-bindings.js`, and `packages/texform/types/index.d.ts` consistent. Changes to shared binding DTOs or `crates/texform-interface/src/syntax_node.rs` may also change the public TypeScript surface. Update declarations and examples, rebuild both WASM targets, then run:
+Keep exported WASM shapes, `packages/texform/shared/create-bindings.js`, `packages/texform/node/index.cjs`, and `packages/texform/types/index.d.ts` consistent. Changes to shared binding DTOs or `crates/texform-interface/src/syntax_node.rs` may also change the public TypeScript surface. Plain `normalize` returns a string and plain `transform` returns `undefined`. `normalizeWithReport` and `transformWithReport` reuse those config parsers and return the diagnostic DTO. The plain path does not build that DTO. There is no JavaScript guard-overlay entry. Update declarations and examples, rebuild both WASM targets, then run:
 
 ```bash
 bun run --cwd packages/texform check

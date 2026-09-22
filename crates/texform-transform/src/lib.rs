@@ -19,9 +19,7 @@ pub mod rewrite;
 pub use config::{BuildConfig, Profile, RewriteConfig, TransformConfig};
 pub use context::TransformContext;
 pub use error::{TransformBuildError, TransformError};
-pub use finalize_ast::{
-    FinalizeAstConfig, FinalizeAstReport, FinalizeAstStepReport, FinalizeAstStepReports,
-};
+pub use finalize_ast::{FinalizeAstConfig, FinalizeAstReport};
 pub use flatten_groups::{
     FlattenGroupsActionCounts, FlattenGroupsConfig, FlattenGroupsGuardCounts, FlattenGroupsGuards,
     FlattenGroupsGuardsOverlay, FlattenGroupsReport,

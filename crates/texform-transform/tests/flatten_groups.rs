@@ -53,7 +53,7 @@ fn run_flatten_groups_case(
         Some(overlay) => {
             context.run_with_flatten_groups_guards(&mut ast, &parse_ctx, &config, &overlay)
         }
-        None => context.run_with(&mut ast, &parse_ctx, &config),
+        None => context.run_with_report(&mut ast, &parse_ctx, &config),
     }
     .expect("transform should succeed")
     .flatten_groups;
@@ -114,7 +114,7 @@ fn keeps_script_base_groups() {
 
     assert_eq!(outcome.text, r"{ x _ { i } } ^ { 2 } + x ^ { 2 }");
     assert_eq!(outcome.report.actions.unwrapped_slot, 1);
-    assert_eq!(outcome.report.guards.preserve_group_in_script_base_slot, 1);
+    assert_eq!(outcome.report.guard_hits.script_base, 1);
     assert_eq!(outcome.report.actions.replaced_single_child, 0);
 }
 
@@ -305,66 +305,24 @@ fn reports_actual_preserve_guard_blockers() {
         r"{\cal M} + {x_i}^2 + {a \over b} + \cos{A} + \overline{{\sum}} + {} + {+} + {-n} + f{\left(x\right)}",
     );
 
-    assert_eq!(
-        outcome
-            .report
-            .guards
-            .preserve_group_containing_declarative_command,
-        1
-    );
-    assert_eq!(outcome.report.guards.preserve_group_in_script_base_slot, 1);
-    assert_eq!(outcome.report.guards.preserve_group_containing_infix, 1);
-    assert_eq!(
-        outcome
-            .report
-            .guards
-            .preserve_group_adjacent_to_command_like,
-        1
-    );
-    assert_eq!(
-        outcome.report.guards.preserve_group_as_argument_of_command,
-        1
-    );
-    assert_eq!(outcome.report.guards.preserve_empty_group, 1);
-    assert_eq!(
-        outcome
-            .report
-            .guards
-            .preserve_group_with_lone_atom_spacing_char,
-        1
-    );
-    assert_eq!(
-        outcome
-            .report
-            .guards
-            .preserve_group_starting_with_atom_spacing_char,
-        1
-    );
-    assert_eq!(
-        outcome
-            .report
-            .guards
-            .preserve_group_containing_delimited_pair,
-        1
-    );
+    assert_eq!(outcome.report.guard_hits.declarative_scope, 1);
+    assert_eq!(outcome.report.guard_hits.script_base, 1);
+    assert_eq!(outcome.report.guard_hits.infix_scope, 1);
+    assert_eq!(outcome.report.guard_hits.command_contact, 1);
+    assert_eq!(outcome.report.guard_hits.command_argument, 1);
+    assert_eq!(outcome.report.guard_hits.empty_group, 1);
+    assert_eq!(outcome.report.guard_hits.lone_atom_spacing_char, 1);
+    assert_eq!(outcome.report.guard_hits.leading_atom_spacing_char, 1);
+    assert_eq!(outcome.report.guard_hits.delimited_pair, 1);
 }
 
 #[test]
 fn reports_scripted_command_like_subflag_hits() {
     let outcome = run_flatten_groups(r"\sum_i{(x_i)}");
 
+    assert_eq!(outcome.report.guard_hits.command_contact, 1);
     assert_eq!(
-        outcome
-            .report
-            .guards
-            .preserve_group_adjacent_to_command_like,
-        1
-    );
-    assert_eq!(
-        outcome
-            .report
-            .guards
-            .preserve_group_after_scripted_command_like,
+        outcome.report.guard_hits.command_contact_via_scripted_base,
         1
     );
 }
@@ -393,16 +351,10 @@ fn structural_only_still_keeps_semantic_guard_cases() {
         outcome.text,
         r"{ \cal M } + { x _ { i } } ^ { 2 } + { a \over b } + \begin {matrix} { x } \end {matrix}"
     );
-    assert_eq!(
-        outcome
-            .report
-            .guards
-            .preserve_group_containing_declarative_command,
-        1
-    );
-    assert_eq!(outcome.report.guards.preserve_group_in_script_base_slot, 1);
-    assert_eq!(outcome.report.guards.preserve_group_containing_infix, 1);
-    assert_eq!(outcome.report.guards.preserve_group_inside_env_body, 2);
+    assert_eq!(outcome.report.guard_hits.declarative_scope, 1);
+    assert_eq!(outcome.report.guard_hits.script_base, 1);
+    assert_eq!(outcome.report.guard_hits.infix_scope, 1);
+    assert_eq!(outcome.report.guard_hits.env_body, 2);
 }
 
 #[test]
@@ -420,10 +372,7 @@ fn individual_guard_toggles_affect_only_their_cases() {
         |guards| guards.command_argument = Some(false),
     );
     assert_eq!(outcome.text, r"\overline { \sum } + a");
-    assert_eq!(
-        outcome.report.guards.preserve_group_as_argument_of_command,
-        0
-    );
+    assert_eq!(outcome.report.guard_hits.command_argument, 0);
 
     let outcome =
         run_flatten_groups_with_overlay(r"a{} + {+}", FlattenGroupsConfig::STRICT, |guards| {
@@ -431,13 +380,7 @@ fn individual_guard_toggles_affect_only_their_cases() {
         });
     assert_eq!(outcome.text, r"a + { + }");
     assert_eq!(outcome.report.actions.removed_empty, 1);
-    assert_eq!(
-        outcome
-            .report
-            .guards
-            .preserve_group_with_lone_atom_spacing_char,
-        1
-    );
+    assert_eq!(outcome.report.guard_hits.lone_atom_spacing_char, 1);
 
     let outcome =
         run_flatten_groups_with_overlay(r"{+} + {-n}", FlattenGroupsConfig::STRICT, |guards| {
@@ -445,26 +388,14 @@ fn individual_guard_toggles_affect_only_their_cases() {
         });
     assert_eq!(outcome.text, r"+ + { - n }");
     assert_eq!(outcome.report.actions.replaced_single_child, 1);
-    assert_eq!(
-        outcome
-            .report
-            .guards
-            .preserve_group_starting_with_atom_spacing_char,
-        1
-    );
+    assert_eq!(outcome.report.guard_hits.leading_atom_spacing_char, 1);
 
     let outcome =
         run_flatten_groups_with_overlay(r"{+} + {-n}", FlattenGroupsConfig::STRICT, |guards| {
             guards.leading_atom_spacing_char = Some(false)
         });
     assert_eq!(outcome.text, r"{ + } + - n");
-    assert_eq!(
-        outcome
-            .report
-            .guards
-            .preserve_group_with_lone_atom_spacing_char,
-        1
-    );
+    assert_eq!(outcome.report.guard_hits.lone_atom_spacing_char, 1);
     assert_eq!(outcome.report.actions.inlined_multi_child, 1);
 
     let outcome = run_flatten_groups_with_overlay(
@@ -491,7 +422,7 @@ fn semantic_guard_toggles_affect_their_cases() {
             guards.infix_scope = Some(false)
         });
     assert_eq!(outcome.text, r"a \over b , c");
-    assert_eq!(outcome.report.guards.preserve_group_containing_infix, 0);
+    assert_eq!(outcome.report.guard_hits.infix_scope, 0);
 
     let outcome = run_flatten_groups_with_overlay(
         r"\begin{matrix}{x}\end{matrix}",
@@ -506,14 +437,8 @@ fn semantic_guard_toggles_affect_their_cases() {
 fn preserve_guard_counters_short_circuit_on_first_match() {
     let outcome = run_flatten_groups(r"{\cal a \over b}");
 
-    assert_eq!(
-        outcome
-            .report
-            .guards
-            .preserve_group_containing_declarative_command,
-        2
-    );
-    assert_eq!(outcome.report.guards.preserve_group_containing_infix, 0);
+    assert_eq!(outcome.report.guard_hits.declarative_scope, 2);
+    assert_eq!(outcome.report.guard_hits.infix_scope, 0);
 }
 
 #[test]
@@ -521,7 +446,7 @@ fn script_base_single_atom_groups_are_unwrapped() {
     let outcome = run_flatten_groups(r"{x}^2 + {\alpha}^2");
 
     assert_eq!(outcome.text, r"x ^ { 2 } + \alpha ^ { 2 }");
-    assert_eq!(outcome.report.guards.preserve_group_in_script_base_slot, 0);
+    assert_eq!(outcome.report.guard_hits.script_base, 0);
 }
 
 #[test]
@@ -534,7 +459,7 @@ fn script_base_command_like_groups_are_preserved() {
         outcome.text,
         r"{ \det } ^ { p } + { \prod } _ { i = 0 } ^ { n } + { \pmb { \beta } } _ { n } + { \stackrel { \leftrightarrow } { \partial } } _ { \alpha }"
     );
-    assert_eq!(outcome.report.guards.preserve_group_in_script_base_slot, 4);
+    assert_eq!(outcome.report.guard_hits.script_base, 4);
 }
 
 #[test]
@@ -542,13 +467,7 @@ fn script_base_lone_atom_spacing_char_groups_are_preserved() {
     let outcome = run_flatten_groups(r"{*}_N + {·}m + {x}_N");
 
     assert_eq!(outcome.text, r"{ * } _ { N } + { · } m + x _ { N }");
-    assert_eq!(
-        outcome
-            .report
-            .guards
-            .preserve_group_with_lone_atom_spacing_char,
-        2
-    );
+    assert_eq!(outcome.report.guard_hits.lone_atom_spacing_char, 2);
 }
 
 #[test]
@@ -559,7 +478,7 @@ fn script_base_non_atomic_groups_are_preserved() {
         outcome.text,
         r"{ x _ { i } } ^ { 2 } + { a b } ^ { 2 } + { \sum _ { i } x } ^ { 2 }"
     );
-    assert_eq!(outcome.report.guards.preserve_group_in_script_base_slot, 1);
+    assert_eq!(outcome.report.guard_hits.script_base, 1);
 }
 
 #[test]
@@ -578,10 +497,7 @@ fn groups_as_arguments_of_commands_preserve_one_spacing_boundary() {
     let outcome = run_flatten_groups(r"\overline{{{{\sum}}}} + \overline{{x}}");
 
     assert_eq!(outcome.text, r"\overline { { \sum } } + \overline { x }");
-    assert_eq!(
-        outcome.report.guards.preserve_group_as_argument_of_command,
-        1
-    );
+    assert_eq!(outcome.report.guard_hits.command_argument, 1);
 }
 
 #[test]
@@ -616,24 +532,12 @@ fn prime_group_is_not_preserved_as_atom_spacing_char_or_command_contact() {
     let lone_prime = run_flatten_groups(r"{'}");
     assert_eq!(lone_prime.text, "'");
     assert_eq!(lone_prime.report.actions.replaced_single_child, 1);
-    assert_eq!(
-        lone_prime
-            .report
-            .guards
-            .preserve_group_with_lone_atom_spacing_char,
-        0
-    );
+    assert_eq!(lone_prime.report.guard_hits.lone_atom_spacing_char, 0);
 
     let adjacent_to_prime = run_flatten_groups(r"'{a}");
     assert_eq!(adjacent_to_prime.text, "' a");
     assert_eq!(adjacent_to_prime.report.actions.replaced_single_child, 1);
-    assert_eq!(
-        adjacent_to_prime
-            .report
-            .guards
-            .preserve_group_adjacent_to_command_like,
-        0
-    );
+    assert_eq!(adjacent_to_prime.report.guard_hits.command_contact, 0);
 }
 
 #[test]
@@ -668,7 +572,7 @@ fn strict_spacing_ablation_and_structural_reenable() {
             guards.empty_group = Some(true)
         });
     assert_eq!(reenabled.text, r"a { }");
-    assert_eq!(reenabled.report.guards.preserve_empty_group, 1);
+    assert_eq!(reenabled.report.guard_hits.empty_group, 1);
 }
 
 #[test]
@@ -684,15 +588,9 @@ fn cross_hit_cos_plus_needs_both_spacing_guards_off() {
                 guards.lone_atom_spacing_char = Some(lone_atom);
             });
         assert_eq!(outcome.text, text);
-        let counts = outcome.report.guards;
-        assert_eq!(
-            counts.preserve_group_adjacent_to_command_like,
-            contact_count
-        );
-        assert_eq!(
-            counts.preserve_group_with_lone_atom_spacing_char,
-            atom_count
-        );
+        let counts = outcome.report.guard_hits;
+        assert_eq!(counts.command_contact, contact_count);
+        assert_eq!(counts.lone_atom_spacing_char, atom_count);
     }
 }
 
@@ -717,13 +615,10 @@ fn scripted_subflag_depends_on_command_contact() {
                     r"\sum _ { i } ( x _ { i } )"
                 }
             );
-            let counts = outcome.report.guards;
+            let counts = outcome.report.guard_hits;
+            assert_eq!(counts.command_contact, usize::from(preserved));
             assert_eq!(
-                counts.preserve_group_adjacent_to_command_like,
-                usize::from(preserved)
-            );
-            assert_eq!(
-                counts.preserve_group_after_scripted_command_like,
+                counts.command_contact_via_scripted_base,
                 usize::from(preserved)
             );
         }

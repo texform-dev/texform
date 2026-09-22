@@ -10,9 +10,10 @@
 //! are rejected with [`Error::ForeignDocument`].
 
 use texform_core::parse::ParseConfig;
-use texform_transform::{BuildConfig, Profile, TransformContext, TransformReport};
+use texform_transform::{BuildConfig, Profile, TransformContext};
 
 use crate::config::{NormalizeConfig, TransformConfig};
+use crate::diagnostics::{NormalizeReportResult, TransformReport};
 use crate::document::Document;
 use crate::error::Error;
 use crate::parser::{Parser, ParserBuilder};
@@ -36,15 +37,6 @@ pub struct TransformEngineBuilder {
     profile: Option<Profile>,
     build_config: Option<BuildConfig>,
     disabled_rules: Vec<crate::RuleKey>,
-}
-
-/// Result returned by [`TransformEngine::normalize`] and
-/// [`TransformEngine::normalize_with`].
-pub struct NormalizeResult {
-    /// Serialized LaTeX after parsing and normalization.
-    pub normalized: String,
-    /// Report describing which transform phases and rules changed the tree.
-    pub report: TransformReport,
 }
 
 impl TransformEngine {
@@ -73,7 +65,7 @@ impl TransformEngine {
     /// parser, from [`Document::new`], or from [`Document::from_syntax`]
     /// returns [`Error::ForeignDocument`]. Passing a parsed document that
     /// contains parse errors returns [`Error::IncompleteTree`].
-    pub fn transform(&self, document: &mut Document) -> Result<TransformReport, Error> {
+    pub fn transform(&self, document: &mut Document) -> Result<(), Error> {
         self.transform_with(document, self.transform.default_config())
     }
 
@@ -82,20 +74,48 @@ impl TransformEngine {
     /// This has the same document-source requirement as
     /// [`transform`](Self::transform): the document must come from this
     /// engine's [`parser`](Self::parser), otherwise the method returns
-    /// [`Error::ForeignDocument`].
+    /// [`Error::ForeignDocument`]. The call does not collect a report.
     pub fn transform_with(
         &self,
         document: &mut Document,
         config: &TransformConfig,
+    ) -> Result<(), Error> {
+        self.ensure_engine_document(document)?;
+        self.transform.run_with(
+            document.core_mut().__texform_engine_ast_mut(),
+            self.parser.inner(),
+            config,
+        )?;
+        Ok(())
+    }
+
+    /// Normalize a parsed document in place and return this call's diagnostic report.
+    ///
+    /// The config is the same [`TransformConfig`] accepted by
+    /// [`transform_with`](Self::transform_with). There is no default-config
+    /// overload; pass [`default_transform_config`](Self::default_transform_config)
+    /// when the engine defaults should apply. Document ownership, completeness,
+    /// and transform errors match [`transform`](Self::transform). A failure
+    /// does not return a partial report.
+    pub fn transform_with_report(
+        &self,
+        document: &mut Document,
+        config: &TransformConfig,
     ) -> Result<TransformReport, Error> {
-        self.transform_document(document, config, &Default::default())
+        self.ensure_engine_document(document)?;
+        Ok(self.transform.run_with_report(
+            document.core_mut().__texform_engine_ast_mut(),
+            self.parser.inner(),
+            config,
+        )?)
     }
 
     /// Unstable research entry: apply a sparse FlattenGroups guard overlay.
     ///
-    /// This method is not part of the stable facade. It does not change engine
-    /// defaults, cannot re-enable a disabled FlattenGroups phase, and still
-    /// enforces document ownership, completeness, and slot/mode/contract checks.
+    /// This method is not part of the stable facade. It always collects a
+    /// report, does not change engine defaults, cannot re-enable a disabled
+    /// FlattenGroups phase, and still enforces document ownership,
+    /// completeness, and slot/mode/contract checks.
     #[doc(hidden)]
     pub fn transform_with_flatten_groups_guards(
         &self,
@@ -103,7 +123,13 @@ impl TransformEngine {
         config: &TransformConfig,
         overlay: &texform_transform::FlattenGroupsGuardsOverlay,
     ) -> Result<TransformReport, Error> {
-        self.transform_document(document, config, overlay)
+        self.ensure_engine_document(document)?;
+        Ok(self.transform.run_with_flatten_groups_guards(
+            document.core_mut().__texform_engine_ast_mut(),
+            self.parser.inner(),
+            config,
+            overlay,
+        )?)
     }
 
     /// Parse, transform, and serialize a LaTeX formula.
@@ -125,11 +151,11 @@ impl TransformEngine {
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let engine = TransformEngine::builder().profile(Profile::Corpus).build()?;
-    /// assert_eq!(engine.normalize(r"a \over b")?.normalized, r"\frac { a } { b }");
+    /// assert_eq!(engine.normalize(r"a \over b")?, r"\frac { a } { b }");
     /// # Ok(())
     /// # }
     /// ```
-    pub fn normalize(&self, src: &str) -> Result<NormalizeResult, Error> {
+    pub fn normalize(&self, src: &str) -> Result<String, Error> {
         self.normalize_with(src, &self.default_normalize_config())
     }
 
@@ -139,64 +165,69 @@ impl TransformEngine {
     ///
     /// Same failure modes as [`normalize`](Self::normalize), but using the
     /// supplied [`NormalizeConfig`] for both parsing and
-    /// transformation.
-    pub fn normalize_with(
+    /// transformation. The call does not collect a report.
+    pub fn normalize_with(&self, src: &str, config: &NormalizeConfig) -> Result<String, Error> {
+        let mut document = self.parse_complete(src, config)?;
+        self.transform_with(&mut document, &config.transform)?;
+        Ok(document.to_latex()?)
+    }
+
+    /// Parse, transform, and serialize a formula, returning text and a diagnostic report.
+    ///
+    /// The config is the same [`NormalizeConfig`] accepted by
+    /// [`normalize_with`](Self::normalize_with). There is no default-config
+    /// overload; pass [`default_normalize_config`](Self::default_normalize_config)
+    /// when the engine defaults should apply. Output text and errors match
+    /// [`normalize`](Self::normalize). A failure does not return a partial report.
+    pub fn normalize_with_report(
         &self,
         src: &str,
         config: &NormalizeConfig,
-    ) -> Result<NormalizeResult, Error> {
-        self.normalize_source(src, config, &Default::default())
+    ) -> Result<NormalizeReportResult, Error> {
+        let mut document = self.parse_complete(src, config)?;
+        let report = self.transform_with_report(&mut document, &config.transform)?;
+        Ok(NormalizeReportResult {
+            normalized: document.to_latex()?,
+            report,
+        })
     }
 
     /// Unstable research entry for string-to-string FlattenGroups guard overlays.
     ///
-    /// This method is not part of the stable facade and may change without notice.
+    /// This method is not part of the stable facade, always collects a report,
+    /// and may change without notice.
     #[doc(hidden)]
     pub fn normalize_with_flatten_groups_guards(
         &self,
         src: &str,
         config: &NormalizeConfig,
         overlay: &texform_transform::FlattenGroupsGuardsOverlay,
-    ) -> Result<NormalizeResult, Error> {
-        self.normalize_source(src, config, overlay)
+    ) -> Result<NormalizeReportResult, Error> {
+        let mut document = self.parse_complete(src, config)?;
+        let report =
+            self.transform_with_flatten_groups_guards(&mut document, &config.transform, overlay)?;
+        Ok(NormalizeReportResult {
+            normalized: document.to_latex()?,
+            report,
+        })
     }
 
-    fn transform_document(
-        &self,
-        document: &mut Document,
-        config: &TransformConfig,
-        overlay: &texform_transform::FlattenGroupsGuardsOverlay,
-    ) -> Result<TransformReport, Error> {
+    fn ensure_engine_document(&self, document: &Document) -> Result<(), Error> {
         if document.parse_context_id() != Some(self.parser.inner().id()) {
             return Err(Error::ForeignDocument);
         }
         if document.has_errors() {
             return Err(Error::IncompleteTree);
         }
-
-        Ok(self.transform.run_with_flatten_groups_guards(
-            document.core_mut().__texform_engine_ast_mut(),
-            self.parser.inner(),
-            config,
-            overlay,
-        )?)
+        Ok(())
     }
 
-    fn normalize_source(
-        &self,
-        src: &str,
-        config: &NormalizeConfig,
-        overlay: &texform_transform::FlattenGroupsGuardsOverlay,
-    ) -> Result<NormalizeResult, Error> {
-        let (mut document, _) = self
+    fn parse_complete(&self, src: &str, config: &NormalizeConfig) -> Result<Document, Error> {
+        let (document, _) = self
             .parser
             .parse_with(src, &config.parse)
             .try_into_document()?;
-        let report = self.transform_document(&mut document, &config.transform, overlay)?;
-        Ok(NormalizeResult {
-            normalized: document.to_latex()?,
-            report,
-        })
+        Ok(document)
     }
 
     /// Default transform configuration used by [`transform`](Self::transform).

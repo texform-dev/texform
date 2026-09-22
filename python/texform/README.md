@@ -13,8 +13,8 @@ import texform
 
 # Normalize a formula into a canonical form chosen by profile.
 engine = texform.TransformEngine(profile="corpus")
-result = engine.normalize(r"a \over b")
-assert result["normalized"] == r"\frac { a } { b }"
+normalized = engine.normalize(r"a \over b")
+assert normalized == r"\frac { a } { b }"
 
 # Parse through the engine, transform the live document in place, then serialize.
 parsed = engine.parse(r"a \over b")
@@ -28,6 +28,8 @@ Profiles select the normalization target: `"authoring"`, `"faithful"`, `"corpus"
 
 ## Python-specific notes
 
+- `normalize` returns `str`. `transform` updates the document and returns `None`.
+- `normalize_with_report` returns `{"normalized", "report"}`. `transform_with_report` returns the report dict. Both use the same config object and keyword overlays as the plain methods. Output text and errors follow the ordinary transform contract. Report fields, phase divisions, and counters are diagnostic and are not a stable compatibility promise.
 - `Parser.parse` returns a dict with a `document` value (or `None`) plus a `diagnostics` list — the same three-state contract as the Rust API.
 - All names follow Python conventions: methods and dict keys are snake_case (`to_latex`, `validate_argspec` returns `arg_count`).
 - `config` is a complete configuration class (`ParseConfig` / `TransformConfig`). Other keyword arguments are overlays (`normalize(src, rewrite={"enabled": False})`). Saved dicts expand with `**saved_overrides`. Nested override values must be dicts, not config class instances.

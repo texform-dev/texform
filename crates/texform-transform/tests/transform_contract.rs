@@ -3,7 +3,7 @@ use texform_core::parse::{ParseConfig, ParseContext};
 use texform_interface::syntax_node::{ContentMode, SyntaxNode};
 use texform_knowledge::builtin::base;
 use texform_transform::{
-    BuildConfig, Profile, RewriteError, RewriteReport, RuleTarget, RuleTargetKey, TransformContext,
+    BuildConfig, Profile, RewriteError, RuleTarget, RuleTargetKey, TransformContext,
     TransformError, collect_eliminated_violations,
 };
 
@@ -63,14 +63,14 @@ fn transform_contract_rewrite_phase_does_not_run_eliminated_form_check() {
     let context =
         TransformContext::from_build_config(BuildConfig::profile(Profile::Authoring), &parse_ctx)
             .expect("transform context should build");
-    let mut report = RewriteReport::default();
+    let mut recorder = texform_transform::report::ReportRecorder::disabled();
 
     texform_transform::rewrite::run(
         &mut ast,
         &parse_ctx,
         context.rewrite_plan(),
         100,
-        &mut report,
+        &mut recorder,
     )
     .expect("rewrite alone should not fail the eliminated-form contract");
 

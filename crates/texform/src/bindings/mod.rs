@@ -9,10 +9,13 @@ pub use input::{
 pub use read::{ReadError, format_read_error, read, snake_to_camel};
 
 use crate::argspec::parsed_arg_spec_slot;
+use crate::diagnostics::{
+    FinalizeAstReport, FlattenGroupsReport, LowerAttributesReport, TransformReport,
+};
 use crate::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, Document, EditError,
-    Error, FinalizeAstReport, FlattenGroupsReport, FromSyntaxError, LowerAttributesReport,
-    ParseDiagnostic, ParsedArgSpecSlot, SerializationTokenKind, TokenizedLatex, TransformReport,
+    Error, FromSyntaxError, ParseDiagnostic, ParsedArgSpecSlot, SerializationTokenKind,
+    TokenizedLatex,
 };
 use texform_transform::{
     Attr, AttrValue, AttributeFormCounts, MathFontValue, SizeValue, StyleValue, TextFamily,
@@ -63,11 +66,16 @@ pub fn tokenized_latex_to_dto(result: TokenizedLatex) -> TokenizedLatexDto {
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct TransformReportDto {
-    pub iterations: usize,
-    pub rules: Vec<RewriteRuleDto>,
+    pub lower_attributes: LowerAttributesReportDto,
+    pub rewrite: RewriteReportDto,
     pub finalize_ast: FinalizeAstReportDto,
     pub flatten_groups: FlattenGroupsReportDto,
-    pub lower_attributes: LowerAttributesReportDto,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct RewriteReportDto {
+    pub iterations: usize,
+    pub rules: Vec<RewriteRuleDto>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
@@ -149,7 +157,7 @@ pub struct AttributeFormCountsDto {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct FlattenGroupsReportDto {
     pub actions: FlattenGroupsActionCountsDto,
-    pub guards: FlattenGroupsGuardCountsDto,
+    pub guard_hits: FlattenGroupsGuardCountsDto,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -162,33 +170,23 @@ pub struct FlattenGroupsActionCountsDto {
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct FlattenGroupsGuardCountsDto {
-    pub preserve_group_containing_declarative_command: usize,
-    pub preserve_group_in_script_base_slot: usize,
-    pub preserve_group_inside_env_body: usize,
-    pub preserve_group_containing_infix: usize,
-    pub preserve_group_adjacent_to_command_like: usize,
-    pub preserve_group_as_argument_of_command: usize,
-    pub preserve_group_after_scripted_command_like: usize,
-    pub preserve_empty_group: usize,
-    pub preserve_group_with_lone_atom_spacing_char: usize,
-    pub preserve_group_starting_with_atom_spacing_char: usize,
-    pub preserve_group_containing_delimited_pair: usize,
+    pub declarative_scope: usize,
+    pub script_base: usize,
+    pub env_body: usize,
+    pub infix_scope: usize,
+    pub command_contact: usize,
+    pub command_argument: usize,
+    pub command_contact_via_scripted_base: usize,
+    pub empty_group: usize,
+    pub lone_atom_spacing_char: usize,
+    pub leading_atom_spacing_char: usize,
+    pub delimited_pair: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct FinalizeAstReportDto {
-    pub steps: FinalizeAstStepReportsDto,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-pub struct FinalizeAstStepReportsDto {
-    pub merge_adjacent_primes: FinalizeAstStepReportDto,
-    pub normalize_text_sequences: FinalizeAstStepReportDto,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-pub struct FinalizeAstStepReportDto {
-    pub applied_count: usize,
+    pub prime_run_merges: usize,
+    pub text_normalizations: usize,
 }
 
 pub fn transform_report_to_dto(report: &TransformReport) -> TransformReportDto {
@@ -205,11 +203,13 @@ pub fn transform_report_to_dto(report: &TransformReport) -> TransformReportDto {
     rules.sort_by(|left, right| left.key.cmp(&right.key));
 
     TransformReportDto {
-        iterations: report.rewrite.iterations,
-        rules,
+        lower_attributes: lower_attributes_report_to_dto(&report.lower_attributes),
+        rewrite: RewriteReportDto {
+            iterations: report.rewrite.iterations,
+            rules,
+        },
         finalize_ast: finalize_ast_report_to_dto(&report.finalize_ast),
         flatten_groups: flatten_groups_report_to_dto(&report.flatten_groups),
-        lower_attributes: lower_attributes_report_to_dto(&report.lower_attributes),
     }
 }
 
@@ -387,14 +387,8 @@ fn content_mode_to_dto_key(mode: texform_interface::syntax_node::ContentMode) ->
 
 fn finalize_ast_report_to_dto(report: &FinalizeAstReport) -> FinalizeAstReportDto {
     FinalizeAstReportDto {
-        steps: FinalizeAstStepReportsDto {
-            merge_adjacent_primes: FinalizeAstStepReportDto {
-                applied_count: report.steps.merge_adjacent_primes.applied_count,
-            },
-            normalize_text_sequences: FinalizeAstStepReportDto {
-                applied_count: report.steps.normalize_text_sequences.applied_count,
-            },
-        },
+        prime_run_merges: report.prime_run_merges,
+        text_normalizations: report.text_normalizations,
     }
 }
 
@@ -437,32 +431,18 @@ fn flatten_groups_report_to_dto(report: &FlattenGroupsReport) -> FlattenGroupsRe
             inlined_multi_child: report.actions.inlined_multi_child,
             unwrapped_slot: report.actions.unwrapped_slot,
         },
-        guards: FlattenGroupsGuardCountsDto {
-            preserve_group_containing_declarative_command: report
-                .guards
-                .preserve_group_containing_declarative_command,
-            preserve_group_in_script_base_slot: report.guards.preserve_group_in_script_base_slot,
-            preserve_group_inside_env_body: report.guards.preserve_group_inside_env_body,
-            preserve_group_containing_infix: report.guards.preserve_group_containing_infix,
-            preserve_group_adjacent_to_command_like: report
-                .guards
-                .preserve_group_adjacent_to_command_like,
-            preserve_group_as_argument_of_command: report
-                .guards
-                .preserve_group_as_argument_of_command,
-            preserve_group_after_scripted_command_like: report
-                .guards
-                .preserve_group_after_scripted_command_like,
-            preserve_empty_group: report.guards.preserve_empty_group,
-            preserve_group_with_lone_atom_spacing_char: report
-                .guards
-                .preserve_group_with_lone_atom_spacing_char,
-            preserve_group_starting_with_atom_spacing_char: report
-                .guards
-                .preserve_group_starting_with_atom_spacing_char,
-            preserve_group_containing_delimited_pair: report
-                .guards
-                .preserve_group_containing_delimited_pair,
+        guard_hits: FlattenGroupsGuardCountsDto {
+            declarative_scope: report.guard_hits.declarative_scope,
+            script_base: report.guard_hits.script_base,
+            env_body: report.guard_hits.env_body,
+            infix_scope: report.guard_hits.infix_scope,
+            command_contact: report.guard_hits.command_contact,
+            command_argument: report.guard_hits.command_argument,
+            command_contact_via_scripted_base: report.guard_hits.command_contact_via_scripted_base,
+            empty_group: report.guard_hits.empty_group,
+            lone_atom_spacing_char: report.guard_hits.lone_atom_spacing_char,
+            leading_atom_spacing_char: report.guard_hits.leading_atom_spacing_char,
+            delimited_pair: report.guard_hits.delimited_pair,
         },
     }
 }
@@ -599,86 +579,83 @@ mod tests {
 
     #[test]
     fn transform_report_to_dto_reads_rewrite_report() {
-        let mut report = crate::TransformReport::default();
-        let key = texform_transform::rewrite::all_rules()[0].meta().key;
+        let mut report = crate::diagnostics::TransformReport::default();
+        let rules = texform_transform::rewrite::all_rules();
+        let later = rules[0].meta().key;
+        let earlier = rules[1].meta().key;
         report.rewrite.iterations = 3;
         report
             .rewrite
             .rules
             .push(texform_transform::rewrite::RewriteRuleStat {
-                key,
+                key: later,
                 applied_count: 2,
                 skipped_count: 1,
             });
+        report
+            .rewrite
+            .rules
+            .push(texform_transform::rewrite::RewriteRuleStat {
+                key: earlier,
+                applied_count: 4,
+                skipped_count: 0,
+            });
 
         let dto = transform_report_to_dto(&report);
+        let mut expected = [later.to_string(), earlier.to_string()];
+        expected.sort();
 
-        assert_eq!(dto.iterations, 3);
-        assert_eq!(dto.rules.len(), 1);
-        assert_eq!(dto.rules[0].key, key.to_string());
-        assert_eq!(dto.rules[0].applied_count, 2);
-        assert_eq!(dto.rules[0].skipped_count, 1);
+        assert_eq!(dto.rewrite.iterations, 3);
+        assert_eq!(dto.rewrite.rules.len(), 2);
+        assert_eq!(dto.rewrite.rules[0].key, expected[0]);
+        assert_eq!(dto.rewrite.rules[1].key, expected[1]);
+        let applied = dto
+            .rewrite
+            .rules
+            .iter()
+            .find(|rule| rule.key == later.to_string())
+            .expect("later rule");
+        assert_eq!(applied.applied_count, 2);
+        assert_eq!(applied.skipped_count, 1);
     }
 
     #[test]
     fn transform_report_to_dto_reads_finalize_ast_report() {
-        let mut report = crate::TransformReport::default();
-        report
-            .finalize_ast
-            .steps
-            .merge_adjacent_primes
-            .applied_count = 4;
-        report
-            .finalize_ast
-            .steps
-            .normalize_text_sequences
-            .applied_count = 2;
+        let mut report = crate::diagnostics::TransformReport::default();
+        report.finalize_ast.prime_run_merges = 4;
+        report.finalize_ast.text_normalizations = 2;
 
         let dto = transform_report_to_dto(&report);
         let json = serde_json::to_value(&dto).unwrap();
 
-        assert_eq!(
-            dto.finalize_ast.steps.merge_adjacent_primes.applied_count,
-            4
-        );
-        assert_eq!(
-            dto.finalize_ast
-                .steps
-                .normalize_text_sequences
-                .applied_count,
-            2
-        );
-        assert_eq!(
-            json["finalize_ast"]["steps"]["merge_adjacent_primes"]["applied_count"],
-            4
-        );
-        assert_eq!(
-            json["finalize_ast"]["steps"]["normalize_text_sequences"]["applied_count"],
-            2
-        );
+        assert_eq!(dto.finalize_ast.prime_run_merges, 4);
+        assert_eq!(dto.finalize_ast.text_normalizations, 2);
+        assert_eq!(json["finalize_ast"]["prime_run_merges"], 4);
+        assert_eq!(json["finalize_ast"]["text_normalizations"], 2);
+        assert!(json["finalize_ast"].get("steps").is_none());
     }
 
     #[test]
     fn transform_report_to_dto_groups_flatten_groups_report() {
-        let mut report = crate::TransformReport::default();
+        let mut report = crate::diagnostics::TransformReport::default();
         report.flatten_groups.actions = texform_transform::FlattenGroupsActionCounts {
             removed_empty: 1,
             replaced_single_child: 2,
             inlined_multi_child: 3,
             unwrapped_slot: 4,
         };
-        report.flatten_groups.guards = texform_transform::FlattenGroupsGuardCounts {
-            preserve_group_containing_declarative_command: 5,
-            preserve_group_in_script_base_slot: 6,
-            preserve_group_inside_env_body: 7,
-            preserve_group_containing_infix: 8,
-            preserve_group_adjacent_to_command_like: 9,
-            preserve_group_as_argument_of_command: 10,
-            preserve_group_after_scripted_command_like: 11,
-            preserve_empty_group: 12,
-            preserve_group_with_lone_atom_spacing_char: 13,
-            preserve_group_starting_with_atom_spacing_char: 14,
-            preserve_group_containing_delimited_pair: 15,
+        report.flatten_groups.guard_hits = texform_transform::FlattenGroupsGuardCounts {
+            declarative_scope: 5,
+            script_base: 6,
+            env_body: 7,
+            infix_scope: 8,
+            command_contact: 9,
+            command_argument: 10,
+            command_contact_via_scripted_base: 11,
+            empty_group: 12,
+            lone_atom_spacing_char: 13,
+            leading_atom_spacing_char: 14,
+            delimited_pair: 15,
         };
 
         let dto = transform_report_to_dto(&report).flatten_groups;
@@ -687,25 +664,22 @@ mod tests {
         assert_eq!(dto.actions.replaced_single_child, 2);
         assert_eq!(dto.actions.inlined_multi_child, 3);
         assert_eq!(dto.actions.unwrapped_slot, 4);
-        assert_eq!(dto.guards.preserve_group_containing_declarative_command, 5);
-        assert_eq!(dto.guards.preserve_group_in_script_base_slot, 6);
-        assert_eq!(dto.guards.preserve_group_inside_env_body, 7);
-        assert_eq!(dto.guards.preserve_group_containing_infix, 8);
-        assert_eq!(dto.guards.preserve_group_adjacent_to_command_like, 9);
-        assert_eq!(dto.guards.preserve_group_as_argument_of_command, 10);
-        assert_eq!(dto.guards.preserve_group_after_scripted_command_like, 11);
-        assert_eq!(dto.guards.preserve_empty_group, 12);
-        assert_eq!(dto.guards.preserve_group_with_lone_atom_spacing_char, 13);
-        assert_eq!(
-            dto.guards.preserve_group_starting_with_atom_spacing_char,
-            14
-        );
-        assert_eq!(dto.guards.preserve_group_containing_delimited_pair, 15);
+        assert_eq!(dto.guard_hits.declarative_scope, 5);
+        assert_eq!(dto.guard_hits.script_base, 6);
+        assert_eq!(dto.guard_hits.env_body, 7);
+        assert_eq!(dto.guard_hits.infix_scope, 8);
+        assert_eq!(dto.guard_hits.command_contact, 9);
+        assert_eq!(dto.guard_hits.command_argument, 10);
+        assert_eq!(dto.guard_hits.command_contact_via_scripted_base, 11);
+        assert_eq!(dto.guard_hits.empty_group, 12);
+        assert_eq!(dto.guard_hits.lone_atom_spacing_char, 13);
+        assert_eq!(dto.guard_hits.leading_atom_spacing_char, 14);
+        assert_eq!(dto.guard_hits.delimited_pair, 15);
     }
 
     #[test]
     fn transform_report_to_dto_reads_lower_attributes_report_in_stable_order() {
-        let mut report = crate::TransformReport::default();
+        let mut report = crate::diagnostics::TransformReport::default();
         report.lower_attributes.eliminated_empty_segments = 2;
         report.lower_attributes.attributes.insert(
             texform_transform::AttributeSet::new(

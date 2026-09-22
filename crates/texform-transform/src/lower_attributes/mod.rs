@@ -11,6 +11,7 @@
 use std::collections::HashMap;
 
 use crate::ast::{ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, Slot};
+use crate::report::ReportRecorder;
 use crate::rewrite::helpers::mandatory_content_slot;
 
 mod generated {
@@ -321,13 +322,13 @@ impl LowerAttributesConfig {
     pub const DEFAULTS: Self = Self::ENABLED;
 }
 
-pub fn run(ast: &mut Ast, _config: &LowerAttributesConfig, report: &mut LowerAttributesReport) {
+pub fn run(ast: &mut Ast, _config: &LowerAttributesConfig, recorder: &mut ReportRecorder) {
     canonicalize_subtree(
         ast,
         ast.root(),
         AttributeState::default(),
         ContentMode::Math,
-        report,
+        recorder,
     );
 }
 
@@ -340,7 +341,7 @@ fn canonicalize_subtree(
     node_id: NodeId,
     inherited: AttributeState,
     mode: ContentMode,
-    report: &mut LowerAttributesReport,
+    recorder: &mut ReportRecorder,
 ) {
     let container_mode = match ast.node(node_id) {
         Node::Root { mode, .. } | Node::Group { mode, .. } => Some(*mode),
@@ -348,9 +349,9 @@ fn canonicalize_subtree(
     };
 
     if let Some(container_mode) = container_mode {
-        process_container(ast, node_id, inherited, container_mode, report);
+        process_container(ast, node_id, inherited, container_mode, recorder);
     } else {
-        canonicalize_content_slots(ast, node_id, inherited, mode, report);
+        canonicalize_content_slots(ast, node_id, inherited, mode, recorder);
     }
 }
 
@@ -359,7 +360,7 @@ fn canonicalize_content_slots(
     parent: NodeId,
     inherited: AttributeState,
     parent_mode: ContentMode,
-    report: &mut LowerAttributesReport,
+    recorder: &mut ReportRecorder,
 ) {
     let edges = ast.edges(parent);
     for (child, slot) in edges {
@@ -371,8 +372,8 @@ fn canonicalize_content_slots(
         ast.replace_content_child(child, placeholder);
 
         let collected =
-            collect_single_detached_node(ast, child, child_inherited, child_mode, report);
-        let rebuilt = segment_and_emit(ast, collected.pairs, child_inherited, child_mode, report);
+            collect_single_detached_node(ast, child, child_inherited, child_mode, recorder);
+        let rebuilt = segment_and_emit(ast, collected.pairs, child_inherited, child_mode, recorder);
         let replacement = single_content_replacement(ast, rebuilt, child_mode);
         ast.replace_content_child(placeholder, replacement);
         ast.remove_detached(placeholder);
@@ -435,7 +436,7 @@ fn process_container(
     container: NodeId,
     inherited: AttributeState,
     mode: ContentMode,
-    report: &mut LowerAttributesReport,
+    recorder: &mut ReportRecorder,
 ) {
     let len = ast.children(container).len();
     if len == 0 {
@@ -443,15 +444,15 @@ fn process_container(
     }
 
     let detached = ast.detach_children_range(container, 0..len);
-    let collected = collect_detached_children(ast, detached, inherited, mode, report);
+    let collected = collect_detached_children(ast, detached, inherited, mode, recorder);
     record_trailing_empty_segment(
         &collected.pairs,
         collected.final_state,
         inherited,
         mode,
-        report,
+        recorder,
     );
-    let rebuilt = segment_and_emit(ast, collected.pairs, inherited, mode, report);
+    let rebuilt = segment_and_emit(ast, collected.pairs, inherited, mode, recorder);
     let removed = ast.replace_children(container, rebuilt);
     debug_assert!(removed.is_empty());
 }
@@ -461,13 +462,13 @@ fn collect_detached_children(
     children: Vec<NodeId>,
     inherited: AttributeState,
     mode: ContentMode,
-    report: &mut LowerAttributesReport,
+    recorder: &mut ReportRecorder,
 ) -> CollectResult {
     let mut pairs = Vec::new();
     let mut state = inherited;
 
     for child in children {
-        collect_detached_child(ast, child, &mut state, mode, report, &mut pairs);
+        collect_detached_child(ast, child, &mut state, mode, recorder, &mut pairs);
     }
 
     CollectResult {
@@ -481,11 +482,11 @@ fn collect_detached_child(
     child: NodeId,
     state: &mut AttributeState,
     mode: ContentMode,
-    report: &mut LowerAttributesReport,
+    recorder: &mut ReportRecorder,
     pairs: &mut Vec<Pair>,
 ) {
     if let Some(entry) = lookup_declarative_at(ast, child, mode) {
-        consume_declarative(ast, child, state, entry, report);
+        consume_declarative(ast, child, state, entry, recorder);
         return;
     }
 
@@ -493,10 +494,12 @@ fn collect_detached_child(
         && mandatory_content_child(ast, child).is_some()
     {
         let previous = *state;
-        let body_pairs = collect_prefix_body(ast, child, previous, entry, mode, report);
-        if prefix_is_fully_absorbed(previous, entry.set, &body_pairs) {
-            report.record_redundant_prefix(entry.set);
-        }
+        let body_pairs = collect_prefix_body(ast, child, previous, entry, mode, recorder);
+        recorder.lower_attributes(|report| {
+            if prefix_is_fully_absorbed(previous, entry.set, &body_pairs) {
+                report.record_redundant_prefix(entry.set);
+            }
+        });
         pairs.extend(body_pairs);
         ast.remove_detached(child);
         return;
@@ -504,11 +507,13 @@ fn collect_detached_child(
 
     if let Some((entry, child_mode)) = lookup_prefix_for_content_mode(ast, child, mode) {
         let previous = inherited_for_child_mode(*state, mode, child_mode);
-        let body_pairs = collect_prefix_body(ast, child, previous, entry, child_mode, report);
-        if prefix_is_fully_absorbed(previous, entry.set, &body_pairs) {
-            report.record_redundant_prefix(entry.set);
-        }
-        let rebuilt = segment_and_emit(ast, body_pairs, previous, child_mode, report);
+        let body_pairs = collect_prefix_body(ast, child, previous, entry, child_mode, recorder);
+        recorder.lower_attributes(|report| {
+            if prefix_is_fully_absorbed(previous, entry.set, &body_pairs) {
+                report.record_redundant_prefix(entry.set);
+            }
+        });
+        let rebuilt = segment_and_emit(ast, body_pairs, previous, child_mode, recorder);
         pairs.extend(rebuilt.into_iter().map(|node| Pair {
             state: *state,
             node,
@@ -518,11 +523,11 @@ fn collect_detached_child(
     }
 
     if is_explicit_group(ast, child) {
-        pairs.extend(collect_explicit_group(ast, child, *state, mode, report));
+        pairs.extend(collect_explicit_group(ast, child, *state, mode, recorder));
         return;
     }
 
-    canonicalize_subtree(ast, child, *state, mode, report);
+    canonicalize_subtree(ast, child, *state, mode, recorder);
     pairs.push(Pair {
         state: *state,
         node: child,
@@ -534,11 +539,11 @@ fn consume_declarative(
     node: NodeId,
     state: &mut AttributeState,
     entry: &'static DeclarativeEntry,
-    report: &mut LowerAttributesReport,
+    recorder: &mut ReportRecorder,
 ) {
-    report.record_consumed_declarative(entry.set);
+    recorder.lower_attributes(|report| report.record_consumed_declarative(entry.set));
     if !state.set(entry.set) {
-        report.record_redundant_declarative(entry.set);
+        recorder.lower_attributes(|report| report.record_redundant_declarative(entry.set));
     }
     ast.remove_detached(node);
 }
@@ -549,9 +554,9 @@ fn collect_prefix_body(
     previous: AttributeState,
     entry: &'static PrefixEntry,
     mode: ContentMode,
-    report: &mut LowerAttributesReport,
+    recorder: &mut ReportRecorder,
 ) -> Vec<Pair> {
-    report.record_consumed_prefix(entry.set);
+    recorder.lower_attributes(|report| report.record_consumed_prefix(entry.set));
     let mut body_state = previous;
     body_state.set(entry.set);
     let body = mandatory_content_child(ast, prefix).expect("registered prefix should have a body");
@@ -565,13 +570,13 @@ fn collect_prefix_body(
             let detached = ast.detach_children_range(body, 0..len);
             detach_body_from_prefix(ast, body, mode);
             ast.remove_detached(body);
-            let collected = collect_detached_children(ast, detached, body_state, mode, report);
+            let collected = collect_detached_children(ast, detached, body_state, mode, recorder);
             record_trailing_empty_segment(
                 &collected.pairs,
                 collected.final_state,
                 body_state,
                 mode,
-                report,
+                recorder,
             );
             collected.pairs
         }
@@ -580,11 +585,11 @@ fn collect_prefix_body(
             ..
         } => {
             detach_body_from_prefix(ast, body, mode);
-            collect_explicit_group(ast, body, body_state, mode, report)
+            collect_explicit_group(ast, body, body_state, mode, recorder)
         }
         _ => {
             detach_body_from_prefix(ast, body, mode);
-            collect_single_detached_node(ast, body, body_state, mode, report).pairs
+            collect_single_detached_node(ast, body, body_state, mode, recorder).pairs
         }
     }
 }
@@ -599,10 +604,10 @@ fn collect_explicit_group(
     group: NodeId,
     inherited: AttributeState,
     mode: ContentMode,
-    report: &mut LowerAttributesReport,
+    recorder: &mut ReportRecorder,
 ) -> Vec<Pair> {
     if !has_direct_declarative_marker(ast, group, mode) {
-        canonicalize_subtree(ast, group, inherited, mode, report);
+        canonicalize_subtree(ast, group, inherited, mode, recorder);
         return vec![Pair {
             state: inherited,
             node: group,
@@ -611,8 +616,8 @@ fn collect_explicit_group(
 
     let len = ast.children(group).len();
     let detached = ast.detach_children_range(group, 0..len);
-    let inner = collect_detached_children(ast, detached, inherited, mode, report);
-    record_trailing_empty_segment(&inner.pairs, inner.final_state, inherited, mode, report);
+    let inner = collect_detached_children(ast, detached, inherited, mode, recorder);
+    record_trailing_empty_segment(&inner.pairs, inner.final_state, inherited, mode, recorder);
 
     if !inner.pairs.is_empty() && inner.pairs.iter().any(|pair| pair.state != inherited) {
         ast.remove_detached(group);
@@ -633,12 +638,12 @@ fn collect_single_detached_node(
     node: NodeId,
     inherited: AttributeState,
     mode: ContentMode,
-    report: &mut LowerAttributesReport,
+    recorder: &mut ReportRecorder,
 ) -> CollectResult {
     let mut pairs = Vec::new();
     let mut state = inherited;
-    collect_detached_child(ast, node, &mut state, mode, report, &mut pairs);
-    record_trailing_empty_segment(&pairs, state, inherited, mode, report);
+    collect_detached_child(ast, node, &mut state, mode, recorder, &mut pairs);
+    record_trailing_empty_segment(&pairs, state, inherited, mode, recorder);
     CollectResult {
         pairs,
         final_state: state,
@@ -650,12 +655,14 @@ fn record_trailing_empty_segment(
     final_state: AttributeState,
     inherited: AttributeState,
     mode: ContentMode,
-    report: &mut LowerAttributesReport,
+    recorder: &mut ReportRecorder,
 ) {
-    let segment_state = pairs.last().map_or(inherited, |pair| pair.state);
-    if !final_state.diff_axes(segment_state, mode).is_empty() {
-        report.eliminated_empty_segments += 1;
-    }
+    recorder.lower_attributes(|report| {
+        let segment_state = pairs.last().map_or(inherited, |pair| pair.state);
+        if !final_state.diff_axes(segment_state, mode).is_empty() {
+            report.eliminated_empty_segments += 1;
+        }
+    });
 }
 
 fn has_direct_declarative_marker(ast: &Ast, group: NodeId, mode: ContentMode) -> bool {
@@ -722,7 +729,7 @@ fn segment_and_emit(
     pairs: Vec<Pair>,
     inherited: AttributeState,
     mode: ContentMode,
-    report: &mut LowerAttributesReport,
+    recorder: &mut ReportRecorder,
 ) -> Vec<NodeId> {
     let mut rebuilt = Vec::new();
     let mut iter = pairs.into_iter().peekable();
@@ -744,7 +751,7 @@ fn segment_and_emit(
             segment_state,
             inherited,
             mode,
-            report,
+            recorder,
         ));
     }
 
@@ -822,7 +829,7 @@ fn wrap_with_canonical(
     state: AttributeState,
     inherited: AttributeState,
     mode: ContentMode,
-    report: &mut LowerAttributesReport,
+    recorder: &mut ReportRecorder,
 ) -> Vec<NodeId> {
     debug_assert!(
         !children.is_empty(),
@@ -830,7 +837,7 @@ fn wrap_with_canonical(
     );
 
     if matches!(mode, ContentMode::Text) {
-        return wrap_segment_with_canonical(ast, children, state, inherited, mode, report);
+        return wrap_segment_with_canonical(ast, children, state, inherited, mode, recorder);
     }
 
     let mut rebuilt = Vec::new();
@@ -840,7 +847,7 @@ fn wrap_with_canonical(
             continue;
         }
         rebuilt.extend(wrap_segment_with_canonical(
-            ast, run, state, inherited, mode, report,
+            ast, run, state, inherited, mode, recorder,
         ));
     }
     rebuilt
@@ -856,7 +863,7 @@ fn wrap_segment_with_canonical(
     state: AttributeState,
     inherited: AttributeState,
     mode: ContentMode,
-    report: &mut LowerAttributesReport,
+    recorder: &mut ReportRecorder,
 ) -> Vec<NodeId> {
     for attr in emit_axis_order(state, inherited, mode) {
         let Some(value) = state.get(attr) else {
@@ -877,11 +884,15 @@ fn wrap_segment_with_canonical(
                 args: vec![mandatory_content_slot(group, mode)],
                 known: true,
             });
-            report.record_emitted_prefix(AttributeSet::new(attr, value));
+            recorder.lower_attributes(|report| {
+                report.record_emitted_prefix(AttributeSet::new(attr, value))
+            });
             children = vec![command];
         } else {
             children.insert(0, new_declarative_node(ast, target.declarative));
-            report.record_emitted_declarative(AttributeSet::new(attr, value));
+            recorder.lower_attributes(|report| {
+                report.record_emitted_declarative(AttributeSet::new(attr, value));
+            });
         }
     }
 

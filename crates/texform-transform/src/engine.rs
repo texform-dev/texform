@@ -24,7 +24,7 @@ use crate::context::TransformContext;
 use crate::error::TransformError;
 use crate::flatten_groups::FlattenGroupsGuardsOverlay;
 use crate::parse::ParseContext;
-use crate::report::TransformReport;
+use crate::report::ReportRecorder;
 use crate::{finalize_ast, flatten_groups, lower_attributes, rewrite};
 
 pub(crate) fn execute(
@@ -32,21 +32,11 @@ pub(crate) fn execute(
     ast: &mut Ast,
     parse_ctx: &ParseContext,
     cfg: &TransformConfig,
-) -> Result<TransformReport, TransformError> {
-    execute_with_flatten_groups_overlay(tctx, ast, parse_ctx, cfg, None)
-}
-
-pub(crate) fn execute_with_flatten_groups_overlay(
-    tctx: &TransformContext,
-    ast: &mut Ast,
-    parse_ctx: &ParseContext,
-    cfg: &TransformConfig,
     flatten_groups_overlay: Option<&FlattenGroupsGuardsOverlay>,
-) -> Result<TransformReport, TransformError> {
-    let mut report = TransformReport::default();
-
+    recorder: &mut ReportRecorder,
+) -> Result<(), TransformError> {
     if cfg.lower_attributes.enabled {
-        lower_attributes::run(ast, &cfg.lower_attributes, &mut report.lower_attributes);
+        lower_attributes::run(ast, &cfg.lower_attributes, recorder);
     }
 
     if cfg.rewrite.enabled {
@@ -55,16 +45,16 @@ pub(crate) fn execute_with_flatten_groups_overlay(
             parse_ctx,
             tctx.rewrite_plan(),
             cfg.rewrite.max_iterations,
-            &mut report.rewrite,
+            recorder,
         )
         .map_err(TransformError::Rewrite)?;
     }
 
     if cfg.lower_attributes.enabled {
-        lower_attributes::run(ast, &cfg.lower_attributes, &mut report.lower_attributes);
+        lower_attributes::run(ast, &cfg.lower_attributes, recorder);
     }
 
-    finalize_ast::run(ast, &cfg.finalize_ast, &mut report.finalize_ast);
+    finalize_ast::run(ast, &cfg.finalize_ast, recorder);
 
     if cfg.flatten_groups.enabled {
         let mut guards =
@@ -72,12 +62,12 @@ pub(crate) fn execute_with_flatten_groups_overlay(
         if let Some(overlay) = flatten_groups_overlay {
             guards.apply_overlay(*overlay);
         }
-        flatten_groups::run(ast, &guards, &mut report.flatten_groups);
+        flatten_groups::run(ast, &guards, recorder);
         // FlattenGroups can expose new adjacent Prime / Text nodes. Re-run the
         // same idempotent FinalizeAst pass so sequence canonicalization is the
         // last AST mutation. Skip when FlattenGroups is off: the first pass
         // already finished the mutation pipeline for that input.
-        finalize_ast::run(ast, &cfg.finalize_ast, &mut report.finalize_ast);
+        finalize_ast::run(ast, &cfg.finalize_ast, recorder);
     }
 
     if cfg.rewrite.enabled
@@ -97,7 +87,7 @@ pub(crate) fn execute_with_flatten_groups_overlay(
         ));
     }
 
-    Ok(report)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -131,9 +121,11 @@ mod tests {
             plan,
         );
 
-        let report = context.run(&mut ast, &parse_ctx).expect(
-            "post LowerAttributes should clear the generated bold prefix before contract check",
-        );
+        let report = context
+            .run_with_report(&mut ast, &parse_ctx, context.default_config())
+            .expect(
+                "post LowerAttributes should clear the generated bold prefix before contract check",
+            );
 
         ast.assert_invariants();
         assert_eq!(serialize(&ast), r"\mathrm { x }");

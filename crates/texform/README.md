@@ -17,8 +17,8 @@ use texform::{Profile, TransformEngine};
 
 // Normalize a formula into a canonical form chosen by profile.
 let engine = TransformEngine::builder().profile(Profile::Corpus).build()?;
-let result = engine.normalize(r"a \over b")?;
-assert_eq!(result.normalized, r"\frac { a } { b }");
+let normalized = engine.normalize(r"a \over b")?;
+assert_eq!(normalized, r"\frac { a } { b }");
 
 // Parse through the engine, transform the live document in place, then serialize.
 let (mut document, _) = engine.parser().parse(r"a \over b").try_into_document()?;

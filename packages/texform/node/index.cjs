@@ -169,9 +169,19 @@ class TransformEngine {
   normalize(src, options) {
     return wrapTexformError(() => this.inner.normalize(src, options ?? undefined));
   }
+  normalizeWithReport(src, options) {
+    return wrapTexformError(() =>
+      this.inner.normalizeWithReport(src, options ?? undefined),
+    );
+  }
   transform(document, config) {
     return wrapTexformError(() =>
       this.inner.transform(document.inner, config ?? undefined),
+    );
+  }
+  transformWithReport(document, config) {
+    return wrapTexformError(() =>
+      this.inner.transformWithReport(document.inner, config ?? undefined),
     );
   }
   lookupCommand(name, mode) {

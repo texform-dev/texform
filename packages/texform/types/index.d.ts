@@ -1380,74 +1380,6 @@ export interface SerializeOptions {
 }
 
 /**
- * Phase-oriented report describing how a normalization run changed the tree.
- *
- * Returned by {@link TransformEngine.transform} and carried on the `report`
- * field of {@link TransformResult}. Field names are camelCase
- * (`iterations`, `rules`, `finalizeAst`, `flattenGroups`, `lowerAttributes`),
- * the JavaScript view of the same data the Python binding exposes in
- * snake_case.
- */
-export interface TransformReport {
-  /** Fixed-point rewrite iterations for this normalization run. */
-  iterations: number;
-  /** Rewrite rules that were attempted, sorted by stable rule key. */
-  rules: Array<{ key: string; appliedCount: number; skippedCount: number }>;
-  /** The FinalizeAst phase report (local AST cleanup after rewriting). */
-  finalizeAst: {
-    steps: {
-      /** Adjacent `Prime` nodes merged into one. */
-      mergeAdjacentPrimes: {
-        appliedCount: number;
-      };
-      /** Text-sequence merge, whitespace collapse, and empty-text cleanup. */
-      normalizeTextSequences: {
-        appliedCount: number;
-      };
-    };
-  };
-  /** The LowerAttributes phase report (font/style canonicalization). */
-  lowerAttributes: {
-    /** Use the `(attr, value)` pair as the stable lower-attribute unit key. */
-    attributes: Array<{
-      attr: string;
-      value: string;
-      /** Input forms consumed by LowerAttributes. */
-      consumed: AttributeFormCounts;
-      /** Consumed forms that did not change the emitted attribute state. */
-      redundant: AttributeFormCounts;
-      /** Canonical forms emitted by LowerAttributes. */
-      emitted: AttributeFormCounts;
-    }>;
-    eliminatedEmptySegments: number;
-  };
-  /** The FlattenGroups phase report (redundant-brace removal). */
-  flattenGroups: {
-    /** How many flatten actions of each kind fired. */
-    actions: {
-      removedEmpty: number;
-      replacedSingleChild: number;
-      inlinedMultiChild: number;
-      unwrappedSlot: number;
-    };
-    /** Preserve-guard hit counters; each guard blocks a flatten action in a specific context. */
-    guards: {
-      preserveGroupContainingDeclarativeCommand: number;
-      preserveGroupInScriptBaseSlot: number;
-      preserveGroupInsideEnvBody: number;
-      preserveGroupContainingInfix: number;
-      preserveGroupAdjacentToCommandLike: number;
-      preserveGroupAsArgumentOfCommand: number;
-      preserveGroupAfterScriptedCommandLike: number;
-      preserveEmptyGroup: number;
-      preserveGroupWithLoneAtomSpacingChar: number;
-      preserveGroupStartingWithAtomSpacingChar: number;
-      preserveGroupContainingDelimitedPair: number;
-    };
-  };
-}
-
-/**
  * Counts of an attribute form split by carrier: `declaratives` (scope-affecting
  * declarations such as `{\bf ...}`) and `prefixes` (prefix commands such as
  * `\mathbf{...}`).
@@ -1460,13 +1392,152 @@ export interface AttributeFormCounts {
 }
 
 /**
- * The result of {@link TransformEngine.normalize}: the canonical LaTeX string
- * plus the phase-oriented {@link TransformReport}.
+ * Activity for one `(attr, value)` pair in LowerAttributes.
  */
-export interface TransformResult {
+export interface AttributeStat {
+  /** Stable attribute name, such as `"math_font"` or `"text_size"`. */
+  attr: string;
+  /** Stable value token for that attribute. */
+  value: string;
+  /** Input forms consumed by LowerAttributes. */
+  consumed: AttributeFormCounts;
+  /** Consumed forms that did not change the emitted attribute state. */
+  redundant: AttributeFormCounts;
+  /** Canonical forms emitted by LowerAttributes. */
+  emitted: AttributeFormCounts;
+}
+
+/**
+ * The LowerAttributes phase report.
+ */
+export interface LowerAttributesReport {
+  /** Per-attribute activity, sorted by `attr` then `value`. */
+  attributes: AttributeStat[];
+  /** Empty attribute segments removed by the phase. */
+  eliminatedEmptySegments: number;
+}
+
+/**
+ * One rewrite rule's outcome for a single call.
+ */
+export interface RewriteRuleStat {
+  /** Stable rule key. */
+  key: string;
+  /** Times the rule applied. */
+  appliedCount: number;
+  /** Times the scheduler matched the rule and apply returned skipped. */
+  skippedCount: number;
+}
+
+/**
+ * The Rewrite phase report.
+ */
+export interface RewriteReport {
+  /**
+   * Fixed-point passes, including the final unchanged convergence check.
+   * Zero when the phase is disabled or no rules are scheduled.
+   */
+  iterations: number;
+  /** Rules that recorded activity, sorted by `key`. */
+  rules: RewriteRuleStat[];
+}
+
+/**
+ * The FinalizeAst phase report.
+ */
+export interface FinalizeAstReport {
+  /** Contiguous `Prime` runs merged. Each run counts once. */
+  primeRunMerges: number;
+  /** Text segments or text argument slots whose content changed. */
+  textNormalizations: number;
+}
+
+/**
+ * Flatten actions that changed the tree.
+ */
+export interface FlattenGroupsActionCounts {
+  /** Empty groups removed. */
+  removedEmpty: number;
+  /** Groups replaced by their only child. */
+  replacedSingleChild: number;
+  /** Multi-child groups inlined into the parent. */
+  inlinedMultiChild: number;
+  /** Slot wrappers removed. */
+  unwrappedSlot: number;
+}
+
+/**
+ * Preserve-guard hits for one FlattenGroups run.
+ *
+ * A hit is the first guard branch reached for a group, plus the scripted-base
+ * sub-count. `commandContactViaScriptedBase` is also included in
+ * `commandContact`. These counters are not a partition of preserved groups.
+ */
+export interface FlattenGroupsGuardCounts {
+  /** Declarative-scope protection. */
+  declarativeScope: number;
+  /** Script-base protection. */
+  scriptBase: number;
+  /** Environment-body protection. */
+  envBody: number;
+  /** Infix-scope protection. */
+  infixScope: number;
+  /** Command-contact protection. */
+  commandContact: number;
+  /** Command-argument boundary protection. */
+  commandArgument: number;
+  /** Command contact established through a scripted base. */
+  commandContactViaScriptedBase: number;
+  /** Empty-group protection. */
+  emptyGroup: number;
+  /** Single spacing-character protection. */
+  loneAtomSpacingChar: number;
+  /** Leading spacing-character protection. */
+  leadingAtomSpacingChar: number;
+  /** Delimited-pair protection. */
+  delimitedPair: number;
+}
+
+/**
+ * The FlattenGroups phase report.
+ */
+export interface FlattenGroupsReport {
+  /** Flatten actions that changed the tree. */
+  actions: FlattenGroupsActionCounts;
+  /** Preserve-guard hits for this call. */
+  guardHits: FlattenGroupsGuardCounts;
+}
+
+/**
+ * Diagnostic report for one explicit report call.
+ *
+ * Output text and errors follow the ordinary transform contract. Report
+ * fields, phase divisions, and these counters are diagnostic: they are not
+ * part of the stable compatibility promise. A disabled phase stays present as
+ * zeros or an empty array. Field names are camelCase, the JavaScript view of
+ * the snake_case data exposed by the Python binding.
+ */
+export interface TransformReport {
+  /** LowerAttributes activity, summed across its two passes. */
+  lowerAttributes: LowerAttributesReport;
+  /** Rewrite iterations and per-rule outcomes. */
+  rewrite: RewriteReport;
+  /** Prime merges and text normalizations. */
+  finalizeAst: FinalizeAstReport;
+  /** Flatten actions and guard hits. */
+  flattenGroups: FlattenGroupsReport;
+}
+
+/**
+ * Text plus the diagnostic report from {@link TransformEngine.normalizeWithReport}.
+ *
+ * Plain {@link TransformEngine.normalize} returns the string directly and does
+ * not build this object.
+ */
+export interface NormalizeReportResult {
   /** The canonical LaTeX after parsing and normalization. */
   normalized: string;
-  /** The report describing which phases and rules changed the tree. */
+  /** The diagnostic report for this call. */
   report: TransformReport;
 }
 
@@ -1833,8 +1904,9 @@ export class Parser {
  * import { TransformEngine } from 'texform';
  *
  * const engine = new TransformEngine({ profile: 'corpus' });
- * engine.normalize(String.raw`a \over b`).normalized; // '\\frac { a } { b }'
+ * engine.normalize(String.raw`a \over b`); // '\\frac { a } { b }'
  * engine.normalize(String.raw`a \over b`, { rewrite: { enabled: false } });
+ * engine.normalizeWithReport(String.raw`a \over b`).report.rewrite.iterations;
  * ```
  */
 export class TransformEngine {
@@ -1894,17 +1966,32 @@ export class TransformEngine {
    * @param config - A {@link NormalizeConfig} overlay, or omit/`null` to use
    *   the engine defaults. The same `{ rewrite: { enabled: false } }` shape is
    *   accepted by {@link TransformEngine.transform}.
-   * @returns The normalized string and its {@link TransformReport}.
+   * @returns The canonical LaTeX string. This path does not build a report.
    * @example
    * ```ts
    * const engine = new TransformEngine({ profile: 'corpus' });
-   * engine.normalize(String.raw`\dv{f}{x}`).normalized;
+   * engine.normalize(String.raw`\dv{f}{x}`);
    * // '\\frac { \\mathrm { d } f } { \\mathrm { d } x }'
    * ```
    */
-  normalize(src: string, config?: NormalizeConfig | null): TransformResult;
+  normalize(src: string, config?: NormalizeConfig | null): string;
   /**
-   * Transform a live {@link Document} in place and return the report.
+   * Parse, normalize, and serialize a formula, returning text and a diagnostic report.
+   *
+   * Accepts the same source and {@link NormalizeConfig} overlay as
+   * {@link TransformEngine.normalize}. Output text and errors follow that
+   * contract. Report fields, phase divisions, and counters are diagnostic and
+   * are not part of the stable compatibility promise. A failure does not
+   * return a partial report.
+   *
+   * @param src - The LaTeX source string.
+   * @param config - A {@link NormalizeConfig} overlay, or omit/`null` to use
+   *   the engine defaults.
+   * @returns The normalized string and its {@link TransformReport}.
+   */
+  normalizeWithReport(src: string, config?: NormalizeConfig | null): NormalizeReportResult;
+  /**
+   * Transform a live {@link Document} in place.
    *
    * The document must have come from this engine's {@link TransformEngine.parse}
    * (it carries the matching parser identity). A document created with
@@ -1912,24 +1999,46 @@ export class TransformEngine {
    * serialized, but `transform` rejects it with {@link TexformTransformError}.
    * A document that {@link Document.hasErrors} is read-only and cannot be
    * transformed; this precondition error is surfaced as {@link TexformTransformError}.
+   * This path returns no value and does not build a report.
    *
    * @param document - The live document to update in place.
    * @param config - A {@link TransformConfig} overlay, or omit/`null` to use
    *   the profile defaults. Nested per-phase shape; does not accept parse
    *   options.
-   * @returns The phase-oriented transform report.
    * @example
    * ```ts
    * const engine = new TransformEngine({ profile: 'corpus' });
    * const result = engine.parse(String.raw`a \over b`);
    * if (result.document) {
-   *   const report = engine.transform(result.document);
+   *   engine.transform(result.document);
    *   result.document.toLatex(); // '\\frac { a } { b }'
-   *   report.rules.some((rule) => rule.key === 'base/over-to-frac'); // true
    * }
    * ```
    */
-  transform(document: Document, config?: TransformConfig | null): TransformReport;
+  transform(document: Document, config?: TransformConfig | null): void;
+  /**
+   * Transform a live {@link Document} in place and return its diagnostic report.
+   *
+   * Accepts the same document and {@link TransformConfig} overlay as
+   * {@link TransformEngine.transform}. Ownership, completeness, and errors
+   * follow that contract. The report is diagnostic and is not part of the
+   * stable compatibility promise. A failure does not return a partial report.
+   *
+   * @param document - The live document to update in place.
+   * @param config - A {@link TransformConfig} overlay, or omit/`null` to use
+   *   the profile defaults.
+   * @returns The diagnostic transform report.
+   * @example
+   * ```ts
+   * const engine = new TransformEngine({ profile: 'corpus' });
+   * const result = engine.parse(String.raw`a \over b`);
+   * if (result.document) {
+   *   const report = engine.transformWithReport(result.document);
+   *   report.rewrite.rules.some((rule) => rule.key === 'base/over-to-frac');
+   * }
+   * ```
+   */
+  transformWithReport(document: Document, config?: TransformConfig | null): TransformReport;
   /**
    * Whether `name` is a delimiter-control command. See
    * {@link Parser.isDelimiterControl}.

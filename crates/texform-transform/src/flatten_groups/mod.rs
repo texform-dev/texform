@@ -3,6 +3,7 @@
 use serde::{Deserialize, Deserializer};
 
 use crate::ast::{ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, ParentLink, Slot};
+use crate::report::ReportRecorder;
 
 /// Public per-run switches for FlattenGroups: whether the phase runs, and
 /// whether rendered-spacing groups are kept.
@@ -192,7 +193,7 @@ pub struct FlattenGroupsReport {
     /// Per-guard counts of flattenings that were prevented. Counters are
     /// short-circuit: when several guards match the same group, only the first
     /// one in evaluation order is incremented.
-    pub guards: FlattenGroupsGuardCounts,
+    pub guard_hits: FlattenGroupsGuardCounts,
 }
 
 /// How many groups FlattenGroups removed, split by the action taken.
@@ -211,46 +212,47 @@ pub struct FlattenGroupsActionCounts {
 
 /// How often each preserve guard prevented a group from being flattened.
 ///
-/// Counter names keep the historical `preserve_*` report contract. They map
-/// one-to-one onto [`FlattenGroupsGuards`] fields and still count the first
-/// matching situation in evaluation order.
+/// Names describe the hit, not the configuration switch that enabled the
+/// check. Counters still record the first matching situation in evaluation
+/// order. `command_contact_via_scripted_base` is also included in
+/// `command_contact` and must not be added to it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FlattenGroupsGuardCounts {
     /// Group kept because its subtree holds a declarative command, so
     /// flattening would leak declarative scope into following siblings.
-    pub preserve_group_containing_declarative_command: usize,
+    pub declarative_scope: usize,
     /// Group kept because it occupies a `ScriptBase` slot, so flattening would
     /// change which atom a sub/superscript attaches to.
-    pub preserve_group_in_script_base_slot: usize,
+    pub script_base: usize,
     /// Group kept because it sits inside an environment body, where flattening
     /// would blur cell boundaries or intra-cell spacing.
-    pub preserve_group_inside_env_body: usize,
+    pub env_body: usize,
     /// Group kept because its subtree holds an `\over`-style infix, so
     /// flattening would change the infix scope.
-    pub preserve_group_containing_infix: usize,
+    pub infix_scope: usize,
     /// Group kept because its preceding sibling or first child is command-like,
     /// where flattening would change atom spacing.
-    pub preserve_group_adjacent_to_command_like: usize,
+    pub command_contact: usize,
     /// Group kept because it is a risky singleton used directly as a command
     /// argument, preserving one spacing boundary.
-    pub preserve_group_as_argument_of_command: usize,
+    pub command_argument: usize,
     /// Adjacency check above matched only after recursing through a `Scripted`
-    /// base; counted in addition to `preserve_group_adjacent_to_command_like`.
-    pub preserve_group_after_scripted_command_like: usize,
+    /// base; counted in addition to `command_contact`.
+    pub command_contact_via_scripted_base: usize,
     /// Empty group kept for its spacing / kerning effect.
-    pub preserve_empty_group: usize,
+    pub empty_group: usize,
     /// Singleton group kept because it holds a single math atom-spacing
     /// character.
-    pub preserve_group_with_lone_atom_spacing_char: usize,
+    pub lone_atom_spacing_char: usize,
     /// Multi-child group kept because its first child is a math atom-spacing
     /// character.
-    pub preserve_group_starting_with_atom_spacing_char: usize,
+    pub leading_atom_spacing_char: usize,
     /// Group kept because its subtree holds a `\left...\right` delimited pair.
-    pub preserve_group_containing_delimited_pair: usize,
+    pub delimited_pair: usize,
 }
 
-pub fn run(ast: &mut Ast, guards: &FlattenGroupsGuards, report: &mut FlattenGroupsReport) {
-    visit(ast, ast.root(), false, guards, report);
+pub fn run(ast: &mut Ast, guards: &FlattenGroupsGuards, recorder: &mut ReportRecorder) {
+    visit(ast, ast.root(), false, guards, recorder);
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -265,7 +267,7 @@ fn visit(
     node: NodeId,
     in_env_body: bool,
     guards: &FlattenGroupsGuards,
-    report: &mut FlattenGroupsReport,
+    recorder: &mut ReportRecorder,
 ) -> SubtreeFlags {
     let edges = ast.edges(node);
     let mut flags = SubtreeFlags {
@@ -286,7 +288,7 @@ fn visit(
                 child,
                 in_env_body || slot == Slot::EnvBody,
                 guards,
-                report,
+                recorder,
             );
             flags.has_declarative |= child_flags.has_declarative;
             flags.has_infix |= child_flags.has_infix;
@@ -295,7 +297,7 @@ fn visit(
     }
 
     if ast.contains(node) {
-        try_unwrap(ast, node, flags, in_env_body, guards, report);
+        try_unwrap(ast, node, flags, in_env_body, guards, recorder);
     }
 
     flags
@@ -307,7 +309,7 @@ fn try_unwrap(
     flags: SubtreeFlags,
     in_env_body: bool,
     guards: &FlattenGroupsGuards,
-    report: &mut FlattenGroupsReport,
+    recorder: &mut ReportRecorder,
 ) {
     let (kind, mode, child_count) = match ast.node(node) {
         Node::Group {
@@ -321,25 +323,25 @@ fn try_unwrap(
         return;
     }
     if guards.declarative_scope && flags.has_declarative {
-        report.guards.preserve_group_containing_declarative_command += 1;
+        recorder.flatten_groups(|report| report.guard_hits.declarative_scope += 1);
         return;
     }
     let Some(link) = ast.parent(node) else {
         return;
     };
     if guards.env_body && in_env_body && !is_lone_prime_superscript_group(ast, node, link) {
-        report.guards.preserve_group_inside_env_body += 1;
+        recorder.flatten_groups(|report| report.guard_hits.env_body += 1);
         return;
     }
     if !slot_can_unwrap(link.slot, child_count) {
         return;
     }
     if matches!(link.slot, Slot::GroupChild(_)) && guards.infix_scope && flags.has_infix {
-        report.guards.preserve_group_containing_infix += 1;
+        recorder.flatten_groups(|report| report.guard_hits.infix_scope += 1);
         return;
     }
     if matches!(link.slot, Slot::GroupChild(_)) && guards.delimited_pair && flags.has_delimited {
-        report.guards.preserve_group_containing_delimited_pair += 1;
+        recorder.flatten_groups(|report| report.guard_hits.delimited_pair += 1);
         return;
     }
     if let Slot::GroupChild(index) = link.slot
@@ -353,10 +355,12 @@ fn try_unwrap(
             guards.command_like_includes_scripted_base,
         );
         if command_contact.touches_command {
-            report.guards.preserve_group_adjacent_to_command_like += 1;
-            if command_contact.used_scripted_base {
-                report.guards.preserve_group_after_scripted_command_like += 1;
-            }
+            recorder.flatten_groups(|report| {
+                report.guard_hits.command_contact += 1;
+                if command_contact.used_scripted_base {
+                    report.guard_hits.command_contact_via_scripted_base += 1;
+                }
+            });
             return;
         }
     }
@@ -366,15 +370,15 @@ fn try_unwrap(
         .is_some_and(|child| is_atom_spacing_char(ast, *child));
     if matches!(link.slot, Slot::GroupChild(_)) {
         if guards.empty_group && child_count == 0 {
-            report.guards.preserve_empty_group += 1;
+            recorder.flatten_groups(|report| report.guard_hits.empty_group += 1);
             return;
         }
         if guards.lone_atom_spacing_char && child_count == 1 && first_is_atom {
-            report.guards.preserve_group_with_lone_atom_spacing_char += 1;
+            recorder.flatten_groups(|report| report.guard_hits.lone_atom_spacing_char += 1);
             return;
         }
         if guards.leading_atom_spacing_char && child_count > 1 && first_is_atom {
-            report.guards.preserve_group_starting_with_atom_spacing_char += 1;
+            recorder.flatten_groups(|report| report.guard_hits.leading_atom_spacing_char += 1);
             return;
         }
     }
@@ -383,14 +387,14 @@ fn try_unwrap(
         && child_count == 1
         && first_is_atom
     {
-        report.guards.preserve_group_with_lone_atom_spacing_char += 1;
+        recorder.flatten_groups(|report| report.guard_hits.lone_atom_spacing_char += 1);
         return;
     }
     if matches!(link.slot, Slot::Argument(_))
         && guards.command_argument
         && group_as_argument_of_command_needs_boundary(ast, node)
     {
-        report.guards.preserve_group_as_argument_of_command += 1;
+        recorder.flatten_groups(|report| report.guard_hits.command_argument += 1);
         return;
     }
 
@@ -405,18 +409,18 @@ fn try_unwrap(
         && guards.script_base
         && !is_atomic_base(ast, ast.children(node)[0])
     {
-        report.guards.preserve_group_in_script_base_slot += 1;
+        recorder.flatten_groups(|report| report.guard_hits.script_base += 1);
         return;
     }
 
     match link.slot {
-        Slot::GroupChild(index) => unwrap_group_child(ast, node, link.parent, index, report),
+        Slot::GroupChild(index) => unwrap_group_child(ast, node, link.parent, index, recorder),
         Slot::Argument(_)
         | Slot::ScriptBase
         | Slot::ScriptSub
         | Slot::ScriptSup
         | Slot::InfixLeft
-        | Slot::InfixRight => redirect_single_child_slot(ast, node, report),
+        | Slot::InfixRight => redirect_single_child_slot(ast, node, recorder),
         Slot::EnvBody => {}
     }
 }
@@ -643,7 +647,7 @@ fn unwrap_group_child(
     node: NodeId,
     parent: NodeId,
     index: usize,
-    report: &mut FlattenGroupsReport,
+    recorder: &mut ReportRecorder,
 ) {
     let child_count = ast.children(node).len();
     let children = ast.detach_children_range(node, 0..child_count);
@@ -659,18 +663,18 @@ fn unwrap_group_child(
     ast.remove_detached(node);
 
     match child_count {
-        0 => report.actions.removed_empty += 1,
-        1 => report.actions.replaced_single_child += 1,
-        _ => report.actions.inlined_multi_child += 1,
+        0 => recorder.flatten_groups(|report| report.actions.removed_empty += 1),
+        1 => recorder.flatten_groups(|report| report.actions.replaced_single_child += 1),
+        _ => recorder.flatten_groups(|report| report.actions.inlined_multi_child += 1),
     }
 }
 
-fn redirect_single_child_slot(ast: &mut Ast, node: NodeId, report: &mut FlattenGroupsReport) {
+fn redirect_single_child_slot(ast: &mut Ast, node: NodeId, recorder: &mut ReportRecorder) {
     let mut children = ast.detach_children_range(node, 0..1);
     let child = children
         .pop()
         .expect("single-child slot unwrap requires one child");
     ast.replace_content_child(node, child);
     ast.remove_detached(node);
-    report.actions.unwrapped_slot += 1;
+    recorder.flatten_groups(|report| report.actions.unwrapped_slot += 1);
 }

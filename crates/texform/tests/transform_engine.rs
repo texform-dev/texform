@@ -13,7 +13,7 @@ fn engine_normalize_uses_build_time_profile_and_packages() {
         .expect("engine should build");
 
     let result = engine
-        .normalize(r"\quantity{x}")
+        .normalize_with_report(r"\quantity{x}", &engine.default_normalize_config())
         .expect("normalize should succeed");
 
     assert_eq!(result.normalized, r"\qty { x }");
@@ -29,7 +29,7 @@ fn normalize_with_can_disable_rewrite_without_rebuilding_plan() {
         .expect("engine should build");
 
     let result = engine
-        .normalize_with(
+        .normalize_with_report(
             r"\quantity{x}",
             &NormalizeConfig {
                 parse: ParseConfig::STRICT,
@@ -75,7 +75,7 @@ fn corpus_normalize_preserves_prime_and_prefix_shorthand_contracts() {
         let result = engine
             .normalize(input)
             .unwrap_or_else(|error| panic!("normalize should succeed for {input}: {error:?}"));
-        assert_eq!(result.normalized, expected, "input: {input}");
+        assert_eq!(result, expected, "input: {input}");
     }
 }
 
@@ -91,14 +91,14 @@ fn braket_normalize_emits_bare_middle_vert_except_authoring() {
             .expect("normalize should succeed");
 
         assert!(
-            result.normalized.contains(r"\middle \vert"),
+            result.contains(r"\middle \vert"),
             "{profile:?} output: {}",
-            result.normalized
+            result
         );
         assert!(
-            !result.normalized.contains(r"{\vert}"),
+            !result.contains(r"{\vert}"),
             "{profile:?} output: {}",
-            result.normalized
+            result
         );
     }
 
@@ -109,7 +109,7 @@ fn braket_normalize_emits_bare_middle_vert_except_authoring() {
         .expect("engine should build")
         .normalize(r"\braket{a}{b}")
         .expect("normalize should succeed");
-    assert_eq!(authoring.normalized, r"\braket { a } { b }");
+    assert_eq!(authoring, r"\braket { a } { b }");
 
     let corpus = TransformEngine::builder()
         .packages(&["base", "physics"])
@@ -119,7 +119,7 @@ fn braket_normalize_emits_bare_middle_vert_except_authoring() {
         .normalize(r"\braket{a|b}")
         .expect("normalize should succeed");
     assert_eq!(
-        corpus.normalized,
+        corpus,
         r"\left \langle a | b \middle \vert a | b \right \rangle"
     );
 }
@@ -141,7 +141,7 @@ fn normalize_uses_prime_shorthand_inside_array_cells() {
             .expect("normalize should succeed");
 
         assert_eq!(
-            result.normalized, r"\begin {array} {c} f' \end {array}",
+            result, r"\begin {array} {c} f' \end {array}",
             "profile: {profile:?}"
         );
     }
@@ -159,7 +159,7 @@ fn corpus_normalize_keeps_braced_prefix_argument_scope() {
         .normalize(r"\vec{A_\mu}")
         .expect("normalize should succeed");
 
-    assert_eq!(result.normalized, r"\vec { A _ { \mu } }");
+    assert_eq!(result, r"\vec { A _ { \mu } }");
 }
 
 #[test]
@@ -180,9 +180,9 @@ fn displaylines_is_preserved_by_all_profiles() {
             .normalize(input)
             .expect("normalize should succeed");
         assert!(
-            result.normalized.contains(r"\displaylines"),
+            result.contains(r"\displaylines"),
             "{profile:?} output: {}",
-            result.normalized
+            result
         );
     }
 }
@@ -204,7 +204,7 @@ fn document_transform_preserves_parse_once_workflow() {
     let before = document.to_latex().expect("document should serialize");
 
     let report = engine
-        .transform_with(
+        .transform_with_report(
             &mut document,
             &TransformConfig {
                 lower_attributes: LowerAttributesConfig::DISABLED,
@@ -338,7 +338,7 @@ fn engine_builder_disables_rule_by_public_name() {
         .normalize(r"\quantity{x}")
         .expect("normalize should succeed");
 
-    assert_eq!(result.normalized, r"\quantity { x }");
+    assert_eq!(result, r"\quantity { x }");
 
     let unknown = TransformEngine::builder()
         .profile(Profile::Authoring)
@@ -363,7 +363,7 @@ fn engine_builder_disable_rule_can_precede_profile() {
         .normalize(r"\quantity{x}")
         .expect("normalize should succeed");
 
-    assert_eq!(result.normalized, r"\quantity { x }");
+    assert_eq!(result, r"\quantity { x }");
 }
 
 #[test]
@@ -375,11 +375,12 @@ fn normalize_report_dto_exposes_stable_phase_shape() {
         .expect("engine should build");
 
     let result = engine
-        .normalize(r"\quantity{{\bf x}}")
+        .normalize_with_report(r"\quantity{{\bf x}}", &engine.default_normalize_config())
         .expect("normalize should succeed");
     let dto = transform_report_to_dto(&result.report);
 
     let quantity_rule = dto
+        .rewrite
         .rules
         .iter()
         .find(|rule| rule.key == "physics/quantity-to-qty")
@@ -392,8 +393,8 @@ fn normalize_report_dto_exposes_stable_phase_shape() {
         result.report.flatten_groups.actions.replaced_single_child
     );
     assert_eq!(
-        dto.flatten_groups.guards.preserve_empty_group,
-        result.report.flatten_groups.guards.preserve_empty_group
+        dto.flatten_groups.guard_hits.empty_group,
+        result.report.flatten_groups.guard_hits.empty_group
     );
 
     let math_font = dto
@@ -406,21 +407,19 @@ fn normalize_report_dto_exposes_stable_phase_shape() {
     assert!(math_font.emitted.prefixes > 0);
 
     let json = serde_json::to_value(&dto).expect("report DTO should serialize");
-    assert!(json.get("rules").is_some());
-    assert!(json.get("applied").is_none());
-    assert!(json["rules"][0].get("applied_count").is_some());
-    assert!(json["rules"][0].get("count").is_none());
+    assert!(json.get("rewrite").is_some());
+    assert!(json.get("rules").is_none());
+    assert!(json["rewrite"]["rules"][0].get("applied_count").is_some());
+    assert!(json["rewrite"]["rules"][0].get("count").is_none());
     assert!(json["flatten_groups"].get("actions").is_some());
-    assert!(json["flatten_groups"].get("guards").is_some());
+    assert!(json["flatten_groups"].get("guard_hits").is_some());
+    assert!(json["flatten_groups"].get("guards").is_none());
     assert!(
-        json["flatten_groups"]
-            .get("preserved_group_containing_declarative_command")
-            .is_none()
-    );
-    assert!(
-        json["flatten_groups"]["guards"]
-            .get("preserve_group_containing_declarative_command")
+        json["flatten_groups"]["guard_hits"]
+            .get("declarative_scope")
             .is_some()
     );
     assert!(json["lower_attributes"].get("attributes").is_some());
+    assert!(json["finalize_ast"].get("prime_run_merges").is_some());
+    assert!(json["finalize_ast"].get("steps").is_none());
 }
