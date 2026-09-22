@@ -15,13 +15,16 @@
 //!   -> String
 //! ```
 //!
-//! Most spacing rules are concentrated in the atom writer's boundary decision,
-//! which inspects the previous atom, the next atom, the current content mode,
-//! and the active [`SerializeOptions`]. A few wrapper/scalar helpers still emit
-//! preformatted spaces directly for cases that cannot be expressed as a simple
-//! previous/next atom decision (for example empty padded groups). This keeps
-//! the boundary logic local and avoids post-hoc string cleanup — important
-//! because TeX whitespace carries both lexical and semantic weight.
+//! Most spacing rules are concentrated in the atom writer's boundary decision.
+//! Optional math spacing inspects the previous atom, the next atom, the
+//! content mode, and the active [`SerializeOptions`]. Control-word separation
+//! is a separate decision: it combines that atom's identity with the last
+//! emitted byte and the next character, following the lexer's ASCII command
+//! names. Text mode adds no other spaces. A few wrapper/scalar helpers still
+//! append a preformatted space directly (environment-name spacing, empty
+//! padded groups). That byte is part of the emitted ending, so later boundary
+//! checks must not insert a second lexical separator from the old atom kind.
+//! The serializer never repairs spacing with a post-pass string replacement.
 
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
@@ -159,16 +162,19 @@ pub struct SerializeOptions {
 /// token in math mode.
 ///
 /// `Spaced`: `\frac { a }` — `Minimal`: `\frac{ a }`.
-/// `Minimal` only removes the command-to-structure boundary itself; it still
-/// preserves lexical separation when omitting a space would merge a following
-/// letter-like token into the control sequence name (e.g. `\alpha x`).
+/// `Minimal` removes only that optional command-to-structure space. It still
+/// keeps a lexical separator when the output ends in an unterminated control
+/// word and the next character is an ASCII letter (`\alpha x`). That matches
+/// the lexer: consecutive ASCII letters form a control word, and one
+/// non-letter (`\,`, `\ `) is a finished control symbol. A trailing `*`,
+/// whitespace, digit, or structural delimiter has already closed the name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CommandSpacing {
     /// Insert a space between a command and the following structural token (`\frac { a }`).
     #[default]
     Spaced,
-    /// Omit that command-to-structure space (`\frac{ a }`) while still separating a following letter from the control-sequence name.
+    /// Omit the optional command-to-structure space (`\frac{ a }`). An ASCII letter still stays separated from an unterminated control word.
     Minimal,
 }
 
@@ -387,10 +393,12 @@ impl Recorder for TokenRecorder {
 /// Accumulates output text and decides where to insert inter-atom spaces.
 ///
 /// Most boundary rules live in the atom writer's central decision function,
-/// making them testable in isolation without constructing a full AST. A few helpers still
-/// bypass it for preformatted cases such as empty padded groups. The writer
-/// tracks only the *previous* atom kind — no look-ahead — so the serializer
-/// must emit atoms in final output order.
+/// making them testable in isolation without constructing a full AST. A few
+/// helpers append a space directly; the control-word check reads that byte
+/// back in constant time instead of trusting the previous atom kind alone.
+/// The writer tracks only the *previous* atom kind — no look-ahead — so the
+/// serializer must emit atoms in final output order. Empty emissions leave
+/// that kind in place.
 struct AtomWriter<R> {
     output: String,
     previous: Option<AtomKind>,
@@ -451,13 +459,18 @@ impl<R: Recorder> AtomWriter<R> {
         boundary: BoundaryPolicy,
         options: &SerializeOptions,
     ) {
-        let boundary = if !text.is_empty() && self.pending_suppressed_boundaries > 0 {
+        // Empty text is not a token. Updating `previous` here would drop an
+        // open control word before the next real emission.
+        if text.is_empty() {
+            return;
+        }
+        let boundary = if self.pending_suppressed_boundaries > 0 {
             self.pending_suppressed_boundaries = 0;
             BoundaryPolicy::SuppressOptionalSpace
         } else {
             boundary
         };
-        if self.should_insert_space(modes.spacing, spacing_kind, boundary, options) {
+        if self.should_insert_space(modes.spacing, spacing_kind, text, boundary, options) {
             self.output.push(' ');
         }
         let start = self.output.len();
@@ -478,6 +491,11 @@ impl<R: Recorder> AtomWriter<R> {
         public_kind: SerializationTokenKind,
         text: &str,
     ) {
+        // Same empty-emission rule as `emit`: attached text that adds no bytes
+        // must not replace the atom identity later checks still rely on.
+        if text.is_empty() {
+            return;
+        }
         let start = self.output.len();
         self.output.push_str(text);
         let end = self.output.len();
@@ -490,6 +508,10 @@ impl<R: Recorder> AtomWriter<R> {
 
     /// Append `*` directly — star must glue to the preceding control sequence
     /// without any boundary space (`\operatorname*`, not `\operatorname *`).
+    ///
+    /// Restoring `previous` keeps the current command-to-structure formatting.
+    /// The lexical check still sees the trailing `*`, so the control word is
+    /// already closed and a following letter is not given a terminator space.
     fn emit_star_suffix(&mut self, mode: ContentMode) {
         let previous = self.previous;
         self.emit_attached(
@@ -518,11 +540,20 @@ impl<R: Recorder> AtomWriter<R> {
     /// Returns `true` when a space should be inserted between the previous atom
     /// and the upcoming `next` atom. Rules are checked top-down; the first
     /// matching branch wins.
+    ///
+    /// The first rule is the lexical control-word separator. It is not optional
+    /// math spacing: compact options and [`BoundaryPolicy::SuppressOptionalSpace`]
+    /// cannot cancel it, and text mode has no later rule that could add it.
+    /// Only an unterminated control word (control-sequence identity plus an
+    /// ASCII-letter ending) followed by an ASCII letter needs it. A letter at
+    /// the end of ordinary text is not a command name, and a control symbol
+    /// such as `\,` is already terminated.
     #[inline(always)]
     fn should_insert_space(
         &self,
         mode: ContentMode,
         next: AtomKind,
+        next_text: &str,
         boundary: BoundaryPolicy,
         options: &SerializeOptions,
     ) -> bool {
@@ -530,15 +561,7 @@ impl<R: Recorder> AtomWriter<R> {
             return false;
         };
 
-        // A control sequence followed by a letter-like atom always needs a
-        // boundary; without it the letter would be absorbed into the command
-        // name during re-lexing (e.g. `\alphax` vs `\alpha x`).
-        if matches!(prev, AtomKind::ControlSequence)
-            && matches!(
-                next,
-                AtomKind::TextChunk | AtomKind::MathChar | AtomKind::RawFragment
-            )
-        {
+        if self.needs_control_word_separator(next_text) {
             return true;
         }
 
@@ -601,6 +624,33 @@ impl<R: Recorder> AtomWriter<R> {
         }
 
         true
+    }
+
+    /// `true` when `next_text` would extend an unterminated ASCII control word.
+    ///
+    /// The lexer treats `\` plus consecutive ASCII letters as one control word
+    /// and `\` plus a single other character as a finished control symbol.
+    /// Reading one trailing byte is enough: `*`, whitespace, `)`, digits, and
+    /// any other non-letter mean the name is already closed. Direct space
+    /// appends (environment-name spacing, empty-group padding) show up here
+    /// without a second scan of the output.
+    #[inline]
+    fn needs_control_word_separator(&self, next_text: &str) -> bool {
+        let continues = next_text
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphabetic);
+        continues && self.ends_unterminated_control_word()
+    }
+
+    #[inline]
+    fn ends_unterminated_control_word(&self) -> bool {
+        matches!(self.previous, Some(AtomKind::ControlSequence))
+            && self
+                .output
+                .as_bytes()
+                .last()
+                .is_some_and(u8::is_ascii_alphabetic)
     }
 
     fn finish(self) -> R::Output {
@@ -819,7 +869,9 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     ///
     /// Environment header spacing is intentionally controlled here instead of
     /// piggybacking on the generic command-to-brace rule, so it stays
-    /// independent from `CommandSpacing`.
+    /// independent from `CommandSpacing`. The optional space is appended
+    /// directly and closes the control word; the following `{` must not get a
+    /// second lexical separator from the still-current command atom.
     fn emit_environment_head(&mut self, outer_mode: ContentMode, head: &str, name: &str) {
         self.writer.emit(
             outer_mode,
@@ -1189,6 +1241,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     ///
     /// Bypasses the normal atom pipeline because there is no interior content
     /// to visit, yet the padding space must still appear between the braces.
+    /// That space is part of the emitted ending, so a later atom must not
+    /// treat the open brace's predecessor as still unterminated.
     fn emit_padded_empty_group(
         &mut self,
         mode: ContentMode,
@@ -1258,6 +1312,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                         MathGroupInnerSpacing::Padded
                     )
                 {
+                    // Same direct padding as `emit_padded_empty_group`: the space is
+                    // the emitted ending, not a second lexical separator.
                     self.writer.output.push(' ');
                     self.writer.emit_with_boundary(
                         wrapper_mode,
@@ -1705,5 +1761,114 @@ mod tests {
         );
 
         assert_eq!(writer.finish(), "abc def");
+    }
+    use AtomKind::{ControlSequence, MathChar, MathDigit, Prime, TextChunk};
+    use ContentMode::{Math, Text};
+
+    /// Ordinary atom: the writer decides the boundary.
+    const EMIT: Option<BoundaryPolicy> = Some(BoundaryPolicy::Auto);
+    /// Atom whose optional math spacing is suppressed by the caller.
+    const SUPPRESS: Option<BoundaryPolicy> = Some(BoundaryPolicy::SuppressOptionalSpace);
+    /// Atom appended with no boundary decision at all (star suffix, prime run).
+    const ATTACH: Option<BoundaryPolicy> = None;
+
+    /// Write `(mode, kind, boundary, text)` atoms with default options.
+    ///
+    /// Boundary decisions never read the public token kind, so it is pinned
+    /// here and the cases vary only mode, atom kind, boundary, and text.
+    fn write_atoms(atoms: &[(ContentMode, AtomKind, Option<BoundaryPolicy>, &str)]) -> String {
+        let options = SerializeOptions::default();
+        let public = SerializationTokenKind::Character;
+        let mut writer = AtomWriter::new(NoopRecorder);
+        for (mode, kind, boundary, text) in atoms {
+            match boundary {
+                Some(boundary) => {
+                    writer.emit_with_boundary(*mode, *kind, public, text, *boundary, &options);
+                }
+                None => writer.emit_attached(*mode, *kind, public, text),
+            }
+        }
+        writer.finish()
+    }
+
+    #[test]
+    fn ordinary_trailing_letters_are_not_control_words() {
+        // Only a control sequence can absorb the next letter. A letter that
+        // merely ends a text chunk must not gain a separator.
+        assert_eq!(
+            write_atoms(&[
+                (Text, TextChunk, EMIT, "pre"),
+                (Text, TextChunk, EMIT, "fix")
+            ]),
+            "prefix"
+        );
+    }
+
+    #[test]
+    fn unicode_letter_does_not_continue_an_ascii_control_word() {
+        // Control-word names are ASCII only, so no lexical separator is due;
+        // math mode still applies its own optional command spacing.
+        assert_eq!(
+            write_atoms(&[
+                (Text, ControlSequence, EMIT, r"\alpha"),
+                (Text, TextChunk, EMIT, "α"),
+            ]),
+            "\\alphaα"
+        );
+        assert_eq!(
+            write_atoms(&[
+                (Math, ControlSequence, EMIT, r"\alpha"),
+                (Math, MathChar, EMIT, "α"),
+            ]),
+            "\\alpha α"
+        );
+    }
+
+    #[test]
+    fn whitespace_in_the_next_atom_closes_a_control_word() {
+        // The next atom already starts with whitespace, so the name is
+        // terminated and the original spacing survives unchanged.
+        assert_eq!(
+            write_atoms(&[
+                (Text, ControlSequence, EMIT, r"\alpha"),
+                (Text, TextChunk, EMIT, "  x"),
+            ]),
+            r"\alpha  x"
+        );
+    }
+
+    #[test]
+    fn suppressed_boundary_drops_optional_space_but_not_control_word_separator() {
+        // Suppression only cancels optional math spacing. A digit closes the
+        // control word by itself, and a letter after `\,` never opened one.
+        assert_eq!(
+            write_atoms(&[
+                (Math, ControlSequence, EMIT, r"\alpha"),
+                (Math, MathDigit, SUPPRESS, "1"),
+            ]),
+            r"\alpha1"
+        );
+        assert_eq!(
+            write_atoms(&[
+                (Text, ControlSequence, EMIT, r"\,"),
+                (Text, TextChunk, SUPPRESS, "b"),
+            ]),
+            r"\,b"
+        );
+    }
+
+    #[test]
+    fn empty_attached_emission_does_not_close_an_open_control_word() {
+        // An attached emission that writes nothing (a prime run of zero marks)
+        // is not a token, so it must not replace the atom identity that the
+        // next boundary check still depends on.
+        assert_eq!(
+            write_atoms(&[
+                (Math, ControlSequence, EMIT, r"\alpha"),
+                (Math, Prime, ATTACH, ""),
+                (Math, MathChar, EMIT, "x"),
+            ]),
+            r"\alpha x"
+        );
     }
 }

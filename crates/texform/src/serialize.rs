@@ -6,6 +6,9 @@
 //! and [`Document::to_tokenized_latex_with`](crate::Document::to_tokenized_latex_with).
 //! Tokenized serialization records the canonical serializer's own output boundaries;
 //! it is not a raw-string lexer, AST dump, or rendered glyph stream.
+//! A required control-word separator is the gap before an ASCII letter that would
+//! extend an unterminated control word. Control symbols do not get that separator,
+//! and text mode does not add any other spaces.
 //!
 //! Style axes live on the flat [`SerializeOptions`] struct:
 //!

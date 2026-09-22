@@ -2,7 +2,7 @@ mod support;
 
 use support::parser::{command_item, test_context, test_context_with_items};
 use texform_core::{
-    ast::{Argument, ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node},
+    ast::{Argument, ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId},
     parse::{AllowedMode, CommandKind, ParseContext},
     serialize::{
         AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, InfixGrouping,
@@ -1346,6 +1346,392 @@ fn serialize_options_serde_rejects_legacy_nested_objects() {
         error.to_string().contains("unknown field `math`"),
         "{error}"
     );
+}
+
+fn gap_before(result: &TokenizedLatex, index: usize) -> &str {
+    let start = if index == 0 {
+        0
+    } else {
+        result.tokens[index - 1].span.end
+    };
+    &result.latex[start..result.tokens[index].span.start]
+}
+
+fn token_at(result: &TokenizedLatex, text: &str) -> usize {
+    result
+        .tokens
+        .iter()
+        .position(|token| token.text == text)
+        .unwrap_or_else(|| panic!("missing token {text} in {}", result.latex))
+}
+
+fn assert_parsed_idempotent(src: &str, expected: &str) {
+    let first = serialize(&parse_to_ast(src));
+    let second = serialize(&parse_to_ast(&first));
+    assert_eq!(first, expected, "src={src}");
+    assert_eq!(second, first, "src={src}");
+}
+
+fn command_node(name: &str) -> Node {
+    Node::Command {
+        name: name.to_string(),
+        args: Vec::new(),
+        known: true,
+    }
+}
+
+fn empty_error_node() -> Node {
+    Node::Error {
+        message: "empty".to_string(),
+        snippet: String::new(),
+    }
+}
+
+/// Add an explicit group holding `children` and return its id.
+fn group_node(ast: &mut Ast, mode: ContentMode, children: &[NodeId]) -> NodeId {
+    let group = ast.new_node(Node::Group {
+        children: Vec::new(),
+        kind: GroupKind::Explicit,
+        mode,
+    });
+    for child in children {
+        ast.append_child(group, *child);
+    }
+    group
+}
+
+/// Add a `\text` command whose mandatory argument is `body`.
+fn text_command_node(ast: &mut Ast, body: NodeId) -> NodeId {
+    ast.new_node(Node::Command {
+        name: "text".to_string(),
+        args: vec![Some(Argument {
+            kind: ArgumentKind::Mandatory,
+            no_leading_space: false,
+            value: ArgumentValue::TextContent(body),
+        })],
+        known: true,
+    })
+}
+
+/// Root in `mode` holding `nodes`, which the parser would never build this way.
+fn ast_with(mode: ContentMode, nodes: Vec<Node>) -> Ast {
+    let mut ast = Ast::with_root_mode(mode);
+    let root = ast.root();
+    for node in nodes {
+        let id = ast.new_node(node);
+        ast.append_child(root, id);
+    }
+    ast
+}
+
+/// `\text{...}` around `nodes`, in text mode.
+fn text_wrapper(nodes: Vec<Node>) -> Ast {
+    let mut ast = Ast::new();
+    let children = nodes
+        .into_iter()
+        .map(|node| ast.new_node(node))
+        .collect::<Vec<_>>();
+    let body = group_node(&mut ast, ContentMode::Text, &children);
+    let command = text_command_node(&mut ast, body);
+    ast.append_child(ast.root(), command);
+    ast
+}
+
+fn minimal_command_spacing() -> SerializeOptions {
+    SerializeOptions {
+        command_spacing: CommandSpacing::Minimal,
+        ..SerializeOptions::default()
+    }
+}
+
+/// Every optional space the options can remove, removed at once.
+fn fully_compact() -> SerializeOptions {
+    SerializeOptions {
+        command_spacing: CommandSpacing::Minimal,
+        group_inner_spacing: MathGroupInnerSpacing::Compact,
+        adjacent_char_spacing: AdjacentCharSpacing::Compact,
+        script_spacing: ScriptSpacing::Compact,
+        ..SerializeOptions::default()
+    }
+}
+
+#[test]
+fn text_control_symbols_do_not_inject_body_whitespace() {
+    // A text-mode control symbol is already terminated, so the serializer must
+    // not separate it from whatever follows, whatever that is.
+    for (src, expected) in [
+        (r"\mbox{mod\ 1}", r"\mbox {mod\ 1}"),
+        (r"\text{a\%b}", r"\text {a\%b}"),
+        (r"\text{a\,b}", r"\text {a\,b}"),
+        (r"\text{a\,1}", r"\text {a\,1}"),
+        (r"\text{a\,.b}", r"\text {a\,.b}"),
+        (r"\text{a\;b}", r"\text {a\;b}"),
+        (r"\text{a\ b}", r"\text {a\ b}"),
+        (r"\text{a\ 1}", r"\text {a\ 1}"),
+        (r"\text{a\ .}", r"\text {a\ .}"),
+    ] {
+        assert_parsed_idempotent(src, expected);
+    }
+
+    // The thin space stays its own text-mode control-sequence token with no
+    // gap before the letter that follows it.
+    let thin = serialize_tokenized(&parse_to_ast(r"\text{a\,b}"));
+    assert_eq!(thin.latex, r"\text {a\,b}");
+    assert_token_contract(&thin);
+    let comma = token_at(&thin, r"\,");
+    assert_eq!(
+        thin.tokens[comma].kind,
+        SerializationTokenKind::ControlSequence
+    );
+    assert_eq!(thin.tokens[comma].mode, ContentMode::Text);
+    assert_eq!(thin.tokens[comma + 1].text, "b");
+    assert_eq!(gap_before(&thin, comma + 1), "");
+
+    // An escaped character is a character token, not a control sequence.
+    let escaped = serialize_tokenized(&parse_to_ast(r"\text{a\%b}"));
+    assert_token_contract(&escaped);
+    let percent = token_at(&escaped, r"\%");
+    assert_eq!(
+        escaped.tokens[percent].kind,
+        SerializationTokenKind::Character
+    );
+    assert_eq!(escaped.tokens[percent].mode, ContentMode::Text);
+}
+
+#[test]
+fn control_space_stays_distinct_from_ordinary_text_whitespace() {
+    assert_parsed_idempotent(r"\mbox{mod\  1}", r"\mbox {mod\  1}");
+
+    let result = serialize_tokenized(&parse_to_ast(r"\mbox{mod\  1}"));
+    assert_eq!(result.latex, r"\mbox {mod\  1}");
+    assert_token_contract(&result);
+    let control_space = &result.tokens[token_at(&result, "\\ ")];
+    assert_eq!(control_space.kind, SerializationTokenKind::ControlSequence);
+    assert_eq!(control_space.mode, ContentMode::Text);
+    let following = &result.tokens[token_at(&result, " 1")];
+    assert_eq!(following.kind, SerializationTokenKind::Text);
+    assert_eq!(control_space.span.end, following.span.start);
+}
+
+#[test]
+fn handcrafted_control_word_keeps_lexical_separator_under_compact_options() {
+    // Transforms can place a letter straight after a control word. The
+    // separator is lexical, so no spacing option may remove it.
+    let math = ast_with(
+        ContentMode::Math,
+        vec![command_node("alpha"), Node::Char('x')],
+    );
+    let text = text_wrapper(vec![command_node("dagger"), Node::Char('x')]);
+    for options in [
+        SerializeOptions::default(),
+        minimal_command_spacing(),
+        fully_compact(),
+    ] {
+        assert_eq!(serialize_with(&math, &options), r"\alpha x");
+        let text_expected = match options.command_spacing {
+            CommandSpacing::Spaced => r"\text {\dagger x}",
+            CommandSpacing::Minimal => r"\text{\dagger x}",
+        };
+        assert_eq!(serialize_with(&text, &options), text_expected);
+    }
+
+    let mut grouped = Ast::new();
+    let command = grouped.new_node(command_node("alpha"));
+    let letter = grouped.new_node(Node::Char('x'));
+    let group = group_node(&mut grouped, ContentMode::Math, &[command, letter]);
+    grouped.append_child(grouped.root(), group);
+    assert_eq!(serialize_with(&grouped, &fully_compact()), r"{\alpha x}");
+
+    // The separator is a real gap between two tokens, and it survives a round
+    // trip through the parser.
+    let tokenized = serialize_tokenized(&math);
+    assert_eq!(tokenized.latex, r"\alpha x");
+    assert_token_contract(&tokenized);
+    assert_eq!(tokenized.tokens.len(), 2);
+    assert_eq!(gap_before(&tokenized, 1), " ");
+    assert_eq!(tokenized.tokens[1].mode, ContentMode::Math);
+    assert_eq!(serialize(&parse_to_ast(&tokenized.latex)), r"\alpha x");
+    assert_eq!(
+        serialize(&parse_to_ast(&serialize(&text))),
+        r"\text {\dagger x}"
+    );
+}
+
+#[test]
+fn handcrafted_control_word_does_not_add_lexical_space_before_digit_whitespace_or_structure() {
+    // Only an ASCII letter can extend a control word. Digits, whitespace, and
+    // braces close it, so no lexical separator is due before them.
+    let math_digit = ast_with(
+        ContentMode::Math,
+        vec![command_node("alpha"), Node::Char('1')],
+    );
+    assert_eq!(serialize(&math_digit), r"\alpha 1");
+    assert_eq!(serialize(&parse_to_ast(r"\alpha 1")), r"\alpha 1");
+
+    let text_digit = text_wrapper(vec![command_node("dagger"), Node::Char('1')]);
+    assert_eq!(serialize(&text_digit), r"\text {\dagger1}");
+    assert_eq!(
+        serialize(&parse_to_ast(&serialize(&text_digit))),
+        r"\text {\dagger1}"
+    );
+
+    let text_space = text_wrapper(vec![command_node("dagger"), Node::Text("  x".to_string())]);
+    assert_eq!(serialize(&text_space), r"\text {\dagger  x}");
+
+    let mut nested = Ast::new();
+    let dagger = nested.new_node(command_node("dagger"));
+    let letter = nested.new_node(Node::Char('x'));
+    let inner = group_node(&mut nested, ContentMode::Text, &[letter]);
+    let body = group_node(&mut nested, ContentMode::Text, &[dagger, inner]);
+    let text = text_command_node(&mut nested, body);
+    nested.append_child(nested.root(), text);
+    assert_eq!(serialize(&nested), r"\text {\dagger{x}}");
+    assert_eq!(
+        serialize_with(&nested, &minimal_command_spacing()),
+        r"\text{\dagger{x}}"
+    );
+
+    let mut math_group = Ast::new();
+    let alpha = math_group.new_node(command_node("alpha"));
+    let digit = math_group.new_node(Node::Char('1'));
+    let brace = group_node(&mut math_group, ContentMode::Math, &[digit]);
+    math_group.append_child(math_group.root(), alpha);
+    math_group.append_child(math_group.root(), brace);
+    assert_eq!(serialize(&math_group), r"\alpha { 1 }");
+    assert_eq!(
+        serialize_with(&math_group, &minimal_command_spacing()),
+        r"\alpha{ 1 }"
+    );
+}
+
+#[test]
+fn starprobe_star_does_not_inject_text_space() {
+    // The star closes the control word, so the following letter stays glued in
+    // text mode and only math command spacing may separate it.
+    let ctx = test_context_with_items([command_item(
+        "starprobe",
+        CommandKind::Prefix,
+        AllowedMode::Both,
+        "s",
+    )]);
+    let text = parse_to_ast_with_context(&ctx, r"\text{\starprobe*x}");
+    assert_eq!(serialize(&text), r"\text {\starprobe*x}");
+    assert_eq!(
+        serialize_with(&text, &minimal_command_spacing()),
+        r"\text{\starprobe*x}"
+    );
+
+    let tokenized = serialize_tokenized(&text);
+    assert_eq!(tokenized.latex, serialize(&text));
+    assert_token_contract(&tokenized);
+    let star = token_at(&tokenized, "*");
+    assert_eq!(tokenized.tokens[star - 1].text, r"\starprobe");
+    assert_eq!(
+        tokenized.tokens[star].kind,
+        SerializationTokenKind::Character
+    );
+    assert_eq!(tokenized.tokens[star].mode, ContentMode::Text);
+    assert_eq!(gap_before(&tokenized, star), "");
+    assert_eq!(tokenized.tokens[star + 1].text, "x");
+    assert_eq!(gap_before(&tokenized, star + 1), "");
+
+    let math = parse_to_ast_with_context(&ctx, r"\starprobe*x");
+    assert_eq!(serialize(&math), r"\starprobe* x");
+    assert_eq!(
+        serialize_with(&math, &minimal_command_spacing()),
+        r"\starprobe* x"
+    );
+}
+
+#[test]
+fn minimal_operatorname_star_keeps_math_space_after_argument() {
+    // The star glues to the name and the argument stays compact, but the math
+    // atom after the argument still needs its optional space.
+    let ast = parse_to_ast(r"\operatorname*{x}y");
+    let options = minimal_command_spacing();
+    assert_eq!(serialize_with(&ast, &options), r"\operatorname*{x} y");
+    assert_eq!(
+        serialize_with(&parse_to_ast(&serialize_with(&ast, &options)), &options),
+        r"\operatorname*{x} y"
+    );
+
+    let tokenized = serialize_tokenized_with(&ast, &options);
+    assert_eq!(tokenized.latex, r"\operatorname*{x} y");
+    assert_token_contract(&tokenized);
+    let star = token_at(&tokenized, "*");
+    assert_eq!(tokenized.tokens[star - 1].text, r"\operatorname");
+    assert_eq!(gap_before(&tokenized, star), "");
+    // The operator name is text mode; the sibling after it is back in math.
+    assert_eq!(
+        tokenized.tokens[token_at(&tokenized, "x")].mode,
+        ContentMode::Text
+    );
+    let follower = token_at(&tokenized, "y");
+    assert_eq!(tokenized.tokens[follower].mode, ContentMode::Math);
+    assert_eq!(gap_before(&tokenized, follower), " ");
+}
+
+#[test]
+fn direct_output_paths_keep_a_single_written_space() {
+    // Environment heads and padded empty groups append their space directly.
+    // That byte is the emitted ending, so no second separator may follow.
+    let matrix = parse_to_ast(r"\begin {matrix}x\end {matrix}");
+    assert_eq!(serialize(&matrix), r"\begin {matrix} x \end {matrix}");
+    let tokenized = serialize_tokenized(&matrix);
+    assert_eq!(tokenized.latex, serialize(&matrix));
+    assert_token_contract(&tokenized);
+    let begin = token_at(&tokenized, r"\begin");
+    assert_eq!(tokenized.tokens[begin + 1].text, "{");
+    assert_eq!(gap_before(&tokenized, begin + 1), " ");
+    let compact_name = SerializeOptions {
+        environment_name_spacing: EnvironmentNameSpacing::Compact,
+        ..SerializeOptions::default()
+    };
+    assert_eq!(
+        serialize_with(&matrix, &compact_name),
+        r"\begin{matrix} x \end{matrix}"
+    );
+
+    let empty = serialize_tokenized(&parse_to_ast("{}"));
+    assert_eq!(empty.latex, "{ }");
+    assert_token_contract(&empty);
+    assert_eq!(gap_before(&empty, 1), " ");
+
+    let frac = parse_to_ast(r"\frac{}{a}");
+    assert_eq!(serialize(&frac), r"\frac { } { a }");
+    assert_eq!(
+        serialize_with(&frac, &minimal_command_spacing()),
+        r"\frac{ } { a }"
+    );
+
+    // A padded empty group right after a control word keeps exactly one space.
+    let mut padded = Ast::new();
+    let command = padded.new_node(command_node("alpha"));
+    let group = group_node(&mut padded, ContentMode::Math, &[]);
+    padded.append_child(padded.root(), command);
+    padded.append_child(padded.root(), group);
+    assert_eq!(serialize(&padded), r"\alpha { }");
+    assert_eq!(
+        serialize_with(&padded, &minimal_command_spacing()),
+        r"\alpha{ }"
+    );
+}
+
+#[test]
+fn empty_error_keeps_control_word_separation_for_the_next_atom() {
+    // An error node with an empty snippet writes nothing, so it must not be
+    // treated as the atom that closed the preceding control word.
+    let letter = ast_with(
+        ContentMode::Text,
+        vec![command_node("alpha"), empty_error_node(), Node::Char('x')],
+    );
+    assert_eq!(serialize(&letter), r"\alpha x");
+
+    let digit = ast_with(
+        ContentMode::Text,
+        vec![command_node("alpha"), empty_error_node(), Node::Char('1')],
+    );
+    assert_eq!(serialize(&digit), r"\alpha1");
 }
 
 #[test]
