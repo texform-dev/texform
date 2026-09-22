@@ -1,12 +1,20 @@
 //! Lower attribute-scope commands to explicit prefix / declarative form.
 //!
-//! The phase rewrites every Root / Group / Environment container so that
-//! registered declaratives such as `\bf`, `\large`, or `\displaystyle` are
-//! either replaced by their prefix-command equivalent (e.g. `\mathbf{...}`)
-//! or by a single repositioned declarative at the start of the segment they
-//! affect. The set of recognised declaratives, the per-mode prefix targets
-//! and the canonical attribute values are loaded from `data.yaml` and
-//! generated into `OUT_DIR` by `build.rs` (see `codegen.rs`).
+//! Registered declaratives and prefix wrappers come from `data.yaml`. An
+//! attribute whose canonical target has a prefix is carried by that wrapper
+//! (`{\bf x}` becomes `\mathbf{x}`). An attribute that still has only a
+//! declarative command stays inside a real local group, so it cannot affect
+//! siblings outside the original group or prefix argument. Following siblings
+//! resume the attribute state from before that scope. The phase does not
+//! invent `\textstyle`, `\displaystyle`, or `\normalsize` to close a scope.
+//!
+//! Nested math arguments, subscripts, superscripts, infix operands, and
+//! environment bodies can change style implicitly. This phase does not derive
+//! that style, so a recorded parent style is not proof that an explicit style
+//! declaration inside those slots is redundant. A script base stays in the
+//! surrounding style. FlattenGroups' declarative-scope guard keeps the groups
+//! retained here; a later pass normalizes inside them and does not add another
+//! wrapper.
 
 use std::collections::HashMap;
 
@@ -367,7 +375,7 @@ fn canonicalize_content_slots(
         let Some(child_mode) = content_slot_mode(ast, parent, slot) else {
             continue;
         };
-        let child_inherited = inherited_for_child_mode(inherited, parent_mode, child_mode);
+        let child_inherited = inherited_for_content_slot(inherited, parent_mode, child_mode, slot);
         let placeholder = empty_implicit_group(ast, child_mode);
         ast.replace_content_child(child, placeholder);
 
@@ -413,6 +421,28 @@ fn inherited_for_child_mode(
     } else {
         inherited.with_mode_reset(child_mode)
     }
+}
+
+/// Attribute baseline for one nested content slot.
+///
+/// Script bases use the surrounding style. Every other nested math slot can
+/// change style implicitly, and this phase has no style derivation, so the
+/// recorded parent style must not make an explicit declaration look redundant.
+fn inherited_for_content_slot(
+    inherited: AttributeState,
+    parent_mode: ContentMode,
+    child_mode: ContentMode,
+    slot: Slot,
+) -> AttributeState {
+    let mut state = inherited_for_child_mode(inherited, parent_mode, child_mode);
+    if child_mode == ContentMode::Math && slot_cannot_prove_math_style(slot) {
+        state.math_style = None;
+    }
+    state
+}
+
+fn slot_cannot_prove_math_style(slot: Slot) -> bool {
+    !matches!(slot, Slot::ScriptBase | Slot::GroupChild(_))
 }
 
 fn single_content_replacement(ast: &mut Ast, mut nodes: Vec<NodeId>, mode: ContentMode) -> NodeId {
@@ -569,7 +599,6 @@ fn collect_prefix_body(
             let len = ast.children(body).len();
             let detached = ast.detach_children_range(body, 0..len);
             detach_body_from_prefix(ast, body, mode);
-            ast.remove_detached(body);
             let collected = collect_detached_children(ast, detached, body_state, mode, recorder);
             record_trailing_empty_segment(
                 &collected.pairs,
@@ -578,7 +607,21 @@ fn collect_prefix_body(
                 mode,
                 recorder,
             );
-            collected.pairs
+            // A prefix argument is one scope. Declarative-only effects inside it
+            // have to be normalized in that group; lifting them would emit the
+            // declaration beside the rebuilt wrapper.
+            if pairs_require_local_declarative(&collected.pairs, body_state, mode) {
+                let nodes = segment_and_emit(ast, collected.pairs, body_state, mode, recorder);
+                let removed = ast.replace_children(body, nodes);
+                debug_assert!(removed.is_empty());
+                vec![Pair {
+                    state: body_state,
+                    node: body,
+                }]
+            } else {
+                ast.remove_detached(body);
+                collected.pairs
+            }
         }
         Node::Group {
             kind: GroupKind::Explicit,
@@ -618,6 +661,19 @@ fn collect_explicit_group(
     let detached = ast.detach_children_range(group, 0..len);
     let inner = collect_detached_children(ast, detached, inherited, mode, recorder);
     record_trailing_empty_segment(&inner.pairs, inner.final_state, inherited, mode, recorder);
+
+    // Keep the original braces when any carried effect still needs a declarative.
+    // Prefix-only effects may be lifted; the caller continues with `inherited`,
+    // which is the state from before this group.
+    if pairs_require_local_declarative(&inner.pairs, inherited, mode) {
+        let nodes = segment_and_emit(ast, inner.pairs, inherited, mode, recorder);
+        let removed = ast.replace_children(group, nodes);
+        debug_assert!(removed.is_empty());
+        return vec![Pair {
+            state: inherited,
+            node: group,
+        }];
+    }
 
     if !inner.pairs.is_empty() && inner.pairs.iter().any(|pair| pair.state != inherited) {
         ast.remove_detached(group);
@@ -708,6 +764,39 @@ fn empty_implicit_group(ast: &mut Ast, mode: ContentMode) -> NodeId {
     })
 }
 
+fn pairs_require_local_declarative(
+    pairs: &[Pair],
+    baseline: AttributeState,
+    mode: ContentMode,
+) -> bool {
+    pairs
+        .iter()
+        .any(|pair| state_requires_local_declarative(pair.state, baseline, mode))
+}
+
+fn state_requires_local_declarative(
+    state: AttributeState,
+    baseline: AttributeState,
+    mode: ContentMode,
+) -> bool {
+    state.diff_axes(baseline, mode).into_iter().any(|attr| {
+        state
+            .get(attr)
+            .is_some_and(|value| attribute_needs_local_declarative(attr, value, mode))
+    })
+}
+
+/// True when the canonical target for this value has no prefix wrapper.
+///
+/// The decision comes from `data.yaml` via [`lookup_target`]. A missing target
+/// also keeps the scope: the value cannot be handed to a self-contained wrapper.
+fn attribute_needs_local_declarative(attr: Attr, value: AttrValue, mode: ContentMode) -> bool {
+    match lookup_target(attr, value, mode) {
+        Some(target) => target.prefix.is_none(),
+        None => true,
+    }
+}
+
 fn prefix_is_fully_absorbed(
     previous: AttributeState,
     set: AttributeSet,
@@ -732,6 +821,14 @@ fn segment_and_emit(
     recorder: &mut ReportRecorder,
 ) -> Vec<NodeId> {
     let mut rebuilt = Vec::new();
+    // `ambient` is the state actually in effect after the declarations emitted
+    // so far. Only a declarative that stays outside later prefix wrappers
+    // remains active for the next sibling. The next segment is diffed against
+    // this emitted state.
+    // Restoring an explicit value that matches the state from before the group
+    // still emits that known declarative. Nothing here invents a default style
+    // or size when the recorded value is absent.
+    let mut ambient = inherited;
     let mut iter = pairs.into_iter().peekable();
 
     while let Some(first) = iter.next() {
@@ -745,14 +842,11 @@ fn segment_and_emit(
             segment.push(iter.next().expect("peeked segment pair should exist").node);
         }
 
-        rebuilt.extend(wrap_with_canonical(
-            ast,
-            segment,
-            segment_state,
-            inherited,
-            mode,
-            recorder,
-        ));
+        let wrapped = wrap_with_canonical(ast, segment, segment_state, ambient, mode, recorder);
+        rebuilt.extend(wrapped.nodes);
+        for (attr, value) in wrapped.outer_declaratives {
+            ambient.set(AttributeSet::new(attr, value));
+        }
     }
 
     rebuilt
@@ -823,6 +917,11 @@ fn split_whitespace_boundaries(ast: &mut Ast, nodes: Vec<NodeId>) -> Vec<Vec<Nod
     out
 }
 
+struct WrappedSegment {
+    nodes: Vec<NodeId>,
+    outer_declaratives: Vec<(Attr, AttrValue)>,
+}
+
 fn wrap_with_canonical(
     ast: &mut Ast,
     children: Vec<NodeId>,
@@ -830,7 +929,7 @@ fn wrap_with_canonical(
     inherited: AttributeState,
     mode: ContentMode,
     recorder: &mut ReportRecorder,
-) -> Vec<NodeId> {
+) -> WrappedSegment {
     debug_assert!(
         !children.is_empty(),
         "segment_and_emit must not call wrap_with_canonical with an empty segment"
@@ -841,16 +940,20 @@ fn wrap_with_canonical(
     }
 
     let mut rebuilt = Vec::new();
+    let mut outer_declaratives = Vec::new();
     for run in split_whitespace_boundaries(ast, children) {
         if segment_is_plain_whitespace(ast, &run) {
             rebuilt.extend(run);
             continue;
         }
-        rebuilt.extend(wrap_segment_with_canonical(
-            ast, run, state, inherited, mode, recorder,
-        ));
+        let wrapped = wrap_segment_with_canonical(ast, run, state, inherited, mode, recorder);
+        rebuilt.extend(wrapped.nodes);
+        outer_declaratives.extend(wrapped.outer_declaratives);
     }
-    rebuilt
+    WrappedSegment {
+        nodes: rebuilt,
+        outer_declaratives,
+    }
 }
 
 /// Wrap a non-empty segment body with the active attributes in mode-specific
@@ -864,7 +967,8 @@ fn wrap_segment_with_canonical(
     inherited: AttributeState,
     mode: ContentMode,
     recorder: &mut ReportRecorder,
-) -> Vec<NodeId> {
+) -> WrappedSegment {
+    let mut outer_declaratives = Vec::new();
     for attr in emit_axis_order(state, inherited, mode) {
         let Some(value) = state.get(attr) else {
             continue;
@@ -874,11 +978,17 @@ fn wrap_segment_with_canonical(
         };
 
         if let Some(prefix) = target.prefix {
-            let group = ast.new_node(Node::Group {
-                children,
-                kind: GroupKind::Implicit,
-                mode,
-            });
+            outer_declaratives.clear();
+            let group =
+                if children.len() == 1 && matches!(ast.node(children[0]), Node::Group { .. }) {
+                    children.pop().expect("single group should exist")
+                } else {
+                    ast.new_node(Node::Group {
+                        children,
+                        kind: GroupKind::Implicit,
+                        mode,
+                    })
+                };
             let command = ast.new_node(Node::Command {
                 name: prefix.name.to_string(),
                 args: vec![mandatory_content_slot(group, mode)],
@@ -893,10 +1003,14 @@ fn wrap_segment_with_canonical(
             recorder.lower_attributes(|report| {
                 report.record_emitted_declarative(AttributeSet::new(attr, value));
             });
+            outer_declaratives.push((attr, value));
         }
     }
 
-    children
+    WrappedSegment {
+        nodes: children,
+        outer_declaratives,
+    }
 }
 
 fn emit_axis_order(
@@ -905,6 +1019,11 @@ fn emit_axis_order(
     mode: ContentMode,
 ) -> Vec<Attr> {
     let mut axes = state.diff_axes(inherited, mode);
+    // Size is emitted before a math font so the font prefix wraps it
+    // (`\mathbf{\large x}`). Text size stays last, so it remains outside
+    // series and family prefixes. The wrapper returns the declarations that
+    // remain outside those prefixes, so callers update the ambient state from
+    // the actual emitted structure.
     if matches!(mode, ContentMode::Math) && axes == [Attr::MathFont, Attr::MathSize] {
         axes.swap(0, 1);
     }

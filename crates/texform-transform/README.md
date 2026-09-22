@@ -65,9 +65,9 @@ See [crate exports](src/lib.rs) for the internal Rust surface.
 
 `TransformContext::run` and `run_with` execute a fixed sequence of phases and return `()`. `run_with_report` uses that same sequence and returns counters. Rule levels are chosen when the context is built; each run may disable Rewrite, LowerAttributes, FinalizeAst, or FlattenGroups, or choose FlattenGroups spacing strategy and iteration settings through `TransformConfig`.
 
-1. **LowerAttributes (pre)** — canonicalize declarative-scope commands (e.g. `\bf x`) and registered prefix wrappers (e.g. `\mathbf{x}`) into a single normal form.
+1. **LowerAttributes (pre)** — canonicalize declarative-scope commands and registered prefix wrappers. A value with a prefix becomes that wrapper (`{\bf x}` → `\mathbf{x}`). A value that still needs a declarative stays inside a real local group so it cannot reach later siblings.
 2. **Rewrite** — apply the precompiled rewrite plan in a fixed-point loop, bounded by `rewrite.max_iterations`.
-3. **LowerAttributes (post)** — re-canonicalize attribute markers introduced by rewrite rules (some Authoring / Faithful rules emit prefix wrappers that need lowering again).
+3. **LowerAttributes (post)** — re-canonicalize attribute markers introduced by rewrite rules, with the same local-scope rule as the pre-pass.
 4. **FinalizeAst** — profile-neutral AST canonicalization (adjacent `Prime` merges, text-sequence normalization). Runs before FlattenGroups so merges can create single-child groups.
 5. **FlattenGroups** — remove redundant explicit and implicit groups after the earlier phases have stabilized.
 6. **FinalizeAst** (again, when FlattenGroups is enabled) — the same idempotent pass, so adjacency exposed by flattening is canonicalized. FinalizeAst is the last phase that mutates the AST; eliminated-form contract validation that follows is read-only.
@@ -213,9 +213,9 @@ Bindings use a transport DTO with the same four-phase hierarchy. Rules are sorte
 
 ### LowerAttributes
 
-Two sub-modules drive this phase: `lower_attributes/codegen.rs` and build-time generated data emitted into `OUT_DIR`. The phase scans the AST for declarative commands (e.g. `\bf`, `\large`, `\sf`) and registered prefix wrappers (e.g. `\mathbf{...}`, `\textbf{...}`), then normalizes both forms into a single canonical representation per attribute.
+`lower_attributes/codegen.rs` loads `data.yaml` into build-time tables in `OUT_DIR`. The phase recognizes declarative commands (for example `\bf`, `\large`, `\sf`) and registered prefix wrappers (for example `\mathbf{...}`, `\textbf{...}`) from that map. It does not hard-code a protected command list.
 
-Attributes are modeled as a structured `AttributeSet` (`Attr` × `AttrValue`) covering math font, math size, math style, text family, text series, text shape, and text size. Inherited state is tracked across container boundaries so that nested declarations, prefix wrappers, and empty trailing segments normalize cleanly.
+Attributes are tracked as an `AttributeSet`. Prefix-backed values become wrappers; declarative-only values remain inside the existing local group or prefix argument, while siblings resume the state from before that scope. The phase records only declarations that remain outside emitted wrappers, preserves explicit style across implicit math boundaries, and never synthesizes default style or size commands.
 
 The phase runs twice in the pipeline (pre and post Rewrite) under a single `enabled` switch because rewrite rules may emit prefix wrappers as their right-hand side; the post-pass re-canonicalizes those into the same normal form as the pre-pass. `LowerAttributesReport` uses a single cumulative counter set for both invocations. Turning Rewrite off does not change that double-pass schedule when LowerAttributes itself stays enabled.
 

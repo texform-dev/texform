@@ -4,7 +4,7 @@ This guide owns rewrite-rule layout, metadata, and authoring conventions. Read t
 
 ## Attribute Markers
 
-Do not add one-off transform rules for declarative-scope commands such as `\bf`, `\rm`, `\large`, or `\displaystyle`, or for registered prefix wrappers such as `\mathbf` and `\textbf`. These markers are handled by the dedicated LowerAttributes phase before and after normal rule execution. The data source for that phase is `src/lower_attributes/data.yaml`.
+Do not add one-off transform rules for declarative-scope commands such as `\bf`, `\rm`, `\large`, or `\displaystyle`, or for registered prefix wrappers such as `\mathbf` and `\textbf`. These markers are handled by the dedicated LowerAttributes phase before and after normal rule execution. The data source for that phase is `src/lower_attributes/data.yaml`. A declarative effect with no prefix target remains inside a local group; do not rewrite it as if it applied to siblings outside that group.
 
 Ordinary rewrite rules can assume registered attribute markers have already been lowered to the canonical form by the time they run.
 
