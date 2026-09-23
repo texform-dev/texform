@@ -2,6 +2,7 @@
 members = [
   "crates/texform",
   "crates/texform-argspec",
+  "crates/texform-cli",
   "crates/texform-regression",
   "crates/texform-core",
   "crates/texform-interface",
