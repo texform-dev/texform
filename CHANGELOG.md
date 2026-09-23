@@ -2,31 +2,49 @@
 
 All notable changes to TeXForm are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).## [0.4.0] - 2026-07-26
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
 
-### Added
-
-- **Breaking:** Default engine parsing to lenient
-
-### Fixed
-
-- Unwrap prime superscripts in environments
 ## [0.5.0] - 2026-09-22
 
+This release reshapes the configuration and reporting surface across Rust, Python, and JavaScript so the three APIs share one configuration tree and one set of override semantics. Transform reports become opt-in, `TransformConfig` is organized by phase, serialization options are flattened, and binding exception categories are corrected. It also hardens parser recovery and diagnostics, fixes serialization of bare delimiter arguments, and adds two corpus rules. Most changes are breaking; see **Changed** for migration notes.
+
 ### Added
 
-- **Breaking:** Make transform reports opt-in
-- **Breaking:** Unify configuration inputs
-- **Breaking:** Organize `TransformConfig` by phase
-- Add 2 rules for root-family group
+- `normalize_with_report` / `transform_with_report` on the Rust facade and the Python binding (`normalizeWithReport` / `transformWithReport` in JavaScript) for callers that need the diagnostic report. Report types now live in `texform::diagnostics`.
+- Effective defaults are exposed on every binding: `default_parse_config()` / `default_transform_config()` in Python and `defaultParseConfig()` / `defaultTransformConfig()` in JavaScript return the engine's profile defaults. Rust adds `TransformEngine::default_normalize_config()`.
+- `RewriteConfig`, plus the serialization option enums (`CommandSpacing`, `MathGroupInnerSpacing`, `AdjacentCharSpacing`, `ScriptSpacing`, `ScriptOrder`, `InfixGrouping`, `EnvironmentNameSpacing`), are re-exported from the Rust facade.
+- Corpus rules `leftroot-drop` and `uproot-drop` drop the AMS `\leftroot` / `\uproot` index-position hints.
+
+### Changed
+
+- **Breaking:** transform reports are opt-in. `normalize` / `normalize_with` now return the canonical string and `transform` / `transform_with` return nothing, in Rust, Python, and JavaScript, so plain calls no longer pay for report collection or host-object conversion. `NormalizeResult` and the `FinalizeAstStep*` types are removed. The report itself is restructured (`rewrite.{iterations, rules}`, flattened FinalizeAst counters, `flatten_groups.guard_hits` with short guard names) and remains a diagnostic rather than a stability promise.
+- **Breaking:** `TransformConfig` is organized by phase. The flat `rewrite_enabled`, `lower_attributes_enabled`, and `max_iterations` fields become `rewrite: RewriteConfig { enabled, max_iterations }` and `lower_attributes: LowerAttributesConfig`, alongside the existing `finalize_ast` and `flatten_groups`. Profile defaults are unchanged.
+- **Breaking:** `FlattenGroupsConfig` exposes only `enabled` and `preserve_rendered_spacing` (`preserveRenderedSpacing` in JavaScript). The eleven `preserve_*` guard fields are removed and old keys are rejected.
+- **Breaking:** serialization options are a flat set of seven fields; the nested `math` / `syntax` shape is removed. Python takes snake_case keyword arguments (`doc.to_latex(script_order="sup_first")`, `serialize(node, **options)`), and JavaScript takes a flat camelCase object.
+- **Breaking:** configuration inputs are unified across bindings. Python reserves `config=` for a complete config object (`TransformConfig`, `ParseConfig`); partial settings are passed as keyword overrides that keep unspecified defaults, and a dict passed as `config` is rejected. JavaScript accepts the same nested override tree in `normalize` and `transform`, with omitted fields keeping the profile default. Unknown keys and wrongly typed values raise `ConfigError` / `TexformConfigError` with the field path. The unused WASM config classes and `parseWith` are removed.
+- **Breaking:** binding exception categories are corrected. Python cross-document edits raise `EditError` instead of `ParseError`. Transforming a document that has parse errors raises `TransformError` in Python and `TexformTransformError` (`kind: "transform"`) in JavaScript instead of the `internal` kind. The undocumented `Complete<T>` type is no longer importable from the npm typings.
 
 ### Fixed
 
-- Preserve recoverable groups and report structural errors
-- **Breaking:** Correct exception categories and hide `Complete`
-- Emit mandatory delimiter arguments without braces
-- Preserve structured diagnostic kinds and source spans
-- Treat literal CR as whitespace
+- Parser recovery under `reject_unknown` without `abort_on_error` consumes only the unknown command, so `\mycmd{x} + y` yields a partial document instead of failing the whole parse. A stray `}` is no longer reported as an environment-name mismatch, and `^` / `_` with missing content report `Missing superscript content` / `Missing subscript content`.
+- Diagnostics keep their structured kind and precise source span through nested content parsing instead of highlighting the outer command or closing brace, and internal kind labels no longer leak into messages.
+- Literal carriage returns are treated as whitespace, so Windows (CRLF) and CR-only inputs parse instead of panicking.
+- Mandatory delimiter arguments are serialized without braces (`\middle \vert`, `\big \langle`, `\genfrac . . {} {}`), so the output renders in MathJax again.
+- JavaScript: `normalize` with a `flattenGroups` override now layers it on the engine profile's defaults instead of the strict baseline.
+- JavaScript: internal DTO serialization failures are thrown as `TexformError` (kind `internal`) instead of being returned as successful values.
+- Python: invalid per-call config objects raise `ConfigError` consistently across `parse`, `normalize`, and `transform`.
+
+## [0.4.0] - 2026-07-26
+
+This release aligns `TransformEngine` parsing with the standalone `Parser` by defaulting to lenient parsing, and fixes prime superscripts inside environment bodies.
+
+### Changed
+
+- **Breaking:** `TransformEngine` now parses with `ParseConfig::LENIENT` by default (previously `ParseConfig::STRICT`), matching the standalone `Parser`; this applies to Rust, Python, and JavaScript. Unknown commands are preserved instead of rejected, so `normalize(r"\unknowncmd")` now succeeds, and `engine.parse` returns a recovery document with error nodes for malformed input. `normalize` still requires a complete tree and raises a parse error, carrying the diagnostics and the partial document, when the input cannot produce one. To restore the previous behavior, pass `ParseConfig::STRICT` as the engine's default parse config, or set `reject_unknown` and `abort_on_error` to `true` (`rejectUnknown` / `abortOnError` in JavaScript).
+
+### Fixed
+
+- A lone prime inside an environment body, such as an `array` cell, no longer serializes as an explicit superscript group that renders as a double superscript. FlattenGroups now unwraps lone `Prime` nodes in superscript slots while still preserving other environment-body groups.
 
 ## [0.3.0] - 2026-07-21
 
