@@ -250,14 +250,14 @@ fn keeps_groups_inside_environment_bodies() {
 }
 
 #[test]
-fn unwraps_lone_prime_superscript_groups_inside_environment_bodies() {
+fn keeps_nested_quote_scripts_inside_environment_bodies() {
     let outcome = run_flatten_groups(r"\begin{array}{c c}f^{'}&g^{\prime\alpha}\end{array}");
 
     assert_eq!(
         outcome.text,
-        r"\begin {array} {c c} f' & g ^ { \prime \alpha } \end {array}"
+        r"\begin {array} {c c} f ^ { { }' } & g ^ { \prime \alpha } \end {array}"
     );
-    assert_eq!(outcome.report.actions.unwrapped_slot, 1);
+    assert_eq!(outcome.report.actions.unwrapped_slot, 0);
 }
 
 #[test]
@@ -509,33 +509,33 @@ fn is_idempotent() {
 }
 
 #[test]
-fn prime_is_atomic_for_script_base_unwrapping() {
+fn nested_prime_script_is_not_atomic_for_script_base_unwrapping() {
     let outcome = run_flatten_groups(r"{'}^2");
 
     match outcome.ast.to_syntax_root() {
         texform_interface::syntax_node::SyntaxNode::Root { children, .. } => match &children[0] {
             texform_interface::syntax_node::SyntaxNode::Scripted { base, .. } => {
-                assert_eq!(
-                    base.as_ref(),
-                    &texform_interface::syntax_node::SyntaxNode::Prime { count: 1 }
+                assert!(
+                    matches!(base.as_ref(), texform_interface::syntax_node::SyntaxNode::Group { children, .. } if matches!(children.as_slice(), [texform_interface::syntax_node::SyntaxNode::Scripted { .. }]))
                 );
             }
             other => panic!("expected scripted node, got {other:?}"),
         },
         other => panic!("expected root node, got {other:?}"),
     }
-    assert_eq!(outcome.report.actions.unwrapped_slot, 1);
+    assert_eq!(outcome.report.actions.unwrapped_slot, 0);
+    assert_eq!(outcome.report.guard_hits.script_base, 1);
 }
 
 #[test]
 fn prime_group_is_not_preserved_as_atom_spacing_char_or_command_contact() {
     let lone_prime = run_flatten_groups(r"{'}");
-    assert_eq!(lone_prime.text, "'");
+    assert_eq!(lone_prime.text, "{ }'");
     assert_eq!(lone_prime.report.actions.replaced_single_child, 1);
     assert_eq!(lone_prime.report.guard_hits.lone_atom_spacing_char, 0);
 
     let adjacent_to_prime = run_flatten_groups(r"'{a}");
-    assert_eq!(adjacent_to_prime.text, "' a");
+    assert_eq!(adjacent_to_prime.text, "{ }' a");
     assert_eq!(adjacent_to_prime.report.actions.replaced_single_child, 1);
     assert_eq!(adjacent_to_prime.report.guard_hits.command_contact, 0);
 }

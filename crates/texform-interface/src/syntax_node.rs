@@ -238,7 +238,7 @@ pub enum SyntaxNode {
     /// check for `Error` nodes before continuing.
     Error { message: String, snippet: String },
 
-    /// Math prime shorthand represented by one or more consecutive prime marks.
+    /// Consecutive prime symbols in a math list. Script binding is represented by `Scripted`.
     ///
     /// `count` must be greater than zero.
     Prime { count: usize },
@@ -335,7 +335,7 @@ impl SyntaxNode {
         }
     }
 
-    /// Create a math prime shorthand node.
+    /// Create a math prime symbol node. Use `Scripted` for quote superscripts.
     pub fn prime(count: usize) -> Self {
         SyntaxNode::Prime { count }
     }

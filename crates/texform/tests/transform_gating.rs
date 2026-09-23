@@ -137,7 +137,7 @@ fn normalize_can_disable_finalize_ast_explicitly() {
         )
         .expect("normalize should succeed");
 
-    assert_eq!(result.normalized, r"f ^ { '' }");
+    assert_eq!(result.normalized, r"f ^ { \prime \prime }");
     assert_eq!(result.report.finalize_ast.prime_run_merges, 0);
     assert_eq!(result.report.finalize_ast.text_normalizations, 0);
 }

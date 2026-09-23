@@ -2565,7 +2565,10 @@ mod tests {
             let disabled = engine
                 .call_method("normalize", (r"f^{\prime\prime}",), Some(&call_kwargs))
                 .expect("normalize should accept finalize_ast kwargs");
-            assert_eq!(disabled.extract::<String>().unwrap(), r"f ^ { '' }");
+            assert_eq!(
+                disabled.extract::<String>().unwrap(),
+                r"f ^ { \prime \prime }"
+            );
             let disabled_report = engine
                 .call_method(
                     "normalize_with_report",
@@ -2582,7 +2585,7 @@ mod tests {
                     .unwrap()
                     .extract::<String>()
                     .unwrap(),
-                r"f ^ { '' }"
+                r"f ^ { \prime \prime }"
             );
         });
     }

@@ -235,7 +235,10 @@ export type ArgumentKind =
  * no editing behavior; bridge it into an editable tree with
  * {@link Document.fromSyntax}, and recover one with {@link Document.toSyntax}.
  * The two conversions are symmetric over every node kind, including `Error` and
- * `Prime`.
+ * `Prime`. A `Prime` node represents symbols in the current math list;
+ * `Scripted` supplies any superscript binding. A leading quote has an empty
+ * group as its scripted base. External snapshots cannot infer the old intent
+ * of a bare `Prime` node; reparse the source or update the tree explicitly.
  *
  * @see {@link Document}
  */
@@ -435,7 +438,8 @@ export class Document {
    *
    * Invalid external syntax is rejected rather than corrupting the tree.
    * `fromSyntax` and {@link Document.toSyntax} are symmetric over every node
-   * kind, including `Error` and `Prime`. The imported document is not
+   * kind, including `Error` and `Prime`. A bare `Prime` is a symbol, not a
+   * shorthand superscript. The imported document is not
    * associated with a parser context, so it cannot be passed to
    * {@link TransformEngine.transform}.
    *
@@ -945,7 +949,7 @@ export class Node {
   /**
    * The prime count (greater than zero) for a `prime` node, else `null`.
    *
-   * @returns The number of consecutive prime marks, or `null`.
+   * @returns The number of consecutive prime symbols, or `null`. `Scripted` determines their binding.
    * @example
    * ```ts
    * const doc = new Parser().parse(String.raw`f''`).document;
@@ -2114,8 +2118,9 @@ export class TransformEngine {
  * Render a {@link SyntaxNode} object to LaTeX text using the canonical
  * serializer.
  *
- * `Error` nodes round-trip their captured snippet, and pure prime superscripts
- * serialize compactly as `f'` or `f''`. The serializer guarantees text
+ * `Error` nodes round-trip their captured snippet. An ordinary `Prime` emits
+ * `\prime` symbols, while a pure prime superscript serializes compactly as
+ * `f'` or `f''`. The serializer guarantees text
  * idempotency.
  *
  * @deprecated Prefer `Document.fromSyntax(node).toLatex(options)` or

@@ -827,7 +827,8 @@ class Document:
         """Build a document from a ``SyntaxNode`` dict, the lossless parse snapshot.
 
         ``from_syntax`` and ``to_syntax`` are symmetric over every node kind,
-        including ``Error`` and ``Prime``. Invalid external syntax is rejected
+        including ``Error`` and ``Prime``. A bare ``Prime`` is a math symbol;
+        use ``Scripted`` with an empty group base for a leading quote. Invalid external syntax is rejected
         rather than corrupting the tree. A document built this way is not produced
         by an engine's parser, so ``TransformEngine.transform`` rejects it.
 
@@ -1405,7 +1406,9 @@ class Node:
         """
 
     def prime_count(self) -> int | None:
-        """Return the prime count of a ``Prime`` node.
+        """Return the symbol count of a math ``Prime`` node.
+
+        ``Scripted`` determines whether these symbols form a superscript.
 
         Returns:
             The count (greater than zero), or ``None`` for other kinds.
@@ -2601,7 +2604,8 @@ def serialize(node: SyntaxNode, **options: Unpack[SerializeOptions]) -> str:
 
     This is the free-function counterpart to ``Document.to_latex()``; both take
     the same keyword options. ``Error`` nodes round-trip their captured snippet,
-    pure prime superscripts serialize compactly as ``f'`` / ``f''``, and the
+    ordinary ``Prime`` nodes emit ``\prime`` symbols, pure prime superscripts
+    serialize compactly as ``f'`` / ``f''``, and the
     serializer guarantees text idempotency. For the conceptual model, see the
     Serialization guide.
 

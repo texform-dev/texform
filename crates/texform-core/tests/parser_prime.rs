@@ -1,7 +1,7 @@
 mod support;
 
 use support::parser::parse;
-use texform_interface::syntax_node::{ContentMode, GroupKind, SyntaxNode};
+use texform_interface::syntax_node::{ArgumentValue, ContentMode, GroupKind, SyntaxNode};
 
 fn parse_math(src: &str) -> SyntaxNode {
     parse(src, true).expect("expected parse success").0
@@ -41,6 +41,14 @@ fn scripted(
         subscript: subscript.map(Box::new),
         superscript: superscript.map(Box::new),
     }
+}
+
+fn empty_prime_script(count: usize) -> SyntaxNode {
+    scripted(
+        implicit_math_group(vec![]),
+        None,
+        Some(SyntaxNode::Prime { count }),
+    )
 }
 
 fn root(children: Vec<SyntaxNode>) -> SyntaxNode {
@@ -93,7 +101,7 @@ fn braced_superscript_prime_content_stays_inside_the_group() {
         root(vec![scripted(
             SyntaxNode::Char('f'),
             None,
-            Some(explicit_math_group(vec![SyntaxNode::Prime { count: 1 }])),
+            Some(explicit_math_group(vec![empty_prime_script(1)])),
         )])
     );
 
@@ -103,7 +111,7 @@ fn braced_superscript_prime_content_stays_inside_the_group() {
             SyntaxNode::Char('A'),
             None,
             Some(explicit_math_group(vec![
-                SyntaxNode::Prime { count: 1 },
+                empty_prime_script(1),
                 command("alpha"),
             ])),
         )])
@@ -123,24 +131,24 @@ fn command_prime_is_not_collapsed_by_the_parser() {
 }
 
 #[test]
-fn leading_prime_is_a_math_atom_not_an_empty_base_script() {
+fn leading_prime_is_an_empty_base_script() {
     assert_eq!(
         parse_math("'x"),
-        root(vec![SyntaxNode::Prime { count: 1 }, SyntaxNode::Char('x')])
+        root(vec![empty_prime_script(1), SyntaxNode::Char('x')])
     );
 }
 
 #[test]
-fn prime_atoms_inside_script_groups_can_receive_scripts() {
+fn empty_base_prime_scripts_inside_groups_can_receive_scripts() {
     assert_eq!(
         parse_math("x^{'_{a}}"),
         root(vec![scripted(
             SyntaxNode::Char('x'),
             None,
             Some(explicit_math_group(vec![scripted(
-                SyntaxNode::Prime { count: 1 },
+                implicit_math_group(vec![]),
                 Some(explicit_math_group(vec![SyntaxNode::Char('a')])),
-                None,
+                Some(SyntaxNode::Prime { count: 1 }),
             )])),
         )])
     );
@@ -151,10 +159,67 @@ fn prime_atoms_inside_script_groups_can_receive_scripts() {
             SyntaxNode::Char('x'),
             None,
             Some(explicit_math_group(vec![scripted(
-                SyntaxNode::Prime { count: 1 },
+                implicit_math_group(vec![]),
                 None,
-                Some(explicit_math_group(vec![SyntaxNode::Char('a')])),
+                Some(implicit_math_group(vec![
+                    SyntaxNode::Prime { count: 1 },
+                    explicit_math_group(vec![SyntaxNode::Char('a')]),
+                ])),
             )])),
         )])
     );
+}
+
+#[test]
+fn whitespace_separated_primes_share_one_superscript() {
+    let f = || SyntaxNode::Char('f');
+    let prime = |count| Some(SyntaxNode::Prime { count });
+    for (source, expected) in [
+        ("f' '", scripted(f(), None, prime(2))),
+        ("f' ' '", scripted(f(), None, prime(3))),
+        ("f'  '\n\u{2019}", scripted(f(), None, prime(3))),
+        ("' ' '", empty_prime_script(3)),
+        (
+            "f_n' ' '",
+            scripted(f(), Some(SyntaxNode::Char('n')), prime(3)),
+        ),
+        (
+            "f' ' '^2",
+            scripted(
+                f(),
+                None,
+                Some(implicit_math_group(vec![
+                    SyntaxNode::Prime { count: 3 },
+                    SyntaxNode::Char('2'),
+                ])),
+            ),
+        ),
+    ] {
+        assert_eq!(parse_math(source), root(vec![expected]), "{source}");
+    }
+}
+
+#[test]
+fn unbraced_command_argument_takes_only_the_quote() {
+    let SyntaxNode::Root { children, .. } = parse_math(r"\sqrt'_e") else {
+        panic!("expected math root");
+    };
+    let [
+        SyntaxNode::Scripted {
+            base,
+            subscript: Some(subscript),
+            superscript: None,
+        },
+    ] = children.as_slice()
+    else {
+        panic!("expected outer subscript: {children:?}");
+    };
+    assert_eq!(**subscript, SyntaxNode::Char('e'));
+    let SyntaxNode::Command { args, .. } = base.as_ref() else {
+        panic!("expected command base");
+    };
+    assert!(matches!(
+        &args[1].as_ref().unwrap().value,
+        ArgumentValue::MathContent(value) if *value == empty_prime_script(1)
+    ));
 }

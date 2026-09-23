@@ -92,7 +92,7 @@ pub enum NodeKind {
     Environment,
     /// Base expression carrying an optional subscript and superscript.
     Scripted,
-    /// Math prime shorthand standing for one or more consecutive prime marks.
+    /// Consecutive math prime symbols; `Scripted` represents superscript binding.
     Prime,
     /// Text-mode text chunk.
     Text,
@@ -270,9 +270,9 @@ pub enum Node {
         /// Optional superscript subtree
         superscript: Option<NodeId>,
     },
-    /// Math prime shorthand represented by one or more consecutive prime marks.
+    /// Consecutive math prime symbols; `Scripted` represents superscript binding.
     Prime {
-        /// Number of consecutive prime marks. Must be greater than zero.
+        /// Number of consecutive prime symbols. Must be greater than zero.
         count: usize,
     },
     /// Text-mode text chunk

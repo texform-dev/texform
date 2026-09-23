@@ -61,14 +61,14 @@ fn corpus_normalize_preserves_prime_and_prefix_shorthand_contracts() {
     let cases = [
         ("U'", "U'"),
         ("H'", "H'"),
-        (r"A^{'\alpha}", r"A ^ { ' \alpha }"),
+        (r"A^{'\alpha}", r"A ^ { { }' \alpha }"),
         (r"\vec A_\mu", r"\vec { A } _ { \mu }"),
         (r"\bar C^\mu", r"\bar { C } ^ { \mu }"),
         (r"f^{\prime\prime}", "f''"),
         (r"f^{\prime}", "f'"),
-        (r"f^{'}", "f'"),
-        (r"f'^2", r"f ^ { ' 2 }"),
-        (r"\prime", "'"),
+        (r"f^{'}", "f ^ { { }' }"),
+        (r"f'^2", r"f ^ { \prime 2 }"),
+        (r"\prime", r"\prime"),
     ];
 
     for (input, expected) in cases {
@@ -76,6 +76,54 @@ fn corpus_normalize_preserves_prime_and_prefix_shorthand_contracts() {
             .normalize(input)
             .unwrap_or_else(|error| panic!("normalize should succeed for {input}: {error:?}"));
         assert_eq!(result, expected, "input: {input}");
+    }
+}
+
+#[test]
+fn prime_semantics_remain_stable_across_profiles() {
+    let sources = [
+        r"\prime",
+        r"x\prime",
+        r"\vec{r}\prime",
+        r"x^2\prime",
+        r"x^{a\prime}",
+        r"b^{\star\prime}",
+        "f' ' '",
+        "' ' '",
+        "f_n' ' '",
+        "f' ' '^2",
+        "f'^2",
+        r"f^{'}",
+        r"A^{'\alpha}",
+        r"x{'}",
+        r"\sum_n{'}",
+        r"x^{a'}",
+        r"\begin{array}{c}f^{\prime}\\f^{'}\end{array}",
+        r"|E' ' '| \leq 2|V' ' '| - 2",
+        r"G' ' '=(V' ' ',E' ' ')",
+    ];
+    for profile in [
+        Profile::Authoring,
+        Profile::Faithful,
+        Profile::Corpus,
+        Profile::Equiv,
+    ] {
+        let engine = TransformEngine::builder()
+            .packages(&["base"])
+            .profile(profile)
+            .build()
+            .unwrap();
+        for source in sources {
+            let first = engine.normalize(source).unwrap_or_else(|error| {
+                panic!("first normalize failed for {source} in {profile:?}: {error:?}")
+            });
+            let second = engine.normalize(&first).unwrap_or_else(|error| {
+                panic!(
+                    "second normalize failed for {source} in {profile:?}: {error:?}; output={first}"
+                )
+            });
+            assert_eq!(first, second, "{source} in {profile:?}");
+        }
     }
 }
 

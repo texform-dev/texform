@@ -1563,7 +1563,7 @@ impl<'a> NodeRef<'a> {
         }
     }
 
-    /// Prime mark count for a `Prime` node.
+    /// Prime symbol count for a `Prime` node.
     pub fn prime_count(&self) -> Option<usize> {
         match self.node() {
             Node::Prime { count } => Some(*count),

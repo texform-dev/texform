@@ -59,6 +59,29 @@ fn node_ref_exposes_prime_count() {
 }
 
 #[test]
+fn imported_prime_symbol_does_not_attach_to_previous_sibling() {
+    let syntax = SyntaxNode::Root {
+        mode: M::Math,
+        children: vec![SyntaxNode::Char('x'), SyntaxNode::prime(1)],
+    };
+    let document = Document::from_syntax(&syntax).unwrap();
+    assert_eq!(document.to_latex().unwrap(), r"x \prime");
+
+    let quote = SyntaxNode::Root {
+        mode: M::Math,
+        children: vec![SyntaxNode::Scripted {
+            base: Box::new(SyntaxNode::empty_group(M::Math)),
+            subscript: None,
+            superscript: Some(Box::new(SyntaxNode::prime(1))),
+        }],
+    };
+    assert_eq!(
+        Document::from_syntax(&quote).unwrap().to_latex().unwrap(),
+        "{ }'"
+    );
+}
+
+#[test]
 fn from_syntax_rejects_invalid_prime_count_without_panicking() {
     let syntax = SyntaxNode::Root {
         mode: M::Math,

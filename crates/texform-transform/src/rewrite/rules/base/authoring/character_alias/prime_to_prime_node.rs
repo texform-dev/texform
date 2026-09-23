@@ -9,7 +9,8 @@
 //!   touches: null
 //! produces: null
 //! rewrite_patterns:
-//!   - {from: \prime, to: ''''}
+//!   - {label: ordinary-symbol, from: \prime, to: \prime}
+//!   - {label: pure-superscript, from: f^\prime, to: f'}
 //! ```
 
 use texform_knowledge::builtin::base;
@@ -68,7 +69,48 @@ mod tests {
             input: r"F_\nu^\prime",
             expected: r"F_\nu'",
         },
+        {
+            label: ordinary_prime_symbol,
+            packages: ["base"],
+            input: r"\prime",
+            expected: r"\prime",
+        },
+        {
+            label: prime_after_superscript,
+            packages: ["base"],
+            input: r"x^2\prime",
+            expected: r"x ^ { 2 } \prime",
+        },
+        {
+            label: mixed_superscript_symbol,
+            packages: ["base"],
+            input: r"f^{\prime 2}",
+            expected: r"f ^ { \prime 2 }",
+        },
         ]
     }
     // END: Generated examples
+
+    #[test]
+    fn ordinary_symbol_rewrite_changes_ast_without_changing_latex() {
+        let parse_ctx = crate::parse::ParseContext::from_packages(&["base"]);
+        let mut ast = crate::parse_to_ast_for_test(
+            &parse_ctx,
+            r"x\prime",
+            &crate::parse::ParseConfig::STRICT,
+        );
+        crate::rewrite::run_one_rule_for_test(
+            &mut ast,
+            &parse_ctx,
+            &PRIME_TO_PRIME_NODE,
+            crate::RuleLevel::Authoring,
+        )
+        .unwrap();
+
+        let [_, symbol] = ast.children(ast.root()) else {
+            panic!("expected two math symbols");
+        };
+        assert!(matches!(ast.node(*symbol), Node::Prime { count: 1 }));
+        assert_eq!(crate::serialize::serialize(&ast), r"x \prime");
+    }
 }

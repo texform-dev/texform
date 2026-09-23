@@ -9,7 +9,7 @@
 //! # Parser layers
 //!
 //! 1. **Leaf and atom parsers** — math/text characters, escaped symbols,
-//!    active characters, prime atoms, explicit groups, `\left...\right` groups,
+//!    active characters, explicit groups, `\left...\right` groups,
 //!    prefix/declarative/delimiter-control commands, environments, and unknown
 //!    commands.
 //! 2. **Script handling** — math atoms are wrapped with `_`, `^`, and prime
@@ -585,15 +585,6 @@ fn math_char<'a>() -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<
     .tracked()
 }
 
-/// Parse bare math prime shorthand as a standalone atom.
-fn math_prime<'a>() -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
-    select! {
-        Token::Prime(count) => SyntaxNode::Prime { count },
-    }
-    .labelled("math prime")
-    .tracked()
-}
-
 /// Parse and coalesce consecutive text characters/whitespace into a single `Text` node.
 fn text_chunk<'a>() -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
     select! {
@@ -848,56 +839,19 @@ enum ScriptMarker {
     Prime,
 }
 
-fn braced_prime_group<'src, 'parse>(input: &mut ParserInput<'src, 'parse>) -> Option<TrackedNode> {
-    let checkpoint = input.save();
-    let ws = insignificant_whitespace();
-    let start = input.cursor();
-
-    let _ = input.parse(ws.clone());
-    if !matches!(input.peek(), Some(Token::LBrace)) {
-        input.rewind(checkpoint);
-        return None;
-    }
-    input.next();
-
-    let _ = input.parse(ws.clone());
-    let count = match input.peek() {
-        Some(Token::Prime(n)) => {
-            input.next();
-            n
-        }
-        _ => {
-            input.rewind(checkpoint);
-            return None;
-        }
-    };
-
-    let _ = input.parse(ws.clone());
-    if !matches!(input.peek(), Some(Token::RBrace)) {
-        input.rewind(checkpoint);
-        return None;
-    }
-    input.next();
-
-    let span = input.span_from_cursor(&start);
-    Some(TrackedNode::leaf(
-        SyntaxNode::Group {
-            mode: ContentMode::Math,
-            kind: GroupKind::Explicit,
-            children: vec![SyntaxNode::Prime { count }],
-        },
-        span,
-    ))
-}
-
 /// Tokens that can never start a script operand. `]` and `&` are valid math
 /// atoms, so they are not treated as boundaries even though they close
 /// optional arguments or alignment cells.
 fn is_script_operand_boundary(token: Option<&Token>) -> bool {
     match token {
-        None | Some(Token::RBrace | Token::MathShift | Token::Superscript | Token::Subscript) => {
-            true
-        }
+        None
+        | Some(
+            Token::RBrace
+            | Token::MathShift
+            | Token::Superscript
+            | Token::Subscript
+            | Token::Prime(_),
+        ) => true,
         Some(Token::ControlSeq(name)) => matches!(name.as_str(), "right" | "end"),
         Some(_) => false,
     }
@@ -948,6 +902,46 @@ fn missing_script_operand_failure<'src, 'parse>(
     )
 }
 
+/// Empty implicit group used as a script base, with a zero-width span at `pos`.
+fn empty_script_base(pos: usize) -> TrackedNode {
+    TrackedNode::leaf(
+        SyntaxNode::empty_group(ContentMode::Math),
+        SimpleSpan::new((), pos..pos),
+    )
+}
+
+/// Fold parsed script components into a `Scripted` node spanning `span`.
+///
+/// The span subtree order is `[base, subscript?, superscript?]`.
+fn fold_scripted(components: ScriptComponents, span: SimpleSpan) -> TrackedNode {
+    let mut diagnostics = Vec::new();
+    let mut span_kids = Vec::new();
+    let mut take = |tracked: TrackedNode| {
+        let TrackedNode {
+            node,
+            span,
+            span_kids: kids,
+            diagnostics: kid_diagnostics,
+        } = tracked;
+        diagnostics.extend(kid_diagnostics);
+        span_kids.push(SpanTree { span, kids });
+        Box::new(node)
+    };
+    let base = take(components.base);
+    let subscript = components.subscript.map(&mut take);
+    let superscript = components.superscript.map(&mut take);
+    TrackedNode {
+        node: SyntaxNode::Scripted {
+            base,
+            subscript,
+            superscript,
+        },
+        span,
+        span_kids,
+        diagnostics,
+    }
+}
+
 /// Imperative parser that greedily collects `^`, `_`, and prime tokens after
 /// an atom, producing [`ScriptComponents`].
 ///
@@ -973,21 +967,11 @@ where
     let base = match base_opt {
         Some(base) => base,
         None => match input.peek() {
-            Some(Token::Superscript) | Some(Token::Subscript) => {
-                // Empty implicit group as base; use zero-width span at current byte position.
+            Some(Token::Superscript) | Some(Token::Subscript) | Some(Token::Prime(_)) => {
                 // Note: span_from_cursor with the same cursor is unreliable for zero-width spans
                 // in chumsky's MappedInput — the cursor's end field defaults to eoi.
                 let pos_cursor = input.cursor();
-                let byte_pos = input.span_from_cursor(&pos_cursor).start;
-                let span = SimpleSpan::new((), byte_pos..byte_pos);
-                TrackedNode::leaf(
-                    SyntaxNode::Group {
-                        mode: ContentMode::Math,
-                        kind: GroupKind::Implicit,
-                        children: vec![],
-                    },
-                    span,
-                )
+                empty_script_base(input.span_from_cursor(&pos_cursor).start)
             }
             _ => {
                 let cursor = input.cursor();
@@ -1008,14 +992,8 @@ where
         let marker = match input.peek() {
             Some(Token::Superscript) => {
                 input.next();
-                let tracked = match braced_prime_group(input) {
-                    Some(group) => group,
-                    None => parse_script_operand(
-                        input,
-                        atom_for_scripts.clone(),
-                        "superscript content",
-                    )?,
-                };
+                let tracked =
+                    parse_script_operand(input, atom_for_scripts.clone(), "superscript content")?;
                 let span = input.span_from_cursor(&marker_start);
                 Some((ScriptMarker::Sup, TrackedNode { span, ..tracked }))
             }
@@ -1027,10 +1005,21 @@ where
                 Some((ScriptMarker::Sub, TrackedNode { span, ..tracked }))
             }
             Some(Token::Prime(_)) => {
-                let count = match input.next() {
+                let mut count = match input.next() {
                     Some(Token::Prime(n)) => n,
                     _ => unreachable!("peek ensured prime token"),
                 };
+                loop {
+                    let checkpoint = input.save();
+                    let _ = input.parse(ws.clone());
+                    if let Some(Token::Prime(next_count)) = input.peek() {
+                        input.next();
+                        count += next_count;
+                    } else {
+                        input.rewind(checkpoint);
+                        break;
+                    }
+                }
                 let prime_span = input.span_from_cursor(&marker_start);
                 Some((
                     ScriptMarker::Prime,
@@ -1082,21 +1071,10 @@ where
                 let current = sup_state.take();
                 sup_state = match current {
                     None => Some(SupState::Prime(tracked)),
-                    Some(SupState::Prime(existing)) => {
-                        // Merge consecutive prime runs into an implicit group.
-                        let merged_span =
-                            SimpleSpan::new((), existing.span.start..tracked.span.end);
-                        let merged = TrackedNode::leaf(
-                            SyntaxNode::Group {
-                                mode: ContentMode::Math,
-                                kind: GroupKind::Implicit,
-                                children: vec![existing.node, tracked.node],
-                            },
-                            merged_span,
-                        );
-                        Some(SupState::Mixed(merged))
-                    }
-                    Some(SupState::Explicit(_)) | Some(SupState::Mixed(_)) => {
+                    // A prime run separated by a subscript (`f'_a'`) is a second superscript.
+                    Some(SupState::Prime(_))
+                    | Some(SupState::Explicit(_))
+                    | Some(SupState::Mixed(_)) => {
                         return Err(input.err_since(
                             &marker_start,
                             "Prime causes double exponent: use braces to clarify",
@@ -1978,7 +1956,8 @@ fn math_item_parser<'a>(
 /// This keeps following `_`, `^`, and prime tokens available to the outer
 /// scripted parser instead of folding them into a mandatory `m` argument.
 /// If the argument itself begins with `_` or `^`, parse it as an empty-base
-/// scripted atom so legacy shorthands such as `\mod _{n}` remain valid.
+/// scripted atom. A quote argument consumes only its own token, leaving any
+/// following scripts to the outer parser as with other single-atom arguments.
 fn math_atom_argument_parser<'a>(
     state: &'a ParserState<'a>,
     math_content: ContentParser<'a>,
@@ -1992,12 +1971,29 @@ fn math_atom_argument_parser<'a>(
             Token::Subscript => (),
         })
         .rewind();
+    let prime_argument = insignificant_whitespace().ignore_then(
+        select! { Token::Prime(count) => SyntaxNode::Prime { count } }
+            .tracked()
+            .map(|prime| {
+                let span = prime.span;
+                let components = ScriptComponents {
+                    base: empty_script_base(span.start),
+                    subscript: None,
+                    superscript: Some(prime),
+                };
+                fold_scripted(components, span)
+            }),
+    );
 
     infix_guard(state.ctx, ContentMode::Math)
         .or(control_seq("right"))
         .or(control_seq("end"))
         .not()
-        .ignore_then(choice((leading_script_marker.ignore_then(scripted), atom)))
+        .ignore_then(choice((
+            leading_script_marker.ignore_then(scripted),
+            prime_argument,
+            atom,
+        )))
 }
 
 /// Parse a single text item (respecting stop guards).
@@ -2350,7 +2346,6 @@ where
         delimiter_control_command,
         unknown_command,
         active_char(),
-        math_prime(),
         math_char(),
     ));
 
@@ -2435,51 +2430,7 @@ where
             return Ok(components.base);
         }
 
-        let span = input.span_from_cursor(&start);
-        // Scripted span subtree order is [base, subscript?, superscript?].
-        let TrackedNode {
-            node: base_node,
-            span: base_span,
-            span_kids: base_kids,
-            diagnostics: base_diagnostics,
-        } = components.base;
-        let mut diagnostics = base_diagnostics;
-        let mut span_kids = vec![SpanTree {
-            span: base_span,
-            kids: base_kids,
-        }];
-        let subscript_node = components.subscript.map(|sub| {
-            let TrackedNode {
-                node,
-                span,
-                span_kids: kids,
-                diagnostics: sub_diagnostics,
-            } = sub;
-            diagnostics.extend(sub_diagnostics);
-            span_kids.push(SpanTree { span, kids });
-            Box::new(node)
-        });
-        let superscript_node = components.superscript.map(|sup| {
-            let TrackedNode {
-                node,
-                span,
-                span_kids: kids,
-                diagnostics: sup_diagnostics,
-            } = sup;
-            diagnostics.extend(sup_diagnostics);
-            span_kids.push(SpanTree { span, kids });
-            Box::new(node)
-        });
-        Ok(TrackedNode {
-            node: SyntaxNode::Scripted {
-                base: Box::new(base_node),
-                subscript: subscript_node,
-                superscript: superscript_node,
-            },
-            span,
-            span_kids,
-            diagnostics,
-        })
+        Ok(fold_scripted(components, input.span_from_cursor(&start)))
     })
 }
 

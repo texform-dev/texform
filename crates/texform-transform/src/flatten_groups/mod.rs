@@ -426,8 +426,7 @@ fn try_unwrap(
 }
 
 fn is_lone_prime_superscript_group(ast: &Ast, node: NodeId, link: ParentLink) -> bool {
-    // This group is script syntax, not cell structure. Keeping it would emit
-    // `^{'}`, even though the active prime character already creates a superscript.
+    // A pure prime superscript's argument wrapper can be safely removed.
     if !matches!(link.slot, Slot::ScriptSup) {
         return false;
     }

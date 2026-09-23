@@ -483,7 +483,74 @@ fn test_serialize_prime_superscript_respects_script_order() {
 
 #[test]
 fn test_serialize_mixed_prime_superscript_keeps_script_group() {
-    assert_eq!(serialize(&parse_to_ast("f'^2")), "f ^ { ' 2 }");
+    assert_eq!(serialize(&parse_to_ast("f'^2")), r"f ^ { \prime 2 }");
+}
+
+#[test]
+fn prime_symbols_and_quote_superscripts_have_distinct_tokens() {
+    let mut ast = Ast::new();
+    let prime = ast.new_node(Node::Prime { count: 2 });
+    ast.append_child(ast.root(), prime);
+    let tokens = serialize_tokenized(&ast);
+    assert_eq!(tokens.latex, serialize(&ast));
+    assert_token_contract(&tokens);
+    assert_eq!(tokens.tokens.len(), 2);
+    assert!(tokens.tokens.iter().all(|token| {
+        token.text == r"\prime"
+            && token.kind == SerializationTokenKind::ControlSequence
+            && token.mode == ContentMode::Math
+    }));
+
+    let quote = serialize_tokenized(&parse_to_ast("f''"));
+    assert_eq!(quote.latex, "f''");
+    assert!(
+        quote
+            .tokens
+            .iter()
+            .any(|token| { token.text == "''" && token.kind == SerializationTokenKind::Character })
+    );
+}
+
+#[test]
+fn bare_quote_and_nested_quote_preserve_their_empty_base() {
+    for (source, expected) in [
+        ("'", "{ }'"),
+        ("''", "{ }''"),
+        (r"f^{'}", "f ^ { { }' }"),
+        (r"A^{'\alpha}", r"A ^ { { }' \alpha }"),
+    ] {
+        let ast = parse_to_ast(source);
+        assert_eq!(serialize(&ast), expected, "{source}");
+        assert_eq!(serialize_tokenized(&ast).latex, expected, "{source}");
+    }
+
+    let compact = SerializeOptions {
+        group_inner_spacing: MathGroupInnerSpacing::Compact,
+        ..SerializeOptions::default()
+    };
+    assert_eq!(serialize_with(&parse_to_ast("'"), &compact), "{}'");
+}
+
+#[test]
+fn grouped_prime_superscript_uses_prime_commands() {
+    use texform_interface::syntax_node::{self as syntax, SyntaxNode};
+
+    let syntax = SyntaxNode::Root {
+        mode: ContentMode::Math,
+        children: vec![SyntaxNode::Scripted {
+            base: Box::new(SyntaxNode::Char('f')),
+            subscript: None,
+            superscript: Some(Box::new(SyntaxNode::Group {
+                mode: ContentMode::Math,
+                kind: syntax::GroupKind::Explicit,
+                children: vec![SyntaxNode::prime(2)],
+            })),
+        }],
+    };
+    assert_eq!(
+        serialize(&Ast::from_syntax_root(&syntax)),
+        r"f ^ { \prime \prime }"
+    );
 }
 
 #[test]

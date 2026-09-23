@@ -1502,8 +1502,11 @@ fn test_prime_on_sub_grouped() {
                                     base,
                                 } => {
                                     assert!(subscript.is_some());
-                                    assert!(superscript.is_none());
-                                    assert_eq!(**base, SyntaxNode::Prime { count: 1 });
+                                    assert_eq!(
+                                        superscript.as_deref(),
+                                        Some(&SyntaxNode::Prime { count: 1 })
+                                    );
+                                    assert_eq!(**base, SyntaxNode::empty_group(ContentMode::Math));
                                 }
                                 other => panic!(
                                     "Expected scripted prime inside superscript, got {:?}",
@@ -1541,7 +1544,7 @@ fn test_braced_prime_superscript_content() {
                         Some(&SyntaxNode::Group {
                             mode: ContentMode::Math,
                             kind: GroupKind::Explicit,
-                            children: vec![SyntaxNode::Prime { count: 1 }],
+                            children: vec![empty_prime_script(1)],
                         })
                     );
                 }
@@ -1641,16 +1644,23 @@ fn test_empty_base_subscript() {
 
 #[test]
 fn test_preprime() {
-    // "'x" -> leading prime atom then x
     let (result, _) = parse("'x", false).unwrap();
 
     match result {
         SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 2);
-            assert_eq!(children[0], SyntaxNode::Prime { count: 1 });
+            assert_eq!(children[0], empty_prime_script(1));
             assert_eq!(children[1], SyntaxNode::Char('x'));
         }
         _ => panic!("Expected root Group"),
+    }
+}
+
+fn empty_prime_script(count: usize) -> SyntaxNode {
+    SyntaxNode::Scripted {
+        base: Box::new(SyntaxNode::empty_group(ContentMode::Math)),
+        subscript: None,
+        superscript: Some(Box::new(SyntaxNode::Prime { count })),
     }
 }
 
@@ -1663,12 +1673,19 @@ fn test_prime_nested_shapes() {
                 mode: ContentMode::Math,
                 kind: GroupKind::Explicit,
                 children: vec![SyntaxNode::Scripted {
-                    base: Box::new(SyntaxNode::Prime { count: 1 }),
+                    base: Box::new(SyntaxNode::empty_group(ContentMode::Math)),
                     subscript: None,
                     superscript: Some(Box::new(SyntaxNode::Group {
                         mode: ContentMode::Math,
-                        kind: GroupKind::Explicit,
-                        children: vec![SyntaxNode::Prime { count: 1 }],
+                        kind: GroupKind::Implicit,
+                        children: vec![
+                            SyntaxNode::Prime { count: 1 },
+                            SyntaxNode::Group {
+                                mode: ContentMode::Math,
+                                kind: GroupKind::Explicit,
+                                children: vec![empty_prime_script(1)],
+                            },
+                        ],
                     })),
                 }],
             },
@@ -1684,7 +1701,7 @@ fn test_prime_nested_shapes() {
                     superscript: Some(Box::new(SyntaxNode::Group {
                         mode: ContentMode::Math,
                         kind: GroupKind::Explicit,
-                        children: vec![SyntaxNode::Prime { count: 1 }],
+                        children: vec![empty_prime_script(1)],
                     })),
                 }],
             },
@@ -1695,12 +1712,19 @@ fn test_prime_nested_shapes() {
                 mode: ContentMode::Math,
                 kind: GroupKind::Explicit,
                 children: vec![SyntaxNode::Scripted {
-                    base: Box::new(SyntaxNode::Prime { count: 1 }),
+                    base: Box::new(SyntaxNode::empty_group(ContentMode::Math)),
                     subscript: None,
                     superscript: Some(Box::new(SyntaxNode::Group {
                         mode: ContentMode::Math,
-                        kind: GroupKind::Explicit,
-                        children: vec![SyntaxNode::Char('a')],
+                        kind: GroupKind::Implicit,
+                        children: vec![
+                            SyntaxNode::Prime { count: 1 },
+                            SyntaxNode::Group {
+                                mode: ContentMode::Math,
+                                kind: GroupKind::Explicit,
+                                children: vec![SyntaxNode::Char('a')],
+                            },
+                        ],
                     })),
                 }],
             },

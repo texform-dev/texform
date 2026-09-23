@@ -595,18 +595,8 @@ impl<R: Recorder> AtomWriter<R> {
             return matches!(options.adjacent_char_spacing, AdjacentCharSpacing::Spaced);
         }
 
-        // Prime marks attach tightly to the preceding atom. A following atom
-        // still gets separated so a leading prime stays readable as its own
-        // item in canonical output.
-        if matches!(next, AtomKind::Prime) {
-            return !matches!(
-                prev,
-                AtomKind::ControlSequence
-                    | AtomKind::MathChar
-                    | AtomKind::MathDigit
-                    | AtomKind::Prime
-            );
-        }
+        // Prime marks are always emitted attached to their script base, so
+        // only the atom after a prime run needs a boundary decision.
         if matches!(prev, AtomKind::Prime) && matches!(next, AtomKind::ScriptMark) {
             return matches!(options.script_spacing, ScriptSpacing::Spaced);
         }
@@ -1635,20 +1625,14 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     }
 
     fn visit_prime(&mut self, count: usize, mode: ContentMode) {
-        if matches!(mode, ContentMode::Math) {
+        // Document import and the parser only admit math-mode `Prime`.
+        debug_assert!(matches!(mode, ContentMode::Math), "Prime is math-only");
+        for _ in 0..count {
             self.writer.emit(
-                mode,
-                AtomKind::Prime,
-                SerializationTokenKind::Character,
-                &"'".repeat(count),
-                self.options,
-            );
-        } else {
-            self.writer.emit(
-                mode,
-                AtomKind::TextChunk,
-                SerializationTokenKind::Character,
-                &"'".repeat(count),
+                ContentMode::Math,
+                AtomKind::ControlSequence,
+                SerializationTokenKind::ControlSequence,
+                r"\prime",
                 self.options,
             );
         }

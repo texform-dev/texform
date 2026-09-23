@@ -682,9 +682,9 @@ mod parser_diagnostic_regressions {
     use super::support::parser::*;
     use chumsky::error::RichReason;
     use texform_core::parse::{
-        AllowedMode, CommandKind, ContextItem, ParseConfig, ParseDiagnosticKind,
+        AllowedMode, CommandKind, ContextItem, ParseConfig, ParseContext, ParseDiagnosticKind,
     };
-    use texform_interface::syntax_node::{ContentMode, GroupKind, SyntaxNode};
+    use texform_interface::syntax_node::ContentMode;
 
     #[test]
     fn test_bare_left_reports_invalid_left_delimiter() {
@@ -870,20 +870,18 @@ mod parser_diagnostic_regressions {
     }
 
     #[test]
-    fn test_bare_prime_superscript_parses_as_prime_node() {
-        let (result, _) = parse(r"f^'", false).expect("expected prime superscript");
+    fn test_bare_prime_cannot_be_a_script_operand() {
+        for source in ["f^'", "f_'", "f'^'"] {
+            assert!(parse(source, false).is_err(), "{source}");
+            let output = ParseContext::shared().parse(source, &ParseConfig::default());
+            assert!(output.try_into_document().is_err(), "{source}");
+        }
+    }
 
-        match result {
-            SyntaxNode::Root { children, .. } => match &children[0] {
-                SyntaxNode::Scripted { superscript, .. } => {
-                    assert_eq!(
-                        superscript.as_deref(),
-                        Some(&SyntaxNode::Prime { count: 1 })
-                    );
-                }
-                other => panic!("expected scripted node, got {other:?}"),
-            },
-            other => panic!("expected root node, got {other:?}"),
+    #[test]
+    fn test_prime_runs_split_by_subscript_error() {
+        for source in ["f'_a'", "' _a '"] {
+            assert!(parse(source, false).is_err(), "{source}");
         }
     }
 
@@ -900,31 +898,6 @@ mod parser_diagnostic_regressions {
     #[test]
     fn test_prime_after_superscript_error() {
         assert!(parse(r"x^a'", false).is_err());
-    }
-
-    #[test]
-    fn test_prime_then_explicit_prime_superscript_stays_in_single_slot() {
-        let (result, _) = parse(r"x'^'", false).expect("expected combined prime superscript");
-
-        match result {
-            SyntaxNode::Root { children, .. } => match &children[0] {
-                SyntaxNode::Scripted { superscript, .. } => {
-                    assert_eq!(
-                        superscript.as_deref(),
-                        Some(&SyntaxNode::Group {
-                            mode: ContentMode::Math,
-                            kind: GroupKind::Implicit,
-                            children: vec![
-                                SyntaxNode::Prime { count: 1 },
-                                SyntaxNode::Prime { count: 1 },
-                            ],
-                        })
-                    );
-                }
-                other => panic!("expected scripted node, got {other:?}"),
-            },
-            other => panic!("expected root node, got {other:?}"),
-        }
     }
 }
 
