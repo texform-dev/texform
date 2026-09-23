@@ -1220,6 +1220,7 @@ dependencies = [
 name = "texform-cli"
 version = "0.5.0"
 dependencies = [
+ "ariadne",
  "clap",
  "serde",
  "serde_json",
@@ -1230,7 +1231,6 @@ dependencies = [
 name = "texform-core"
 version = "0.5.0"
 dependencies = [
- "ariadne",
  "chumsky",
  "logos",
  "serde",

@@ -24,6 +24,7 @@ Read the relevant guide before changing an area; unrelated guides need not be lo
 | Run or investigate corpus regression | [Regression guide](regression/README.md) |
 | Change Python bindings | [Python development](crates/texform-python/README.md) |
 | Change WASM, npm, or TypeScript bindings | [WASM development](crates/texform-wasm/README.md) |
+| Change the command-line tool or the `serve` protocol | [CLI guide](crates/texform-cli/README.md) |
 | Release, version, or changelog maintenance | [RELEASING.md](RELEASING.md) |
 
 Use Cargo for Rust, Bun for JavaScript/TypeScript, and uv with maturin for Python. Significant parser changes require before/after corpus regression. Transform changes require the full `transform_contract` check before merging; hooks do not run it. Follow the commands and failure handling in the guides above.
@@ -35,7 +36,7 @@ Keep binding implementations, wrappers, and public type declarations in sync. Do
 Use Conventional Commits: `<type>(<scope>)<!>: <subject>`. Use backticks around code identifiers in both subject and body.
 
 - Use `feat` for user-facing features or behavior changes, `fix` for bug fixes, and `perf` for performance improvements. Supporting types are `docs`, `chore`, `ci`, `test`, `style`, `refactor`, `build`, `revert`. Mark breaking changes with `!`.
-- Prefer an existing scope for the main change: `core`, `parser`, `serializer`, `document`, `transform`, `rule`, `specs`, `knowledge`, `argspec`, `interface`, `regression`, `bindings`, `python`, `wasm`. Omit it when no area dominates. Use `core` only for shared internals or changes spanning several parts of `texform-core`.
+- Prefer an existing scope for the main change: `core`, `parser`, `serializer`, `document`, `transform`, `rule`, `specs`, `knowledge`, `argspec`, `interface`, `regression`, `bindings`, `python`, `wasm`, `cli`. Omit it when no area dominates. Use `core` only for shared internals or changes spanning several parts of `texform-core`.
 - Keep the subject short, imperative, and lower-case after the prefix. State the main change without listing secondary changes.
 - For nontrivial changes, explain the motivation and resulting behavior in one or two short paragraphs, or a short opening paragraph and two or three concise bullets. Keep each bullet to one key point; do not repeat the subject.
 - For fixes, name the trigger and incorrect behavior. For breaking changes, retain the main migration instructions. Omit implementation inventories, exhaustive API lists, routine test summaries, and development history unless needed to explain a constraint or trade-off.

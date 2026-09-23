@@ -13,6 +13,8 @@ graph TD
         wasm["texform-wasm"]
     end
 
+    cli["texform-cli<br/>command line"]
+
     facade["<b>texform</b><br/>public facade · stability boundary"]
 
     subgraph internal["Internal crates — no stability guarantee"]
@@ -27,6 +29,7 @@ graph TD
 
     py --> facade
     wasm --> facade
+    cli --> facade
     facade --> transform
     facade --> core
     facade --> knowledge
@@ -50,7 +53,7 @@ graph TD
     regression --> interface
 ```
 
-Arrows point from a crate to the crates it depends on. Everything below `texform` is internal; the facade is the only general-purpose Rust crate external code should depend on. The binding crates are published language surfaces, but they may still depend on internal helper crates for host-language glue such as generated TypeScript shapes and option conversion.
+Arrows point from a crate to the crates it depends on. Everything below `texform` is internal; the facade is the only general-purpose Rust crate external code should depend on. The binding crates are published language surfaces, but they may still depend on internal helper crates for host-language glue such as generated TypeScript shapes and option conversion. `texform-cli` is a front end like the bindings but depends on the facade alone; as a separate crate, it keeps command-line dependencies out of the library's dependency graph.
 
 | Crate | Responsibility |
 |-------|----------------|
@@ -62,6 +65,7 @@ Arrows point from a crate to the crates it depends on. Everything below `texform
 | `texform-argspec` | An xparse-style argument-specification parser used to describe command signatures. |
 | `texform-interface` | Shared types with no dependencies on other TeXForm crates, most importantly `SyntaxNode`, the lossless parse snapshot. |
 | `texform-python`, `texform-wasm` | Language bindings that expose the shared facade model to Python and WebAssembly. |
+| `texform-cli` | The `texform` command-line tool: normalization, parsing, tokenization, knowledge queries, argspec validation, and the `serve` normalizer protocol for other processes. It shares the bindings' DTOs and config overlays through the facade. |
 | `texform-regression` | Corpus regression and data-product tooling for parser regression, transform-contract checking, and counter-map generation. Internal tooling, not part of the public API. |
 
 The facade deliberately does **not** re-export the internal `Ast`, `Node`, or arena types. Users get a single editable tree type — `Document` — and never touch the panic-contract arena underneath it. Hidden research and test entries may still be callable on the facade; they are omitted from the public rustdoc and carry no compatibility promise.

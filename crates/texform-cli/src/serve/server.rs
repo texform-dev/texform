@@ -7,10 +7,12 @@ use std::time::Instant;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use texform::ParseDiagnostic;
 use texform::bindings::{NormalizeConfigInput, format_read_error, normalize_error_to_parts, read};
-use texform::{NormalizeConfig, ParseDiagnostic, Profile, TransformEngine};
 
 use super::rpc::RpcError;
+use crate::normalizer::{Normalizer, ProfileName};
+use crate::output::panic_message;
 use crate::{build_info, packages};
 
 /// Bumped only for incompatible changes to method semantics or required
@@ -21,13 +23,8 @@ pub struct Server {
     default_packages: Vec<String>,
     initialized: bool,
     shut_down: bool,
-    configs: HashMap<String, Configured>,
-}
-
-/// An engine plus the effective config that `normalize` requests reference by id.
-struct Configured {
-    engine: TransformEngine,
-    config: NormalizeConfig,
+    /// Normalizers that `normalize` requests reference by id.
+    configs: HashMap<String, Normalizer>,
 }
 
 impl Server {
@@ -78,34 +75,27 @@ impl Server {
     fn configure(&mut self, params: Option<Value>) -> Result<Value, RpcError> {
         let ConfigureParams { id, config: spec } = parse_params(params)?;
         let requested = spec.packages.as_deref().unwrap_or(&self.default_packages);
-        let names: Vec<&str> = requested.iter().map(String::as_str).collect();
-        let engine = TransformEngine::builder()
-            .packages(&names)
-            .profile(spec.profile.into())
-            .build()
-            .map_err(|error| RpcError::invalid_params(error.to_string()))?;
-        let config = spec
-            .overrides
-            .unwrap_or_default()
-            .into_config(engine.default_normalize_config());
+        let normalizer =
+            Normalizer::build(spec.profile, requested, spec.overrides.unwrap_or_default())
+                .map_err(|error| RpcError::invalid_params(error.to_string()))?;
         let resolved = to_json(Resolved {
             profile: spec.profile,
             packages: packages::canonical(requested),
-            config: NormalizeConfigInput::from_config(config.clone()),
+            config: NormalizeConfigInput::from_config(normalizer.config.clone()),
         });
-        self.configs.insert(id, Configured { engine, config });
+        self.configs.insert(id, normalizer);
         Ok(serde_json::json!({ "resolved": resolved }))
     }
 
     fn normalize(&mut self, params: Option<Value>) -> Result<Value, RpcError> {
         let params: NormalizeParams = parse_params(params)?;
-        let configured = self.configs.get(&params.config).ok_or_else(|| {
+        let normalizer = self.configs.get(&params.config).ok_or_else(|| {
             RpcError::invalid_params(format!("config `{}` is not configured", params.config))
         })?;
         let timing = params.timing.unwrap_or(false);
         let mut timings = StageTimings::default();
         let outcome =
-            configured.normalize_staged(&params.latex, &mut Stopwatch::start(timing), &mut timings);
+            normalizer.normalize_staged(&params.latex, &mut Stopwatch::start(timing), &mut timings);
         let timing = timing.then_some(timings);
         match outcome {
             Ok(output) => Ok(to_json(NormalizeResult { output, timing })),
@@ -128,7 +118,7 @@ impl Server {
     }
 }
 
-impl Configured {
+impl Normalizer {
     /// `TransformEngine::normalize_with`, composed from its public stages so
     /// each stage can be timed.
     ///
@@ -163,11 +153,7 @@ impl Configured {
 
 /// `code 1, kind "internal"` failure for a request whose handler panicked.
 pub fn panic_error(payload: &(dyn Any + Send)) -> RpcError {
-    let detail = payload
-        .downcast_ref::<&str>()
-        .copied()
-        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
-        .unwrap_or("non-string panic payload");
+    let detail = panic_message(payload);
     let data = FailureData {
         kind: "internal",
         diagnostics: Vec::new(),
@@ -232,26 +218,6 @@ struct ConfigSpec {
     profile: ProfileName,
     packages: Option<Vec<String>>,
     overrides: Option<NormalizeConfigInput>,
-}
-
-#[derive(Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-enum ProfileName {
-    Authoring,
-    Faithful,
-    Corpus,
-    Equiv,
-}
-
-impl From<ProfileName> for Profile {
-    fn from(name: ProfileName) -> Self {
-        match name {
-            ProfileName::Authoring => Profile::Authoring,
-            ProfileName::Faithful => Profile::Faithful,
-            ProfileName::Corpus => Profile::Corpus,
-            ProfileName::Equiv => Profile::Equiv,
-        }
-    }
 }
 
 #[derive(Deserialize)]

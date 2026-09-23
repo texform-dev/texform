@@ -20,7 +20,6 @@ texform-argspec.workspace = true
 texform-knowledge.workspace = true
 
 [dev-dependencies]
-ariadne.workspace = true
 serde_json.workspace = true
 
 [features]

@@ -13,6 +13,7 @@ Choose checks by the behavior affected. This guide owns test placement and valid
 | Python conversion and exception behavior | Embedded Python tests in `crates/texform-python/src/` |
 | JavaScript runtime behavior | `packages/texform/scripts/smoke-node.mjs` against rebuilt WASM |
 | TypeScript declarations | `packages/texform/type-tests/` and the package type check |
+| Command-line behavior and the `serve` protocol | `crates/texform-cli/tests/`: integration tests that drive the built `texform` binary |
 
 Facade contract tests define compatibility promises; changing their expectations requires a deliberate public behavior change. Internal tests verify correctness without freezing internal APIs. Binding tests protect host-language behavior that Rust facade tests cannot exercise.
 

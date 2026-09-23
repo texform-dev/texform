@@ -2,6 +2,8 @@
 
 TeXForm ships one lockstep version to crates.io, PyPI, and npm from a single source of truth: `workspace.package.version` in `Cargo.toml`. Every crate inherits it through `version.workspace = true`, maturin reads it for the Python package, and `packages/texform/package.json` is synchronized to it for npm.
 
+The command-line tool ships as the `texform-cli` crate, which installs the `texform` binary with `cargo install texform-cli`. It is published to crates.io at the same lockstep version in the same `release-plz` run as the facade and the internal crates. Like them, it gets no tag or GitHub Release of its own, and its commits are folded into the root `CHANGELOG.md`.
+
 Releases are driven by a **release PR** that `release-plz` maintains automatically. Merging that PR is the publish button.
 
 ## Pipeline at a glance
@@ -78,3 +80,5 @@ Steady-state configuration. Touch this when rotating credentials, onboarding a m
 | npm | package owner/org, repository, workflow `release.yml`, environment `release` |
 
 npm additionally requires Node ≥ 22.14.0, npm ≥ 11.5.1, and an exact `repository.url` in `packages/texform/package.json` that matches the GitHub repository — provenance fails otherwise.
+
+crates.io trusted publishers are configured per crate and only for crates that already exist, so an OIDC token cannot publish a new crate such as `texform-cli`. For the first release that includes a new publishable crate, set the `CARGO_REGISTRY_TOKEN` environment secret to a short-lived API token (the release job then skips OIDC), add the crates.io trusted publisher for the new crate after the release, and delete the secret. Otherwise the release job fails with `403` on that crate.

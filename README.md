@@ -150,11 +150,25 @@ assert_eq!(document.to_latex()?, r"\frac { a } { b }");
 
 The Python and JavaScript bindings expose the same parser, document, and engine from the single Rust core. See the [PyPI package notes](python/texform/README.md) and the [npm package notes](packages/texform/README.md) for language-specific details.
 
+### Command line
+
+```bash
+cargo install texform-cli
+```
+
+```console
+$ texform normalize --profile corpus 'a \over b'
+\frac { a } { b }
+```
+
+The `texform` binary also parses, tokenizes, and queries the knowledge base, and `texform serve` offers normalization to other programs over a JSON-RPC protocol. See the [CLI guide](crates/texform-cli/README.md).
+
 ## Links
 
 - [Playground](https://play.texform.dev) — try TeXForm in the browser
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — crate layout, pipeline, tree representations, API guarantees
 - [`TESTING.md`](TESTING.md) — how TeXForm is tested, from contract tests to corpus regression
+- [`texform-cli`](crates/texform-cli/README.md) — command-line usage and the `serve` normalizer protocol
 - [`CHANGELOG.md`](CHANGELOG.md) — release history
 
 ## License

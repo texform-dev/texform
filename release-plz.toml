@@ -33,6 +33,7 @@ changelog_include = [
   "texform-knowledge",
   "texform-knowledge-macros",
   "texform-transform",
+  "texform-cli",
   "texform-python",
   "texform-wasm",
 ]

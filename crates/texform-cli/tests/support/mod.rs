@@ -3,12 +3,94 @@
 #![allow(dead_code)]
 
 use std::io::Write;
-use std::process::{Command, ExitStatus, Stdio};
+use std::process::{Command, ExitStatus, Output, Stdio};
 use std::thread;
 
 use serde_json::{Value, json};
+use texform::{Parser, Profile, TransformEngine};
 
 pub const BIN: &str = env!("CARGO_BIN_EXE_texform");
+
+/// The CLI default package selection: every built-in package.
+pub fn all_packages() -> Vec<String> {
+    texform::list_packages()
+        .into_iter()
+        .map(|package| package.name)
+        .collect()
+}
+
+/// Facade engine with the CLI default package selection.
+pub fn engine(profile: Profile) -> TransformEngine {
+    let packages = all_packages();
+    let names: Vec<&str> = packages.iter().map(String::as_str).collect();
+    TransformEngine::builder()
+        .packages(&names)
+        .profile(profile)
+        .build()
+        .unwrap()
+}
+
+/// Facade parser with the CLI default package selection.
+pub fn parser() -> Parser {
+    let packages = all_packages();
+    let names: Vec<&str> = packages.iter().map(String::as_str).collect();
+    Parser::builder().packages(&names).build().unwrap()
+}
+
+/// Everything one `texform` invocation wrote before exiting.
+pub struct Run {
+    pub status: ExitStatus,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+impl Run {
+    pub fn code(&self) -> i32 {
+        self.status
+            .code()
+            .expect("texform exited with a status code")
+    }
+
+    pub fn lines(&self) -> Vec<&str> {
+        self.stdout.lines().collect()
+    }
+
+    pub fn json_lines(&self) -> Vec<Value> {
+        self.stdout
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("each stdout line is JSON"))
+            .collect()
+    }
+}
+
+/// Run `texform` with `args`, feed it `stdin`, and close stdin.
+pub fn texform(args: &[&str], stdin: &str) -> Run {
+    let output = run_with_stdin(args, stdin.as_bytes().to_vec());
+    Run {
+        status: output.status,
+        stdout: String::from_utf8(output.stdout).expect("stdout is UTF-8"),
+        stderr: String::from_utf8(output.stderr).expect("stderr is UTF-8"),
+    }
+}
+
+fn run_with_stdin(args: &[&str], input: Vec<u8>) -> Output {
+    let mut child = Command::new(BIN)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn texform");
+    let mut stdin = child.stdin.take().expect("piped stdin");
+    // Write from another thread so a full stdout pipe cannot deadlock the test.
+    let writer = thread::spawn(move || stdin.write_all(&input));
+    let output = child.wait_with_output().expect("wait for texform");
+    writer
+        .join()
+        .expect("stdin writer thread")
+        .expect("write stdin");
+    output
+}
 
 /// One JSON-RPC request line.
 pub fn request(id: impl Into<Value>, method: &str, params: Value) -> String {
@@ -68,22 +150,9 @@ pub fn serve(args: &[&str], lines: &[String]) -> Served {
 
 /// Run `texform serve` over raw stdin bytes and close stdin.
 pub fn serve_bytes(args: &[&str], input: Vec<u8>) -> Served {
-    let mut child = Command::new(BIN)
-        .arg("serve")
-        .args(args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn texform serve");
-    let mut stdin = child.stdin.take().expect("piped stdin");
-    // Write from another thread so a full stdout pipe cannot deadlock the test.
-    let writer = thread::spawn(move || stdin.write_all(&input));
-    let output = child.wait_with_output().expect("wait for texform serve");
-    writer
-        .join()
-        .expect("stdin writer thread")
-        .expect("write stdin");
+    let mut command = vec!["serve"];
+    command.extend_from_slice(args);
+    let output = run_with_stdin(&command, input);
     let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
     let responses = stdout
         .lines()

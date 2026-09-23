@@ -24,11 +24,214 @@ texform 0.5.0 (0123456789ab 2026-09-22, dirty)
 
 The serve protocol reports the same identity in `serverInfo`.
 
-## Global options
+## Usage
+
+```text
+texform [--packages <a,b,...>] <COMMAND> [OPTIONS]
+```
+
+| Command | Purpose |
+| --- | --- |
+| [`normalize`](#texform-normalize) | Normalize formulas with a transform profile |
+| [`parse`](#texform-parse) | Parse formulas and print their canonical serialization or syntax tree |
+| [`tokenize`](#texform-tokenize) | Split the canonical serialization of formulas into typed tokens |
+| [`info`](#texform-info) | Show knowledge-base records for a control sequence or an environment |
+| [`packages`](#texform-packages) | List the built-in knowledge packages |
+| [`argspec validate`](#texform-argspec-validate) | Check an xparse-style argument specification |
+| [`serve`](#texform-serve-normalizer-protocol-v1) | Serve the normalizer protocol to another process |
+
+`texform <COMMAND> --help` lists every option of a command.
+
+### Global options
 
 | Option | Meaning |
 | --- | --- |
-| `--packages <a,b,...>` | Knowledge packages to load. Defaults to all built-in packages (`base`, `ams`, `braket`, `physics`, `textmacros`, `bboldx`, `boldsymbol`). An unknown name is a usage error with exit status `2`. |
+| `--packages <a,b,...>` | Knowledge packages to load. Defaults to all built-in packages (`base`, `ams`, `braket`, `physics`, `textmacros`, `bboldx`, `boldsymbol`). An unknown name is a usage error with exit status `2`. `packages` and `argspec validate` do not use it. |
+
+### Formula input
+
+`normalize`, `parse`, and `tokenize` read formulas from one of three sources:
+
+- The `LATEX` argument is one formula. It may start with `-`; put `--` before a formula that could be mistaken for an option of the command.
+- Without `LATEX`, all of stdin is one formula, minus one trailing newline (`\n` or `\r\n`). A formula with line breaks, such as an environment, stays whole.
+- With `--lines`, every stdin line (ending in `\n` or `\r\n`) is one formula, and an empty line is an empty formula. Lines are processed as they arrive.
+
+Input must be UTF-8.
+
+### Output
+
+By default each formula produces one line of text on stdout. With `--json`, each formula produces one JSON object on one line instead: `{"ok":true,...}` on success and `{"ok":false,"error":{...}}` on failure (see [JSON output](#json-output)).
+
+A failing formula does not stop the run:
+
+- In text mode the error goes to stderr, prefixed with `line N:` under `--lines`, followed by any parse diagnostics rendered against the formula source. Under `--lines` the failure also writes an empty line to stdout, so output line N always belongs to input line N. A single formula that fails writes nothing to stdout.
+- In JSON mode the error is part of the formula's output line, and nothing is written to stderr.
+
+Diagnostics are colored only when stderr is a terminal and `NO_COLOR` is unset.
+
+### Exit status
+
+| Status | Meaning |
+| --- | --- |
+| `0` | Every formula succeeded, or the lookup or validation succeeded |
+| `1` | At least one formula failed (the rest of the input is still processed), `info` found nothing, or `argspec validate` rejected the specification |
+| `2` | Usage, configuration, or I/O error: for example an unknown option or package, a missing `--profile`, an invalid `--config`, or unreadable or non-UTF-8 input. Output may be incomplete. |
+
+### `--config`
+
+`--config` takes a JSON object, inline or as `@FILE` to read it from a file. Its values are layered over the defaults, and nested objects may be partial. Unknown keys are rejected with exit status `2`, and the error names the offending path, such as `invalid --config: rewrite.enabld: unknown field ...`.
+
+| Command | Config shape | Keys |
+| --- | --- | --- |
+| `normalize`, `tokenize --profile` | Normalize config over the profile defaults | `reject_unknown`, `abort_on_error`, `max_group_depth`, `lower_attributes`, `rewrite`, `finalize_ast`, `flatten_groups` |
+| `parse`, `tokenize` | Parse config over the parser defaults | `reject_unknown`, `abort_on_error`, `max_group_depth` |
+
+The normalize config has the same keys and resolves the same way as the `normalize` overlays of the Python binding (keyword arguments) and the JavaScript binding (camelCase keys), and as the `overrides` object of the serve protocol's `configure`. [`configure`](#configure) shows every key with its default value.
+
+## Commands
+
+### `texform normalize`
+
+```bash
+texform normalize --profile corpus 'a \over b'
+texform normalize --profile authoring --config '{"rewrite":{"enabled":false}}' --lines < formulas.txt
+texform normalize --profile corpus --report --json 'a \over b'
+```
+
+`--profile` is required: one of `authoring`, `faithful`, `corpus`, or `equiv`. The output is identical to `TransformEngine::normalize_with` in the Rust facade for the same packages, profile, and config. `--report` adds the transform report to each result and requires `--json`.
+
+```console
+$ printf '%s\n' 'a \over b' '\frac{a' '\dv{f}{x}' | texform normalize --profile corpus --lines 2>/dev/null
+\frac { a } { b }
+
+\frac { \mathrm { d } f } { \mathrm { d } x }
+$ echo $?
+1
+```
+
+### `texform parse`
+
+Parses formulas without normalizing them. Success means a complete document, the same condition `normalize` requires: a partial document that contains error nodes is a failure.
+
+| Parse result | Text mode | `--json` |
+| --- | --- | --- |
+| Complete document | Canonical serialization on stdout; diagnostics, if any, as warnings on stderr | `ok: true` with `syntax` and `diagnostics` |
+| Partial document | Failure: error and diagnostics on stderr | `ok: false` with `error` and the partial `syntax` |
+| No document | Failure: error and diagnostics on stderr | `ok: false` with `error` |
+
+```console
+$ texform parse '\frac12'
+\frac { 1 } { 2 }
+$ texform parse '\frac{a'
+error: parse produced an incomplete document
+[argument-validation] Error: unclosed brace argument
+   ╭─[ <argument>:1:6 ]
+   │
+ 1 │ \frac{a
+   │      ┬┬
+   │      ╰─── here
+   │       │
+   │       ╰── while parsing command argument
+───╯
+```
+
+The diagnostic source is named `<argument>`, `<stdin>`, or `<line N>` after where the formula came from.
+
+### `texform tokenize`
+
+Splits the canonical serialization of each formula into typed tokens (`Document::to_tokenized_latex`). With `--profile`, the formula is normalized first, and the tokens join to exactly the `normalize` output. Partial documents fail as in `parse`.
+
+In text mode the token texts are joined by single spaces. A text-mode token such as the argument of `\text` can contain spaces itself, so use `--json` when exact token boundaries matter.
+
+```console
+$ texform tokenize '\ket{\psi}'
+\ket { \psi }
+$ texform tokenize --profile corpus '\ket{\psi}'
+\left \vert \psi \right \rangle
+```
+
+### `texform info`
+
+```bash
+texform info '\frac'
+texform info --env align
+texform info --mode text '\textbf'
+```
+
+Looks up a name in the knowledge base of the loaded packages, in math mode unless `--mode text` is given.
+
+- A control sequence such as `\frac` shows its command record and, when one exists, its character record. Character commands such as `\alpha` have both: the character record gives the Unicode value, and the command record shows that the name parses as a command without arguments. A few names, such as `\div` with `physics` loaded, are an ordinary command in one package and a character in another.
+- `--env NAME` shows an environment record.
+- A name that is neither a control sequence nor used with `--env` is a usage error. Characters are looked up by their control-sequence name; there is no lookup by Unicode character.
+
+When nothing is found, the exit status is `1`.
+
+```console
+$ texform info '\alpha'
+command:  \alpha
+kind:     prefix
+mode:     math
+packages: base
+argspec:  (no arguments)
+
+character: \alpha
+unicode:   α
+mode:      math
+variant:   italic
+package:   base
+```
+
+### `texform packages`
+
+```console
+$ texform packages
+ams         35 commands, 28 environments
+base        267 commands, 7 environments
+bboldx      12 commands, 0 environments
+boldsymbol  1 command, 0 environments
+braket      11 commands, 0 environments
+physics     182 commands, 1 environments
+textmacros  76 commands, 0 environments
+```
+
+### `texform argspec validate`
+
+Checks an xparse-style argument specification with `validate_argspec` and describes each argument slot. An invalid specification is reported on stderr with exit status `1`.
+
+```console
+$ texform argspec validate 'm O{default} m'
+valid: 3 arguments
+  1. required, math content
+  2. optional, math content
+  3. required, math content
+```
+
+## JSON output
+
+`--json` output uses the DTOs of `texform::bindings`, which the Python and JavaScript bindings also use, so field names and values match the Python binding exactly and the JavaScript binding up to camelCase. Member order is not significant.
+
+| Command | Output line |
+| --- | --- |
+| `normalize` | `{"ok":true,"output":string,"report"?:object}` |
+| `parse` | `{"ok":true,"syntax":object,"diagnostics":[object]}` |
+| `tokenize` | `{"ok":true,"latex":string,"tokens":[object]}` |
+| Any formula command, on failure | `{"ok":false,"error":{"kind","message","diagnostics"},"syntax"?:object}` |
+| `info` | `{"command"?:object,"character"?:object,"environment"?:object}`, or `null` when nothing is found |
+| `packages` | `[{"name","commands","environments"}]` on one line |
+| `argspec validate` | `{"valid","error","arg_count","parsed"}` |
+
+- `error.kind` is `parse` (the formula did not parse into a complete tree), `transform` (a normalization step failed), or `internal` (an internal error, including a panic inside TeXForm, which fails only that formula). `error.diagnostics` lists parse diagnostics for `parse` failures and is empty otherwise; each diagnostic has `kind`, `message`, `span` (`start` and `end` byte offsets into the formula), `expected`, `found`, and `contexts`. Failures carry `syntax` only from `parse`, and only when a partial document exists.
+- `syntax` is the serialized `SyntaxNode`, the tree format of `Document::to_syntax` in Rust, of `to_syntax()` in Python, and of `toSyntax()` in JavaScript.
+- `report` is the transform report of `normalize_with_report`. Its fields are diagnostic and carry no compatibility promise.
+- Each token is `{"text","start_byte","end_byte","kind","mode"}`. The offsets are UTF-8 byte offsets into `latex`; `kind` is `control_sequence`, `character`, `delimiter`, `text`, `raw`, or `error`, and `mode` is `math` or `text`.
+- The `info` records are the results of `lookup_command`, `lookup_character`, and `lookup_env` in the bindings.
+
+```console
+$ texform normalize --profile corpus --json '\frac{a'
+{"ok":false,"error":{"kind":"parse","message":"parse produced an incomplete document","diagnostics":[{"kind":"argument-validation","message":"unclosed brace argument","span":{"start":5,"end":6},"expected":[],"found":null,"contexts":[{"label":"command argument","span":{"start":5,"end":7}}]}]}}
+$ texform tokenize --json 'x^2'
+{"ok":true,"latex":"x ^ { 2 }","tokens":[{"text":"x","start_byte":0,"end_byte":1,"kind":"character","mode":"math"},{"text":"^","start_byte":2,"end_byte":3,"kind":"character","mode":"math"},{"text":"{","start_byte":4,"end_byte":5,"kind":"delimiter","mode":"math"},{"text":"2","start_byte":6,"end_byte":7,"kind":"character","mode":"math"},{"text":"}","start_byte":8,"end_byte":9,"kind":"delimiter","mode":"math"}]}
+```
 
 ## `texform serve`: normalizer protocol v1
 

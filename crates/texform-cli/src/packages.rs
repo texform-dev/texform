@@ -34,3 +34,9 @@ pub fn canonical(selection: &[String]) -> Vec<String> {
         .filter(|name| selection.contains(name))
         .collect()
 }
+
+/// Build a parser that loads exactly `selection`.
+pub fn parser(selection: &[String]) -> Result<texform::Parser, texform::ParserBuildError> {
+    let names: Vec<&str> = selection.iter().map(String::as_str).collect();
+    texform::Parser::builder().packages(&names).build()
+}

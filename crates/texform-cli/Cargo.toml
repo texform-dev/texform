@@ -3,7 +3,7 @@ name = "texform-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Command-line interface for TeXForm: normalize LaTeX formulas and serve the normalizer protocol"
+description = "Command-line interface for TeXForm: parse, normalize, and tokenize LaTeX formulas, and serve the normalizer protocol"
 readme = "README.md"
 repository.workspace = true
 homepage.workspace = true
@@ -15,6 +15,7 @@ name = "texform"
 path = "src/main.rs"
 
 [dependencies]
+ariadne.workspace = true
 clap = { version = "4.6.1", features = ["derive"] }
 serde.workspace = true
 serde_json.workspace = true
