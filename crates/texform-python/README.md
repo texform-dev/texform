@@ -15,6 +15,8 @@ uv run maturin develop
 
 Release wheels are built with `maturin build --release`; packaging metadata lives in the root `pyproject.toml`.
 
+For uv projects that depend on this checkout as a local path dependency, `uv run` and `uv sync` automatically rebuild the extension when its Rust sources, Cargo manifests, or knowledge resources change. The root `tool.uv.cache-keys` configuration tracks these build inputs; extend it when adding native dependencies or build resources. Automatic rebuilding requires uv environment synchronization, so `uv run --no-sync` and direct Python invocations bypass it.
+
 ## API changes and validation
 
 Keep the Rust binding, `python/texform/__init__.pyi`, package exports, and user-facing examples consistent. Shared configuration input and DTO definitions live in `crates/texform/src/bindings/`; changes there may require JavaScript validation too.

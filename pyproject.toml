@@ -47,6 +47,30 @@ dev = [
     "tqdm>=4.67.3",
 ]
 
+[tool.uv]
+# Rebuild local Python installs when native inputs change, before Python starts.
+# Keep source globs scoped to the extension's crates, away from target/ and regression/.
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
+    { file = "crates/*/Cargo.toml" },
+    { file = "crates/*/build.rs" },
+    { file = "crates/texform/src/**/*.rs" },
+    { file = "crates/texform-argspec/src/**/*.rs" },
+    { file = "crates/texform-core/src/**/*.rs" },
+    { file = "crates/texform-interface/src/**/*.rs" },
+    { file = "crates/texform-knowledge/src/**/*.rs" },
+    { file = "crates/texform-knowledge-macros/src/**/*.rs" },
+    { file = "crates/texform-transform/src/**/*.rs" },
+    { file = "crates/texform-python/src/**/*.rs" },
+    { file = "crates/texform-knowledge/codegen/**/*.rs" },
+    { file = "crates/texform-knowledge/resources/**/*.yaml" },
+    { file = "python/texform/*.py" },
+    { file = "python/texform/*.pyi" },
+    { file = "python/texform/py.typed" },
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
