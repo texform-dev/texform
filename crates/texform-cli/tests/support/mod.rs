@@ -11,30 +11,14 @@ use texform::{Parser, Profile, TransformEngine};
 
 pub const BIN: &str = env!("CARGO_BIN_EXE_texform");
 
-/// The CLI default package selection: every built-in package.
-pub fn all_packages() -> Vec<String> {
-    texform::list_packages()
-        .into_iter()
-        .map(|package| package.name)
-        .collect()
-}
-
-/// Facade engine with the CLI default package selection.
+/// Facade engine using the library's default package selection.
 pub fn engine(profile: Profile) -> TransformEngine {
-    let packages = all_packages();
-    let names: Vec<&str> = packages.iter().map(String::as_str).collect();
-    TransformEngine::builder()
-        .packages(&names)
-        .profile(profile)
-        .build()
-        .unwrap()
+    TransformEngine::builder().profile(profile).build().unwrap()
 }
 
-/// Facade parser with the CLI default package selection.
+/// Facade parser using the library's default package selection.
 pub fn parser() -> Parser {
-    let packages = all_packages();
-    let names: Vec<&str> = packages.iter().map(String::as_str).collect();
-    Parser::builder().packages(&names).build().unwrap()
+    Parser::builder().build().unwrap()
 }
 
 /// Everything one `texform` invocation wrote before exiting.

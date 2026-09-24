@@ -13,7 +13,7 @@ use texform::bindings::{format_read_error, read};
 #[derive(clap::Args)]
 pub struct FormulaInput {
     /// Formula to process [default: all of stdin, minus one trailing newline]
-    #[arg(value_name = "LATEX", allow_hyphen_values = true)]
+    #[arg(value_name = "LATEX")]
     latex: Option<String>,
 
     /// Read one formula per stdin line; empty lines are empty formulas

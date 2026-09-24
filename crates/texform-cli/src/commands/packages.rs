@@ -4,7 +4,7 @@ use std::process::ExitCode;
 
 use texform::bindings::list_packages_to_dto;
 
-use crate::output::{io_error, json_line, print_line};
+use crate::output::{json_line, print_line, usage_error};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -38,7 +38,7 @@ pub fn run(args: Args) -> ExitCode {
     };
     match print_line(text) {
         Ok(()) => ExitCode::SUCCESS,
-        Err(error) => io_error(format_args!("cannot write stdout: {error}")),
+        Err(error) => usage_error(format_args!("cannot write stdout: {error}")),
     }
 }
 

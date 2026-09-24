@@ -9,13 +9,13 @@ mod rpc;
 mod server;
 
 use std::io::{self, BufRead, Write};
-use std::panic::{self, AssertUnwindSafe};
 use std::process::ExitCode;
 
 use serde_json::Value;
 
 use self::rpc::{Request, Response, RpcError};
 use self::server::Server;
+use crate::output::catch_processing_panic;
 
 /// Serve requests from stdin until end of file.
 ///
@@ -70,10 +70,8 @@ fn handle_line(server: &mut Server, line: &[u8]) -> Option<Response> {
     };
     // A panic is a bug, but one bad formula must not end a long-running
     // session, so it becomes an `internal` failure of this request only.
-    let outcome = panic::catch_unwind(AssertUnwindSafe(|| {
-        server.dispatch(&request.method, request.params)
-    }))
-    .unwrap_or_else(|payload| Err(server::panic_error(payload.as_ref())));
+    let outcome = catch_processing_panic(|| server.dispatch(&request.method, request.params))
+        .unwrap_or_else(|payload| Err(server::panic_error(payload.as_ref())));
     request.id.map(|id| Response::new(id, outcome))
 }
 

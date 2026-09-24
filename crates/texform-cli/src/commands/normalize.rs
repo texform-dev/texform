@@ -8,7 +8,7 @@ use texform::bindings::{NormalizeConfigInput, TransformReportDto, transform_repo
 use super::run_formulas;
 use crate::input::{FormulaInput, read_config};
 use crate::normalizer::{Normalizer, ProfileName};
-use crate::output::{Success, ok_line, usage_error};
+use crate::output::{Format, Success, ok_line, usage_error};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -48,7 +48,12 @@ pub fn run(args: Args, packages: &[String]) -> ExitCode {
         Ok(normalizer) => normalizer,
         Err(error) => return usage_error(error),
     };
-    run_formulas(&args.input, args.json, |latex| {
+    let format = if args.json {
+        Format::Json
+    } else {
+        Format::Text
+    };
+    run_formulas(&args.input, format, |latex| {
         if args.report {
             let result = engine.normalize_with_report(latex, &config)?;
             return Ok(Success::Json(ok_line(Normalized {

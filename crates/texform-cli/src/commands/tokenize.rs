@@ -2,13 +2,15 @@
 
 use std::process::ExitCode;
 
-use texform::bindings::{NormalizeConfigInput, ParseConfigInput, tokenized_latex_to_dto};
+use texform::bindings::{
+    NormalizeConfigInput, ParseConfigInput, SerializationTokenDto, tokenized_latex_to_dto,
+};
 use texform::{Document, ParseConfig, Parser};
 
 use super::run_formulas;
 use crate::input::{FormulaInput, read_config};
 use crate::normalizer::{Normalizer, ProfileName};
-use crate::output::{Success, ok_line, usage_error};
+use crate::output::{Format, Success, json_line, usage_error};
 use crate::packages;
 
 #[derive(clap::Args)]
@@ -24,7 +26,7 @@ pub struct Args {
     #[arg(long, value_name = "JSON|@FILE")]
     config: Option<String>,
 
-    /// Print one JSON object per formula, with token kinds and byte offsets
+    /// Print a JSON array of tokens, with text, kind, mode, and byte offsets
     #[arg(long)]
     json: bool,
 }
@@ -41,8 +43,7 @@ impl Pipeline {
         match args.profile {
             Some(profile) => {
                 let overrides = read_config::<NormalizeConfigInput>(config)?;
-                let normalizer = Normalizer::build(profile, packages, overrides)
-                    .map_err(|error| error.to_string())?;
+                let normalizer = Normalizer::build(profile, packages, overrides)?;
                 Ok(Self::Normalize(normalizer))
             }
             None => {
@@ -56,7 +57,7 @@ impl Pipeline {
 
     /// A complete document, normalized when a profile was given. The
     /// normalize path is `TransformEngine::normalize_with` stopped before
-    /// serialization, so the tokens join to exactly its output.
+    /// serialization. Token offsets refer to that canonical serialization.
     fn document(&self, latex: &str) -> Result<Document, texform::Error> {
         match self {
             Self::Parse { parser, config } => {
@@ -79,22 +80,44 @@ pub fn run(args: Args, packages: &[String]) -> ExitCode {
         Ok(pipeline) => pipeline,
         Err(message) => return usage_error(message),
     };
-    run_formulas(&args.input, args.json, |latex| {
+    let format = if args.json {
+        Format::Json
+    } else {
+        Format::Text
+    };
+    run_formulas(&args.input, format, |latex| {
         let tokenized = pipeline
             .document(latex)?
             .to_tokenized_latex()
             .map_err(texform::Error::from)?;
+        let tokens = tokenized_latex_to_dto(tokenized).tokens;
         if args.json {
-            return Ok(Success::Json(ok_line(tokenized_latex_to_dto(tokenized))));
+            return Ok(Success::Json(json_line(&tokens)));
         }
-        let texts: Vec<&str> = tokenized
-            .tokens
-            .iter()
-            .map(|token| token.text.as_str())
-            .collect();
         Ok(Success::Text {
-            line: texts.join(" "),
+            line: describe_tokens(&tokens),
             warnings: Vec::new(),
         })
     })
+}
+
+fn describe_tokens(tokens: &[SerializationTokenDto]) -> String {
+    let items: Vec<String> = tokens
+        .iter()
+        .map(|token| {
+            let kind = match token.kind {
+                "character" => "char",
+                "control_sequence" => "control_seq",
+                "delimiter" => "delim",
+                kind => kind,
+            };
+            let mode = if token.mode == "math" {
+                String::new()
+            } else {
+                format!(", mode={}", token.mode)
+            };
+            format!("{kind}({}{mode})", json_line(&token.text))
+        })
+        .collect();
+    format!("[{}]", items.join(", "))
 }

@@ -8,27 +8,23 @@ pub mod parse;
 pub mod tokenize;
 
 use std::ops::ControlFlow;
-use std::panic::{self, AssertUnwindSafe};
 use std::process::ExitCode;
 
 use crate::input::FormulaInput;
-use crate::output::{Failure, Printer, Success, io_error};
+use crate::output::{Failure, Format, Printer, Success, catch_processing_panic, usage_error};
 
-/// Process every input formula and write one result per formula.
-///
-/// All formulas are processed even after a failure, so `--lines` output stays
-/// aligned with the input; the exit status reports whether any failed.
+/// Continue after formula failures, but stop reading when stdout closes.
 fn run_formulas(
     input: &FormulaInput,
-    json: bool,
+    format: Format,
     mut process: impl FnMut(&str) -> Result<Success, Failure>,
 ) -> ExitCode {
-    let mut printer = Printer::new(json, input.per_line());
+    let mut printer = Printer::new(format, input.per_line());
     let mut write_error = None;
     let read = input.for_each(|formula| {
         // A panic is a bug, but it must not end a run over many formulas or
         // break line alignment, so it fails only this formula.
-        let outcome = panic::catch_unwind(AssertUnwindSafe(|| process(formula.latex)))
+        let outcome = catch_processing_panic(|| process(formula.latex))
             .unwrap_or_else(|payload| Err(Failure::panicked(payload.as_ref())));
         match printer.emit(&formula, outcome) {
             Ok(()) => ControlFlow::Continue(()),
@@ -39,10 +35,13 @@ fn run_formulas(
         }
     });
     if let Some(error) = write_error {
-        return io_error(format_args!("cannot write stdout: {error}"));
+        if error.kind() == std::io::ErrorKind::BrokenPipe {
+            return ExitCode::SUCCESS;
+        }
+        return usage_error(format_args!("cannot write stdout: {error}"));
     }
     match read {
         Ok(()) => printer.exit_code(),
-        Err(message) => io_error(message),
+        Err(message) => usage_error(message),
     }
 }

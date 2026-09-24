@@ -1,14 +1,27 @@
 //! Knowledge package selection shared by subcommands.
 
 /// Names of all built-in knowledge packages, in catalog order.
-///
-/// This is the default selection. It differs from the facade parser default,
-/// which leaves `braket` out.
 pub fn all() -> Vec<String> {
     texform::list_packages()
         .into_iter()
         .map(|package| package.name)
         .collect()
+}
+
+/// Match the facade's runtime defaults; `braket` is opt-in because it
+/// overlaps with `physics`. Tests compare CLI behavior with default builders.
+pub fn defaults() -> Vec<String> {
+    [
+        "base",
+        "ams",
+        "physics",
+        "textmacros",
+        "bboldx",
+        "boldsymbol",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect()
 }
 
 /// clap value parser for one `--packages` entry.

@@ -43,13 +43,17 @@ impl Normalizer {
         profile: ProfileName,
         packages: &[String],
         overrides: NormalizeConfigInput,
-    ) -> Result<Self, texform::Error> {
+    ) -> Result<Self, String> {
         let names: Vec<&str> = packages.iter().map(String::as_str).collect();
         let engine = TransformEngine::builder()
             .packages(&names)
             .profile(profile.into())
-            .build()?;
+            .build()
+            .map_err(|error| error.to_string())?;
         let config = overrides.into_config(engine.default_normalize_config());
+        if config.transform.rewrite.max_iterations == 0 {
+            return Err("rewrite.max_iterations must be greater than zero".to_owned());
+        }
         Ok(Self { engine, config })
     }
 }

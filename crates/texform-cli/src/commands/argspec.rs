@@ -7,7 +7,7 @@ use texform::{
     RuntimeContentModeInfo, validate_argspec,
 };
 
-use crate::output::{FAILURE, eprint_line, io_error, json_line, print_line};
+use crate::output::{FAILURE, eprint_line, json_line, print_line, usage_error};
 
 #[derive(clap::Subcommand)]
 pub enum Command {
@@ -18,7 +18,7 @@ pub enum Command {
 #[derive(clap::Args)]
 pub struct ValidateArgs {
     /// Argument specification, for example `m O{default} m`
-    #[arg(value_name = "SPEC", allow_hyphen_values = true)]
+    #[arg(value_name = "SPEC")]
     spec: String,
 
     /// Print the validation result as JSON
@@ -51,7 +51,7 @@ fn validate(args: ValidateArgs) -> ExitCode {
         return ExitCode::from(FAILURE);
     };
     if let Err(error) = print_line(text) {
-        return io_error(format_args!("cannot write stdout: {error}"));
+        return usage_error(format_args!("cannot write stdout: {error}"));
     }
     if result.valid {
         ExitCode::SUCCESS

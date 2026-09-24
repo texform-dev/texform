@@ -4,6 +4,7 @@ use std::any::Any;
 use std::fmt::Display;
 use std::io::{self, IsTerminal, Write};
 use std::ops::Range;
+use std::panic::{self, AssertUnwindSafe};
 use std::process::ExitCode;
 
 use ariadne::{Config, IndexType, Label, Report, ReportKind, Source};
@@ -19,16 +20,10 @@ pub const FAILURE: u8 = 1;
 /// not be carried out, as opposed to formulas that failed.
 pub const USAGE: u8 = 2;
 
-/// Report a usage or configuration error and return its exit status.
+/// Report a usage, configuration, or I/O error and return its exit status.
 pub fn usage_error(message: impl Display) -> ExitCode {
     eprint_line(format_args!("error: {message}"));
     ExitCode::from(USAGE)
-}
-
-/// Report a failure to read input or write output. Output may be incomplete,
-/// so this is not a per-formula failure.
-pub fn io_error(message: impl Display) -> ExitCode {
-    usage_error(message)
 }
 
 /// Write one line to stderr. stderr is best effort: there is nowhere left to
@@ -59,14 +54,35 @@ pub fn json_line(value: &impl Serialize) -> String {
 
 /// A formula that was processed successfully, shaped for the output format.
 pub enum Success {
-    /// Text mode: the stdout line, plus parse diagnostics of the complete
+    /// Text mode: the stdout text, plus parse diagnostics of the complete
     /// document to show as warnings.
     Text {
         line: String,
         warnings: Vec<ParseDiagnostic>,
     },
-    /// JSON mode: the complete `{"ok":true,...}` line, built with [`ok_line`].
+    /// JSON mode: one complete JSON value, including token arrays.
     Json(String),
+}
+
+#[derive(Clone, Copy)]
+pub enum Format {
+    Text,
+    Tree { verbose: bool },
+    Json,
+}
+
+impl Format {
+    pub fn syntax(self, syntax: &SyntaxNode) -> String {
+        if matches!(self, Self::Tree { verbose: true }) {
+            serde_json::to_string_pretty(syntax).expect("syntax serializes to JSON")
+        } else {
+            syntax.to_string().trim_end_matches('\n').to_owned()
+        }
+    }
+
+    fn is_block(self) -> bool {
+        matches!(self, Self::Tree { .. })
+    }
 }
 
 /// `{"ok":true}` followed by the members of `fields`, as one JSON line.
@@ -83,7 +99,7 @@ pub fn ok_line(fields: impl Serialize) -> String {
 /// A formula that failed.
 pub struct Failure {
     pub error: BindingErrorDto,
-    /// Partial tree of an incomplete parse, reported by `parse --json`.
+    /// Partial tree of an incomplete parse, shown in both text and JSON modes.
     /// Boxed to keep the `Err` variant of per-formula results small.
     pub syntax: Option<Box<SyntaxNode>>,
 }
@@ -120,18 +136,28 @@ pub fn panic_message(payload: &(dyn Any + Send)) -> &str {
         .unwrap_or("non-string panic payload")
 }
 
+/// The CLI processes requests on one thread. Suppress the default panic hook
+/// only inside the recovery boundary; the caller renders the failure once.
+pub fn catch_processing_panic<T>(process: impl FnOnce() -> T) -> std::thread::Result<T> {
+    let hook = panic::take_hook();
+    panic::set_hook(Box::new(|_| {}));
+    let result = panic::catch_unwind(AssertUnwindSafe(process));
+    panic::set_hook(hook);
+    result
+}
+
 /// Writes per-formula results and remembers whether any formula failed.
 pub struct Printer {
-    json: bool,
+    format: Format,
     per_line: bool,
     color: bool,
     failed: bool,
 }
 
 impl Printer {
-    pub fn new(json: bool, per_line: bool) -> Self {
+    pub fn new(format: Format, per_line: bool) -> Self {
         Self {
-            json,
+            format,
             per_line,
             color: stderr_color(),
             failed: false,
@@ -140,10 +166,8 @@ impl Printer {
 
     /// Write the result of one formula.
     ///
-    /// Every formula produces exactly one stdout line under `--lines` or
-    /// `--json`, so output lines stay aligned with input lines. In text mode a
-    /// failure writes an empty placeholder line and reports the error on
-    /// stderr; a single formula that fails writes nothing to stdout.
+    /// JSON, normalized text, and token lists retain line alignment.
+    /// Human-readable trees use numbered blocks under `--lines`.
     pub fn emit(
         &mut self,
         formula: &Formula<'_>,
@@ -164,16 +188,37 @@ impl Printer {
             Ok(Success::Json(line)) => Some(line),
             Err(failure) => {
                 self.failed = true;
-                if self.json {
+                if matches!(self.format, Format::Json) {
                     Some(failure_line(&failure))
                 } else {
                     self.report_failure(formula, &failure.error);
-                    self.per_line.then(String::new)
+                    failure
+                        .syntax
+                        .as_deref()
+                        .map(|syntax| self.format.syntax(syntax))
+                        .or_else(|| {
+                            self.per_line.then(|| {
+                                if self.format.is_block() {
+                                    "(failed)".to_owned()
+                                } else {
+                                    String::new()
+                                }
+                            })
+                        })
                 }
             }
         };
         match line {
-            Some(line) => ignore_broken_pipe(writeln!(io::stdout().lock(), "{line}")),
+            Some(line) => {
+                let mut stdout = io::stdout().lock();
+                if self.format.is_block()
+                    && let Origin::Line(number) = formula.origin
+                {
+                    writeln!(stdout, "<line {number}>\n{line}\n")
+                } else {
+                    writeln!(stdout, "{line}")
+                }
+            }
             None => Ok(()),
         }
     }
@@ -272,4 +317,37 @@ fn render_diagnostics(
 fn clamp(span: &Span, len: usize) -> Range<usize> {
     let end = span.end.min(len);
     span.start.min(end)..end
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    #[test]
+    fn recovered_panics_are_silent_and_restore_the_previous_hook() {
+        let previous = panic::take_hook();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let observed = calls.clone();
+        panic::set_hook(Box::new(move |_| {
+            observed.fetch_add(1, Ordering::SeqCst);
+        }));
+        let recovered = catch_processing_panic(|| panic!("formula failed"));
+        let calls_inside = calls.load(Ordering::SeqCst);
+        let outside = panic::catch_unwind(|| panic!("outside recovery boundary"));
+        let calls_outside = calls.load(Ordering::SeqCst);
+        panic::set_hook(previous);
+
+        assert_eq!(
+            panic_message(recovered.unwrap_err().as_ref()),
+            "formula failed"
+        );
+        assert!(outside.is_err());
+        assert_eq!(calls_inside, 0);
+        assert_eq!(calls_outside, 1);
+        assert_eq!(catch_processing_panic(|| 42).unwrap(), 42);
+    }
 }

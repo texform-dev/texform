@@ -23,7 +23,7 @@ use crate::commands::{argspec, info, normalize, parse, tokenize};
 #[derive(Parser)]
 #[command(name = "texform", version = build_info::VERSION_TEXT)]
 struct Cli {
-    /// Knowledge packages to load, comma-separated [default: all built-in packages]
+    /// Knowledge packages to load, comma-separated [default: same as the library; excludes braket]
     #[arg(
         long,
         global = true,
@@ -41,7 +41,7 @@ struct Cli {
 enum Command {
     /// Normalize formulas with a transform profile
     Normalize(normalize::Args),
-    /// Parse formulas and print their canonical serialization
+    /// Parse formulas and print their syntax trees
     Parse(parse::Args),
     /// Split the canonical serialization of formulas into tokens
     Tokenize(tokenize::Args),
@@ -62,7 +62,7 @@ enum Command {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let packages = cli.packages.unwrap_or_else(packages::all);
+    let packages = cli.packages.unwrap_or_else(packages::defaults);
     match cli.command {
         Command::Normalize(args) => normalize::run(args, &packages),
         Command::Parse(args) => parse::run(args, &packages),

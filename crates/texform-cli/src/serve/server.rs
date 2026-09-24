@@ -44,14 +44,13 @@ impl Server {
         if !self.initialized && method != "initialize" {
             return Err(RpcError::not_initialized());
         }
-        let handler: fn(&mut Self, Option<Value>) -> Result<Value, RpcError> = match method {
-            "initialize" => Self::initialize,
-            "configure" => Self::configure,
-            "normalize" => Self::normalize,
-            "shutdown" => Self::shutdown,
-            _ => return Err(RpcError::method_not_found(method)),
-        };
-        handler(self, params)
+        match method {
+            "initialize" => self.initialize(params),
+            "configure" => self.configure(params),
+            "normalize" => self.normalize(params),
+            "shutdown" => self.shutdown(params),
+            _ => Err(RpcError::method_not_found(method)),
+        }
     }
 
     /// Repeating `initialize` is harmless and returns the same result.
@@ -77,7 +76,7 @@ impl Server {
         let requested = spec.packages.as_deref().unwrap_or(&self.default_packages);
         let normalizer =
             Normalizer::build(spec.profile, requested, spec.overrides.unwrap_or_default())
-                .map_err(|error| RpcError::invalid_params(error.to_string()))?;
+                .map_err(RpcError::invalid_params)?;
         let resolved = to_json(Resolved {
             profile: spec.profile,
             packages: packages::canonical(requested),

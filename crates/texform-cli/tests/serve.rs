@@ -136,19 +136,65 @@ fn configure_resolves_the_effective_config() {
 }
 
 #[test]
-fn configure_defaults_to_all_builtin_packages() {
+fn configure_defaults_match_the_library_and_all_packages_remain_explicit() {
     let served = serve(
         &[],
         &[
             initialize(0),
-            configure(1, "corpus", json!({ "profile": "corpus" })),
+            configure(1, "default", json!({"profile": "corpus"})),
+            configure(
+                2,
+                "all",
+                json!({"profile": "corpus", "packages": all_packages()}),
+            ),
+            normalize(3, "default", r"\Ket{x}", false),
+            normalize(4, "all", r"\Ket{x}", false),
         ],
     );
-
     assert_eq!(
         served.response(1)["result"]["resolved"]["packages"],
+        json!([
+            "ams",
+            "base",
+            "bboldx",
+            "boldsymbol",
+            "physics",
+            "textmacros"
+        ])
+    );
+    assert_eq!(
+        served.response(2)["result"]["resolved"]["packages"],
         json!(all_packages())
     );
+    assert_eq!(
+        served.response(3)["result"]["output"],
+        support::engine(Profile::Corpus)
+            .normalize(r"\Ket{x}")
+            .unwrap()
+    );
+    assert_ne!(
+        served.response(3)["result"]["output"],
+        served.response(4)["result"]["output"]
+    );
+}
+
+#[test]
+fn invalid_iteration_limit_preserves_the_previous_configuration() {
+    let served = serve(
+        &[],
+        &[
+            initialize(0),
+            configure(1, "c", json!({"profile":"corpus"})),
+            configure(
+                2,
+                "c",
+                json!({"profile":"corpus", "overrides":{"rewrite":{"max_iterations":0}}}),
+            ),
+            normalize(3, "c", r"a \over b", false),
+        ],
+    );
+    assert!(invalid_params_message(&served, 2).contains("rewrite.max_iterations"));
+    assert_eq!(served.response(3)["result"]["output"], r"\frac { a } { b }");
 }
 
 #[test]
@@ -263,7 +309,17 @@ fn normalize_matches_facade_normalize_with() {
         r"\notacommand{x}",
         UNCLOSED_FRACTION,
     ];
-    let packages = all_packages();
+    let packages = vec![
+        "base",
+        "ams",
+        "physics",
+        "textmacros",
+        "bboldx",
+        "boldsymbol",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect::<Vec<_>>();
     let configs = [
         (
             "authoring",

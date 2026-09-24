@@ -11,13 +11,13 @@ use texform::bindings::{
 };
 
 use super::argspec::describe_slots;
-use crate::output::{FAILURE, eprint_line, io_error, json_line, print_line, usage_error};
+use crate::output::{FAILURE, eprint_line, json_line, print_line, usage_error};
 use crate::packages;
 
 #[derive(clap::Args)]
 pub struct Args {
     /// Control sequence such as `\frac` or `\alpha`, or an environment name with `--env`
-    #[arg(value_name = "NAME", allow_hyphen_values = true)]
+    #[arg(value_name = "NAME")]
     name: String,
 
     /// Look up an environment instead of a control sequence
@@ -118,7 +118,7 @@ pub fn run(args: Args, packages: &[String]) -> ExitCode {
         return ExitCode::from(FAILURE);
     };
     if let Err(error) = print_line(text) {
-        return io_error(format_args!("cannot write stdout: {error}"));
+        return usage_error(format_args!("cannot write stdout: {error}"));
     }
     if found {
         ExitCode::SUCCESS
@@ -165,6 +165,12 @@ fn describe(entries: &Entries) -> String {
         ]);
         text.push_str(&describe_slots(&info.args));
         blocks.push(text);
+    }
+    if entries.command.is_some() && entries.character.is_some() {
+        blocks.push(
+            "Parsing uses the command record above. The character record is separate metadata."
+                .to_owned(),
+        );
     }
     blocks.join("\n\n")
 }

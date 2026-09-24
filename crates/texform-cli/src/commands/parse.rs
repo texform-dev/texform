@@ -8,7 +8,7 @@ use texform::{ParseDiagnostic, SyntaxNode};
 
 use super::run_formulas;
 use crate::input::{FormulaInput, read_config};
-use crate::output::{Failure, Success, ok_line, usage_error};
+use crate::output::{Failure, Format, Success, ok_line, usage_error};
 use crate::packages;
 
 #[derive(clap::Args)]
@@ -23,6 +23,10 @@ pub struct Args {
     /// Print one JSON object per formula, with the syntax tree
     #[arg(long)]
     json: bool,
+
+    /// Show the detailed syntax tree as pretty-printed JSON
+    #[arg(long, conflicts_with = "json")]
+    verbose: bool,
 }
 
 #[derive(Serialize)]
@@ -41,7 +45,14 @@ pub fn run(args: Args, packages: &[String]) -> ExitCode {
         Err(error) => return usage_error(error),
     };
     let config = overrides.into_config(parser.default_parse_config().clone());
-    run_formulas(&args.input, args.json, |latex| {
+    let format = if args.json {
+        Format::Json
+    } else {
+        Format::Tree {
+            verbose: args.verbose,
+        }
+    };
+    run_formulas(&args.input, format, |latex| {
         // Success means a complete document, the same condition normalize
         // requires; a partial document with error nodes is a failure.
         match parser.parse_with(latex, &config).try_into_document() {
@@ -50,14 +61,13 @@ pub fn run(args: Args, packages: &[String]) -> ExitCode {
                 diagnostics,
             }))),
             Ok((document, diagnostics)) => Ok(Success::Text {
-                line: document.to_latex().map_err(texform::Error::from)?,
+                line: format.syntax(&document.to_syntax()),
                 warnings: diagnostics,
             }),
             Err(error) => {
                 let parts = normalize_error_to_parts(error.into());
                 let syntax = parts
                     .document
-                    .filter(|_| args.json)
                     .map(|document| Box::new(document.to_syntax()));
                 Err(Failure {
                     error: parts.error,

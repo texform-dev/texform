@@ -229,7 +229,8 @@ fn config_is_validated_against_the_command_shape() {
         ],
         "",
     );
-    assert_eq!(tokenized.stdout, "a \\over b\n");
+    assert!(tokenized.stdout.contains("control_seq"));
+    assert!(tokenized.stdout.contains(r#""\\over""#));
 
     let nested = texform(
         &[
@@ -299,10 +300,12 @@ fn parse_reports_complete_partial_and_missing_documents() {
     assert_eq!(results[3]["ok"], true);
     assert_eq!(json.code(), FAILURE);
 
-    assert_eq!(
-        text.lines(),
-        vec![complete.to_latex().unwrap().as_str(), "", "", ""]
-    );
+    assert!(text.stdout.contains(&complete.to_syntax().to_string()));
+    assert!(text.stdout.contains(&partial.to_syntax().to_string()));
+    for number in 1..=4 {
+        assert!(text.stdout.contains(&format!("<line {number}>")));
+    }
+    assert!(text.stdout.contains("<line 3>\n(failed)"));
     assert_eq!(text.code(), FAILURE);
     assert!(
         text.stderr
@@ -329,38 +332,156 @@ fn tokenize_splits_the_parsed_or_normalized_serialization() {
     let normalized = normalized.to_tokenized_latex().unwrap();
     assert_eq!(normalized.latex, engine.normalize(formula).unwrap());
 
-    let tokens = |tokenized: &texform::TokenizedLatex| {
-        let texts: Vec<&str> = tokenized
-            .tokens
-            .iter()
-            .map(|token| token.text.as_str())
-            .collect();
-        format!("{}\n", texts.join(" "))
-    };
-    let with_ok = |tokenized: texform::TokenizedLatex| {
-        let mut value = serde_json::to_value(tokenized_latex_to_dto(tokenized)).unwrap();
-        value["ok"] = Value::Bool(true);
-        value
-    };
-
-    assert_eq!(texform(&["tokenize", formula], "").stdout, tokens(&parsed));
-    assert_eq!(
-        texform(&["tokenize", "--profile", "corpus", formula], "").stdout,
-        tokens(&normalized)
-    );
     assert_eq!(
         texform(&["tokenize", "--json", formula], "").json_lines(),
-        vec![with_ok(parsed)]
+        vec![serde_json::to_value(tokenized_latex_to_dto(parsed).tokens).unwrap()]
     );
     assert_eq!(
         texform(&["tokenize", "--profile", "corpus", "--json", formula], "").json_lines(),
-        vec![with_ok(normalized)]
+        vec![serde_json::to_value(tokenized_latex_to_dto(normalized).tokens).unwrap()]
     );
 
     let mixed = texform(
-        &["tokenize", "--lines"],
-        &lines(&["x", UNCLOSED_FRACTION, "y"]),
+        &["tokenize", "--lines", "--json"],
+        &lines(&["x", UNCLOSED_FRACTION, ""]),
     );
-    assert_eq!(mixed.lines(), vec!["x", "", "y"]);
+    let results = mixed.json_lines();
+    assert_eq!(results[0][0]["text"], "x");
+    assert_eq!(results[1]["error"]["kind"], "parse");
+    assert_eq!(results[2], json!([]));
     assert_eq!(mixed.code(), FAILURE);
+}
+
+#[test]
+fn parse_displays_compact_and_verbose_trees_including_partial_trees() {
+    for formula in [r"\sqrt{a+b}", UNCLOSED_FRACTION] {
+        let tree = parser().parse(formula).document().unwrap().to_syntax();
+        let compact = texform(&["parse", formula], "");
+        assert_eq!(compact.stdout, tree.to_string());
+        let verbose = texform(&["parse", "--verbose", formula], "");
+        assert_eq!(
+            serde_json::from_str::<Value>(&verbose.stdout).unwrap(),
+            serde_json::to_value(tree).unwrap()
+        );
+        assert_eq!(verbose.code(), compact.code());
+    }
+    assert_eq!(
+        texform(&["parse", "--verbose", "--json", "x"], "").code(),
+        USAGE
+    );
+}
+
+#[test]
+fn token_list_preserves_text_boundaries_modes_and_line_alignment() {
+    let run = texform(&["tokenize", r"\text{a b}"], "");
+    assert_eq!(run.code(), 0);
+    assert_eq!(
+        run.stdout,
+        concat!(
+            r#"[control_seq("\\text"), delim("{"), text("a b", mode=text), delim("}")]"#,
+            "\n"
+        )
+    );
+    assert_eq!(texform(&["tokenize", ""], "").stdout, "[]\n");
+    let quoted = texform(&["tokenize", "\\text{say \"hi\"}"], "");
+    assert!(quoted.stdout.contains(r#"text("say \"hi\"", mode=text)"#));
+    assert_eq!(quoted.lines().len(), 1);
+    let json = texform(&["tokenize", "--json", r"\text{a b}"], "");
+    let tokens = json.json_lines().remove(0);
+    assert_eq!(tokens.as_array().unwrap().len(), 4);
+    assert_eq!(tokens[0]["kind"], "control_sequence");
+    assert_eq!(tokens[1]["kind"], "delimiter");
+    assert_eq!(tokens[2]["text"], "a b");
+    assert_eq!(tokens[2]["mode"], "text");
+    let lines = texform(
+        &["tokenize", "--lines"],
+        &lines(&["x", UNCLOSED_FRACTION, ""]),
+    );
+    assert_eq!(lines.lines(), vec![r#"[char("x")]"#, "", "[]"]);
+    assert_eq!(lines.code(), FAILURE);
+}
+
+#[test]
+fn unknown_options_fail_and_negative_formulas_use_the_option_separator() {
+    for command in [
+        &["parse"][..],
+        &["tokenize"],
+        &["normalize", "--profile", "corpus"],
+        &["info"],
+        &["argspec", "validate"],
+    ] {
+        let typo = texform(&[command, &["--jsno"]].concat(), "x+y\n");
+        assert_eq!(typo.code(), USAGE, "{command:?}");
+        assert_eq!(typo.stdout, "");
+    }
+    let negative = texform(&["normalize", "--profile", "corpus", "--", "-x^2"], "");
+    assert_eq!(negative.code(), 0);
+    assert_eq!(negative.stdout, "- x ^ { 2 }\n");
+}
+
+#[test]
+fn zero_rewrite_iterations_fail_before_reading_formulas() {
+    for command in [
+        &["normalize", "--profile", "corpus"][..],
+        &["tokenize", "--profile", "corpus"],
+    ] {
+        let run = texform(
+            &[
+                command,
+                &[
+                    "--json",
+                    "--lines",
+                    "--config",
+                    r#"{"rewrite":{"max_iterations":0}}"#,
+                ],
+            ]
+            .concat(),
+            "",
+        );
+        assert_eq!(run.code(), USAGE);
+        assert_eq!(run.stdout, "");
+        assert!(
+            run.stderr
+                .contains("rewrite.max_iterations must be greater than zero")
+        );
+        assert!(!run.stderr.contains("panicked"));
+    }
+}
+
+#[test]
+fn closed_stdout_stops_without_waiting_for_stdin_eof() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+    for command in [
+        &["parse"][..],
+        &["tokenize"],
+        &["normalize", "--profile", "corpus"],
+    ] {
+        let mut child = Command::new(support::BIN)
+            .args(command)
+            .arg("--lines")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        drop(child.stdout.take());
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(b"x\ny\n").unwrap();
+        stdin.flush().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                assert!(status.success(), "{command:?}: {status}");
+                break;
+            }
+            if Instant::now() >= deadline {
+                child.kill().unwrap();
+                child.wait().unwrap();
+                panic!("{command:?} kept waiting for stdin after stdout closed");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
 }
