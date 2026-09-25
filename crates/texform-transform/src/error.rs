@@ -5,6 +5,7 @@ use crate::rewrite::{PlanBuildError, RewriteError};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TransformError {
     Build(TransformBuildError),
+    NotConverged { max_rounds: usize },
     Rewrite(RewriteError),
 }
 
@@ -16,6 +17,9 @@ pub enum TransformBuildError {
 impl std::fmt::Display for TransformError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            TransformError::NotConverged { max_rounds } => {
+                write!(f, "transform did not converge within {max_rounds} rounds")
+            }
             TransformError::Build(error) => error.fmt(f),
             TransformError::Rewrite(error) => error.fmt(f),
         }

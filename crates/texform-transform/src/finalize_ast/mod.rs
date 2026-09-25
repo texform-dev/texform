@@ -27,7 +27,7 @@ impl FinalizeAstConfig {
 
 /// What the FinalizeAst phase changed in the tree.
 ///
-/// Counts accumulate across the pre- and post-FlattenGroups invocations.
+/// Counts accumulate across every invocation in a transform call.
 /// Already-canonical nodes are not counted again.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FinalizeAstReport {
@@ -37,44 +37,47 @@ pub struct FinalizeAstReport {
     pub text_normalizations: usize,
 }
 
-pub fn run(ast: &mut Ast, config: &FinalizeAstConfig, recorder: &mut ReportRecorder) {
+/// Returns whether this invocation changed the tree.
+pub fn run(ast: &mut Ast, config: &FinalizeAstConfig, recorder: &mut ReportRecorder) -> bool {
     if !config.enabled {
-        return;
+        return false;
     }
 
-    visit(ast, ast.root(), recorder);
+    let changed = visit(ast, ast.root(), recorder);
     // Debug-only structural contract check. `assert_invariants` is an
     // O(n * branching) full-tree sweep, so running it on every transform made
     // long, wide formulas quadratic in release. The rewrite scheduler gates its
     // own per-rule check the same way.
     #[cfg(debug_assertions)]
     ast.assert_invariants();
+    changed
 }
 
-fn visit(ast: &mut Ast, node: NodeId, recorder: &mut ReportRecorder) {
+fn visit(ast: &mut Ast, node: NodeId, recorder: &mut ReportRecorder) -> bool {
+    let mut changed = false;
     if is_math_sequence_container(ast, node) {
-        merge_adjacent_primes(ast, node, recorder);
+        changed |= merge_adjacent_primes(ast, node, recorder);
     }
     if is_text_sequence_container(ast, node) {
-        normalize_text_sequences(ast, node, recorder);
+        changed |= normalize_text_sequences(ast, node, recorder);
         for child in ast.children(node).to_vec() {
             if ast.contains(child) && !matches!(ast.node(child), Node::Text(_)) {
-                visit(ast, child, recorder);
+                changed |= visit(ast, child, recorder);
             }
         }
-        return;
+        return changed;
     }
 
     if matches!(ast.node(node), Node::Text(_)) && is_text_content_argument(ast, node) {
-        normalize_text_content_slot(ast, node, recorder);
-        return;
+        return normalize_text_content_slot(ast, node, recorder);
     }
 
     for (child, _) in ast.edges(node) {
         if ast.contains(child) {
-            visit(ast, child, recorder);
+            changed |= visit(ast, child, recorder);
         }
     }
+    changed
 }
 
 fn is_math_sequence_container(ast: &Ast, node: NodeId) -> bool {
@@ -126,7 +129,7 @@ fn is_text_content_argument(ast: &Ast, node: NodeId) -> bool {
     )
 }
 
-fn merge_adjacent_primes(ast: &mut Ast, parent: NodeId, recorder: &mut ReportRecorder) {
+fn merge_adjacent_primes(ast: &mut Ast, parent: NodeId, recorder: &mut ReportRecorder) -> bool {
     let children = ast.children(parent).to_vec();
     let mut next_children = Vec::with_capacity(children.len());
     let mut index = 0;
@@ -146,12 +149,13 @@ fn merge_adjacent_primes(ast: &mut Ast, parent: NodeId, recorder: &mut ReportRec
     }
 
     if !changed {
-        return;
+        return false;
     }
 
     for removed in ast.replace_children(parent, next_children) {
         ast.remove_detached(removed);
     }
+    true
 }
 
 fn collect_prime_run(ast: &Ast, children: &[NodeId], start: usize) -> Option<(usize, usize)> {
@@ -171,7 +175,7 @@ fn collect_prime_run(ast: &Ast, children: &[NodeId], start: usize) -> Option<(us
     (index > start + 1).then_some((count, index))
 }
 
-fn normalize_text_sequences(ast: &mut Ast, parent: NodeId, recorder: &mut ReportRecorder) {
+fn normalize_text_sequences(ast: &mut Ast, parent: NodeId, recorder: &mut ReportRecorder) -> bool {
     let children = ast.children(parent).to_vec();
     let mut next_children = Vec::with_capacity(children.len());
     let mut index = 0;
@@ -213,12 +217,13 @@ fn normalize_text_sequences(ast: &mut Ast, parent: NodeId, recorder: &mut Report
     }
 
     if !changed {
-        return;
+        return false;
     }
 
     for removed in ast.replace_children(parent, next_children) {
         ast.remove_detached(removed);
     }
+    true
 }
 
 fn collect_text_run(ast: &Ast, children: &[NodeId], start: usize) -> Option<(usize, String)> {
@@ -239,10 +244,10 @@ fn collect_text_run(ast: &Ast, children: &[NodeId], start: usize) -> Option<(usi
     Some((end, normalize_whitespace(&joined)))
 }
 
-fn normalize_text_content_slot(ast: &mut Ast, node: NodeId, recorder: &mut ReportRecorder) {
+fn normalize_text_content_slot(ast: &mut Ast, node: NodeId, recorder: &mut ReportRecorder) -> bool {
     let text = match ast.node(node) {
         Node::Text(text) => text.clone(),
-        _ => return,
+        _ => return false,
     };
     let normalized = normalize_whitespace(&text);
 
@@ -256,15 +261,16 @@ fn normalize_text_content_slot(ast: &mut Ast, node: NodeId, recorder: &mut Repor
             },
         );
         recorder.record_text_normalization();
-        return;
+        return true;
     }
 
     if normalized == text {
-        return;
+        return false;
     }
 
     ast.replace_node(node, Node::Text(normalized));
     recorder.record_text_normalization();
+    true
 }
 
 fn normalize_whitespace(input: &str) -> String {

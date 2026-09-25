@@ -33,7 +33,7 @@ pub use rule_context::{CommandView, DeclarativeView, EnvironmentView, InfixView,
 pub struct RewriteReport {
     /// Per-rule execution counts for rules that were attempted at least once.
     pub rules: Vec<RewriteRuleStat>,
-    /// The number of fixed-point iterations the Rewrite phase completed.
+    /// Fixed-point iterations summed across all Rewrite invocations in this call.
     pub iterations: usize,
 }
 
@@ -73,7 +73,7 @@ impl RewriteReport {
     }
 
     pub(crate) fn record_iteration(&mut self, iterations: usize) {
-        self.iterations = iterations;
+        self.iterations += iterations;
     }
 }
 
@@ -129,7 +129,7 @@ use crate::ast::Ast;
 use crate::parse::ParseContext;
 use crate::report::ReportRecorder;
 
-/// Applies rewrite rules to an AST.
+/// Applies rewrite rules to an AST, returning whether any rule applied.
 ///
 /// Rule counts are written to `recorder` only when that recorder is collecting.
 pub fn run(
@@ -138,7 +138,7 @@ pub fn run(
     plan: &Plan,
     max_iterations: usize,
     recorder: &mut ReportRecorder,
-) -> Result<(), RewriteError> {
+) -> Result<bool, RewriteError> {
     scheduler::drive_fixed_point(ast, parse_ctx, plan, max_iterations, recorder)
 }
 

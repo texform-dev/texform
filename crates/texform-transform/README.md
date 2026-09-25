@@ -63,16 +63,24 @@ See [crate exports](src/lib.rs) for the internal Rust surface.
 
 ## Pipeline
 
-`TransformContext::run` and `run_with` execute a fixed sequence of phases and return `()`. `run_with_report` uses that same sequence and returns counters. Rule levels are chosen when the context is built; each run may disable Rewrite, LowerAttributes, FinalizeAst, or FlattenGroups, or choose FlattenGroups spacing strategy and iteration settings through `TransformConfig`.
+`TransformContext::run` and `run_with` return `()`; `run_with_report` executes the same pipeline with diagnostic counters. Rule levels are compiled into the context, while runtime configuration gates individual phases.
 
-1. **LowerAttributes (pre)** — canonicalize declarative-scope commands and registered prefix wrappers. A value with a prefix becomes that wrapper (`{\bf x}` → `\mathbf{x}`). A value that still needs a declarative stays inside a real local group so it cannot reach later siblings.
-2. **Rewrite** — apply the precompiled rewrite plan in a fixed-point loop, bounded by `rewrite.max_iterations`.
-3. **LowerAttributes (post)** — re-canonicalize attribute markers introduced by rewrite rules, with the same local-scope rule as the pre-pass.
-4. **FinalizeAst** — profile-neutral AST canonicalization (adjacent `Prime` merges, text-sequence normalization). Runs before FlattenGroups so merges can create single-child groups.
-5. **FlattenGroups** — remove redundant explicit and implicit groups after the earlier phases have stabilized.
-6. **FinalizeAst** (again, when FlattenGroups is enabled) — the same idempotent pass, so adjacency exposed by flattening is canonicalized. FinalizeAst is the last phase that mutates the AST; eliminated-form contract validation that follows is read-only.
+The engine repeats the deterministic order **LowerAttributes → Rewrite → LowerAttributes → FinalizeAst → FlattenGroups** until every enabled phase has processed the current AST version. A phase that changes the AST increments that version and records the resulting version as its own last processed version. Phases already current are skipped. With all phases disabled, execution takes zero rounds.
 
-Phase order is fixed; only the per-phase flags are configurable. When `flatten_groups.enabled` is false, the engine skips the second FinalizeAst call because the first pass already finished AST mutation for that input.
+- **LowerAttributes** canonicalizes declarative-scope commands and registered prefix wrappers. Prefix-backed values become wrappers; declarative-only effects retain their local scope.
+- **Rewrite** applies the precompiled rule plan to its own fixed point, bounded by `rewrite.max_iterations`. The second LowerAttributes position handles generated attribute markers when Rewrite changes the AST.
+- **FinalizeAst** merges adjacent Prime nodes and normalizes text sequences.
+- **FlattenGroups** removes redundant groups under the configured guards. Promoted slot contents are reconsidered in their new slot, so nested groups stabilize in one invocation.
+
+Any phase mutation makes all other phases eligible again, including earlier ones. For example, flattening can expose adjacent attributes or a rewrite match; finalizing can create another singleton group to flatten. The engine allows at most eight rounds, then returns `TransformError::NotConverged` rather than silently returning an unstable tree. This is an internal budget, not a runtime option. When Rewrite is enabled, eliminated-form validation runs once after convergence and does not mutate the AST.
+
+The scheduler relies on three phase contracts:
+
+1. **C1: local idempotence.** One invocation reaches the phase's own structural fixed point, ignoring arena NodeIds.
+2. **C2: no missed mutations.** A phase that changes the tree must return `true`, independently of whether reports are collected.
+3. **C3: only LowerAttributes may overreport.** Rewrite, FinalizeAst, and FlattenGroups must return `false` at their fixed points. LowerAttributes conservatively reports attribute processing even when it regenerates an equivalent tree. Allowing another phase to overreport would require revisiting termination.
+
+Prefix singleton arguments directly use their sole content node, matching FlattenGroups' canonical slot shape. This internal AST shape is visible through document inspection; serialization is unchanged by removing the redundant implicit wrapper. Convergence concerns the same AST: reparsing serialized output can still expose separate parser/serializer round-trip issues.
 
 ## Configuration
 
@@ -203,9 +211,9 @@ Guard hit counters use the names below. They still count the first matching situ
 
 ## Reports
 
-[TransformReport](src/report.rs) contains one report per phase. LowerAttributes and FinalizeAst accumulate their multiple invocations in the same report; already-canonical nodes are not recounted by FinalizeAst. LowerAttributes still sums the pre- and post-Rewrite passes, including consumed forms that are emitted again, so a non-zero counter does not by itself mean the serialized output changed. Rewrite records iterations, including the final unchanged convergence check, and per-rule applied or skipped outcomes. FinalizeAst records `prime_run_merges` and `text_normalizations`. FlattenGroups records actions and `guard_hits`; when command adjacency is established through a scripted base, both `command_contact` and `command_contact_via_scripted_base` increment. A disabled phase stays present as zeros or empty containers.
+[TransformReport](src/report.rs) contains one report per phase. Every phase accumulates its invocations across all rounds in the same report; already-canonical nodes are not recounted by FinalizeAst. LowerAttributes sums all of its invocations, including consumed forms that are emitted again, so a non-zero counter does not by itself mean the serialized output changed. Rewrite sums iterations across invocations, including each final unchanged convergence check, and per-rule applied or skipped outcomes. FinalizeAst records `prime_run_merges` and `text_normalizations`. FlattenGroups records actions and `guard_hits`; when command adjacency is established through a scripted base, both `command_contact` and `command_contact_via_scripted_base` increment. A disabled phase stays present as zeros or empty containers.
 
-`run` and `run_with` do not allocate that report. Report-only scans, including fully absorbed prefix checks and trailing empty-segment diffs, run only for `run_with_report` and the research guard overlay. The scheduler records Applied and Skipped results; rule contexts do not.
+`run` and `run_with` do not allocate that report. Report-only scans, including redundancy counters and trailing empty-segment diffs, run only for `run_with_report` and the research guard overlay. The scheduler records Applied and Skipped results; rule contexts do not.
 
 Bindings use a transport DTO with the same four-phase hierarchy. Rules are sorted by key and attributes by axis then value. Keep changes synchronized with [shared binding DTOs](../texform/src/bindings/mod.rs); host Python stubs and TypeScript declarations mirror that DTO.
 
@@ -217,19 +225,19 @@ Bindings use a transport DTO with the same four-phase hierarchy. Rules are sorte
 
 Attributes are tracked as an `AttributeSet`. Prefix-backed values become wrappers; declarative-only values remain inside the existing local group or prefix argument, while siblings resume the state from before that scope. The phase records only declarations that remain outside emitted wrappers, preserves explicit style across implicit math boundaries, and never synthesizes default style or size commands.
 
-The phase runs twice in the pipeline (pre and post Rewrite) under a single `enabled` switch because rewrite rules may emit prefix wrappers as their right-hand side; the post-pass re-canonicalizes those into the same normal form as the pre-pass. `LowerAttributesReport` uses a single cumulative counter set for both invocations. Turning Rewrite off does not change that double-pass schedule when LowerAttributes itself stays enabled.
+The engine may run this phase before and after Rewrite, or in later rounds after another phase changes the AST. All invocations share one `enabled` switch and one cumulative report. Before rebuilding, the phase marks subtrees containing registered attribute markers or boundary whitespace that may need splitting, then skips unrelated subtrees. Newly emitted nodes remain eligible for local recollection. A scoped prefix whose effect is fully overridden is recollected locally after rebuilding its body, so a single invocation reaches the same fixed point as repeated lowering.
 
 ### Rewrite
 
 Rules live under `src/rewrite/rules/<package>/<level>/<group>/` and are auto-registered through `src/rewrite/rules/generated.rs` (maintained by `build.rs`). Each rule is a unit struct implementing `RewriteRule` with a static `RuleMeta` descriptor.
 
-`RuleMeta` is the static contract used to filter and order rules, invalidate them after runtime knowledge mutations, schedule fixed-point attempts, and check eliminated forms after the full pipeline. `TransformContext::from_build_config` compiles that metadata into a `Plan`; `scheduler::drive_fixed_point` then runs the plan until no rule applies or `max_iterations` is exceeded.
+`RuleMeta` is the static contract used to filter and order rules, invalidate them after runtime knowledge mutations, schedule fixed-point attempts, and check eliminated forms after the full pipeline. `TransformContext::from_build_config` compiles that metadata and its trigger-name index into a reusable `Plan`; `scheduler::drive_fixed_point` then runs the plan until no rule applies or `max_iterations` is exceeded.
 
 See [`src/rewrite/rules/README.md`](src/rewrite/rules/README.md) for the authoritative metadata contract, including `triggers`, `eliminates`, `touches`, `produces`, dependency ordering, mutation filtering, convergence requirements, and the macro-based rule DSL.
 
 ### FinalizeAst
 
-An idempotent pass (`src/finalize_ast/`) for profile-neutral AST representation canonicalization. Rewrite owns surface-to-semantic rewrites (for example `Command("prime") → Prime { count: 1 }`); FinalizeAst owns canonical AST shape: merging adjacent `Prime` nodes, merging adjacent text-mode `Text` siblings, collapsing ordinary lexer whitespace runs to one U+0020 without trimming edge spaces, and cleaning empty text (sequence children are deleted; empty `TextContent` slots become an empty implicit text group). The engine runs the same `finalize_ast::run` before FlattenGroups and again after FlattenGroups when that phase is enabled. The phase is enabled by default in every profile and gated by `TransformConfig.finalize_ast.enabled`.
+An idempotent pass (`src/finalize_ast/`) for profile-neutral AST representation canonicalization. Rewrite owns surface-to-semantic rewrites (for example `Command("prime") → Prime { count: 1 }`); FinalizeAst owns canonical AST shape: merging adjacent `Prime` nodes, merging adjacent text-mode `Text` siblings, collapsing ordinary lexer whitespace runs to one U+0020 without trimming edge spaces, and cleaning empty text (sequence children are deleted; empty `TextContent` slots become an empty implicit text group). The engine reruns `finalize_ast::run` whenever another phase changes the AST after its last invocation. The phase is enabled by default in every profile and gated by `TransformConfig.finalize_ast.enabled`.
 
 ### FlattenGroups
 
@@ -240,7 +248,7 @@ A single recursive traversal (`visit` → `try_unwrap` in `src/flatten_groups/mo
 3. On the way back up, calls `try_unwrap` to check whether the current group should be flattened. Each `FlattenGroupsGuards` predicate (`declarative_scope`, `script_base`, `env_body`, `infix_scope`, `command_contact`, `command_argument`, `empty_group`, `lone_atom_spacing_char`, `leading_atom_spacing_char`, `delimited_pair`) short-circuits with an early return that increments the matching `guard_hits` counter; the first matching guard wins. `command_like_includes_scripted_base` only refines the `command_contact` classification, and a hit through that refinement also increments `command_contact_via_scripted_base`.
 4. If no guard fires and the group's content mode matches its parent's context mode, the group is unwrapped via either `unwrap_group_child` (multi-child splice) or `redirect_single_child_slot` (single-child slot replacement).
 
-The `slot_can_unwrap` helper restricts redirect-style unwrapping to single-child groups in `Argument`, `Script*`, and `Infix*` slots; `EnvBody` slots are never unwrapped.
+After a slot redirect, the promoted child is checked again in its new slot with the same subtree flags. The `slot_can_unwrap` helper restricts redirect-style unwrapping to single-child groups in `Argument`, `Script*`, and `Infix*` slots; `EnvBody` slots are never unwrapped.
 
 ## Errors
 

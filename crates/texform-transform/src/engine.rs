@@ -1,22 +1,10 @@
-//! Transform engine that applies configured phases to an AST.
-//!
-//! The engine executes in this order:
-//!
-//! 1. **LowerAttributes** rewrites registered declarative-scope commands before
-//!    ordinary rewrite execution.
-//! 2. **Rewrite** runs transform rules in a fixed-point loop until the AST
-//!    stabilizes (no rule fires) or the iteration limit is reached.
-//! 3. **LowerAttributes** normalizes attribute prefixes created by Rewrite.
-//! 4. **FinalizeAst** performs profile-neutral AST canonicalization (adjacent
-//!    `Prime` merges, text-sequence normalization).
-//! 5. **FlattenGroups** removes redundant grouping once earlier phases are complete.
-//! 6. **FinalizeAst** again when FlattenGroups ran, so adjacency exposed by
-//!    flattening is canonicalized. FinalizeAst is the last phase that mutates
-//!    the AST.
-//!
-//! When Rewrite is enabled, after these steps the engine validates the resulting
-//! AST against the eliminated-form contract derived into [`TransformContext`].
-//! That validation is read-only.
+//! Transform phases run in deterministic LowerAttributes → Rewrite →
+//! LowerAttributes → FinalizeAst → FlattenGroups rounds. Each phase reaches
+//! its own fixed point and reports mutations independently of diagnostics.
+//! A phase is skipped when it has already processed the current AST version.
+//! Any mutation invalidates the other phases. After at most eight rounds the
+//! engine either reaches their common fixed point or returns NotConverged.
+//! Eliminated-form validation runs once afterward and is read-only.
 
 use crate::ast::Ast;
 use crate::config::TransformConfig;
@@ -35,39 +23,56 @@ pub(crate) fn execute(
     flatten_groups_overlay: Option<&FlattenGroupsGuardsOverlay>,
     recorder: &mut ReportRecorder,
 ) -> Result<(), TransformError> {
-    if cfg.lower_attributes.enabled {
-        lower_attributes::run(ast, &cfg.lower_attributes, recorder);
+    const MAX_ROUNDS: usize = 8;
+    let enabled = [
+        cfg.lower_attributes.enabled,
+        cfg.rewrite.enabled,
+        cfg.finalize_ast.enabled,
+        cfg.flatten_groups.enabled,
+    ];
+    let mut guards = crate::flatten_groups::FlattenGroupsGuards::from_config(cfg.flatten_groups);
+    if let Some(overlay) = flatten_groups_overlay {
+        guards.apply_overlay(*overlay);
     }
-
-    if cfg.rewrite.enabled {
-        rewrite::run(
-            ast,
-            parse_ctx,
-            tctx.rewrite_plan(),
-            cfg.rewrite.max_iterations,
-            recorder,
-        )
-        .map_err(TransformError::Rewrite)?;
-    }
-
-    if cfg.lower_attributes.enabled {
-        lower_attributes::run(ast, &cfg.lower_attributes, recorder);
-    }
-
-    finalize_ast::run(ast, &cfg.finalize_ast, recorder);
-
-    if cfg.flatten_groups.enabled {
-        let mut guards =
-            crate::flatten_groups::FlattenGroupsGuards::from_config(cfg.flatten_groups);
-        if let Some(overlay) = flatten_groups_overlay {
-            guards.apply_overlay(*overlay);
+    let mut version = 0;
+    let mut seen = [None; 4];
+    let mut rounds = 0;
+    while enabled
+        .iter()
+        .enumerate()
+        .any(|(phase, enabled)| *enabled && seen[phase] != Some(version))
+    {
+        if rounds == MAX_ROUNDS {
+            return Err(TransformError::NotConverged {
+                max_rounds: MAX_ROUNDS,
+            });
         }
-        flatten_groups::run(ast, &guards, recorder);
-        // FlattenGroups can expose new adjacent Prime / Text nodes. Re-run the
-        // same idempotent FinalizeAst pass so sequence canonicalization is the
-        // last AST mutation. Skip when FlattenGroups is off: the first pass
-        // already finished the mutation pipeline for that input.
-        finalize_ast::run(ast, &cfg.finalize_ast, recorder);
+        rounds += 1;
+        // Each phase reaches its own fixed point. Any mutation invalidates all
+        // other phases, including those earlier in this deterministic order.
+        for phase in [0, 1, 0, 2, 3] {
+            if !enabled[phase] || seen[phase] == Some(version) {
+                continue;
+            }
+            let changed = match phase {
+                0 => lower_attributes::run(ast, &cfg.lower_attributes, recorder),
+                1 => rewrite::run(
+                    ast,
+                    parse_ctx,
+                    tctx.rewrite_plan(),
+                    cfg.rewrite.max_iterations,
+                    recorder,
+                )
+                .map_err(TransformError::Rewrite)?,
+                2 => finalize_ast::run(ast, &cfg.finalize_ast, recorder),
+                3 => flatten_groups::run(ast, &guards, recorder),
+                _ => unreachable!("phase index comes from the fixed schedule"),
+            };
+            if changed {
+                version += 1;
+            }
+            seen[phase] = Some(version);
+        }
     }
 
     if cfg.rewrite.enabled
@@ -138,6 +143,70 @@ mod tests {
             )
             .is_empty()
         );
+    }
+
+    #[test]
+    fn phase_feedback_cycle_returns_not_converged() {
+        let parse_ctx = ParseContext::from_packages(&["base"]);
+        let mut ast = parse_to_ast(&parse_ctx, r"\mathbf{x}");
+        let context = TransformContext::from_rewrite_plan_for_tests(
+            TransformConfig {
+                lower_attributes: crate::LowerAttributesConfig::ENABLED,
+                rewrite: crate::RewriteConfig::DEFAULT,
+                finalize_ast: crate::FinalizeAstConfig::ENABLED,
+                flatten_groups: FlattenGroupsConfig::STRICT,
+            },
+            RewritePlan::from_rules_for_tests(vec![&WRAP_SINGLETON]),
+        );
+        let error = context.run(&mut ast, &parse_ctx).unwrap_err();
+        assert_eq!(error, TransformError::NotConverged { max_rounds: 8 });
+        ast.assert_invariants();
+    }
+
+    struct WrapSingleton;
+    static WRAP_SINGLETON: WrapSingleton = WrapSingleton;
+    impl RewriteRule for WrapSingleton {
+        fn meta(&self) -> &'static RuleMeta {
+            static META: RuleMeta = RuleMeta {
+                key: RuleKey {
+                    package: PackageName::Base,
+                    name: "wrap-singleton-test",
+                },
+                enabled_by_packages: &[PackageName::Base],
+                level: RuleLevel::Authoring,
+                summary: "Recreate a singleton group removed by LowerAttributes.",
+                fidelity: RuleFidelity::Render,
+                triggers: &[RuleTarget::Command(&base::cmd::MATHBF)],
+                consumes: RuleConsumes {
+                    eliminates: &[],
+                    touches: &[RuleTarget::Command(&base::cmd::MATHBF)],
+                },
+                produces: RuleProduces { targets: &[] },
+            };
+            &META
+        }
+        fn apply(
+            &self,
+            cx: &mut RuleContext<'_>,
+            node: NodeId,
+        ) -> Result<RuleEffect, rewrite::RuleError> {
+            let Some(command) = cx.match_command(node, &base::cmd::MATHBF) else {
+                return Ok(RuleEffect::Skipped);
+            };
+            let Some(crate::ast::ArgumentValue::MathContent(body)) =
+                command.args[0].as_ref().map(|a| a.value.clone())
+            else {
+                return Ok(RuleEffect::Skipped);
+            };
+            if matches!(cx.ast.node(body), Node::Group { .. }) {
+                return Ok(RuleEffect::Skipped);
+            }
+            // R itself converges; L removes this wrapper and reactivates R.
+            let group = cx.ast.implicit_math_group(Vec::new());
+            cx.ast.replace_content_child(body, group);
+            cx.ast.append_child(group, body);
+            Ok(RuleEffect::Applied)
+        }
     }
 
     fn parse_to_ast(parse_ctx: &ParseContext, src: &str) -> Ast {

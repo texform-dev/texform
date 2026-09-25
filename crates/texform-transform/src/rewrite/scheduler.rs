@@ -17,11 +17,11 @@ pub(super) fn drive_fixed_point(
     plan: &Plan,
     max_iterations: usize,
     recorder: &mut ReportRecorder,
-) -> Result<(), RewriteError> {
+) -> Result<bool, RewriteError> {
     let rules = plan.rules();
     if rules.is_empty() {
         recorder.record_rewrite_iterations(0);
-        return Ok(());
+        return Ok(false);
     }
 
     // Every `RuleTarget` matches only when the node's command/environment name
@@ -80,7 +80,7 @@ pub(super) fn drive_fixed_point(
 
         if !changed {
             recorder.record_rewrite_iterations(iteration + 1);
-            return Ok(());
+            return Ok(iteration > 0);
         }
 
         if iteration + 1 == max_iterations {

@@ -16,7 +16,7 @@
 //! retained here; a later pass normalizes inside them and does not add another
 //! wrapper.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::ast::{ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, Slot};
 use crate::report::ReportRecorder;
@@ -35,9 +35,7 @@ use generated::{CommandRef, DeclarativeEntry, ModeTarget, PrefixEntry};
 /// Statistics accumulated across every LowerAttributes invocation in one
 /// transform run.
 ///
-/// The engine can run LowerAttributes before and after Rewrite. This report
-/// intentionally aggregates both invocations instead of splitting pre/post
-/// counters.
+/// Counters aggregate all invocations across the scheduling rounds.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LowerAttributesReport {
     /// Per-attribute counters for consumed inputs and emitted canonical forms.
@@ -330,14 +328,57 @@ impl LowerAttributesConfig {
     pub const DEFAULTS: Self = Self::ENABLED;
 }
 
-pub fn run(ast: &mut Ast, _config: &LowerAttributesConfig, recorder: &mut ReportRecorder) {
+/// Conservatively reports whether attribute-related content was processed.
+/// Unrelated trees return `false`; regenerating canonical prefixes may return `true`.
+pub fn run(ast: &mut Ast, _config: &LowerAttributesConfig, recorder: &mut ReportRecorder) -> bool {
+    let mut irrelevant = HashSet::new();
+    if !mark_relevant_subtrees(ast, ast.root(), &mut irrelevant) {
+        return false;
+    }
     canonicalize_subtree(
         ast,
         ast.root(),
         AttributeState::default(),
         ContentMode::Math,
-        recorder,
+        &mut Pass {
+            irrelevant,
+            recorder,
+        },
     );
+    true
+}
+
+struct Pass<'a> {
+    // Newly emitted nodes are absent and must be visited when recollected.
+    irrelevant: HashSet<NodeId>,
+    recorder: &'a mut ReportRecorder,
+}
+
+impl Pass<'_> {
+    fn lower_attributes(&mut self, record: impl FnOnce(&mut LowerAttributesReport)) {
+        self.recorder.lower_attributes(record);
+    }
+}
+
+fn mark_relevant_subtrees(ast: &Ast, node: NodeId, irrelevant: &mut HashSet<NodeId>) -> bool {
+    let mut relevant = match ast.node(node) {
+        Node::Declarative { name, args } => {
+            args.is_empty()
+                && generated::DECLARATIVES
+                    .iter()
+                    .any(|entry| entry.name == name)
+        }
+        Node::Command { name, .. } => generated::PREFIXES.iter().any(|entry| entry.name == name),
+        Node::Text(text) => !text.trim().is_empty() && text.trim().len() != text.len(),
+        _ => false,
+    };
+    for (child, _) in ast.edges(node) {
+        relevant |= mark_relevant_subtrees(ast, child, irrelevant);
+    }
+    if !relevant {
+        irrelevant.insert(node);
+    }
+    relevant
 }
 
 // ---------------------------------------------------------------------------
@@ -349,8 +390,11 @@ fn canonicalize_subtree(
     node_id: NodeId,
     inherited: AttributeState,
     mode: ContentMode,
-    recorder: &mut ReportRecorder,
+    recorder: &mut Pass<'_>,
 ) {
+    if recorder.irrelevant.contains(&node_id) {
+        return;
+    }
     let container_mode = match ast.node(node_id) {
         Node::Root { mode, .. } | Node::Group { mode, .. } => Some(*mode),
         _ => None,
@@ -368,10 +412,13 @@ fn canonicalize_content_slots(
     parent: NodeId,
     inherited: AttributeState,
     parent_mode: ContentMode,
-    recorder: &mut ReportRecorder,
+    recorder: &mut Pass<'_>,
 ) {
     let edges = ast.edges(parent);
     for (child, slot) in edges {
+        if recorder.irrelevant.contains(&child) {
+            continue;
+        }
         let Some(child_mode) = content_slot_mode(ast, parent, slot) else {
             continue;
         };
@@ -466,7 +513,7 @@ fn process_container(
     container: NodeId,
     inherited: AttributeState,
     mode: ContentMode,
-    recorder: &mut ReportRecorder,
+    recorder: &mut Pass<'_>,
 ) {
     let len = ast.children(container).len();
     if len == 0 {
@@ -492,7 +539,7 @@ fn collect_detached_children(
     children: Vec<NodeId>,
     inherited: AttributeState,
     mode: ContentMode,
-    recorder: &mut ReportRecorder,
+    recorder: &mut Pass<'_>,
 ) -> CollectResult {
     let mut pairs = Vec::new();
     let mut state = inherited;
@@ -512,9 +559,16 @@ fn collect_detached_child(
     child: NodeId,
     state: &mut AttributeState,
     mode: ContentMode,
-    recorder: &mut ReportRecorder,
+    recorder: &mut Pass<'_>,
     pairs: &mut Vec<Pair>,
 ) {
+    if recorder.irrelevant.contains(&child) {
+        pairs.push(Pair {
+            state: *state,
+            node: child,
+        });
+        return;
+    }
     if let Some(entry) = lookup_declarative_at(ast, child, mode) {
         consume_declarative(ast, child, state, entry, recorder);
         return;
@@ -569,7 +623,7 @@ fn consume_declarative(
     node: NodeId,
     state: &mut AttributeState,
     entry: &'static DeclarativeEntry,
-    recorder: &mut ReportRecorder,
+    recorder: &mut Pass<'_>,
 ) {
     recorder.lower_attributes(|report| report.record_consumed_declarative(entry.set));
     if !state.set(entry.set) {
@@ -584,7 +638,7 @@ fn collect_prefix_body(
     previous: AttributeState,
     entry: &'static PrefixEntry,
     mode: ContentMode,
-    recorder: &mut ReportRecorder,
+    recorder: &mut Pass<'_>,
 ) -> Vec<Pair> {
     recorder.lower_attributes(|report| report.record_consumed_prefix(entry.set));
     let mut body_state = previous;
@@ -611,7 +665,19 @@ fn collect_prefix_body(
             // have to be normalized in that group; lifting them would emit the
             // declaration beside the rebuilt wrapper.
             if pairs_require_local_declarative(&collected.pairs, body_state, mode) {
-                let nodes = segment_and_emit(ast, collected.pairs, body_state, mode, recorder);
+                let absorbed = prefix_is_fully_absorbed(previous, entry.set, &collected.pairs);
+                let mut nodes = segment_and_emit(ast, collected.pairs, body_state, mode, recorder);
+                if absorbed {
+                    // Rebuilding can move a declarative inside an overriding prefix.
+                    // Recollect that local result now, as the next invocation would.
+                    let recollected =
+                        collect_detached_children(ast, nodes, body_state, mode, recorder);
+                    if !pairs_require_local_declarative(&recollected.pairs, body_state, mode) {
+                        ast.remove_detached(body);
+                        return recollected.pairs;
+                    }
+                    nodes = segment_and_emit(ast, recollected.pairs, body_state, mode, recorder);
+                }
                 let removed = ast.replace_children(body, nodes);
                 debug_assert!(removed.is_empty());
                 vec![Pair {
@@ -647,7 +713,7 @@ fn collect_explicit_group(
     group: NodeId,
     inherited: AttributeState,
     mode: ContentMode,
-    recorder: &mut ReportRecorder,
+    recorder: &mut Pass<'_>,
 ) -> Vec<Pair> {
     if !has_direct_declarative_marker(ast, group, mode) {
         canonicalize_subtree(ast, group, inherited, mode, recorder);
@@ -694,7 +760,7 @@ fn collect_single_detached_node(
     node: NodeId,
     inherited: AttributeState,
     mode: ContentMode,
-    recorder: &mut ReportRecorder,
+    recorder: &mut Pass<'_>,
 ) -> CollectResult {
     let mut pairs = Vec::new();
     let mut state = inherited;
@@ -711,7 +777,7 @@ fn record_trailing_empty_segment(
     final_state: AttributeState,
     inherited: AttributeState,
     mode: ContentMode,
-    recorder: &mut ReportRecorder,
+    recorder: &mut Pass<'_>,
 ) {
     recorder.lower_attributes(|report| {
         let segment_state = pairs.last().map_or(inherited, |pair| pair.state);
@@ -818,7 +884,7 @@ fn segment_and_emit(
     pairs: Vec<Pair>,
     inherited: AttributeState,
     mode: ContentMode,
-    recorder: &mut ReportRecorder,
+    recorder: &mut Pass<'_>,
 ) -> Vec<NodeId> {
     let mut rebuilt = Vec::new();
     // `ambient` is the state actually in effect after the declarations emitted
@@ -928,7 +994,7 @@ fn wrap_with_canonical(
     state: AttributeState,
     inherited: AttributeState,
     mode: ContentMode,
-    recorder: &mut ReportRecorder,
+    recorder: &mut Pass<'_>,
 ) -> WrappedSegment {
     debug_assert!(
         !children.is_empty(),
@@ -966,7 +1032,7 @@ fn wrap_segment_with_canonical(
     state: AttributeState,
     inherited: AttributeState,
     mode: ContentMode,
-    recorder: &mut ReportRecorder,
+    recorder: &mut Pass<'_>,
 ) -> WrappedSegment {
     let mut outer_declaratives = Vec::new();
     for attr in emit_axis_order(state, inherited, mode) {
@@ -979,16 +1045,15 @@ fn wrap_segment_with_canonical(
 
         if let Some(prefix) = target.prefix {
             outer_declaratives.clear();
-            let group =
-                if children.len() == 1 && matches!(ast.node(children[0]), Node::Group { .. }) {
-                    children.pop().expect("single group should exist")
-                } else {
-                    ast.new_node(Node::Group {
-                        children,
-                        kind: GroupKind::Implicit,
-                        mode,
-                    })
-                };
+            let group = if children.len() == 1 {
+                children.pop().expect("single content node should exist")
+            } else {
+                ast.new_node(Node::Group {
+                    children,
+                    kind: GroupKind::Implicit,
+                    mode,
+                })
+            };
             let command = ast.new_node(Node::Command {
                 name: prefix.name.to_string(),
                 args: vec![mandatory_content_slot(group, mode)],
@@ -1121,6 +1186,47 @@ mod tests {
     use crate::ast::ContentMode;
 
     #[test]
+    fn skipping_irrelevant_subtrees_matches_full_traversal() {
+        use super::*;
+        let parser = crate::parse::ParseContext::from_packages(&[
+            "base",
+            "ams",
+            "physics",
+            "textmacros",
+            "braket",
+            "bboldx",
+            "boldsymbol",
+        ]);
+        for source in phase_cases::combinations() {
+            let Ok((document, _)) = parser
+                .parse(&source, &crate::parse::ParseConfig::default())
+                .try_into_document()
+            else {
+                continue;
+            };
+            let mut fast = Ast::from_syntax_root(&document.to_syntax());
+            let mut full = fast.clone();
+            run(
+                &mut fast,
+                &LowerAttributesConfig::ENABLED,
+                &mut ReportRecorder::disabled(),
+            );
+            let root = full.root();
+            canonicalize_subtree(
+                &mut full,
+                root,
+                AttributeState::default(),
+                ContentMode::Math,
+                &mut Pass {
+                    irrelevant: HashSet::new(),
+                    recorder: &mut ReportRecorder::disabled(),
+                },
+            );
+            assert_eq!(fast.to_syntax_root(), full.to_syntax_root(), "{source}");
+        }
+    }
+
+    #[test]
     fn attribute_state_set_returns_false_on_repeat() {
         let mut state = AttributeState::default();
         let bold = AttributeSet {
@@ -1208,3 +1314,7 @@ mod tests {
         assert_eq!(text_reset.get(Attr::TextShape), None);
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/support/phase_cases.rs"]
+mod phase_cases;

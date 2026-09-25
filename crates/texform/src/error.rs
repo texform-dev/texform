@@ -149,3 +149,20 @@ impl From<crate::serialize::SerializeError> for Error {
         Self::Serialize(error)
     }
 }
+
+#[cfg(test)]
+mod convergence_tests {
+    #[test]
+    fn phase_convergence_error_preserves_message_through_facade() {
+        let internal = texform_transform::TransformError::NotConverged { max_rounds: 8 };
+        let error = super::Error::from(internal);
+        let super::Error::Transform(error) = error else {
+            panic!("expected a transform error");
+        };
+        assert_eq!(
+            error.message(),
+            "transform did not converge within 8 rounds"
+        );
+        assert_eq!(error.to_string(), error.message());
+    }
+}

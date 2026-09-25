@@ -7,16 +7,15 @@ use crate::rewrite::{RewriteReport, RuleKey};
 
 /// Phase-oriented summary of a single transform run.
 ///
-/// Each field reports what its phase observed, in pipeline order. Pre/post
-/// LowerAttributes counts share one bucket, then Rewrite, FinalizeAst, and
+/// Each field aggregates what its phase observed across all scheduling rounds.
+/// The phase buckets remain LowerAttributes, Rewrite, FinalizeAst, and
 /// FlattenGroups. Counters are not a single "number of output changes" and
 /// must not be added together. This is the Rust-native report; bindings
 /// transport the same hierarchy through a DTO. Field layout and detailed
 /// statistics are diagnostic.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TransformReport {
-    /// Attribute canonicalization counts, summed over the pre- and
-    /// post-Rewrite LowerAttributes passes.
+    /// Attribute canonicalization counts, summed over all invocations.
     pub lower_attributes: LowerAttributesReport,
     /// Fixed-point iteration count and per-rule application counts.
     pub rewrite: RewriteReport,

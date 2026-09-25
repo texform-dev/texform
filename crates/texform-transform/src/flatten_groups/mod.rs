@@ -251,12 +251,14 @@ pub struct FlattenGroupsGuardCounts {
     pub delimited_pair: usize,
 }
 
-pub fn run(ast: &mut Ast, guards: &FlattenGroupsGuards, recorder: &mut ReportRecorder) {
-    visit(ast, ast.root(), false, guards, recorder);
+/// Returns whether a group was spliced or a content slot was redirected.
+pub fn run(ast: &mut Ast, guards: &FlattenGroupsGuards, recorder: &mut ReportRecorder) -> bool {
+    visit(ast, ast.root(), false, guards, recorder).changed
 }
 
 #[derive(Clone, Copy, Debug, Default)]
 struct SubtreeFlags {
+    changed: bool,
     has_declarative: bool,
     has_infix: bool,
     has_delimited: bool,
@@ -271,6 +273,7 @@ fn visit(
 ) -> SubtreeFlags {
     let edges = ast.edges(node);
     let mut flags = SubtreeFlags {
+        changed: false,
         has_declarative: matches!(ast.node(node), Node::Declarative { .. }),
         has_infix: matches!(ast.node(node), Node::Infix { .. }),
         has_delimited: matches!(
@@ -290,6 +293,7 @@ fn visit(
                 guards,
                 recorder,
             );
+            flags.changed |= child_flags.changed;
             flags.has_declarative |= child_flags.has_declarative;
             flags.has_infix |= child_flags.has_infix;
             flags.has_delimited |= child_flags.has_delimited;
@@ -297,7 +301,7 @@ fn visit(
     }
 
     if ast.contains(node) {
-        try_unwrap(ast, node, flags, in_env_body, guards, recorder);
+        flags.changed |= try_unwrap(ast, node, flags, in_env_body, guards, recorder);
     }
 
     flags
@@ -310,39 +314,39 @@ fn try_unwrap(
     in_env_body: bool,
     guards: &FlattenGroupsGuards,
     recorder: &mut ReportRecorder,
-) {
+) -> bool {
     let (kind, mode, child_count) = match ast.node(node) {
         Node::Group {
             kind,
             mode,
             children,
         } => (kind.clone(), *mode, children.len()),
-        _ => return,
+        _ => return false,
     };
     if !matches!(kind, GroupKind::Explicit | GroupKind::Implicit) {
-        return;
+        return false;
     }
     if guards.declarative_scope && flags.has_declarative {
         recorder.flatten_groups(|report| report.guard_hits.declarative_scope += 1);
-        return;
+        return false;
     }
     let Some(link) = ast.parent(node) else {
-        return;
+        return false;
     };
     if guards.env_body && in_env_body && !is_lone_prime_superscript_group(ast, node, link) {
         recorder.flatten_groups(|report| report.guard_hits.env_body += 1);
-        return;
+        return false;
     }
     if !slot_can_unwrap(link.slot, child_count) {
-        return;
+        return false;
     }
     if matches!(link.slot, Slot::GroupChild(_)) && guards.infix_scope && flags.has_infix {
         recorder.flatten_groups(|report| report.guard_hits.infix_scope += 1);
-        return;
+        return false;
     }
     if matches!(link.slot, Slot::GroupChild(_)) && guards.delimited_pair && flags.has_delimited {
         recorder.flatten_groups(|report| report.guard_hits.delimited_pair += 1);
-        return;
+        return false;
     }
     if let Slot::GroupChild(index) = link.slot
         && guards.command_contact
@@ -361,7 +365,7 @@ fn try_unwrap(
                     report.guard_hits.command_contact_via_scripted_base += 1;
                 }
             });
-            return;
+            return false;
         }
     }
     let children = ast.children(node);
@@ -371,15 +375,15 @@ fn try_unwrap(
     if matches!(link.slot, Slot::GroupChild(_)) {
         if guards.empty_group && child_count == 0 {
             recorder.flatten_groups(|report| report.guard_hits.empty_group += 1);
-            return;
+            return false;
         }
         if guards.lone_atom_spacing_char && child_count == 1 && first_is_atom {
             recorder.flatten_groups(|report| report.guard_hits.lone_atom_spacing_char += 1);
-            return;
+            return false;
         }
         if guards.leading_atom_spacing_char && child_count > 1 && first_is_atom {
             recorder.flatten_groups(|report| report.guard_hits.leading_atom_spacing_char += 1);
-            return;
+            return false;
         }
     }
     if matches!(link.slot, Slot::ScriptBase)
@@ -388,21 +392,21 @@ fn try_unwrap(
         && first_is_atom
     {
         recorder.flatten_groups(|report| report.guard_hits.lone_atom_spacing_char += 1);
-        return;
+        return false;
     }
     if matches!(link.slot, Slot::Argument(_))
         && guards.command_argument
         && group_as_argument_of_command_needs_boundary(ast, node)
     {
         recorder.flatten_groups(|report| report.guard_hits.command_argument += 1);
-        return;
+        return false;
     }
 
     let Some(parent_mode) = context_mode(ast, link) else {
-        return;
+        return false;
     };
     if mode != parent_mode {
-        return;
+        return false;
     }
 
     if matches!(link.slot, Slot::ScriptBase)
@@ -410,7 +414,7 @@ fn try_unwrap(
         && !is_atomic_base(ast, ast.children(node)[0])
     {
         recorder.flatten_groups(|report| report.guard_hits.script_base += 1);
-        return;
+        return false;
     }
 
     match link.slot {
@@ -420,9 +424,16 @@ fn try_unwrap(
         | Slot::ScriptSub
         | Slot::ScriptSup
         | Slot::InfixLeft
-        | Slot::InfixRight => redirect_single_child_slot(ast, node, recorder),
-        Slot::EnvBody => {}
+        | Slot::InfixRight => {
+            let child = ast.children(node)[0];
+            redirect_single_child_slot(ast, node, recorder);
+            // Its slot changed: guards that preserved the nested group as a
+            // sequence child must now be checked in the promoted slot.
+            try_unwrap(ast, child, flags, in_env_body, guards, recorder);
+        }
+        Slot::EnvBody => return false,
     }
+    true
 }
 
 fn is_lone_prime_superscript_group(ast: &Ast, node: NodeId, link: ParentLink) -> bool {
