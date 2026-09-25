@@ -30,7 +30,7 @@ pub(super) fn drive_fixed_point(
     // that provably cannot match, instead of testing all rules against every
     // node. Indices stay in ascending rule order, preserving the fixed-point
     // loop's "first matching rule in plan order wins" semantics.
-    let rules_by_name = index_rules_by_trigger_name(rules);
+    let rules_by_name = &plan.rules_by_name;
 
     for iteration in 0..max_iterations {
         let mut changed = false;
@@ -98,7 +98,7 @@ fn preorder_snapshot(ast: &Ast) -> Vec<NodeId> {
 /// Map each trigger name to the indices of the rules that trigger on it, in
 /// ascending rule order. A rule appears under each distinct name it triggers
 /// on; repeated triggers with the same name are collapsed.
-fn index_rules_by_trigger_name(
+pub(super) fn index_rules_by_trigger_name(
     rules: &[&'static dyn crate::rewrite::rule::RewriteRule],
 ) -> HashMap<&'static str, Vec<usize>> {
     let mut by_name: HashMap<&'static str, Vec<usize>> = HashMap::new();

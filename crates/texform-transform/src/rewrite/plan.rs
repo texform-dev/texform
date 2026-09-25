@@ -1,6 +1,6 @@
 //! Compiled rewrite plan: filtered rules and eliminated forms.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use crate::config::BuildConfig;
 use crate::parse::{MutationSummary, ParseContext};
@@ -13,6 +13,7 @@ use crate::rewrite::rule::{
 pub struct Plan {
     rules: Vec<&'static dyn RewriteRule>,
     eliminated_forms: Vec<RuleTargetKey>,
+    pub(super) rules_by_name: HashMap<&'static str, Vec<usize>>,
 }
 
 impl Plan {
@@ -21,6 +22,7 @@ impl Plan {
         let ordered = topological_sort(enabled.as_slice())?;
         let eliminated_forms = derive_eliminated_forms(ordered.as_slice());
         Ok(Self {
+            rules_by_name: super::scheduler::index_rules_by_trigger_name(&ordered),
             rules: ordered,
             eliminated_forms,
         })
@@ -38,6 +40,7 @@ impl Plan {
     pub(crate) fn from_rules_for_tests(rules: Vec<&'static dyn RewriteRule>) -> Self {
         let eliminated_forms = derive_eliminated_forms(rules.as_slice());
         Self {
+            rules_by_name: super::scheduler::index_rules_by_trigger_name(&rules),
             rules,
             eliminated_forms,
         }
