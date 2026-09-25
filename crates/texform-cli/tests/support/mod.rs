@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::process::{Command, ExitStatus, Output, Stdio};
 use std::thread;
 
@@ -69,10 +69,11 @@ fn run_with_stdin(args: &[&str], input: Vec<u8>) -> Output {
     // Write from another thread so a full stdout pipe cannot deadlock the test.
     let writer = thread::spawn(move || stdin.write_all(&input));
     let output = child.wait_with_output().expect("wait for texform");
-    writer
-        .join()
-        .expect("stdin writer thread")
-        .expect("write stdin");
+    // The CLI may exit before reading stdin, for example on a usage error.
+    match writer.join().expect("stdin writer thread") {
+        Err(error) if error.kind() != ErrorKind::BrokenPipe => panic!("write stdin: {error}"),
+        _ => {}
+    }
     output
 }
 
