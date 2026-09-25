@@ -39,8 +39,8 @@ Use Conventional Commits: `<type>(<scope>)<!>: <subject>`. Use backticks around 
 - Choose the type by the effect on released behavior. When changing something added since the last release, use `feat` or a supporting type instead of `fix`, and omit `!`: users never saw the earlier behavior, so the changelog should describe only the final result.
 - Prefer an existing scope for the main change: `core`, `parser`, `serializer`, `document`, `transform`, `rule`, `specs`, `knowledge`, `argspec`, `interface`, `regression`, `bindings`, `python`, `wasm`, `cli`. Omit it when no area dominates. Use `core` only for shared internals or changes spanning several parts of `texform-core`.
 - Keep the subject short, imperative, and lower-case after the prefix. State the main change without listing secondary changes.
-- For nontrivial changes, explain the motivation and resulting behavior in one or two short paragraphs, or a short opening paragraph and two or three concise bullets. Keep each bullet to one key point; do not repeat the subject.
-- For fixes, name the trigger and incorrect behavior. For breaking changes, retain the main migration instructions. Omit implementation inventories, exhaustive API lists, routine test summaries, and development history unless needed to explain a constraint or trade-off.
+- For nontrivial changes, explain the problem or motivation in a short opening paragraph, then describe the resulting behavior in unordered bullets grouped by topic. Use concrete declarative sentences to explain important changes and their boundaries; do not repeat the subject.
+- For fixes, name the trigger and incorrect behavior. For breaking changes, retain the main migration instructions. Include meaningful performance or metric changes when relevant. Omit implementation inventories, exhaustive API lists, routine test summaries, and development history unless needed to explain a constraint or trade-off.
 
 ## Documentation Maintenance
 
