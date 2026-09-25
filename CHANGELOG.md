@@ -3,6 +3,24 @@
 All notable changes to TeXForm are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
+## [0.6.0] - 2026-09-25
+
+### Added
+
+- Add formula and knowledge subcommands to `texform`
+- Print syntax trees and token lists for human reading
+- Add `texform-cli` with the `serve` normalizer protocol
+
+### Changed
+
+- Cache rewrite trigger indexes in `Plan`
+
+### Fixed
+
+- Stabilize normalization across phase boundaries
+- **Breaking:** Separate prime symbols from quote superscripts
+- Preserve lexical command boundaries
+- Preserve local attribute scopes
 
 ## [0.5.0] - 2026-09-22
 
