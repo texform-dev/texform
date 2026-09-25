@@ -577,7 +577,7 @@ fn math_char<'a>() -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<
     select! {
         Token::Char(c) => SyntaxNode::Char(c),
         Token::Star => SyntaxNode::Char('*'),
-        Token::Alignment => SyntaxNode::Char('&'),
+        Token::Alignment => SyntaxNode::AlignmentTab,
         Token::LBracket => SyntaxNode::Char('['),
         Token::RBracket => SyntaxNode::Char(']'),
     }

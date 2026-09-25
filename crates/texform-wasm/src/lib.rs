@@ -171,6 +171,14 @@ impl Document {
         Ok(Node::from_parts(Rc::clone(&self.inner), id))
     }
 
+    #[wasm_bindgen(js_name = createAlignmentTab)]
+    pub fn create_alignment_tab(&self) -> Result<Node, JsValue> {
+        let id = borrow_document_mut(&self.inner)?
+            .create_alignment_tab()
+            .map_err(edit_error_to_js)?;
+        Ok(Node::from_parts(Rc::clone(&self.inner), id))
+    }
+
     #[wasm_bindgen(js_name = createGroup)]
     pub fn create_group(&self, mode: &str) -> Result<Node, JsValue> {
         let mode = parse_content_mode(mode)?;
@@ -696,6 +704,7 @@ fn node_kind_to_string(kind: texform::NodeKind) -> &'static str {
         texform::NodeKind::Text => "text",
         texform::NodeKind::Char => "char",
         texform::NodeKind::ActiveSpace => "activeSpace",
+        texform::NodeKind::AlignmentTab => "alignmentTab",
         texform::NodeKind::Error => "error",
     }
 }

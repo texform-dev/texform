@@ -724,6 +724,14 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 "~",
                 self.options,
             ),
+            // Keeps the `MathChar` boundary behavior that `&` had as a `Char`.
+            Node::AlignmentTab => self.writer.emit(
+                mode,
+                AtomKind::MathChar,
+                SerializationTokenKind::Character,
+                "&",
+                self.options,
+            ),
             Node::Error { snippet, .. } => self.writer.emit(
                 mode,
                 AtomKind::RawFragment,
@@ -1614,7 +1622,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         } else {
             AtomKind::MathChar
         };
-        let text = serialized_char(ch, mode);
+        let text = serialized_char(ch);
         self.writer.emit(
             mode,
             kind,
@@ -1652,13 +1660,10 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     }
 }
 
-fn serialized_char(ch: char, mode: ContentMode) -> String {
-    let needs_escape = match mode {
-        ContentMode::Math => matches!(ch, '%' | '$' | '#' | '_' | '{' | '}'),
-        ContentMode::Text => matches!(ch, '%' | '$' | '&' | '#' | '_' | '{' | '}'),
-    };
-
-    if needs_escape {
+fn serialized_char(ch: char) -> String {
+    // `Char('&')` is always a literal ampersand; alignment tabs are
+    // `Node::AlignmentTab`, so both modes escape the same set.
+    if matches!(ch, '%' | '$' | '&' | '#' | '_' | '{' | '}') {
         format!(r"\{ch}")
     } else {
         ch.to_string()

@@ -103,6 +103,15 @@ if (!unicode || "start_byte" in unicode || unicode.endByte - unicode.startByte !
   throw new Error("token spans should use camelCase UTF-8 byte offsets");
 }
 
+const ampersandDoc = parser.parse(String.raw`a \& b`).document;
+const staged = [ampersandDoc.createAlignmentTab(), ampersandDoc.createChar("&")];
+for (const node of staged) {
+  ampersandDoc.appendChild(ampersandDoc.root(), node);
+}
+if (staged[0].kind !== "alignmentTab" || ampersandDoc.toLatex() !== String.raw`a \& b & \&`) {
+  throw new Error("alignment tabs and literal ampersands should stay distinct");
+}
+
 const engine = new TransformEngine({ profile: "authoring" });
 const normalized = engine.normalize("a''");
 if (typeof normalized !== "string") {

@@ -575,6 +575,14 @@ impl PyDocument {
         py_node(py, slf.clone().unbind(), id)
     }
 
+    fn create_alignment_tab(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyNode>> {
+        let id = {
+            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
+            document.inner.create_alignment_tab().map_err(edit_error)?
+        };
+        py_node(py, slf.clone().unbind(), id)
+    }
+
     fn create_group(slf: &Bound<'_, Self>, py: Python<'_>, mode: &str) -> PyResult<Py<PyNode>> {
         let mode = py_content_mode(mode)?;
         let id = {
@@ -1881,6 +1889,39 @@ mod tests {
                     .extract::<String>()
                     .unwrap(),
                 r"\sqrt { x }"
+            );
+        });
+    }
+
+    #[test]
+    fn python_alignment_tab_is_distinct_from_literal_ampersand() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+
+            let document = module.getattr("Document").unwrap().call0().unwrap();
+            let root = document.call_method0("root").unwrap();
+            let tab = document.call_method0("create_alignment_tab").unwrap();
+            assert_eq!(
+                tab.call_method0("kind")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                "AlignmentTab"
+            );
+            let literal = document.call_method1("create_char", ("&",)).unwrap();
+            for node in [&tab, &literal] {
+                document
+                    .call_method1("append_child", (&root, node))
+                    .unwrap();
+            }
+            assert_eq!(
+                document
+                    .call_method0("to_latex")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                r"& \&"
             );
         });
     }

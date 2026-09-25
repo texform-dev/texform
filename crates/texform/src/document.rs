@@ -206,6 +206,19 @@ impl Document {
         self.inner.create_active_space()
     }
 
+    /// Create a detached alignment-tab node, the unescaped `&` that separates
+    /// cells in alignment environments.
+    ///
+    /// Use [`Document::create_char`] with `'&'` for a literal ampersand, which
+    /// serializes as `\&`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EditError::ReadOnlyDocument`] if the document has errors.
+    pub fn create_alignment_tab(&mut self) -> Result<NodeId, EditError> {
+        self.inner.create_alignment_tab()
+    }
+
     /// Create a detached, empty brace group with the given content mode.
     ///
     /// # Errors

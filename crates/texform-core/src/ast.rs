@@ -100,6 +100,8 @@ pub enum NodeKind {
     Char,
     /// Active `~` space leaf.
     ActiveSpace,
+    /// Alignment tab `&` separating cells in alignment environments.
+    AlignmentTab,
     /// Parser-produced error placeholder; see [`Node::Error`].
     Error,
 }
@@ -281,6 +283,10 @@ pub enum Node {
     Char(char),
     /// Active `~` space node
     ActiveSpace,
+    /// Unescaped alignment tab `&` (catcode 4).
+    ///
+    /// A literal ampersand written as `\&` is a [`Node::Char`] instead.
+    AlignmentTab,
     /// Parser-produced error placeholder, mirroring
     /// [`SyntaxNode::Error`].
     ///
@@ -312,6 +318,7 @@ impl Node {
             Node::Text(_) => NodeKind::Text,
             Node::Char(_) => NodeKind::Char,
             Node::ActiveSpace => NodeKind::ActiveSpace,
+            Node::AlignmentTab => NodeKind::AlignmentTab,
             Node::Error { .. } => NodeKind::Error,
         }
     }
@@ -1570,6 +1577,7 @@ impl Ast {
             Node::Text(text) => SyntaxNode::Text(text.clone()),
             Node::Char(ch) => SyntaxNode::Char(*ch),
             Node::ActiveSpace => SyntaxNode::ActiveSpace,
+            Node::AlignmentTab => SyntaxNode::AlignmentTab,
             Node::Error { message, snippet } => SyntaxNode::Error {
                 message: message.clone(),
                 snippet: snippet.clone(),
@@ -1706,6 +1714,7 @@ impl Ast {
             Node::Text(text) => Node::Text(text),
             Node::Char(ch) => Node::Char(ch),
             Node::ActiveSpace => Node::ActiveSpace,
+            Node::AlignmentTab => Node::AlignmentTab,
             Node::Error { message, snippet } => Node::Error { message, snippet },
         };
 
@@ -1801,6 +1810,7 @@ impl Ast {
             | Node::Text(_)
             | Node::Char(_)
             | Node::ActiveSpace
+            | Node::AlignmentTab
             | Node::Error { .. } => {}
         }
 
@@ -1917,6 +1927,7 @@ impl Ast {
             SyntaxNode::Text(text) => Node::Text(text.clone()),
             SyntaxNode::Char(ch) => Node::Char(*ch),
             SyntaxNode::ActiveSpace => Node::ActiveSpace,
+            SyntaxNode::AlignmentTab => Node::AlignmentTab,
         };
 
         let id = nodes.insert(converted_node);

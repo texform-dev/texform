@@ -264,6 +264,12 @@ pub enum SyntaxNode {
     ///
     /// TODO: Decide whether this needs to remain a distinct node type.
     ActiveSpace,
+
+    /// Unescaped alignment tab `&` (catcode 4), separating cells in alignment
+    /// environments such as `matrix` and `align`.
+    ///
+    /// A literal ampersand written as `\&` is parsed as `Char('&')` instead.
+    AlignmentTab,
 }
 
 // ============ Helper Methods ============
@@ -282,6 +288,7 @@ impl SyntaxNode {
                 | SyntaxNode::Text(_)
                 | SyntaxNode::Prime { .. }
                 | SyntaxNode::ActiveSpace
+                | SyntaxNode::AlignmentTab
                 | SyntaxNode::Error { .. }
         ) || matches!(self, SyntaxNode::Command { args, .. } if args.iter().all(|slot| {
             slot.as_ref().is_none_or(|arg| {
@@ -481,6 +488,7 @@ impl SyntaxNode {
             SyntaxNode::Text(s) => writeln!(f, "{}Text(\"{}\")", prefix, s),
             SyntaxNode::Char(c) => writeln!(f, "{}Char('{}')", prefix, c),
             SyntaxNode::ActiveSpace => writeln!(f, "{}ActiveSpace", prefix),
+            SyntaxNode::AlignmentTab => writeln!(f, "{}AlignmentTab", prefix),
         }
     }
 

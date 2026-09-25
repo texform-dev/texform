@@ -2187,14 +2187,14 @@ fn test_infix_left_collects_flat_declarative_items() {
 
 #[test]
 fn test_alignment_char() {
-    // "&" should parse as Char('&') in math mode
+    // A bare "&" is an alignment tab, distinct from the literal `\&` (`Char('&')`).
     let (result, _) = parse(r"a & b", false).unwrap();
 
     match result {
         SyntaxNode::Root { children, .. } => {
             assert_eq!(children.len(), 3);
             assert_eq!(children[0], SyntaxNode::Char('a'));
-            assert_eq!(children[1], SyntaxNode::Char('&'));
+            assert_eq!(children[1], SyntaxNode::AlignmentTab);
             assert_eq!(children[2], SyntaxNode::Char('b'));
         }
         _ => panic!("Expected root Group"),

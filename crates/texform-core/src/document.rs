@@ -456,6 +456,14 @@ impl Document {
         self.create_node(Node::ActiveSpace)
     }
 
+    /// Create a detached alignment tab `&` node.
+    ///
+    /// Use [`Document::create_char`] with `'&'` for a literal ampersand, which
+    /// serializes as `\&`.
+    pub fn create_alignment_tab(&mut self) -> Result<NodeId, EditError> {
+        self.create_node(Node::AlignmentTab)
+    }
+
     /// Create a detached group node.
     pub fn create_group(&mut self, mode: ContentMode) -> Result<NodeId, EditError> {
         self.create_node(Node::Group {
@@ -887,6 +895,7 @@ impl Document {
             | Node::Text(_)
             | Node::Char(_)
             | Node::ActiveSpace
+            | Node::AlignmentTab
             | Node::Error { .. } => {}
         }
         children
@@ -953,7 +962,8 @@ impl Document {
             SyntaxNode::Error { .. }
             | SyntaxNode::Text(_)
             | SyntaxNode::Char(_)
-            | SyntaxNode::ActiveSpace => {}
+            | SyntaxNode::ActiveSpace
+            | SyntaxNode::AlignmentTab => {}
         }
 
         Ok(())

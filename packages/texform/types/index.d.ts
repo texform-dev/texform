@@ -254,7 +254,8 @@ export type SyntaxNode =
   | { Error: { message: string; snippet: string } }
   | { Text: string }
   | { Char: string }
-  | "ActiveSpace";
+  | "ActiveSpace"
+  | "AlignmentTab";
 
 /**
  * A present command/environment argument in {@link SyntaxNode} snapshot form,
@@ -309,6 +310,7 @@ export type NodeKind =
   | "text"
   | "char"
   | "activeSpace"
+  | "alignmentTab"
   | "error";
 
 /**
@@ -557,6 +559,14 @@ export class Document {
    * @returns The staged node handle.
    */
   createActiveSpace(): Node;
+  /**
+   * Stage a detached alignment-tab node, the unescaped `&` that separates
+   * cells in alignment environments. Use `createChar("&")` for a literal
+   * ampersand, which serializes as `\&`.
+   *
+   * @returns The staged node handle.
+   */
+  createAlignmentTab(): Node;
   /**
    * Stage a detached, empty brace group with the given content mode.
    *

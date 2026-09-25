@@ -86,7 +86,7 @@ fn split_eqalignno_row(
     let Some(amp_index) = row
         .windows(2)
         .rposition(|pair| {
-            matches!(cx.ast.node(pair[0]), Node::Char('&'))
+            matches!(cx.ast.node(pair[0]), Node::AlignmentTab)
                 && matches!(cx.ast.node(pair[1]), Node::Char('('))
         })
     else {

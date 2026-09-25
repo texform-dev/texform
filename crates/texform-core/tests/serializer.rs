@@ -156,6 +156,35 @@ fn escaped_text_chars_remain_single_character_tokens() {
 }
 
 #[test]
+fn escaped_ampersand_stays_literal_and_alignment_tabs_stay_bare() {
+    // A literal `\&` must not lose its backslash in math mode, where a bare `&`
+    // would become a column separator.
+    let cases = [
+        (r"a \& b", r"a \& b"),
+        (r"{\displaystyle \&}", r"{ \displaystyle \& }"),
+        (r"\mathrm{\&}", r"\mathrm { \& }"),
+        (r"\text{a \& b}", r"\text {a \& b}"),
+        (
+            r"\begin{matrix}a \& b & c\\ d & \&\end{matrix}",
+            r"\begin {matrix} a \& b & c \\ d & \& \end {matrix}",
+        ),
+        (
+            r"\begin{align}x &= a \& b\end{align}",
+            r"\begin {align} x & = a \& b \end {align}",
+        ),
+    ];
+    for (source, expected) in cases {
+        let serialized = serialize(&parse_to_ast(source));
+        assert_eq!(serialized, expected, "source: {source}");
+        assert_eq!(
+            serialize(&parse_to_ast(&serialized)),
+            serialized,
+            "reparse of {serialized}"
+        );
+    }
+}
+
+#[test]
 fn tokenized_options_never_change_canonical_text() {
     let ast = parse_to_ast(r"\sqrt[3]{x_i}");
     let options = SerializeOptions {

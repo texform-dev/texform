@@ -62,6 +62,7 @@ fn following_atom_choice(cx: &RuleContext<'_>, node_id: NodeId) -> Option<DotsCh
         | Node::Infix { .. }
         | Node::Declarative { .. }
         | Node::Text(_)
+        | Node::AlignmentTab
         | Node::Error { .. } => None,
     }
 }

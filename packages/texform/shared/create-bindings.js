@@ -311,6 +311,10 @@ export function createBindings({
       return wrapTexformError(() => wrapNode(this.inner.createActiveSpace()));
     }
 
+    createAlignmentTab() {
+      return wrapTexformError(() => wrapNode(this.inner.createAlignmentTab()));
+    }
+
     createGroup(mode) {
       return wrapTexformError(() => wrapNode(this.inner.createGroup(mode)));
     }

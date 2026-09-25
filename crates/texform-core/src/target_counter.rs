@@ -118,6 +118,7 @@ fn count_node_in_mode(node: &SyntaxNode, inherited_mode: ContentMode, out: &mut 
         | SyntaxNode::Text(_)
         | SyntaxNode::Char(_)
         | SyntaxNode::ActiveSpace
+        | SyntaxNode::AlignmentTab
         | SyntaxNode::Error { .. } => {}
     }
 }

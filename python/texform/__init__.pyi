@@ -35,6 +35,7 @@ NodeKind = Literal[
     "Text",
     "Char",
     "ActiveSpace",
+    "AlignmentTab",
     "Error",
 ]
 """Node kind as reported by ``Node.kind()``. Python uses PascalCase (``"Root"``, ``"Command"``, ``"ActiveSpace"``)."""
@@ -1031,6 +1032,17 @@ class Document:
 
         Returns:
             The staged ``ActiveSpace`` node handle.
+        """
+
+    def create_alignment_tab(self) -> Node:
+        """Stage a detached ``AlignmentTab`` node owned by this document.
+
+        This is the unescaped ``&`` that separates cells in alignment
+        environments. Use ``create_char("&")`` for a literal ampersand, which
+        serializes as ``\\&``.
+
+        Returns:
+            The staged ``AlignmentTab`` node handle.
         """
 
     def create_group(self, mode: RuntimeContentMode) -> Node:
