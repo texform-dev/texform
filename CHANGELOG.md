@@ -4,6 +4,25 @@ All notable changes to TeXForm are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
 
+## [0.6.0] - 2026-09-25
+
+This release adds the `texform` command-line tool, gives prime marks a consistent meaning as symbols with explicit superscript binding, and makes normalization stable across transform phases. It also fixes spacing drift after text-mode control symbols and declarations leaking out of local groups, and roughly halves transform time. The prime change is breaking; see **Changed** for migration notes.
+
+### Added
+
+- A new `texform-cli` crate installs a `texform` binary (`cargo install texform-cli`). `normalize`, `parse`, and `tokenize` read one formula from an argument or stdin, or one per line with `--lines`, and print human-readable text or one JSON object per formula; `info`, `packages`, and `argspec validate` query the knowledge base and argument specifications with the same shapes as the bindings. `texform serve` speaks JSON-RPC 2.0 over stdio (normalizer protocol v1) so external tools can call a specific TeXForm build across a process boundary, and `texform --version` reports the source commit and whether it was dirty. The CLI loads the library's default packages; `braket` is opt-in.
+
+### Changed
+
+- **Breaking:** `Prime` is now a math symbol, and only `Scripted` expresses superscript binding. `x\prime` stays `x \prime` instead of becoming `x'`, `x^2\prime` no longer produces an unparsable double superscript, `f'^2` serializes as one superscript instead of a nested empty-base one, and `f^{'}` no longer collapses to `f'`. A pure prime superscript still serializes as `f'`. A leading quote, including inside `f^{'}` and `A^{'\alpha}`, parses as an empty-base `Scripted`, and whitespace-separated quotes such as `f' ' '` form one superscript as in MathJax. `x^'` and `x_'` are now parse errors. Snapshots that stored a bare `Prime` for a quote superscript should be reparsed from source or rebuilt with an empty-base `Scripted`.
+- Transforms are faster: rewrite trigger indexes are built once per `Plan`, and phases skip work they have already done. On a 10,000-formula sample, transform time falls from 33–44 µs to 14–18 µs per formula across the four profiles.
+
+### Fixed
+
+- Normalization no longer depends on how many times it is applied. Later phases could expose attribute merges or rewrite matches after earlier phases had finished; the phases now run to a shared fixed point, and a transform that fails to converge within eight rounds returns a `TransformError` instead of partially normalized output. As a result, a prefix command's single-node argument is no longer wrapped in an implicit group in the transformed tree; serialized output is unchanged.
+- Text-mode control symbols such as `\ ` and `\,` no longer gain a separator space on every serialization (`\mbox{mod\ 1}` grew by one space per round). A separator is emitted only where it keeps a control word from absorbing the following letter.
+- Declaratives without a prefix form keep their local scope: `{\scriptstyle x} y` no longer becomes `\scriptstyle x y`, `{\oldstyle 1}2` no longer becomes `\oldstyle 12`, and `\mathbf{\scriptstyle x}y` no longer emits the style twice.
+
 ## [0.5.0] - 2026-09-22
 
 This release reshapes the configuration and reporting surface across Rust, Python, and JavaScript so the three APIs share one configuration tree and one set of override semantics. Transform reports become opt-in, `TransformConfig` is organized by phase, serialization options are flattened, and binding exception categories are corrected. It also hardens parser recovery and diagnostics, fixes serialization of bare delimiter arguments, and adds two corpus rules. Most changes are breaking; see **Changed** for migration notes.
