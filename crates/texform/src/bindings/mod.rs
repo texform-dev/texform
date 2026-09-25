@@ -175,7 +175,6 @@ pub struct FlattenGroupsGuardCountsDto {
     pub env_body: usize,
     pub infix_scope: usize,
     pub command_contact: usize,
-    pub command_argument: usize,
     pub command_contact_via_scripted_base: usize,
     pub empty_group: usize,
     pub lone_atom_spacing_char: usize,
@@ -437,7 +436,6 @@ fn flatten_groups_report_to_dto(report: &FlattenGroupsReport) -> FlattenGroupsRe
             env_body: report.guard_hits.env_body,
             infix_scope: report.guard_hits.infix_scope,
             command_contact: report.guard_hits.command_contact,
-            command_argument: report.guard_hits.command_argument,
             command_contact_via_scripted_base: report.guard_hits.command_contact_via_scripted_base,
             empty_group: report.guard_hits.empty_group,
             lone_atom_spacing_char: report.guard_hits.lone_atom_spacing_char,
@@ -650,7 +648,6 @@ mod tests {
             env_body: 7,
             infix_scope: 8,
             command_contact: 9,
-            command_argument: 10,
             command_contact_via_scripted_base: 11,
             empty_group: 12,
             lone_atom_spacing_char: 13,
@@ -669,7 +666,6 @@ mod tests {
         assert_eq!(dto.guard_hits.env_body, 7);
         assert_eq!(dto.guard_hits.infix_scope, 8);
         assert_eq!(dto.guard_hits.command_contact, 9);
-        assert_eq!(dto.guard_hits.command_argument, 10);
         assert_eq!(dto.guard_hits.command_contact_via_scripted_base, 11);
         assert_eq!(dto.guard_hits.empty_group, 12);
         assert_eq!(dto.guard_hits.lone_atom_spacing_char, 13);

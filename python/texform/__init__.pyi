@@ -363,7 +363,6 @@ class FlattenGroupsGuardCounts(TypedDict):
         env_body: Environment-body protection.
         infix_scope: Infix-scope protection.
         command_contact: Command-contact protection.
-        command_argument: Command-argument boundary protection.
         command_contact_via_scripted_base: Command contact established through a
             scripted base.
         empty_group: Empty-group protection.
@@ -377,7 +376,6 @@ class FlattenGroupsGuardCounts(TypedDict):
     env_body: int
     infix_scope: int
     command_contact: int
-    command_argument: int
     command_contact_via_scripted_base: int
     empty_group: int
     lone_atom_spacing_char: int
@@ -1682,7 +1680,7 @@ class Parser:
     must be a complete ``ParseConfig`` instance; a dict passed as ``config``
     raises ``ConfigError``. Other keywords are overlays
     (``parse(src, reject_unknown=True)``). ``packages=None`` loads the default
-    runtime packages (six packages, excluding ``braket``), not every built-in
+    runtime packages (six packages, excluding ``physics``), not every built-in
     package. Loading ``braket`` together with ``physics`` is allowed, but
     ``physics`` overrides their shared command definitions. Built-in packages
     are imported in a fixed order, regardless of the supplied list order.

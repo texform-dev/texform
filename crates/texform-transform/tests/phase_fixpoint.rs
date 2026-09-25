@@ -82,14 +82,7 @@ fn feedback_opportunities_finish_in_one_transform() {
         let t = TransformContext::from_build_config(BuildConfig::profile(profile), &p).unwrap();
         let structural = matches!(profile, Profile::Corpus | Profile::Equiv);
         let cases = [
-            (
-                r"\mathrel{{\mathrel{=}}}",
-                if structural {
-                    r"\mathrel { = }"
-                } else {
-                    r"\mathrel { \mathrel { = } }"
-                },
-            ),
+            (r"\mathrel{{\mathrel{=}}}", r"\mathrel { = }"),
             (r"\not{=}", if structural { r"\neq" } else { r"\not { = }" }),
             (
                 r"a \dots {+ b}",

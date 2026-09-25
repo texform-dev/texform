@@ -1843,3 +1843,61 @@ fn serialize_options_serde_fills_omitted_fields_from_defaults() {
         }
     );
 }
+
+#[test]
+fn constructed_optional_content_protects_closing_tokens_in_all_spacing_styles() {
+    for kind in [GroupKind::Explicit, GroupKind::Implicit] {
+        let mut ast = Ast::new();
+        let close = ast.new_node(Node::Char(']'));
+        let group = ast.new_node(Node::Group {
+            children: vec![close],
+            mode: ContentMode::Math,
+            kind,
+        });
+        let command = ast.new_node(Node::Command {
+            name: "probe".into(),
+            known: false,
+            args: vec![Some(Argument::from_value(
+                ArgumentKind::Optional,
+                ArgumentValue::MathContent(group),
+            ))],
+        });
+        ast.append_child(ast.root(), command);
+        for spacing in [
+            MathGroupInnerSpacing::Padded,
+            MathGroupInnerSpacing::Compact,
+        ] {
+            let options = SerializeOptions {
+                group_inner_spacing: spacing,
+                ..SerializeOptions::default()
+            };
+            let result = serialize_tokenized_with(&ast, &options);
+            assert_eq!(result.latex, serialize_with(&ast, &options));
+            assert_token_contract(&result);
+            assert!(result.latex.contains('{') && result.latex.contains('}'));
+            let ctx = texform_core::parse::ParseContextBuilder::empty()
+                .insert_item(support::command_item(
+                    "probe",
+                    CommandKind::Prefix,
+                    AllowedMode::Math,
+                    "o",
+                ))
+                .build()
+                .unwrap();
+            let reparsed = parse_to_ast_with_context(&ctx, &result.latex);
+            assert_eq!(serialize_with(&reparsed, &options), result.latex);
+        }
+    }
+}
+
+#[test]
+fn nested_optional_arguments_reuse_protection_decisions() {
+    let mut source = "n".to_string();
+    for _ in 0..8 {
+        source = format!(r"\sqrt[{{{source}}}]{{x}}");
+    }
+    let ast = parse_to_ast(&source);
+    let output = serialize(&ast);
+    assert_eq!(serialize(&parse_to_ast(&output)), output);
+    assert_eq!(serialize_tokenized(&ast).latex, output);
+}

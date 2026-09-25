@@ -70,9 +70,6 @@ pub struct FlattenGroupsGuards {
     /// command-like when that classification walks through its base. Has no
     /// independent effect when `command_contact` is `false`.
     pub command_like_includes_scripted_base: bool,
-    /// Keep a group in an `Argument` slot that has exactly one child whose
-    /// subtree contains a command-like node, preserving one spacing boundary.
-    pub command_argument: bool,
     /// Keep an empty `GroupChild` (`{}`) for its spacing / kerning effect.
     pub empty_group: bool,
     /// Keep a singleton group whose only child is one math atom-spacing
@@ -99,7 +96,6 @@ impl FlattenGroupsGuards {
             infix_scope: true,
             command_contact: config.preserve_rendered_spacing,
             command_like_includes_scripted_base: config.preserve_rendered_spacing,
-            command_argument: config.preserve_rendered_spacing,
             empty_group: config.preserve_rendered_spacing,
             lone_atom_spacing_char: config.preserve_rendered_spacing,
             leading_atom_spacing_char: config.preserve_rendered_spacing,
@@ -126,9 +122,6 @@ impl FlattenGroupsGuards {
         }
         if let Some(value) = overlay.command_like_includes_scripted_base {
             self.command_like_includes_scripted_base = value;
-        }
-        if let Some(value) = overlay.command_argument {
-            self.command_argument = value;
         }
         if let Some(value) = overlay.empty_group {
             self.empty_group = value;
@@ -165,8 +158,6 @@ pub struct FlattenGroupsGuardsOverlay {
     pub command_contact: Option<bool>,
     #[serde(deserialize_with = "require_present_bool")]
     pub command_like_includes_scripted_base: Option<bool>,
-    #[serde(deserialize_with = "require_present_bool")]
-    pub command_argument: Option<bool>,
     #[serde(deserialize_with = "require_present_bool")]
     pub empty_group: Option<bool>,
     #[serde(deserialize_with = "require_present_bool")]
@@ -233,9 +224,6 @@ pub struct FlattenGroupsGuardCounts {
     /// Group kept because its preceding sibling or first child is command-like,
     /// where flattening would change atom spacing.
     pub command_contact: usize,
-    /// Group kept because it is a risky singleton used directly as a command
-    /// argument, preserving one spacing boundary.
-    pub command_argument: usize,
     /// Adjacency check above matched only after recursing through a `Scripted`
     /// base; counted in addition to `command_contact`.
     pub command_contact_via_scripted_base: usize,
@@ -326,14 +314,21 @@ fn try_unwrap(
     if !matches!(kind, GroupKind::Explicit | GroupKind::Implicit) {
         return false;
     }
-    if guards.declarative_scope && flags.has_declarative {
-        recorder.flatten_groups(|report| report.guard_hits.declarative_scope += 1);
-        return false;
-    }
     let Some(link) = ast.parent(node) else {
         return false;
     };
-    if guards.env_body && in_env_body && !is_lone_prime_superscript_group(ast, node, link) {
+    // The argument already owns its scope and cell boundary. Its direct
+    // singleton container needs no additional preservation guard.
+    let argument_slot = matches!(link.slot, Slot::Argument(_));
+    if !argument_slot && guards.declarative_scope && flags.has_declarative {
+        recorder.flatten_groups(|report| report.guard_hits.declarative_scope += 1);
+        return false;
+    }
+    if !argument_slot
+        && guards.env_body
+        && in_env_body
+        && !is_lone_prime_superscript_group(ast, node, link)
+    {
         recorder.flatten_groups(|report| report.guard_hits.env_body += 1);
         return false;
     }
@@ -392,13 +387,6 @@ fn try_unwrap(
         && first_is_atom
     {
         recorder.flatten_groups(|report| report.guard_hits.lone_atom_spacing_char += 1);
-        return false;
-    }
-    if matches!(link.slot, Slot::Argument(_))
-        && guards.command_argument
-        && group_as_argument_of_command_needs_boundary(ast, node)
-    {
-        recorder.flatten_groups(|report| report.guard_hits.command_argument += 1);
         return false;
     }
 
@@ -544,23 +532,6 @@ fn is_atomic_base(ast: &Ast, node: NodeId) -> bool {
         }
         _ => false,
     }
-}
-
-fn group_as_argument_of_command_needs_boundary(ast: &Ast, node: NodeId) -> bool {
-    let children = ast.children(node);
-    if children.len() != 1 {
-        return false;
-    }
-    subtree_has_command_like(ast, children[0])
-}
-
-fn subtree_has_command_like(ast: &Ast, node: NodeId) -> bool {
-    if is_command_like(ast, node, false) {
-        return true;
-    }
-    ast.edges(node)
-        .into_iter()
-        .any(|(child, _)| subtree_has_command_like(ast, child))
 }
 
 fn is_script_placement_sensitive_command(name: &str) -> bool {

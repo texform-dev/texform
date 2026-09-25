@@ -80,7 +80,7 @@ The scheduler relies on three phase contracts:
 2. **C2: no missed mutations.** A phase that changes the tree must return `true`, independently of whether reports are collected.
 3. **C3: only LowerAttributes may overreport.** Rewrite, FinalizeAst, and FlattenGroups must return `false` at their fixed points. LowerAttributes conservatively reports attribute processing even when it regenerates an equivalent tree. Allowing another phase to overreport would require revisiting termination.
 
-Prefix singleton arguments directly use their sole content node, matching FlattenGroups' canonical slot shape. This internal AST shape is visible through document inspection; serialization is unchanged by removing the redundant implicit wrapper. Convergence concerns the same AST: reparsing serialized output can still expose separate parser/serializer round-trip issues.
+Prefix singleton arguments directly use their sole content node, matching FlattenGroups' canonical slot shape. This internal AST shape is visible through document inspection; serialization is unchanged by removing the redundant implicit wrapper. Argument containers preserve user brace layers during parsing. FlattenGroups removes direct redundant argument layers independently of preservation guards; LowerAttributes consumes these same layers before collecting a prefix body.
 
 ## Configuration
 
@@ -177,7 +177,6 @@ Fine-grained per-guard control is not a public API. It lives on the internal `Fl
 | `env_body` | Semantic | `\begin{matrix} {a} & b \end{matrix}` | Groups inside an environment body, except a lone `Prime` in a superscript slot, to preserve cell boundaries and intra-cell spacing. |
 | `infix_scope` | Semantic | `{a \over b}` | `GroupChild`s whose subtree contains an `\over`-style infix, to preserve the infix scope. |
 | `command_contact` | Spacing | `\cos{A}`, `{\int}` | `GroupChild`s whose preceding sibling or first child is command-like. |
-| `command_argument` | Spacing | `\overline{{\sum}}` | Risky singleton groups directly used as arguments of commands, preserving one spacing boundary while still flattening redundant nesting. |
 | `empty_group` | Spacing | `{}` | Empty `GroupChild`s, to preserve spacing / kerning effects. |
 | `lone_atom_spacing_char` | Spacing | `{+}`, `{,}`, `{*}_N`, `{·}m` | Singleton groups containing only one math atom-spacing character. |
 | `leading_atom_spacing_char` | Spacing | `{+x}`, `{,y}` | Multi-child `GroupChild`s whose first child is a math atom-spacing character. |
@@ -203,7 +202,6 @@ Guard hit counters use the names below. They still count the first matching situ
 | `infix_scope` | `infix_scope` |
 | `command_contact` | `command_contact` |
 | Scripted-base subset of `command_contact` | `command_contact_via_scripted_base` |
-| `command_argument` | `command_argument` |
 | `empty_group` | `empty_group` |
 | `lone_atom_spacing_char` | `lone_atom_spacing_char` |
 | `leading_atom_spacing_char` | `leading_atom_spacing_char` |
@@ -245,10 +243,10 @@ A single recursive traversal (`visit` → `try_unwrap` in `src/flatten_groups/mo
 
 1. Collects subtree-wide flags (`has_declarative`, `has_infix`, `has_delimited`) on the way down.
 2. Tracks the `in_env_body` context flag through `Slot::EnvBody` edges.
-3. On the way back up, calls `try_unwrap` to check whether the current group should be flattened. Each `FlattenGroupsGuards` predicate (`declarative_scope`, `script_base`, `env_body`, `infix_scope`, `command_contact`, `command_argument`, `empty_group`, `lone_atom_spacing_char`, `leading_atom_spacing_char`, `delimited_pair`) short-circuits with an early return that increments the matching `guard_hits` counter; the first matching guard wins. `command_like_includes_scripted_base` only refines the `command_contact` classification, and a hit through that refinement also increments `command_contact_via_scripted_base`.
+3. On the way back up, calls `try_unwrap` to check whether the current group should be flattened. Each `FlattenGroupsGuards` predicate (`declarative_scope`, `script_base`, `env_body`, `infix_scope`, `command_contact`, `empty_group`, `lone_atom_spacing_char`, `leading_atom_spacing_char`, `delimited_pair`) short-circuits with an early return that increments the matching `guard_hits` counter; the first matching guard wins. `command_like_includes_scripted_base` only refines the `command_contact` classification, and a hit through that refinement also increments `command_contact_via_scripted_base`.
 4. If no guard fires and the group's content mode matches its parent's context mode, the group is unwrapped via either `unwrap_group_child` (multi-child splice) or `redirect_single_child_slot` (single-child slot replacement).
 
-After a slot redirect, the promoted child is checked again in its new slot with the same subtree flags. The `slot_can_unwrap` helper restricts redirect-style unwrapping to single-child groups in `Argument`, `Script*`, and `Infix*` slots; `EnvBody` slots are never unwrapped.
+Argument-slot redirects bypass all preservation guards, retaining only the content-mode check. Other slots keep their existing guards. After a slot redirect, the promoted child is checked again in its new slot with the same subtree flags. The `slot_can_unwrap` helper restricts redirect-style unwrapping to single-child groups in `Argument`, `Script*`, and `Infix*` slots; `EnvBody` slots are never unwrapped.
 
 ## Errors
 

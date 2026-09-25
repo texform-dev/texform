@@ -10,6 +10,7 @@
 //! delimiters, then re-parse them as a sub-stream. This two-phase approach
 //! avoids exposing delimiter nesting to the main combinator graph.
 
+use crate::argument_delimiters::{ContentBoundary, enclosing_braces};
 use crate::parse::error::ParseFailure;
 use chumsky::prelude::*;
 
@@ -66,6 +67,33 @@ fn token_matches_delimiter(token: &Token, delimiter: &DelimiterToken) -> bool {
     }
 }
 
+fn delimiter_token(delimiter: &DelimiterToken) -> Token {
+    match delimiter {
+        DelimiterToken::Char('{') => Token::LBrace,
+        DelimiterToken::Char('}') => Token::RBrace,
+        DelimiterToken::Char('[') => Token::LBracket,
+        DelimiterToken::Char(']') => Token::RBracket,
+        DelimiterToken::Char(c) => Token::Char(*c),
+        DelimiterToken::ControlSeq(name) => Token::ControlSeq(name.to_string()),
+    }
+}
+
+/// Protection belongs to the argument syntax, not its content tree.
+fn strip_content_protection(
+    tokens: &mut Vec<Token>,
+    offset: &mut usize,
+    open: Option<Token>,
+    close: Token,
+) {
+    let Some(inner) = enclosing_braces(tokens) else {
+        return;
+    };
+    if ContentBoundary::new(open, close).needs_protection(&tokens[inner.clone()]) {
+        *offset += tokens_to_string(&tokens[..inner.start]).len();
+        *tokens = tokens[inner].to_vec();
+    }
+}
+
 /// Convert a spec-level [`DelimiterToken`] to a syntax-tree [`Delimiter`].
 fn syntax_delimiter(delimiter: &'static DelimiterToken) -> Delimiter {
     match delimiter {
@@ -94,31 +122,16 @@ fn collect_delimited_tokens<'src, 'parse>(
     }
     input.next();
 
-    let allow_nested = open != close;
-    let mut depth = 0usize;
+    let mut boundary = ContentBoundary::new(Some(delimiter_token(open)), delimiter_token(close));
     let mut tokens = Vec::new();
-
     loop {
         let token = match input.next() {
             Some(token) => token,
             None => return Err(input.err_since(&start, "unclosed delimited argument")),
         };
-
-        if allow_nested && token_matches_delimiter(&token, open) {
-            depth += 1;
-            tokens.push(token);
-            continue;
-        }
-
-        if token_matches_delimiter(&token, close) {
-            if allow_nested && depth > 0 {
-                depth -= 1;
-                tokens.push(token);
-                continue;
-            }
+        if boundary.ends_at(&token) {
             break;
         }
-
         tokens.push(token);
     }
 
@@ -322,7 +335,7 @@ fn normalize_content_subparse(mode: ContentMode, tracked: TrackedNode) -> Tracke
                     diagnostics: Vec::new(),
                 });
             }
-            TrackedNode::fold(mode, items, content_span)
+            TrackedNode::fold_argument(mode, items, content_span)
         }
         other => TrackedNode::leaf(other, content_span),
     };
@@ -641,11 +654,18 @@ pub(super) fn argument_parser<'a>(
                     } else if !matches!(input.peek(), Some(Token::LBracket)) {
                         Ok(TrackedArgumentSlot::untracked(None))
                     } else {
-                        let Some(tokens) = collect_optional_bracketed_tokens(input, false)? else {
+                        let Some(mut tokens) = collect_optional_bracketed_tokens(input, false)?
+                        else {
                             return Ok(TrackedArgumentSlot::untracked(None));
                         };
                         let arg_span = input.span_from_cursor(&arg_start);
-                        let content_offset = arg_span.start + 1; // skip opening bracket
+                        let mut content_offset = arg_span.start + 1; // skip opening bracket
+                        strip_content_protection(
+                            &mut tokens,
+                            &mut content_offset,
+                            None,
+                            Token::RBracket,
+                        );
                         let content =
                             parse_tokens_as_content(input, state, mode, tokens, content_offset)?;
                         Ok(TrackedArgumentSlot {
@@ -942,9 +962,16 @@ pub(super) fn argument_parser<'a>(
                         .expect("content-like value kind should have a content mode");
                     let open_len = delimiter_token_source_len(open);
                     let close_len = delimiter_token_source_len(close);
-                    let content_offset = arg_span.start + open_len;
+                    let mut content_offset = arg_span.start + open_len;
                     let content_span_end = arg_span.end.saturating_sub(close_len);
                     let _ = content_span_end; // content span is computed inside parse_tokens_as_content
+                    let mut tokens = tokens;
+                    strip_content_protection(
+                        &mut tokens,
+                        &mut content_offset,
+                        Some(delimiter_token(open)),
+                        delimiter_token(close),
+                    );
                     let content =
                         parse_tokens_as_content(input, state, mode, tokens, content_offset)?;
                     return Ok(TrackedArgumentSlot {
@@ -995,7 +1022,14 @@ pub(super) fn argument_parser<'a>(
                         .content_mode()
                         .expect("content-like value kind should have a content mode");
                     let open_len = delimiter_token_source_len(open);
-                    let content_offset = arg_span.start + open_len;
+                    let mut content_offset = arg_span.start + open_len;
+                    let mut tokens = tokens;
+                    strip_content_protection(
+                        &mut tokens,
+                        &mut content_offset,
+                        Some(delimiter_token(open)),
+                        delimiter_token(close),
+                    );
                     let content =
                         parse_tokens_as_content(input, state, mode, tokens, content_offset)?;
                     return Ok(TrackedArgumentSlot {
@@ -1391,11 +1425,8 @@ fn column_spec_value<'a>(
     })
 }
 
-/// Unwrap a single-child group into its inner node.
-///
-/// When a content argument is parsed, the result may be a group node
-/// wrapping a single child. This function strips the unnecessary wrapper
-/// so argument values are as flat as possible.
+/// Fold argument content, retaining a container around a sole brace group.
+/// The container owns the argument braces; its child owns the user's braces.
 pub(crate) fn normalize_argument_value(mode: ContentMode, node: SyntaxNode) -> SyntaxNode {
     match node {
         SyntaxNode::Group { children, .. } => fold_items(mode, children),
@@ -1403,8 +1434,19 @@ pub(crate) fn normalize_argument_value(mode: ContentMode, node: SyntaxNode) -> S
     }
 }
 
-/// Fold a list of items into a single node: return as-is for one item,
-/// wrap in an implicit group for zero or multiple items.
+/// An explicit or implicit brace group, as opposed to delimited or inline-math groups.
+pub(super) fn is_brace_group(node: &SyntaxNode) -> bool {
+    matches!(
+        node,
+        SyntaxNode::Group {
+            kind: GroupKind::Explicit | GroupKind::Implicit,
+            ..
+        }
+    )
+}
+
+/// A sole non-brace node can occupy the slot directly. All other content
+/// retains an implicit argument container.
 pub(crate) fn fold_items(mode: ContentMode, items: Vec<SyntaxNode>) -> SyntaxNode {
     match items.len() {
         0 => SyntaxNode::Group {
@@ -1412,7 +1454,7 @@ pub(crate) fn fold_items(mode: ContentMode, items: Vec<SyntaxNode>) -> SyntaxNod
             kind: GroupKind::Implicit,
             children: vec![],
         },
-        1 => items.into_iter().next().unwrap(),
+        1 if !is_brace_group(&items[0]) => items.into_iter().next().unwrap(),
         _ => SyntaxNode::Group {
             mode,
             kind: GroupKind::Implicit,

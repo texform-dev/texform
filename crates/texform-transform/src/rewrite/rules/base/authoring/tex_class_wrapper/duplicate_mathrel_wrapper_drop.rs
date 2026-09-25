@@ -73,7 +73,7 @@ fn direct_math_content_node(ast: &Ast, node_id: NodeId) -> Option<NodeId> {
     match ast.node(node_id) {
         Node::Group {
             children,
-            kind: GroupKind::Implicit,
+            kind: GroupKind::Explicit | GroupKind::Implicit,
             mode: ContentMode::Math,
         } => {
             let [child] = children.as_slice() else {

@@ -204,3 +204,32 @@ fn whitespace_predicate_matches_token_whitespaces_membership() {
         assert_eq!(lex.next(), None);
     }
 }
+
+#[test]
+fn isolated_backslash_at_end_of_line_is_a_control_space() {
+    for source in ["\\", "\\\n", "\\\r\n", "\\\r", "\\ "] {
+        assert_eq!(
+            Token::lexer(source).next(),
+            Some(Ok(Token::ControlSeq(" ".into()))),
+            "{source:?}"
+        );
+    }
+    assert_eq!(
+        Token::lexer(r"\\").next(),
+        Some(Ok(Token::ControlSeq("\\".into())))
+    );
+    assert_eq!(
+        Token::lexer(r"\x").next(),
+        Some(Ok(Token::ControlSeq("x".into())))
+    );
+}
+
+#[test]
+fn control_space_consumes_its_line_ending() {
+    for source in ["\\\nx", "\\\r\nx", "\\\rx"] {
+        assert_eq!(
+            Token::lexer(source).collect::<Result<Vec<_>, _>>().unwrap(),
+            vec![Token::ControlSeq(" ".into()), Token::Char('x')]
+        );
+    }
+}

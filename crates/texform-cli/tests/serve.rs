@@ -147,8 +147,8 @@ fn configure_defaults_match_the_library_and_all_packages_remain_explicit() {
                 "all",
                 json!({"profile": "corpus", "packages": all_packages()}),
             ),
-            normalize(3, "default", r"\Ket{x}", false),
-            normalize(4, "all", r"\Ket{x}", false),
+            normalize(3, "default", r"\quantity{x}", false),
+            normalize(4, "all", r"\quantity{x}", false),
         ],
     );
     assert_eq!(
@@ -158,7 +158,7 @@ fn configure_defaults_match_the_library_and_all_packages_remain_explicit() {
             "base",
             "bboldx",
             "boldsymbol",
-            "physics",
+            "braket",
             "textmacros"
         ])
     );
@@ -169,7 +169,7 @@ fn configure_defaults_match_the_library_and_all_packages_remain_explicit() {
     assert_eq!(
         served.response(3)["result"]["output"],
         support::engine(Profile::Corpus)
-            .normalize(r"\Ket{x}")
+            .normalize(r"\quantity{x}")
             .unwrap()
     );
     assert_ne!(
@@ -312,7 +312,7 @@ fn normalize_matches_facade_normalize_with() {
     let packages = vec![
         "base",
         "ams",
-        "physics",
+        "braket",
         "textmacros",
         "bboldx",
         "boldsymbol",

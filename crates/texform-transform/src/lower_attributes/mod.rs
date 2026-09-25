@@ -423,6 +423,10 @@ fn canonicalize_content_slots(
             continue;
         };
         let child_inherited = inherited_for_content_slot(inherited, parent_mode, child_mode, slot);
+        if matches!(slot, Slot::EnvBody) {
+            canonicalize_subtree(ast, child, child_inherited, child_mode, recorder);
+            continue;
+        }
         let placeholder = empty_implicit_group(ast, child_mode);
         ast.replace_content_child(child, placeholder);
 
@@ -606,8 +610,8 @@ fn collect_detached_child(
         return;
     }
 
-    if is_explicit_group(ast, child) {
-        pairs.extend(collect_explicit_group(ast, child, *state, mode, recorder));
+    if is_brace_group(ast, child) {
+        pairs.extend(collect_brace_group(ast, child, *state, mode, recorder));
         return;
     }
 
@@ -643,11 +647,28 @@ fn collect_prefix_body(
     recorder.lower_attributes(|report| report.record_consumed_prefix(entry.set));
     let mut body_state = previous;
     body_state.set(entry.set);
-    let body = mandatory_content_child(ast, prefix).expect("registered prefix should have a body");
+    let mut body =
+        mandatory_content_child(ast, prefix).expect("registered prefix should have a body");
+    // The argument's own scope also encloses every directly nested brace
+    // group. Consume those redundant containers before collecting attributes,
+    // so rebuilt singleton arguments are already a local fixed point.
+    while is_brace_group(ast, body) {
+        let [child] = ast.children(body) else {
+            break;
+        };
+        let child = *child;
+        if !is_brace_group(ast, child) {
+            break;
+        }
+        ast.detach_children_range(body, 0..1);
+        ast.replace_content_child(body, child);
+        ast.remove_detached(body);
+        body = child;
+    }
 
     match ast.node(body) {
         Node::Group {
-            kind: GroupKind::Implicit,
+            kind: GroupKind::Explicit | GroupKind::Implicit,
             ..
         } => {
             let len = ast.children(body).len();
@@ -689,13 +710,6 @@ fn collect_prefix_body(
                 collected.pairs
             }
         }
-        Node::Group {
-            kind: GroupKind::Explicit,
-            ..
-        } => {
-            detach_body_from_prefix(ast, body, mode);
-            collect_explicit_group(ast, body, body_state, mode, recorder)
-        }
         _ => {
             detach_body_from_prefix(ast, body, mode);
             collect_single_detached_node(ast, body, body_state, mode, recorder).pairs
@@ -708,7 +722,7 @@ fn detach_body_from_prefix(ast: &mut Ast, body: NodeId, mode: ContentMode) {
     ast.replace_content_child(body, placeholder);
 }
 
-fn collect_explicit_group(
+fn collect_brace_group(
     ast: &mut Ast,
     group: NodeId,
     inherited: AttributeState,
@@ -793,11 +807,11 @@ fn has_direct_declarative_marker(ast: &Ast, group: NodeId, mode: ContentMode) ->
         .any(|child| lookup_declarative_at(ast, *child, mode).is_some())
 }
 
-fn is_explicit_group(ast: &Ast, node: NodeId) -> bool {
+fn is_brace_group(ast: &Ast, node: NodeId) -> bool {
     matches!(
         ast.node(node),
         Node::Group {
-            kind: GroupKind::Explicit,
+            kind: GroupKind::Explicit | GroupKind::Implicit,
             ..
         }
     )
@@ -1044,6 +1058,35 @@ fn wrap_segment_with_canonical(
         };
 
         if let Some(prefix) = target.prefix {
+            // A rebuilt argument owns its container. Normalize that container
+            // now rather than changing its shape on the next lowering pass.
+            while children.len() == 1 && is_brace_group(ast, children[0]) {
+                let group = children[0];
+                let Node::Group {
+                    mode: group_mode, ..
+                } = ast.node(group)
+                else {
+                    unreachable!()
+                };
+                if *group_mode != mode {
+                    break;
+                }
+                let len = ast.children(group).len();
+                if len > 1 {
+                    if let Some(Node::Group { kind, .. }) = ast.node_opt_mut(group) {
+                        *kind = GroupKind::Implicit;
+                    }
+                    break;
+                }
+                children = ast.detach_children_range(group, 0..len);
+                ast.remove_detached(group);
+            }
+            if children.is_empty() {
+                return WrappedSegment {
+                    nodes: Vec::new(),
+                    outer_declaratives: Vec::new(),
+                };
+            }
             outer_declaratives.clear();
             let group = if children.len() == 1 {
                 children.pop().expect("single content node should exist")

@@ -1290,3 +1290,44 @@ mod migrated_argument_regressions {
         assert!(result.is_err(), "Expected error for dimension missing unit");
     }
 }
+
+#[test]
+fn delimited_content_protection_matches_each_collection_rule() {
+    for (spec, source, expected) in [
+        ("o", r"\probe[{[0,1]}]", r"\probe [ { [ 0 , 1 ] } ]"),
+        ("o", r"\probe[{]}]", r"\probe [ { ] } ]"),
+        ("o", r"\probe[{{]}}]", r"\probe [ { { ] } } ]"),
+        ("o", r"\probe[{x}]", r"\probe [ { x } ]"),
+        ("r[]", r"\probe[{]}]", r"\probe [ { ] } ]"),
+        ("r[]", r"\probe[[0,1]]", r"\probe [ [ 0 , 1 ] ]"),
+        ("r||", r"\probe|{|}|", r"\probe | { | } |"),
+        ("r<[,]><(,)>", r"\probe[{]}]", r"\probe [ { ] } ]"),
+        ("o:T", r"\probe[{a]b}]", r"\probe [ {a]b} ]"),
+    ] {
+        let items = [command_item(
+            "probe",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            spec,
+        )];
+        let parsed = parse_with_items(&items, source, true);
+        assert!(
+            parsed.diagnostics.is_empty(),
+            "{source}: {:?}",
+            parsed.diagnostics
+        );
+        let doc = parsed.document().unwrap();
+        assert_eq!(doc.to_latex().unwrap(), expected, "{spec}: {source}");
+        let reparsed = parse_with_items(&items, &doc.to_latex().unwrap(), true);
+        assert!(
+            reparsed.diagnostics.is_empty(),
+            "{source}: {:?}",
+            reparsed.diagnostics
+        );
+        assert_eq!(
+            reparsed.document().unwrap().to_syntax(),
+            doc.to_syntax(),
+            "{source}"
+        );
+    }
+}

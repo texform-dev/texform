@@ -28,10 +28,12 @@ pub enum Token {
     /// - catcode 0 (Escape): backslash triggers control sequence scanning
     /// - Matches: \<letters> (control word) or \<single-char> (control symbol)
     /// - Returns the command name without the backslash
-    #[regex(r"\\(?:[a-zA-Z]+|.)", |lex| {
+    #[regex(r"\\(?:[a-zA-Z]+|[^\r\n])", |lex| {
         let slice = lex.slice();
         slice[1..].to_string()
     })]
+    #[regex(r"\\(?:\r\n|\r|\n)", |_| " ".to_string())]
+    #[token("\\", |_| " ".to_string())]
     ControlSeq(String),
 
     /// Active character: ~

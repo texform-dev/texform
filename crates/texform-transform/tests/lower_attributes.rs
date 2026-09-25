@@ -919,13 +919,13 @@ fn math_font_prefix_keeps_sibling_size_outside_the_wrapper() {
         ),
         (
             r"\text{\bf\large x\rm y}",
-            r"\text {\large\textbf{ x}\textrm{\textbf{ y}}}",
+            r"\text {\large\textbf{x}\textrm{\textbf{y}}}",
             "xy",
             "",
         ),
         (
             r"\text{{\bf\large x\rm y}z}",
-            r"\text {{\large\textbf{ x}\textrm{\textbf{ y}}}z}",
+            r"\text {{\large\textbf{x}\textrm{\textbf{y}}}z}",
             "xy",
             "z",
         ),

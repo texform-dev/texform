@@ -147,7 +147,7 @@ fn is_limits_modifier(ast: &Ast, node_id: NodeId) -> bool {
 fn plain_operator_name(ast: &Ast, content: NodeId) -> Option<String> {
     let Node::Group {
         children,
-        kind: GroupKind::Implicit,
+        kind: GroupKind::Explicit | GroupKind::Implicit,
         mode: ContentMode::Math,
     } = ast.node(content)
     else {

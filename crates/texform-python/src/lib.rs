@@ -3002,7 +3002,6 @@ assert set(flatten["guard_hits"]) == {
     "env_body",
     "infix_scope",
     "command_contact",
-    "command_argument",
     "command_contact_via_scripted_base",
     "empty_group",
     "lone_atom_spacing_char",

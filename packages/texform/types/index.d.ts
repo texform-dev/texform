@@ -1498,8 +1498,6 @@ export interface FlattenGroupsGuardCounts {
   infixScope: number;
   /** Command-contact protection. */
   commandContact: number;
-  /** Command-argument boundary protection. */
-  commandArgument: number;
   /** Command contact established through a scripted base. */
   commandContactViaScriptedBase: number;
   /** Empty-group protection. */
@@ -1742,7 +1740,7 @@ export interface NormalizeConfig extends ParseConfig, TransformConfig {}
  * camelCase overlay object: `null` / `undefined` / omitted means not set.
  * Unknown keys, snake_case keys, arrays in object positions, and wrong scalar
  * types throw {@link TexformConfigError} with a camelCase path. Omit `packages`
- * to load the default runtime packages (six packages, excluding `braket`),
+ * to load the default runtime packages (six packages, excluding `physics`),
  * not every built-in package. Loading `braket` together with `physics` is
  * allowed, but `physics` overrides their shared command definitions. Built-in
  * packages are imported in a fixed order, regardless of the supplied list order.

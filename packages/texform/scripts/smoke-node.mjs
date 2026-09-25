@@ -538,7 +538,6 @@ assert.deepEqual(Object.keys(firstReport.report.flattenGroups.actions).sort(), [
   "unwrappedSlot",
 ]);
 assert.deepEqual(Object.keys(firstReport.report.flattenGroups.guardHits).sort(), [
-  "commandArgument",
   "commandContact",
   "commandContactViaScriptedBase",
   "declarativeScope",

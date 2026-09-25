@@ -79,7 +79,15 @@ pub fn bare_command_node(name: &str) -> Node {
 }
 
 /// Creates a prefix [`Node::Command`] from a builtin command record and a list of argument slots.
-pub fn prefix_command_node(record: &'static BuiltinCommandRecord, args: Vec<ArgumentSlot>) -> Node {
+pub fn prefix_command_node(
+    record: &'static BuiltinCommandRecord,
+    mut args: Vec<ArgumentSlot>,
+) -> Node {
+    for (argument, spec) in args.iter_mut().zip(record.argspec.args) {
+        if let Some(argument) = argument {
+            argument.no_leading_space = spec.no_leading_space;
+        }
+    }
     Node::Command {
         name: record.name.to_string(),
         args,

@@ -2,6 +2,7 @@ use texform_knowledge::specs::BuiltinCommandRecord;
 
 use crate::ast::{
     ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind, Node, NodeId,
+    Slot,
 };
 use crate::rewrite::RuleError;
 use crate::rewrite::helpers::{
@@ -60,10 +61,18 @@ pub(super) fn replace_stacked_infix(
     replacement: Node,
 ) {
     let unwrap_parent_id = cx.ast.parent_id(node_id).and_then(|parent_id| {
+        // An environment body must stay a group, so its container is never unwrapped.
+        if cx
+            .ast
+            .parent(parent_id)
+            .is_some_and(|link| matches!(link.slot, Slot::EnvBody))
+        {
+            return None;
+        }
         match cx.ast.node(parent_id) {
             Node::Group {
                 children,
-                kind: GroupKind::Explicit,
+                kind: GroupKind::Explicit | GroupKind::Implicit,
                 ..
             } if children.as_slice() == [node_id] => Some(parent_id),
             _ => None,

@@ -136,7 +136,12 @@ impl<'de> Deserialize<'de> for Delimiter {
     }
 }
 
-/// Group type for different grouping constructs
+/// Grouping form and construction history.
+///
+/// Explicit and Implicit brace groups have identical semantics. A brace group
+/// directly occupying a content slot owns that slot's braces; extra user braces
+/// are child groups. Parsing a single brace-group argument therefore retains an
+/// implicit container. Delimited argument protection is syntax, not a tree node.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub enum GroupKind {

@@ -101,7 +101,7 @@ define_rule! {
             let left_children = match cx.ast.node(left_group) {
                 Node::Group {
                     children,
-                    kind: GroupKind::Implicit,
+                    kind: GroupKind::Explicit | GroupKind::Implicit,
                     mode: ContentMode::Math,
                 } => children.clone(),
                 _ => return Ok(RuleEffect::Skipped),
@@ -270,7 +270,7 @@ fn split_operator_and_after(
     match cx.ast.node(right) {
         Node::Group {
             children,
-            kind: GroupKind::Implicit,
+            kind: GroupKind::Explicit | GroupKind::Implicit,
             mode: ContentMode::Math,
         } if !children.is_empty() => (children[0], children[1..].to_vec()),
         _ => (right, Vec::new()),

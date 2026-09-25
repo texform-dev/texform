@@ -46,7 +46,7 @@ texform [--packages <a,b,...>] <COMMAND> [OPTIONS]
 
 | Option | Meaning |
 | --- | --- |
-| `--packages <a,b,...>` | Knowledge packages to load. Defaults to the same six packages as the library (`base`, `ams`, `physics`, `textmacros`, `bboldx`, `boldsymbol`); `braket` is opt-in. An unknown name is a usage error with exit status `2`. `packages` and `argspec validate` do not use it. |
+| `--packages <a,b,...>` | Knowledge packages to load. Defaults to the same six packages as the library (`base`, `ams`, `braket`, `textmacros`, `bboldx`, `boldsymbol`); `physics` is opt-in. An unknown name is a usage error with exit status `2`. `packages` and `argspec validate` do not use it. |
 
 ### Formula input
 
@@ -300,7 +300,7 @@ Must be the first request. Any other method received earlier fails with `-32002`
 Builds a normalizer from `config` and stores it under `id` for later `normalize` requests. Configuring an existing `id` replaces its entry; a failed `configure` leaves the previous entry unchanged.
 
 - `profile`: one of `authoring`, `faithful`, `corpus`, `equiv`. It selects the rule set and the default config.
-- `packages`: knowledge packages to load. When omitted, the server's `--packages` value applies, and without that, the same six runtime packages as the library (`braket` is opt-in). Clients that need a fixed selection should specify it explicitly and record `resolved`.
+- `packages`: knowledge packages to load. When omitted, the server's `--packages` value applies, and without that, the same six runtime packages as the library (`physics` is opt-in). Clients that need a fixed selection should specify it explicitly and record `resolved`.
 - `overrides`: config values layered over the profile defaults. It accepts any subset of the keys in `resolved` other than `profile` and `packages`, with the same nesting; nested objects may also be partial.
 
 `resolved` is the complete effective config, suitable for recording alongside results:
@@ -308,7 +308,7 @@ Builds a normalizer from `config` and stores it under `id` for later `normalize`
 ```json
 {
   "profile": "authoring",
-  "packages": ["ams", "base", "bboldx", "boldsymbol", "physics", "textmacros"],
+  "packages": ["ams", "base", "bboldx", "boldsymbol", "braket", "textmacros"],
   "reject_unknown": false,
   "abort_on_error": false,
   "max_group_depth": 128,

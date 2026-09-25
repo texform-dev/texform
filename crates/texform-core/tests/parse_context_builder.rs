@@ -87,7 +87,7 @@ fn convenience_factories_use_default_runtime_packages() {
     let expected_packages = &[
         PackageName::Base,
         PackageName::Ams,
-        PackageName::Physics,
+        PackageName::Braket,
         PackageName::Textmacros,
         PackageName::Bboldx,
         PackageName::Boldsymbol,

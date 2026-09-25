@@ -514,13 +514,13 @@ fn test_canonical_package_import_order_includes_braket() {
 }
 
 #[test]
-fn test_default_package_names_exclude_braket() {
+fn test_default_package_names_exclude_physics() {
     assert_eq!(
         crate::parse::default_package_names(),
         &[
             "base",
             "ams",
-            "physics",
+            "braket",
             "textmacros",
             "bboldx",
             "boldsymbol"

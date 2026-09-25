@@ -48,6 +48,16 @@ Additional checks depend on the change:
 
 Corpus failures need investigation before baseline or allow-list changes. A transform execution error or an unlisted eliminated-form violation fails the transform gate. Do not add broad or unexplained exceptions. Ensure the intended datasets actually ran; a successful process exit alone does not establish full corpus coverage. See the [regression guide](regression/README.md) for diagnostic reruns.
 
+## Structural Round Trips
+
+`crates/texform-transform/tests/reparse_roundtrip.rs` checks parser and transform structure as well as output strings. To audit a prepared UTF-8 corpus containing one formula per line, run:
+
+```bash
+TEXFORM_ROUNDTRIP_CORPUS=/path/to/formulas.txt cargo test --release -p texform-transform --test reparse_roundtrip -- --ignored --nocapture
+```
+
+The audit explicitly loads the six default packages, so it does not depend on the library defaults.
+
 ## Hooks and CI
 
 [Pre-commit hooks](.pre-commit-config.yaml) run Rust formatting, clippy, and parser regression refresh for Rust changes. Refresh may update tracked parser summaries; review those changes. Hooks do not run the unit-test suite or `transform_contract`.

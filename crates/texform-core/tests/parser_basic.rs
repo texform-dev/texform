@@ -27,7 +27,7 @@ fn prime_then_explicit_superscript_stays_in_single_superscript_slot() {
                     } => {
                         assert_eq!(
                             children,
-                            &vec![SyntaxNode::Prime { count: 1 }, SyntaxNode::Char('2')]
+                            &vec![known_command("prime"), SyntaxNode::Char('2')]
                         );
                     }
                     other => panic!("expected implicit superscript group, got {:?}", other),
@@ -1441,7 +1441,7 @@ fn test_prime_with_superscript() {
                     match superscript.as_ref().unwrap().as_ref() {
                         SyntaxNode::Group { children, .. } => {
                             assert_eq!(children.len(), 2);
-                            assert_eq!(children[0], SyntaxNode::Prime { count: 1 });
+                            assert_eq!(children[0], known_command("prime"));
                             assert_eq!(children[1], SyntaxNode::Char('2'));
                         }
                         _ => panic!("Expected Group for combined superscript"),
@@ -1679,7 +1679,7 @@ fn test_prime_nested_shapes() {
                         mode: ContentMode::Math,
                         kind: GroupKind::Implicit,
                         children: vec![
-                            SyntaxNode::Prime { count: 1 },
+                            known_command("prime"),
                             SyntaxNode::Group {
                                 mode: ContentMode::Math,
                                 kind: GroupKind::Explicit,
@@ -1718,7 +1718,7 @@ fn test_prime_nested_shapes() {
                         mode: ContentMode::Math,
                         kind: GroupKind::Implicit,
                         children: vec![
-                            SyntaxNode::Prime { count: 1 },
+                            known_command("prime"),
                             SyntaxNode::Group {
                                 mode: ContentMode::Math,
                                 kind: GroupKind::Explicit,
@@ -1765,7 +1765,7 @@ fn test_prime_then_superscript_merge() {
                     match superscript.as_ref().unwrap().as_ref() {
                         SyntaxNode::Group { children, .. } => {
                             assert_eq!(children.len(), 2);
-                            assert_eq!(children[0], SyntaxNode::Prime { count: 1 });
+                            assert_eq!(children[0], known_command("prime"));
                             assert_eq!(children[1], SyntaxNode::Char('a'));
                         }
                         other => panic!("Expected grouped superscript, got {:?}", other),
@@ -1789,9 +1789,10 @@ fn test_double_prime_then_superscript_merge() {
                 SyntaxNode::Scripted { superscript, .. } => {
                     match superscript.as_ref().unwrap().as_ref() {
                         SyntaxNode::Group { children, .. } => {
-                            assert_eq!(children.len(), 2);
-                            assert_eq!(children[0], SyntaxNode::Prime { count: 2 });
-                            assert_eq!(children[1], SyntaxNode::Char('a'));
+                            assert_eq!(children.len(), 3);
+                            assert_eq!(children[0], known_command("prime"));
+                            assert_eq!(children[1], known_command("prime"));
+                            assert_eq!(children[2], SyntaxNode::Char('a'));
                         }
                         other => panic!("Expected grouped superscript, got {:?}", other),
                     }
@@ -2261,16 +2262,23 @@ fn test_text_explicit_group() {
                 assert_eq!(name, "text");
                 match unwrap_content(&args[0]) {
                     SyntaxNode::Group {
-                        kind: GroupKind::Explicit,
+                        kind: GroupKind::Implicit,
                         children,
                         mode,
                         ..
                     } => {
                         assert_eq!(*mode, ContentMode::Text);
                         assert_eq!(children.len(), 1);
-                        assert_eq!(children[0], SyntaxNode::Text("a".to_string()));
+                        assert_eq!(
+                            children[0],
+                            SyntaxNode::Group {
+                                mode: ContentMode::Text,
+                                kind: GroupKind::Explicit,
+                                children: vec![SyntaxNode::Text("a".to_string())]
+                            }
+                        );
                     }
-                    _ => panic!("Expected Explicit Group in text arg"),
+                    _ => panic!("Expected argument container around the explicit group"),
                 }
             }
             _ => panic!("Expected text Command"),
@@ -2282,3 +2290,11 @@ fn test_text_explicit_group() {
 // ========================================================================
 // Additional edge case tests for dimension and keyval arguments
 // ========================================================================
+
+fn known_command(name: &str) -> SyntaxNode {
+    SyntaxNode::Command {
+        name: name.to_owned(),
+        args: Vec::new(),
+        known: true,
+    }
+}

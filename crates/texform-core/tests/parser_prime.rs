@@ -87,7 +87,7 @@ fn prime_then_explicit_superscript_keeps_single_superscript_slot() {
             SyntaxNode::Char('f'),
             None,
             Some(implicit_math_group(vec![
-                SyntaxNode::Prime { count: 1 },
+                command("prime"),
                 SyntaxNode::Char('2'),
             ])),
         )])
@@ -162,7 +162,7 @@ fn empty_base_prime_scripts_inside_groups_can_receive_scripts() {
                 implicit_math_group(vec![]),
                 None,
                 Some(implicit_math_group(vec![
-                    SyntaxNode::Prime { count: 1 },
+                    command("prime"),
                     explicit_math_group(vec![SyntaxNode::Char('a')]),
                 ])),
             )])),
@@ -189,7 +189,9 @@ fn whitespace_separated_primes_share_one_superscript() {
                 f(),
                 None,
                 Some(implicit_math_group(vec![
-                    SyntaxNode::Prime { count: 3 },
+                    command("prime"),
+                    command("prime"),
+                    command("prime"),
                     SyntaxNode::Char('2'),
                 ])),
             ),

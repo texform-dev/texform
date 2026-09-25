@@ -23,7 +23,7 @@ use crate::commands::{argspec, info, normalize, parse, tokenize};
 #[derive(Parser)]
 #[command(name = "texform", version = build_info::VERSION_TEXT)]
 struct Cli {
-    /// Knowledge packages to load, comma-separated [default: same as the library; excludes braket]
+    /// Knowledge packages to load, comma-separated [default: same as the library; excludes physics]
     #[arg(
         long,
         global = true,

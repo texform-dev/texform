@@ -122,7 +122,12 @@ pub enum Delimiter {
     Control(String),
 }
 
-/// Concrete grouping form preserved from parsing.
+/// Grouping form and construction history.
+///
+/// Explicit and Implicit brace groups have identical semantics. A brace group
+/// directly occupying a content slot owns that slot's braces; extra user braces
+/// are child groups. Parsing a single brace-group argument therefore retains an
+/// implicit container. Delimited argument protection is syntax, not a tree node.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GroupKind {
     /// Explicit brace group: `{...}`

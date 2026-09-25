@@ -201,6 +201,27 @@ impl TrackedNode {
         (out_slots, kids, diagnostics)
     }
 
+    /// Fold argument content without consuming a user-written brace group.
+    fn fold_argument(mode: ContentMode, items: Vec<TrackedNode>, span: SimpleSpan) -> Self {
+        if let [item] = items.as_slice()
+            && arguments::is_brace_group(&item.node)
+        {
+            let (children, span_kids, diagnostics) = Self::decompose_children(items);
+            Self {
+                node: SyntaxNode::Group {
+                    mode,
+                    kind: GroupKind::Implicit,
+                    children,
+                },
+                span,
+                span_kids,
+                diagnostics,
+            }
+        } else {
+            Self::fold(mode, items, span)
+        }
+    }
+
     /// `fold_items` equivalent that preserves span subtrees.
     ///
     /// - 0 items → empty implicit group
@@ -950,6 +971,7 @@ fn fold_scripted(components: ScriptComponents, span: SimpleSpan) -> TrackedNode 
 /// An empty base is allowed when the first token is already a script marker,
 /// producing an empty implicit group as the base.
 fn parse_scripted_components<'src, 'parse, P>(
+    state: &ParserState<'_>,
     input: &mut ParserInput<'src, 'parse>,
     atom_for_scripts: P,
 ) -> Result<ScriptComponents, ParseFailure<'src>>
@@ -1051,11 +1073,28 @@ where
                         // Merge prime and explicit superscript into an implicit group.
                         let merged_span =
                             SimpleSpan::new((), existing.span.start..tracked.span.end);
+                        // Mixed superscripts serialize with explicit \prime commands.
+                        // Keep that same representation when the source used quotes,
+                        // so parsing the printed form preserves the content tree.
+                        let SyntaxNode::Prime { count } = existing.node else {
+                            unreachable!("prime script state must contain a prime run");
+                        };
+                        let mut children: Vec<_> = (0..count)
+                            .map(|_| SyntaxNode::Command {
+                                name: "prime".to_owned(),
+                                args: Vec::new(),
+                                known: state
+                                    .ctx
+                                    .lookup_command("prime", ContentMode::Math)
+                                    .is_some(),
+                            })
+                            .collect();
+                        children.push(tracked.node);
                         let merged = TrackedNode::leaf(
                             SyntaxNode::Group {
                                 mode: ContentMode::Math,
                                 kind: GroupKind::Implicit,
-                                children: vec![existing.node, tracked.node],
+                                children,
                             },
                             merged_span,
                         );
@@ -2402,7 +2441,7 @@ where
     let atom_for_scripts = ws.ignore_then(atom.clone());
     custom(move |input| {
         let start = input.cursor();
-        let components = match parse_scripted_components(input, atom_for_scripts.clone()) {
+        let components = match parse_scripted_components(state, input, atom_for_scripts.clone()) {
             Ok(components) => components,
             Err(err) if is_missing_script_content_error(&err) => {
                 // custom() records this failure at the atom start, so a later
@@ -2566,7 +2605,19 @@ where
     ));
 
     custom(move |input| match input.peek() {
-        Some(Token::ControlSeq(_)) => input.parse(control_seq_fallback.clone()),
+        Some(Token::ControlSeq(_)) => {
+            let item = input.parse(control_seq_fallback.clone())?;
+            // Whitespace terminating an argument-free control word is lexical,
+            // not text content. In particular, a serializer-inserted separator
+            // must not become a new space after a redundant group is removed.
+            if matches!(&item.node,
+                SyntaxNode::Command { name, args, .. } | SyntaxNode::Declarative { name, args }
+                if args.is_empty() && name.chars().all(|c| c.is_ascii_alphabetic()))
+            {
+                let _ = input.parse(insignificant_whitespace());
+            }
+            Ok(item)
+        }
         _ => input.parse(fallback.clone()),
     })
 }

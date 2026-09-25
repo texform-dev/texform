@@ -27,6 +27,9 @@ fn delimiter_node(delimiter: Delimiter) -> Option<Node> {
         Delimiter::Char('<') => Some(bare_command_node("langle")),
         Delimiter::Char('>') => Some(bare_command_node("rangle")),
         Delimiter::Char(ch) => Some(Node::Char(ch)),
+        // The parser reads `\{` and `\}` as escaped characters, not commands.
+        Delimiter::Control(name) if name == "{" => Some(Node::Char('{')),
+        Delimiter::Control(name) if name == "}" => Some(Node::Char('}')),
         Delimiter::Control(name) if name == "lt" => Some(bare_command_node("langle")),
         Delimiter::Control(name) if name == "gt" => Some(bare_command_node("rangle")),
         Delimiter::Control(name) => Some(bare_command_node(&name)),

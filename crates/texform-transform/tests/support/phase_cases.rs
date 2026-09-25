@@ -1,5 +1,8 @@
 pub fn combinations() -> Vec<String> {
     let mut inputs: Vec<String> = [
+        r"{\rm{ }}",
+        r"T_{\rm{eff}}",
+        r"\rm{ab}",
         "x",
         "+",
         r"\prime\prime",

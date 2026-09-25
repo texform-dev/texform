@@ -26,8 +26,10 @@
 //! checks must not insert a second lexical separator from the old atom kind.
 //! The serializer never repairs spacing with a post-pass string replacement.
 
+use crate::{argument_delimiters::ContentBoundary, lexer::Token};
+use logos::Logos;
 use serde::{Deserialize, Serialize};
-use std::ops::Range;
+use std::{cell::RefCell, collections::HashMap, ops::Range};
 
 use crate::ast::{
     Argument, ArgumentKind, ArgumentSlot, ArgumentValue, Ast, ContentMode, Delimiter, GroupKind,
@@ -41,7 +43,8 @@ pub fn serialize(ast: &Ast) -> String {
 
 /// Serialize an AST to LaTeX with explicit style options.
 pub fn serialize_with(ast: &Ast, options: &SerializeOptions) -> String {
-    let mut serializer = Serializer::new(ast, options, NoopRecorder);
+    let protection = RefCell::new(HashMap::new());
+    let mut serializer = Serializer::new(ast, options, NoopRecorder, &protection);
     serializer.serialize_root();
     serializer.finish()
 }
@@ -53,7 +56,8 @@ pub fn serialize_tokenized(ast: &Ast) -> TokenizedLatex {
 
 /// Serialize an AST to canonical LaTeX and typed output tokens with explicit options.
 pub fn serialize_tokenized_with(ast: &Ast, options: &SerializeOptions) -> TokenizedLatex {
-    let mut serializer = Serializer::new(ast, options, TokenRecorder::default());
+    let protection = RefCell::new(HashMap::new());
+    let mut serializer = Serializer::new(ast, options, TokenRecorder::default(), &protection);
     serializer.serialize_root();
     serializer.finish()
 }
@@ -657,14 +661,21 @@ struct Serializer<'a, R> {
     ast: &'a Ast,
     options: &'a SerializeOptions,
     writer: AtomWriter<R>,
+    protection: &'a RefCell<HashMap<NodeId, bool>>,
 }
 
 impl<'a, R: Recorder> Serializer<'a, R> {
-    fn new(ast: &'a Ast, options: &'a SerializeOptions, recorder: R) -> Self {
+    fn new(
+        ast: &'a Ast,
+        options: &'a SerializeOptions,
+        recorder: R,
+        protection: &'a RefCell<HashMap<NodeId, bool>>,
+    ) -> Self {
         Self {
             ast,
             options,
             writer: AtomWriter::new(recorder),
+            protection,
         }
     }
 
@@ -1035,6 +1046,43 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         }
     }
 
+    /// Inspect the exact serialized content, including delimiters emitted by
+    /// nested commands. Ordinary braced arguments never need this extra pass.
+    fn argument_needs_protection(
+        &self,
+        child: NodeId,
+        mode: ContentMode,
+        open: Option<&str>,
+        close: &str,
+        operator_name: bool,
+    ) -> bool {
+        if open == Some("{") {
+            return false;
+        }
+        // Each node has one parent slot. Share its result with nested previews
+        // so deeply nested optional arguments do not double the work per level.
+        if let Some(&protected) = self.protection.borrow().get(&child) {
+            return protected;
+        }
+        let mut preview = Serializer::new(self.ast, self.options, NoopRecorder, self.protection);
+        if operator_name {
+            preview.visit_operator_name_content_node(child);
+        } else {
+            preview.visit_argument_content_node(child, mode);
+        }
+        let text = preview.finish();
+        let tokens: Vec<_> = Token::lexer(&text).filter_map(Result::ok).collect();
+        let Some(Ok(close)) = Token::lexer(close).next() else {
+            return false;
+        };
+        let open = open
+            .and_then(|text| Token::lexer(text).next())
+            .and_then(Result::ok);
+        let protected = ContentBoundary::new(open, close).needs_protection(&tokens);
+        self.protection.borrow_mut().insert(child, protected);
+        protected
+    }
+
     /// Emit a content argument wrapped in its matching delimiters.
     ///
     /// `content_mode` is the mode the argument was parsed in (from the
@@ -1049,6 +1097,32 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         wrapper_mode: ContentMode,
         opening_boundary: BoundaryPolicy,
     ) {
+        if open == "[" && self.argument_needs_protection(child, content_mode, None, close, false) {
+            self.writer.emit_with_boundary(
+                wrapper_mode,
+                AtomKind::Brace,
+                SerializationTokenKind::Delimiter,
+                open,
+                opening_boundary,
+                self.options,
+            );
+            self.emit_wrapped_content(
+                child,
+                wrapper_mode,
+                content_mode,
+                "{",
+                "}",
+                BoundaryPolicy::Auto,
+            );
+            self.writer.emit(
+                wrapper_mode,
+                AtomKind::Brace,
+                SerializationTokenKind::Delimiter,
+                close,
+                self.options,
+            );
+            return;
+        }
         self.emit_wrapped_content(
             child,
             wrapper_mode,
@@ -1075,7 +1149,19 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             opening_boundary,
             self.options,
         );
-        self.visit_operator_name_content_node(child);
+        let protect = open == "["
+            && self.argument_needs_protection(child, ContentMode::Text, None, close, true);
+        if protect {
+            self.emit_operator_name_argument_content(
+                child,
+                "{",
+                "}",
+                wrapper_mode,
+                BoundaryPolicy::Auto,
+            );
+        } else {
+            self.visit_operator_name_content_node(child);
+        }
         self.writer.emit_with_boundary(
             wrapper_mode,
             AtomKind::Brace,
@@ -1477,7 +1563,24 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         opening_boundary: BoundaryPolicy,
     ) {
         self.emit_delimiter_with_boundary(open, content_mode, wrapper_mode, opening_boundary);
-        self.visit_argument_content_node(node, content_mode);
+        if self.argument_needs_protection(
+            node,
+            content_mode,
+            Some(&self.delimiter_text(open)),
+            &self.delimiter_text(close),
+            false,
+        ) {
+            self.emit_wrapped_content(
+                node,
+                wrapper_mode,
+                content_mode,
+                "{",
+                "}",
+                BoundaryPolicy::Auto,
+            );
+        } else {
+            self.visit_argument_content_node(node, content_mode);
+        }
         self.emit_delimiter_with_boundary(close, content_mode, wrapper_mode, BoundaryPolicy::Auto);
     }
 
@@ -1490,7 +1593,17 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         opening_boundary: BoundaryPolicy,
     ) {
         self.emit_delimiter_with_boundary(open, mode, mode, opening_boundary);
-        self.visit_operator_name_content_node(node);
+        if self.argument_needs_protection(
+            node,
+            ContentMode::Text,
+            Some(&self.delimiter_text(open)),
+            &self.delimiter_text(close),
+            true,
+        ) {
+            self.emit_operator_name_argument_content(node, "{", "}", mode, BoundaryPolicy::Auto);
+        } else {
+            self.visit_operator_name_content_node(node);
+        }
         self.emit_delimiter_with_boundary(close, mode, mode, BoundaryPolicy::SuppressOptionalSpace);
     }
 
@@ -1633,14 +1746,14 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     }
 
     fn visit_prime(&mut self, count: usize, mode: ContentMode) {
-        // Document import and the parser only admit math-mode `Prime`.
-        debug_assert!(matches!(mode, ContentMode::Math), "Prime is math-only");
+        // Operator-name content uses text spacing even for math-only symbols.
         for _ in 0..count {
-            self.writer.emit(
-                ContentMode::Math,
+            self.writer.emit_with_semantic_mode(
+                EmissionModes::new(mode, ContentMode::Math),
                 AtomKind::ControlSequence,
                 SerializationTokenKind::ControlSequence,
                 r"\prime",
+                BoundaryPolicy::Auto,
                 self.options,
             );
         }

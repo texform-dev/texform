@@ -308,8 +308,7 @@ fn reports_actual_preserve_guard_blockers() {
     assert_eq!(outcome.report.guard_hits.declarative_scope, 1);
     assert_eq!(outcome.report.guard_hits.script_base, 1);
     assert_eq!(outcome.report.guard_hits.infix_scope, 1);
-    assert_eq!(outcome.report.guard_hits.command_contact, 1);
-    assert_eq!(outcome.report.guard_hits.command_argument, 1);
+    assert_eq!(outcome.report.guard_hits.command_contact, 2);
     assert_eq!(outcome.report.guard_hits.empty_group, 1);
     assert_eq!(outcome.report.guard_hits.lone_atom_spacing_char, 1);
     assert_eq!(outcome.report.guard_hits.leading_atom_spacing_char, 1);
@@ -365,14 +364,6 @@ fn individual_guard_toggles_affect_only_their_cases() {
         });
     assert_eq!(outcome.text, r"\cos A + a");
     assert_eq!(outcome.report.actions.replaced_single_child, 2);
-
-    let outcome = run_flatten_groups_with_overlay(
-        r"\overline{{\sum}} + {a}",
-        FlattenGroupsConfig::STRICT,
-        |guards| guards.command_argument = Some(false),
-    );
-    assert_eq!(outcome.text, r"\overline { \sum } + a");
-    assert_eq!(outcome.report.guard_hits.command_argument, 0);
 
     let outcome =
         run_flatten_groups_with_overlay(r"a{} + {+}", FlattenGroupsConfig::STRICT, |guards| {
@@ -493,11 +484,10 @@ fn script_base_guard_can_be_disabled() {
 }
 
 #[test]
-fn groups_as_arguments_of_commands_preserve_one_spacing_boundary() {
+fn argument_slots_remove_all_direct_redundant_braces() {
     let outcome = run_flatten_groups(r"\overline{{{{\sum}}}} + \overline{{x}}");
 
-    assert_eq!(outcome.text, r"\overline { { \sum } } + \overline { x }");
-    assert_eq!(outcome.report.guard_hits.command_argument, 1);
+    assert_eq!(outcome.text, r"\overline { \sum } + \overline { x }");
 }
 
 #[test]

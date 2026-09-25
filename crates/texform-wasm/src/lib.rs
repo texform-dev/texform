@@ -1327,7 +1327,7 @@ mod tests {
             default_ctx
                 .inner
                 .lookup_command("Bra", ContentMode::Math)
-                .is_none()
+                .is_some()
         );
         assert!(
             empty_packages_ctx

@@ -8,13 +8,13 @@ pub fn all() -> Vec<String> {
         .collect()
 }
 
-/// Match the facade's runtime defaults; `braket` is opt-in because it
-/// overlaps with `physics`. Tests compare CLI behavior with default builders.
+/// Match the facade's runtime defaults: physics is opt-in and braket is enabled.
+/// Tests compare CLI behavior with default builders.
 pub fn defaults() -> Vec<String> {
     [
         "base",
         "ams",
-        "physics",
+        "braket",
         "textmacros",
         "bboldx",
         "boldsymbol",
