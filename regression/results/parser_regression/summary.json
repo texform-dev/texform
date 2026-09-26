@@ -9,14 +9,14 @@
       "length_filtered_count": 0,
       "length_filtered_rate_pct": 0.00,
       "strict": {
-        "ok": 91825,
-        "failed": 1754,
+        "ok": 91832,
+        "failed": 1747,
         "failure_rate_pct": 1.87
       },
       "nonstrict": {
-        "ok": 93312,
-        "failed": 267,
-        "failure_rate_pct": 0.29
+        "ok": 93321,
+        "failed": 258,
+        "failure_rate_pct": 0.28
       }
     },
     {
@@ -28,14 +28,14 @@
       "length_filtered_count": 1,
       "length_filtered_rate_pct": 0.00,
       "strict": {
-        "ok": 593557,
-        "failed": 13244,
-        "failure_rate_pct": 2.18
+        "ok": 593888,
+        "failed": 12913,
+        "failure_rate_pct": 2.13
       },
       "nonstrict": {
-        "ok": 605971,
-        "failed": 830,
-        "failure_rate_pct": 0.14
+        "ok": 606377,
+        "failed": 424,
+        "failure_rate_pct": 0.07
       }
     },
     {
@@ -66,14 +66,14 @@
       "length_filtered_count": 0,
       "length_filtered_rate_pct": 0.00,
       "strict": {
-        "ok": 32001,
-        "failed": 2103,
-        "failure_rate_pct": 6.17
+        "ok": 32008,
+        "failed": 2096,
+        "failure_rate_pct": 6.15
       },
       "nonstrict": {
-        "ok": 33930,
-        "failed": 174,
-        "failure_rate_pct": 0.51
+        "ok": 33942,
+        "failed": 162,
+        "failure_rate_pct": 0.48
       }
     }
   ],
@@ -85,14 +85,14 @@
     "length_filtered_count": 4,
     "length_filtered_rate_pct": 0.00,
     "strict": {
-      "ok": 1198376,
-      "failed": 28241,
-      "failure_rate_pct": 2.30
+      "ok": 1198721,
+      "failed": 27896,
+      "failure_rate_pct": 2.27
     },
     "nonstrict": {
-      "ok": 1225021,
-      "failed": 1596,
-      "failure_rate_pct": 0.13
+      "ok": 1225448,
+      "failed": 1169,
+      "failure_rate_pct": 0.10
     }
   }
 }

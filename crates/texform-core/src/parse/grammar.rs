@@ -2054,6 +2054,34 @@ fn text_item_parser<'a>(
     control_seq("end").not().ignore_then(normal_item)
 }
 
+/// Parse an unbraced text-mode argument.
+///
+/// An undelimited TeX argument is a single token, so `\mbox TeV` takes only
+/// `T`. Character tokens are therefore read one at a time instead of being
+/// coalesced like running text; other items fall back to [`text_item_parser`].
+fn text_argument_item_parser<'a>(
+    state: &'a ParserState<'a>,
+    math_content: ContentParser<'a>,
+    text_content: ContentParser<'a>,
+) -> impl Parser<'a, TokenStream<'a>, TrackedNode, ParserError<'a>> + Clone {
+    let single_token = insignificant_whitespace().ignore_then(
+        select! {
+            Token::Char(c) => SyntaxNode::Text(c.to_string()),
+            Token::Star => SyntaxNode::Text("*".to_string()),
+            Token::LBracket => SyntaxNode::Text("[".to_string()),
+            Token::RBracket => SyntaxNode::Text("]".to_string()),
+            Token::Prime(n) => SyntaxNode::Text("'".repeat(n)),
+        }
+        .labelled("text")
+        .tracked(),
+    );
+
+    choice((
+        single_token,
+        text_item_parser(state, math_content, text_content),
+    ))
+}
+
 // ============================================================================
 // Command and Environment Parsers
 // ============================================================================
@@ -2905,11 +2933,25 @@ where
 
         loop {
             let checkpoint = input.save();
+            let leading_ws = matches!(input.peek().as_ref(), Some(Token::Whitespaces));
             let _ = input.parse(ws.clone());
             let natural_end = matches!(input.peek().as_ref(), None | Some(Token::RBrace));
             input.rewind(checkpoint.clone());
             let at_stop = input.parse(stop_boundary.clone()).is_ok();
             input.rewind(checkpoint.clone());
+            if natural_end && leading_ws && !items.is_empty() {
+                // Items such as `$x$`, `\^n`, or a single-token argument
+                // (`\emph k`) leave a following space unconsumed; it is still
+                // text content before the group closes.
+                match input.parse(normal_item.clone()) {
+                    Ok(item) => items.push(item),
+                    Err(err) => {
+                        input.rewind(checkpoint);
+                        return Err(err);
+                    }
+                }
+                break;
+            }
             if natural_end || at_stop {
                 break;
             }

@@ -28,7 +28,7 @@ use super::{
     ArgumentParser, ContentParser, ParserError, ParserInput, ParserInputExt, TokenStream,
     TrackedNode, build_token_stream, content_block_parser_with_source, delimiter,
     insignificant_whitespace, math_atom_argument_parser, maybe_braced, maybe_braced_or_empty,
-    optional_bracketed, optional_bracketed_or_empty, text_item_parser,
+    optional_bracketed, optional_bracketed_or_empty, text_argument_item_parser,
 };
 
 /// Parsed argument slot bundled with its tracked content subtree.
@@ -625,7 +625,7 @@ pub(super) fn argument_parser<'a>(
                                     .as_context(),
                                 )?,
                                 ContentMode::Text => input.parse(
-                                    text_item_parser(
+                                    text_argument_item_parser(
                                         state,
                                         math_content.clone(),
                                         text_content.clone(),

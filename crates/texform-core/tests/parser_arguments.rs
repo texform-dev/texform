@@ -837,6 +837,67 @@ fn text_content_arguments_keep_empty_body_valid() {
 }
 
 #[test]
+fn non_braced_text_argument_takes_a_single_character_token() {
+    let text_arg = |source: &str| {
+        let output = parse_with_items(&[text_command_item()], source, true);
+        assert!(
+            output.diagnostics.is_empty(),
+            "{source}: unexpected diagnostics: {:?}",
+            output.diagnostics
+        );
+        let document = output.document().expect("document should parse");
+        let SyntaxNode::Root { children, .. } = document.to_syntax() else {
+            panic!("expected root node");
+        };
+        let SyntaxNode::Command { args, .. } = &children[0] else {
+            panic!("{source}: expected leading command, got {:?}", children[0]);
+        };
+        let ArgumentValue::TextContent(value) = &expect_arg(&args[0]).value else {
+            panic!("{source}: expected text content argument");
+        };
+        (value.clone(), children[1..].to_vec())
+    };
+
+    // Like TeX, an undelimited argument is one token, so trailing letters stay in math.
+    let (value, rest) = text_arg(r"\text TeV");
+    assert_eq!(value, SyntaxNode::Text("T".to_string()));
+    assert_eq!(rest, vec![SyntaxNode::Char('e'), SyntaxNode::Char('V')]);
+
+    let (value, rest) = text_arg(r"\text*ab");
+    assert_eq!(value, SyntaxNode::Text("*".to_string()));
+    assert_eq!(rest, vec![SyntaxNode::Char('a'), SyntaxNode::Char('b')]);
+
+    let (value, rest) = text_arg(r"\text{TeV}");
+    assert_eq!(value, SyntaxNode::Text("TeV".to_string()));
+    assert!(rest.is_empty());
+}
+
+#[test]
+fn text_argument_keeps_trailing_space_after_non_chunk_item() {
+    // Items such as `$x$` stop before a following space, which remains text
+    // content of the enclosing group.
+    for source in [r"\text{$x$ }", r"\text{a$x$ }"] {
+        let output = parse_with_items(&[text_command_item()], source, true);
+        assert!(
+            output.diagnostics.is_empty(),
+            "{source}: unexpected diagnostics: {:?}",
+            output.diagnostics
+        );
+        let (_, args) = first_command(&output);
+        let ArgumentValue::TextContent(SyntaxNode::Group { children, .. }) =
+            &expect_arg(&args[0]).value
+        else {
+            panic!("{source}: expected grouped text content, got {:?}", args[0]);
+        };
+        assert_eq!(
+            children.last(),
+            Some(&SyntaxNode::Text(" ".to_string())),
+            "{source}: unexpected children: {children:?}"
+        );
+    }
+}
+
+#[test]
 fn text_content_generic_only_error_keeps_expected_found_diagnostic() {
     let items = [text_command_item()];
 
