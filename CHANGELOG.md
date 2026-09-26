@@ -4,6 +4,23 @@ All notable changes to TeXForm are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
 
+## [0.7.0] - 2026-09-26
+
+This release makes normalized output reparse to the same tree, so normalizing it again no longer changes it, and stops math-mode `\&` from turning into an alignment tab. Both fixes change the tree shape; see **Changed** for migration notes.
+
+### Changed
+
+- **Breaking:** A bare `&` now parses as a new `AlignmentTab` node in `SyntaxNode`, `Node`, and `NodeKind`, and `Char('&')` always means a literal ampersand. Code that matched or built `Char('&')` for an alignment tab should use `AlignmentTab`, and exhaustive matches need the new variant. `Document::create_alignment_tab` stages one (`create_alignment_tab` in Python, `createAlignmentTab` in JavaScript); node kinds report `"AlignmentTab"` in Python and `"alignmentTab"` in JavaScript.
+- **Breaking:** A command argument whose content is a single brace group now parses to an implicit container around that group, so a brace group directly in any slot owns that slot's braces. FlattenGroups always unwraps redundant user braces in argument slots, and the `command_argument` guard and its report field are removed from Rust, Python, and JavaScript.
+- The default packages are now `base`, `ams`, `braket`, `textmacros`, `bboldx`, and `boldsymbol`; `physics` must be loaded explicitly.
+
+### Fixed
+
+- Normalizing the output of `normalize` again no longer changes it. Argument braces around a single brace group are kept (`\overline{{{\Psi}}}`, `\mathrm{{}}`), braces that protect a closing delimiter inside an optional argument are restored on output (`\xrightarrow[{]}]{x}` no longer becomes `\xrightarrow [ ] ] { x }`), and a lone `\` at a line end or input end is a control space, as in TeX.
+- Optional, `Delimited`, and `Paired` arguments track brace depth, so protected content such as `\qty[{]}]` parses.
+- In text mode, whitespace after an argument-free control word is no longer content: `\text{\bf\large x}` no longer normalizes to `\textbf{ x}`.
+- Math-mode `\&`, such as `a \& b` or `\mathrm{\&}`, is serialized as `\&` instead of a bare `&` that became a column separator inside `matrix` or `align`. All profiles were affected, including plain parse and serialize.
+
 ## [0.6.0] - 2026-09-25
 
 This release adds the `texform` command-line tool, gives prime marks a consistent meaning as symbols with explicit superscript binding, and makes normalization stable across transform phases. It also fixes spacing drift after text-mode control symbols and declarations leaking out of local groups, and roughly halves transform time. The prime change is breaking; see **Changed** for migration notes.
