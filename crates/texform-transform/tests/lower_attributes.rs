@@ -180,6 +180,50 @@ fn keeps_prefix_argument_declaratives_inside_the_wrapper() {
 }
 
 #[test]
+fn alignment_separators_end_declarative_scope() {
+    let packages = &["base", "ams"];
+    // Each cell is a TeX group, so a declarative stops at `&`, `\\`, or `\cr`.
+    serialized_with_packages(
+        r"\begin{array}{cc} \rm a & b \\ c & d \end{array}",
+        r"\begin{array}{cc} \mathrm{a} & b \\ c & d \end{array}",
+        packages,
+    );
+    serialized_with_packages(
+        r"\pmatrix{0 & i \bf{1} \cr 0 & 0 \cr}",
+        r"\begin{pmatrix} 0 & i \mathbf{1} \\ 0 & 0 \\ \end{pmatrix}",
+        packages,
+    );
+    serialized_with_packages(
+        r"\substack{\rm a \\ b}",
+        r"\substack{\mathrm{a} \\ b}",
+        packages,
+    );
+    // A declaration without a prefix must be emitted again in a later cell.
+    serialized_with_packages(
+        r"\begin{array}{ccc} \displaystyle a & b & \displaystyle c \end{array}",
+        r"\begin{array}{ccc} \displaystyle a & b & \displaystyle c \end{array}",
+        packages,
+    );
+    // Nested environments keep their own cells.
+    serialized_with_packages(
+        r"\begin{matrix} \rm a & \begin{matrix} \bf b & c \end{matrix} & d \end{matrix}",
+        r"\begin{matrix} \mathrm{a} & \begin{matrix} \mathbf{b} & c \end{matrix} & d \end{matrix}",
+        packages,
+    );
+}
+
+#[test]
+fn separators_outside_alignment_cells_keep_declarative_scope() {
+    let packages = &["base", "ams"];
+    serialized_with_packages(r"\rm x \\ y", r"\mathrm{x \\ y}", packages);
+    serialized_with_packages(
+        r"\begin{array}{c} {\rm a \\ b} \end{array}",
+        r"\begin{array}{c} \mathrm{a \\ b} \end{array}",
+        packages,
+    );
+}
+
+#[test]
 fn lower_attributes_is_idempotent_on_serialized_output() {
     for src in [
         r"{\bf {\bf x}}",

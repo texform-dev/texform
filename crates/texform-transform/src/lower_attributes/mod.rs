@@ -15,12 +15,18 @@
 //! surrounding style. FlattenGroups' declarative-scope guard keeps the groups
 //! retained here; a later pass normalizes inside them and does not add another
 //! wrapper.
+//!
+//! In a math argument or environment body, `&`, `\\`, `\newline`, and `\cr`
+//! end a declarative scope, because TeX typesets each alignment cell as its own
+//! group: `\rm a & b` affects only `a`. Separators inside a nested brace group
+//! and at the top level keep the running state.
 
 use std::collections::{HashMap, HashSet};
 
 use crate::ast::{ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, Slot};
 use crate::report::ReportRecorder;
 use crate::rewrite::helpers::mandatory_content_slot;
+use texform_knowledge::builtin::base;
 
 mod generated {
     include!(concat!(env!("OUT_DIR"), "/lower_attributes_generated.rs"));
@@ -430,9 +436,29 @@ fn canonicalize_content_slots(
         let placeholder = empty_implicit_group(ast, child_mode);
         ast.replace_content_child(child, placeholder);
 
-        let collected =
-            collect_single_detached_node(ast, child, child_inherited, child_mode, recorder);
-        let rebuilt = segment_and_emit(ast, collected.pairs, child_inherited, child_mode, recorder);
+        // A math argument such as the body of `\pmatrix` or `\substack` may be an
+        // alignment, so its own separators close declarative scopes.
+        let cells = matches!(slot, Slot::Argument(_))
+            && child_mode == ContentMode::Math
+            && is_brace_group(ast, child);
+        let collected = if cells {
+            let pairs =
+                collect_brace_group(ast, child, child_inherited, child_mode, true, recorder);
+            CollectResult {
+                pairs,
+                final_state: child_inherited,
+            }
+        } else {
+            collect_single_detached_node(ast, child, child_inherited, child_mode, recorder)
+        };
+        let rebuilt = segment_and_emit(
+            ast,
+            collected.pairs,
+            child_inherited,
+            child_mode,
+            cells,
+            recorder,
+        );
         let replacement = single_content_replacement(ast, rebuilt, child_mode);
         ast.replace_content_child(placeholder, replacement);
         ast.remove_detached(placeholder);
@@ -524,8 +550,11 @@ fn process_container(
         return;
     }
 
+    // Environment bodies may be alignments. The root is not a cell, so a
+    // top-level `\\` keeps the running state.
+    let cells = mode == ContentMode::Math && is_brace_group(ast, container);
     let detached = ast.detach_children_range(container, 0..len);
-    let collected = collect_detached_children(ast, detached, inherited, mode, recorder);
+    let collected = collect_detached_children(ast, detached, inherited, mode, cells, recorder);
     record_trailing_empty_segment(
         &collected.pairs,
         collected.final_state,
@@ -533,22 +562,32 @@ fn process_container(
         mode,
         recorder,
     );
-    let rebuilt = segment_and_emit(ast, collected.pairs, inherited, mode, recorder);
+    let rebuilt = segment_and_emit(ast, collected.pairs, inherited, mode, cells, recorder);
     let removed = ast.replace_children(container, rebuilt);
     debug_assert!(removed.is_empty());
 }
 
+/// Collect a detached child list starting from `inherited`.
+///
+/// With `cells`, every alignment separator in the list restores `inherited`,
+/// closing declarative scopes opened in the preceding cell.
 fn collect_detached_children(
     ast: &mut Ast,
     children: Vec<NodeId>,
     inherited: AttributeState,
     mode: ContentMode,
+    cells: bool,
     recorder: &mut Pass<'_>,
 ) -> CollectResult {
     let mut pairs = Vec::new();
     let mut state = inherited;
 
     for child in children {
+        if cells && is_alignment_separator(ast, child) {
+            state = inherited;
+            pairs.push(Pair { state, node: child });
+            continue;
+        }
         collect_detached_child(ast, child, &mut state, mode, recorder, &mut pairs);
     }
 
@@ -601,7 +640,7 @@ fn collect_detached_child(
                 report.record_redundant_prefix(entry.set);
             }
         });
-        let rebuilt = segment_and_emit(ast, body_pairs, previous, child_mode, recorder);
+        let rebuilt = segment_and_emit(ast, body_pairs, previous, child_mode, false, recorder);
         pairs.extend(rebuilt.into_iter().map(|node| Pair {
             state: *state,
             node,
@@ -611,7 +650,9 @@ fn collect_detached_child(
     }
 
     if is_brace_group(ast, child) {
-        pairs.extend(collect_brace_group(ast, child, *state, mode, recorder));
+        pairs.extend(collect_brace_group(
+            ast, child, *state, mode, false, recorder,
+        ));
         return;
     }
 
@@ -674,7 +715,8 @@ fn collect_prefix_body(
             let len = ast.children(body).len();
             let detached = ast.detach_children_range(body, 0..len);
             detach_body_from_prefix(ast, body, mode);
-            let collected = collect_detached_children(ast, detached, body_state, mode, recorder);
+            let collected =
+                collect_detached_children(ast, detached, body_state, mode, false, recorder);
             record_trailing_empty_segment(
                 &collected.pairs,
                 collected.final_state,
@@ -687,17 +729,19 @@ fn collect_prefix_body(
             // declaration beside the rebuilt wrapper.
             if pairs_require_local_declarative(&collected.pairs, body_state, mode) {
                 let absorbed = prefix_is_fully_absorbed(previous, entry.set, &collected.pairs);
-                let mut nodes = segment_and_emit(ast, collected.pairs, body_state, mode, recorder);
+                let mut nodes =
+                    segment_and_emit(ast, collected.pairs, body_state, mode, false, recorder);
                 if absorbed {
                     // Rebuilding can move a declarative inside an overriding prefix.
                     // Recollect that local result now, as the next invocation would.
                     let recollected =
-                        collect_detached_children(ast, nodes, body_state, mode, recorder);
+                        collect_detached_children(ast, nodes, body_state, mode, false, recorder);
                     if !pairs_require_local_declarative(&recollected.pairs, body_state, mode) {
                         ast.remove_detached(body);
                         return recollected.pairs;
                     }
-                    nodes = segment_and_emit(ast, recollected.pairs, body_state, mode, recorder);
+                    nodes =
+                        segment_and_emit(ast, recollected.pairs, body_state, mode, false, recorder);
                 }
                 let removed = ast.replace_children(body, nodes);
                 debug_assert!(removed.is_empty());
@@ -727,6 +771,7 @@ fn collect_brace_group(
     group: NodeId,
     inherited: AttributeState,
     mode: ContentMode,
+    cells: bool,
     recorder: &mut Pass<'_>,
 ) -> Vec<Pair> {
     if !has_direct_declarative_marker(ast, group, mode) {
@@ -739,14 +784,14 @@ fn collect_brace_group(
 
     let len = ast.children(group).len();
     let detached = ast.detach_children_range(group, 0..len);
-    let inner = collect_detached_children(ast, detached, inherited, mode, recorder);
+    let inner = collect_detached_children(ast, detached, inherited, mode, cells, recorder);
     record_trailing_empty_segment(&inner.pairs, inner.final_state, inherited, mode, recorder);
 
     // Keep the original braces when any carried effect still needs a declarative.
     // Prefix-only effects may be lifted; the caller continues with `inherited`,
     // which is the state from before this group.
     if pairs_require_local_declarative(&inner.pairs, inherited, mode) {
-        let nodes = segment_and_emit(ast, inner.pairs, inherited, mode, recorder);
+        let nodes = segment_and_emit(ast, inner.pairs, inherited, mode, cells, recorder);
         let removed = ast.replace_children(group, nodes);
         debug_assert!(removed.is_empty());
         return vec![Pair {
@@ -805,6 +850,16 @@ fn has_direct_declarative_marker(ast: &Ast, group: NodeId, mode: ContentMode) ->
     ast.children(group)
         .iter()
         .any(|child| lookup_declarative_at(ast, *child, mode).is_some())
+}
+
+fn is_alignment_separator(ast: &Ast, node: NodeId) -> bool {
+    match ast.node(node) {
+        Node::AlignmentTab => true,
+        Node::Command { name, .. } => [&base::cmd::_BACKSLASH, &base::cmd::NEWLINE, &base::cmd::CR]
+            .iter()
+            .any(|command| command.name == name),
+        _ => false,
+    }
 }
 
 fn is_brace_group(ast: &Ast, node: NodeId) -> bool {
@@ -898,6 +953,7 @@ fn segment_and_emit(
     pairs: Vec<Pair>,
     inherited: AttributeState,
     mode: ContentMode,
+    cells: bool,
     recorder: &mut Pass<'_>,
 ) -> Vec<NodeId> {
     let mut rebuilt = Vec::new();
@@ -911,12 +967,24 @@ fn segment_and_emit(
     let mut ambient = inherited;
     let mut iter = pairs.into_iter().peekable();
 
+    // With `cells`, a separator collected at this level (it carries the list
+    // state) is its own segment and starts the next cell with no emitted
+    // declaration in effect. Separators lifted from a nested group with another
+    // state stay in that group's segment, as before.
+    let is_cell_separator = |ast: &Ast, pair: &Pair| {
+        cells && pair.state == inherited && is_alignment_separator(ast, pair.node)
+    };
     while let Some(first) = iter.next() {
+        if is_cell_separator(ast, &first) {
+            ambient = inherited;
+            rebuilt.push(first.node);
+            continue;
+        }
         let segment_state = first.state;
         let mut segment = vec![first.node];
 
         while let Some(next) = iter.peek() {
-            if next.state != segment_state {
+            if next.state != segment_state || is_cell_separator(ast, next) {
                 break;
             }
             segment.push(iter.next().expect("peeked segment pair should exist").node);
