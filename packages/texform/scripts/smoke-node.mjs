@@ -838,6 +838,32 @@ for (const api of [{ Document, TexformConformanceError }, cjs]) {
   });
 }
 
+const tableSnapshot = new Parser().parse(String.raw`\sqrt{x}+\operatorname{sn}`).document.toColumnar();
+assert.deepEqual(Object.keys(tableSnapshot).sort(), ["args", "nodes"]);
+assert.equal(Object.keys(tableSnapshot.nodes).length, 12);
+assert.equal(Object.keys(tableSnapshot.args).length, 9);
+for (const table of Object.values(tableSnapshot)) {
+  assert(Object.values(table).every(Array.isArray));
+  assert.equal(new Set(Object.values(table).map(column => column.length)).size, 1);
+}
+assert.equal(tableSnapshot.nodes.kind[0], "Root");
+assert.equal(tableSnapshot.nodes.parent[0], -1);
+assert.equal(tableSnapshot.nodes.slot[0], null);
+assert.equal(tableSnapshot.nodes.slot_index[0], -1);
+assert.equal(tableSnapshot.nodes.group_kind[0], null);
+assert.equal(tableSnapshot.args.form[0], "optional");
+assert.equal(tableSnapshot.args.present[0], false);
+assert.equal(tableSnapshot.args.value_kind[0], null);
+assert.equal(tableSnapshot.args.content[0], -1);
+assert(tableSnapshot.args.value_kind.includes("operator_name"));
+assert(tableSnapshot.args.value.includes("false"));
+const errorTables = Document.fromSyntax({ Root: { mode: "Math", children: [
+  { Error: { message: "invalid", snippet: "?" } },
+] } }).toColumnar();
+assert.deepEqual(errorTables.nodes.value, [null, "?"]);
+assert.deepEqual(errorTables.args.owner, []);
+assert.deepEqual(new cjs.Document().toColumnar().nodes.kind, ["Root"]);
+
 // Exercise the editing boundary through both distributed wrappers.
 for (const api of [{ Document, Parser, TexformEditError, TexformConformanceError }, cjs]) {
   const editDoc = new api.Parser().parse("x_i").document;

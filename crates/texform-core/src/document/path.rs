@@ -14,7 +14,7 @@ pub enum NodeSlot {
 }
 
 impl NodeSlot {
-    /// The snake_case slot kind used by bindings.
+    /// The snake_case slot kind used by bindings and columnar exports.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Child(_) => "child",

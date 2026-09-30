@@ -498,6 +498,12 @@ impl PyDocument {
         Ok(pythonize(py, &syntax)?.unbind())
     }
 
+    /// Flatten the tree into columns for bulk structural analysis with Arrow or DataFrame tools.
+    fn to_columnar(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let tables = slf.try_borrow().map_err(borrow_error)?.inner.to_columnar();
+        Ok(pythonize(py, &tables)?.unbind())
+    }
+
     fn node_spans(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let entries = {
             let document = slf.try_borrow().map_err(borrow_error)?;
@@ -3479,6 +3485,41 @@ assert engine.transform_with_report(fresh()) == report
                     .unwrap()
             );
         });
+    }
+
+    #[test]
+    fn python_columnar_export_has_complete_columns_with_optional_and_error_values() {
+        run_python_test(
+            cr#"
+doc = texform.Parser().parse(r"\sqrt{x}+\operatorname{sn}")["document"]
+try:
+    doc.create_command("bf")
+except texform.ConformanceError as error:
+    assert error.rule == "command_kind_mismatch"
+    assert "declarative constructor" in str(error)
+else:
+    raise AssertionError("expected constructor guidance")
+tables = doc.to_columnar()
+assert set(tables) == {"nodes", "args"}
+assert len(tables["nodes"]) == 12 and len(tables["args"]) == 9
+for table in tables.values():
+    assert all(isinstance(column, list) for column in table.values())
+    assert len({len(column) for column in table.values()}) == 1
+assert tables["nodes"]["parent"][0] == -1
+assert tables["nodes"]["slot"][0] is None
+assert tables["nodes"]["kind"][0] == "Root"
+assert tables["args"]["form"][0] == "optional"
+assert tables["args"]["present"][0] is False
+assert tables["args"]["content"][0] == -1
+assert "operator_name" in tables["args"]["value_kind"]
+assert "false" in tables["args"]["value"]
+error_doc = texform.Document.from_syntax({"Root": {"mode": "Math", "children": [
+    {"Error": {"message": "invalid", "snippet": "?"}}
+]}})
+assert error_doc.to_columnar()["nodes"]["value"] == [None, "?"]
+assert error_doc.to_columnar()["args"]["owner"] == []
+"#,
+        );
     }
 
     #[test]

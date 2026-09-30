@@ -582,6 +582,10 @@ export function createBindings({
       );
     }
 
+    toColumnar() {
+      return wrapTexformError(() => this.inner.toColumnar());
+    }
+
     toSyntax() {
       return wrapTexformError(() => this.inner.toSyntax());
     }

@@ -16,8 +16,10 @@
 pub(crate) mod conformance;
 mod construct;
 mod path;
+mod table;
 pub use conformance::{ConformanceError, ConformanceRule};
 pub use construct::{Arg, InMode, parse_char};
+pub use table::{ArgumentTable, ColumnarTree, NodeTable};
 mod edit;
 mod import;
 pub use path::NodeSlot;
@@ -1240,7 +1242,7 @@ pub enum ArgKindRef<'a> {
 }
 
 impl ArgKindRef<'_> {
-    /// The snake_case form name used by bindings.
+    /// The snake_case form name used by bindings and columnar exports.
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Mandatory => "mandatory",

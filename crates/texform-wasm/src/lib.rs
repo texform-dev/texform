@@ -130,6 +130,14 @@ impl Document {
             .map_err(|error| internal_message_to_js(error.to_string()))
     }
 
+    /// Flatten the tree into columns for bulk structural analysis with Arrow or DataFrame tools.
+    #[wasm_bindgen(js_name = toColumnar)]
+    pub fn to_columnar(&self) -> Result<JsValue, JsValue> {
+        let tables: texform::bindings::ColumnarTree = borrow_document(&self.inner)?.to_columnar();
+        // Tables share their snake_case wire shape across language bindings.
+        to_js_value(&tables)
+    }
+
     #[wasm_bindgen(js_name = nodeSpans)]
     pub fn node_spans(&self) -> Result<JsValue, JsValue> {
         let entries = texform::bindings::node_spans_to_dto(&*borrow_document(&self.inner)?);

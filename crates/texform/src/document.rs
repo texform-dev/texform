@@ -14,9 +14,9 @@
 //! fails with [`EditError::ForeignNode`] instead of corrupting an unrelated tree.
 
 pub use texform_core::document::{
-    Arg, ArgKindRef, ArgRef, ConformanceError, ConformanceRule, DelimiterRef, DelimiterValue,
-    DocumentId, EditError, FromSyntaxError, GroupKindRef, InMode, NodeId, NodeKind, NodeRef,
-    NodeSlot,
+    Arg, ArgKindRef, ArgRef, ArgumentTable, ColumnarTree, ConformanceError, ConformanceRule,
+    DelimiterRef, DelimiterValue, DocumentId, EditError, FromSyntaxError, GroupKindRef, InMode,
+    NodeId, NodeKind, NodeRef, NodeSlot, NodeTable,
 };
 pub use texform_core::serialize::SerializeOptions;
 
@@ -557,6 +557,11 @@ impl Document {
     /// Rename an environment while preserving its existing signature and body mode.
     pub fn set_env_name(&mut self, id: NodeId, name: impl Into<String>) -> Result<(), EditError> {
         self.inner.set_env_name(id, name)
+    }
+
+    /// Export a columnar tree representation for bulk structural analysis with Arrow or DataFrames.
+    pub fn to_columnar(&self) -> ColumnarTree {
+        self.inner.to_columnar()
     }
 
     #[doc(hidden)]

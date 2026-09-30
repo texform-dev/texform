@@ -812,6 +812,44 @@ class TransformError(TexformError):
     """
 
 
+class NodeTable(TypedDict):
+    """Preorder node columns. Row indices are local to this snapshot."""
+    kind: list[NodeKind]
+    parent: list[int]
+    slot: list[NodeSlotKind | None]
+    slot_index: list[int]
+    depth: list[int]
+    mode: list[RuntimeContentMode]
+    name: list[str | None]
+    value: list[str | None]
+    known: list[bool | None]
+    group_kind: list[Literal["explicit", "implicit", "delimited", "inline_math"] | None]
+    left: list[str | None]
+    right: list[str | None]
+
+class ArgumentTable(TypedDict):
+    """All argument slots, ordered by owner row and slot index."""
+    owner: list[int]
+    index: list[int]
+    form: list[ArgFormKind | None]
+    present: list[bool]
+    value_kind: list[
+        Literal[
+            "math", "text", "operator_name", "delimiter", "cs_name",
+            "dimension", "integer", "key_val", "column", "boolean",
+        ]
+        | None
+    ]
+    value: list[str | None]
+    content: list[int]
+    open: list[str | None]
+    close: list[str | None]
+
+class ColumnarTree(TypedDict):
+    """Tree columns for bulk structural analysis with Arrow or DataFrame tools."""
+    nodes: NodeTable
+    args: ArgumentTable
+
 class Document:
     """The editable document tree — the working format you read, edit, and output.
 
@@ -964,6 +1002,16 @@ class Document:
         Returns:
             The matching ``Environment`` node handles, in document order.
         """
+
+    def to_columnar(self) -> ColumnarTree:
+        """Flatten the tree into columns for bulk structural analysis with Arrow or DataFrame tools.
+
+        Each table can be passed directly to ``pyarrow.table``. Parent, slot
+        index, and content columns use -1 when no row or index applies. Other
+        missing values are None. Modes describe each node's context. Detached
+        subtrees are excluded; incomplete documents remain exportable.
+        """
+        ...
 
     def to_syntax(self) -> SyntaxNode:
         """Convert the tree to a ``SyntaxNode`` dict for serde and transport.

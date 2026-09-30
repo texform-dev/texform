@@ -98,6 +98,22 @@ doc.set_superscript(base, None)  # Both scripts absent: collapse to the base.
 
 The Python API mirrors the Rust facade one-to-one. For the full picture — the editable document tree, transform profiles, and the architecture — see the [repository README](../../README.md).
 
+## Columnar export
+
+`document.to_columnar()` flattens the tree into columns for bulk structural analysis with Arrow or DataFrame tools. It carries information comparable to `document.to_syntax()`: `to_syntax()` returns a nested snapshot, while `to_columnar()` returns columnar data.
+
+`document.to_columnar()` exports the attached tree once as `{"nodes": ..., "args": ...}`, with one Python list per column. Nodes use preorder; arguments include every slot, including absent optional slots and scalar values. Each table can be passed directly to `pyarrow.table()` without a TeXForm dependency on PyArrow:
+
+```python
+import pyarrow as pa
+
+tables = texform.Parser().parse(r"\sqrt{x}")["document"].to_columnar()
+nodes = pa.table(tables["nodes"])
+arguments = pa.table(tables["args"])
+```
+
+`parent`, `slot_index`, and `content` use `-1` when no index applies; other missing fields are `None`. Node `mode` describes its context, while `value_kind` distinguishes math, text, and operator-name arguments. `open` and `close` retain actual paired-argument boundaries. Row indices belong to the snapshot, detached subtrees are excluded, and documents containing errors remain exportable.
+
 ## License
 
 Apache-2.0.

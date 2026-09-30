@@ -423,6 +423,41 @@ export interface TokenizedLatex {
   tokens: SerializationToken[];
 }
 
+/** Preorder node columns; field names stay snake_case in both bindings. */
+export interface NodeTable {
+  kind: Array<"Root" | "Group" | "Command" | "Infix" | "Declarative" | "Environment" | "Scripted" | "Prime" | "Text" | "Char" | "ActiveSpace" | "AlignmentTab" | "Error">;
+  parent: number[];
+  slot: Array<NodeSlot["kind"] | null>;
+  slot_index: number[];
+  depth: number[];
+  mode: RuntimeContentMode[];
+  name: Array<string | null>;
+  value: Array<string | null>;
+  known: Array<boolean | null>;
+  group_kind: Array<"explicit" | "implicit" | "delimited" | "inline_math" | null>;
+  left: Array<string | null>;
+  right: Array<string | null>;
+}
+
+/** All argument slots, ordered by owner row and slot index. */
+export interface ArgumentTable {
+  owner: number[];
+  index: number[];
+  form: Array<ArgForm["kind"] | null>;
+  present: boolean[];
+  value_kind: Array<"math" | "text" | "operator_name" | "delimiter" | "cs_name" | "dimension" | "integer" | "key_val" | "column" | "boolean" | null>;
+  value: Array<string | null>;
+  content: number[];
+  open: Array<string | null>;
+  close: Array<string | null>;
+}
+
+/** Tree columns for bulk structural analysis with Arrow or DataFrame tools. */
+export interface ColumnarTree {
+  nodes: NodeTable;
+  args: ArgumentTable;
+}
+
 /**
  * The editable LaTeX document tree — the working format you read, mutate,
  * serialize, and transform.
@@ -866,6 +901,12 @@ export class Document {
    */
   toSyntax(): SyntaxNode;
 
+  /**
+   * Flatten the tree into columns for bulk structural analysis with Arrow or DataFrame tools.
+   * Modes describe node contexts. Missing indices are -1; other missing values
+   * are null. Detached subtrees are excluded. Error documents are supported.
+   */
+  toColumnar(): ColumnarTree;
   /**
    * Export the parse-time span side table as a list of `{id, span}` entries.
    *

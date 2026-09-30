@@ -159,6 +159,14 @@ constructionDoc.parseFragment("x", { mode: "math" });
 // @ts-expect-error Argument dictionaries were replaced by Arg inputs.
 constructionDoc.createCommand("sqrt", [{ kind: "Math", node: constructedSqrt }]);
 
+const tableExport: import("../types/index.js").ColumnarTree = doc.toColumnar();
+const tableParents: number[] = tableExport.nodes.parent;
+const tableModes: Array<"math" | "text"> = tableExport.nodes.mode;
+const tableValues: Array<string | null> = tableExport.args.value;
+// @ts-expect-error Table fields retain snake_case across bindings.
+tableExport.nodes.slotIndex;
+void [tableParents, tableModes, tableValues];
+
 const edited: Node = constructionDoc.setSubscript(constructedSqrt, "i");
 constructionDoc.setSuperscript(edited, undefined);
 constructionDoc.setSubscript(edited, null);

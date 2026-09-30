@@ -1,3 +1,5 @@
+pub use crate::{ArgumentTable, ColumnarTree, NodeTable};
+
 mod input;
 mod read;
 

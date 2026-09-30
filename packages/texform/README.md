@@ -80,6 +80,19 @@ console.log(doc.toLatex());
 
 Invalid shapes throw `TexformConformanceError`, a `TexformEditError` subclass with `path` and `rule`. Invalid source arguments throw `TexformParseError` with diagnostics. `Document.fromSyntax` validates error-free trees against its knowledge base; trees containing error nodes remain read-only. Failed operations leave the document unchanged. `toLatex` and `serialize` check only structure, not conformance to a knowledge base.
 
+## Columnar export
+
+`document.toColumnar()` flattens the tree into columns for bulk structural analysis with Arrow or DataFrame tools. It carries information comparable to `document.toSyntax()`: `toSyntax()` returns a nested snapshot, while `toColumnar()` returns columnar data.
+
+`document.toColumnar()` returns `{ nodes, args }`, each containing one ordinary array per column. Nodes use preorder; the argument table includes absent optional slots and scalar values. Table field names remain snake_case across Python and JavaScript, and node `kind` uses the capitalized syntax names such as `"Root"` and `"Command"`.
+
+```js
+const tables = new Parser().parse(String.raw`\sqrt{x}`).document.toColumnar();
+console.log(tables.nodes.parent, tables.args.value_kind);
+```
+
+`parent`, `slot_index`, and `content` use `-1` when no index applies; other missing fields are `null`. Node `mode` describes its context; `open` and `close` retain actual paired-argument boundaries. Row indices belong to this snapshot, detached subtrees are excluded, and documents containing errors remain exportable.
+
 ## Editing and addressing
 
 `node.path()` returns its current rooted path, or `null` for detached nodes. `document.nodeAt(path)` resolves a path and throws if it is missing. `node.slot()` describes its parent slot using a snake_case `kind` and a nullable `index`; roots and detached nodes return `null`. Paths can change after edits, so save them before modifying the tree.

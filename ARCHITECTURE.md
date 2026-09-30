@@ -95,7 +95,7 @@ The parser produces a `SyntaxNode` first. TeXForm then converts that snapshot in
 
 The same formula is modeled by three trees with deliberately separated roles. Confusing them is the most common source of design mistakes, so the boundaries are explicit:
 
-- **`SyntaxNode`** (`texform-interface`) is the lossless, immutable parse snapshot. It is the parser's stage-1 output and the single serde DTO — it derives `Serialize`/`Deserialize` and backs JSON snapshots, Python dictionaries, JavaScript objects, and test fixtures. It can represent a partial parse (it may contain `Error` nodes) but carries no editing behavior.
+- **`SyntaxNode`** (`texform-interface`) is the lossless, immutable parse snapshot. It is the parser's stage-1 output and the nested serde DTO — it derives `Serialize`/`Deserialize` and backs JSON snapshots, Python dictionaries, JavaScript objects, and test fixtures. It can represent a partial parse (it may contain `Error` nodes) but carries no editing behavior.
 - **`Document`** (`texform-core`, re-exported by the facade) is the public, editable DOM-style tree. It is what users construct, query, mutate, serialize, and transform. Reads go through lightweight `NodeRef` handles; edits are fallible and return `Result<_, EditError>`.
 - **`Ast`** is the internal arena tree (`SlotMap` nodes plus a parent-link map) that the transform engine and serializer operate on. It is a *panic-contract* type: its methods panic on misuse because misuse means an internal invariant was violated, not that a user supplied bad input. It is **not** part of the public API. `Document` wraps it and exposes a fallible surface over it, so no arena panic can reach a caller on a user-input-driven path.
 
@@ -166,7 +166,7 @@ The rules are:
 
 `from_syntax` and `from_syntax_with` validate complete input against their knowledge base. Input containing Error nodes receives structural checks only and remains read-only; even a clean subtree of such a document is not assumed conforming. Structural checks still reject nested roots, non-group environment bodies, and zero Prime counts before arena conversion. Conformance failures include a path rooted at `root` or `detached`, a stable snake_case rule code, and a message; an invalid delimiter string not yet tied to a node has an empty path. Source parse failures carry parser diagnostics.
 
-Normal release parsing and transformation do not run an additional whole-tree conformance pass. Explicit corpus audits validate complete parser output and every transform profile; debug edits and transforms assert the invariant.
+Normal release parsing and transformation do not run an additional whole-tree conformance pass. Explicit corpus audits validate complete parser output and every transform profile; debug edits and transforms assert the invariant. `to_columnar()` exports a `ColumnarTree` for bulk structural analysis with Arrow or DataFrames, whereas `to_syntax()` exports a nested snapshot of the same tree. The columnar representation exports root-reachable nodes and all argument slots in preorder, including empty optional slots and scalar values, with column lengths and row references suitable for columnar consumers.
 
 ### Deterministic Edits and Addressing
 
@@ -180,11 +180,12 @@ Normal release parsing and transformation do not run an additional whole-tree co
 
 ## Serialization and Serde
 
-`Document` has three distinct output channels, named to avoid the ambiguity of a generic "serialize":
+`Document` has four distinct output channels, named to avoid the ambiguity of a generic "serialize":
 
 - **`to_latex()` / `to_latex_with(&SerializeOptions)`** render the tree back to LaTeX *text* using the canonical serializer. There is intentionally no method named `serialize` on `Document`.
 - **`to_tokenized_latex()` / `to_tokenized_latex_with(&SerializeOptions)`** run the same canonical serializer traversal with an opt-in recorder, returning the identical LaTeX plus typed output fragments.
-- **`to_syntax()`** converts the tree to a `SyntaxNode`, which is the single serde DTO. `Document` and `Ast` do not implement serde directly; structured-data output always goes through `SyntaxNode`.
+- **`to_syntax()`** converts the tree to a `SyntaxNode`, the nested serde DTO. `Document` and `Ast` do not implement serde directly.
+- **`to_columnar()`** converts the tree to a `ColumnarTree` with node and argument tables for bulk structural analysis with Arrow or DataFrames.
 
 The serializer covers the full node vocabulary, including emitting an `Error` node's snippet. An ordinary `Prime` emits `\prime` symbols, while a direct pure-prime `Scripted` superscript emits quote shorthand such as `f'` or `f''`; a mixed superscript such as `f'^2` emits `f^{\prime 2}`, and an empty script base remains explicit. A `Group(Prime)` superscript emits `^{\prime}` even without FlattenGroups. It is a canonical printer over the AST, not a semantic recovery layer: node-specific emitters and `SerializeOptions` may choose a textual form, but they must not reconstruct missing semantics from a concrete command name or source spelling. Information needed for correct output belongs in the AST first; examples include content mode, operator-name content, and tight argument boundaries. Wrappers that carry no distinct semantics must not make the emitted source acquire a different meaning.
 
@@ -233,4 +234,4 @@ The Python and WebAssembly bindings expose live `Document` and `Node` handles ra
 - `texform::bindings` shares DTOs, config overlays, and strict input validation. Rust uses snake_case; WASM converts host-facing fields and error paths to camelCase. Host conversion stays at the boundary. The [Python](python/texform/README.md#python-specific-notes) and [JavaScript](packages/texform/README.md#javascript-specific-notes) guides define their distinct config calling conventions.
 - Plain `normalize` returns text and plain `transform` returns no value in both bindings. `normalize_with_report` / `transform_with_report` (Python) and `normalizeWithReport` / `transformWithReport` (JavaScript) are the paths that convert the shared diagnostic DTO. They reuse the ordinary config parsers. Report fields are diagnostic and are not a stable compatibility promise. The Python research entry `_normalize_with_flatten_groups_guards` keeps its name and always returns a report; JavaScript has no guard-overlay entry.
 - Tokenized serialization uses the same DTO conversion from the owning Rust result in both bindings; Python exposes `start_byte` / `end_byte`, while JavaScript exposes `startByte` / `endByte`. All are UTF-8 byte offsets rather than Python code-point or JavaScript UTF-16 indices, and neither binding re-tokenizes the LaTeX string.
-- `SyntaxNode` is not part of binding casing conversion. It remains the single tree wire format across Rust serde, Python dictionaries, JavaScript objects, and JSON fixtures.
+- `SyntaxNode` is not part of binding casing conversion. It remains the nested tree wire format across Rust serde, Python dictionaries, JavaScript objects, and JSON fixtures.
