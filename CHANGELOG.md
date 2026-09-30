@@ -3,6 +3,20 @@
 All notable changes to TeXForm are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
+## [0.8.0] - 2026-09-30
+
+### Added
+
+- Export documents as columnar trees
+- Add deterministic edits, paths, and imports
+- **Breaking:** Enforce knowledge-conformant construction
+- **Breaking:** Share immutable `KnowledgeBase` instances
+
+### Fixed
+
+- Start a new cell for scripts after alignment tabs
+- Take a single token for unbraced text-mode arguments
+- End declarative scopes at alignment separators
 
 ## [0.7.0] - 2026-09-26
 
