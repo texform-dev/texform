@@ -1002,6 +1002,16 @@ where
         },
     };
 
+    // Alignment tabs end a cell, so following scripts start the next cell
+    // with an empty base rather than binding to the separator itself.
+    if matches!(base.node, SyntaxNode::AlignmentTab) {
+        return Ok(ScriptComponents {
+            base,
+            subscript: None,
+            superscript: None,
+        });
+    }
+
     let mut sup_state: Option<SupState> = None;
     let mut subscript: Option<TrackedNode> = None;
 
