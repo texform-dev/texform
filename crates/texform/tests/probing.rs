@@ -1,9 +1,9 @@
 use texform::{AllowedMode, CommandItem, CommandKind, ParseConfig, Parser};
 
 #[test]
-fn parser_empty_knowledge_preserves_probing_isolation() {
-    let parser = Parser::builder()
-        .empty_knowledge()
+fn parser_empty_packages_preserves_probing_isolation() {
+    let kb = texform::KnowledgeBase::builder()
+        .packages(&[])
         .item(CommandItem::new(
             "probe",
             CommandKind::Prefix,
@@ -12,6 +12,7 @@ fn parser_empty_knowledge_preserves_probing_isolation() {
         ))
         .build()
         .expect("parser should build");
+    let parser = Parser::builder().knowledge_base(kb).build();
 
     let known = parser.parse(r"\probe{x}");
     assert!(known.diagnostics().is_empty());

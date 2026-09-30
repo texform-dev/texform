@@ -1,3 +1,6 @@
+mod support;
+
+use support::kb;
 use texform::{
     ContentMode, Document, SerializationTokenKind, SerializeOptions, SyntaxNode, TokenizedLatex,
 };
@@ -21,9 +24,8 @@ fn assert_token_contract(result: &TokenizedLatex) {
 #[test]
 fn document_serializes_parsed_latex() {
     let parser = texform::Parser::builder()
-        .packages(&["base"])
-        .build()
-        .expect("parser should build");
+        .knowledge_base(kb(&["base"]))
+        .build();
     let document = parser
         .parse(r"\frac{a}{b}")
         .try_into_document()
@@ -63,9 +65,8 @@ fn document_serializes_syntax_root() {
 #[test]
 fn document_exposes_stable_tokenized_serialization_contract() {
     let parser = texform::Parser::builder()
-        .packages(&["base"])
-        .build()
-        .expect("parser should build");
+        .knowledge_base(kb(&["base"]))
+        .build();
     let document = parser
         .parse(r"\text{a\% $𝒜_i$}")
         .try_into_document()
@@ -98,7 +99,7 @@ fn document_exposes_stable_tokenized_serialization_contract() {
 fn serialize_options_are_constructible_from_the_facade() {
     use texform::{Parser, ScriptOrder, ScriptSpacing, SerializeOptions};
 
-    let parser = Parser::builder().build().expect("parser should build");
+    let parser = Parser::builder().build();
     let document = parser
         .parse("x_i^2")
         .try_into_document()
@@ -133,9 +134,8 @@ fn serialize_options_serde_rejects_unknown_nested_keys() {
 #[test]
 fn middle_delimiter_serializes_bare_and_is_text_idempotent() {
     let parser = texform::Parser::builder()
-        .packages(&["base"])
-        .build()
-        .expect("parser should build");
+        .knowledge_base(kb(&["base"]))
+        .build();
     let parsed = parser.parse(r"\left\langle a\middle\vert b\right\rangle");
     assert!(
         parsed.diagnostics().is_empty(),
@@ -173,9 +173,8 @@ fn middle_delimiter_serializes_bare_and_is_text_idempotent() {
 #[test]
 fn bigl_non_ascii_token_spans_use_utf8_byte_offsets() {
     let parser = texform::Parser::builder()
-        .packages(&["base"])
-        .build()
-        .expect("parser should build");
+        .knowledge_base(kb(&["base"]))
+        .build();
     let document = parser
         .parse(r"\bigl( é \bigr)")
         .try_into_document()

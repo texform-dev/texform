@@ -1,3 +1,6 @@
+mod support;
+
+use support::kb;
 use texform::{
     Document, Error, FlattenGroupsConfig, LowerAttributesConfig, NormalizeConfig, ParseConfig,
     Parser, Profile, RewriteConfig, TransformConfig, TransformEngine,
@@ -6,7 +9,7 @@ use texform_transform::FinalizeAstConfig;
 
 fn engine() -> TransformEngine {
     TransformEngine::builder()
-        .packages(&["base"])
+        .knowledge_base(kb(&["base"]))
         .profile(Profile::Equiv)
         .build()
         .expect("engine should build")
@@ -68,11 +71,8 @@ fn transform_updates_document_in_place() {
 }
 
 #[test]
-fn transform_rejects_documents_from_a_different_parser() {
-    let parser = Parser::builder()
-        .packages(&["base"])
-        .build()
-        .expect("parser should build");
+fn transform_rejects_documents_from_an_independently_built_knowledge_base() {
+    let parser = Parser::builder().knowledge_base(kb(&["base"])).build();
     let engine = engine();
     let mut document = parser
         .parse("x")
@@ -82,13 +82,13 @@ fn transform_rejects_documents_from_a_different_parser() {
 
     let error = engine
         .transform(&mut document)
-        .expect_err("foreign parser documents must not be transformed");
+        .expect_err("different knowledge-base instances must not be transformed");
 
-    assert!(matches!(error, Error::ForeignDocument));
+    assert!(matches!(error, Error::KnowledgeBaseMismatch));
 }
 
 #[test]
-fn transform_rejects_documents_without_parse_context() {
+fn transform_accepts_documents_rebuilt_with_the_same_knowledge_base() {
     let engine = engine();
     let parsed = engine
         .parser()
@@ -97,13 +97,12 @@ fn transform_rejects_documents_without_parse_context() {
         .expect("parse should succeed")
         .0;
     let syntax = parsed.to_syntax();
-    let mut document = Document::from_syntax(&syntax).expect("syntax should rebuild document");
+    let mut document = Document::from_syntax_with(engine.knowledge_base(), &syntax)
+        .expect("syntax should rebuild document");
 
-    let error = engine
+    engine
         .transform(&mut document)
-        .expect_err("syntax-created documents must not be transformed");
-
-    assert!(matches!(error, Error::ForeignDocument));
+        .expect("shared knowledge base should be accepted");
 }
 
 #[test]
@@ -145,7 +144,7 @@ fn normalize_can_disable_finalize_ast_explicitly() {
 #[test]
 fn normalize_collapses_text_whitespace_without_trimming_edges() {
     let engine = TransformEngine::builder()
-        .packages(&["base", "textmacros"])
+        .knowledge_base(kb(&["base", "textmacros"]))
         .profile(Profile::Equiv)
         .build()
         .expect("engine should build");
@@ -168,7 +167,7 @@ fn normalize_collapses_text_whitespace_without_trimming_edges() {
 #[test]
 fn normalize_merges_text_fragments_exposed_by_flatten_groups() {
     let engine = TransformEngine::builder()
-        .packages(&["base", "textmacros"])
+        .knowledge_base(kb(&["base", "textmacros"]))
         .profile(Profile::Equiv)
         .build()
         .expect("engine should build");

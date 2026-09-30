@@ -411,6 +411,42 @@ impl TryFrom<ContextItemInput> for ContextItem {
     }
 }
 
+/// Knowledge-base constructor options shared by both bindings.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(default, deny_unknown_fields, expecting = "an object")]
+pub struct KnowledgeBaseInput {
+    pub packages: Option<Vec<String>>,
+    pub items: Option<Vec<ContextItemInput>>,
+    pub remove_commands: Option<Vec<String>>,
+    pub remove_environments: Option<Vec<String>>,
+    pub remove_delimiter_controls: Option<Vec<String>>,
+}
+
+impl KnowledgeBaseInput {
+    /// Build the knowledge base, inserting every item before applying any removal.
+    pub fn build(self) -> Result<crate::KnowledgeBase, String> {
+        let mut builder = crate::KnowledgeBase::builder();
+        if let Some(packages) = &self.packages {
+            builder = builder.packages(&packages.iter().map(String::as_str).collect::<Vec<_>>());
+        }
+        for (index, item) in self.items.unwrap_or_default().into_iter().enumerate() {
+            let item = ContextItem::try_from(item)
+                .map_err(|message| format!("invalid items[{index}]: {message}"))?;
+            builder = builder.item(item);
+        }
+        for name in self.remove_commands.unwrap_or_default() {
+            builder = builder.remove_command(name);
+        }
+        for name in self.remove_environments.unwrap_or_default() {
+            builder = builder.remove_environment(name);
+        }
+        for name in self.remove_delimiter_controls.unwrap_or_default() {
+            builder = builder.remove_delimiter_control(name);
+        }
+        builder.build().map_err(|error| error.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

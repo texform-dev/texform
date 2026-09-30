@@ -2,7 +2,7 @@
 
 wasm-bindgen bindings that back the [`texform` package on npm](https://www.npmjs.com/package/texform). Not published to crates.io.
 
-This crate compiles to the WebAssembly module wrapped by the npm package in [`packages/texform/`](../../packages/texform/), which adds the Node/bundler dual entry points and the public TypeScript declarations. Live `Document` and `Node` handles expose the shared facade model, and errors surface as structured JavaScript exceptions. Configuration objects are camelCase overlays read through the shared `texform::bindings` path; unknown keys and type errors become `TexformConfigError`.
+This crate compiles to the WebAssembly module wrapped by the npm package in [`packages/texform/`](../../packages/texform/), which adds the Node/bundler dual entry points and the public TypeScript declarations. Immutable `KnowledgeBase` handles share instance identity across parsers, engines, and documents. Knowledge options and queries belong to `KnowledgeBase`; parser and engine constructors receive an optional shared handle. Live `Document` and `Node` handles expose the shared facade model, and errors surface as structured JavaScript exceptions. Configuration objects are camelCase overlays read through the shared `texform::bindings` path; unknown keys and type errors become `TexformConfigError`.
 
 ## Local development
 
@@ -12,11 +12,11 @@ Rebuild the WASM artifacts and sync them into the npm package:
 bun run --cwd packages/texform prepare:publish
 ```
 
-This runs `wasm-pack build` for both the `nodejs` and `web` targets and copies the output into `packages/texform/wasm/`. Run `bun install --frozen-lockfile` at the repository root first if dependencies are not installed.
+This runs `wasm-pack build` for both the `nodejs` and `web` targets, copies the output into `packages/texform/wasm/`, and generates `packages/texform/node/index.cjs`. Run `bun install --frozen-lockfile` at the repository root first if dependencies are not installed.
 
 ## API changes and validation
 
-Keep exported WASM shapes, `packages/texform/shared/create-bindings.js`, `packages/texform/node/index.cjs`, and `packages/texform/types/index.d.ts` consistent. Changes to shared binding DTOs or `crates/texform-interface/src/syntax_node.rs` may also change the public TypeScript surface. Plain `normalize` returns a string and plain `transform` returns `undefined`. `normalizeWithReport` and `transformWithReport` reuse those config parsers and return the diagnostic DTO. The plain path does not build that DTO. There is no JavaScript guard-overlay entry. Update declarations and examples, rebuild both WASM targets, then run:
+Keep exported WASM shapes, `packages/texform/shared/create-bindings.js`, and `packages/texform/types/index.d.ts` consistent. `sync:wasm` generates the CommonJS entry `packages/texform/node/index.cjs` from `create-bindings.js`. Changes to shared binding DTOs or `crates/texform-interface/src/syntax_node.rs` may also change the public TypeScript surface. Plain `normalize` returns a string and plain `transform` returns `undefined`. `normalizeWithReport` and `transformWithReport` reuse those config parsers and return the diagnostic DTO. The plain path does not build that DTO. There is no JavaScript guard-overlay entry. Update declarations and examples, rebuild both WASM targets, then run:
 
 ```bash
 bun run --cwd packages/texform check

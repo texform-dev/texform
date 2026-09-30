@@ -50,7 +50,7 @@ fn only_many_keeps_the_requested_rules() {
 fn build_with_disables_rules_touching_mutated_command_names() {
     let parse_ctx = ParseContextBuilder::default()
         .packages(&["physics"])
-        .insert_item(CommandItem::new(
+        .item(CommandItem::new(
             "quantity",
             CommandKind::Prefix,
             AllowedMode::Math,

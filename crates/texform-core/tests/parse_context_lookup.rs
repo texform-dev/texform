@@ -66,7 +66,7 @@ fn knows_character_name_checks_loaded_character_entries() {
 #[test]
 fn runtime_text_only_command_only_enters_text_lane() {
     let ctx = ParseContextBuilder::empty()
-        .insert_item(CommandItem::new(
+        .item(CommandItem::new(
             "textonly",
             CommandKind::Prefix,
             AllowedMode::Text,

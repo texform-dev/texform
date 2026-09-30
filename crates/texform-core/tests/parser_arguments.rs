@@ -29,10 +29,10 @@ fn underline_text_item() -> ContextItem {
 
 fn content_test_context() -> ParseContext {
     ParseContextBuilder::empty()
-        .insert_item(text_command_item())
-        .insert_item(frac_command_item())
-        .insert_item(underline_math_item())
-        .insert_item(underline_text_item())
+        .item(text_command_item())
+        .item(frac_command_item())
+        .item(underline_math_item())
+        .item(underline_text_item())
         .build()
         .expect("content test context should build")
 }

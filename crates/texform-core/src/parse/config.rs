@@ -3,9 +3,8 @@
 /// Parse-time configuration knobs.
 ///
 /// `ParseConfig` is plain data describing how a single parse call should
-/// behave. It is independent of [`ParseContext`](super::ParseContext), which
-/// owns the knowledge base; the same context can be reused across many calls
-/// with different configs.
+/// behave. It is independent of the [`KnowledgeBase`](super::KnowledgeBase):
+/// one knowledge base can serve many calls with different configs.
 ///
 /// Two orthogonal axes control parsing, both with **`true` = stricter**:
 ///

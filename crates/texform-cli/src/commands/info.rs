@@ -80,12 +80,19 @@ pub fn run(args: Args, packages: &[String]) -> ExitCode {
         Entries {
             command: None,
             character: None,
-            environment: parser.lookup_env(&args.name, mode).map(env_info_to_dto),
+            environment: parser
+                .knowledge_base()
+                .lookup_env(&args.name, mode)
+                .map(env_info_to_dto),
         }
     } else if let Some(name) = args.name.strip_prefix('\\') {
         Entries {
-            command: parser.lookup_command(name, mode).map(command_info_to_dto),
+            command: parser
+                .knowledge_base()
+                .lookup_command(name, mode)
+                .map(command_info_to_dto),
             character: parser
+                .knowledge_base()
                 .lookup_character(name, mode)
                 .map(character_info_to_dto),
             environment: None,

@@ -1,5 +1,6 @@
 import init, {
   Document as WasmDocument,
+  KnowledgeBase as WasmKnowledgeBase,
   Parser as WasmParser,
   TransformEngine as WasmTransformEngine,
   listPackages as wasmListPackages,
@@ -13,6 +14,7 @@ await init({ module_or_path: new URL(wasmUrl, import.meta.url) });
 
 const bindings = createBindings({
   Document: WasmDocument,
+  KnowledgeBase: WasmKnowledgeBase,
   Parser: WasmParser,
   TransformEngine: WasmTransformEngine,
   serialize: wasmSerialize,
@@ -26,6 +28,7 @@ export const {
   TexformEditError,
   TexformConfigError,
   TexformTransformError,
+  KnowledgeBase,
   Parser,
   TransformEngine,
   Document,

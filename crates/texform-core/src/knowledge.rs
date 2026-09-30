@@ -1,6 +1,6 @@
-//! Knowledge base: the backing store behind [`ParseContext`](crate::parse::ParseContext).
+//! Knowledge base: the per-mode catalogs behind [`KnowledgeBase`].
 //!
-//! A [`KnowledgeBase`] holds indexed command, environment, character, and
+//! A [`Catalog`] holds indexed command, environment, character, and
 //! delimiter-control metadata loaded from `texform-knowledge` package definitions.
 //! It is the single source of truth the parser consults when recognizing
 //! control sequences and environments.
@@ -23,7 +23,9 @@
 //! fixed canonical order regardless of the caller-supplied order. This
 //! keeps merge results and `from_packages` arrays stable.
 //!
-//! For rapid prototyping, configuration errors fail fast (panic).
+//! Public knowledge construction reports invalid packages and argument specs as errors.
+
+pub use crate::parse::{KnowledgeBase, KnowledgeBaseBuildError, KnowledgeBaseBuilder};
 
 use crate::ast::Node;
 use std::collections::{HashMap, HashSet};
@@ -97,7 +99,7 @@ impl std::error::Error for PackageLoadError {}
 /// - `suppressed_command_names`: names removed via `remove_item(Command)`.
 ///   Prevents a deleted name from "reviving" through a character fallback.
 #[derive(Debug, Clone)]
-pub struct KnowledgeBase {
+pub struct Catalog {
     commands: Vec<ActiveCommandRecord>,
     command_idx_by_name: HashMap<&'static str, usize>,
     characters: Vec<ActiveCharacterRecord>,
@@ -119,7 +121,7 @@ enum ActiveCommandSource {
     Character(usize),
 }
 
-impl KnowledgeBase {
+impl Catalog {
     fn new() -> Self {
         Self {
             commands: Vec::new(),
@@ -149,7 +151,7 @@ impl KnowledgeBase {
     }
 
     pub fn try_build_from_packages(packages: &[&str]) -> Result<Self, PackageLoadError> {
-        let mut kb = KnowledgeBase::new();
+        let mut kb = Catalog::new();
         let to_load = canonical_package_import_order(packages);
         import_package_names(&mut kb, to_load.as_slice())?;
         Ok(kb)
@@ -159,7 +161,7 @@ impl KnowledgeBase {
         packages: &[&str],
         target_mode: ContentMode,
     ) -> Result<Self, PackageLoadError> {
-        let mut kb = KnowledgeBase::new();
+        let mut kb = Catalog::new();
         let to_load = canonical_package_import_order(packages);
         import_package_names_for_mode(&mut kb, to_load.as_slice(), target_mode)?;
         Ok(kb)
@@ -221,8 +223,51 @@ impl KnowledgeBase {
         self.lookup_delimiter(name, true).map(|record| record.name)
     }
 
+    pub fn commands(&self) -> Vec<&ActiveCommandRecord> {
+        let mut records: Vec<_> = self
+            .active_command_idx_by_name
+            .keys()
+            .filter_map(|name| self.lookup_command(name))
+            .collect();
+        records.sort_by_key(|record| record.name);
+        records
+    }
+
+    pub fn environments(&self) -> Vec<&ActiveEnvironmentRecord> {
+        let mut records: Vec<_> = self
+            .env_idx_by_name
+            .values()
+            .map(|&index| &self.envs[index])
+            .collect();
+        records.sort_by_key(|record| record.name);
+        records
+    }
+
+    pub fn characters(&self) -> Vec<&ActiveCharacterRecord> {
+        let mut records: Vec<_> = self
+            .character_idx_by_name
+            .values()
+            .map(|&index| &self.characters[index])
+            .collect();
+        records.sort_by(|left, right| left.name.cmp(&right.name));
+        records
+    }
+
+    pub fn delimiters(&self) -> Vec<&ActiveDelimiterRecord> {
+        let mut records: Vec<_> = self
+            .delimiter_idx_by_key
+            .values()
+            .map(|&index| &self.delimiters[index])
+            .collect();
+        records.sort_by_key(|record| (record.name, record.is_control_sequence));
+        records
+    }
+
     /// Insert a context item, dispatching to the appropriate typed inserter.
-    pub fn insert_item(&mut self, item: impl Into<ContextItem>) -> Result<(), ArgSpecParseError> {
+    pub(crate) fn insert_item(
+        &mut self,
+        item: impl Into<ContextItem>,
+    ) -> Result<(), ArgSpecParseError> {
         match item.into() {
             ContextItem::Command(item) => self.insert_command(item),
             ContextItem::Environment(item) => self.insert_environment(item),
@@ -245,7 +290,7 @@ impl KnowledgeBase {
     }
 
     /// Remove a previously inserted item. Returns `true` if found.
-    pub fn remove_item(&mut self, item: impl Into<ContextItem>) -> bool {
+    pub(crate) fn remove_item(&mut self, item: impl Into<ContextItem>) -> bool {
         match item.into() {
             ContextItem::Command(item) => self.remove_command_by_name(item.name.as_str()),
             ContextItem::Environment(item) => self.remove_environment_by_name(item.name.as_str()),
@@ -255,13 +300,16 @@ impl KnowledgeBase {
         }
     }
 
-    pub fn insert_environment(&mut self, item: EnvironmentItem) -> Result<(), ArgSpecParseError> {
+    pub(crate) fn insert_environment(
+        &mut self,
+        item: EnvironmentItem,
+    ) -> Result<(), ArgSpecParseError> {
         let meta = environment_item_into_meta(item, vec![RUNTIME_PACKAGE_NAME.to_string()])?;
         self.append_env_meta(meta);
         Ok(())
     }
 
-    pub fn insert_delimiter_control(&mut self, item: DelimiterControlItem) {
+    pub(crate) fn insert_delimiter_control(&mut self, item: DelimiterControlItem) {
         if self.lookup_delimiter(item.name.as_str(), true).is_some() {
             return;
         }
@@ -915,10 +963,7 @@ pub fn lookup_environment_node_name(node: &Node) -> Option<&str> {
     }
 }
 
-fn import_package_names(
-    kb: &mut KnowledgeBase,
-    requested: &[&str],
-) -> Result<(), PackageLoadError> {
+fn import_package_names(kb: &mut Catalog, requested: &[&str]) -> Result<(), PackageLoadError> {
     for &name in requested {
         let pkg = texform_knowledge::builtin::lookup_package(name).ok_or_else(|| {
             PackageLoadError::UnknownPackage {
@@ -931,7 +976,7 @@ fn import_package_names(
 }
 
 fn import_package_names_for_mode(
-    kb: &mut KnowledgeBase,
+    kb: &mut Catalog,
     requested: &[&str],
     target_mode: ContentMode,
 ) -> Result<(), PackageLoadError> {
@@ -952,19 +997,19 @@ fn import_package_names_for_mode(
 #[cfg(test)]
 pub(crate) fn try_build_kb_from_exact_packages(
     requested: &[&str],
-) -> Result<KnowledgeBase, PackageLoadError> {
-    let mut kb = KnowledgeBase::new();
+) -> Result<Catalog, PackageLoadError> {
+    let mut kb = Catalog::new();
     import_package_names(&mut kb, requested)?;
     Ok(kb)
 }
 
 #[cfg(test)]
-fn build_default_kb(packages: Option<&[&str]>) -> KnowledgeBase {
+fn build_default_kb(packages: Option<&[&str]>) -> Catalog {
     match packages {
-        Some(list) => KnowledgeBase::build_from_packages(list),
+        Some(list) => Catalog::build_from_packages(list),
         None => {
             let package_names = texform_knowledge::builtin::all_package_names();
-            KnowledgeBase::build_from_packages(package_names.as_slice())
+            Catalog::build_from_packages(package_names.as_slice())
         }
     }
 }

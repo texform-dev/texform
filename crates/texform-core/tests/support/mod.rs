@@ -4,7 +4,7 @@ pub(crate) mod parser;
 
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
-    ParseConfig, ParseContextBuildError, ParseContextBuilder, ParseDiagnostic, ParseResult,
+    ParseConfig, ParseContextBuilder, ParseDiagnostic, ParseResult,
 };
 use texform_interface::syntax_node::{Argument, ArgumentValue, ContentMode, SyntaxNode};
 
@@ -37,7 +37,7 @@ pub(crate) fn parse_with_items(
 ) -> ParseResult {
     let mut builder = ParseContextBuilder::empty();
     for item in items {
-        builder = builder.insert_item(item.clone());
+        builder = builder.item(item.clone());
     }
     let ctx = builder.build().expect("context items should be valid");
     let config = if reject_unknown {
@@ -82,18 +82,15 @@ pub(crate) fn parse_many_with_items(
     };
 
     for item in items {
-        builder = builder.insert_item(item.clone());
+        builder = builder.item(item.clone());
     }
 
     let parse_ctx = match builder.build() {
         Ok(parse_ctx) => parse_ctx,
-        Err(ParseContextBuildError::PackageLoad(error)) => {
-            return invalid_inputs_output(inputs, format!("package loading failed: {error}"));
-        }
-        Err(ParseContextBuildError::InvalidContextItem { name, source }) => {
+        Err(error) => {
             return invalid_inputs_output(
                 inputs,
-                format!("spec validation failed for {name}: {source}"),
+                format!("knowledge base failed to build: {error}"),
             );
         }
     };

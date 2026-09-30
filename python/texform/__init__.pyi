@@ -229,7 +229,7 @@ class PackageInfo(TypedDict):
 
     Attributes:
         name: The package identifier accepted by the ``packages`` argument of
-            ``Parser`` and ``TransformEngine`` (such as ``"base"`` or ``"ams"``).
+            ``KnowledgeBase`` (such as ``"base"`` or ``"ams"``).
         commands: The number of command records in the package.
         environments: The number of environment records in the package.
     """
@@ -703,6 +703,7 @@ ArgValueInput: TypeAlias = ArgRef
 
 __all__ = [
     "Document",
+    "KnowledgeBase",
     "ConfigError",
     "EditError",
     "FinalizeAstConfig",
@@ -778,9 +779,8 @@ class TransformError(TexformError):
     """Raised on a transform-engine failure.
 
     Triggers include an eliminated-form contract violation, passing
-    ``TransformEngine.transform`` a document that ``has_errors()``, and — in the
-    Python build — passing a foreign document not produced by that engine's own
-    ``parse``.
+    ``TransformEngine.transform`` a document that ``has_errors()``, or one
+    bound to a different knowledge-base instance.
     """
 
 
@@ -810,7 +810,7 @@ class Document:
         Node, Parser, ParseResult, Parsing
     """
 
-    def __init__(self) -> None:
+    def __init__(self, knowledge_base: KnowledgeBase | None = None, *, mode: Literal["math", "text"] = "math") -> None:
         """Construct an empty document holding a single empty root.
 
         This is a complete tree: ``has_errors()`` is ``False`` and it is fully
@@ -821,15 +821,25 @@ class Document:
             doc.to_latex()  # ''
         """
 
+    def knowledge_base(self) -> KnowledgeBase:
+        """Return the immutable knowledge base bound to this document."""
+    def copy(self) -> Document:
+        """Deep-copy the tree into a new document with new node identities.
+
+        The copy shares this document's knowledge base, so a transform engine built on it accepts both. Also available as ``copy.copy`` and ``copy.deepcopy``.
+        """
+    def __copy__(self) -> Document: ...
+    def __deepcopy__(self, memo: dict[int, Any]) -> Document: ...
+
     @staticmethod
-    def from_syntax(node: SyntaxNode) -> Document:
+    def from_syntax(node: SyntaxNode, knowledge_base: KnowledgeBase | None = None) -> Document:
         """Build a document from a ``SyntaxNode`` dict, the lossless parse snapshot.
 
         ``from_syntax`` and ``to_syntax`` are symmetric over every node kind,
         including ``Error`` and ``Prime``. A bare ``Prime`` is a math symbol;
         use ``Scripted`` with an empty group base for a leading quote. Invalid external syntax is rejected
-        rather than corrupting the tree. A document built this way is not produced
-        by an engine's parser, so ``TransformEngine.transform`` rejects it.
+        rather than corrupting the tree. The document can be transformed by any
+        engine sharing its knowledge-base instance.
 
         Args:
             node: A ``SyntaxNode`` dict, typically produced by ``to_syntax()``.
@@ -1295,6 +1305,12 @@ class Node:
         Document
     """
 
+    def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
+    def __repr__(self) -> str: ...
+    def document(self) -> Document:
+        """Return the document that owns this handle."""
+
     def kind(self) -> NodeKind:
         """Return the node kind as a string.
 
@@ -1667,108 +1683,48 @@ class NormalizeOverrides(ParseOverrides, TransformOverrides, total=False):
     """
 
 
-class Parser:
-    """Turn LaTeX source into a parse result.
+class KnowledgeBase:
+    """Immutable knowledge shared by parsers, engines, and documents.
 
-    A ``Parser`` consults the knowledge base for command and environment
-    signatures to build structured parse trees. It never raises on malformed
-    input and never fabricates a placeholder tree; instead it reports diagnostics
-    and, in lenient mode, preserves unparseable fragments as ``Error`` nodes.
-
-    Since 0.4.0 the default parse configuration is ``LENIENT``
-    (``reject_unknown=False``, ``abort_on_error=False``). Per-call ``config``
-    must be a complete ``ParseConfig`` instance; a dict passed as ``config``
-    raises ``ConfigError``. Other keywords are overlays
-    (``parse(src, reject_unknown=True)``). ``packages=None`` loads the default
-    runtime packages (six packages, excluding ``physics``), not every built-in
-    package. Loading ``braket`` together with ``physics`` is allowed, but
-    ``physics`` overrides their shared command definitions. Built-in packages
-    are imported in a fixed order, regardless of the supplied list order.
-
-    For the conceptual model, see the Parsing guide.
-
-    Examples:
-        parser = texform.Parser()
-        result = parser.parse(r"\\frac{x}{y}")
-        result["document"].to_latex()  # '\\frac { x } { y }'
-        parser.parse(r"\\frac{x}{y}", config=texform.ParseConfig(reject_unknown=True))
-
-    See Also:
-        ParseConfig, Document, ParseResult, Parsing
+    Equality and hashing use instance identity. Separately constructed knowledge
+    bases are distinct even with identical recipes. Query results are copies.
+    ``packages=None`` loads the default runtime packages; ``[]`` loads none.
     """
 
     def __init__(
         self,
         packages: list[str] | None = None,
+        *,
         items: list[ContextItem] | None = None,
         remove_commands: list[str] | None = None,
         remove_environments: list[str] | None = None,
         remove_delimiter_controls: list[str] | None = None,
-        default_parse_config: ParseConfig | None = None,
     ) -> None:
-        """Construct a parser, optionally restricting or customizing knowledge.
+        """Build the knowledge base once.
 
         Args:
-            packages: Package names to load. ``None`` loads the default runtime
-                packages, not every package in the catalog. Use
-                ``list_packages()`` to see the available names. An unknown name
-                raises ``ConfigError``.
-            items: Context-item dicts that inject custom command, environment, or
-                delimiter-control knowledge into the parser.
-            remove_commands: Command names to drop from the loaded knowledge.
-            remove_environments: Environment names to drop from the loaded
-                knowledge.
-            remove_delimiter_controls: Delimiter-control names to drop from the
-                loaded knowledge.
-            default_parse_config: Complete parse configuration used when
-                ``parse`` is called without ``config`` or overrides.
+            packages: Package names to load, or ``None`` for the defaults.
+            items: Extra command, environment, or delimiter items to add.
+            remove_commands: Command names to remove after loading.
+            remove_environments: Environment names to remove after loading.
+            remove_delimiter_controls: Delimiter control names to remove after loading.
 
         Raises:
-            ConfigError: If a requested package name is unknown, or an item is
-                malformed.
+            ConfigError: If a package name or an item is invalid.
         """
 
-    def parse(
-        self,
-        src: str,
-        config: ParseConfig | None = None,
-        **overrides: Unpack[ParseOverrides],
-    ) -> ParseResult:
-        """Parse a LaTeX string into a parse result.
-
-        Parsing never raises on malformed input. The result has exactly three
-        honest states: a hard failure (``document`` is ``None``), a clean parse
-        (a ``Document`` whose ``has_errors()`` is ``False``), or a partial parse
-        (a read-only ``Document`` whose ``has_errors()`` is ``True``). Empty
-        input is a clean parse, not ``None``.
-
-        Args:
-            src: The LaTeX source string.
-            config: A complete ``ParseConfig``; ``**overrides`` are layered on
-                top. ``None`` uses the parser default. A dict here raises
-                ``ConfigError``.
-            overrides: Keyword overlay from ``ParseOverrides``. Nested values
-                must be dicts, not config class instances.
-
-        Returns:
-            A ``ParseResult`` dict with two keys: ``document`` (a ``Document`` or
-            ``None``) and ``diagnostics`` (a list of diagnostic dicts).
-
-        Raises:
-            ConfigError: If ``config`` is not a ``ParseConfig``, a dict is
-                passed as ``config``, or an override key or value is invalid.
-
-        Examples:
-            result = texform.Parser().parse(r"\\frac{x}{y}")
-            document = result["document"]
-            diagnostics = result["diagnostics"]
-
-        See Also:
-            ParseConfig, ParseResult
-        """
-
-    def default_parse_config(self) -> ParseConfig:
-        """Return a new ``ParseConfig`` holding this parser's defaults."""
+    def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
+    def packages(self) -> list[str]:
+        """Return the loaded package names in canonical order."""
+    def commands(self, mode: Literal["math", "text"]) -> list[dict[str, Any]]:
+        """Return the command records for ``mode``, sorted by name."""
+    def environments(self, mode: Literal["math", "text"]) -> list[dict[str, Any]]:
+        """Return the environment records for ``mode``, sorted by name."""
+    def characters(self, mode: Literal["math", "text"]) -> list[dict[str, Any]]:
+        """Return the character records for ``mode``, sorted by name."""
+    def delimiters(self) -> list[dict[str, Any]]:
+        """Return delimiter records sorted by name."""
 
     def lookup_command(self, name: str, mode: Literal["math", "text"]) -> dict[str, Any] | None:
         """Look up the full knowledge entry for a command in a given mode.
@@ -1827,7 +1783,7 @@ class Parser:
             ``True`` if the name is a known delimiter control.
 
         Examples:
-            texform.Parser().is_delimiter_control("langle")  # True
+            texform.KnowledgeBase().is_delimiter_control("langle")  # True
         """
 
     def knows_command_name(self, name: str) -> bool:
@@ -1861,6 +1817,82 @@ class Parser:
         """
 
 
+class Parser:
+    """Turn LaTeX source into a parse result.
+
+    A ``Parser`` consults the knowledge base for command and environment
+    signatures to build structured parse trees. It never raises on malformed
+    input and never fabricates a placeholder tree; instead it reports diagnostics
+    and, in lenient mode, preserves unparseable fragments as ``Error`` nodes.
+
+    Since 0.4.0 the default parse configuration is ``LENIENT``
+    (``reject_unknown=False``, ``abort_on_error=False``). Per-call ``config``
+    must be a complete ``ParseConfig`` instance; a dict passed as ``config``
+    raises ``ConfigError``. Other keywords are overlays
+    (``parse(src, reject_unknown=True)``). Construct a ``KnowledgeBase`` to
+    customize packages and records, then share it with parsers and engines.
+
+    For the conceptual model, see the Parsing guide.
+
+    Examples:
+        parser = texform.Parser()
+        result = parser.parse(r"\\frac{x}{y}")
+        result["document"].to_latex()  # '\\frac { x } { y }'
+        parser.parse(r"\\frac{x}{y}", config=texform.ParseConfig(reject_unknown=True))
+
+    See Also:
+        ParseConfig, Document, ParseResult, Parsing
+    """
+
+    def __init__(self, knowledge_base: KnowledgeBase | None = None, *, default_parse_config: ParseConfig | None = None) -> None:
+        """Construct a parser; None uses the process-wide default knowledge base."""
+
+    def parse(
+        self,
+        src: str,
+        config: ParseConfig | None = None,
+        **overrides: Unpack[ParseOverrides],
+    ) -> ParseResult:
+        """Parse a LaTeX string into a parse result.
+
+        Parsing never raises on malformed input. The result has exactly three
+        honest states: a hard failure (``document`` is ``None``), a clean parse
+        (a ``Document`` whose ``has_errors()`` is ``False``), or a partial parse
+        (a read-only ``Document`` whose ``has_errors()`` is ``True``). Empty
+        input is a clean parse, not ``None``.
+
+        Args:
+            src: The LaTeX source string.
+            config: A complete ``ParseConfig``; ``**overrides`` are layered on
+                top. ``None`` uses the parser default. A dict here raises
+                ``ConfigError``.
+            overrides: Keyword overlay from ``ParseOverrides``. Nested values
+                must be dicts, not config class instances.
+
+        Returns:
+            A ``ParseResult`` dict with two keys: ``document`` (a ``Document`` or
+            ``None``) and ``diagnostics`` (a list of diagnostic dicts).
+
+        Raises:
+            ConfigError: If ``config`` is not a ``ParseConfig``, a dict is
+                passed as ``config``, or an override key or value is invalid.
+
+        Examples:
+            result = texform.Parser().parse(r"\\frac{x}{y}")
+            document = result["document"]
+            diagnostics = result["diagnostics"]
+
+        See Also:
+            ParseConfig, ParseResult
+        """
+
+    def default_parse_config(self) -> ParseConfig:
+        """Return a new ``ParseConfig`` holding this parser's defaults."""
+
+    def knowledge_base(self) -> KnowledgeBase:
+        """Return the immutable knowledge base shared with parsed documents."""
+
+
 class TransformEngine:
     """Normalize a formula into the canonical form selected by a profile.
 
@@ -1868,7 +1900,7 @@ class TransformEngine:
     Rewrite loop, FinalizeAst, FlattenGroups). A profile picks rule levels;
     ``TransformConfig`` is nested by phase and controls per-run switches
     without changing the selected rule set. The engine also bundles a parser, so
-    it exposes ``parse`` and the same knowledge-base lookups as ``Parser``.
+    it exposes ``parse`` and shares its immutable ``knowledge_base()``.
 
     Since 0.4.0 the bundled parser defaults to ``ParseConfig`` ``LENIENT``, and
     ``TransformConfig`` is the nested four-phase object (not flat
@@ -1904,38 +1936,8 @@ class TransformEngine:
         TransformConfig, NormalizeReportResult, TransformReport, Parser, Transforms
     """
 
-    def __init__(
-        self,
-        profile: TransformProfile,
-        packages: list[str] | None = None,
-        items: list[ContextItem] | None = None,
-        remove_commands: list[str] | None = None,
-        remove_environments: list[str] | None = None,
-        remove_delimiter_controls: list[str] | None = None,
-        disable_rules: list[str] | None = None,
-        default_parse_config: ParseConfig | None = None,
-    ) -> None:
-        """Construct a transform engine for a profile.
-
-        Args:
-            profile: The normalization profile: ``"authoring"``, ``"faithful"``,
-                ``"corpus"``, or ``"equiv"``. An unknown profile raises
-                ``ConfigError``.
-            packages: Package names to load; ``None`` loads the default runtime
-                packages, not every package in the catalog.
-            items: Context-item dicts injecting custom knowledge.
-            remove_commands: Command names to drop from the knowledge.
-            remove_environments: Environment names to drop from the knowledge.
-            remove_delimiter_controls: Delimiter-control names to drop.
-            disable_rules: Rewrite rule keys to disable, such as
-                ``"physics/dv-to-frac-d"``.
-            default_parse_config: Complete parse configuration used by
-                ``parse`` / ``normalize`` when no per-call parse overlay is given.
-
-        Raises:
-            ConfigError: If the profile or a package name is unknown, or an item
-                is malformed.
-        """
+    def __init__(self, profile: TransformProfile, knowledge_base: KnowledgeBase | None = None, *, disable_rules: list[str] | None = None, default_parse_config: ParseConfig | None = None) -> None:
+        """Construct an engine sharing knowledge; invalid profiles or rules raise ConfigError."""
 
     def normalize(
         self,
@@ -2016,10 +2018,9 @@ class TransformEngine:
     ) -> None:
         """Transform a live ``Document`` in place.
 
-        ``transform`` accepts only documents produced by this engine's own
-        ``parse``. A document from ``Document()``, ``Document.from_syntax()``, or
-        another parser can still be edited and serialized, but ``transform``
-        rejects it with ``TransformError``. The document must also be complete;
+        ``transform`` accepts documents sharing this engine's knowledge-base
+        instance, including constructed, copied, and imported snapshots.
+        The document must also be complete;
         a document that ``has_errors()`` is rejected with ``TransformError``.
         This path returns ``None`` and does not build a report.
 
@@ -2035,7 +2036,7 @@ class TransformEngine:
             ``None``.
 
         Raises:
-            TransformError: If the document is foreign to this engine, has parse
+            TransformError: If the document has a different knowledge base, has parse
                 errors, or on a contract violation.
             ConfigError: If ``config`` is not a ``TransformConfig``, a dict is
                 passed as ``config``, or an override key or value is invalid.
@@ -2075,7 +2076,7 @@ class TransformEngine:
             The diagnostic transform report dict.
 
         Raises:
-            TransformError: If the document is foreign to this engine, has parse
+            TransformError: If the document has a different knowledge base, has parse
                 errors, or on a contract violation.
             ConfigError: If ``config`` or an override is invalid.
 
@@ -2120,92 +2121,8 @@ class TransformEngine:
     def default_transform_config(self) -> TransformConfig:
         """Return a new ``TransformConfig`` holding this engine's transform defaults."""
 
-    def lookup_command(self, name: str, mode: Literal["math", "text"]) -> dict[str, Any] | None:
-        """Look up the full knowledge entry for a command in a given mode.
-
-        Args:
-            name: The command name without the leading backslash.
-            mode: ``"math"`` or ``"text"``.
-
-        Returns:
-            A dict describing the command, including its parsed ``args`` slots, or
-            ``None`` if unknown in that mode.
-        """
-
-    def lookup_explicit_command(
-        self, name: str, mode: Literal["math", "text"]
-    ) -> dict[str, Any] | None:
-        """Look up the knowledge entry for an explicit command in a given mode.
-
-        Args:
-            name: The command name without the leading backslash.
-            mode: ``"math"`` or ``"text"``.
-
-        Returns:
-            A knowledge-entry dict, or ``None`` if unknown in that mode.
-        """
-
-    def lookup_character(self, name: str, mode: Literal["math", "text"]) -> dict[str, Any] | None:
-        """Look up the knowledge entry for a character in a given mode.
-
-        Args:
-            name: The character name without the leading backslash.
-            mode: ``"math"`` or ``"text"``.
-
-        Returns:
-            A knowledge-entry dict, or ``None`` if unknown in that mode.
-        """
-
-    def lookup_env(self, name: str, mode: Literal["math", "text"]) -> dict[str, Any] | None:
-        """Look up the knowledge entry for an environment in a given mode.
-
-        Args:
-            name: The environment name.
-            mode: ``"math"`` or ``"text"``.
-
-        Returns:
-            A knowledge-entry dict, or ``None`` if unknown in that mode.
-        """
-
-    def is_delimiter_control(self, name: str) -> bool:
-        """Report whether a name is a delimiter control such as ``langle``.
-
-        Args:
-            name: The control name without the leading backslash.
-
-        Returns:
-            ``True`` if the name is a known delimiter control.
-        """
-
-    def knows_command_name(self, name: str) -> bool:
-        """Report whether a command name is known, ignoring mode.
-
-        Args:
-            name: The command name without the leading backslash.
-
-        Returns:
-            ``True`` if the command is known in any mode.
-        """
-
-    def knows_env_name(self, name: str) -> bool:
-        """Report whether an environment name is known, ignoring mode.
-
-        Args:
-            name: The environment name.
-
-        Returns:
-            ``True`` if the environment is known in any mode.
-        """
-
-    def knows_character_name(self, name: str) -> bool:
-        """Report whether a character name is known, ignoring mode.
-
-        Args:
-            name: The character name without the leading backslash.
-
-        Returns:
-            ``True`` if the character is known in any mode.
-        """
+    def knowledge_base(self) -> KnowledgeBase:
+        """Return the immutable knowledge base shared with parsed documents."""
 
 
 class ParseConfig:
@@ -2475,7 +2392,8 @@ class TransformConfig:
 def count_targets(
     src: str,
     config: ParseConfig | None = None,
-    packages: list[str] | None = None,
+    *,
+    knowledge_base: KnowledgeBase | None = None,
 ) -> dict[str, int]:
     """Count command, environment, and character targets in a LaTeX formula.
 
@@ -2487,8 +2405,7 @@ def count_targets(
     Args:
         src: The LaTeX source string.
         config: A ``ParseConfig``, or ``None`` for the defaults.
-        packages: Package names to load; ``None`` loads the default runtime
-            packages, not every package in the catalog.
+        knowledge_base: Shared knowledge, or ``None`` for the process-wide default.
 
     Returns:
         A dict mapping a prefixed target key to its occurrence count. Keys are
@@ -2531,7 +2448,7 @@ def list_packages() -> list[PackageInfo]:
     """List the built-in knowledge packages with their record counts.
 
     The returned names are the package identifiers accepted by the ``packages``
-    argument of ``Parser`` and ``TransformEngine``.
+    argument of ``KnowledgeBase``.
 
     Returns:
         A list of ``PackageInfo`` dicts, each ``{"name": str, "commands": int,

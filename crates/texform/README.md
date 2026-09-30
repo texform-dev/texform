@@ -28,6 +28,23 @@ assert_eq!(document.to_latex()?, r"\frac { a } { b }");
 
 Profiles select the normalization target: `Authoring` (polished author-facing output), `Faithful` (render-faithful universal forms), `Corpus` (complete canonical training labels), and `Equiv` (an aggressive intermediate for equivalence comparison). `Equiv` adds rules such as rewriting centered `\cfrac` forms to `\frac`, discarding continued-fraction styling that `Corpus` retains. Its output is intended for comparison, deduplication, or fingerprints rather than training labels for the original images.
 
+### Shared knowledge bases
+
+Default parsers, engines, and documents share one immutable knowledge base. For custom packages or definitions, build a `KnowledgeBase` once and pass that same instance to each consumer; independently constructed instances are distinct even when their contents match. Package selection and record queries belong to the knowledge base.
+
+```rust
+use texform::{KnowledgeBase, Parser, Profile, TransformEngine};
+
+let kb = KnowledgeBase::builder().packages(&["base", "ams"]).build()?;
+let parser = Parser::builder().knowledge_base(kb.clone()).build();
+let engine = TransformEngine::builder()
+    .knowledge_base(kb)
+    .profile(Profile::Corpus)
+    .build()?;
+let (mut document, _) = parser.parse(r"a \over b").try_into_document()?;
+engine.transform(&mut document)?;
+```
+
 ## Stability
 
 `texform` follows semantic versioning and is the only public entry point. The `texform-*` crates it depends on are internal implementation details — they are published only because crates.io requires it, and their APIs may change in any release. Do not depend on them directly.

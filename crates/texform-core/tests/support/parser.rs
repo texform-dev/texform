@@ -58,10 +58,10 @@ pub(crate) fn test_context() -> ParseContext {
         .get_or_init(|| {
             let mut builder = ParseContextBuilder::empty().packages(&["base"]);
             for item in shared_test_items() {
-                builder = builder.insert_item(item.clone());
+                builder = builder.item(item.clone());
             }
             for item in linebreak_test_items() {
-                builder = builder.insert_item(item);
+                builder = builder.item(item);
             }
             builder.build().expect("shared test items should be valid")
         })
@@ -75,13 +75,13 @@ where
 {
     let mut builder = ParseContextBuilder::empty().packages(&["base"]);
     for item in shared_test_items() {
-        builder = builder.insert_item(item.clone());
+        builder = builder.item(item.clone());
     }
     for item in linebreak_test_items() {
-        builder = builder.insert_item(item);
+        builder = builder.item(item);
     }
     for item in items {
-        builder = builder.insert_item(item);
+        builder = builder.item(item);
     }
     builder
         .build()

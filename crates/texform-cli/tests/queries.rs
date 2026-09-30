@@ -29,19 +29,19 @@ fn info_reports_knowledge_records_like_the_bindings() {
 
     assert_eq!(
         lookup(&[r"\frac"]),
-        json!({ "command": to_json(command_info_to_dto(parser.lookup_command("frac", math).unwrap())) })
+        json!({ "command": to_json(command_info_to_dto(parser.knowledge_base().lookup_command("frac", math).unwrap())) })
     );
     // A character command has a character record next to its command record.
     assert_eq!(
         lookup(&[r"\alpha"]),
         json!({
-            "command": to_json(command_info_to_dto(parser.lookup_command("alpha", math).unwrap())),
-            "character": to_json(character_info_to_dto(parser.lookup_character("alpha", math).unwrap())),
+            "command": to_json(command_info_to_dto(parser.knowledge_base().lookup_command("alpha", math).unwrap())),
+            "character": to_json(character_info_to_dto(parser.knowledge_base().lookup_character("alpha", math).unwrap())),
         })
     );
     assert_eq!(
         lookup(&["--env", "align"]),
-        json!({ "environment": to_json(env_info_to_dto(parser.lookup_env("align", math).unwrap())) })
+        json!({ "environment": to_json(env_info_to_dto(parser.knowledge_base().lookup_env("align", math).unwrap())) })
     );
 
     let text = texform(&["info", r"\frac"], "");

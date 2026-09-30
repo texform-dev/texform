@@ -150,6 +150,23 @@ assert_eq!(document.to_latex()?, r"\frac { a } { b }");
 
 The Python and JavaScript bindings expose the same parser, document, and engine from the single Rust core. See the [PyPI package notes](python/texform/README.md) and the [npm package notes](packages/texform/README.md) for language-specific details.
 
+### Shared knowledge bases
+
+Default parsers, engines, and documents share one immutable knowledge base. For custom packages or definitions, build a `KnowledgeBase` once and pass that same instance to each consumer; independently constructed instances are distinct even when their contents match. Package selection and record queries belong to the knowledge base.
+
+```rust
+use texform::{KnowledgeBase, Parser, Profile, TransformEngine};
+
+let kb = KnowledgeBase::builder().packages(&["base", "ams"]).build()?;
+let parser = Parser::builder().knowledge_base(kb.clone()).build();
+let engine = TransformEngine::builder()
+    .knowledge_base(kb)
+    .profile(Profile::Corpus)
+    .build()?;
+let (mut document, _) = parser.parse(r"a \over b").try_into_document()?;
+engine.transform(&mut document)?;
+```
+
 ### Command line
 
 ```bash

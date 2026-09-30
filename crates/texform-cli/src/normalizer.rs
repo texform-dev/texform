@@ -45,8 +45,12 @@ impl Normalizer {
         overrides: NormalizeConfigInput,
     ) -> Result<Self, String> {
         let names: Vec<&str> = packages.iter().map(String::as_str).collect();
-        let engine = TransformEngine::builder()
+        let knowledge_base = texform::KnowledgeBase::builder()
             .packages(&names)
+            .build()
+            .map_err(|error| error.to_string())?;
+        let engine = TransformEngine::builder()
+            .knowledge_base(knowledge_base)
             .profile(profile.into())
             .build()
             .map_err(|error| error.to_string())?;

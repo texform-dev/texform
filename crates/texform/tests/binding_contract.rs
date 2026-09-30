@@ -107,7 +107,7 @@ fn transform_report_dto_serializes_as_snake_case() {
 
 #[test]
 fn tokenized_latex_dto_uses_snake_case_byte_offsets_and_closed_values() {
-    let parser = texform::Parser::builder().build().unwrap();
+    let parser = texform::Parser::builder().build();
     let document = parser.parse(r"\text{\%𝒜}").try_into_document().unwrap().0;
     let result = document.to_tokenized_latex().unwrap();
     let value = serde_json::to_value(texform::bindings::tokenized_latex_to_dto(result)).unwrap();
@@ -139,8 +139,9 @@ fn tokenized_latex_dto_uses_snake_case_byte_offsets_and_closed_values() {
 
 #[test]
 fn lookup_info_dto_reuses_stable_argspec_slots() {
-    let parser = texform::Parser::builder().build().unwrap();
+    let parser = texform::Parser::builder().build();
     let record = parser
+        .knowledge_base()
         .lookup_command("frac", texform::ContentMode::Math)
         .expect("default parser should know frac");
 

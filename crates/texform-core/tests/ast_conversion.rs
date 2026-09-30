@@ -11,7 +11,7 @@ use texform_interface::syntax_node::{ArgumentValue as SyntaxArgumentValue, Synta
 fn parse_with_items(src: &str, reject_unknown: bool, items: Vec<ContextItem>) -> SyntaxNode {
     let mut builder = ParseContextBuilder::empty().packages(&["base"]);
     for item in items {
-        builder = builder.insert_item(item);
+        builder = builder.item(item);
     }
     let ctx = builder
         .build()

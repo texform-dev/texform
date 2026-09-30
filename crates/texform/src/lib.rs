@@ -25,6 +25,16 @@
 //! [`SyntaxNode`] for serde with [`Document::to_syntax`], or normalize in place
 //! with [`TransformEngine::transform`].
 //!
+//! # Knowledge bases
+//!
+//! A [`KnowledgeBase`] records which commands, environments, characters, and
+//! delimiters are known and what arguments they take. It is immutable and
+//! compared by instance: parsers, engines, and documents built without one
+//! share a process-wide default, and a custom knowledge base from
+//! [`KnowledgeBase::builder`] should be built once and passed to each of them
+//! (see [`Parser::builder`]). [`TransformEngine::transform`] rejects documents
+//! bound to another instance with [`Error::KnowledgeBaseMismatch`].
+//!
 //! # Error model and tree states
 //!
 //! Parsing never panics on bad input. It produces a [`ParseResult`] with one of
@@ -80,9 +90,11 @@ pub use document::{
     FromSyntaxError, GroupKindRef, NodeId, NodeKind, NodeRef, NodeSpanEntry,
 };
 pub use error::{Error, NormalizeError, TransformBuildError, TransformError};
-pub use knowledge::{PackageInfo, list_packages};
+pub use knowledge::{
+    KnowledgeBase, KnowledgeBaseBuildError, KnowledgeBaseBuilder, PackageInfo, list_packages,
+};
 pub use parse_result::{ParseError, ParseResult};
-pub use parser::{Parser, ParserBuildError, ParserBuilder};
+pub use parser::{Parser, ParserBuilder};
 pub use serialize::{
     AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, InfixGrouping,
     MathGroupInnerSpacing, ScriptOrder, ScriptSpacing, SerializationToken, SerializationTokenKind,

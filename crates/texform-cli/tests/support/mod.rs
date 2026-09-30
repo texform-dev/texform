@@ -18,7 +18,7 @@ pub fn engine(profile: Profile) -> TransformEngine {
 
 /// Facade parser using the library's default package selection.
 pub fn parser() -> Parser {
-    Parser::builder().build().unwrap()
+    Parser::builder().build()
 }
 
 /// Everything one `texform` invocation wrote before exiting.

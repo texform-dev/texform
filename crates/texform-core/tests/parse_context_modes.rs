@@ -27,19 +27,19 @@ fn builder_compiles_distinct_math_and_text_kbs() {
 #[test]
 fn parse_context_uses_text_lane_for_nested_text_only_command() {
     let ctx = ParseContextBuilder::empty()
-        .insert_item(CommandItem::new(
+        .item(CommandItem::new(
             "text",
             CommandKind::Prefix,
             AllowedMode::Math,
             "m:T",
         ))
-        .insert_item(CommandItem::new(
+        .item(CommandItem::new(
             "textonly",
             CommandKind::Prefix,
             AllowedMode::Text,
             "m:T",
         ))
-        .insert_item(EnvironmentItem::new(
+        .item(EnvironmentItem::new(
             "textenv",
             AllowedMode::Text,
             ContentMode::Text,

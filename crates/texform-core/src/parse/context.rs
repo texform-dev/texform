@@ -1,7 +1,7 @@
-//! Parse context that owns a per-instance immutable knowledge base.
+//! Immutable knowledge construction and the internal parser integration.
 //!
-//! [`ParseContext`] is the primary public API surface for freezing a knowledge
-//! base and parsing LaTeX formulas with a stable package-backed view.
+//! [`KnowledgeBase`] shares a stable package-backed view across documents
+//! and parser calls.
 //!
 //! The module also defines the shared output types ([`ParseResult`],
 //! [`ParseDiagnostic`]) used by every parse entry point.
@@ -9,7 +9,6 @@
 use super::diagnostics::convert_diagnostic;
 use crate::parse::error::ParseFailure;
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use chumsky::prelude::*;
@@ -24,27 +23,12 @@ pub use texform_knowledge::specs::{
 };
 
 use crate::document::Document;
-pub use crate::knowledge::KnowledgeBase;
+use crate::knowledge::Catalog;
 pub use crate::knowledge::PackageLoadError;
 use crate::knowledge::default_package_names;
 
 use crate::parse::grammar::{self, TokenStream, TrackedNode, build_token_stream};
 use crate::parse::{ParseConfig, ParserState};
-
-/// Process-wide identity for a fully-built parser context.
-///
-/// Documents parsed by a context carry this id so transform engines can reject
-/// trees produced under a different parser context. Cloned contexts keep the
-/// same id; independently built contexts get distinct ids even when their
-/// package configuration is equivalent.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ParseContextId(u64);
-
-static NEXT_PARSE_CONTEXT_ID: AtomicU64 = AtomicU64::new(1);
-
-fn next_parse_context_id() -> ParseContextId {
-    ParseContextId(NEXT_PARSE_CONTEXT_ID.fetch_add(1, Ordering::Relaxed))
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
@@ -136,7 +120,7 @@ impl ContextItem {
     }
 }
 
-/// Runtime command definition to be injected into a [`ParseContext`].
+/// Runtime command definition to be injected into a [`KnowledgeBase`].
 ///
 /// The `spec` field uses the xparse-style argument specification string
 /// (e.g. `"m m"` for two mandatory args, `"s o m"` for star + optional + mandatory).
@@ -182,7 +166,7 @@ impl CommandItem {
     }
 }
 
-/// Runtime environment definition to be injected into a [`ParseContext`].
+/// Runtime environment definition to be injected into a [`KnowledgeBase`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnvironmentItem {
     /// Environment name (e.g. `"matrix"`, `"align"`)
@@ -288,100 +272,108 @@ fn record_insert(summary: &mut MutationSummary, item: &ContextItem) {
     }
 }
 
+/// Error returned by [`KnowledgeBaseBuilder::build`].
 #[derive(Debug)]
-pub enum ParseContextBuildError {
+#[non_exhaustive]
+pub enum KnowledgeBaseBuildError {
+    /// A requested package name is not a built-in package.
     PackageLoad(PackageLoadError),
+    /// An item's argument specification failed to parse.
     InvalidContextItem {
+        /// Name of the rejected item.
         name: String,
+        /// The argument-specification error.
         source: ArgSpecParseError,
     },
 }
 
-enum KnowledgeBaseMode {
-    DefaultPackages,
-    Packages(Vec<String>),
-    Empty,
+impl std::fmt::Display for KnowledgeBaseBuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PackageLoad(error) => error.fmt(f),
+            Self::InvalidContextItem { name, source } => {
+                write!(f, "invalid context item '{name}': {source}")
+            }
+        }
+    }
 }
 
-pub struct ParseContextBuilder {
-    mode: KnowledgeBaseMode,
+impl std::error::Error for KnowledgeBaseBuildError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::PackageLoad(error) => Some(error),
+            Self::InvalidContextItem { source, .. } => Some(source),
+        }
+    }
+}
+
+/// Builder for an immutable [`KnowledgeBase`].
+///
+/// Operations apply in call order on top of the selected packages, so a later
+/// `remove_*` hides an earlier [`item`](Self::item) with the same name.
+#[derive(Default)]
+pub struct KnowledgeBaseBuilder {
+    packages: Option<Vec<String>>,
     ops: Vec<BuilderOp>,
 }
 
-impl ParseContextBuilder {
+impl KnowledgeBaseBuilder {
+    #[doc(hidden)]
     pub fn empty() -> Self {
-        Self {
-            mode: KnowledgeBaseMode::Empty,
-            ops: Vec::new(),
-        }
+        Self::default().packages(&[])
     }
 
+    /// Load exactly these built-in packages instead of the defaults.
+    ///
+    /// Packages are imported in canonical order regardless of the given order.
+    /// An empty slice loads no built-in knowledge.
     pub fn packages(mut self, packages: &[&str]) -> Self {
-        self.mode =
-            KnowledgeBaseMode::Packages(packages.iter().map(|name| (*name).to_string()).collect());
+        self.packages = Some(packages.iter().map(|name| (*name).to_string()).collect());
         self
     }
 
-    pub fn insert_item(mut self, item: impl Into<ContextItem>) -> Self {
+    /// Add a runtime command, environment, or delimiter control.
+    pub fn item(mut self, item: impl Into<ContextItem>) -> Self {
         self.ops.push(BuilderOp::Insert(item.into()));
         self
     }
 
+    /// Remove a command by name in both content modes.
     pub fn remove_command(mut self, name: impl Into<String>) -> Self {
         self.ops.push(BuilderOp::RemoveCommand(name.into()));
         self
     }
 
+    /// Remove an environment by name in both content modes.
     pub fn remove_environment(mut self, name: impl Into<String>) -> Self {
         self.ops.push(BuilderOp::RemoveEnvironment(name.into()));
         self
     }
 
+    /// Remove a delimiter control by name.
     pub fn remove_delimiter_control(mut self, name: impl Into<String>) -> Self {
         self.ops
             .push(BuilderOp::RemoveDelimiterControl(name.into()));
         self
     }
 
-    pub fn build(self) -> Result<ParseContext, ParseContextBuildError> {
-        let (mut math_kb, mut text_kb, enabled_packages) = match self.mode {
-            KnowledgeBaseMode::Empty => {
-                (KnowledgeBase::empty(), KnowledgeBase::empty(), Vec::new())
-            }
-            KnowledgeBaseMode::DefaultPackages => {
-                let refs = default_package_names().to_vec();
-                let enabled_packages = canonical_enabled_package_names(refs.as_slice())?;
-                let math_kb = KnowledgeBase::try_build_from_packages_for_mode(
-                    refs.as_slice(),
-                    ContentMode::Math,
-                )
-                .map_err(ParseContextBuildError::PackageLoad)?;
-                let text_kb = KnowledgeBase::try_build_from_packages_for_mode(
-                    refs.as_slice(),
-                    ContentMode::Text,
-                )
-                .map_err(ParseContextBuildError::PackageLoad)?;
-
-                (math_kb, text_kb, enabled_packages)
-            }
-            KnowledgeBaseMode::Packages(packages) => {
-                let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
-                let enabled_packages = canonical_enabled_package_names(refs.as_slice())?;
-                (
-                    KnowledgeBase::try_build_from_packages_for_mode(
-                        refs.as_slice(),
-                        ContentMode::Math,
-                    )
-                    .map_err(ParseContextBuildError::PackageLoad)?,
-                    KnowledgeBase::try_build_from_packages_for_mode(
-                        refs.as_slice(),
-                        ContentMode::Text,
-                    )
-                    .map_err(ParseContextBuildError::PackageLoad)?,
-                    enabled_packages,
-                )
-            }
-        };
+    /// Build a new knowledge-base instance with its own identity.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KnowledgeBaseBuildError`] for an unknown package or an
+    /// invalid argument specification.
+    pub fn build(self) -> Result<KnowledgeBase, KnowledgeBaseBuildError> {
+        let names = self
+            .packages
+            .as_ref()
+            .map(|names| names.iter().map(String::as_str).collect::<Vec<_>>())
+            .unwrap_or_else(|| default_package_names().to_vec());
+        let enabled_packages = canonical_enabled_package_names(&names)?;
+        let mut math_catalog = Catalog::try_build_from_packages_for_mode(&names, ContentMode::Math)
+            .map_err(KnowledgeBaseBuildError::PackageLoad)?;
+        let mut text_catalog = Catalog::try_build_from_packages_for_mode(&names, ContentMode::Text)
+            .map_err(KnowledgeBaseBuildError::PackageLoad)?;
 
         let mut mutation_summary = MutationSummary::default();
 
@@ -389,14 +381,14 @@ impl ParseContextBuilder {
             match op {
                 BuilderOp::Insert(item) => {
                     record_insert(&mut mutation_summary, &item);
-                    insert_item_into_lane(&mut math_kb, &item, ContentMode::Math).map_err(
-                        |source| ParseContextBuildError::InvalidContextItem {
+                    insert_item_into_lane(&mut math_catalog, &item, ContentMode::Math).map_err(
+                        |source| KnowledgeBaseBuildError::InvalidContextItem {
                             name: item.name().to_string(),
                             source,
                         },
                     )?;
-                    insert_item_into_lane(&mut text_kb, &item, ContentMode::Text).map_err(
-                        |source| ParseContextBuildError::InvalidContextItem {
+                    insert_item_into_lane(&mut text_catalog, &item, ContentMode::Text).map_err(
+                        |source| KnowledgeBaseBuildError::InvalidContextItem {
                             name: item.name().to_string(),
                             source,
                         },
@@ -404,25 +396,25 @@ impl ParseContextBuilder {
                 }
                 BuilderOp::RemoveCommand(name) => {
                     mutation_summary.touched_commands.insert(name.clone());
-                    math_kb.remove_command_by_name(name.as_str());
-                    text_kb.remove_command_by_name(name.as_str());
+                    math_catalog.remove_command_by_name(name.as_str());
+                    text_catalog.remove_command_by_name(name.as_str());
                 }
                 BuilderOp::RemoveEnvironment(name) => {
                     mutation_summary.touched_environments.insert(name.clone());
-                    math_kb.remove_environment_by_name(name.as_str());
-                    text_kb.remove_environment_by_name(name.as_str());
+                    math_catalog.remove_environment_by_name(name.as_str());
+                    text_catalog.remove_environment_by_name(name.as_str());
                 }
                 BuilderOp::RemoveDelimiterControl(name) => {
                     let item = DelimiterControlItem::new(name);
-                    math_kb.remove_item(item.clone());
-                    text_kb.remove_item(item);
+                    math_catalog.remove_item(item.clone());
+                    text_catalog.remove_item(item);
                 }
             }
         }
 
         Ok(ParseContext::from_parts(
-            math_kb,
-            text_kb,
+            math_catalog,
+            text_catalog,
             mutation_summary,
             enabled_packages,
         ))
@@ -431,7 +423,7 @@ impl ParseContextBuilder {
 
 fn canonical_enabled_package_names(
     requested: &[&str],
-) -> Result<Vec<PackageName>, ParseContextBuildError> {
+) -> Result<Vec<PackageName>, KnowledgeBaseBuildError> {
     let mut packages = Vec::new();
     for package in texform_knowledge::builtin::MANAGED_PACKAGE_IMPORT_ORDER {
         if requested.contains(&package.as_str()) {
@@ -441,7 +433,7 @@ fn canonical_enabled_package_names(
 
     for requested_name in requested {
         if PackageName::from_str(requested_name).is_none() {
-            return Err(ParseContextBuildError::PackageLoad(
+            return Err(KnowledgeBaseBuildError::PackageLoad(
                 PackageLoadError::UnknownPackage {
                     name: (*requested_name).to_string(),
                 },
@@ -453,7 +445,7 @@ fn canonical_enabled_package_names(
 }
 
 fn insert_item_into_lane(
-    kb: &mut KnowledgeBase,
+    kb: &mut Catalog,
     item: &ContextItem,
     mode: ContentMode,
 ) -> Result<(), ArgSpecParseError> {
@@ -471,15 +463,6 @@ fn insert_item_into_lane(
             Ok(())
         }
         ContextItem::DelimiterControl(item) => kb.insert_item(item.clone()),
-    }
-}
-
-impl Default for ParseContextBuilder {
-    fn default() -> Self {
-        Self {
-            mode: KnowledgeBaseMode::DefaultPackages,
-            ops: Vec::new(),
-        }
     }
 }
 
@@ -631,245 +614,250 @@ impl std::fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
-/// Immutable parse context owning an isolated knowledge base.
+/// Immutable command, environment, character, and delimiter knowledge.
 ///
-/// A `ParseContext` is the main integration surface for callers that need to
-/// freeze a fully-built knowledge base, query metadata, and parse LaTeX
-/// formulas repeatedly.
-///
-/// # Construction
-///
-/// | Constructor | Loaded knowledge |
-/// |---|---|
-/// | [`empty()`](Self::empty) | Nothing |
-/// | [`from_packages()`](Self::from_packages) | Named packages only |
-/// | `Default::default()` | Default runtime packages |
-/// | [`shared()`](Self::shared) | Same as above, lazily cached `&'static` ref |
-///
-#[derive(Clone)]
-pub struct ParseContext {
-    math_kb: Arc<KnowledgeBase>,
-    text_kb: Arc<KnowledgeBase>,
+/// A knowledge base holds one catalog per content mode and never changes after
+/// [`KnowledgeBaseBuilder::build`]. Cloning is cheap and preserves identity:
+/// two handles are the same knowledge base only when [`ptr_eq`](Self::ptr_eq)
+/// holds, even if independently built instances have identical contents.
+/// [`Default`] returns a process-wide shared instance with the default packages.
+#[derive(Clone, Debug)]
+pub struct KnowledgeBase(Arc<KnowledgeBaseInner>);
+
+#[derive(Debug)]
+struct KnowledgeBaseInner {
+    math_catalog: Catalog,
+    text_catalog: Catalog,
     mutation_summary: MutationSummary,
     enabled_packages: Vec<PackageName>,
-    id: ParseContextId,
 }
 
-impl std::fmt::Debug for ParseContext {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ParseContext")
-            .field("math_kb", &self.math_kb)
-            .field("text_kb", &self.text_kb)
-            .field("enabled_packages", &self.enabled_packages)
-            .field("id", &self.id)
-            .finish_non_exhaustive()
-    }
-}
+// Internal aliases of the `KnowledgeBase*` types, kept for parser and transform internals.
+#[doc(hidden)]
+pub type ParseContext = KnowledgeBase;
+#[doc(hidden)]
+pub type ParseContextBuilder = KnowledgeBaseBuilder;
+#[doc(hidden)]
+pub type ParseContextBuildError = KnowledgeBaseBuildError;
 
-impl Default for ParseContext {
+impl Default for KnowledgeBase {
     fn default() -> Self {
-        ParseContextBuilder::default()
-            .build()
-            .expect("default parse context should build")
+        Self::shared().clone()
     }
 }
 
-impl ParseContext {
-    pub fn builder() -> ParseContextBuilder {
-        ParseContextBuilder::default()
+impl KnowledgeBase {
+    /// Start building a knowledge base from the default packages.
+    pub fn builder() -> KnowledgeBaseBuilder {
+        KnowledgeBaseBuilder::default()
     }
 
-    pub(crate) fn from_parts(
-        math_kb: KnowledgeBase,
-        text_kb: KnowledgeBase,
+    fn from_parts(
+        math_catalog: Catalog,
+        text_catalog: Catalog,
         mutation_summary: MutationSummary,
         enabled_packages: Vec<PackageName>,
     ) -> Self {
-        ParseContext {
-            math_kb: Arc::new(math_kb),
-            text_kb: Arc::new(text_kb),
+        Self(Arc::new(KnowledgeBaseInner {
+            math_catalog,
+            text_catalog,
             mutation_summary,
             enabled_packages,
-            id: next_parse_context_id(),
-        }
+        }))
     }
 
-    /// Stable identity for this parser context and its clones.
-    ///
-    /// Parsed [`Document`] values store this id. Transform engines compare it
-    /// with the id of their own parser context before mutating a live document.
-    pub fn id(&self) -> ParseContextId {
-        self.id
+    /// Whether both handles share the same immutable knowledge instance.
+    pub fn ptr_eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
     }
 
+    /// Process-local identity for host-language identity hashing.
+    #[doc(hidden)]
+    pub fn identity(&self) -> usize {
+        Arc::as_ptr(&self.0) as usize
+    }
+
+    /// Loaded packages in canonical import order.
+    pub fn packages(&self) -> Vec<&'static str> {
+        self.0
+            .enabled_packages
+            .iter()
+            .map(|package| package.as_str())
+            .collect()
+    }
+
+    /// Active commands in `mode`, sorted by name.
+    pub fn commands(&self, mode: ContentMode) -> Vec<&ActiveCommandRecord> {
+        self.catalog(mode).commands()
+    }
+
+    /// Environments in `mode`, sorted by name.
+    pub fn environments(&self, mode: ContentMode) -> Vec<&ActiveEnvironmentRecord> {
+        self.catalog(mode).environments()
+    }
+
+    /// Characters in `mode`, sorted by name.
+    pub fn characters(&self, mode: ContentMode) -> Vec<&ActiveCharacterRecord> {
+        self.catalog(mode).characters()
+    }
+
+    /// Delimiters of both modes, deduplicated and sorted by name and control-sequence flag.
+    pub fn delimiters(&self) -> Vec<&ActiveDelimiterRecord> {
+        let mut records = self.0.math_catalog.delimiters();
+        records.extend(self.0.text_catalog.delimiters());
+        records.sort_by_key(|record| (record.name, record.is_control_sequence));
+        records.dedup_by_key(|record| (record.name, record.is_control_sequence));
+        records
+    }
+
+    #[doc(hidden)]
     pub fn mutation_summary(&self) -> &MutationSummary {
-        &self.mutation_summary
+        &self.0.mutation_summary
     }
 
+    #[doc(hidden)]
     pub fn enabled_packages(&self) -> &[PackageName] {
-        self.enabled_packages.as_slice()
-    }
-
-    pub fn has_enabled_package(&self, package: PackageName) -> bool {
-        self.enabled_packages.contains(&package)
+        self.0.enabled_packages.as_slice()
     }
 
     /// Build an empty context with no package specs loaded.
-    ///
-    /// Useful as a blank slate when every definition will be injected manually.
+    #[doc(hidden)]
     pub fn empty() -> Self {
-        ParseContextBuilder::empty()
+        KnowledgeBaseBuilder::empty()
             .build()
             .expect("empty parse context should build")
     }
 
-    /// Build a context from an explicit list of package names.
-    /// The listed packages are imported in canonical order.
-    ///
-    /// # Panics
-    ///
-    /// Panics if any package name is unrecognized. Use [`try_from_packages`](Self::try_from_packages)
-    /// for fallible loading.
+    /// Panicking variant of [`try_from_packages`](Self::try_from_packages) for tests.
+    #[doc(hidden)]
     pub fn from_packages(packages: &[&str]) -> Self {
-        ParseContextBuilder::empty()
-            .packages(packages)
-            .build()
-            .expect("package parse context should build")
+        Self::try_from_packages(packages).expect("package knowledge base should build")
     }
 
-    /// Fallible variant of [`from_packages`](Self::from_packages).
-    ///
-    /// Returns [`PackageLoadError`] instead of panicking when a package name
-    /// is unrecognized.
+    /// Build knowledge from explicit packages, returning unknown-package errors.
+    #[doc(hidden)]
     pub fn try_from_packages(packages: &[&str]) -> Result<Self, PackageLoadError> {
-        ParseContextBuilder::empty()
+        KnowledgeBaseBuilder::empty()
             .packages(packages)
             .build()
             .map_err(|error| match error {
-                ParseContextBuildError::PackageLoad(error) => error,
-                ParseContextBuildError::InvalidContextItem { .. } => {
-                    panic!("try_from_packages should not hit invalid context item")
-                }
+                KnowledgeBaseBuildError::PackageLoad(error) => error,
+                _ => unreachable!("package-only builds have no items"),
             })
     }
 
-    /// Borrow the lazily-initialized default-package context.
-    ///
-    /// This is the cheapest way to parse with the default knowledge base: the
-    /// context is built once on first call and shared for the process lifetime.
+    /// Borrow the lazily-initialized default-package knowledge base.
+    #[doc(hidden)]
     pub fn shared() -> &'static ParseContext {
         shared_parser()
     }
 
-    /// Check whether `name` is a registered delimiter control sequence.
+    /// Whether `name` is a registered delimiter control sequence in either mode.
     pub fn is_delimiter_control(&self, name: &str) -> bool {
-        self.math_kb.is_delimiter_control(name) || self.text_kb.is_delimiter_control(name)
+        self.0.math_catalog.is_delimiter_control(name)
+            || self.0.text_catalog.is_delimiter_control(name)
     }
 
-    /// Look up a delimiter control by name, returning the interned name.
+    #[doc(hidden)]
     pub fn lookup_delimiter_control(&self, name: &str) -> Option<&'static str> {
-        self.math_kb
+        self.0
+            .math_catalog
             .lookup_delimiter_control(name)
-            .or_else(|| self.text_kb.lookup_delimiter_control(name))
+            .or_else(|| self.0.text_catalog.lookup_delimiter_control(name))
     }
 
+    #[doc(hidden)]
     pub fn lookup_delimiter(
         &self,
         name: &str,
         is_control_sequence: bool,
         mode: ContentMode,
     ) -> Option<&ActiveDelimiterRecord> {
-        self.kb_for(mode)
+        self.catalog(mode)
             .lookup_delimiter(name, is_control_sequence)
     }
 
-    /// Parse a LaTeX formula and return a unified output.
-    ///
-    /// Uses chumsky's output+errors semantics so that a partial syntax tree
-    /// can coexist with diagnostics.
+    /// Parse a LaTeX formula; the facade `Parser` is the public entry point.
+    #[doc(hidden)]
     pub fn parse(&self, src: &str, config: &ParseConfig) -> ParseResult {
         parse_with_context(self, src, config)
     }
 
-    /// Look up the active command metadata for `name`.
-    ///
-    /// The active entry may come from an explicit command definition or a
-    /// character-derived zero-arg view. Returns `None` if the name is unknown
-    /// or has been suppressed.
-    pub fn kb_for(&self, mode: ContentMode) -> &KnowledgeBase {
+    #[doc(hidden)]
+    pub fn catalog(&self, mode: ContentMode) -> &Catalog {
         match mode {
-            ContentMode::Math => self.math_kb.as_ref(),
-            ContentMode::Text => self.text_kb.as_ref(),
+            ContentMode::Math => &self.0.math_catalog,
+            ContentMode::Text => &self.0.text_catalog,
         }
     }
 
-    pub fn math_kb(&self) -> &KnowledgeBase {
-        self.math_kb.as_ref()
+    #[doc(hidden)]
+    pub fn math_catalog(&self) -> &Catalog {
+        &self.0.math_catalog
     }
 
-    pub fn text_kb(&self) -> &KnowledgeBase {
-        self.text_kb.as_ref()
+    #[doc(hidden)]
+    pub fn text_catalog(&self) -> &Catalog {
+        &self.0.text_catalog
     }
 
-    /// Look up the active command metadata for `name` in the selected lane.
+    /// Look up the active command for `name` in `mode`.
+    ///
+    /// The active entry may be an explicit command or a zero-argument view of
+    /// a character. Returns `None` if the name is unknown or was removed.
     pub fn lookup_command(&self, name: &str, mode: ContentMode) -> Option<&ActiveCommandRecord> {
-        self.kb_for(mode).lookup_command(name)
+        self.catalog(mode).lookup_command(name)
     }
 
-    /// Look up only the explicit (non-character-derived) command for `name`.
+    /// Look up only an explicit (non-character-derived) command for `name` in `mode`.
     pub fn lookup_explicit_command(
         &self,
         name: &str,
         mode: ContentMode,
     ) -> Option<&ActiveCommandRecord> {
-        self.kb_for(mode).lookup_explicit_command(name)
+        self.catalog(mode).lookup_explicit_command(name)
     }
 
-    /// Look up character metadata for a control sequence name.
+    /// Look up character metadata for a control-sequence name in `mode`.
     pub fn lookup_character(
         &self,
         name: &str,
         mode: ContentMode,
     ) -> Option<&ActiveCharacterRecord> {
-        self.kb_for(mode).lookup_character(name)
+        self.catalog(mode).lookup_character(name)
     }
 
-    /// Look up environment metadata by name.
+    /// Look up environment metadata by name in `mode`.
     pub fn lookup_env(&self, name: &str, mode: ContentMode) -> Option<&ActiveEnvironmentRecord> {
-        self.kb_for(mode).lookup_env(name)
+        self.catalog(mode).lookup_env(name)
     }
 
+    /// Whether `name` is an active command in either mode.
     pub fn knows_command_name(&self, name: &str) -> bool {
-        self.knows_command_name_in(name, ContentMode::Math)
-            || self.knows_command_name_in(name, ContentMode::Text)
+        self.lookup_command(name, ContentMode::Math).is_some()
+            || self.lookup_command(name, ContentMode::Text).is_some()
     }
 
+    /// Whether `name` is an environment in either mode.
     pub fn knows_env_name(&self, name: &str) -> bool {
-        self.knows_env_name_in(name, ContentMode::Math)
-            || self.knows_env_name_in(name, ContentMode::Text)
+        self.lookup_env(name, ContentMode::Math).is_some()
+            || self.lookup_env(name, ContentMode::Text).is_some()
     }
 
+    /// Whether `name` is a character in either mode.
     pub fn knows_character_name(&self, name: &str) -> bool {
-        self.knows_character_name_in(name, ContentMode::Math)
-            || self.knows_character_name_in(name, ContentMode::Text)
-    }
-
-    fn knows_command_name_in(&self, name: &str, mode: ContentMode) -> bool {
-        self.lookup_command(name, mode).is_some()
-    }
-
-    fn knows_env_name_in(&self, name: &str, mode: ContentMode) -> bool {
-        self.lookup_env(name, mode).is_some()
-    }
-
-    fn knows_character_name_in(&self, name: &str, mode: ContentMode) -> bool {
-        self.lookup_character(name, mode).is_some()
+        self.lookup_character(name, ContentMode::Math).is_some()
+            || self.lookup_character(name, ContentMode::Text).is_some()
     }
 }
 
 fn shared_parser() -> &'static ParseContext {
     static DEFAULT: OnceLock<ParseContext> = OnceLock::new();
-    DEFAULT.get_or_init(ParseContext::default)
+    DEFAULT.get_or_init(|| {
+        KnowledgeBase::builder()
+            .build()
+            .expect("default knowledge packages must build")
+    })
 }
 
 pub(crate) fn parse_with_context(
@@ -883,10 +871,8 @@ pub(crate) fn parse_with_context(
     let document = output.map(|tracked| {
         let (node, span_tree, diagnostics) = tracked.finish_root();
         errors.extend(diagnostics);
-        let mut document = Document::from_syntax_with_spans(&node, &span_tree)
-            .expect("parser must produce a syntax root accepted by Document");
-        document.set_parse_context_id(ctx.id());
-        document
+        Document::from_syntax_with_spans(ctx, &node, &span_tree)
+            .expect("parser must produce a syntax root accepted by Document")
     });
 
     let mut diagnostics: Vec<_> = errors

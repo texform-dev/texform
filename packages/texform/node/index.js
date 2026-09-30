@@ -6,6 +6,7 @@ const wasm = require("../wasm/nodejs/texform_wasm.cjs");
 
 const bindings = createBindings({
   Document: wasm.Document,
+  KnowledgeBase: wasm.KnowledgeBase,
   Parser: wasm.Parser,
   TransformEngine: wasm.TransformEngine,
   serialize: wasm.serialize,
@@ -19,6 +20,7 @@ export const {
   TexformEditError,
   TexformConfigError,
   TexformTransformError,
+  KnowledgeBase,
   Parser,
   TransformEngine,
   Document,

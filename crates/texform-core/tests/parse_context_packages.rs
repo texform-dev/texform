@@ -34,15 +34,12 @@ fn explicit_context_exposes_enabled_packages_in_import_order() {
         ctx.enabled_packages(),
         &[PackageName::Base, PackageName::Braket, PackageName::Physics]
     );
-    assert!(ctx.has_enabled_package(PackageName::Physics));
-    assert!(!ctx.has_enabled_package(PackageName::Ams));
 }
 
 #[test]
 fn empty_context_exposes_no_enabled_packages() {
     let ctx = ParseContext::empty();
     assert!(ctx.enabled_packages().is_empty());
-    assert!(!ctx.has_enabled_package(PackageName::Base));
 }
 
 #[test]

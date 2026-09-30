@@ -3,8 +3,8 @@ mod read;
 
 pub use input::{
     ContextItemInput, ContextTarget, FinalizeAstConfigInput, FlattenGroupsConfigInput,
-    LowerAttributesConfigInput, NormalizeConfigInput, ParseConfigInput, RewriteConfigInput,
-    SerializeOptionsInput, TransformConfigInput,
+    KnowledgeBaseInput, LowerAttributesConfigInput, NormalizeConfigInput, ParseConfigInput,
+    RewriteConfigInput, SerializeOptionsInput, TransformConfigInput,
 };
 pub use read::{ReadError, format_read_error, read, snake_to_camel};
 
@@ -112,6 +112,29 @@ pub struct CharacterInfoDto {
     pub unicode_value: String,
     pub attributes: CharacterAttributesInfoDto,
     pub package: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct DelimiterInfoDto {
+    pub name: String,
+    pub is_control_sequence: bool,
+    pub allowed_mode: &'static str,
+    pub unicode_value: String,
+    pub attributes: CharacterAttributesInfoDto,
+    pub package: String,
+}
+
+pub fn delimiter_info_to_dto(record: &crate::ActiveDelimiterRecord) -> DelimiterInfoDto {
+    DelimiterInfoDto {
+        name: record.name.to_string(),
+        is_control_sequence: record.is_control_sequence,
+        allowed_mode: record.allowed_mode.as_str(),
+        unicode_value: record.unicode_value.clone(),
+        attributes: CharacterAttributesInfoDto {
+            mathvariant: record.attributes.mathvariant.clone(),
+        },
+        package: record.package.clone(),
+    }
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -280,25 +303,26 @@ pub fn normalize_error_to_parts(error: crate::NormalizeError) -> BindingErrorPar
                 document,
             }
         }
-        Error::MissingProfile
-        | Error::UnknownRule(_)
-        | Error::ParserBuild(_)
-        | Error::TransformBuild(_) => BindingErrorParts {
-            error: BindingErrorDto {
-                kind: "config",
-                message: error.to_string(),
-                diagnostics: Vec::new(),
-            },
-            document: None,
-        },
-        Error::ForeignDocument | Error::IncompleteTree | Error::Transform(_) => BindingErrorParts {
-            error: BindingErrorDto {
-                kind: "transform",
-                message: error.to_string(),
-                diagnostics: Vec::new(),
-            },
-            document: None,
-        },
+        Error::MissingProfile | Error::UnknownRule(_) | Error::TransformBuild(_) => {
+            BindingErrorParts {
+                error: BindingErrorDto {
+                    kind: "config",
+                    message: error.to_string(),
+                    diagnostics: Vec::new(),
+                },
+                document: None,
+            }
+        }
+        Error::KnowledgeBaseMismatch | Error::IncompleteTree | Error::Transform(_) => {
+            BindingErrorParts {
+                error: BindingErrorDto {
+                    kind: "transform",
+                    message: error.to_string(),
+                    diagnostics: Vec::new(),
+                },
+                document: None,
+            }
+        }
         Error::Serialize(_) => BindingErrorParts {
             error: BindingErrorDto {
                 kind: "internal",

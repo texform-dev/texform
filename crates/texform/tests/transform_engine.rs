@@ -1,3 +1,6 @@
+mod support;
+
+use support::kb;
 use texform::{
     ContentMode, FlattenGroupsConfig, LowerAttributesConfig, NormalizeConfig, ParseConfig, Parser,
     Profile, RewriteConfig, TransformConfig, TransformEngine, bindings::transform_report_to_dto,
@@ -7,7 +10,7 @@ use texform_transform::FinalizeAstConfig;
 #[test]
 fn engine_normalize_uses_build_time_profile_and_packages() {
     let engine = TransformEngine::builder()
-        .packages(&["base", "physics"])
+        .knowledge_base(kb(&["base", "physics"]))
         .profile(Profile::Authoring)
         .build()
         .expect("engine should build");
@@ -23,7 +26,7 @@ fn engine_normalize_uses_build_time_profile_and_packages() {
 #[test]
 fn normalize_with_can_disable_rewrite_without_rebuilding_plan() {
     let engine = TransformEngine::builder()
-        .packages(&["base", "physics"])
+        .knowledge_base(kb(&["base", "physics"]))
         .profile(Profile::Equiv)
         .build()
         .expect("engine should build");
@@ -53,7 +56,7 @@ fn normalize_with_can_disable_rewrite_without_rebuilding_plan() {
 #[test]
 fn corpus_normalize_preserves_prime_and_prefix_shorthand_contracts() {
     let engine = TransformEngine::builder()
-        .packages(&["base"])
+        .knowledge_base(kb(&["base"]))
         .profile(Profile::Corpus)
         .build()
         .expect("engine should build");
@@ -109,7 +112,7 @@ fn prime_semantics_remain_stable_across_profiles() {
         Profile::Equiv,
     ] {
         let engine = TransformEngine::builder()
-            .packages(&["base"])
+            .knowledge_base(kb(&["base"]))
             .profile(profile)
             .build()
             .unwrap();
@@ -131,7 +134,7 @@ fn prime_semantics_remain_stable_across_profiles() {
 fn braket_normalize_emits_bare_middle_vert_except_authoring() {
     for profile in [Profile::Faithful, Profile::Corpus, Profile::Equiv] {
         let result = TransformEngine::builder()
-            .packages(&["base", "physics"])
+            .knowledge_base(kb(&["base", "physics"]))
             .profile(profile)
             .build()
             .expect("engine should build")
@@ -151,7 +154,7 @@ fn braket_normalize_emits_bare_middle_vert_except_authoring() {
     }
 
     let authoring = TransformEngine::builder()
-        .packages(&["base", "physics"])
+        .knowledge_base(kb(&["base", "physics"]))
         .profile(Profile::Authoring)
         .build()
         .expect("engine should build")
@@ -160,7 +163,7 @@ fn braket_normalize_emits_bare_middle_vert_except_authoring() {
     assert_eq!(authoring, r"\braket { a } { b }");
 
     let corpus = TransformEngine::builder()
-        .packages(&["base", "physics"])
+        .knowledge_base(kb(&["base", "physics"]))
         .profile(Profile::Corpus)
         .build()
         .expect("engine should build")
@@ -181,7 +184,7 @@ fn normalize_uses_prime_shorthand_inside_array_cells() {
         Profile::Equiv,
     ] {
         let result = TransformEngine::builder()
-            .packages(&["base"])
+            .knowledge_base(kb(&["base"]))
             .profile(profile)
             .build()
             .expect("engine should build")
@@ -198,7 +201,7 @@ fn normalize_uses_prime_shorthand_inside_array_cells() {
 #[test]
 fn corpus_normalize_keeps_braced_prefix_argument_scope() {
     let engine = TransformEngine::builder()
-        .packages(&["base"])
+        .knowledge_base(kb(&["base"]))
         .profile(Profile::Corpus)
         .build()
         .expect("engine should build");
@@ -221,7 +224,7 @@ fn displaylines_is_preserved_by_all_profiles() {
         Profile::Equiv,
     ] {
         let result = TransformEngine::builder()
-            .packages(&["base", "ams"])
+            .knowledge_base(kb(&["base", "ams"]))
             .profile(profile)
             .build()
             .expect("engine should build")
@@ -238,7 +241,7 @@ fn displaylines_is_preserved_by_all_profiles() {
 #[test]
 fn document_transform_preserves_parse_once_workflow() {
     let engine = TransformEngine::builder()
-        .packages(&["base"])
+        .knowledge_base(kb(&["base"]))
         .profile(Profile::Equiv)
         .build()
         .expect("engine should build");
@@ -274,10 +277,7 @@ fn document_transform_preserves_parse_once_workflow() {
 
 #[test]
 fn parser_is_parse_only_and_needs_no_profile() {
-    let parser = Parser::builder()
-        .packages(&["base"])
-        .build()
-        .expect("parser should build");
+    let parser = Parser::builder().knowledge_base(kb(&["base"])).build();
 
     let output = parser.parse(r"\frac{a}{b}");
     assert!(output.diagnostics().is_empty());
@@ -286,31 +286,47 @@ fn parser_is_parse_only_and_needs_no_profile() {
 #[test]
 fn engine_exposes_parser_metadata_queries() {
     let engine = TransformEngine::builder()
-        .packages(&["base"])
+        .knowledge_base(kb(&["base"]))
         .profile(Profile::Authoring)
         .build()
         .expect("engine should build");
 
     let parser = engine.parser();
-    assert!(parser.lookup_command("frac", ContentMode::Math).is_some());
     assert!(
         parser
+            .knowledge_base()
+            .lookup_command("frac", ContentMode::Math)
+            .is_some()
+    );
+    assert!(
+        parser
+            .knowledge_base()
             .lookup_explicit_command("frac", ContentMode::Math)
             .is_some()
     );
-    assert!(parser.lookup_env("array", ContentMode::Math).is_some());
-    assert!(parser.lookup_character("le", ContentMode::Math).is_some());
-    assert!(parser.is_delimiter_control("lbrace"));
-    assert!(parser.knows_command_name("frac"));
-    assert!(parser.knows_env_name("array"));
-    assert!(parser.knows_character_name("le"));
+    assert!(
+        parser
+            .knowledge_base()
+            .lookup_env("array", ContentMode::Math)
+            .is_some()
+    );
+    assert!(
+        parser
+            .knowledge_base()
+            .lookup_character("le", ContentMode::Math)
+            .is_some()
+    );
+    assert!(parser.knowledge_base().is_delimiter_control("lbrace"));
+    assert!(parser.knowledge_base().knows_command_name("frac"));
+    assert!(parser.knowledge_base().knows_env_name("array"));
+    assert!(parser.knowledge_base().knows_character_name("le"));
 }
 
 #[test]
-fn engine_empty_knowledge_preserves_default_parse_config() {
+fn engine_empty_packages_preserves_default_parse_config() {
     // Empty knowledge must not change either default parse-config axis.
     let engine = TransformEngine::builder()
-        .empty_knowledge()
+        .knowledge_base(kb(&[]))
         .profile(Profile::Equiv)
         .build()
         .expect("engine should build");
@@ -330,12 +346,12 @@ fn engine_empty_knowledge_preserves_default_parse_config() {
 }
 
 #[test]
-fn engine_empty_knowledge_preserves_explicit_parse_default() {
+fn engine_empty_packages_preserves_explicit_parse_default() {
     // Empty knowledge should only change loaded knowledge, not caller-selected
     // parse defaults.
     let engine = TransformEngine::builder()
         .default_parse_config(ParseConfig::LENIENT)
-        .empty_knowledge()
+        .knowledge_base(kb(&[]))
         .profile(Profile::Equiv)
         .build()
         .expect("engine should build");
@@ -344,13 +360,16 @@ fn engine_empty_knowledge_preserves_explicit_parse_default() {
 
     assert!(
         output.diagnostics().is_empty(),
-        "empty_knowledge should preserve default_parse_config set earlier"
+        "empty_packages should preserve default_parse_config set earlier"
     );
 }
 
 #[test]
 fn engine_builder_requires_profile() {
-    let error = match TransformEngine::builder().packages(&["base"]).build() {
+    let error = match TransformEngine::builder()
+        .knowledge_base(kb(&["base"]))
+        .build()
+    {
         Ok(_) => panic!("engine profile is required"),
         Err(error) => error,
     };
@@ -375,7 +394,7 @@ fn engine_builder_disable_rule_without_profile_reports_error() {
 #[test]
 fn engine_builder_disables_rule_by_public_name() {
     let engine = TransformEngine::builder()
-        .packages(&["base", "physics"])
+        .knowledge_base(kb(&["base", "physics"]))
         .profile(Profile::Authoring)
         .disable_rule_by_name("physics/quantity-to-qty")
         .expect("known rule should resolve")
@@ -400,7 +419,7 @@ fn engine_builder_disables_rule_by_public_name() {
 #[test]
 fn engine_builder_disable_rule_can_precede_profile() {
     let engine = TransformEngine::builder()
-        .packages(&["base", "physics"])
+        .knowledge_base(kb(&["base", "physics"]))
         .disable_rule_by_name("physics/quantity-to-qty")
         .expect("known rule should resolve")
         .profile(Profile::Authoring)
@@ -417,7 +436,7 @@ fn engine_builder_disable_rule_can_precede_profile() {
 #[test]
 fn normalize_report_dto_exposes_stable_phase_shape() {
     let engine = TransformEngine::builder()
-        .packages(&["base", "physics"])
+        .knowledge_base(kb(&["base", "physics"]))
         .profile(Profile::Authoring)
         .build()
         .expect("engine should build");

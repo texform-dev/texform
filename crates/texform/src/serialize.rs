@@ -16,7 +16,7 @@
 //! use texform::{Parser, ScriptSpacing, SerializeOptions};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let parser = Parser::builder().build()?;
+//! let parser = Parser::builder().build();
 //! let (document, _) = parser.parse(r"x^2").try_into_document()?;
 //! let options = SerializeOptions {
 //!     script_spacing: ScriptSpacing::Compact,

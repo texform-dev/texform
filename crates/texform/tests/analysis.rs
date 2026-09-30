@@ -1,11 +1,11 @@
+mod support;
+
+use support::kb;
 use texform::{ParseConfig, Parser};
 
 #[test]
 fn count_targets_reports_minimal_command_counts() {
-    let parser = Parser::builder()
-        .packages(&["base"])
-        .build()
-        .expect("parser should build");
+    let parser = Parser::builder().knowledge_base(kb(&["base"])).build();
 
     let counts =
         texform::analysis::count_targets(&parser, r"\frac{a}{b}").expect("count should succeed");
@@ -15,10 +15,7 @@ fn count_targets_reports_minimal_command_counts() {
 
 #[test]
 fn count_targets_with_uses_supplied_parse_config() {
-    let parser = Parser::builder()
-        .packages(&["base"])
-        .build()
-        .expect("parser should build");
+    let parser = Parser::builder().knowledge_base(kb(&["base"])).build();
 
     let error =
         texform::analysis::count_targets_with(&parser, r"\unknowncmd", &ParseConfig::STRICT)

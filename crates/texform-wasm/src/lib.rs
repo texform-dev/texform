@@ -39,19 +39,34 @@ pub struct Document {
 #[wasm_bindgen]
 impl Document {
     #[wasm_bindgen(constructor)]
-    pub fn new() -> Document {
-        Self::from_core(texform::Document::new())
+    pub fn new(kb: Option<KnowledgeBase>, mode: Option<String>) -> Result<Document, JsValue> {
+        let kb = kb.map(|kb| kb.inner.clone()).unwrap_or_default();
+        Ok(Self::from_core(texform::Document::with_knowledge_base(
+            &kb,
+            parse_content_mode(mode.as_deref().unwrap_or("math"))?,
+        )))
+    }
+    #[wasm_bindgen(js_name = knowledgeBase)]
+    pub fn knowledge_base(&self) -> Result<KnowledgeBase, JsValue> {
+        Ok(KnowledgeBase {
+            inner: borrow_document(&self.inner)?.knowledge_base().clone(),
+        })
+    }
+    #[wasm_bindgen(js_name = clone)]
+    pub fn clone_document(&self) -> Result<Document, JsValue> {
+        Ok(Self::from_core(borrow_document(&self.inner)?.clone()))
     }
 
     #[wasm_bindgen(js_name = fromSyntax)]
-    pub fn from_syntax(node: JsValue) -> Result<Document, JsValue> {
+    pub fn from_syntax(node: JsValue, kb: Option<KnowledgeBase>) -> Result<Document, JsValue> {
         let node = serde_wasm_bindgen::from_value::<SyntaxNode>(node)
             .map_err(|error| parse_message_to_js(format!("invalid syntax node: {error}")))?;
-        texform::Document::from_syntax(&node)
-            .map(Self::from_core)
-            .map_err(|error| {
-                binding_error_to_js(texform::bindings::from_syntax_error_to_dto(error))
-            })
+        texform::Document::from_syntax_with(
+            &kb.map(|kb| kb.inner.clone()).unwrap_or_default(),
+            &node,
+        )
+        .map(Self::from_core)
+        .map_err(|error| binding_error_to_js(texform::bindings::from_syntax_error_to_dto(error)))
     }
 
     pub fn root(&self) -> Result<Node, JsValue> {
@@ -362,7 +377,7 @@ impl Document {
 
 impl Default for Document {
     fn default() -> Self {
-        Self::new()
+        Self::from_core(texform::Document::new())
     }
 }
 
@@ -375,6 +390,16 @@ pub struct Node {
 
 #[wasm_bindgen]
 impl Node {
+    #[wasm_bindgen(js_name = isSameNode)]
+    pub fn is_same_node(&self, other: &Node) -> bool {
+        Rc::ptr_eq(&self.document, &other.document) && self.id == other.id
+    }
+    pub fn document(&self) -> Document {
+        Document {
+            inner: Rc::clone(&self.document),
+        }
+    }
+
     #[wasm_bindgen(getter, js_name = __texformBindingHandle)]
     pub fn binding_handle(&self) -> u32 {
         self.handle
@@ -891,34 +916,78 @@ fn group_kind_to_js(kind: texform::GroupKindRef<'_>) -> Result<JsValue, JsValue>
 }
 
 #[wasm_bindgen]
-pub struct Parser {
-    inner: texform::Parser,
+pub struct KnowledgeBase {
+    inner: texform::KnowledgeBase,
 }
-
 #[wasm_bindgen]
-impl Parser {
+impl KnowledgeBase {
     #[wasm_bindgen(constructor)]
-    pub fn new(args: Option<JsValue>) -> Result<Parser, JsValue> {
-        Ok(Parser {
-            inner: parser_from_js(args)?,
+    pub fn new(options: Option<JsValue>) -> Result<KnowledgeBase, JsValue> {
+        let input: texform::bindings::KnowledgeBaseInput = match options {
+            Some(value) if !value.is_null() && !value.is_undefined() => {
+                config::from_js(value, "knowledge base options")?
+            }
+            _ => Default::default(),
+        };
+        Ok(Self {
+            inner: input.build().map_err(config_error_to_js)?,
         })
     }
-
+    #[wasm_bindgen(js_name = isSame)]
+    pub fn is_same(&self, other: &KnowledgeBase) -> bool {
+        self.inner.ptr_eq(&other.inner)
+    }
+    #[wasm_bindgen(js_name = clone)]
+    pub fn clone_handle(&self) -> KnowledgeBase {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+    pub fn packages(&self) -> Result<JsValue, JsValue> {
+        to_js_value(&self.inner.packages())
+    }
+    pub fn characters(&self, mode: &str) -> Result<JsValue, JsValue> {
+        binding_dto_to_js(
+            &self
+                .inner
+                .characters(parse_content_mode(mode)?)
+                .into_iter()
+                .map(texform::bindings::character_info_to_dto)
+                .collect::<Vec<_>>(),
+        )
+    }
+    pub fn environments(&self, mode: &str) -> Result<JsValue, JsValue> {
+        binding_dto_to_js(
+            &self
+                .inner
+                .environments(parse_content_mode(mode)?)
+                .into_iter()
+                .map(texform::bindings::env_info_to_dto)
+                .collect::<Vec<_>>(),
+        )
+    }
+    pub fn commands(&self, mode: &str) -> Result<JsValue, JsValue> {
+        binding_dto_to_js(
+            &self
+                .inner
+                .commands(parse_content_mode(mode)?)
+                .into_iter()
+                .map(texform::bindings::command_info_to_dto)
+                .collect::<Vec<_>>(),
+        )
+    }
+    pub fn delimiters(&self) -> Result<JsValue, JsValue> {
+        binding_dto_to_js(
+            &self
+                .inner
+                .delimiters()
+                .into_iter()
+                .map(texform::bindings::delimiter_info_to_dto)
+                .collect::<Vec<_>>(),
+        )
+    }
     pub fn is_delimiter_control(&self, name: &str) -> bool {
         self.inner.is_delimiter_control(name)
-    }
-
-    pub fn parse(&self, src: &str, config: Option<JsValue>) -> Result<JsValue, JsValue> {
-        let base = self.inner.default_parse_config().clone();
-        let config = parse_config_from_js(config, base)?;
-        parse_result_to_js(self.inner.parse_with(src, &config))
-    }
-
-    #[wasm_bindgen(js_name = defaultParseConfig)]
-    pub fn default_parse_config(&self) -> Result<JsValue, JsValue> {
-        binding_dto_to_js(&ParseConfigInput::from_config(
-            self.inner.default_parse_config().clone(),
-        ))
     }
 
     pub fn lookup_command(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
@@ -963,16 +1032,61 @@ impl Parser {
 }
 
 #[wasm_bindgen]
+pub struct Parser {
+    inner: texform::Parser,
+}
+
+#[wasm_bindgen]
+impl Parser {
+    #[wasm_bindgen(js_name = knowledgeBase)]
+    pub fn knowledge_base(&self) -> KnowledgeBase {
+        KnowledgeBase {
+            inner: self.inner.knowledge_base().clone(),
+        }
+    }
+
+    #[wasm_bindgen(constructor)]
+    pub fn new(args: Option<JsValue>, kb: Option<KnowledgeBase>) -> Result<Parser, JsValue> {
+        Ok(Parser {
+            inner: parser_from_js(args, kb.as_ref())?,
+        })
+    }
+
+    pub fn parse(&self, src: &str, config: Option<JsValue>) -> Result<JsValue, JsValue> {
+        let base = self.inner.default_parse_config().clone();
+        let config = parse_config_from_js(config, base)?;
+        parse_result_to_js(self.inner.parse_with(src, &config))
+    }
+
+    #[wasm_bindgen(js_name = defaultParseConfig)]
+    pub fn default_parse_config(&self) -> Result<JsValue, JsValue> {
+        binding_dto_to_js(&ParseConfigInput::from_config(
+            self.inner.default_parse_config().clone(),
+        ))
+    }
+}
+
+#[wasm_bindgen]
 pub struct TransformEngine {
     inner: texform::TransformEngine,
 }
 
 #[wasm_bindgen]
 impl TransformEngine {
+    #[wasm_bindgen(js_name = knowledgeBase)]
+    pub fn knowledge_base(&self) -> KnowledgeBase {
+        KnowledgeBase {
+            inner: self.inner.knowledge_base().clone(),
+        }
+    }
+
     #[wasm_bindgen(constructor)]
-    pub fn new(args: Option<JsValue>) -> Result<TransformEngine, JsValue> {
+    pub fn new(
+        args: Option<JsValue>,
+        kb: Option<KnowledgeBase>,
+    ) -> Result<TransformEngine, JsValue> {
         Ok(Self {
-            inner: engine_from_js(args)?,
+            inner: engine_from_js(args, kb.as_ref())?,
         })
     }
 
@@ -1049,50 +1163,6 @@ impl TransformEngine {
             })?;
         transform_report_to_js(&report)
     }
-
-    pub fn is_delimiter_control(&self, name: &str) -> bool {
-        self.inner.parser().is_delimiter_control(name)
-    }
-
-    pub fn lookup_command(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
-        match self.lookup_command_meta(name, mode)? {
-            Some(meta) => command_meta_to_js(meta),
-            None => Ok(JsValue::NULL),
-        }
-    }
-
-    pub fn lookup_explicit_command(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
-        match self.lookup_explicit_command_meta(name, mode)? {
-            Some(meta) => command_meta_to_js(meta),
-            None => Ok(JsValue::NULL),
-        }
-    }
-
-    pub fn lookup_character(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
-        match self.lookup_character_meta(name, mode)? {
-            Some(meta) => character_meta_to_js(meta),
-            None => Ok(JsValue::NULL),
-        }
-    }
-
-    pub fn lookup_env(&self, name: &str, mode: &str) -> Result<JsValue, JsValue> {
-        match self.lookup_env_meta(name, mode)? {
-            Some(meta) => env_meta_to_js(meta),
-            None => Ok(JsValue::NULL),
-        }
-    }
-
-    pub fn knows_command_name(&self, name: &str) -> bool {
-        self.inner.parser().knows_command_name(name)
-    }
-
-    pub fn knows_env_name(&self, name: &str) -> bool {
-        self.inner.parser().knows_env_name(name)
-    }
-
-    pub fn knows_character_name(&self, name: &str) -> bool {
-        self.inner.parser().knows_character_name(name)
-    }
 }
 
 fn normalize_report_result_to_js(
@@ -1126,10 +1196,12 @@ impl Parser {
     #[cfg(test)]
     fn from_options(input: ParserOptions) -> Result<Parser, JsValue> {
         Ok(Parser {
-            inner: parser_from_options(input)?,
+            inner: parser_from_options(input, None),
         })
     }
+}
 
+impl KnowledgeBase {
     fn lookup_command_meta(
         &self,
         name: &str,
@@ -1164,44 +1236,6 @@ impl Parser {
     ) -> Result<Option<&ActiveEnvironmentRecord>, JsValue> {
         let mode = parse_content_mode(mode)?;
         Ok(self.inner.lookup_env(name, mode))
-    }
-}
-
-impl TransformEngine {
-    fn lookup_command_meta(
-        &self,
-        name: &str,
-        mode: &str,
-    ) -> Result<Option<&ActiveCommandRecord>, JsValue> {
-        let mode = parse_content_mode(mode)?;
-        Ok(self.inner.parser().lookup_command(name, mode))
-    }
-
-    fn lookup_explicit_command_meta(
-        &self,
-        name: &str,
-        mode: &str,
-    ) -> Result<Option<&ActiveCommandRecord>, JsValue> {
-        let mode = parse_content_mode(mode)?;
-        Ok(self.inner.parser().lookup_explicit_command(name, mode))
-    }
-
-    fn lookup_character_meta(
-        &self,
-        name: &str,
-        mode: &str,
-    ) -> Result<Option<&ActiveCharacterRecord>, JsValue> {
-        let mode = parse_content_mode(mode)?;
-        Ok(self.inner.parser().lookup_character(name, mode))
-    }
-
-    fn lookup_env_meta(
-        &self,
-        name: &str,
-        mode: &str,
-    ) -> Result<Option<&ActiveEnvironmentRecord>, JsValue> {
-        let mode = parse_content_mode(mode)?;
-        Ok(self.inner.parser().lookup_env(name, mode))
     }
 }
 
@@ -1276,7 +1310,7 @@ mod tests {
 
     #[test]
     fn package_load_build_errors_use_facade_error_text() {
-        let error = texform::Parser::builder()
+        let error = texform::KnowledgeBase::builder()
             .packages(&["missing"])
             .build()
             .expect_err("missing package should fail");
@@ -1286,8 +1320,8 @@ mod tests {
 
     #[test]
     fn invalid_context_item_build_errors_include_item_name() {
-        let error = texform::Parser::builder()
-            .empty_knowledge()
+        let error = texform::KnowledgeBase::builder()
+            .packages(&[])
             .item(CommandItem::new(
                 "foo",
                 CommandKind::Prefix,
@@ -1303,42 +1337,15 @@ mod tests {
     }
 
     #[test]
-    fn empty_package_list_is_not_treated_like_default_packages() {
-        let default_ctx =
-            Parser::from_options(ParserOptions::default()).expect("default parser should build");
-        let empty_packages_ctx = Parser::from_options(ParserOptions {
-            packages: Some(vec![]),
-            ..Default::default()
-        })
-        .expect("empty package list parser should build");
-        let explicit_braket_ctx = Parser::from_options(ParserOptions {
-            packages: Some(vec!["braket".into()]),
-            ..Default::default()
-        })
-        .expect("explicit braket parse context should build");
-
+    fn knowledge_base_packages_are_explicit() {
+        let empty = texform::KnowledgeBase::builder()
+            .packages(&[])
+            .build()
+            .unwrap();
+        assert!(empty.lookup_command("frac", ContentMode::Math).is_none());
         assert!(
-            default_ctx
-                .inner
+            texform::KnowledgeBase::default()
                 .lookup_command("frac", ContentMode::Math)
-                .is_some()
-        );
-        assert!(
-            default_ctx
-                .inner
-                .lookup_command("Bra", ContentMode::Math)
-                .is_some()
-        );
-        assert!(
-            empty_packages_ctx
-                .inner
-                .lookup_command("frac", ContentMode::Math)
-                .is_none()
-        );
-        assert!(
-            explicit_braket_ctx
-                .inner
-                .lookup_command("Bra", ContentMode::Math)
                 .is_some()
         );
     }
@@ -1377,13 +1384,15 @@ mod tests {
     #[test]
     #[cfg(target_arch = "wasm32")]
     fn wasm_engine_transform_updates_own_document_in_place() {
-        let engine = TransformEngine::new(Some(
-            serde_wasm_bindgen::to_value(&serde_json::json!({
-                "profile": "equiv",
-                "packages": ["base"],
-            }))
-            .expect("options should serialize"),
-        ))
+        let engine = TransformEngine::new(
+            Some(
+                serde_wasm_bindgen::to_value(&serde_json::json!({
+                    "profile": "equiv",
+                }))
+                .expect("options should serialize"),
+            ),
+            None,
+        )
         .expect("engine should build");
         let document = Document::from_core(
             engine
@@ -1431,14 +1440,16 @@ mod tests {
 
     #[test]
     #[cfg(target_arch = "wasm32")]
-    fn wasm_engine_transform_rejects_document_without_parse_context() {
-        let engine = TransformEngine::new(Some(
-            serde_wasm_bindgen::to_value(&serde_json::json!({
-                "profile": "equiv",
-                "packages": ["base"],
-            }))
-            .expect("options should serialize"),
-        ))
+    fn wasm_engine_transform_rejects_different_knowledge_base() {
+        let engine = TransformEngine::new(
+            Some(
+                serde_wasm_bindgen::to_value(&serde_json::json!({
+                    "profile": "equiv",
+                }))
+                .expect("options should serialize"),
+            ),
+            None,
+        )
         .expect("engine should build");
         let parsed_document = Document::from_core(
             engine
@@ -1450,11 +1461,17 @@ mod tests {
                 .0,
         );
         let syntax = parsed_document.to_syntax().expect("syntax should export");
-        let document = Document::from_syntax(syntax).expect("syntax should rebuild document");
+        let document = Document::from_syntax(
+            syntax,
+            Some(KnowledgeBase {
+                inner: texform::KnowledgeBase::builder().build().unwrap(),
+            }),
+        )
+        .expect("syntax should rebuild document");
 
         let error = engine
             .transform(&document, None)
-            .expect_err("syntax-created documents must not be transformed");
+            .expect_err("different knowledge bases must not be transformed");
 
         assert_eq!(
             js_sys::Reflect::get(&error, &JsValue::from_str("kind"))
@@ -1486,8 +1503,8 @@ mod tests {
 
     #[test]
     fn wasm_rejects_cross_document_nodes() {
-        let first = Document::new();
-        let second = Document::new();
+        let first = Document::default();
+        let second = Document::default();
         let root = first.root().expect("root should be available");
         let foreign = second.create_char("x").expect("char should be created");
 
@@ -1499,7 +1516,7 @@ mod tests {
 
     #[test]
     fn wasm_create_command_with_arg_roundtrips_latex() {
-        let document = Document::new();
+        let document = Document::default();
         let arg = document.create_char("x").expect("arg should be created");
         let command = document
             .create_command_with_args("sqrt", vec![ArgValue::math(arg.id)])
@@ -1531,9 +1548,13 @@ mod tests {
     fn wasm_node_exposes_prime_count() {
         let document = Document::from_core(
             texform::Parser::builder()
-                .packages(&["base"])
+                .knowledge_base(
+                    texform::KnowledgeBase::builder()
+                        .packages(&["base"])
+                        .build()
+                        .unwrap(),
+                )
                 .build()
-                .expect("parser should build")
                 .parse("f''")
                 .try_into_document()
                 .expect("parse should produce a document")
@@ -1595,11 +1616,12 @@ mod tests {
 
     #[test]
     fn lookup_command_is_mode_specific() {
-        let ctx = Parser::from_options(ParserOptions {
-            packages: Some(vec!["base".into(), "textmacros".into()]),
-            ..Default::default()
-        })
-        .expect("parse context should build");
+        let ctx = KnowledgeBase {
+            inner: texform::KnowledgeBase::builder()
+                .packages(&["base", "textmacros"])
+                .build()
+                .unwrap(),
+        };
 
         let math = ctx
             .lookup_command_meta("underline", "math")

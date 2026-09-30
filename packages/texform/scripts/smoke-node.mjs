@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import {
   Document,
+  KnowledgeBase,
   Node,
   Parser,
   TransformEngine,
@@ -21,18 +23,18 @@ if (!parsed.parsed?.[0]?.noLeadingSpace) {
 }
 
 const parser = new Parser();
-const missing = parser.lookupCommand("__missing__", "math");
+const missing = parser.knowledgeBase().lookupCommand("__missing__", "math");
 if (missing !== null) {
   throw new Error("lookup miss should return null");
 }
 
-const frac = parser.lookupCommand("frac", "math");
+const frac = parser.knowledgeBase().lookupCommand("frac", "math");
 if (frac && !("allowedMode" in frac)) {
   throw new Error("lookup hit should be camelCase");
 }
 
 try {
-  parser.lookupCommand("frac", "bad");
+  parser.knowledgeBase().lookupCommand("frac", "bad");
   throw new Error("invalid lookup mode should fail");
 } catch (error) {
   if (!(error instanceof TexformConfigError)) {
@@ -41,20 +43,22 @@ try {
 }
 
 new Parser({
-  packages: [],
-  items: [
-    {
-      target: "command",
-      name: "foo",
-      kind: "prefix",
-      allowedMode: "math",
-      argspec: "m",
-    },
-  ],
+  knowledgeBase: new KnowledgeBase({
+    packages: [],
+    items: [
+      {
+        target: "command",
+        name: "foo",
+        kind: "prefix",
+        allowedMode: "math",
+        argspec: "m",
+      },
+    ],
+  }),
 }).parse("\\foo{x}", { rejectUnknown: true, abortOnError: true });
 
 try {
-  new Parser({
+  new KnowledgeBase({
     items: [
       {
         target: "command",
@@ -73,7 +77,7 @@ try {
 }
 
 try {
-  new Parser({ packages: ["__missing__"] });
+  new KnowledgeBase({ packages: ["__missing__"] });
   throw new Error("unknown parser package should fail");
 } catch (error) {
   if (!(error instanceof TexformConfigError)) {
@@ -90,25 +94,44 @@ const compactLatex = doc.toLatex({
   groupInnerSpacing: "compact",
 });
 if (defaultLatex === compactLatex) {
-  throw new Error("serialize options should accept camelCase groupInnerSpacing");
+  throw new Error(
+    "serialize options should accept camelCase groupInnerSpacing",
+  );
 }
 const unicodeDoc = parser.parse(String.raw`\text{\%𝒜}`).document;
 const unicodeTokenized = unicodeDoc.toTokenizedLatex();
-const escaped = unicodeTokenized.tokens.find((token) => token.text === String.raw`\%`);
+const escaped = unicodeTokenized.tokens.find(
+  (token) => token.text === String.raw`\%`,
+);
 const unicode = unicodeTokenized.tokens.find((token) => token.text === "𝒜");
-if (unicodeTokenized.latex !== unicodeDoc.toLatex() || escaped?.kind !== "character") {
-  throw new Error("tokenized serialization should preserve LaTeX and escaped characters");
+if (
+  unicodeTokenized.latex !== unicodeDoc.toLatex() ||
+  escaped?.kind !== "character"
+) {
+  throw new Error(
+    "tokenized serialization should preserve LaTeX and escaped characters",
+  );
 }
-if (!unicode || "start_byte" in unicode || unicode.endByte - unicode.startByte !== 4) {
+if (
+  !unicode ||
+  "start_byte" in unicode ||
+  unicode.endByte - unicode.startByte !== 4
+) {
   throw new Error("token spans should use camelCase UTF-8 byte offsets");
 }
 
 const ampersandDoc = parser.parse(String.raw`a \& b`).document;
-const staged = [ampersandDoc.createAlignmentTab(), ampersandDoc.createChar("&")];
+const staged = [
+  ampersandDoc.createAlignmentTab(),
+  ampersandDoc.createChar("&"),
+];
 for (const node of staged) {
   ampersandDoc.appendChild(ampersandDoc.root(), node);
 }
-if (staged[0].kind !== "alignmentTab" || ampersandDoc.toLatex() !== String.raw`a \& b & \&`) {
+if (
+  staged[0].kind !== "alignmentTab" ||
+  ampersandDoc.toLatex() !== String.raw`a \& b & \&`
+) {
   throw new Error("alignment tabs and literal ampersands should stay distinct");
 }
 
@@ -124,7 +147,10 @@ if (reportedPrimes.normalized !== normalized) {
 if (!("primeRunMerges" in reportedPrimes.report.finalizeAst)) {
   throw new Error("report should expose finalizeAst.primeRunMerges");
 }
-if ("steps" in reportedPrimes.report.finalizeAst || "iterations" in reportedPrimes.report) {
+if (
+  "steps" in reportedPrimes.report.finalizeAst ||
+  "iterations" in reportedPrimes.report
+) {
   throw new Error("report leaked the old shape");
 }
 if ("lower_attributes" in reportedPrimes.report) {
@@ -182,30 +208,54 @@ if (
   );
 }
 
-try {
-  const syntaxDoc = Document.fromSyntax(engine.parse("x").document.toSyntax());
-  engine.transform(syntaxDoc);
-  throw new Error("engine.transform should reject syntax-created documents");
-} catch (error) {
-  if (!(error instanceof TexformTransformError)) {
-    throw error;
-  }
+const syntaxDoc = Document.fromSyntax(engine.parse("x").document.toSyntax());
+engine.transform(syntaxDoc);
+const otherEngine = new TransformEngine({ profile: "authoring" });
+engine.transform(otherEngine.parse("x").document);
+engine.transform(new Document());
+const customKnowledge = new KnowledgeBase({ packages: ["base"] });
+const sharedParser = new Parser({ knowledgeBase: customKnowledge });
+const sharedEngine = new TransformEngine({
+  profile: "authoring",
+  knowledgeBase: customKnowledge,
+});
+const sharedDoc = sharedParser.parse("x").document;
+assert(customKnowledge.isSame(sharedDoc.knowledgeBase()));
+assert(customKnowledge.isSame(sharedEngine.knowledgeBase()));
+assert(sharedDoc.root().isSameNode(sharedDoc.root()));
+assert(sharedDoc.root().document().root().isSameNode(sharedDoc.root()));
+const clonedDoc = sharedDoc.clone();
+assert(!clonedDoc.root().isSameNode(sharedDoc.root()));
+assert(clonedDoc.knowledgeBase().isSame(customKnowledge));
+sharedEngine.transform(clonedDoc);
+sharedEngine.transform(
+  Document.fromSyntax(sharedDoc.toSyntax(), { knowledgeBase: customKnowledge }),
+);
+assert(!customKnowledge.isSame(new KnowledgeBase({ packages: ["base"] })));
+expectError(() => engine.transform(sharedDoc), TexformTransformError);
+for (const method of ["commands", "environments", "characters"]) {
+  const names = customKnowledge[method]("math").map((record) => record.name);
+  assert.deepEqual(names, [...names].sort());
 }
+assert(Array.isArray(customKnowledge.delimiters()));
+assert.deepEqual(customKnowledge.packages(), ["base"]);
+expectError(() => new Parser({ packages: [] }), TexformConfigError);
+expectError(
+  () => new TransformEngine({ profile: "authoring", items: [] }),
+  TexformConfigError,
+);
+expectError(() => new Parser({ knowledgeBase: {} }), TexformConfigError);
 
-try {
-  const otherEngine = new TransformEngine({ profile: "authoring" });
-  engine.transform(otherEngine.parse("x").document);
-  throw new Error("engine.transform should reject documents from another engine");
-} catch (error) {
-  if (!(error instanceof TexformTransformError)) {
-    throw error;
-  }
-}
-
-const incompleteEngine = new TransformEngine({ profile: "corpus", packages: ["base"] });
-const incompleteDocument = incompleteEngine.parse(String.raw`\frac{a}{b}\sqrt[`, {
-  abortOnError: false,
-}).document;
+const incompleteEngine = new TransformEngine({
+  profile: "corpus",
+  knowledgeBase: new KnowledgeBase({ packages: ["base"] }),
+});
+const incompleteDocument = incompleteEngine.parse(
+  String.raw`\frac{a}{b}\sqrt[`,
+  {
+    abortOnError: false,
+  },
+).document;
 if (!incompleteDocument.hasErrors()) {
   throw new Error("incomplete parse should produce a document with errors");
 }
@@ -218,7 +268,9 @@ try {
     throw error;
   }
   if (error.kind !== "transform") {
-    throw new Error("incomplete-document transform should expose transform kind");
+    throw new Error(
+      "incomplete-document transform should expose transform kind",
+    );
   }
   if (incompleteDocument.toLatex() !== incompleteLatex) {
     throw new Error("rejected transform should leave the document unchanged");
@@ -308,14 +360,20 @@ if (!Array.isArray(spanEntries) || spanEntries.length === 0) {
   throw new Error("nodeSpans should return entries for parsed documents");
 }
 const rootEntry = spanEntries.find((entry) => entry.id === "root");
-if (!rootEntry || rootEntry.span.start !== 0 || rootEntry.span.end !== spanSrc.length) {
+if (
+  !rootEntry ||
+  rootEntry.span.start !== 0 ||
+  rootEntry.span.end !== spanSrc.length
+) {
   throw new Error("nodeSpans should include a root span covering the source");
 }
 if (!spanEntries.some((entry) => entry.id === "root.child.0.arg.0.content")) {
   throw new Error("nodeSpans should include argument content paths");
 }
 if (new Document().nodeSpans().length !== 0) {
-  throw new Error("nodeSpans should be empty for documents built without parsing");
+  throw new Error(
+    "nodeSpans should be empty for documents built without parsing",
+  );
 }
 
 const packages = listPackages();
@@ -323,7 +381,11 @@ if (!Array.isArray(packages) || packages.length === 0) {
   throw new Error("listPackages should return package infos");
 }
 const basePackage = packages.find((info) => info.name === "base");
-if (!basePackage || basePackage.commands <= 0 || basePackage.environments <= 0) {
+if (
+  !basePackage ||
+  basePackage.commands <= 0 ||
+  basePackage.environments <= 0
+) {
   throw new Error("listPackages should report base with record counts");
 }
 
@@ -411,13 +473,17 @@ assert.match(snakeKeyError.message, /flatten_groups/);
 assert.match(snakeKeyError.message, /camelCase/);
 
 const typoError = expectError(
-  () => engine.normalize(overSrc, { flattenGroups: { preserveEmptyGruop: true } }),
+  () =>
+    engine.normalize(overSrc, { flattenGroups: { preserveEmptyGruop: true } }),
   TexformConfigError,
 );
 assert.match(typoError.message, /flattenGroups\.preserveEmptyGruop/);
 assert.match(typoError.message, /preserveRenderedSpacing/);
 assert.doesNotMatch(typoError.message, /preserveEmptyGroup/);
-assert.doesNotMatch(typoError.message, /preserveGroupContainingDeclarativeCommand/);
+assert.doesNotMatch(
+  typoError.message,
+  /preserveGroupContainingDeclarativeCommand/,
+);
 
 const oldFlattenKeys = [
   "preserveGroupContainingDeclarativeCommand",
@@ -447,7 +513,10 @@ assert.equal(
   }),
   flattenNullOmitted,
 );
-assert.equal(engine.normalize(overSrc, { flattenGroups: null }), flattenNullOmitted);
+assert.equal(
+  engine.normalize(overSrc, { flattenGroups: null }),
+  flattenNullOmitted,
+);
 
 const rewriteArrayError = expectError(
   () => engine.normalize(overSrc, { rewrite: [] }),
@@ -455,7 +524,10 @@ const rewriteArrayError = expectError(
 );
 assert.match(rewriteArrayError.message, /expected an object/);
 
-const topArrayError = expectError(() => engine.normalize(overSrc, []), TexformConfigError);
+const topArrayError = expectError(
+  () => engine.normalize(overSrc, []),
+  TexformConfigError,
+);
 assert.match(topArrayError.message, /expected an object/);
 
 expectError(
@@ -464,7 +536,10 @@ expectError(
 );
 
 const omittedNormalize = engine.normalize(overSrc);
-assert.equal(engine.normalize(overSrc, { rewrite: undefined }), omittedNormalize);
+assert.equal(
+  engine.normalize(overSrc, { rewrite: undefined }),
+  omittedNormalize,
+);
 assert.equal(engine.normalize(overSrc, { rewrite: null }), omittedNormalize);
 
 const defaultLatexAgain = doc.toLatex();
@@ -499,10 +574,13 @@ expectError(
   TexformParseError,
 );
 
-expectError(() => new Parser({ items: [["command", "foo"]] }), TexformConfigError);
+expectError(
+  () => new KnowledgeBase({ items: [["command", "foo"]] }),
+  TexformConfigError,
+);
 
 const missingArgspec = expectError(
-  () => new Parser({ items: [{ target: "command", name: "foo" }] }),
+  () => new KnowledgeBase({ items: [{ target: "command", name: "foo" }] }),
   TexformConfigError,
 );
 assert.match(missingArgspec.message, /argspec/);
@@ -518,13 +596,22 @@ assert.deepEqual(Object.keys(firstReport.report).sort(), [
   "lowerAttributes",
   "rewrite",
 ]);
-assert.deepEqual(Object.keys(firstReport.report.rewrite).sort(), ["iterations", "rules"]);
+assert.deepEqual(Object.keys(firstReport.report.rewrite).sort(), [
+  "iterations",
+  "rules",
+]);
 assert.ok(firstReport.report.rewrite.iterations > 0);
 const ruleKeys = firstReport.report.rewrite.rules.map((rule) => rule.key);
 assert.deepEqual(ruleKeys, [...ruleKeys].sort());
-assert.ok(firstReport.report.rewrite.rules.some((rule) => rule.appliedCount > 0));
+assert.ok(
+  firstReport.report.rewrite.rules.some((rule) => rule.appliedCount > 0),
+);
 for (const rule of firstReport.report.rewrite.rules) {
-  assert.deepEqual(Object.keys(rule).sort(), ["appliedCount", "key", "skippedCount"]);
+  assert.deepEqual(Object.keys(rule).sort(), [
+    "appliedCount",
+    "key",
+    "skippedCount",
+  ]);
 }
 assert.deepEqual(Object.keys(firstReport.report.finalizeAst).sort(), [
   "primeRunMerges",
@@ -537,42 +624,63 @@ assert.deepEqual(Object.keys(firstReport.report.flattenGroups.actions).sort(), [
   "replacedSingleChild",
   "unwrappedSlot",
 ]);
-assert.deepEqual(Object.keys(firstReport.report.flattenGroups.guardHits).sort(), [
-  "commandContact",
-  "commandContactViaScriptedBase",
-  "declarativeScope",
-  "delimitedPair",
-  "emptyGroup",
-  "envBody",
-  "infixScope",
-  "leadingAtomSpacingChar",
-  "loneAtomSpacingChar",
-  "scriptBase",
-]);
+assert.deepEqual(
+  Object.keys(firstReport.report.flattenGroups.guardHits).sort(),
+  [
+    "commandContact",
+    "commandContactViaScriptedBase",
+    "declarativeScope",
+    "delimitedPair",
+    "emptyGroup",
+    "envBody",
+    "infixScope",
+    "leadingAtomSpacingChar",
+    "loneAtomSpacingChar",
+    "scriptBase",
+  ],
+);
 assert.equal("guards" in firstReport.report.flattenGroups, false);
 const attributeStats = firstReport.report.lowerAttributes.attributes;
 assert.deepEqual(
   attributeStats.map((item) => [item.attr, item.value]),
   [...attributeStats]
     .map((item) => [item.attr, item.value])
-    .sort((left, right) => left[0].localeCompare(right[0]) || left[1].localeCompare(right[1])),
+    .sort(
+      (left, right) =>
+        left[0].localeCompare(right[0]) || left[1].localeCompare(right[1]),
+    ),
 );
 for (const item of attributeStats) {
   for (const bucket of ["consumed", "redundant", "emitted"]) {
-    assert.deepEqual(Object.keys(item[bucket]).sort(), ["declaratives", "prefixes"]);
+    assert.deepEqual(Object.keys(item[bucket]).sort(), [
+      "declaratives",
+      "prefixes",
+    ]);
   }
 }
 
 const rewriteDisabled = { rewrite: { enabled: false } };
 const disabledText = engine.normalize(reportSource, rewriteDisabled);
-const disabledReport = engine.normalizeWithReport(reportSource, rewriteDisabled);
+const disabledReport = engine.normalizeWithReport(
+  reportSource,
+  rewriteDisabled,
+);
 assert.equal(disabledText, disabledReport.normalized);
 assert.notEqual(disabledText, plainReportText);
 assert.equal(disabledReport.report.rewrite.iterations, 0);
 assert.deepEqual(disabledReport.report.rewrite.rules, []);
-for (const method of [engine.normalize.bind(engine), engine.normalizeWithReport.bind(engine)]) {
-  expectError(() => method(reportSource, { rewriteEnabled: false }), TexformConfigError);
-  expectError(() => method(reportSource, { rewrite: { enabled: "yes" } }), TexformConfigError);
+for (const method of [
+  engine.normalize.bind(engine),
+  engine.normalizeWithReport.bind(engine),
+]) {
+  expectError(
+    () => method(reportSource, { rewriteEnabled: false }),
+    TexformConfigError,
+  );
+  expectError(
+    () => method(reportSource, { rewrite: { enabled: "yes" } }),
+    TexformConfigError,
+  );
 }
 
 expectError(() => engine.normalize("{"), TexformParseError);
@@ -585,13 +693,59 @@ const freshDocument = () => engine.parse(reportSource).document;
 const transformedDocument = freshDocument();
 assert.equal(engine.transform(transformedDocument), undefined);
 assert.equal(transformedDocument.toLatex(), plainReportText);
-const incompleteForReport = engine.parse(String.raw`\sqrt[`, { abortOnError: false }).document;
+const incompleteForReport = engine.parse(String.raw`\sqrt[`, {
+  abortOnError: false,
+}).document;
 const incompleteBefore = incompleteForReport.toLatex();
-expectError(() => engine.transformWithReport(incompleteForReport), TexformTransformError);
+expectError(
+  () => engine.transformWithReport(incompleteForReport),
+  TexformTransformError,
+);
 assert.equal(incompleteForReport.toLatex(), incompleteBefore);
-const foreignForReport = Document.fromSyntax(freshDocument().toSyntax());
-expectError(() => engine.transformWithReport(foreignForReport), TexformTransformError);
+const foreignForReport = Document.fromSyntax(freshDocument().toSyntax(), {
+  knowledgeBase: new KnowledgeBase(),
+});
+expectError(
+  () => engine.transformWithReport(foreignForReport),
+  TexformTransformError,
+);
 const reportedDocument = freshDocument();
-assert.deepEqual(engine.transformWithReport(reportedDocument), firstReport.report);
+assert.deepEqual(
+  engine.transformWithReport(reportedDocument),
+  firstReport.report,
+);
 assert.equal(reportedDocument.toLatex(), plainReportText);
-assert.deepEqual(engine.transformWithReport(freshDocument()), firstReport.report);
+assert.deepEqual(
+  engine.transformWithReport(freshDocument()),
+  firstReport.report,
+);
+
+// CommonJS exposes the same live knowledge and document contract.
+const cjs = createRequire(import.meta.url)("../node/index.cjs");
+const cjsKnowledge = new cjs.KnowledgeBase({ packages: ["base"] });
+const cjsParser = new cjs.Parser({ knowledgeBase: cjsKnowledge });
+const cjsEngine = new cjs.TransformEngine({
+  profile: "authoring",
+  knowledgeBase: cjsKnowledge,
+});
+const cjsDocument = cjsParser.parse("x").document;
+cjsEngine.transform(cjsDocument.clone());
+assert(cjsDocument.knowledgeBase().isSame(cjsKnowledge));
+assert(cjsDocument.root().document().root().isSameNode(cjsDocument.root()));
+assert(new Parser().knowledgeBase().isSame(new Document().knowledgeBase()));
+assert(new Document({ mode: "text" }).root().contentMode() === "text");
+const records = customKnowledge.commands("math");
+records[0].name = "changed";
+assert(customKnowledge.commands("math")[0].name !== "changed");
+const loadedPackages = customKnowledge.packages();
+loadedPackages.push("physics");
+assert.deepEqual(customKnowledge.packages(), ["base"]);
+expectError(() => new Document({ mode: "invalid" }), TexformConfigError);
+expectError(() => new Document({ packages: [] }), TexformConfigError);
+expectError(
+  () => Document.fromSyntax(doc.toSyntax(), { mode: "text" }),
+  TexformConfigError,
+);
+
+assert(Object.isFrozen(customKnowledge));
+assert.throws(() => { customKnowledge.extra = true; }, TypeError);

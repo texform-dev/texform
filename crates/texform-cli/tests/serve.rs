@@ -114,7 +114,12 @@ fn configure_resolves_the_effective_config() {
 
     let first = &served.response(1)["result"]["resolved"];
     let engine = TransformEngine::builder()
-        .packages(&["ams", "base"])
+        .knowledge_base(
+            texform::KnowledgeBase::builder()
+                .packages(&["ams", "base"])
+                .build()
+                .unwrap(),
+        )
         .profile(Profile::Authoring)
         .build()
         .unwrap();
@@ -368,7 +373,12 @@ fn normalize_matches_facade_normalize_with() {
         let selected = config_packages.as_ref().unwrap_or(&packages);
         let names: Vec<&str> = selected.iter().map(String::as_str).collect();
         let engine = TransformEngine::builder()
-            .packages(&names)
+            .knowledge_base(
+                texform::KnowledgeBase::builder()
+                    .packages(&names)
+                    .build()
+                    .unwrap(),
+            )
             .profile(*profile)
             .build()
             .unwrap();

@@ -32,12 +32,8 @@ pub struct NodeSpanEntry {
 
 /// Editable LaTeX document tree.
 ///
-/// Documents extracted from a [`ParseResult`](crate::ParseResult) remember the
-/// parser context that produced them. [`TransformEngine::transform`](crate::TransformEngine::transform)
-/// uses that parser identity to accept only documents parsed through the same
-/// engine. Documents created with [`Document::new`], [`Document::with_mode`],
-/// or [`Document::from_syntax`] can still be edited and serialized, but they
-/// cannot be transformed in place by a `TransformEngine`.
+/// Every document shares an immutable [`KnowledgeBase`](crate::KnowledgeBase).
+/// A transform engine accepts complete documents sharing its knowledge-base instance.
 ///
 /// # Examples
 ///
@@ -63,25 +59,21 @@ pub struct Document {
 impl Document {
     /// Create an empty math-mode document.
     ///
-    /// The document is editable and serializable, but it is not associated
-    /// with any parser context and cannot be passed to
-    /// [`TransformEngine::transform`](crate::TransformEngine::transform).
+    /// The document uses the shared default knowledge base.
     pub fn new() -> Self {
         Self::from_core(texform_core::document::Document::new())
     }
 
     /// Create an empty document with an explicit root content mode.
     ///
-    /// The document is not associated with any parser context and cannot be
-    /// passed to [`TransformEngine::transform`](crate::TransformEngine::transform).
+    /// The document uses the shared default knowledge base.
     pub fn with_mode(mode: texform_core::parse::ContentMode) -> Self {
         Self::from_core(texform_core::document::Document::with_mode(mode))
     }
 
     /// Build a document from a syntax tree.
     ///
-    /// This path validates and imports the tree, but it does not attach the
-    /// parser context required by [`TransformEngine::transform`](crate::TransformEngine::transform).
+    /// This path validates the tree structure and uses the shared default knowledge base.
     pub fn from_syntax(
         node: &texform_interface::syntax_node::SyntaxNode,
     ) -> Result<Self, FromSyntaxError> {
@@ -98,8 +90,30 @@ impl Document {
         &mut self.inner
     }
 
-    pub(crate) fn parse_context_id(&self) -> Option<texform_core::parse::ParseContextId> {
-        self.inner.parse_context_id()
+    /// The immutable knowledge base bound to this document.
+    pub fn knowledge_base(&self) -> &crate::KnowledgeBase {
+        self.inner.knowledge_base()
+    }
+
+    /// Create an empty document bound to an existing knowledge-base instance.
+    pub fn with_knowledge_base(
+        knowledge_base: &crate::KnowledgeBase,
+        mode: crate::ContentMode,
+    ) -> Self {
+        Self::from_core(texform_core::document::Document::with_knowledge_base(
+            knowledge_base,
+            mode,
+        ))
+    }
+
+    /// Import a syntax tree using an existing knowledge-base instance.
+    pub fn from_syntax_with(
+        knowledge_base: &crate::KnowledgeBase,
+        node: &texform_interface::syntax_node::SyntaxNode,
+    ) -> Result<Self, FromSyntaxError> {
+        Ok(Self::from_core(
+            texform_core::document::Document::from_syntax_with(knowledge_base, node)?,
+        ))
     }
 
     /// The root node of the tree.

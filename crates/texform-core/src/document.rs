@@ -25,7 +25,7 @@ use crate::ast::{
     Node, NodeId as RawNodeId, Slot,
 };
 use crate::parse::grammar::SpanTree;
-use crate::parse::{ParseContextId, Span};
+use crate::parse::{KnowledgeBase, Span};
 use crate::serialize::{
     SerializeError, SerializeOptions, TokenizedLatex, serialize, serialize_tokenized,
     serialize_tokenized_with, serialize_with,
@@ -239,44 +239,51 @@ impl DelimiterValue {
 
 /// Public, fallible, editable DOM over an internal [`Ast`].
 ///
-/// Documents produced by the parser remember the [`ParseContextId`] of the
-/// context that parsed them. Transform engines use that parser identity before
-/// mutating a live document in place. Documents created directly with
-/// [`Document::new`] or [`Document::from_syntax`] have no parser context id.
+/// Every document shares the immutable knowledge base defining its commands.
 pub struct Document {
     ast: Ast,
     spans: SecondaryMap<RawNodeId, Span>,
     has_errors: bool,
     id: DocumentId,
-    parse_context_id: Option<ParseContextId>,
+    knowledge_base: KnowledgeBase,
 }
 
 impl Document {
     /// Create an empty document containing only an empty math-mode root.
     ///
-    /// The document has no source parser context id.
+    /// The document shares the process-wide default knowledge base.
     pub fn new() -> Self {
         Self::with_mode(ContentMode::Math)
     }
 
     /// Like [`Document::new`] but with an explicit root content mode.
     ///
-    /// The document has no source parser context id.
+    /// The document shares the process-wide default knowledge base.
     pub fn with_mode(mode: ContentMode) -> Self {
+        Self::with_knowledge_base(&KnowledgeBase::default(), mode)
+    }
+
+    /// Create an empty document sharing the supplied knowledge base.
+    pub fn with_knowledge_base(knowledge_base: &KnowledgeBase, mode: ContentMode) -> Self {
         Document {
             ast: Ast::with_root_mode(mode),
             spans: SecondaryMap::new(),
             has_errors: false,
             id: next_document_id(),
-            parse_context_id: None,
+            knowledge_base: knowledge_base.clone(),
         }
     }
 
-    /// Build a document from a parsed syntax tree.
-    ///
-    /// This imports the tree but does not attach a parser context id. Only the
-    /// parser bridge attaches that id for freshly parsed documents.
+    /// Build a document from syntax using the default knowledge base.
     pub fn from_syntax(node: &SyntaxNode) -> Result<Document, FromSyntaxError> {
+        Self::from_syntax_with(&KnowledgeBase::default(), node)
+    }
+
+    /// Build a document from syntax sharing the supplied knowledge base.
+    pub fn from_syntax_with(
+        knowledge_base: &KnowledgeBase,
+        node: &SyntaxNode,
+    ) -> Result<Document, FromSyntaxError> {
         Self::validate_syntax(node, None, true)?;
         let ast = Ast::from_syntax_root(node);
         let has_errors = ast.contains_error();
@@ -285,16 +292,17 @@ impl Document {
             spans: SecondaryMap::new(),
             has_errors,
             id: next_document_id(),
-            parse_context_id: None,
+            knowledge_base: knowledge_base.clone(),
         })
     }
 
     /// Internal: build from syntax plus the parser's positional span subtree.
     pub(crate) fn from_syntax_with_spans(
+        knowledge_base: &KnowledgeBase,
         node: &SyntaxNode,
         span_tree: &SpanTree,
     ) -> Result<Document, FromSyntaxError> {
-        let mut doc = Document::from_syntax(node)?;
+        let mut doc = Document::from_syntax_with(knowledge_base, node)?;
         let mut spans = SecondaryMap::new();
         Self::assign_spans(&doc.ast, node, doc.ast.root(), span_tree, &mut spans);
         doc.spans = spans;
@@ -306,18 +314,9 @@ impl Document {
         self.id
     }
 
-    /// Parser context that produced this document, when it came from parsing.
-    ///
-    /// `None` means the document was constructed directly or rebuilt from a
-    /// syntax tree, so a transform engine cannot verify that it came from its
-    /// own parser.
-    pub fn parse_context_id(&self) -> Option<ParseContextId> {
-        self.parse_context_id
-    }
-
-    /// Internal parser bridge: attach the source parser context to a freshly parsed document.
-    pub(crate) fn set_parse_context_id(&mut self, id: ParseContextId) {
-        self.parse_context_id = Some(id);
+    /// Knowledge base shared by this document and its clones.
+    pub fn knowledge_base(&self) -> &KnowledgeBase {
+        &self.knowledge_base
     }
 
     /// Root node handle.
@@ -1422,7 +1421,7 @@ impl Clone for Document {
             spans: self.spans.clone(),
             has_errors: self.has_errors,
             id: next_document_id(),
-            parse_context_id: self.parse_context_id,
+            knowledge_base: self.knowledge_base.clone(),
         }
     }
 }
@@ -1794,7 +1793,7 @@ impl Document {
             spans: SecondaryMap::new(),
             has_errors: false,
             id: next_document_id(),
-            parse_context_id: None,
+            knowledge_base: KnowledgeBase::default(),
         }
     }
 
@@ -1808,7 +1807,7 @@ impl Document {
             spans: SecondaryMap::new(),
             has_errors,
             id: next_document_id(),
-            parse_context_id: None,
+            knowledge_base: KnowledgeBase::default(),
         }
     }
 }
@@ -2384,7 +2383,8 @@ mod tests {
             kids: vec![leaf(0, 1), leaf(1, 2)],
         };
 
-        let doc = Document::from_syntax_with_spans(&syntax, &span_tree).unwrap();
+        let doc = Document::from_syntax_with_spans(&KnowledgeBase::default(), &syntax, &span_tree)
+            .unwrap();
         let mut kids = doc.root().children();
         let a = kids.next().unwrap();
         let b = kids.next().unwrap();

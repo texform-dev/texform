@@ -14,7 +14,7 @@ fn empty_context_starts_empty() {
 #[test]
 fn parse_context_builder_can_insert_and_remove_delimiter_controls() {
     let ctx = ParseContextBuilder::empty()
-        .insert_item(DelimiterControlItem::new("langle"))
+        .item(DelimiterControlItem::new("langle"))
         .remove_delimiter_control("langle")
         .build()
         .expect("parse context should build");
@@ -24,13 +24,13 @@ fn parse_context_builder_can_insert_and_remove_delimiter_controls() {
 #[test]
 fn parse_context_builder_insert_then_remove_items_keeps_final_view_clean() {
     let ctx = ParseContextBuilder::empty()
-        .insert_item(CommandItem::new(
+        .item(CommandItem::new(
             "tempcmd",
             CommandKind::Prefix,
             AllowedMode::Math,
             "m",
         ))
-        .insert_item(EnvironmentItem::new(
+        .item(EnvironmentItem::new(
             "tempenv",
             AllowedMode::Math,
             ContentMode::Math,
@@ -49,7 +49,7 @@ fn parse_context_builder_insert_then_remove_items_keeps_final_view_clean() {
 fn builder_applies_insert_and_remove_before_freezing() {
     let ctx = ParseContextBuilder::default()
         .packages(&["base"])
-        .insert_item(CommandItem::new(
+        .item(CommandItem::new(
             "foo",
             CommandKind::Prefix,
             AllowedMode::Math,
@@ -66,7 +66,7 @@ fn builder_applies_insert_and_remove_before_freezing() {
 #[test]
 fn builder_applies_insert_and_remove_environment_before_freezing() {
     let ctx = ParseContextBuilder::empty()
-        .insert_item(EnvironmentItem::new(
+        .item(EnvironmentItem::new(
             "tempenv",
             AllowedMode::Math,
             ContentMode::Math,

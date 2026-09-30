@@ -4,7 +4,7 @@
 //! [`TransformEngine`](crate::TransformEngine); its variants distinguish the
 //! pipeline stage that failed (build, parse, transform, serialize) and the two
 //! precondition violations ([`Error::IncompleteTree`] and
-//! [`Error::ForeignDocument`]). [`TransformBuildError`] and [`TransformError`]
+//! [`Error::KnowledgeBaseMismatch`]). [`TransformBuildError`] and [`TransformError`]
 //! are opaque wrappers carrying a message from the internal transform engine.
 
 /// Error returned by transform and normalize APIs.
@@ -15,24 +15,18 @@ pub enum Error {
     MissingProfile,
     /// A rule name passed to the builder does not exist in the selected profile.
     UnknownRule(String),
-    /// The parser context could not be built.
-    ParserBuild(crate::parser::ParserBuildError),
     /// The transform plan could not be built.
     TransformBuild(TransformBuildError),
     /// Parsing failed before a complete document could be produced.
     Parse(crate::parse_result::ParseError),
     /// The document contains parse-error nodes and cannot be transformed.
     IncompleteTree,
-    /// The document was not parsed by this transform engine's parser.
+    /// The document and engine hold different knowledge-base instances.
     ///
-    /// [`TransformEngine::transform`](crate::TransformEngine::transform)
-    /// accepts only documents extracted from parse results produced by the
-    /// same engine's [`parser`](crate::TransformEngine::parser). Documents
-    /// parsed by a different parser, created with
-    /// [`Document::new`](crate::Document::new), or rebuilt with
-    /// [`Document::from_syntax`](crate::Document::from_syntax) return this
-    /// error.
-    ForeignDocument,
+    /// Instances are compared by identity: build one
+    /// [`KnowledgeBase`](crate::KnowledgeBase) and share it instead of building
+    /// equal ones separately.
+    KnowledgeBaseMismatch,
     /// A transform rule failed while rewriting the tree.
     Transform(TransformError),
     /// The normalized document could not be serialized.
@@ -111,13 +105,13 @@ impl std::fmt::Display for Error {
         match self {
             Self::MissingProfile => f.write_str("engine profile is required"),
             Self::UnknownRule(name) => write!(f, "unknown transform rule: {name}"),
-            Self::ParserBuild(error) => write!(f, "failed to build parser: {error}"),
             Self::TransformBuild(error) => write!(f, "failed to build transform plan: {error}"),
             Self::Parse(error) => error.fmt(f),
             Self::IncompleteTree => f.write_str("cannot transform a document with parse errors"),
-            Self::ForeignDocument => {
-                f.write_str("document was not parsed by this transform engine")
-            }
+            Self::KnowledgeBaseMismatch => f.write_str(
+                "document and transform engine use different knowledge-base instances; \
+                 build one KnowledgeBase and share it with the parser, engine, and documents",
+            ),
             Self::Transform(error) => error.fmt(f),
             Self::Serialize(error) => error.fmt(f),
         }

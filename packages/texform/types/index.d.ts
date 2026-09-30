@@ -244,12 +244,38 @@ export type ArgumentKind =
  */
 export type SyntaxNode =
   | { Root: { mode: SyntaxContentMode; children: SyntaxNode[] } }
-  | { Group: { mode: SyntaxContentMode; kind: GroupKind; children: SyntaxNode[] } }
+  | {
+      Group: {
+        mode: SyntaxContentMode;
+        kind: GroupKind;
+        children: SyntaxNode[];
+      };
+    }
   | { Command: { name: string; args: ArgumentSlot[]; known: boolean } }
-  | { Infix: { name: string; args: ArgumentSlot[]; left: SyntaxNode; right: SyntaxNode } }
+  | {
+      Infix: {
+        name: string;
+        args: ArgumentSlot[];
+        left: SyntaxNode;
+        right: SyntaxNode;
+      };
+    }
   | { Declarative: { name: string; args: ArgumentSlot[] } }
-  | { Environment: { name: string; args: ArgumentSlot[]; known: boolean; body: SyntaxNode } }
-  | { Scripted: { base: SyntaxNode; subscript?: SyntaxNode; superscript?: SyntaxNode } }
+  | {
+      Environment: {
+        name: string;
+        args: ArgumentSlot[];
+        known: boolean;
+        body: SyntaxNode;
+      };
+    }
+  | {
+      Scripted: {
+        base: SyntaxNode;
+        subscript?: SyntaxNode;
+        superscript?: SyntaxNode;
+      };
+    }
   | { Prime: { count: number } }
   | { Error: { message: string; snippet: string } }
   | { Text: string }
@@ -409,10 +435,7 @@ export interface TokenizedLatex {
  * fixed that way at construction: every editing method then throws.
  *
  * `Document` is a live WASM-backed class instance, not plain data. Documents
- * obtained from {@link TransformEngine.parse} remember their parser context and
- * can be transformed in place by that same engine; documents built with
- * `new Document()` or {@link Document.fromSyntax} can be edited and serialized
- * but not transformed. For the conceptual model, see the Parsing guide.
+ * share an immutable KnowledgeBase with their parser or engine. Transform accepts any complete document with the same knowledge-base identity.
  *
  * @see {@link Node}
  * @see {@link TransformEngine}
@@ -426,24 +449,28 @@ export interface TokenizedLatex {
  * ```
  */
 export class Document {
+  knowledgeBase(): KnowledgeBase;
+  /** Deep-copy the tree into a new document with new node identities, sharing this document's knowledge base. */
+  clone(): Document;
   /**
    * Construct an empty math-mode document holding a single empty root.
    *
    * This is a complete tree (`hasErrors()` is `false`) — the same legal state
-   * an empty parse produces. The document is editable and serializable, but it
-   * is not associated with a parser context and cannot be passed to
-   * {@link TransformEngine.transform}.
+   * an empty parse produces. The document is editable and serializable, and it
+   * shares the default KnowledgeBase unless one is supplied.
    */
-  constructor();
+  constructor(options?: {
+    knowledgeBase?: KnowledgeBase;
+    mode?: RuntimeContentMode;
+  });
   /**
    * Build a document from a {@link SyntaxNode} snapshot.
    *
    * Invalid external syntax is rejected rather than corrupting the tree.
    * `fromSyntax` and {@link Document.toSyntax} are symmetric over every node
    * kind, including `Error` and `Prime`. A bare `Prime` is a symbol, not a
-   * shorthand superscript. The imported document is not
-   * associated with a parser context, so it cannot be passed to
-   * {@link TransformEngine.transform}.
+   * shorthand superscript. The imported document is
+   * bound to the supplied KnowledgeBase or the shared default.
    *
    * @param node - A `SyntaxNode` object, typically produced by `toSyntax()`.
    * @returns The reconstructed editable document.
@@ -457,7 +484,10 @@ export class Document {
    * const doc = Document.fromSyntax(syntax);
    * ```
    */
-  static fromSyntax(node: SyntaxNode): Document;
+  static fromSyntax(
+    node: SyntaxNode,
+    options?: { knowledgeBase?: KnowledgeBase },
+  ): Document;
   /**
    * Release the WASM handle for this document immediately.
    *
@@ -608,7 +638,11 @@ export class Document {
    * @param body - The environment body, which must be a group {@link Node}.
    * @returns The staged node handle.
    */
-  createEnvironment(name: string, args: ArgValueInput[] | null | undefined, body: Node): Node;
+  createEnvironment(
+    name: string,
+    args: ArgValueInput[] | null | undefined,
+    body: Node,
+  ): Node;
   /**
    * Append `child` as the last child of `parent`.
    *
@@ -851,6 +885,8 @@ export interface NodeSpanEntry {
  * ```
  */
 export class Node {
+  isSameNode(other: Node): boolean;
+  document(): Document;
   /**
    * Release this node handle's WASM wrapper immediately.
    *
@@ -1195,7 +1231,10 @@ export type ArgSpecFormInfo =
   | { type: "star" }
   | { type: "group" }
   | { type: "delimited"; open: DelimiterTokenInfo; close: DelimiterTokenInfo }
-  | { type: "paired"; pairs: Array<{ open: DelimiterTokenInfo; close: DelimiterTokenInfo }> };
+  | {
+      type: "paired";
+      pairs: Array<{ open: DelimiterTokenInfo; close: DelimiterTokenInfo }>;
+    };
 
 /**
  * One parsed argument slot of an argspec, as reported by
@@ -1216,7 +1255,7 @@ export interface ParsedArgSpecSlot {
 
 /**
  * The knowledge-base entry for a command, returned by
- * {@link Parser.lookupCommand} and related lookups.
+ * {@link KnowledgeBase.lookupCommand} and related lookups.
  */
 export interface CommandInfo {
   /** The command name, without the leading backslash. */
@@ -1224,7 +1263,7 @@ export interface CommandInfo {
   /** The command's syntactic role (prefix, infix, declarative). */
   kind: CommandKind;
   /** The modes the command is allowed in. */
-  allowedMode: AllowedMode;
+  allowedMode: string;
   /** The raw xparse-style argument-specification string. */
   specString: string;
   /** The knowledge packages that define this command. */
@@ -1237,13 +1276,13 @@ export interface CommandInfo {
 
 /**
  * The knowledge-base entry for an environment, returned by
- * {@link Parser.lookupEnv}.
+ * {@link KnowledgeBase.lookupEnv}.
  */
 export interface EnvInfo {
   /** The environment name. */
   name: string;
   /** The modes the environment is allowed in. */
-  allowedMode: AllowedMode;
+  allowedMode: string;
   /** The content mode the environment body is parsed in. */
   bodyMode: RuntimeContentMode;
   /** The raw xparse-style argument-specification string. */
@@ -1266,13 +1305,13 @@ export interface CharacterAttributesInfo {
 
 /**
  * The knowledge-base entry for a special character, returned by
- * {@link Parser.lookupCharacter}.
+ * {@link KnowledgeBase.lookupCharacter}.
  */
 export interface CharacterInfo {
   /** The character name, without the leading backslash. */
   name: string;
   /** The modes the character is allowed in. */
-  allowedMode: AllowedMode;
+  allowedMode: string;
   /** The Unicode code point the character maps to, as a string. */
   unicodeValue: string;
   /** Rendering attributes such as `mathvariant`. */
@@ -1282,8 +1321,8 @@ export interface CharacterInfo {
 }
 
 /**
- * One custom knowledge entry injected into a {@link Parser} or
- * {@link TransformEngine} through the `items` option, discriminated by
+ * One custom knowledge entry supplied to {@link KnowledgeBase}
+ * through the `items` option, discriminated by
  * `target`.
  *
  * A `command` entry carries its kind, allowed mode, and `argspec`; an
@@ -1296,14 +1335,14 @@ export type ContextItem =
       target: "command";
       name: string;
       kind: CommandKind;
-      allowedMode: AllowedMode;
+      allowedMode: string;
       argspec: string;
       tags?: string[];
     }
   | {
       target: "environment";
       name: string;
-      allowedMode: AllowedMode;
+      allowedMode: string;
       bodyMode: RuntimeContentMode;
       argspec: string;
       tags?: string[];
@@ -1677,14 +1716,13 @@ export interface TransformConfig {
 export type Profile = "authoring" | "faithful" | "corpus" | "equiv";
 
 /**
- * Knowledge-base options shared by {@link Parser} and {@link TransformEngine}
- * construction.
+ * Construction options for an immutable {@link KnowledgeBase}.
  *
  * Omit `packages` to load the default runtime packages, not every package in
  * the catalog. Use `listPackages()` to see the available names; an unknown name
  * throws {@link TexformConfigError}.
  */
-export interface ParserOptions {
+export interface KnowledgeBaseOptions {
   /** Package names to load; omit to load the default runtime packages. */
   packages?: string[];
   /** Custom command/environment/delimiter-control knowledge to inject. */
@@ -1695,13 +1733,17 @@ export interface ParserOptions {
   removeEnvironments?: string[];
   /** Delimiter-control names to drop from the loaded knowledge. */
   removeDelimiterControls?: string[];
+}
+
+export interface ParserOptions {
+  knowledgeBase?: KnowledgeBase;
   /** Overlay applied to {@link ParseConfig} `LENIENT` as this parser's default. */
   defaultParseConfig?: ParseConfig | null;
 }
 
 /**
- * Construction options for {@link TransformEngine}: the knowledge-base options
- * plus the required normalization {@link Profile} and optional rule disabling.
+ * Construction options for {@link TransformEngine}: a shared knowledge base,
+ * the required normalization {@link Profile}, and optional rule disabling.
  */
 export interface TransformEngineOptions extends ParserOptions {
   /** The normalization profile (required). Unknown values throw {@link TexformConfigError}. */
@@ -1739,27 +1781,23 @@ export interface NormalizeConfig extends ParseConfig, TransformConfig {}
  * (`rejectUnknown: false`, `abortOnError: false`). Per-call `config` is a
  * camelCase overlay object: `null` / `undefined` / omitted means not set.
  * Unknown keys, snake_case keys, arrays in object positions, and wrong scalar
- * types throw {@link TexformConfigError} with a camelCase path. Omit `packages`
- * to load the default runtime packages (six packages, excluding `physics`),
- * not every built-in package. Loading `braket` together with `physics` is
- * allowed, but `physics` overrides their shared command definitions. Built-in
- * packages are imported in a fixed order, regardless of the supplied list order.
+ * types throw {@link TexformConfigError} with a camelCase path. Omit `knowledgeBase`
+ * to share the default instance, or construct a {@link KnowledgeBase} to customize packages and entries.
  *
  * @see {@link TransformEngine}
  * @see {@link Parsing}
  * @example
  * ```ts
- * import { Parser } from 'texform';
+ * import { Parser, KnowledgeBase } from 'texform';
  *
  * const parser = new Parser();
  * parser.parse(String.raw`\frac{x}{y}`).document?.toLatex(); // '\\frac { x } { y }'
- * const restricted = new Parser({ packages: ['base', 'ams'] });
+ * const restricted = new Parser({ knowledgeBase: new KnowledgeBase({ packages: ['base', 'ams'] }) });
  * ```
  */
 export class Parser {
   /**
-   * Construct a parser, optionally restricting packages or injecting and
-   * removing knowledge entries.
+   * Construct a parser with an optional shared knowledge base.
    *
    * @param options - A {@link ParserOptions} object, or omit/`null` to load
    *   the default runtime packages with no customization.
@@ -1779,86 +1817,7 @@ export class Parser {
    * Release the WASM handle. Same as {@link Parser.free}; used by `using`.
    */
   [Symbol.dispose](): void;
-  /**
-   * Whether `name` is a delimiter-control command (such as `langle`).
-   *
-   * @param name - The command name, without the leading backslash.
-   * @returns `true` if it is a delimiter control.
-   * @example
-   * ```ts
-   * new Parser().isDelimiterControl('langle'); // true
-   * ```
-   */
-  isDelimiterControl(name: string): boolean;
-  /**
-   * Whether a command named `name` is known in any mode.
-   *
-   * @param name - The command name, without the leading backslash.
-   * @returns `true` if the command is known.
-   * @example
-   * ```ts
-   * new Parser().knowsCommandName('frac'); // true
-   * ```
-   */
-  knowsCommandName(name: string): boolean;
-  /**
-   * Whether an environment named `name` is known in any mode.
-   *
-   * @param name - The environment name.
-   * @returns `true` if the environment is known.
-   */
-  knowsEnvName(name: string): boolean;
-  /**
-   * Whether a special character named `name` is known in any mode.
-   *
-   * @param name - The character name, without the leading backslash.
-   * @returns `true` if the character is known.
-   */
-  knowsCharacterName(name: string): boolean;
-  /**
-   * Look up the {@link CharacterInfo} for a character in a given mode.
-   *
-   * @param name - The character name, without the leading backslash.
-   * @param mode - The content mode, `"math"` or `"text"`.
-   * @returns The knowledge entry, or `null` if unknown in that mode.
-   */
-  lookupCharacter(name: string, mode: RuntimeContentMode): CharacterInfo | null;
-  /**
-   * Look up the {@link CommandInfo} for a command in a given mode.
-   *
-   * Resolves through any mode-specific overrides, so the returned record is the
-   * one the parser would actually use in `mode`.
-   *
-   * @param name - The command name, without the leading backslash.
-   * @param mode - The content mode, `"math"` or `"text"`.
-   * @returns The knowledge entry, or `null` if unknown in that mode.
-   * @example
-   * ```ts
-   * new Parser().lookupCommand('frac', 'math');
-   * // { name: 'frac', kind: 'prefix', allowedMode: 'math', specString: 'm m', ... }
-   * ```
-   */
-  lookupCommand(name: string, mode: RuntimeContentMode): CommandInfo | null;
-  /**
-   * Look up the {@link EnvInfo} for an environment in a given mode.
-   *
-   * @param name - The environment name.
-   * @param mode - The content mode, `"math"` or `"text"`.
-   * @returns The knowledge entry, or `null` if unknown in that mode.
-   */
-  lookupEnv(name: string, mode: RuntimeContentMode): EnvInfo | null;
-  /**
-   * Look up only an explicit, non-character-derived command.
-   *
-   * Unlike {@link Parser.lookupCommand}, this does not return the zero-arg
-   * command view projected from character metadata.
-   *
-   * @param name - The command name, without the leading backslash.
-   * @param mode - The content mode, `"math"` or `"text"`.
-   * @returns The knowledge entry, or `null` if not explicitly defined in that
-   *   mode.
-   */
-  lookupExplicitCommand(name: string, mode: RuntimeContentMode): CommandInfo | null;
+
   /**
    * Parse a LaTeX string into a {@link ParseResult}.
    *
@@ -1885,6 +1844,7 @@ export class Parser {
    * change one key and pass the rest through.
    */
   defaultParseConfig(): Complete<ParseConfig>;
+  knowledgeBase(): KnowledgeBase;
 }
 
 /**
@@ -1895,7 +1855,7 @@ export class Parser {
  * {@link Profile}. It exposes a string-to-string {@link TransformEngine.normalize}
  * path and an in-place {@link TransformEngine.transform} path over a live
  * {@link Document}. It also exposes its own {@link TransformEngine.parse} and the
- * same knowledge-base lookups as {@link Parser}. For the conceptual model —
+ * shared knowledge base through {@link TransformEngine.knowledgeBase}. For the conceptual model —
  * profiles, the multi-phase pipeline, and the eliminated-form contract — see the
  * Transforms guide.
  *
@@ -1923,8 +1883,8 @@ export class Parser {
  */
 export class TransformEngine {
   /**
-   * Construct an engine for a profile, optionally restricting packages,
-   * injecting context items, or disabling rules.
+   * Construct an engine for a profile, optionally sharing a knowledge base,
+   * or disabling rules.
    *
    * @param options - A {@link TransformEngineOptions} object. `profile` is
    *   required; an unknown profile throws {@link TexformConfigError}.
@@ -1947,7 +1907,7 @@ export class TransformEngine {
   /**
    * Parse a LaTeX string into a {@link ParseResult}, using this engine's parser.
    *
-   * Non-null documents from this result keep the engine's parser identity, so
+   * Non-null documents from this result share the engine's KnowledgeBase, so
    * they can be edited and then passed to {@link TransformEngine.transform}. The
    * The engine parser defaults to lenient parsing; pass `config` to override it
    * per call.
@@ -2001,14 +1961,14 @@ export class TransformEngine {
    *   the engine defaults.
    * @returns The normalized string and its {@link TransformReport}.
    */
-  normalizeWithReport(src: string, config?: NormalizeConfig | null): NormalizeReportResult;
+  normalizeWithReport(
+    src: string,
+    config?: NormalizeConfig | null,
+  ): NormalizeReportResult;
   /**
    * Transform a live {@link Document} in place.
    *
-   * The document must have come from this engine's {@link TransformEngine.parse}
-   * (it carries the matching parser identity). A document created with
-   * `new Document()` or {@link Document.fromSyntax} can be edited and
-   * serialized, but `transform` rejects it with {@link TexformTransformError}.
+   * The document must share this engine's KnowledgeBase instance.
    * A document that {@link Document.hasErrors} is read-only and cannot be
    * transformed; this precondition error is surfaced as {@link TexformTransformError}.
    * This path returns no value and does not build a report.
@@ -2050,76 +2010,12 @@ export class TransformEngine {
    * }
    * ```
    */
-  transformWithReport(document: Document, config?: TransformConfig | null): TransformReport;
-  /**
-   * Whether `name` is a delimiter-control command. See
-   * {@link Parser.isDelimiterControl}.
-   *
-   * @param name - The command name, without the leading backslash.
-   * @returns `true` if it is a delimiter control.
-   */
-  isDelimiterControl(name: string): boolean;
-  /**
-   * Whether a command named `name` is known in any mode. See
-   * {@link Parser.knowsCommandName}.
-   *
-   * @param name - The command name, without the leading backslash.
-   * @returns `true` if the command is known.
-   */
-  knowsCommandName(name: string): boolean;
-  /**
-   * Whether an environment named `name` is known in any mode. See
-   * {@link Parser.knowsEnvName}.
-   *
-   * @param name - The environment name.
-   * @returns `true` if the environment is known.
-   */
-  knowsEnvName(name: string): boolean;
-  /**
-   * Whether a special character named `name` is known in any mode. See
-   * {@link Parser.knowsCharacterName}.
-   *
-   * @param name - The character name, without the leading backslash.
-   * @returns `true` if the character is known.
-   */
-  knowsCharacterName(name: string): boolean;
-  /**
-   * Look up the {@link CharacterInfo} for a character in a given mode. See
-   * {@link Parser.lookupCharacter}.
-   *
-   * @param name - The character name, without the leading backslash.
-   * @param mode - The content mode, `"math"` or `"text"`.
-   * @returns The knowledge entry, or `null` if unknown in that mode.
-   */
-  lookupCharacter(name: string, mode: RuntimeContentMode): CharacterInfo | null;
-  /**
-   * Look up the {@link CommandInfo} for a command in a given mode. See
-   * {@link Parser.lookupCommand}.
-   *
-   * @param name - The command name, without the leading backslash.
-   * @param mode - The content mode, `"math"` or `"text"`.
-   * @returns The knowledge entry, or `null` if unknown in that mode.
-   */
-  lookupCommand(name: string, mode: RuntimeContentMode): CommandInfo | null;
-  /**
-   * Look up the {@link EnvInfo} for an environment in a given mode. See
-   * {@link Parser.lookupEnv}.
-   *
-   * @param name - The environment name.
-   * @param mode - The content mode, `"math"` or `"text"`.
-   * @returns The knowledge entry, or `null` if unknown in that mode.
-   */
-  lookupEnv(name: string, mode: RuntimeContentMode): EnvInfo | null;
-  /**
-   * Look up only an explicit, non-character-derived command. See
-   * {@link Parser.lookupExplicitCommand}.
-   *
-   * @param name - The command name, without the leading backslash.
-   * @param mode - The content mode, `"math"` or `"text"`.
-   * @returns The knowledge entry, or `null` if not explicitly defined in that
-   *   mode.
-   */
-  lookupExplicitCommand(name: string, mode: RuntimeContentMode): CommandInfo | null;
+  transformWithReport(
+    document: Document,
+    config?: TransformConfig | null,
+  ): TransformReport;
+
+  knowledgeBase(): KnowledgeBase;
 }
 
 /**
@@ -2151,7 +2047,10 @@ export class TransformEngine {
  * serialize(syntax, { scriptSpacing: 'compact' }); // 'x^{ 2 }'
  * ```
  */
-export function serialize(node: SyntaxNode, options?: SerializeOptions | null): string;
+export function serialize(
+  node: SyntaxNode,
+  options?: SerializeOptions | null,
+): string;
 
 /**
  * Validate an xparse-style argspec string and report its parsed slots.
@@ -2191,7 +2090,7 @@ export interface PackageInfo {
  * List all built-in knowledge packages with record counts.
  *
  * The returned names are the identifiers accepted by the `packages` option of
- * {@link Parser} and {@link TransformEngine}: `ams`, `base`, `bboldx`,
+ * {@link KnowledgeBase}: `ams`, `base`, `bboldx`,
  * `boldsymbol`, `braket`, `physics`, `textmacros`.
  *
  * @returns One {@link PackageInfo} per built-in package.
@@ -2208,3 +2107,38 @@ export function listPackages(): PackageInfo[];
 // contains an explicit `export {}`. This keeps file-local helpers such as
 // `Complete` out of the public API.
 export {};
+
+/** Immutable knowledge shared by parsers, engines and documents. Enumerations are sorted by name. */
+export class KnowledgeBase {
+  /** Build the knowledge base once. Throws {@link TexformConfigError} for an invalid package name or item. */
+  constructor(options?: KnowledgeBaseOptions);
+  free(): void;
+  [Symbol.dispose](): void;
+  /** Whether `other` is the same instance; equality is identity, not recipe. */
+  isSame(other: KnowledgeBase): boolean;
+  packages(): string[];
+  commands(mode: RuntimeContentMode): CommandInfo[];
+  environments(mode: RuntimeContentMode): EnvInfo[];
+  characters(mode: RuntimeContentMode): CharacterInfo[];
+  delimiters(): DelimiterInfo[];
+  isDelimiterControl(name: string): boolean;
+  knowsCommandName(name: string): boolean;
+  knowsEnvName(name: string): boolean;
+  knowsCharacterName(name: string): boolean;
+  lookupCharacter(name: string, mode: RuntimeContentMode): CharacterInfo | null;
+  lookupCommand(name: string, mode: RuntimeContentMode): CommandInfo | null;
+  lookupEnv(name: string, mode: RuntimeContentMode): EnvInfo | null;
+  lookupExplicitCommand(
+    name: string,
+    mode: RuntimeContentMode,
+  ): CommandInfo | null;
+}
+
+export interface DelimiterInfo {
+  name: string;
+  isControlSequence: boolean;
+  allowedMode: string;
+  unicodeValue: string;
+  attributes: { mathvariant: string | null };
+  package: string;
+}

@@ -1,13 +1,13 @@
+mod support;
+
+use support::kb;
 use texform::{
     Document, EditError, Error, ParseConfig, ParseDiagnostic, ParseResult, Parser, Profile, Span,
     TransformEngine,
 };
 
 fn parser() -> Parser {
-    Parser::builder()
-        .packages(&["base"])
-        .build()
-        .expect("parser should build")
+    Parser::builder().knowledge_base(kb(&["base"])).build()
 }
 
 #[test]
@@ -89,7 +89,7 @@ fn recovered_error_tree_is_read_only_and_returned_in_error() {
 
 #[test]
 fn recovered_argument_errors_do_not_expose_internal_diagnostic_tags() {
-    let parser = Parser::builder().build().expect("parser should build");
+    let parser = Parser::builder().build();
     for source in [r"\frac{a}", r"\text{$x}"] {
         let output = parser.parse_with(source, &ParseConfig::LENIENT);
         assert!(!output.diagnostics().is_empty());
@@ -105,7 +105,7 @@ fn recovered_argument_errors_do_not_expose_internal_diagnostic_tags() {
 
 #[test]
 fn nested_command_mode_diagnostics_identify_the_rejected_command() {
-    let parser = Parser::builder().build().expect("parser should build");
+    let parser = Parser::builder().build();
     for source in [
         r"\frac{\text{\frac{a}{b}}}{c}",
         r"α+\frac{\text{β\frac{a}{b}γ}}{c}+z",
@@ -144,7 +144,7 @@ fn nested_command_mode_diagnostics_identify_the_rejected_command() {
 
 #[test]
 fn recovered_environment_mode_diagnostics_keep_nested_name_spans() {
-    let parser = Parser::builder().build().expect("parser should build");
+    let parser = Parser::builder().build();
     for source in [
         r"\text{\begin{matrix}a\end{matrix}}",
         r"\text{\begin{matrix}a\end{matrix}}+z",
@@ -181,7 +181,7 @@ fn recovered_environment_mode_diagnostics_keep_nested_name_spans() {
 
 #[test]
 fn text_script_diagnostics_keep_unicode_byte_offsets() {
-    let parser = Parser::builder().build().expect("parser should build");
+    let parser = Parser::builder().build();
     let source = r"α+\text{β^γ}+z";
     for reject_unknown in [false, true] {
         for abort_on_error in [false, true] {

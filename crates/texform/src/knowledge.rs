@@ -1,9 +1,11 @@
-//! Knowledge-base package metadata.
+//! Shared immutable knowledge bases and built-in package metadata.
+
+pub use texform_core::knowledge::{KnowledgeBase, KnowledgeBaseBuildError, KnowledgeBaseBuilder};
 
 /// Summary of one built-in knowledge package.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PackageInfo {
-    /// Package name as accepted by parser `packages` options (e.g. `base`, `ams`).
+    /// Package name as accepted by knowledge-base `packages` options (e.g. `base`, `ams`).
     pub name: String,
     /// Number of command records in the package.
     pub commands: usize,

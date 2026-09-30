@@ -1876,7 +1876,7 @@ fn constructed_optional_content_protects_closing_tokens_in_all_spacing_styles() 
             assert_token_contract(&result);
             assert!(result.latex.contains('{') && result.latex.contains('}'));
             let ctx = texform_core::parse::ParseContextBuilder::empty()
-                .insert_item(support::command_item(
+                .item(support::command_item(
                     "probe",
                     CommandKind::Prefix,
                     AllowedMode::Math,

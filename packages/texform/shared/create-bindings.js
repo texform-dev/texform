@@ -1,5 +1,6 @@
 export function createBindings({
   Document: WasmDocument,
+  KnowledgeBase: WasmKnowledgeBase,
   Parser: WasmParser,
   TransformEngine: WasmTransformEngine,
   serialize: wasmSerialize,
@@ -48,7 +49,12 @@ export function createBindings({
     try {
       return callback();
     } catch (error) {
-      if (error && typeof error === "object" && typeof error.kind === "string") {
+      if (error instanceof TexformError) throw error;
+      if (
+        error &&
+        typeof error === "object" &&
+        typeof error.kind === "string"
+      ) {
         if (error.kind === "parse") {
           throw new TexformParseError(error);
         }
@@ -112,29 +118,58 @@ export function createBindings({
     return value;
   }
 
-  class Parser {
+  function unwrapKnowledgeBase(kb) {
+    if (kb == null) return undefined;
+    if (!(kb instanceof KnowledgeBase))
+      throw new TexformConfigError({
+        kind: "config",
+        message: "knowledgeBase must be a KnowledgeBase",
+      });
+    return kb.inner.clone();
+  }
+  function withoutKnowledgeBase(options) {
+    if (
+      options == null ||
+      typeof options !== "object" ||
+      Array.isArray(options)
+    )
+      return options;
+    const { knowledgeBase, ...rest } = options;
+    return rest;
+  }
+  class KnowledgeBase {
     constructor(options) {
-      this.inner = wrapTexformError(() => new WasmParser(options ?? undefined));
+      this.inner = wrapTexformError(() =>
+        options instanceof WasmKnowledgeBase
+          ? options
+          : new WasmKnowledgeBase(options),
+      );
+      Object.freeze(this);
     }
-
     free() {
       this.inner.free();
     }
-
     [Symbol.dispose]() {
       this.free();
     }
-
-    parse(src, options) {
-      return wrapTexformError(() =>
-        wrapParseResult(this.inner.parse(src, options ?? undefined)),
-      );
+    isSame(other) {
+      return this.inner.isSame(other.inner);
     }
-
-    defaultParseConfig() {
-      return wrapTexformError(() => this.inner.defaultParseConfig());
+    packages() {
+      return wrapTexformError(() => this.inner.packages());
     }
-
+    commands(mode) {
+      return wrapTexformError(() => this.inner.commands(mode));
+    }
+    environments(mode) {
+      return wrapTexformError(() => this.inner.environments(mode));
+    }
+    characters(mode) {
+      return wrapTexformError(() => this.inner.characters(mode));
+    }
+    delimiters() {
+      return wrapTexformError(() => this.inner.delimiters());
+    }
     lookupCommand(name, mode) {
       return wrapTexformError(() => this.inner.lookup_command(name, mode));
     }
@@ -170,9 +205,51 @@ export function createBindings({
     }
   }
 
-  class TransformEngine {
+  class Parser {
+    knowledgeBase() {
+      return new KnowledgeBase(this.inner.knowledgeBase());
+    }
     constructor(options) {
-      this.inner = wrapTexformError(() => new WasmTransformEngine(options));
+      this.inner = wrapTexformError(
+        () =>
+          new WasmParser(
+            withoutKnowledgeBase(options),
+            unwrapKnowledgeBase(options?.knowledgeBase),
+          ),
+      );
+    }
+
+    free() {
+      this.inner.free();
+    }
+
+    [Symbol.dispose]() {
+      this.free();
+    }
+
+    parse(src, options) {
+      return wrapTexformError(() =>
+        wrapParseResult(this.inner.parse(src, options ?? undefined)),
+      );
+    }
+
+    defaultParseConfig() {
+      return wrapTexformError(() => this.inner.defaultParseConfig());
+    }
+  }
+
+  class TransformEngine {
+    knowledgeBase() {
+      return new KnowledgeBase(this.inner.knowledgeBase());
+    }
+    constructor(options) {
+      this.inner = wrapTexformError(
+        () =>
+          new WasmTransformEngine(
+            withoutKnowledgeBase(options),
+            unwrapKnowledgeBase(options?.knowledgeBase),
+          ),
+      );
     }
 
     free() {
@@ -220,49 +297,66 @@ export function createBindings({
         this.inner.transformWithReport(document.inner, config ?? undefined),
       );
     }
+  }
 
-    lookupCommand(name, mode) {
-      return wrapTexformError(() => this.inner.lookup_command(name, mode));
+  function documentOptions(options, allowMode) {
+    if (options == null) return {};
+    if (typeof options !== "object" || Array.isArray(options))
+      throw new TexformConfigError({
+        kind: "config",
+        message: "document options must be an object",
+      });
+    for (const key of Object.keys(options)) {
+      if (key !== "knowledgeBase" && !(allowMode && key === "mode"))
+        throw new TexformConfigError({
+          kind: "config",
+          message: `unknown document option: ${key}`,
+        });
     }
-
-    lookupExplicitCommand(name, mode) {
-      return wrapTexformError(() =>
-        this.inner.lookup_explicit_command(name, mode),
+    if (
+      options.mode != null &&
+      options.mode !== "math" &&
+      options.mode !== "text"
+    )
+      throw new TexformConfigError({
+        kind: "config",
+        message: "mode must be math or text",
+      });
+    return options;
+  }
+  class Document {
+    knowledgeBase() {
+      return wrapTexformError(
+        () => new KnowledgeBase(this.inner.knowledgeBase()),
+      );
+    }
+    clone() {
+      return wrapTexformError(() => new Document(this.inner.clone()));
+    }
+    constructor(options) {
+      if (!(options instanceof WasmDocument))
+        options = documentOptions(options, true);
+      this.inner = wrapTexformError(() =>
+        options instanceof WasmDocument
+          ? options
+          : new WasmDocument(
+              unwrapKnowledgeBase(options?.knowledgeBase),
+              options?.mode,
+            ),
       );
     }
 
-    lookupCharacter(name, mode) {
-      return wrapTexformError(() => this.inner.lookup_character(name, mode));
-    }
-
-    lookupEnv(name, mode) {
-      return wrapTexformError(() => this.inner.lookup_env(name, mode));
-    }
-
-    isDelimiterControl(name) {
-      return this.inner.is_delimiter_control(name);
-    }
-
-    knowsCommandName(name) {
-      return this.inner.knows_command_name(name);
-    }
-
-    knowsEnvName(name) {
-      return this.inner.knows_env_name(name);
-    }
-
-    knowsCharacterName(name) {
-      return this.inner.knows_character_name(name);
-    }
-  }
-
-  class Document {
-    constructor(inner) {
-      this.inner = inner ?? new WasmDocument();
-    }
-
-    static fromSyntax(node) {
-      return wrapTexformError(() => new Document(WasmDocument.fromSyntax(node)));
+    static fromSyntax(node, options) {
+      options = documentOptions(options, false);
+      return wrapTexformError(
+        () =>
+          new Document(
+            WasmDocument.fromSyntax(
+              node,
+              unwrapKnowledgeBase(options?.knowledgeBase),
+            ),
+          ),
+      );
     }
 
     free() {
@@ -407,11 +501,15 @@ export function createBindings({
     }
 
     setText(node, value) {
-      return wrapTexformError(() => this.inner.setText(unwrapNode(node), value));
+      return wrapTexformError(() =>
+        this.inner.setText(unwrapNode(node), value),
+      );
     }
 
     setChar(node, value) {
-      return wrapTexformError(() => this.inner.setChar(unwrapNode(node), value));
+      return wrapTexformError(() =>
+        this.inner.setChar(unwrapNode(node), value),
+      );
     }
 
     setCommandName(node, name) {
@@ -446,6 +544,12 @@ export function createBindings({
   }
 
   class Node {
+    isSameNode(other) {
+      return this.inner.isSameNode(unwrapNode(other));
+    }
+    document() {
+      return new Document(this.inner.document());
+    }
     constructor(inner) {
       this.inner = inner;
     }
@@ -581,6 +685,7 @@ export function createBindings({
     TexformEditError,
     TexformConfigError,
     TexformTransformError,
+    KnowledgeBase,
     Parser,
     TransformEngine,
     Document,

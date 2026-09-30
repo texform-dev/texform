@@ -4,10 +4,8 @@
 //! one [`Profile`]. It offers a string-to-string
 //! [`normalize`](TransformEngine::normalize) path and an in-place
 //! [`transform`](TransformEngine::transform) path over a live
-//! [`Document`]. Because the engine owns the parser that builds
-//! its transform plan, in-place transformation accepts only documents produced
-//! by that same engine's [`parser`](TransformEngine::parser); foreign documents
-//! are rejected with [`Error::ForeignDocument`].
+//! [`Document`]. In-place transformation accepts complete documents sharing
+//! the engine's immutable knowledge-base instance.
 
 use texform_core::parse::ParseConfig;
 use texform_transform::{BuildConfig, Profile, TransformContext};
@@ -20,12 +18,9 @@ use crate::parser::{Parser, ParserBuilder};
 
 /// Parser plus transform pipeline for one normalization profile.
 ///
-/// A `TransformEngine` owns the parser context used to build its transform
-/// plan. Documents passed to [`transform`](Self::transform) or
-/// [`transform_with`](Self::transform_with) must come from this engine's
-/// [`parser`](Self::parser) and extracted from its parse result; documents
-/// parsed by another parser, built with [`Document::new`], or rebuilt with
-/// [`Document::from_syntax`] are rejected with [`Error::ForeignDocument`].
+/// Documents passed to transformation must share the engine's knowledge-base
+/// instance. Independently built knowledge bases are distinct even when their
+/// contents match; cloning a knowledge base preserves its identity.
 pub struct TransformEngine {
     parser: Parser,
     transform: TransformContext,
@@ -58,23 +53,23 @@ impl TransformEngine {
         &self.parser
     }
 
+    /// The immutable knowledge base shared by this engine and its parser.
+    pub fn knowledge_base(&self) -> &crate::KnowledgeBase {
+        self.parser.knowledge_base()
+    }
+
     /// Normalize a parsed document in place with the default transform config.
     ///
-    /// The document must have been extracted from a parse result produced by
-    /// this engine's [`parser`](Self::parser). Passing a document from another
-    /// parser, from [`Document::new`], or from [`Document::from_syntax`]
-    /// returns [`Error::ForeignDocument`]. Passing a parsed document that
-    /// contains parse errors returns [`Error::IncompleteTree`].
+    /// A different knowledge-base instance returns [`Error::KnowledgeBaseMismatch`].
+    /// A document containing parse errors returns [`Error::IncompleteTree`].
     pub fn transform(&self, document: &mut Document) -> Result<(), Error> {
         self.transform_with(document, self.transform.default_config())
     }
 
     /// Normalize a parsed document in place with an explicit transform config.
     ///
-    /// This has the same document-source requirement as
-    /// [`transform`](Self::transform): the document must come from this
-    /// engine's [`parser`](Self::parser), otherwise the method returns
-    /// [`Error::ForeignDocument`]. The call does not collect a report.
+    /// The document must share this engine's knowledge-base instance.
+    /// The call does not collect a report.
     pub fn transform_with(
         &self,
         document: &mut Document,
@@ -94,7 +89,7 @@ impl TransformEngine {
     /// The config is the same [`TransformConfig`] accepted by
     /// [`transform_with`](Self::transform_with). There is no default-config
     /// overload; pass [`default_transform_config`](Self::default_transform_config)
-    /// when the engine defaults should apply. Document ownership, completeness,
+    /// when the engine defaults should apply. Knowledge-base identity, completeness,
     /// and transform errors match [`transform`](Self::transform). A failure
     /// does not return a partial report.
     pub fn transform_with_report(
@@ -114,7 +109,7 @@ impl TransformEngine {
     ///
     /// This method is not part of the stable facade. It always collects a
     /// report, does not change engine defaults, cannot re-enable a disabled
-    /// FlattenGroups phase, and still enforces document ownership,
+    /// FlattenGroups phase, and still enforces knowledge-base identity,
     /// completeness, and slot/mode/contract checks.
     #[doc(hidden)]
     pub fn transform_with_flatten_groups_guards(
@@ -213,8 +208,8 @@ impl TransformEngine {
     }
 
     fn ensure_engine_document(&self, document: &Document) -> Result<(), Error> {
-        if document.parse_context_id() != Some(self.parser.inner().id()) {
-            return Err(Error::ForeignDocument);
+        if !document.knowledge_base().ptr_eq(self.knowledge_base()) {
+            return Err(Error::KnowledgeBaseMismatch);
         }
         if document.has_errors() {
             return Err(Error::IncompleteTree);
@@ -249,19 +244,9 @@ impl TransformEngine {
 }
 
 impl TransformEngineBuilder {
-    /// Load the named knowledge packages into the engine's parser.
-    ///
-    /// See [`ParserBuilder::packages`](crate::ParserBuilder::packages).
-    pub fn packages(mut self, packages: &[&str]) -> Self {
-        self.parser = self.parser.packages(packages);
-        self
-    }
-
-    /// Start the engine's parser from an empty knowledge base.
-    ///
-    /// See [`ParserBuilder::empty_knowledge`](crate::ParserBuilder::empty_knowledge).
-    pub fn empty_knowledge(mut self) -> Self {
-        self.parser = self.parser.empty_knowledge();
+    /// Share an existing immutable knowledge-base instance with the engine.
+    pub fn knowledge_base(mut self, knowledge_base: crate::KnowledgeBase) -> Self {
+        self.parser = self.parser.knowledge_base(knowledge_base);
         self
     }
 
@@ -270,30 +255,6 @@ impl TransformEngineBuilder {
     /// The engine defaults to [`ParseConfig::LENIENT`].
     pub fn default_parse_config(mut self, config: ParseConfig) -> Self {
         self.parser = self.parser.default_parse_config(config);
-        self
-    }
-
-    /// Add a single context item to the engine's parser knowledge base.
-    pub fn item(mut self, item: impl Into<texform_core::parse::ContextItem>) -> Self {
-        self.parser = self.parser.item(item);
-        self
-    }
-
-    /// Remove a command from the engine's parser knowledge base by name.
-    pub fn remove_command(mut self, name: impl Into<String>) -> Self {
-        self.parser = self.parser.remove_command(name);
-        self
-    }
-
-    /// Remove an environment from the engine's parser knowledge base by name.
-    pub fn remove_environment(mut self, name: impl Into<String>) -> Self {
-        self.parser = self.parser.remove_environment(name);
-        self
-    }
-
-    /// Remove a delimiter-control command from the engine's parser by name.
-    pub fn remove_delimiter_control(mut self, name: impl Into<String>) -> Self {
-        self.parser = self.parser.remove_delimiter_control(name);
         self
     }
 
@@ -333,8 +294,7 @@ impl TransformEngineBuilder {
     /// # Errors
     ///
     /// Returns [`Error::MissingProfile`] if no profile was selected,
-    /// [`Error::ParserBuild`] if the parser context fails to build, or
-    /// [`Error::TransformBuild`] if the transform plan cannot be built.
+    /// or [`Error::TransformBuild`] if the transform plan cannot be built.
     pub fn build(self) -> Result<TransformEngine, Error> {
         let mut build_config = self
             .build_config
@@ -343,7 +303,7 @@ impl TransformEngineBuilder {
         for key in self.disabled_rules {
             build_config = build_config.disable_rule(key);
         }
-        let parser = self.parser.build().map_err(Error::ParserBuild)?;
+        let parser = self.parser.build();
         let transform = TransformContext::from_build_config(build_config, parser.inner())?;
         Ok(TransformEngine { parser, transform })
     }

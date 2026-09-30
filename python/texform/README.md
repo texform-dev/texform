@@ -26,6 +26,26 @@ if parsed["document"] is not None:
 
 Profiles select the normalization target: `"authoring"`, `"faithful"`, `"corpus"`, and `"equiv"`.
 
+## Shared knowledge and document copies
+
+Knowledge configuration belongs to `KnowledgeBase`; pass the same instance to each parser, engine, or document that should interoperate. Omitting it uses a process-wide default. Separately constructed knowledge bases have different identities even with identical package lists.
+
+```python
+kb = texform.KnowledgeBase(["base", "ams"])
+parser = texform.Parser(kb)
+engine = texform.TransformEngine("equiv", kb)
+document = parser.parse("x")["document"]
+variant = document.copy()  # copy.copy and copy.deepcopy also copy the tree.
+assert variant.knowledge_base() == kb
+assert variant.root() != document.root()
+assert document.root() == document.root()
+assert document.root().document() is document
+engine.transform(variant)
+records = kb.commands("math")  # Sorted copied records; knowledge is immutable.
+```
+
+`items`, `remove_commands`, `remove_environments`, and `remove_delimiter_controls` are keyword options on `KnowledgeBase`. Knowledge queries have moved from `Parser` and `TransformEngine` to `KnowledgeBase`. `commands(mode)`, `environments(mode)`, `characters(mode)`, `delimiters()`, and `packages()` enumerate its contents. `KnowledgeBase([])` constructs empty knowledge. `Document(kb, mode="text")` creates a text root, and `Document.from_syntax(snapshot, kb)` rebuilds a snapshot with shared knowledge. `count_targets(source, knowledge_base=kb)` uses the same knowledge for analysis.
+
 ## Python-specific notes
 
 - `normalize` returns `str`. `transform` updates the document and returns `None`.

@@ -1,5 +1,8 @@
 //! Plain and report calls share one transform and do not keep report state.
 
+mod support;
+
+use support::kb;
 use texform::{
     Document, Error, FlattenGroupsConfig, LowerAttributesConfig, NormalizeConfig, ParseConfig,
     Parser, Profile, TransformConfig, TransformEngine,
@@ -9,7 +12,7 @@ use texform_transform::FinalizeAstConfig;
 
 fn engine() -> TransformEngine {
     TransformEngine::builder()
-        .packages(&["base", "ams", "textmacros", "physics", "boldsymbol"])
+        .knowledge_base(kb(&["base", "ams", "textmacros", "physics", "boldsymbol"]))
         .profile(Profile::Corpus)
         .build()
         .expect("engine")
@@ -17,7 +20,7 @@ fn engine() -> TransformEngine {
 
 fn strict_engine() -> TransformEngine {
     TransformEngine::builder()
-        .packages(&["base", "ams", "textmacros", "physics"])
+        .knowledge_base(kb(&["base", "ams", "textmacros", "physics"]))
         .profile(Profile::Faithful)
         .build()
         .expect("engine")
@@ -36,7 +39,7 @@ fn error_category(error: &Error) -> String {
     match error {
         Error::Parse(inner) => format!("parse:{inner}"),
         Error::IncompleteTree => "incomplete".to_string(),
-        Error::ForeignDocument => "foreign".to_string(),
+        Error::KnowledgeBaseMismatch => "knowledge_mismatch".to_string(),
         Error::Transform(inner) => format!("transform:{}", inner.message()),
         other => format!("other:{other}"),
     }
@@ -131,7 +134,7 @@ fn report_collection_preserves_output_ast_and_errors() {
 
     assert_same_error(&engine, "{", &engine.default_normalize_config());
     let authoring = TransformEngine::builder()
-        .packages(&["base"])
+        .knowledge_base(kb(&["base"]))
         .profile(Profile::Authoring)
         .build()
         .expect("authoring");
@@ -160,7 +163,7 @@ fn one_engine_does_not_keep_report_state_across_calls() {
     assert!(error_category(&failed).starts_with("parse:"));
 
     let authoring = TransformEngine::builder()
-        .packages(&["base"])
+        .knowledge_base(kb(&["base"]))
         .profile(Profile::Authoring)
         .build()
         .expect("authoring");
@@ -213,9 +216,8 @@ fn report_calls_keep_source_and_completeness_checks() {
     assert_eq!(incomplete.to_latex().expect("latex"), before);
 
     let mut foreign = Parser::builder()
-        .packages(&["base"])
+        .knowledge_base(kb(&["base"]))
         .build()
-        .expect("parser")
         .parse("x")
         .try_into_document()
         .expect("parse")
@@ -223,23 +225,23 @@ fn report_calls_keep_source_and_completeness_checks() {
     let foreign_before = foreign.to_latex().expect("latex");
     let plain_foreign = engine
         .transform_with(&mut foreign, &config)
-        .expect_err("plain foreign");
+        .expect_err("plain knowledge mismatch");
     let reported_foreign = engine
         .transform_with_report(&mut foreign, &config)
-        .expect_err("reported foreign");
-    assert_eq!(error_category(&plain_foreign), "foreign");
-    assert_eq!(error_category(&reported_foreign), "foreign");
+        .expect_err("reported knowledge mismatch");
+    assert_eq!(error_category(&plain_foreign), "knowledge_mismatch");
+    assert_eq!(error_category(&reported_foreign), "knowledge_mismatch");
     assert_eq!(foreign.to_latex().expect("latex"), foreign_before);
 
     let syntax = parsed(&engine, "x").to_syntax();
     let mut rebuilt = Document::from_syntax(&syntax).expect("rebuild");
     assert!(matches!(
         engine.transform(&mut rebuilt),
-        Err(Error::ForeignDocument)
+        Err(Error::KnowledgeBaseMismatch)
     ));
     assert!(matches!(
         engine.transform_with_report(&mut rebuilt, &config),
-        Err(Error::ForeignDocument)
+        Err(Error::KnowledgeBaseMismatch)
     ));
 }
 

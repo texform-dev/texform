@@ -9,8 +9,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple, PyType};
 use serde::de::DeserializeOwned;
 use texform::bindings::{
-    ContextItemInput, NormalizeConfigInput, ParseConfigInput, SerializeOptionsInput,
-    TransformConfigInput,
+    NormalizeConfigInput, ParseConfigInput, SerializeOptionsInput, TransformConfigInput,
 };
 
 use crate::ConfigError;
@@ -226,27 +225,6 @@ pub(crate) fn serialize_options_from_python(
         .into_config(texform::SerializeOptions::default())),
         _ => Ok(texform::SerializeOptions::default()),
     }
-}
-
-pub(crate) fn context_items_from_python(
-    items: Option<&Bound<'_, PyAny>>,
-) -> PyResult<Vec<texform::ContextItem>> {
-    let Some(items) = items else {
-        return Ok(Vec::new());
-    };
-    if items.is_none() {
-        return Ok(Vec::new());
-    }
-    let inputs = from_python::<Vec<ContextItemInput>>(items, "items")?;
-    inputs
-        .into_iter()
-        .enumerate()
-        .map(|(index, item)| {
-            texform::ContextItem::try_from(item).map_err(|message| {
-                ConfigError::new_err(format!("invalid items: [{index}]: {message}"))
-            })
-        })
-        .collect()
 }
 
 #[pyclass(name = "ParseConfig", eq)]

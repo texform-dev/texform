@@ -2,6 +2,7 @@
 
 from ._native import (
     Document,
+    KnowledgeBase,
     ConfigError,
     EditError,
     FinalizeAstConfig,
@@ -24,6 +25,7 @@ from ._native import (
 
 __all__ = [
     "Document",
+    "KnowledgeBase",
     "ConfigError",
     "EditError",
     "FinalizeAstConfig",

@@ -175,11 +175,15 @@ The engine compiles a rewrite plan from a profile and the active knowledge base,
 
 LowerAttributes reads prefix and declarative targets from the attribute map. Prefix-backed values become wrappers; declarative-only values keep a local group, and following siblings resume the prior state. The phase does not synthesize default style or size commands.
 
-Normalization requires a complete tree: `TransformEngine::transform` and `normalize` return `Error::IncompleteTree` when `document.has_errors()`. Empty input is complete and normalizes normally. In-place transformation also requires a document produced by that engine's parser; documents from another parser or `Document::from_syntax` produce `Error::ForeignDocument`. Requesting a report does not relax those checks.
+Normalization requires a complete tree: `TransformEngine::transform` and `normalize` return `Error::IncompleteTree` when `document.has_errors()`. Empty input is complete and normalizes normally. In-place transformation requires the document and engine to share the same immutable `KnowledgeBase` instance; a different instance produces `Error::KnowledgeBaseMismatch`. Independently built knowledge bases remain distinct even with identical packages and customizations. Default parsers, engines, and documents share one process-wide instance; document clones preserve it, and `Document::from_syntax_with` accepts an explicit instance. Requesting a report does not relax those checks.
 
 When Rewrite is enabled, declared eliminated forms are checked after all enabled mutation phases. This final validation is read-only; a remaining eliminated form is a transform error. The [rule authoring guide](crates/texform-transform/src/rewrite/rules/README.md#metadata-and-the-rewrite-contract) defines the metadata contract.
 
 ## Knowledge and Argument Specifications
+
+`KnowledgeBase` owns two read-only `Catalog` values, one per content mode, plus the loaded packages and customization metadata. Construction applies ordered builder operations, after which the complete object is shared through one `Arc`; identity comparison uses `Arc::ptr_eq`, not recipe equality. `KnowledgeBase::default()` returns the process-wide default instance. Every `Document` holds a knowledge base, including empty and syntax-imported documents. Parse configuration and transform profiles belong to the operations, not to document identity.
+
+Package selection, custom items, removals, record lookup, and sorted record enumeration live on `KnowledgeBase` and its builder. Parser and engine builders accept `knowledge_base(...)`; callers that need compatible custom parsers and engines should build once and clone that instance. `packages(&[])` explicitly loads no packages.
 
 The parser is not purely syntactic — it consults `texform-knowledge` to decide whether a command or environment name is *known* and what argument shape it takes. Argument shapes are described in an xparse-style signature language parsed by `texform-argspec` (mandatory, optional, delimited, starred, and similar argument kinds). Unknown names are handled per `ParseConfig::reject_unknown`: either turned into diagnostics, or preserved as `known: false` nodes for lenient exploration. This is why parsing depends on a knowledge layer beneath the core parser, and why the same source can parse differently under different configurations.
 
@@ -187,6 +191,7 @@ The parser is not purely syntactic — it consults `texform-knowledge` to decide
 
 The Python and WebAssembly bindings expose live `Document` and `Node` handles rather than copying trees across the language boundary:
 
+- Document copying (`Clone` in Rust, `copy()` and the copy protocol in Python, `clone()` in JavaScript) creates independent editable storage and a new document identity while sharing the immutable knowledge base. Python node equality and hashing, and JavaScript `isSameNode`, compare document and node identity; `document()` retrieves the owning document.
 - A binding `Node` is a cheap handle — a shared reference to its owning document plus a `NodeId`. All reads and edits delegate back to the document; the tree is never cloned.
 - The core `Document` stays a plain owned Rust value with no interior mutability. Sharing is provided only at the binding layer, using each runtime's native mechanism: PyO3's reference-counted pyclass cell on Python, and `Rc<RefCell<…>>` on WASM. Direct Rust users never pay for the bindings' sharing needs.
 - Borrow conflicts and misuse surface as structured host-language exceptions, never as a panic crossing the FFI boundary. A read-only (error) document raises a read-only exception, and an edit mixing nodes from two documents is rejected before reaching the core (mapping `ForeignNode` to a cross-document exception).

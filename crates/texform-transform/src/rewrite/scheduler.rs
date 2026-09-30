@@ -37,7 +37,7 @@ pub(super) fn drive_fixed_point(
         let snapshot = preorder_snapshot(ast);
 
         {
-            let mut cx = RuleContext::new(ast, parse_ctx.math_kb(), parse_ctx.text_kb());
+            let mut cx = RuleContext::new(ast, parse_ctx.math_catalog(), parse_ctx.text_catalog());
             for node_id in snapshot {
                 if !cx.ast.contains(node_id) {
                     continue;

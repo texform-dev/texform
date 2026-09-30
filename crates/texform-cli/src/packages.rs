@@ -49,7 +49,10 @@ pub fn canonical(selection: &[String]) -> Vec<String> {
 }
 
 /// Build a parser that loads exactly `selection`.
-pub fn parser(selection: &[String]) -> Result<texform::Parser, texform::ParserBuildError> {
+pub fn parser(selection: &[String]) -> Result<texform::Parser, texform::KnowledgeBaseBuildError> {
     let names: Vec<&str> = selection.iter().map(String::as_str).collect();
-    texform::Parser::builder().packages(&names).build()
+    let knowledge_base = texform::KnowledgeBase::builder().packages(&names).build()?;
+    Ok(texform::Parser::builder()
+        .knowledge_base(knowledge_base)
+        .build())
 }

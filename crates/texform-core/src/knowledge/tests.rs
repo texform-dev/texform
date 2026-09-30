@@ -8,7 +8,7 @@ fn assert_from_packages(actual: &[&str], expected: &[&str]) {
 
 #[test]
 fn test_lookup_command() {
-    let kb = KnowledgeBase::build_from_packages(&["base", "textmacros"]);
+    let kb = Catalog::build_from_packages(&["base", "textmacros"]);
     let linebreak = kb.lookup_command("\\").unwrap();
     assert_eq!(linebreak.name, "\\");
     assert_eq!(linebreak.kind, CommandKind::Prefix);
@@ -56,7 +56,7 @@ fn test_arg_spec_helpers() {
 
 #[test]
 fn test_ams_operator_names_use_operator_name_content() {
-    let kb = KnowledgeBase::build_from_packages(&["ams", "base"]);
+    let kb = Catalog::build_from_packages(&["ams", "base"]);
     let operatorname = kb
         .lookup_command("operatorname")
         .expect("expected operatorname command");
@@ -75,11 +75,11 @@ fn test_ams_operator_names_use_operator_name_content() {
 
 #[test]
 fn test_delimiter_controls() {
-    let kb = KnowledgeBase::empty();
+    let kb = Catalog::empty();
     assert!(kb.lookup_delimiter_control("langle").is_none());
     assert!(kb.lookup_delimiter_control("notadelim").is_none());
 
-    let mut kb = KnowledgeBase::new();
+    let mut kb = Catalog::new();
     kb.import_package_with_name(
         "inline-delims",
         PackageSpecs {
@@ -125,7 +125,7 @@ fn test_delimiter_controls() {
 
 #[test]
 fn test_builder_import_overrides_by_order() {
-    let mut kb = KnowledgeBase::new();
+    let mut kb = Catalog::new();
     kb.insert_or_override_command(CommandSpec {
         name: "foo".to_string(),
         kind: CommandKind::Prefix,
@@ -155,7 +155,7 @@ fn test_builder_import_overrides_by_order() {
 
 #[test]
 fn test_character_import_preserves_allowed_mode() {
-    let mut kb = KnowledgeBase::new();
+    let mut kb = Catalog::new();
     kb.import_package(texform_knowledge::specs::PackageSpecs {
         characters: vec![texform_knowledge::specs::CharacterSpec {
             name: "alpha".to_string(),
@@ -190,7 +190,7 @@ fn test_character_import_preserves_allowed_mode() {
 
 #[test]
 fn test_later_character_can_override_active_explicit_command_without_removing_raw_command() {
-    let mut kb = KnowledgeBase::new();
+    let mut kb = Catalog::new();
     kb.insert_or_override_command(CommandSpec {
         name: "foo".to_string(),
         kind: CommandKind::Prefix,
@@ -234,7 +234,7 @@ fn test_later_character_can_override_active_explicit_command_without_removing_ra
 
 #[test]
 fn test_later_explicit_command_overrides_active_character() {
-    let mut kb = KnowledgeBase::new();
+    let mut kb = Catalog::new();
     kb.import_package(PackageSpecs {
         characters: vec![CharacterSpec {
             name: "foo".to_string(),
@@ -277,7 +277,7 @@ fn test_later_explicit_command_overrides_active_character() {
 
 #[test]
 fn test_remove_command_suppresses_character_only_active_name() {
-    let mut kb = KnowledgeBase::new();
+    let mut kb = Catalog::new();
     kb.import_package(PackageSpecs {
         characters: vec![CharacterSpec {
             name: "alpha".to_string(),
@@ -309,7 +309,7 @@ fn test_remove_command_suppresses_character_only_active_name() {
 
 #[test]
 fn test_remove_command_does_not_fallback_to_shadowed_character() {
-    let mut kb = KnowledgeBase::new();
+    let mut kb = Catalog::new();
     kb.import_package(PackageSpecs {
         characters: vec![CharacterSpec {
             name: "alpha".to_string(),
@@ -354,7 +354,7 @@ fn test_remove_command_does_not_fallback_to_shadowed_character() {
 
 #[test]
 fn test_remove_command_by_name_suppresses_active_name_without_touching_character_record() {
-    let mut kb = KnowledgeBase::new();
+    let mut kb = Catalog::new();
     kb.import_package(PackageSpecs {
         characters: vec![CharacterSpec {
             name: "alpha".to_string(),
@@ -381,7 +381,7 @@ fn test_remove_command_by_name_suppresses_active_name_without_touching_character
 
 #[test]
 fn test_insert_command_clears_suppression_and_reactivates_name() {
-    let mut kb = KnowledgeBase::new();
+    let mut kb = Catalog::new();
     kb.import_package(PackageSpecs {
         characters: vec![CharacterSpec {
             name: "alpha".to_string(),
@@ -432,7 +432,7 @@ fn test_insert_command_clears_suppression_and_reactivates_name() {
 
 #[test]
 fn test_insert_env_accepts_text_body_mode() {
-    let mut kb = KnowledgeBase::new();
+    let mut kb = Catalog::new();
     kb.insert_or_override_environment(EnvironmentSpec {
         name: "textenv".to_string(),
         allowed_mode: AllowedMode::Text,
@@ -448,7 +448,7 @@ fn test_insert_env_accepts_text_body_mode() {
 
 #[test]
 fn test_remove_environment_by_name_reports_presence() {
-    let mut kb = KnowledgeBase::new();
+    let mut kb = Catalog::new();
     kb.insert_or_override_environment(EnvironmentSpec {
         name: "textenv".to_string(),
         allowed_mode: AllowedMode::Text,
@@ -642,12 +642,12 @@ fn test_spec_mismatch_commands_do_not_merge_under_public_loading() {
 
 #[test]
 fn test_spec_mismatch_commands_split_by_target_mode() {
-    let math_kb = KnowledgeBase::try_build_from_packages_for_mode(
+    let math_kb = Catalog::try_build_from_packages_for_mode(
         &["textmacros", "physics", "base"],
         ContentMode::Math,
     )
     .expect("expected math kb build");
-    let text_kb = KnowledgeBase::try_build_from_packages_for_mode(
+    let text_kb = Catalog::try_build_from_packages_for_mode(
         &["textmacros", "physics", "base"],
         ContentMode::Text,
     )

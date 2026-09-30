@@ -22,10 +22,11 @@ use texform_core::target_counter::{TargetCounter, count_node};
 /// # Examples
 ///
 /// ```
-/// use texform::Parser;
+/// use texform::{KnowledgeBase, Parser};
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let parser = Parser::builder().packages(&["base"]).build()?;
+/// let kb = KnowledgeBase::builder().packages(&["base"]).build()?;
+/// let parser = Parser::builder().knowledge_base(kb).build();
 /// let counts = texform::analysis::count_targets(&parser, r"a \over b")?;
 /// assert!(counts.is_object());
 /// # Ok(())

@@ -135,9 +135,13 @@ fn build_command_with_public_delimiter_value() {
 #[test]
 fn node_spans_exports_tree_paths_for_parsed_document() {
     let parser = texform::Parser::builder()
-        .packages(&["base", "ams"])
-        .build()
-        .expect("parser should build");
+        .knowledge_base(
+            texform::KnowledgeBase::builder()
+                .packages(&["base", "ams"])
+                .build()
+                .unwrap(),
+        )
+        .build();
 
     let src = r"\frac{a}{b} + x_i^2";
     let document = parser
@@ -179,9 +183,13 @@ fn node_spans_exports_tree_paths_for_parsed_document() {
 #[test]
 fn node_spans_covers_environment_body_and_infix_operands() {
     let parser = texform::Parser::builder()
-        .packages(&["base", "ams"])
-        .build()
-        .expect("parser should build");
+        .knowledge_base(
+            texform::KnowledgeBase::builder()
+                .packages(&["base", "ams"])
+                .build()
+                .unwrap(),
+        )
+        .build();
 
     let src = r"\begin{matrix} a \over b \end{matrix}";
     let document = parser

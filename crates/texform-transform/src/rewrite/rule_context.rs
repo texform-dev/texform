@@ -14,7 +14,7 @@
 use std::ops::Deref;
 
 use crate::ast::{ArgumentKind, ArgumentSlot, ArgumentValue, Ast, Delimiter, Node, NodeId};
-use crate::knowledge::{KnowledgeBase, lookup_command_node_name, lookup_environment_node_name};
+use crate::knowledge::{Catalog, lookup_command_node_name, lookup_environment_node_name};
 use crate::parse::ContentMode;
 use crate::rewrite::RuleError;
 use crate::rewrite::rule::RuleKey;
@@ -98,8 +98,8 @@ pub struct RuleContext<'a> {
     /// This field stays public so rules can perform bespoke tree surgery when
     /// helper functions are not expressive enough.
     pub ast: &'a mut Ast,
-    math_kb: &'a KnowledgeBase,
-    text_kb: &'a KnowledgeBase,
+    math_catalog: &'a Catalog,
+    text_catalog: &'a Catalog,
 }
 
 /// A read-only scoped context bound to a rule key for diagnostics and slot extraction.
@@ -262,18 +262,18 @@ impl RuleScopedContext<'_, '_> {
 }
 
 impl<'a> RuleContext<'a> {
-    pub fn new(ast: &'a mut Ast, math_kb: &'a KnowledgeBase, text_kb: &'a KnowledgeBase) -> Self {
+    pub fn new(ast: &'a mut Ast, math_catalog: &'a Catalog, text_catalog: &'a Catalog) -> Self {
         Self {
             ast,
-            math_kb,
-            text_kb,
+            math_catalog,
+            text_catalog,
         }
     }
 
-    fn kb_for(&self, mode: ContentMode) -> &'a KnowledgeBase {
+    fn catalog(&self, mode: ContentMode) -> &'a Catalog {
         match mode {
-            ContentMode::Math => self.math_kb,
-            ContentMode::Text => self.text_kb,
+            ContentMode::Math => self.math_catalog,
+            ContentMode::Text => self.text_catalog,
         }
     }
 
@@ -298,7 +298,7 @@ impl<'a> RuleContext<'a> {
 
     /// Looks up a command record by name directly in the selected knowledge-base lane.
     pub fn lookup_command(&self, name: &str, mode: ContentMode) -> Option<&ActiveCommandRecord> {
-        self.kb_for(mode).lookup_command(name)
+        self.catalog(mode).lookup_command(name)
     }
 
     /// Looks up a character record by name directly in the selected knowledge-base lane.
@@ -307,12 +307,12 @@ impl<'a> RuleContext<'a> {
         name: &str,
         mode: ContentMode,
     ) -> Option<&ActiveCharacterRecord> {
-        self.kb_for(mode).lookup_character(name)
+        self.catalog(mode).lookup_character(name)
     }
 
     /// Looks up an environment record by name directly in the selected knowledge-base lane.
     pub fn lookup_env(&self, name: &str, mode: ContentMode) -> Option<&ActiveEnvironmentRecord> {
-        self.kb_for(mode).lookup_env(name)
+        self.catalog(mode).lookup_env(name)
     }
 
     /// Returns the AST node for the given identifier.
@@ -464,7 +464,7 @@ mod tests {
         let required = ast.new_node(Node::Char('x'));
         let optional = ast.new_node(Node::Char('2'));
         let grouped = ast.new_node(Node::Char('t'));
-        let cx = RuleContext::new(&mut ast, parse_ctx.math_kb(), parse_ctx.text_kb());
+        let cx = RuleContext::new(&mut ast, parse_ctx.math_catalog(), parse_ctx.text_catalog());
 
         let star = Some(Argument::from_value(
             ArgumentKind::Star,
@@ -552,7 +552,7 @@ mod tests {
     fn rejects_invalid_mandatory_delimiter_shapes() {
         let parse_ctx = ParseContext::from_packages(&["base"]);
         let mut ast = Ast::new();
-        let cx = RuleContext::new(&mut ast, parse_ctx.math_kb(), parse_ctx.text_kb());
+        let cx = RuleContext::new(&mut ast, parse_ctx.math_catalog(), parse_ctx.text_catalog());
         let scoped = cx.for_rule(TEST_RULE);
         let optional_delimiter = Some(Argument::from_value(
             ArgumentKind::Optional,

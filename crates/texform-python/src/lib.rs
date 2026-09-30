@@ -1,3 +1,5 @@
+use std::hash::{Hash, Hasher};
+
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
@@ -7,9 +9,8 @@ mod config;
 
 use config::{
     PyFinalizeAstConfig, PyFlattenGroupsConfig, PyLowerAttributesConfig, PyParseConfig,
-    PyRewriteConfig, PyTransformConfig, context_items_from_python, from_python,
-    normalize_config_from_python, parse_config_from_python, serialize_options_from_python,
-    transform_config_from_python,
+    PyRewriteConfig, PyTransformConfig, from_python, normalize_config_from_python,
+    parse_config_from_python, serialize_options_from_python, transform_config_from_python,
 };
 
 pyo3::create_exception!(texform, TexformError, PyException);
@@ -17,21 +18,6 @@ pyo3::create_exception!(texform, ParseError, TexformError);
 pyo3::create_exception!(texform, EditError, TexformError);
 pyo3::create_exception!(texform, ConfigError, TexformError);
 pyo3::create_exception!(texform, TransformError, TexformError);
-
-fn parse_context(packages: Option<Vec<String>>) -> PyResult<texform::Parser> {
-    let mut builder = texform::Parser::builder();
-    if let Some(packages) = packages {
-        let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
-        builder = if refs.is_empty() {
-            builder.empty_knowledge()
-        } else {
-            builder.packages(refs.as_slice())
-        };
-    }
-    builder
-        .build()
-        .map_err(|error| ConfigError::new_err(error.to_string()))
-}
 
 fn profile_from_name(name: &str) -> PyResult<texform::Profile> {
     match name {
@@ -60,76 +46,6 @@ fn content_mode_to_str(value: texform::ContentMode) -> &'static str {
         texform::ContentMode::Math => "math",
         texform::ContentMode::Text => "text",
     }
-}
-
-fn parser_builder_with_options(
-    packages: Option<Vec<String>>,
-    items: Option<&Bound<'_, PyAny>>,
-    remove_commands: Option<Vec<String>>,
-    remove_environments: Option<Vec<String>>,
-    remove_delimiter_controls: Option<Vec<String>>,
-    default_parse_config: Option<PyRef<'_, PyParseConfig>>,
-) -> PyResult<texform::ParserBuilder> {
-    let mut builder = texform::Parser::builder();
-    if let Some(packages) = packages {
-        let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
-        builder = if refs.is_empty() {
-            builder.empty_knowledge()
-        } else {
-            builder.packages(refs.as_slice())
-        };
-    }
-    if let Some(config) = default_parse_config {
-        builder = builder.default_parse_config(config.to_core());
-    }
-    for item in context_items_from_python(items)? {
-        builder = builder.item(item);
-    }
-    for name in remove_commands.unwrap_or_default() {
-        builder = builder.remove_command(name);
-    }
-    for name in remove_environments.unwrap_or_default() {
-        builder = builder.remove_environment(name);
-    }
-    for name in remove_delimiter_controls.unwrap_or_default() {
-        builder = builder.remove_delimiter_control(name);
-    }
-    Ok(builder)
-}
-
-fn engine_builder_with_options(
-    mut builder: texform::TransformEngineBuilder,
-    packages: Option<Vec<String>>,
-    items: Option<&Bound<'_, PyAny>>,
-    remove_commands: Option<Vec<String>>,
-    remove_environments: Option<Vec<String>>,
-    remove_delimiter_controls: Option<Vec<String>>,
-    default_parse_config: Option<PyRef<'_, PyParseConfig>>,
-) -> PyResult<texform::TransformEngineBuilder> {
-    if let Some(packages) = packages {
-        let refs = packages.iter().map(String::as_str).collect::<Vec<_>>();
-        builder = if refs.is_empty() {
-            builder.empty_knowledge()
-        } else {
-            builder.packages(refs.as_slice())
-        };
-    }
-    if let Some(config) = default_parse_config {
-        builder = builder.default_parse_config(config.to_core());
-    }
-    for item in context_items_from_python(items)? {
-        builder = builder.item(item);
-    }
-    for name in remove_commands.unwrap_or_default() {
-        builder = builder.remove_command(name);
-    }
-    for name in remove_environments.unwrap_or_default() {
-        builder = builder.remove_environment(name);
-    }
-    for name in remove_delimiter_controls.unwrap_or_default() {
-        builder = builder.remove_delimiter_control(name);
-    }
-    Ok(builder)
 }
 
 fn borrow_error(error: impl std::fmt::Display) -> PyErr {
@@ -416,6 +332,154 @@ fn py_arg_ref(
     Ok(out.unbind().into_any())
 }
 
+fn knowledge_base_value(value: Option<PyRef<'_, PyKnowledgeBase>>) -> texform::KnowledgeBase {
+    value.map(|kb| kb.inner.clone()).unwrap_or_default()
+}
+
+#[pyclass(name = "KnowledgeBase", frozen)]
+struct PyKnowledgeBase {
+    inner: texform::KnowledgeBase,
+}
+
+#[pymethods]
+impl PyKnowledgeBase {
+    #[new]
+    #[pyo3(signature = (packages = None, *, items = None, remove_commands = None, remove_environments = None, remove_delimiter_controls = None))]
+    fn new(
+        packages: Option<Vec<String>>,
+        items: Option<&Bound<'_, PyAny>>,
+        remove_commands: Option<Vec<String>>,
+        remove_environments: Option<Vec<String>>,
+        remove_delimiter_controls: Option<Vec<String>>,
+    ) -> PyResult<Self> {
+        let input = texform::bindings::KnowledgeBaseInput {
+            packages,
+            items: items.map(|items| from_python(items, "items")).transpose()?,
+            remove_commands,
+            remove_environments,
+            remove_delimiter_controls,
+        };
+        Ok(Self {
+            inner: input.build().map_err(ConfigError::new_err)?,
+        })
+    }
+
+    fn __eq__(&self, other: PyRef<'_, Self>) -> bool {
+        self.inner.ptr_eq(&other.inner)
+    }
+
+    fn __hash__(&self) -> u64 {
+        let mut state = std::collections::hash_map::DefaultHasher::new();
+        self.inner.identity().hash(&mut state);
+        state.finish()
+    }
+
+    fn packages(&self) -> Vec<&'static str> {
+        self.inner.packages()
+    }
+
+    fn commands(&self, py: Python<'_>, mode: &str) -> PyResult<Py<PyAny>> {
+        let records = self
+            .inner
+            .commands(py_content_mode(mode)?)
+            .into_iter()
+            .map(texform::bindings::command_info_to_dto)
+            .collect::<Vec<_>>();
+        Ok(pythonize(py, &records)?.unbind())
+    }
+    fn environments(&self, py: Python<'_>, mode: &str) -> PyResult<Py<PyAny>> {
+        let records = self
+            .inner
+            .environments(py_content_mode(mode)?)
+            .into_iter()
+            .map(texform::bindings::env_info_to_dto)
+            .collect::<Vec<_>>();
+        Ok(pythonize(py, &records)?.unbind())
+    }
+    fn characters(&self, py: Python<'_>, mode: &str) -> PyResult<Py<PyAny>> {
+        let records = self
+            .inner
+            .characters(py_content_mode(mode)?)
+            .into_iter()
+            .map(texform::bindings::character_info_to_dto)
+            .collect::<Vec<_>>();
+        Ok(pythonize(py, &records)?.unbind())
+    }
+    fn delimiters(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let records = self
+            .inner
+            .delimiters()
+            .into_iter()
+            .map(texform::bindings::delimiter_info_to_dto)
+            .collect::<Vec<_>>();
+        Ok(pythonize(py, &records)?.unbind())
+    }
+
+    fn lookup_command(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
+        Ok(
+            match self.inner.lookup_command(name, py_content_mode(mode)?) {
+                Some(record) => {
+                    pythonize(py, &texform::bindings::command_info_to_dto(record))?.unbind()
+                }
+                None => py.None(),
+            },
+        )
+    }
+
+    fn lookup_explicit_command(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        mode: &str,
+    ) -> PyResult<Py<PyAny>> {
+        Ok(
+            match self
+                .inner
+                .lookup_explicit_command(name, py_content_mode(mode)?)
+            {
+                Some(record) => {
+                    pythonize(py, &texform::bindings::command_info_to_dto(record))?.unbind()
+                }
+                None => py.None(),
+            },
+        )
+    }
+
+    fn lookup_character(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
+        Ok(
+            match self.inner.lookup_character(name, py_content_mode(mode)?) {
+                Some(record) => {
+                    pythonize(py, &texform::bindings::character_info_to_dto(record))?.unbind()
+                }
+                None => py.None(),
+            },
+        )
+    }
+
+    fn lookup_env(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
+        Ok(match self.inner.lookup_env(name, py_content_mode(mode)?) {
+            Some(record) => pythonize(py, &texform::bindings::env_info_to_dto(record))?.unbind(),
+            None => py.None(),
+        })
+    }
+
+    fn is_delimiter_control(&self, name: &str) -> bool {
+        self.inner.is_delimiter_control(name)
+    }
+
+    fn knows_command_name(&self, name: &str) -> bool {
+        self.inner.knows_command_name(name)
+    }
+
+    fn knows_env_name(&self, name: &str) -> bool {
+        self.inner.knows_env_name(name)
+    }
+
+    fn knows_character_name(&self, name: &str) -> bool {
+        self.inner.knows_character_name(name)
+    }
+}
+
 #[pyclass(name = "Document")]
 struct PyDocument {
     inner: texform::Document,
@@ -424,14 +488,41 @@ struct PyDocument {
 #[pymethods]
 impl PyDocument {
     #[new]
-    fn new() -> Self {
-        Self {
-            inner: texform::Document::new(),
+    #[pyo3(signature = (knowledge_base = None, *, mode = "math"))]
+    fn new(knowledge_base: Option<PyRef<'_, PyKnowledgeBase>>, mode: &str) -> PyResult<Self> {
+        Ok(Self {
+            inner: texform::Document::with_knowledge_base(
+                &knowledge_base_value(knowledge_base),
+                py_content_mode(mode)?,
+            ),
+        })
+    }
+
+    fn knowledge_base(&self) -> PyKnowledgeBase {
+        PyKnowledgeBase {
+            inner: self.inner.knowledge_base().clone(),
         }
     }
 
+    fn copy(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+    fn __copy__(&self) -> Self {
+        self.copy()
+    }
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.copy()
+    }
+
     #[staticmethod]
-    fn from_syntax(py: Python<'_>, node: &Bound<'_, PyAny>) -> PyResult<Self> {
+    #[pyo3(signature = (node, knowledge_base = None))]
+    fn from_syntax(
+        py: Python<'_>,
+        node: &Bound<'_, PyAny>,
+        knowledge_base: Option<PyRef<'_, PyKnowledgeBase>>,
+    ) -> PyResult<Self> {
         let node = depythonize::<texform::SyntaxNode>(node).map_err(|error| {
             parse_error_to_py(
                 py,
@@ -445,7 +536,11 @@ impl PyDocument {
             .unwrap_or_else(|error| error)
         })?;
         Ok(Self {
-            inner: texform::Document::from_syntax(&node).map_err(|error| {
+            inner: texform::Document::from_syntax_with(
+                &knowledge_base_value(knowledge_base),
+                &node,
+            )
+            .map_err(|error| {
                 binding_error_to_py(py, texform::bindings::from_syntax_error_to_dto(error))
                     .unwrap_or_else(|error| error)
             })?,
@@ -859,6 +954,35 @@ struct PyNode {
 
 #[pymethods]
 impl PyNode {
+    fn __eq__(&self, other: &Bound<'_, PyAny>, py: Python<'_>) -> bool {
+        other
+            .extract::<PyRef<'_, Self>>()
+            .is_ok_and(|other| self.id == other.id && same_py_document(py, &self.doc, &other.doc))
+    }
+    fn __hash__(&self) -> u64 {
+        let mut state = std::collections::hash_map::DefaultHasher::new();
+        self.id.hash(&mut state);
+        (self.doc.as_ptr() as usize).hash(&mut state);
+        state.finish()
+    }
+    fn __repr__(&self, py: Python<'_>) -> String {
+        match self.doc.try_borrow(py).ok().and_then(|doc| {
+            doc.inner.node(self.id).ok().map(|node| {
+                let name = node
+                    .command_name()
+                    .or_else(|| node.env_name())
+                    .unwrap_or("");
+                format!("<Node {:?} {name} {:?}>", node.kind(), self.id)
+            })
+        }) {
+            Some(value) => value,
+            None => format!("<Node unavailable {:?}>", self.id),
+        }
+    }
+    fn document(&self, py: Python<'_>) -> Py<PyDocument> {
+        self.doc.clone_ref(py)
+    }
+
     #[pyo3(signature = (name = None))]
     fn is_command(&self, py: Python<'_>, name: Option<&str>) -> PyResult<bool> {
         let document = self.doc.try_borrow(py).map_err(borrow_error)?;
@@ -1125,36 +1249,19 @@ struct PyParser {
 #[pymethods]
 impl PyParser {
     #[new]
-    #[pyo3(signature = (
-        packages = None,
-        items = None,
-        remove_commands = None,
-        remove_environments = None,
-        remove_delimiter_controls = None,
-        default_parse_config = None,
-    ))]
-    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (knowledge_base = None, *, default_parse_config = None))]
     fn new(
-        packages: Option<Vec<String>>,
-        items: Option<&Bound<'_, PyAny>>,
-        remove_commands: Option<Vec<String>>,
-        remove_environments: Option<Vec<String>>,
-        remove_delimiter_controls: Option<Vec<String>>,
+        knowledge_base: Option<PyRef<'_, PyKnowledgeBase>>,
         default_parse_config: Option<PyRef<'_, PyParseConfig>>,
-    ) -> PyResult<Self> {
-        let builder = parser_builder_with_options(
-            packages,
-            items,
-            remove_commands,
-            remove_environments,
-            remove_delimiter_controls,
-            default_parse_config,
-        )?;
-        Ok(Self {
-            inner: builder
-                .build()
-                .map_err(|error| ConfigError::new_err(error.to_string()))?,
-        })
+    ) -> Self {
+        let mut builder =
+            texform::Parser::builder().knowledge_base(knowledge_base_value(knowledge_base));
+        if let Some(config) = default_parse_config {
+            builder = builder.default_parse_config(config.to_core());
+        }
+        Self {
+            inner: builder.build(),
+        }
     }
 
     #[pyo3(signature = (src, config = None, **overrides))]
@@ -1174,68 +1281,10 @@ impl PyParser {
         PyParseConfig::from_core(self.inner.default_parse_config().clone())
     }
 
-    fn lookup_command(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
-        Ok(
-            match self.inner.lookup_command(name, py_content_mode(mode)?) {
-                Some(record) => {
-                    pythonize(py, &texform::bindings::command_info_to_dto(record))?.unbind()
-                }
-                None => py.None(),
-            },
-        )
-    }
-
-    fn lookup_explicit_command(
-        &self,
-        py: Python<'_>,
-        name: &str,
-        mode: &str,
-    ) -> PyResult<Py<PyAny>> {
-        Ok(
-            match self
-                .inner
-                .lookup_explicit_command(name, py_content_mode(mode)?)
-            {
-                Some(record) => {
-                    pythonize(py, &texform::bindings::command_info_to_dto(record))?.unbind()
-                }
-                None => py.None(),
-            },
-        )
-    }
-
-    fn lookup_character(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
-        Ok(
-            match self.inner.lookup_character(name, py_content_mode(mode)?) {
-                Some(record) => {
-                    pythonize(py, &texform::bindings::character_info_to_dto(record))?.unbind()
-                }
-                None => py.None(),
-            },
-        )
-    }
-
-    fn lookup_env(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
-        Ok(match self.inner.lookup_env(name, py_content_mode(mode)?) {
-            Some(record) => pythonize(py, &texform::bindings::env_info_to_dto(record))?.unbind(),
-            None => py.None(),
-        })
-    }
-
-    fn is_delimiter_control(&self, name: &str) -> bool {
-        self.inner.is_delimiter_control(name)
-    }
-
-    fn knows_command_name(&self, name: &str) -> bool {
-        self.inner.knows_command_name(name)
-    }
-
-    fn knows_env_name(&self, name: &str) -> bool {
-        self.inner.knows_env_name(name)
-    }
-
-    fn knows_character_name(&self, name: &str) -> bool {
-        self.inner.knows_character_name(name)
+    fn knowledge_base(&self) -> PyKnowledgeBase {
+        PyKnowledgeBase {
+            inner: self.inner.knowledge_base().clone(),
+        }
     }
 }
 
@@ -1246,37 +1295,20 @@ struct PyTransformEngine {
 
 #[pymethods]
 impl PyTransformEngine {
-    #[allow(clippy::too_many_arguments)]
     #[new]
-    #[pyo3(signature = (
-        profile,
-        packages = None,
-        items = None,
-        remove_commands = None,
-        remove_environments = None,
-        remove_delimiter_controls = None,
-        disable_rules = None,
-        default_parse_config = None,
-    ))]
+    #[pyo3(signature = (profile, knowledge_base = None, *, disable_rules = None, default_parse_config = None))]
     fn new(
         profile: &str,
-        packages: Option<Vec<String>>,
-        items: Option<&Bound<'_, PyAny>>,
-        remove_commands: Option<Vec<String>>,
-        remove_environments: Option<Vec<String>>,
-        remove_delimiter_controls: Option<Vec<String>>,
+        knowledge_base: Option<PyRef<'_, PyKnowledgeBase>>,
         disable_rules: Option<Vec<String>>,
         default_parse_config: Option<PyRef<'_, PyParseConfig>>,
     ) -> PyResult<Self> {
-        let mut builder = engine_builder_with_options(
-            texform::TransformEngine::builder().profile(profile_from_name(profile)?),
-            packages,
-            items,
-            remove_commands,
-            remove_environments,
-            remove_delimiter_controls,
-            default_parse_config,
-        )?;
+        let mut builder = texform::TransformEngine::builder()
+            .profile(profile_from_name(profile)?)
+            .knowledge_base(knowledge_base_value(knowledge_base));
+        if let Some(config) = default_parse_config {
+            builder = builder.default_parse_config(config.to_core());
+        }
         for rule in disable_rules.unwrap_or_default() {
             builder = builder
                 .disable_rule_by_name(&rule)
@@ -1435,81 +1467,10 @@ impl PyTransformEngine {
         PyTransformConfig::from_core(py, *self.inner.default_transform_config())
     }
 
-    fn lookup_command(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
-        Ok(
-            match self
-                .inner
-                .parser()
-                .lookup_command(name, py_content_mode(mode)?)
-            {
-                Some(record) => {
-                    pythonize(py, &texform::bindings::command_info_to_dto(record))?.unbind()
-                }
-                None => py.None(),
-            },
-        )
-    }
-
-    fn lookup_explicit_command(
-        &self,
-        py: Python<'_>,
-        name: &str,
-        mode: &str,
-    ) -> PyResult<Py<PyAny>> {
-        Ok(
-            match self
-                .inner
-                .parser()
-                .lookup_explicit_command(name, py_content_mode(mode)?)
-            {
-                Some(record) => {
-                    pythonize(py, &texform::bindings::command_info_to_dto(record))?.unbind()
-                }
-                None => py.None(),
-            },
-        )
-    }
-
-    fn lookup_character(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
-        Ok(
-            match self
-                .inner
-                .parser()
-                .lookup_character(name, py_content_mode(mode)?)
-            {
-                Some(record) => {
-                    pythonize(py, &texform::bindings::character_info_to_dto(record))?.unbind()
-                }
-                None => py.None(),
-            },
-        )
-    }
-
-    fn lookup_env(&self, py: Python<'_>, name: &str, mode: &str) -> PyResult<Py<PyAny>> {
-        Ok(
-            match self.inner.parser().lookup_env(name, py_content_mode(mode)?) {
-                Some(record) => {
-                    pythonize(py, &texform::bindings::env_info_to_dto(record))?.unbind()
-                }
-                None => py.None(),
-            },
-        )
-    }
-
-    fn is_delimiter_control(&self, name: &str) -> bool {
-        self.inner.parser().is_delimiter_control(name)
-    }
-
-    fn knows_command_name(&self, name: &str) -> bool {
-        self.inner.parser().knows_command_name(name)
-    }
-
-    fn knows_env_name(&self, name: &str) -> bool {
-        self.inner.parser().knows_env_name(name)
-    }
-
-    fn knows_character_name(&self, name: &str) -> bool {
-        self.inner.parser().knows_character_name(name)
+    fn knowledge_base(&self) -> PyKnowledgeBase {
+        PyKnowledgeBase {
+            inner: self.inner.knowledge_base().clone(),
+        }
     }
 }
 
@@ -1559,14 +1520,16 @@ fn list_packages(py: Python<'_>) -> PyResult<Py<PyAny>> {
 }
 
 #[pyfunction]
-#[pyo3(signature = (src, config = None, packages = None))]
+#[pyo3(signature = (src, config = None, *, knowledge_base = None))]
 fn count_targets(
     py: Python<'_>,
     src: &str,
     config: Option<PyRef<'_, PyParseConfig>>,
-    packages: Option<Vec<String>>,
+    knowledge_base: Option<PyRef<'_, PyKnowledgeBase>>,
 ) -> PyResult<Py<PyAny>> {
-    let ctx = parse_context(packages)?;
+    let ctx = texform::Parser::builder()
+        .knowledge_base(knowledge_base_value(knowledge_base))
+        .build();
     let counts = match config {
         Some(config) => texform::analysis::count_targets_with(&ctx, src, &config.to_core()),
         None => texform::analysis::count_targets(&ctx, src),
@@ -1579,6 +1542,7 @@ fn count_targets(
 /// Symbols are re-exported from the Python package's `__init__.py`.
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<PyKnowledgeBase>()?;
     m.add_function(wrap_pyfunction!(count_targets, m)?)?;
     m.add_function(wrap_pyfunction!(serialize, m)?)?;
     m.add_function(wrap_pyfunction!(validate_argspec, m)?)?;
@@ -1757,7 +1721,16 @@ mod tests {
 
             let kwargs = PyDict::new(py);
             kwargs.set_item("profile", "corpus").unwrap();
-            kwargs.set_item("packages", vec!["base"]).unwrap();
+            kwargs
+                .set_item(
+                    "knowledge_base",
+                    module
+                        .getattr("KnowledgeBase")
+                        .unwrap()
+                        .call1((vec!["base"],))
+                        .unwrap(),
+                )
+                .unwrap();
             let engine = module
                 .getattr("TransformEngine")
                 .unwrap()
@@ -1964,7 +1937,14 @@ mod tests {
             let engine_cls = module.getattr("TransformEngine").unwrap();
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs
-                .set_item("packages", vec!["base", "physics"])
+                .set_item(
+                    "knowledge_base",
+                    module
+                        .getattr("KnowledgeBase")
+                        .unwrap()
+                        .call1((vec!["base", "physics"],))
+                        .unwrap(),
+                )
                 .unwrap();
             kwargs.set_item("profile", "authoring").unwrap();
             let engine = engine_cls.call((), Some(&kwargs)).unwrap();
@@ -1985,10 +1965,21 @@ mod tests {
 
             let parser_cls = module.getattr("Parser").unwrap();
             let kwargs = pyo3::types::PyDict::new(py);
-            kwargs.set_item("packages", Vec::<String>::new()).unwrap();
+            kwargs
+                .set_item(
+                    "knowledge_base",
+                    module
+                        .getattr("KnowledgeBase")
+                        .unwrap()
+                        .call1((Vec::<String>::new(),))
+                        .unwrap(),
+                )
+                .unwrap();
             let parser = parser_cls.call((), Some(&kwargs)).unwrap();
 
             let knows_frac = parser
+                .call_method0("knowledge_base")
+                .unwrap()
                 .call_method1("knows_command_name", ("frac",))
                 .unwrap()
                 .extract::<bool>()
@@ -2012,8 +2003,28 @@ mod tests {
 
             let parser_cls = module.getattr("Parser").unwrap();
             let kwargs = pyo3::types::PyDict::new(py);
-            kwargs.set_item("packages", Vec::<String>::new()).unwrap();
-            kwargs.set_item("items", vec![item]).unwrap();
+            kwargs
+                .set_item(
+                    "knowledge_base",
+                    module
+                        .getattr("KnowledgeBase")
+                        .unwrap()
+                        .call1((Vec::<String>::new(),))
+                        .unwrap(),
+                )
+                .unwrap();
+            let kb_kwargs = PyDict::new(py);
+            kb_kwargs.set_item("items", vec![item]).unwrap();
+            kwargs
+                .set_item(
+                    "knowledge_base",
+                    module
+                        .getattr("KnowledgeBase")
+                        .unwrap()
+                        .call((Vec::<String>::new(),), Some(&kb_kwargs))
+                        .unwrap(),
+                )
+                .unwrap();
             let parser = parser_cls.call((), Some(&kwargs)).unwrap();
 
             let config_cls = module.getattr("ParseConfig").unwrap();
@@ -2103,6 +2114,8 @@ mod tests {
             let parser = module.getattr("Parser").unwrap().call0().unwrap();
             assert!(
                 parser
+                    .call_method0("knowledge_base")
+                    .unwrap()
                     .call_method1("lookup_command", ("frac", "math"))
                     .unwrap()
                     .cast::<pyo3::types::PyDict>()
@@ -2110,6 +2123,8 @@ mod tests {
             );
             assert!(
                 parser
+                    .call_method0("knowledge_base")
+                    .unwrap()
                     .call_method1("lookup_explicit_command", ("frac", "math"))
                     .unwrap()
                     .cast::<pyo3::types::PyDict>()
@@ -2117,6 +2132,8 @@ mod tests {
             );
             assert!(
                 parser
+                    .call_method0("knowledge_base")
+                    .unwrap()
                     .call_method1("lookup_character", ("le", "math"))
                     .unwrap()
                     .cast::<pyo3::types::PyDict>()
@@ -2124,6 +2141,8 @@ mod tests {
             );
             assert!(
                 parser
+                    .call_method0("knowledge_base")
+                    .unwrap()
                     .call_method1("lookup_env", ("array", "math"))
                     .unwrap()
                     .cast::<pyo3::types::PyDict>()
@@ -2131,6 +2150,8 @@ mod tests {
             );
             assert!(
                 parser
+                    .call_method0("knowledge_base")
+                    .unwrap()
                     .call_method1("is_delimiter_control", ("lbrace",))
                     .unwrap()
                     .extract::<bool>()
@@ -2138,6 +2159,8 @@ mod tests {
             );
             assert!(
                 parser
+                    .call_method0("knowledge_base")
+                    .unwrap()
                     .call_method1("knows_env_name", ("array",))
                     .unwrap()
                     .extract::<bool>()
@@ -2145,6 +2168,8 @@ mod tests {
             );
             assert!(
                 parser
+                    .call_method0("knowledge_base")
+                    .unwrap()
                     .call_method1("knows_character_name", ("le",))
                     .unwrap()
                     .extract::<bool>()
@@ -2160,6 +2185,8 @@ mod tests {
                 .unwrap();
             assert!(
                 engine
+                    .call_method0("knowledge_base")
+                    .unwrap()
                     .call_method1("lookup_command", ("frac", "math"))
                     .unwrap()
                     .cast::<pyo3::types::PyDict>()
@@ -2167,6 +2194,8 @@ mod tests {
             );
             assert!(
                 engine
+                    .call_method0("knowledge_base")
+                    .unwrap()
                     .call_method1("knows_command_name", ("frac",))
                     .unwrap()
                     .extract::<bool>()
@@ -2184,7 +2213,14 @@ mod tests {
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs.set_item("profile", "authoring").unwrap();
             kwargs
-                .set_item("packages", vec!["base", "physics"])
+                .set_item(
+                    "knowledge_base",
+                    module
+                        .getattr("KnowledgeBase")
+                        .unwrap()
+                        .call1((vec!["base", "physics"],))
+                        .unwrap(),
+                )
                 .unwrap();
             let engine = module
                 .getattr("TransformEngine")
@@ -2220,7 +2256,14 @@ mod tests {
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs.set_item("profile", "authoring").unwrap();
             kwargs
-                .set_item("packages", vec!["base", "physics"])
+                .set_item(
+                    "knowledge_base",
+                    module
+                        .getattr("KnowledgeBase")
+                        .unwrap()
+                        .call1((vec!["base", "physics"],))
+                        .unwrap(),
+                )
                 .unwrap();
             let engine = module
                 .getattr("TransformEngine")
@@ -2261,7 +2304,16 @@ mod tests {
 
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs.set_item("profile", "equiv").unwrap();
-            kwargs.set_item("packages", vec!["base"]).unwrap();
+            kwargs
+                .set_item(
+                    "knowledge_base",
+                    module
+                        .getattr("KnowledgeBase")
+                        .unwrap()
+                        .call1((vec!["base"],))
+                        .unwrap(),
+                )
+                .unwrap();
             let engine = module
                 .getattr("TransformEngine")
                 .unwrap()
@@ -2329,14 +2381,23 @@ mod tests {
     }
 
     #[test]
-    fn python_engine_transform_rejects_document_without_parse_context() {
+    fn python_engine_transform_rejects_document_with_default_knowledge_when_customized() {
         Python::attach(|py| {
             let module = PyModule::new(py, "_native").expect("module");
             _native(&module).expect("init module");
 
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs.set_item("profile", "equiv").unwrap();
-            kwargs.set_item("packages", vec!["base"]).unwrap();
+            kwargs
+                .set_item(
+                    "knowledge_base",
+                    module
+                        .getattr("KnowledgeBase")
+                        .unwrap()
+                        .call1((vec!["base"],))
+                        .unwrap(),
+                )
+                .unwrap();
             let engine = module
                 .getattr("TransformEngine")
                 .unwrap()
@@ -2358,21 +2419,30 @@ mod tests {
 
             let error = engine
                 .call_method1("transform", (document,))
-                .expect_err("syntax-created documents must not be transformed");
+                .expect_err("documents with different knowledge must not be transformed");
 
             assert!(error.is_instance_of::<TransformError>(py));
         });
     }
 
     #[test]
-    fn python_engine_transform_rejects_document_from_another_engine() {
+    fn python_engine_transform_accepts_document_from_another_engine_sharing_knowledge() {
         Python::attach(|py| {
             let module = PyModule::new(py, "_native").expect("module");
             _native(&module).expect("init module");
 
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs.set_item("profile", "equiv").unwrap();
-            kwargs.set_item("packages", vec!["base"]).unwrap();
+            kwargs
+                .set_item(
+                    "knowledge_base",
+                    module
+                        .getattr("KnowledgeBase")
+                        .unwrap()
+                        .call1((vec!["base"],))
+                        .unwrap(),
+                )
+                .unwrap();
             let first_engine = module
                 .getattr("TransformEngine")
                 .unwrap()
@@ -2392,11 +2462,9 @@ mod tests {
                 .unwrap()
                 .unwrap();
 
-            let error = second_engine
+            second_engine
                 .call_method1("transform", (document,))
-                .expect_err("documents from another engine must not be transformed");
-
-            assert!(error.is_instance_of::<TransformError>(py));
+                .expect("shared knowledge permits transformation");
         });
     }
 
@@ -2408,7 +2476,16 @@ mod tests {
 
             let kwargs = PyDict::new(py);
             kwargs.set_item("profile", "corpus").unwrap();
-            kwargs.set_item("packages", vec!["base"]).unwrap();
+            kwargs
+                .set_item(
+                    "knowledge_base",
+                    module
+                        .getattr("KnowledgeBase")
+                        .unwrap()
+                        .call1((vec!["base"],))
+                        .unwrap(),
+                )
+                .unwrap();
             let engine = module
                 .getattr("TransformEngine")
                 .unwrap()
@@ -2464,7 +2541,16 @@ mod tests {
 
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs.set_item("profile", "equiv").unwrap();
-            kwargs.set_item("packages", vec!["base"]).unwrap();
+            kwargs
+                .set_item(
+                    "knowledge_base",
+                    module
+                        .getattr("KnowledgeBase")
+                        .unwrap()
+                        .call1((vec!["base"],))
+                        .unwrap(),
+                )
+                .unwrap();
             let engine = module
                 .getattr("TransformEngine")
                 .unwrap()
@@ -2515,7 +2601,16 @@ mod tests {
 
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs.set_item("profile", "equiv").unwrap();
-            kwargs.set_item("packages", vec!["base"]).unwrap();
+            kwargs
+                .set_item(
+                    "knowledge_base",
+                    module
+                        .getattr("KnowledgeBase")
+                        .unwrap()
+                        .call1((vec!["base"],))
+                        .unwrap(),
+                )
+                .unwrap();
             let engine = module
                 .getattr("TransformEngine")
                 .unwrap()
@@ -2560,7 +2655,16 @@ mod tests {
 
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs.set_item("profile", "corpus").unwrap();
-            kwargs.set_item("packages", vec!["base"]).unwrap();
+            kwargs
+                .set_item(
+                    "knowledge_base",
+                    module
+                        .getattr("KnowledgeBase")
+                        .unwrap()
+                        .call1((vec!["base"],))
+                        .unwrap(),
+                )
+                .unwrap();
             let engine = module
                 .getattr("TransformEngine")
                 .unwrap()
@@ -2836,7 +2940,7 @@ mod tests {
         });
     }
 
-    fn run_flatten_groups_python_test(source: &std::ffi::CStr) {
+    fn run_python_test(source: &std::ffi::CStr) {
         Python::attach(|py| {
             let module = PyModule::new(py, "_native").expect("module");
             _native(&module).expect("init module");
@@ -2847,11 +2951,80 @@ mod tests {
     }
 
     #[test]
+    fn python_knowledge_identity_copy_and_node_handles() {
+        run_python_test(
+            cr#"
+import copy
+kb = texform.KnowledgeBase(["base", "ams"])
+parser = texform.Parser(kb)
+engine = texform.TransformEngine("equiv", kb)
+assert kb == parser.knowledge_base() == engine.knowledge_base()
+assert hash(kb) == hash(parser.knowledge_base())
+assert kb != texform.KnowledgeBase(["base", "ams"])
+assert kb != object() and kb.__eq__(object()) is NotImplemented
+try:
+    kb.packages = []
+except AttributeError:
+    pass
+else:
+    raise AssertionError("knowledge must be immutable")
+for method in (kb.commands, kb.environments, kb.characters):
+    records = method("math")
+    assert records
+    assert [r["name"] for r in records] == sorted(r["name"] for r in records)
+    records.clear()
+    assert method("math")
+assert kb.delimiters()
+packages = kb.packages()
+packages.clear()
+assert kb.packages() == ["base", "ams"]
+default = texform.Parser().knowledge_base()
+assert default == texform.TransformEngine("equiv").knowledge_base()
+assert default == texform.Document().knowledge_base()
+assert default != texform.KnowledgeBase()
+document = parser.parse("x")["document"]
+root = document.root()
+assert root == document.root()
+assert hash(root) == hash(document.root())
+assert root.document() is document
+assert root != object()
+assert "Node" in repr(root)
+for duplicate in (document.copy(), copy.copy(document), copy.deepcopy(document)):
+    assert duplicate.knowledge_base() == kb
+    assert duplicate.to_syntax() == document.to_syntax()
+    assert duplicate.root() != root
+    child = duplicate.root().children()[0]
+    duplicate.set_char(child, "y")
+    assert document.to_latex() == "x"
+    engine.transform(duplicate)
+rebuilt = texform.Document.from_syntax(document.to_syntax(), kb)
+engine.transform(rebuilt)
+engine.transform(texform.Document(kb))
+try:
+    engine.transform(texform.Document(texform.KnowledgeBase(["base", "ams"])))
+except texform.TransformError:
+    pass
+else:
+    raise AssertionError("separate knowledge instances must mismatch")
+assert texform.Document(mode="text").root().content_mode() == "text"
+assert texform.count_targets(r"\frac{x}{y}", knowledge_base=kb)["cmd:frac"] == 1
+for make in (texform.Parser, lambda **kw: texform.TransformEngine("equiv", **kw)):
+    try:
+        make(packages=["base"])
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("knowledge options belong to KnowledgeBase")
+"#,
+        );
+    }
+
+    #[test]
     fn python_research_overlays_preserve_defaults_and_reports() {
-        run_flatten_groups_python_test(
+        run_python_test(
             cr#"
 for profile in ("authoring", "faithful", "corpus", "equiv"):
-    engine = texform.TransformEngine(profile, packages=["base"])
+    engine = texform.TransformEngine(profile, knowledge_base=texform.KnowledgeBase(["base"]))
     source = r"a{} + {+}"
     baseline = engine.normalize(source)
     reported = engine.normalize_with_report(source)
@@ -2871,9 +3044,9 @@ for profile in ("authoring", "faithful", "corpus", "equiv"):
 
     #[test]
     fn python_research_rejects_invalid_guards_even_when_disabled() {
-        run_flatten_groups_python_test(
+        run_python_test(
             cr#"
-engine = texform.TransformEngine("authoring", packages=["base"])
+engine = texform.TransformEngine("authoring", knowledge_base=texform.KnowledgeBase(["base"]))
 for enabled in (True, False):
     for guards, field in (
         ({"preserve_empty_group": False}, "preserve_empty_group"),
@@ -2897,9 +3070,9 @@ for enabled in (True, False):
 
     #[test]
     fn python_normalize_rejects_all_old_flatten_groups_keys() {
-        run_flatten_groups_python_test(
+        run_python_test(
             cr#"
-engine = texform.TransformEngine("authoring", packages=["base"])
+engine = texform.TransformEngine("authoring", knowledge_base=texform.KnowledgeBase(["base"]))
 for key in (
     "preserve_group_containing_declarative_command",
     "preserve_group_in_script_base_slot",
@@ -2925,10 +3098,10 @@ for key in (
 
     #[test]
     fn python_flatten_groups_null_overlays_do_not_override() {
-        run_flatten_groups_python_test(
+        run_python_test(
             cr#"
 for profile in ("authoring", "corpus"):
-    engine = texform.TransformEngine(profile, packages=["base"])
+    engine = texform.TransformEngine(profile, knowledge_base=texform.KnowledgeBase(["base"]))
     source = r"a{} + \cos{A}"
     baseline = engine.normalize(source)
     for overlay in (None, {"enabled": None, "preserve_rendered_spacing": None}):
@@ -2939,9 +3112,9 @@ for profile in ("authoring", "corpus"):
 
     #[test]
     fn python_research_respects_complete_config_then_kwargs() {
-        run_flatten_groups_python_test(
+        run_python_test(
             cr#"
-engine = texform.TransformEngine("authoring", packages=["base"])
+engine = texform.TransformEngine("authoring", knowledge_base=texform.KnowledgeBase(["base"]))
 source = r"\cos{A} + a{}"
 research = engine._normalize_with_flatten_groups_guards
 for profile, spacing, expected in (
@@ -2961,9 +3134,9 @@ for profile, spacing, expected in (
 
     #[test]
     fn python_report_paths_match_plain_results_without_residue() {
-        run_flatten_groups_python_test(
+        run_python_test(
             cr#"
-engine = texform.TransformEngine("corpus", packages=["base", "physics"])
+engine = texform.TransformEngine("corpus", knowledge_base=texform.KnowledgeBase(["base", "physics"]))
 source = r"\quantity{{\bf x}} + a \over b"
 plain = engine.normalize(source)
 first = engine.normalize_with_report(source)
@@ -3046,7 +3219,7 @@ except texform.TransformError:
 else:
     raise AssertionError("incomplete document")
 assert incomplete.to_latex() == before
-foreign = texform.Document.from_syntax(fresh().to_syntax())
+foreign = texform.Document()
 try:
     engine.transform_with_report(foreign)
 except texform.TransformError:

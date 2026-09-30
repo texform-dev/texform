@@ -26,6 +26,27 @@ if (parsed.document) {
 
 Profiles select the normalization target: `"authoring"`, `"faithful"`, `"corpus"`, and `"equiv"`.
 
+## Shared knowledge
+
+`KnowledgeBase` is immutable. Package selection, custom `items`, and `removeCommands` / `removeEnvironments` / `removeDelimiterControls` belong to its constructor. Parser and engine options accept `knowledgeBase`; they no longer accept those knowledge options directly. Lookups and sorted `commands(mode)`, `environments(mode)`, `characters(mode)`, `delimiters()`, and `packages()` are methods on `KnowledgeBase`.
+
+```ts
+import { KnowledgeBase, Parser, TransformEngine, Document } from "texform";
+
+const knowledgeBase = new KnowledgeBase({ packages: ["base", "ams"] });
+const parser = new Parser({ knowledgeBase });
+const engine = new TransformEngine({ profile: "corpus", knowledgeBase });
+const document = parser.parse("x").document;
+const variant = document.clone();
+engine.transform(variant);
+console.assert(variant.knowledgeBase().isSame(knowledgeBase));
+console.assert(document.root().isSameNode(document.root()));
+const restored = Document.fromSyntax(document.toSyntax(), { knowledgeBase });
+engine.transform(restored);
+```
+
+All parsers, engines, and documents with omitted `knowledgeBase` share the default instance. Separately constructed knowledge bases have different identities even with the same options. Transform accepts complete documents sharing its knowledge-base instance, including constructed, restored, and cloned documents. `node.document()` returns a handle to its owning document; cloning a document gives its nodes a new identity while retaining the knowledge base. `new Document({ knowledgeBase, mode: "text" })` creates an empty text-mode document.
+
 ## JavaScript-specific notes
 
 - `normalize` returns a string. `transform` updates the document and returns `undefined`.
