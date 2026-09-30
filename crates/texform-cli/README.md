@@ -15,7 +15,7 @@ To build from a source checkout, run `cargo install --path crates/texform-cli` f
 `texform --version` identifies the source tree a binary was built from:
 
 ```text
-texform 0.5.0 (0123456789ab 2026-09-22, dirty)
+texform 0.8.0 (0123456789ab 2026-09-30, dirty)
 ```
 
 - The version is the crate version.
@@ -259,7 +259,7 @@ A session looks like this (`→` is client to server, `←` is server to client;
 
 ```jsonc
 → {"jsonrpc":"2.0","id":0,"method":"initialize","params":{}}
-← {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":1,"serverInfo":{"name":"texform","version":"0.5.0","commit":"0123456789abcdef0123456789abcdef01234567","commitDate":"2026-09-22","dirty":false}}}
+← {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":1,"serverInfo":{"name":"texform","version":"0.8.0","commit":"0123456789abcdef0123456789abcdef01234567","commitDate":"2026-09-30","dirty":false}}}
 → {"jsonrpc":"2.0","id":1,"method":"configure","params":{"id":"authoring-no-rewrite","config":{"profile":"authoring","overrides":{"rewrite":{"enabled":false}}}}}
 ← {"jsonrpc":"2.0","id":1,"result":{"resolved":{"profile":"authoring","packages":["ams","base","..."],"rewrite":{"enabled":false,"max_iterations":100},"...":"..."}}}
 → {"jsonrpc":"2.0","id":2,"method":"normalize","params":{"config":"authoring-no-rewrite","latex":"\\frac12","timing":true}}

@@ -1294,8 +1294,9 @@ export class TexformConfigError extends TexformError {}
 
 /**
  * Thrown on a transform-engine failure, such as an eliminated-form contract
- * violation, passing a foreign document to {@link TransformEngine.transform},
- * or passing a document that {@link Document.hasErrors}.
+ * violation, or passing {@link TransformEngine.transform} a document that
+ * {@link Document.hasErrors} or that is bound to a different
+ * {@link KnowledgeBase} instance.
  */
 export class TexformTransformError extends TexformError {}
 
