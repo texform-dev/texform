@@ -3,20 +3,29 @@
 All notable changes to TeXForm are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
+
 ## [0.8.0] - 2026-09-30
+
+This release makes `Document` a complete API for building and editing formulas. Every node kind now has a constructor, so a formula can be built from scratch as a tree and serialized, and every construction and edit is checked against the document's knowledge base, so the result always conforms to it, as parser output does, and transforms accept it. Deterministic edits, rooted node paths, cross-document imports, and a columnar export cover targeted edits and bulk analysis. To support this, `KnowledgeBase` becomes an immutable object shared by parsers, engines, and documents. The release also fixes script, text-argument, and declaration-scope handling in alignments and text mode. The knowledge base and construction changes are breaking; see **Changed** for migration notes.
+
+### Changed
+
+- **Breaking:** Package selection, custom items, and removals move from parser and engine builders to `KnowledgeBaseBuilder`, and knowledge queries move from `Parser` and `TransformEngine` to `KnowledgeBase`. Build one `KnowledgeBase` and pass it to every parser, engine, and document that should interoperate, for example `Parser::builder().knowledge_base(kb.clone()).build()` and `TransformEngine::builder().knowledge_base(kb)`. `ParserBuilder::build()` now returns `Parser`, and `ParserBuildError` and `Error::ParserBuild` are removed. `TransformEngine::transform` accepts any document bound to the same instance and returns `Error::KnowledgeBaseMismatch` otherwise, replacing `Error::ForeignDocument`. In Python, pass `texform.KnowledgeBase(packages, items=...)` to `Parser(kb)` and `TransformEngine(profile, kb)`; in JavaScript, pass `{ knowledgeBase }`. The command-line tool and the `serve` protocol are unchanged.
+- **Breaking:** Construction, edits, and syntax imports keep every complete document conformant to its knowledge base. A violation returns `ConformanceError` with a rooted path and a stable rule code (`TexformConformanceError` in JavaScript) and leaves the document unchanged. Replace `ArgValue` with `Arg`, and binding argument dictionaries with `Node | str | bool | None | Paired` values (`{ value, open, close }` pairs in JavaScript). `create_group` and `create_environment` take their children and body directly, binding delimiters are strings such as `"("` and `"\\langle"`, and environments are renamed with `set_env_name` instead of `set_command_name`. `Document::from_syntax` rejects non-conformant complete trees, with `FromSyntaxError::Conformance` replacing the prime-specific variants, and `KnowledgeBaseBuilder` rejects item names the lexer cannot produce with `KnowledgeBaseBuildError::InvalidName`.
 
 ### Added
 
-- Export documents as columnar trees
-- Add deterministic edits, paths, and imports
-- **Breaking:** Enforce knowledge-conformant construction
-- **Breaking:** Share immutable `KnowledgeBase` instances
+- Every node kind has a constructor, including scripted nodes, infix commands, primes, inline math, and delimited groups. Commands and environments are built from their knowledge-base records, so optional, star, and paired slots can be filled, and a constructor called with a name of another command kind names the one to use. Arguments are given as nodes, source text parsed in the slot's mode, star Booleans, or explicit absent and paired values; `in_mode` and `parse_fragment` construct in an explicit context mode.
+- Deterministic edits: `set_subscript` and `set_superscript` add, change, or clear scripts, collapsing the wrapper when the last script is cleared; `set_delimiters`, `set_arg_delimiters`, and `set_prime_count` change delimiters and prime counts. `clone_node` copies a subtree within a document, and `import_node` copies one from another document, validating it against the destination knowledge base. Failed edits leave the document unchanged.
+- `NodeRef::path` returns a node's rooted path and `Document::node_at` resolves it; `NodeRef::slot` and `NodeRef::is_known` report the parent slot and knowledge status. Python and JavaScript expose the same edits and reads, JavaScript adds `argKind(index)`, and argument reads include their slot form.
+- `Document::to_columnar` exports a document as a preorder node table and an argument table for Arrow and DataFrame tools (`to_columnar()` in Python, `toColumnar()` in JavaScript); Python tables pass directly to `pyarrow.table`.
+- `KnowledgeBase` instances are cheap to clone and compare by identity (`KnowledgeBase::ptr_eq`); `KnowledgeBase::default()` returns one process-wide instance, and `Document::with_knowledge_base` and `Document::from_syntax_with` bind an explicit one. Python and JavaScript expose `KnowledgeBase` with identity equality and hashing, document copies (`copy()` in Python, `clone()` in JavaScript), node identity, and `document()` on nodes.
 
 ### Fixed
 
-- Start a new cell for scripts after alignment tabs
-- Take a single token for unbraced text-mode arguments
-- End declarative scopes at alignment separators
+- In alignments, a script directly after a column separator (`&^2`, `&_1`, `&'`) now starts the next cell with an empty base instead of using `&` as its base. Escaped `\&` still takes scripts.
+- An unbraced argument of a text-mode command takes a single token, as in TeX and MathJax: `\mbox TeV` parses as `\mbox{T}eV` instead of `\mbox{TeV}`. `\text{$x$ }` and `\textbf{ \emph k }` now parse.
+- Alignment separators (`&`, `\\`, `\newline`, `\cr`) end declarative scopes in environment bodies and math arguments, so `\begin{array}{cc} \rm a & b \\ c & d \end{array}` lowers to `\mathrm{a} & b \\ c & d` instead of the invalid `\mathrm{a & b \\ c & d}`, and a `\displaystyle` repeated in a later cell is kept.
 
 ## [0.7.0] - 2026-09-26
 
