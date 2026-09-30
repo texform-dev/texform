@@ -278,6 +278,11 @@ fn record_insert(summary: &mut MutationSummary, item: &ContextItem) {
 pub enum KnowledgeBaseBuildError {
     /// A requested package name is not a built-in package.
     PackageLoad(PackageLoadError),
+    /// An item name cannot be produced by the LaTeX lexer, so the parser could never match it.
+    InvalidName {
+        /// The rejected item name.
+        name: String,
+    },
     /// An item's argument specification failed to parse.
     InvalidContextItem {
         /// Name of the rejected item.
@@ -291,6 +296,7 @@ impl std::fmt::Display for KnowledgeBaseBuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::PackageLoad(error) => error.fmt(f),
+            Self::InvalidName { name } => write!(f, "invalid context item name '{name}'"),
             Self::InvalidContextItem { name, source } => {
                 write!(f, "invalid context item '{name}': {source}")
             }
@@ -302,6 +308,7 @@ impl std::error::Error for KnowledgeBaseBuildError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::PackageLoad(error) => Some(error),
+            Self::InvalidName { .. } => None,
             Self::InvalidContextItem { source, .. } => Some(source),
         }
     }
@@ -361,8 +368,8 @@ impl KnowledgeBaseBuilder {
     ///
     /// # Errors
     ///
-    /// Returns [`KnowledgeBaseBuildError`] for an unknown package or an
-    /// invalid argument specification.
+    /// Returns [`KnowledgeBaseBuildError`] for an unknown package, an item
+    /// name the lexer cannot produce, or an invalid argument specification.
     pub fn build(self) -> Result<KnowledgeBase, KnowledgeBaseBuildError> {
         let names = self
             .packages
@@ -380,6 +387,22 @@ impl KnowledgeBaseBuilder {
         for op in self.ops {
             match op {
                 BuilderOp::Insert(item) => {
+                    let valid_name = match &item {
+                        ContextItem::Command(_) => {
+                            crate::document::conformance::valid_command_name(item.name())
+                        }
+                        ContextItem::DelimiterControl(_) => {
+                            crate::document::conformance::valid_control_name(item.name())
+                        }
+                        ContextItem::Environment(_) => {
+                            crate::document::conformance::valid_environment_name(item.name())
+                        }
+                    };
+                    if !valid_name {
+                        return Err(KnowledgeBaseBuildError::InvalidName {
+                            name: item.name().to_string(),
+                        });
+                    }
                     record_insert(&mut mutation_summary, &item);
                     insert_item_into_lane(&mut math_catalog, &item, ContentMode::Math).map_err(
                         |source| KnowledgeBaseBuildError::InvalidContextItem {
@@ -477,7 +500,7 @@ pub struct Span {
 }
 
 /// Additional source span attached to a diagnostic.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 pub struct ParseDiagnosticContext {
     /// Human-readable label for this related span
@@ -541,7 +564,7 @@ impl ParseResult {
 ///
 /// Diagnostics carry both a human-readable message and structured
 /// expected/found information for richer error reporting.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 #[non_exhaustive]
 pub struct ParseDiagnostic {
@@ -865,14 +888,22 @@ pub(crate) fn parse_with_context(
     src: &str,
     config: &ParseConfig,
 ) -> ParseResult {
+    parse_with_context_mode(ctx, src, config, ContentMode::Math)
+}
+
+pub(crate) fn parse_with_context_mode(
+    ctx: &ParseContext,
+    src: &str,
+    config: &ParseConfig,
+    mode: ContentMode,
+) -> ParseResult {
     let token_stream = build_token_stream(src);
-    let (output, mut errors) = parse_raw(ctx, src, token_stream, config);
+    let (output, mut errors) = parse_raw(ctx, src, token_stream, config, mode);
 
     let document = output.map(|tracked| {
         let (node, span_tree, diagnostics) = tracked.finish_root();
         errors.extend(diagnostics);
         Document::from_syntax_with_spans(ctx, &node, &span_tree)
-            .expect("parser must produce a syntax root accepted by Document")
     });
 
     let mut diagnostics: Vec<_> = errors
@@ -896,9 +927,10 @@ fn parse_raw(
     src: &str,
     token_stream: TokenStream<'_>,
     config: &ParseConfig,
+    mode: ContentMode,
 ) -> (Option<TrackedNode>, Vec<ParseFailure<'static>>) {
     let state = ParserState::new(ctx, config, src);
-    let (output, errors) = grammar::math_block_parser_with_source(&state, src)
+    let (output, errors) = grammar::content_block_parser_with_source(mode, &state, src)
         .then_ignore(end())
         .parse(token_stream)
         .into_output_errors();

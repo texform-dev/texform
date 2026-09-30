@@ -206,6 +206,19 @@ impl Argument {
     }
 }
 
+impl ArgumentValue {
+    /// The content child and the mode it is read in, for content-carrying values.
+    pub fn content(&self) -> Option<(NodeId, ContentMode)> {
+        match self {
+            ArgumentValue::MathContent(id) | ArgumentValue::OperatorNameContent(id) => {
+                Some((*id, ContentMode::Math))
+            }
+            ArgumentValue::TextContent(id) => Some((*id, ContentMode::Text)),
+            _ => None,
+        }
+    }
+}
+
 /// Optional argument slot in a command or environment signature.
 ///
 /// `None` means the slot exists in the spec but was not supplied in source.
@@ -325,6 +338,76 @@ impl Node {
             Node::ActiveSpace => NodeKind::ActiveSpace,
             Node::AlignmentTab => NodeKind::AlignmentTab,
             Node::Error { .. } => NodeKind::Error,
+        }
+    }
+
+    /// Content mode of a root or group node.
+    pub fn content_mode(&self) -> Option<ContentMode> {
+        match self {
+            Node::Root { mode, .. } | Node::Group { mode, .. } => Some(*mode),
+            _ => None,
+        }
+    }
+
+    /// Argument slots of a command-like node; other kinds have none.
+    pub fn arg_slots(&self) -> &[ArgumentSlot] {
+        match self {
+            Node::Command { args, .. }
+            | Node::Infix { args, .. }
+            | Node::Declarative { args, .. }
+            | Node::Environment { args, .. } => args,
+            _ => &[],
+        }
+    }
+
+    /// Mutable reference to the child stored in `slot`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if this node has no child in `slot`.
+    pub fn child_mut(&mut self, slot: Slot) -> &mut NodeId {
+        match (self, slot) {
+            (
+                Node::Root { children, .. } | Node::Group { children, .. },
+                Slot::GroupChild(index),
+            ) => &mut children[index],
+            (
+                Node::Command { args, .. }
+                | Node::Infix { args, .. }
+                | Node::Declarative { args, .. }
+                | Node::Environment { args, .. },
+                Slot::Argument(index),
+            ) => match args
+                .get_mut(index)
+                .and_then(Option::as_mut)
+                .map(|arg| &mut arg.value)
+            {
+                Some(
+                    ArgumentValue::MathContent(child)
+                    | ArgumentValue::TextContent(child)
+                    | ArgumentValue::OperatorNameContent(child),
+                ) => child,
+                _ => panic!("Argument slot is not content"),
+            },
+            (Node::Scripted { base, .. }, Slot::ScriptBase) => base,
+            (
+                Node::Scripted {
+                    subscript: Some(child),
+                    ..
+                },
+                Slot::ScriptSub,
+            )
+            | (
+                Node::Scripted {
+                    superscript: Some(child),
+                    ..
+                },
+                Slot::ScriptSup,
+            ) => child,
+            (Node::Infix { left, .. }, Slot::InfixLeft) => left,
+            (Node::Infix { right, .. }, Slot::InfixRight) => right,
+            (Node::Environment { body, .. }, Slot::EnvBody) => body,
+            _ => panic!("Node has no child in this slot"),
         }
     }
 }
@@ -448,6 +531,11 @@ impl Ast {
             .any(|node| matches!(node, Node::Error { .. }))
     }
 
+    #[cfg(test)]
+    pub(crate) fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+
     /// Check whether `id` still exists in the arena.
     // FlattenGroups calls these accessors once per node. Keep them inline so the
     // Python cdylib leaves the call inside that walk.
@@ -548,13 +636,7 @@ impl Ast {
     ///
     /// Panics if `id` is invalid.
     pub fn arg_slots(&self, id: NodeId) -> &[ArgumentSlot] {
-        match self.node(id) {
-            Node::Command { args, .. }
-            | Node::Infix { args, .. }
-            | Node::Declarative { args, .. }
-            | Node::Environment { args, .. } => args,
-            _ => &[],
-        }
+        self.node(id).arg_slots()
     }
 
     /// Return every direct tree edge of `id` as `(child, slot)` pairs.
@@ -576,20 +658,39 @@ impl Ast {
     /// The cloned tree preserves node shape and scalar argument values, but every
     /// copied node receives a fresh [`NodeId`]. The returned root is detached, so
     /// callers can attach it with [`Ast::new_node`], [`Ast::replace_node`], or
-    /// group insertion helpers.
+    /// group insertion helpers. Copying the main root yields an implicit group.
     ///
     /// # Panics
     ///
-    /// Panics if `id` is invalid or points at the main AST root.
+    /// Panics if `id` is invalid.
     pub fn clone_subtree(&mut self, id: NodeId) -> NodeId {
-        if id == self.root {
-            panic!("Cannot clone root node as a detached subtree");
-        }
-        if !self.contains(id) {
-            panic!("Invalid NodeId");
-        }
+        self.copy_subtree_with(id, &|ast, id| ast.node(id).clone())
+    }
 
-        self.clone_subtree_impl(id)
+    /// Deep-copy the subtree of `source` rooted at `id` into this arena.
+    ///
+    /// The copy is a detached root; copying a main root yields an implicit group.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `id` is invalid in `source`.
+    pub fn copy_subtree_from(&mut self, source: &Ast, id: NodeId) -> NodeId {
+        self.copy_subtree_with(id, &|_, id| source.node(id).clone())
+    }
+
+    fn copy_subtree_with(&mut self, id: NodeId, read: &dyn Fn(&Ast, NodeId) -> Node) -> NodeId {
+        let mut node = match read(self, id) {
+            Node::Root { children, mode } => Node::Group {
+                children,
+                mode,
+                kind: GroupKind::Implicit,
+            },
+            node => node,
+        };
+        for (child, slot) in Self::node_edges(&node) {
+            *node.child_mut(slot) = self.copy_subtree_with(child, read);
+        }
+        self.new_node(node)
     }
 
     /// Return the next sibling of `id` when it is attached as a group child.
@@ -882,81 +983,26 @@ impl Ast {
         removed
     }
 
-    /// Replace a content child or another single-child slot.
+    /// Replace the child occupying `old`'s slot, in any slot kind.
     ///
     /// The replacement must be a detached root. The old child becomes detached.
     pub fn replace_content_child(&mut self, old: NodeId, replacement: NodeId) {
         if old == self.root {
             panic!("Cannot replace root node");
         }
-        let parent_link = self
+        let ParentLink { parent, slot } = self
             .parent(old)
             .unwrap_or_else(|| panic!("Cannot replace node without a parent"));
         self.assert_child_is_detached_root(replacement);
-        self.assert_no_cycle(replacement, parent_link.parent);
-        self.assert_slot_shape(parent_link.slot, replacement);
+        self.assert_no_cycle(replacement, parent);
+        self.assert_slot_shape(slot, replacement);
 
-        match self.node_mut(parent_link.parent) {
-            Node::Command { args, .. }
-            | Node::Infix { args, .. }
-            | Node::Declarative { args, .. }
-                if matches!(parent_link.slot, Slot::Argument(_)) =>
-            {
-                replace_argument_child(args, parent_link.slot, old, replacement);
-            }
-            Node::Infix { left, right, .. } => match parent_link.slot {
-                Slot::InfixLeft => {
-                    assert_eq!(*left, old, "Infix left operand must match old node");
-                    *left = replacement;
-                }
-                Slot::InfixRight => {
-                    assert_eq!(*right, old, "Infix right operand must match old node");
-                    *right = replacement;
-                }
-                _ => panic!("Expected infix operand slot"),
-            },
-            Node::Environment { args, body, .. } => match parent_link.slot {
-                Slot::Argument(_) => {
-                    replace_argument_child(args, parent_link.slot, old, replacement)
-                }
-                Slot::EnvBody => {
-                    assert_eq!(*body, old, "Environment body must match old node");
-                    *body = replacement;
-                }
-                _ => panic!("Expected environment body or argument slot"),
-            },
-            Node::Scripted {
-                base,
-                subscript,
-                superscript,
-            } => match parent_link.slot {
-                Slot::ScriptBase => {
-                    assert_eq!(*base, old, "Script base must match old node");
-                    *base = replacement;
-                }
-                Slot::ScriptSub => {
-                    assert_eq!(
-                        subscript,
-                        &Some(old),
-                        "Script subscript must match old node"
-                    );
-                    *subscript = Some(replacement);
-                }
-                Slot::ScriptSup => {
-                    assert_eq!(
-                        superscript,
-                        &Some(old),
-                        "Script superscript must match old node"
-                    );
-                    *superscript = Some(replacement);
-                }
-                _ => panic!("Expected script slot"),
-            },
-            _ => panic!("Parent does not have replaceable content children"),
-        }
+        let child = self.node_mut(parent).child_mut(slot);
+        assert_eq!(*child, old, "Slot child must match old node");
+        *child = replacement;
 
         self.release_child_as_detached_root(old);
-        self.adopt_child(parent_link.parent, replacement, parent_link.slot);
+        self.adopt_child(parent, replacement, slot);
     }
 
     /// Remove an attached node and its entire subtree from the arena.
@@ -1357,10 +1403,11 @@ impl Ast {
     }
 
     fn assert_no_cycle(&self, child: NodeId, new_parent: NodeId) {
-        assert!(
-            !self.subtree_contains(child, new_parent),
-            "Cannot create an ancestor cycle"
-        );
+        let mut current = Some(new_parent);
+        while let Some(id) = current {
+            assert_ne!(id, child, "Cannot create an ancestor cycle");
+            current = self.parent_id(id);
+        }
     }
 
     fn assert_slot_shape(&self, slot: Slot, child: NodeId) {
@@ -1660,105 +1707,6 @@ impl Ast {
         }
     }
 
-    fn clone_subtree_impl(&mut self, id: NodeId) -> NodeId {
-        let cloned = match self.node(id).clone() {
-            Node::Root { .. } => panic!("Cannot clone root node as a detached subtree"),
-            Node::Group {
-                children,
-                kind,
-                mode,
-            } => Node::Group {
-                children: children
-                    .into_iter()
-                    .map(|child| self.clone_subtree_impl(child))
-                    .collect(),
-                kind,
-                mode,
-            },
-            Node::Command { name, args, known } => Node::Command {
-                name,
-                args: self.clone_argument_slots(args),
-                known,
-            },
-            Node::Infix {
-                name,
-                args,
-                left,
-                right,
-            } => Node::Infix {
-                name,
-                args: self.clone_argument_slots(args),
-                left: self.clone_subtree_impl(left),
-                right: self.clone_subtree_impl(right),
-            },
-            Node::Declarative { name, args } => Node::Declarative {
-                name,
-                args: self.clone_argument_slots(args),
-            },
-            Node::Environment {
-                name,
-                args,
-                known,
-                body,
-            } => Node::Environment {
-                name,
-                args: self.clone_argument_slots(args),
-                known,
-                body: self.clone_subtree_impl(body),
-            },
-            Node::Scripted {
-                base,
-                subscript,
-                superscript,
-            } => Node::Scripted {
-                base: self.clone_subtree_impl(base),
-                subscript: subscript.map(|child| self.clone_subtree_impl(child)),
-                superscript: superscript.map(|child| self.clone_subtree_impl(child)),
-            },
-            Node::Prime { count } => Node::Prime { count },
-            Node::Text(text) => Node::Text(text),
-            Node::Char(ch) => Node::Char(ch),
-            Node::ActiveSpace => Node::ActiveSpace,
-            Node::AlignmentTab => Node::AlignmentTab,
-            Node::Error { message, snippet } => Node::Error { message, snippet },
-        };
-
-        self.new_node(cloned)
-    }
-
-    fn clone_argument_slots(&mut self, args: Vec<ArgumentSlot>) -> Vec<ArgumentSlot> {
-        args.into_iter()
-            .map(|slot| {
-                slot.map(|arg| Argument {
-                    kind: arg.kind,
-                    no_leading_space: arg.no_leading_space,
-                    value: self.clone_argument_value(arg.value),
-                })
-            })
-            .collect()
-    }
-
-    fn clone_argument_value(&mut self, value: ArgumentValue) -> ArgumentValue {
-        match value {
-            ArgumentValue::MathContent(child) => {
-                ArgumentValue::MathContent(self.clone_subtree_impl(child))
-            }
-            ArgumentValue::TextContent(child) => {
-                ArgumentValue::TextContent(self.clone_subtree_impl(child))
-            }
-            ArgumentValue::OperatorNameContent(child) => {
-                ArgumentValue::OperatorNameContent(self.clone_subtree_impl(child))
-            }
-            ArgumentValue::Delimiter(delimiter) => ArgumentValue::Delimiter(delimiter),
-            ArgumentValue::CSName(name) => ArgumentValue::CSName(name),
-            ArgumentValue::Dimension(value) => ArgumentValue::Dimension(value),
-            ArgumentValue::Integer(value) => ArgumentValue::Integer(value),
-            ArgumentValue::KeyVal(value) => ArgumentValue::KeyVal(value),
-            ArgumentValue::Column(value) => ArgumentValue::Column(value),
-            ArgumentValue::Boolean(value) => ArgumentValue::Boolean(value),
-        }
-    }
-
     fn assert_unique_direct_children(node: &Node) {
         let mut seen = HashSet::new();
         for (child, _) in Self::node_edges(node) {
@@ -1769,7 +1717,7 @@ impl Ast {
         }
     }
 
-    fn node_edges(node: &Node) -> Vec<(NodeId, Slot)> {
+    pub(crate) fn node_edges(node: &Node) -> Vec<(NodeId, Slot)> {
         let mut edges = Vec::new();
 
         // This function is the single source of truth for direct traversal
@@ -2026,25 +1974,6 @@ impl Ast {
             syntax_node::Delimiter::Char(ch) => Delimiter::Char(ch),
             syntax_node::Delimiter::Control(name) => Delimiter::Control(name.to_string()),
         }
-    }
-}
-
-fn replace_argument_child(args: &mut [ArgumentSlot], slot: Slot, old: NodeId, replacement: NodeId) {
-    let Slot::Argument(index) = slot else {
-        panic!("Expected argument slot");
-    };
-    let argument = args
-        .get_mut(index)
-        .and_then(Option::as_mut)
-        .unwrap_or_else(|| panic!("Argument slot is missing"));
-    match &mut argument.value {
-        ArgumentValue::MathContent(child)
-        | ArgumentValue::TextContent(child)
-        | ArgumentValue::OperatorNameContent(child) => {
-            assert_eq!(*child, old, "Argument child must match old node");
-            *child = replacement;
-        }
-        _ => panic!("Argument slot is not content"),
     }
 }
 

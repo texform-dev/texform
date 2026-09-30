@@ -1,9 +1,11 @@
 use std::hash::{Hash, Hasher};
 
-use pyo3::exceptions::PyException;
+use pyo3::exceptions::{PyException, PyTypeError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use pythonize::{depythonize, pythonize};
+use texform::bindings::BindingErrorDto;
+use texform::{Arg, ContentMode};
 
 mod config;
 
@@ -16,8 +18,19 @@ use config::{
 pyo3::create_exception!(texform, TexformError, PyException);
 pyo3::create_exception!(texform, ParseError, TexformError);
 pyo3::create_exception!(texform, EditError, TexformError);
+pyo3::create_exception!(texform, ConformanceError, EditError);
 pyo3::create_exception!(texform, ConfigError, TexformError);
 pyo3::create_exception!(texform, TransformError, TexformError);
+
+/// Call a constructor in an explicit context mode, or in its default context.
+macro_rules! construct {
+    ($doc:expr, $mode:expr, $method:ident($($arg:expr),*)) => {
+        match $mode {
+            Some(mode) => $doc.in_mode(mode).$method($($arg),*),
+            None => $doc.$method($($arg),*),
+        }
+    };
+}
 
 fn profile_from_name(name: &str) -> PyResult<texform::Profile> {
     match name {
@@ -31,71 +44,73 @@ fn profile_from_name(name: &str) -> PyResult<texform::Profile> {
     }
 }
 
-fn py_content_mode(value: &str) -> PyResult<texform::ContentMode> {
+fn py_content_mode(value: &str) -> PyResult<ContentMode> {
     match value {
-        "math" => Ok(texform::ContentMode::Math),
-        "text" => Ok(texform::ContentMode::Text),
+        "math" => Ok(ContentMode::Math),
+        "text" => Ok(ContentMode::Text),
         other => Err(ConfigError::new_err(format!(
             "unsupported content mode: {other}"
         ))),
     }
 }
 
-fn content_mode_to_str(value: texform::ContentMode) -> &'static str {
-    match value {
-        texform::ContentMode::Math => "math",
-        texform::ContentMode::Text => "text",
-    }
+fn py_optional_mode(mode: Option<&str>) -> PyResult<Option<ContentMode>> {
+    mode.map(py_content_mode).transpose()
+}
+
+/// Negative counts reach the core as zero, so it reports `invalid_prime_count`.
+fn prime_count(count: i128) -> usize {
+    usize::try_from(count.max(0)).unwrap_or(usize::MAX)
 }
 
 fn borrow_error(error: impl std::fmt::Display) -> PyErr {
     EditError::new_err(format!("document borrow conflict: {error}"))
 }
 
-fn edit_error(error: impl std::fmt::Display) -> PyErr {
-    EditError::new_err(error.to_string())
+fn edit_error(error: texform::EditError) -> PyErr {
+    binding_error_to_py(texform::bindings::edit_error_to_dto(error), None)
 }
 
-fn binding_error_to_py(
-    py: Python<'_>,
-    error: texform::bindings::BindingErrorDto,
-) -> PyResult<PyErr> {
-    match error.kind {
-        "parse" => parse_error_to_py(py, error, None),
-        "edit" => Ok(EditError::new_err(error.message)),
-        "config" => Ok(ConfigError::new_err(error.message)),
-        "transform" => Ok(TransformError::new_err(error.message)),
-        _ => Ok(TexformError::new_err(error.message)),
-    }
+fn normalize_error(error: texform::NormalizeError) -> PyErr {
+    let parts = texform::bindings::normalize_error_to_parts(error);
+    binding_error_to_py(parts.error, parts.document)
 }
 
-fn binding_error_parts_to_py(
-    py: Python<'_>,
-    parts: texform::bindings::BindingErrorParts,
-) -> PyResult<PyErr> {
-    match parts.error.kind {
-        "parse" => parse_error_to_py(py, parts.error, parts.document),
-        "edit" => Ok(EditError::new_err(parts.error.message)),
-        "config" => Ok(ConfigError::new_err(parts.error.message)),
-        "transform" => Ok(TransformError::new_err(parts.error.message)),
-        _ => Ok(TexformError::new_err(parts.error.message)),
-    }
+/// Raise the exception class for `error.kind` with its structured attributes.
+fn binding_error_to_py(error: BindingErrorDto, document: Option<texform::Document>) -> PyErr {
+    Python::attach(|py| {
+        let exception = match error.kind {
+            "parse" => ParseError::new_err(error.message),
+            "conformance" => ConformanceError::new_err(error.message),
+            "edit" => EditError::new_err(error.message),
+            "config" => ConfigError::new_err(error.message),
+            "transform" => TransformError::new_err(error.message),
+            _ => TexformError::new_err(error.message),
+        };
+        let value = exception.value(py);
+        let attached = (|| {
+            if error.kind == "parse" {
+                value.setattr("diagnostics", pythonize(py, &error.diagnostics)?)?;
+                let document = document.map(|inner| Py::new(py, PyDocument { inner }));
+                value.setattr("document", document.transpose()?)?;
+            }
+            if let Some(conformance) = error.conformance {
+                value.setattr("path", conformance.path)?;
+                value.setattr("rule", conformance.rule)?;
+            }
+            PyResult::Ok(())
+        })();
+        attached.err().unwrap_or(exception)
+    })
 }
 
-fn parse_error_to_py(
-    py: Python<'_>,
-    error: texform::bindings::BindingErrorDto,
-    document: Option<texform::Document>,
-) -> PyResult<PyErr> {
-    let py_error = ParseError::new_err(error.message);
-    let value = py_error.value(py);
-    value.setattr("diagnostics", pythonize(py, &error.diagnostics)?)?;
-    let document = match document {
-        Some(inner) => Py::new(py, PyDocument { inner })?.into_any(),
-        None => py.None(),
-    };
-    value.setattr("document", document)?;
-    Ok(py_error)
+fn syntax_node(node: &Bound<'_, PyAny>) -> PyResult<texform::SyntaxNode> {
+    depythonize(node).map_err(|error| {
+        binding_error_to_py(
+            BindingErrorDto::new("parse", format!("invalid syntax node: {error}")),
+            None,
+        )
+    })
 }
 
 fn parse_result_to_python(py: Python<'_>, result: texform::ParseResult) -> PyResult<Py<PyAny>> {
@@ -137,199 +152,77 @@ fn py_nodes_list(
     Ok(out.unbind().into_any())
 }
 
-fn parse_char(value: &str) -> PyResult<char> {
-    let mut chars = value.chars();
-    let Some(ch) = chars.next() else {
-        return Err(ParseError::new_err("character cannot be empty"));
-    };
-    if chars.next().is_some() {
-        return Err(ParseError::new_err(
-            "character must contain exactly one scalar",
-        ));
-    }
-    Ok(ch)
-}
-
-fn same_py_document(py: Python<'_>, left: &Py<PyDocument>, right: &Py<PyDocument>) -> bool {
-    left.bind(py).is(right.bind(py))
-}
-
-fn ensure_same_py_document(
-    py: Python<'_>,
-    left: &Py<PyDocument>,
-    right: &Py<PyDocument>,
-) -> PyResult<()> {
-    if same_py_document(py, left, right) {
+fn ensure_node_owner(owner: &Bound<'_, PyDocument>, node: &PyNode) -> PyResult<()> {
+    if node.doc.bind(owner.py()).is(owner) {
         Ok(())
     } else {
         Err(EditError::new_err("node belongs to a different document"))
     }
 }
 
-fn ensure_node_owner(py: Python<'_>, owner: &Py<PyDocument>, node: &PyNode) -> PyResult<()> {
-    ensure_same_py_document(py, owner, &node.doc)
+#[pyclass(name = "Paired", frozen, get_all, module = "texform._native")]
+struct PyPaired {
+    value: Py<PyAny>,
+    open: String,
+    close: String,
 }
 
-fn py_string_property(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<String> {
-    dict.get_item(key)?
-        .ok_or_else(|| ParseError::new_err(format!("ArgValue missing `{key}`")))?
-        .extract::<String>()
+#[pymethods]
+impl PyPaired {
+    #[new]
+    fn new(value: Py<PyAny>, open: String, close: String) -> Self {
+        Self { value, open, close }
+    }
+
+    fn __eq__(&self, py: Python<'_>, other: PyRef<'_, Self>) -> PyResult<bool> {
+        Ok(self.open == other.open
+            && self.close == other.close
+            && self.value.bind(py).eq(&other.value)?)
+    }
+
+    fn __hash__(&self, py: Python<'_>) -> PyResult<isize> {
+        (&self.value, &self.open, &self.close)
+            .into_pyobject(py)?
+            .hash()
+    }
+
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let fields = (&self.value, &self.open, &self.close).into_pyobject(py)?;
+        Ok(format!("Paired{}", fields.repr()?))
+    }
 }
 
-fn py_arg_values(
-    py: Python<'_>,
-    owner: &Py<PyDocument>,
-    args: Option<Vec<Py<PyAny>>>,
-) -> PyResult<Vec<texform::ArgValue>> {
+fn py_args(
+    owner: &Bound<'_, PyDocument>,
+    args: Option<Vec<Bound<'_, PyAny>>>,
+) -> PyResult<Vec<Arg>> {
     args.unwrap_or_default()
         .iter()
-        .map(|arg| py_arg_value(py, owner, arg.bind(py)))
+        .map(|arg| py_arg(owner, arg))
         .collect()
 }
 
-fn py_arg_value(
-    py: Python<'_>,
-    owner: &Py<PyDocument>,
-    value: &Bound<'_, PyAny>,
-) -> PyResult<texform::ArgValue> {
-    let dict = value
-        .cast::<PyDict>()
-        .map_err(|_| ParseError::new_err("ArgValue must be a dict"))?;
-    match py_string_property(dict, "kind")?.as_str() {
-        "Math" => Ok(texform::ArgValue::math(py_arg_node(py, owner, dict)?.id)),
-        "Text" => Ok(texform::ArgValue::text(py_arg_node(py, owner, dict)?.id)),
-        "Delimiter" => Ok(texform::ArgValue::delimiter(py_delimiter_value(
-            &dict
-                .get_item("value")?
-                .ok_or_else(|| ParseError::new_err("Delimiter ArgValue missing `value`"))?,
-        )?)),
-        "CSName" => Ok(texform::ArgValue::cs_name(py_string_property(
-            dict, "value",
-        )?)),
-        "Dimension" => Ok(texform::ArgValue::dimension(py_string_property(
-            dict, "value",
-        )?)),
-        "Integer" => Ok(texform::ArgValue::integer(py_string_property(
-            dict, "value",
-        )?)),
-        "KeyVal" => Ok(texform::ArgValue::key_val(py_string_property(
-            dict, "value",
-        )?)),
-        "Column" => Ok(texform::ArgValue::column(py_string_property(
-            dict, "value",
-        )?)),
-        "Boolean" => Ok(texform::ArgValue::boolean(
-            dict.get_item("value")?
-                .ok_or_else(|| ParseError::new_err("Boolean ArgValue missing `value`"))?
-                .extract::<bool>()?,
-        )),
-        other => Err(ParseError::new_err(format!(
-            "unsupported ArgValue kind: {other}"
-        ))),
+fn py_arg(owner: &Bound<'_, PyDocument>, value: &Bound<'_, PyAny>) -> PyResult<Arg> {
+    if value.is_none() {
+        return Ok(Arg::Absent);
     }
-}
-
-fn py_arg_node<'py>(
-    py: Python<'py>,
-    owner: &Py<PyDocument>,
-    dict: &Bound<'py, PyDict>,
-) -> PyResult<PyRef<'py, PyNode>> {
-    let node = dict
-        .get_item("node")?
-        .ok_or_else(|| ParseError::new_err("content ArgValue missing `node`"))?;
-    let node = node.extract::<PyRef<'py, PyNode>>()?;
-    ensure_node_owner(py, owner, &node)?;
-    Ok(node)
-}
-
-fn py_delimiter_value(value: &Bound<'_, PyAny>) -> PyResult<texform::DelimiterValue> {
-    let dict = value
-        .cast::<PyDict>()
-        .map_err(|_| ParseError::new_err("Delimiter value must be a dict"))?;
-    match py_string_property(dict, "kind")?.as_str() {
-        "None" => Ok(texform::DelimiterValue::None),
-        "Char" => Ok(texform::DelimiterValue::Char(parse_char(
-            &py_string_property(dict, "value")?,
-        )?)),
-        "Control" => Ok(texform::DelimiterValue::Control(py_string_property(
-            dict, "value",
-        )?)),
-        other => Err(ParseError::new_err(format!(
-            "unsupported delimiter kind: {other}"
-        ))),
+    if let Ok(node) = value.extract::<PyRef<'_, PyNode>>() {
+        ensure_node_owner(owner, &node)?;
+        return Ok(Arg::Node(node.id));
     }
-}
-
-fn py_delimiter_ref(delimiter: texform::DelimiterRef<'_>) -> serde_json::Value {
-    match delimiter {
-        texform::DelimiterRef::None => serde_json::json!({ "kind": "None" }),
-        texform::DelimiterRef::Char(ch) => {
-            serde_json::json!({ "kind": "Char", "value": ch.to_string() })
-        }
-        texform::DelimiterRef::Control(name) => {
-            serde_json::json!({ "kind": "Control", "value": name })
-        }
+    if let Ok(value) = value.extract::<String>() {
+        return Ok(Arg::Source(value));
     }
-}
-
-fn py_group_kind(kind: texform::GroupKindRef<'_>) -> serde_json::Value {
-    match kind {
-        texform::GroupKindRef::Explicit => serde_json::json!({ "kind": "Explicit" }),
-        texform::GroupKindRef::Implicit => serde_json::json!({ "kind": "Implicit" }),
-        texform::GroupKindRef::Delimited { left, right } => serde_json::json!({
-            "kind": "Delimited",
-            "left": py_delimiter_ref(left),
-            "right": py_delimiter_ref(right),
-        }),
-        texform::GroupKindRef::InlineMath => serde_json::json!({ "kind": "InlineMath" }),
+    if let Ok(value) = value.extract::<bool>() {
+        return Ok(Arg::Star(value));
     }
-}
-
-fn py_arg_ref(
-    py: Python<'_>,
-    owner: &Py<PyDocument>,
-    arg: texform::ArgRef<'_>,
-) -> PyResult<Py<PyAny>> {
-    let out = PyDict::new(py);
-    match arg {
-        texform::ArgRef::Math(node) => {
-            out.set_item("kind", "Math")?;
-            out.set_item("node", py_node(py, owner.clone_ref(py), node.id())?)?;
-        }
-        texform::ArgRef::Text(node) => {
-            out.set_item("kind", "Text")?;
-            out.set_item("node", py_node(py, owner.clone_ref(py), node.id())?)?;
-        }
-        texform::ArgRef::Delimiter(delimiter) => {
-            out.set_item("kind", "Delimiter")?;
-            out.set_item("value", pythonize(py, &py_delimiter_ref(delimiter))?)?;
-        }
-        texform::ArgRef::CSName(value) => {
-            out.set_item("kind", "CSName")?;
-            out.set_item("value", value)?;
-        }
-        texform::ArgRef::Dimension(value) => {
-            out.set_item("kind", "Dimension")?;
-            out.set_item("value", value)?;
-        }
-        texform::ArgRef::Integer(value) => {
-            out.set_item("kind", "Integer")?;
-            out.set_item("value", value)?;
-        }
-        texform::ArgRef::KeyVal(value) => {
-            out.set_item("kind", "KeyVal")?;
-            out.set_item("value", value)?;
-        }
-        texform::ArgRef::Column(value) => {
-            out.set_item("kind", "Column")?;
-            out.set_item("value", value)?;
-        }
-        texform::ArgRef::Boolean(value) => {
-            out.set_item("kind", "Boolean")?;
-            out.set_item("value", value)?;
-        }
+    if let Ok(pair) = value.extract::<PyRef<'_, PyPaired>>() {
+        let value = py_arg(owner, pair.value.bind(value.py()))?;
+        return Arg::paired(value, &pair.open, &pair.close).map_err(edit_error);
     }
-    Ok(out.unbind().into_any())
+    Err(PyTypeError::new_err(
+        "argument must be a Node, source string, bool, None, or Paired",
+    ))
 }
 
 fn knowledge_base_value(value: Option<PyRef<'_, PyKnowledgeBase>>) -> texform::KnowledgeBase {
@@ -485,6 +378,39 @@ struct PyDocument {
     inner: texform::Document,
 }
 
+impl PyDocument {
+    /// Run a fallible operation on the document after checking node ownership.
+    fn edit<T>(
+        slf: &Bound<'_, Self>,
+        nodes: &[&PyNode],
+        op: impl FnOnce(&mut texform::Document) -> Result<T, texform::EditError>,
+    ) -> PyResult<T> {
+        for node in nodes {
+            ensure_node_owner(slf, node)?;
+        }
+        op(&mut slf.try_borrow_mut().map_err(borrow_error)?.inner).map_err(edit_error)
+    }
+
+    /// Like [`Self::edit`], returning a handle to the resulting node.
+    fn edit_node(
+        slf: &Bound<'_, Self>,
+        nodes: &[&PyNode],
+        op: impl FnOnce(&mut texform::Document) -> Result<texform::NodeId, texform::EditError>,
+    ) -> PyResult<Py<PyNode>> {
+        let id = Self::edit(slf, nodes, op)?;
+        py_node(slf.py(), slf.clone().unbind(), id)
+    }
+
+    /// Collect node ids from a read of the document into a list of handles.
+    fn read_nodes(
+        slf: &Bound<'_, Self>,
+        read: impl FnOnce(&texform::Document) -> Vec<texform::NodeId>,
+    ) -> PyResult<Py<PyAny>> {
+        let ids = read(&slf.try_borrow().map_err(borrow_error)?.inner);
+        py_nodes_list(slf.py(), &slf.clone().unbind(), ids)
+    }
+}
+
 #[pymethods]
 impl PyDocument {
     #[new]
@@ -519,40 +445,21 @@ impl PyDocument {
     #[staticmethod]
     #[pyo3(signature = (node, knowledge_base = None))]
     fn from_syntax(
-        py: Python<'_>,
         node: &Bound<'_, PyAny>,
         knowledge_base: Option<PyRef<'_, PyKnowledgeBase>>,
     ) -> PyResult<Self> {
-        let node = depythonize::<texform::SyntaxNode>(node).map_err(|error| {
-            parse_error_to_py(
-                py,
-                texform::bindings::BindingErrorDto {
-                    kind: "parse",
-                    message: format!("invalid syntax node: {error}"),
-                    diagnostics: Vec::new(),
-                },
-                None,
-            )
-            .unwrap_or_else(|error| error)
-        })?;
-        Ok(Self {
-            inner: texform::Document::from_syntax_with(
-                &knowledge_base_value(knowledge_base),
-                &node,
-            )
-            .map_err(|error| {
-                binding_error_to_py(py, texform::bindings::from_syntax_error_to_dto(error))
-                    .unwrap_or_else(|error| error)
-            })?,
-        })
+        let node = syntax_node(node)?;
+        let inner =
+            texform::Document::from_syntax_with(&knowledge_base_value(knowledge_base), &node)
+                .map_err(|error| {
+                    binding_error_to_py(texform::bindings::from_syntax_error_to_dto(error), None)
+                })?;
+        Ok(Self { inner })
     }
 
-    fn root(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyNode>> {
-        let id = {
-            let document = slf.try_borrow().map_err(borrow_error)?;
-            document.inner.root().id()
-        };
-        py_node(py, slf.clone().unbind(), id)
+    fn root(slf: &Bound<'_, Self>) -> PyResult<Py<PyNode>> {
+        let id = slf.try_borrow().map_err(borrow_error)?.inner.root().id();
+        py_node(slf.py(), slf.clone().unbind(), id)
     }
 
     fn has_errors(slf: &Bound<'_, Self>) -> PyResult<bool> {
@@ -565,47 +472,29 @@ impl PyDocument {
         Ok(document.inner.is_read_only())
     }
 
-    fn errors(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let ids = {
-            let document = slf.try_borrow().map_err(borrow_error)?;
-            document
-                .inner
-                .errors()
-                .map(|node| node.id())
-                .collect::<Vec<_>>()
-        };
-        py_nodes_list(py, &slf.clone().unbind(), ids)
+    fn errors(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
+        Self::read_nodes(slf, |document| {
+            document.errors().map(|node| node.id()).collect()
+        })
     }
 
-    fn find_commands(slf: &Bound<'_, Self>, py: Python<'_>, name: &str) -> PyResult<Py<PyAny>> {
-        let ids = {
-            let document = slf.try_borrow().map_err(borrow_error)?;
-            document
-                .inner
-                .find_commands(name)
-                .map(|node| node.id())
-                .collect::<Vec<_>>()
-        };
-        py_nodes_list(py, &slf.clone().unbind(), ids)
+    fn find_commands(slf: &Bound<'_, Self>, name: &str) -> PyResult<Py<PyAny>> {
+        Self::read_nodes(slf, |document| {
+            document.find_commands(name).map(|node| node.id()).collect()
+        })
     }
 
-    fn find_environments(slf: &Bound<'_, Self>, py: Python<'_>, name: &str) -> PyResult<Py<PyAny>> {
-        let ids = {
-            let document = slf.try_borrow().map_err(borrow_error)?;
+    fn find_environments(slf: &Bound<'_, Self>, name: &str) -> PyResult<Py<PyAny>> {
+        Self::read_nodes(slf, |document| {
             document
-                .inner
                 .find_environments(name)
                 .map(|node| node.id())
-                .collect::<Vec<_>>()
-        };
-        py_nodes_list(py, &slf.clone().unbind(), ids)
+                .collect()
+        })
     }
 
     fn to_syntax(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let syntax = {
-            let document = slf.try_borrow().map_err(borrow_error)?;
-            document.inner.to_syntax()
-        };
+        let syntax = slf.try_borrow().map_err(borrow_error)?.inner.to_syntax();
         Ok(pythonize(py, &syntax)?.unbind())
     }
 
@@ -645,304 +534,301 @@ impl PyDocument {
         Ok(pythonize(py, &dto)?.unbind())
     }
 
-    fn create_char(slf: &Bound<'_, Self>, py: Python<'_>, value: &str) -> PyResult<Py<PyNode>> {
-        let ch = parse_char(value)?;
-        let id = {
-            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-            document.inner.create_char(ch).map_err(edit_error)?
-        };
-        py_node(py, slf.clone().unbind(), id)
+    #[pyo3(signature = (value, *, mode = None))]
+    fn create_char(slf: &Bound<'_, Self>, value: &str, mode: Option<&str>) -> PyResult<Py<PyNode>> {
+        let value = texform::bindings::parse_char(value).map_err(edit_error)?;
+        let mode = py_optional_mode(mode)?;
+        Self::edit_node(slf, &[], |doc| construct!(doc, mode, create_char(value)))
     }
 
-    fn create_text(slf: &Bound<'_, Self>, py: Python<'_>, value: &str) -> PyResult<Py<PyNode>> {
-        let id = {
-            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-            document.inner.create_text(value).map_err(edit_error)?
-        };
-        py_node(py, slf.clone().unbind(), id)
+    #[pyo3(signature = (value, *, mode = None))]
+    fn create_text(slf: &Bound<'_, Self>, value: &str, mode: Option<&str>) -> PyResult<Py<PyNode>> {
+        let mode = py_optional_mode(mode)?;
+        Self::edit_node(slf, &[], |doc| construct!(doc, mode, create_text(value)))
     }
 
-    fn create_active_space(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyNode>> {
-        let id = {
-            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-            document.inner.create_active_space().map_err(edit_error)?
-        };
-        py_node(py, slf.clone().unbind(), id)
+    #[pyo3(signature = (*, mode = None))]
+    fn create_active_space(slf: &Bound<'_, Self>, mode: Option<&str>) -> PyResult<Py<PyNode>> {
+        let mode = py_optional_mode(mode)?;
+        Self::edit_node(slf, &[], |doc| construct!(doc, mode, create_active_space()))
     }
 
-    fn create_alignment_tab(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyNode>> {
-        let id = {
-            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-            document.inner.create_alignment_tab().map_err(edit_error)?
-        };
-        py_node(py, slf.clone().unbind(), id)
+    #[pyo3(signature = (*, mode = None))]
+    fn create_alignment_tab(slf: &Bound<'_, Self>, mode: Option<&str>) -> PyResult<Py<PyNode>> {
+        let mode = py_optional_mode(mode)?;
+        Self::edit_node(slf, &[], |doc| {
+            construct!(doc, mode, create_alignment_tab())
+        })
     }
 
-    fn create_group(slf: &Bound<'_, Self>, py: Python<'_>, mode: &str) -> PyResult<Py<PyNode>> {
-        let mode = py_content_mode(mode)?;
-        let id = {
-            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-            document.inner.create_group(mode).map_err(edit_error)?
-        };
-        py_node(py, slf.clone().unbind(), id)
+    #[pyo3(signature = (count, *, mode = None))]
+    fn create_prime(
+        slf: &Bound<'_, Self>,
+        count: i128,
+        mode: Option<&str>,
+    ) -> PyResult<Py<PyNode>> {
+        let count = prime_count(count);
+        let mode = py_optional_mode(mode)?;
+        Self::edit_node(slf, &[], |doc| construct!(doc, mode, create_prime(count)))
     }
 
-    #[pyo3(signature = (name, args = None))]
+    /// The group's own `mode`, also its context, defaults to the root mode.
+    #[pyo3(signature = (mode = None, children = None))]
+    fn create_group(
+        slf: &Bound<'_, Self>,
+        mode: Option<&str>,
+        children: Option<Vec<Bound<'_, PyAny>>>,
+    ) -> PyResult<Py<PyNode>> {
+        let children = py_args(slf, children)?;
+        let mode = py_optional_mode(mode)?;
+        Self::edit_node(slf, &[], |doc| {
+            let mode =
+                mode.unwrap_or_else(|| doc.root().content_mode().unwrap_or(ContentMode::Math));
+            doc.create_group(mode, children)
+        })
+    }
+
+    #[pyo3(signature = (left, right, children = None, *, mode = None))]
+    fn create_delimited_group(
+        slf: &Bound<'_, Self>,
+        left: &str,
+        right: &str,
+        children: Option<Vec<Bound<'_, PyAny>>>,
+        mode: Option<&str>,
+    ) -> PyResult<Py<PyNode>> {
+        let left = left.parse().map_err(edit_error)?;
+        let right = right.parse().map_err(edit_error)?;
+        let children = py_args(slf, children)?;
+        let mode = py_optional_mode(mode)?;
+        Self::edit_node(slf, &[], |doc| {
+            construct!(doc, mode, create_delimited_group(left, right, children))
+        })
+    }
+
+    #[pyo3(signature = (children = None, *, mode = None))]
+    fn create_inline_math(
+        slf: &Bound<'_, Self>,
+        children: Option<Vec<Bound<'_, PyAny>>>,
+        mode: Option<&str>,
+    ) -> PyResult<Py<PyNode>> {
+        let children = py_args(slf, children)?;
+        let mode = py_optional_mode(mode)?;
+        Self::edit_node(slf, &[], |doc| {
+            construct!(doc, mode, create_inline_math(children))
+        })
+    }
+
+    #[pyo3(signature = (base, sub = None, sup = None, *, mode = None))]
+    fn create_scripted(
+        slf: &Bound<'_, Self>,
+        base: &Bound<'_, PyAny>,
+        sub: Option<Bound<'_, PyAny>>,
+        sup: Option<Bound<'_, PyAny>>,
+        mode: Option<&str>,
+    ) -> PyResult<Py<PyNode>> {
+        let base = py_arg(slf, base)?;
+        let sub = sub.map(|sub| py_arg(slf, &sub)).transpose()?;
+        let sup = sup.map(|sup| py_arg(slf, &sup)).transpose()?;
+        let mode = py_optional_mode(mode)?;
+        Self::edit_node(slf, &[], |doc| {
+            construct!(doc, mode, create_scripted(base, sub, sup))
+        })
+    }
+
+    #[pyo3(signature = (name, args = None, *, mode = None))]
     fn create_command(
         slf: &Bound<'_, Self>,
-        py: Python<'_>,
         name: &str,
-        args: Option<Vec<Py<PyAny>>>,
+        args: Option<Vec<Bound<'_, PyAny>>>,
+        mode: Option<&str>,
     ) -> PyResult<Py<PyNode>> {
-        let owner = slf.clone().unbind();
-        let args = py_arg_values(py, &owner, args)?;
-        let id = {
-            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-            document
-                .inner
-                .create_command(name, args)
-                .map_err(edit_error)?
-        };
-        py_node(py, owner, id)
+        let args = py_args(slf, args)?;
+        let mode = py_optional_mode(mode)?;
+        Self::edit_node(slf, &[], |doc| {
+            construct!(doc, mode, create_command(name, args))
+        })
     }
 
-    #[pyo3(signature = (name, args = None))]
+    #[pyo3(signature = (name, args = None, *, mode = None))]
     fn create_declarative(
         slf: &Bound<'_, Self>,
-        py: Python<'_>,
         name: &str,
-        args: Option<Vec<Py<PyAny>>>,
+        args: Option<Vec<Bound<'_, PyAny>>>,
+        mode: Option<&str>,
     ) -> PyResult<Py<PyNode>> {
-        let owner = slf.clone().unbind();
-        let args = py_arg_values(py, &owner, args)?;
-        let id = {
-            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-            document
-                .inner
-                .create_declarative(name, args)
-                .map_err(edit_error)?
-        };
-        py_node(py, owner, id)
+        let args = py_args(slf, args)?;
+        let mode = py_optional_mode(mode)?;
+        Self::edit_node(slf, &[], |doc| {
+            construct!(doc, mode, create_declarative(name, args))
+        })
     }
 
-    #[pyo3(signature = (name, args, body))]
+    #[pyo3(signature = (name, left, right, args = None, *, mode = None))]
+    fn create_infix(
+        slf: &Bound<'_, Self>,
+        name: &str,
+        left: &Bound<'_, PyAny>,
+        right: &Bound<'_, PyAny>,
+        args: Option<Vec<Bound<'_, PyAny>>>,
+        mode: Option<&str>,
+    ) -> PyResult<Py<PyNode>> {
+        let left = py_arg(slf, left)?;
+        let right = py_arg(slf, right)?;
+        let args = py_args(slf, args)?;
+        let mode = py_optional_mode(mode)?;
+        Self::edit_node(slf, &[], |doc| {
+            construct!(doc, mode, create_infix(name, left, right, args))
+        })
+    }
+
+    /// A list body becomes the children of the implicit body group.
+    #[pyo3(signature = (name, args = None, body = None, *, mode = None))]
     fn create_environment(
         slf: &Bound<'_, Self>,
-        py: Python<'_>,
         name: &str,
-        args: Option<Vec<Py<PyAny>>>,
-        body: PyRef<'_, PyNode>,
+        args: Option<Vec<Bound<'_, PyAny>>>,
+        body: Option<Bound<'_, PyAny>>,
+        mode: Option<&str>,
     ) -> PyResult<Py<PyNode>> {
-        let owner = slf.clone().unbind();
-        ensure_node_owner(py, &owner, &body)?;
-        let args = py_arg_values(py, &owner, args)?;
-        let id = {
-            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-            document
-                .inner
-                .create_environment(name, args, body.id)
-                .map_err(edit_error)?
-        };
-        py_node(py, owner, id)
+        let args = py_args(slf, args)?;
+        let mode = py_optional_mode(mode)?;
+        match body {
+            Some(body) if body.is_instance_of::<PyList>() => {
+                let children = py_args(slf, Some(body.extract()?))?;
+                Self::edit_node(slf, &[], |doc| {
+                    construct!(
+                        doc,
+                        mode,
+                        create_environment_with_children(name, args, children)
+                    )
+                })
+            }
+            body => {
+                let body = body.map_or(Ok(Arg::Absent), |body| py_arg(slf, &body))?;
+                Self::edit_node(slf, &[], |doc| {
+                    construct!(doc, mode, create_environment(name, args, body))
+                })
+            }
+        }
+    }
+
+    #[pyo3(signature = (source, *, mode = None))]
+    fn parse_fragment(
+        slf: &Bound<'_, Self>,
+        source: &str,
+        mode: Option<&str>,
+    ) -> PyResult<Py<PyNode>> {
+        let mode = py_optional_mode(mode)?;
+        Self::edit_node(slf, &[], |doc| doc.parse_fragment(source, mode))
     }
 
     fn append_child(
         slf: &Bound<'_, Self>,
-        py: Python<'_>,
         parent: PyRef<'_, PyNode>,
         child: PyRef<'_, PyNode>,
     ) -> PyResult<()> {
-        let owner = slf.clone().unbind();
-        ensure_node_owner(py, &owner, &parent)?;
-        ensure_node_owner(py, &owner, &child)?;
-        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-        document
-            .inner
-            .append_child(parent.id, child.id)
-            .map_err(edit_error)
+        Self::edit(slf, &[&parent, &child], |doc| {
+            doc.append_child(parent.id, child.id)
+        })
     }
 
     fn insert_before(
         slf: &Bound<'_, Self>,
-        py: Python<'_>,
         anchor: PyRef<'_, PyNode>,
         new: PyRef<'_, PyNode>,
     ) -> PyResult<()> {
-        let owner = slf.clone().unbind();
-        ensure_node_owner(py, &owner, &anchor)?;
-        ensure_node_owner(py, &owner, &new)?;
-        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-        document
-            .inner
-            .insert_before(anchor.id, new.id)
-            .map_err(edit_error)
+        Self::edit(slf, &[&anchor, &new], |doc| {
+            doc.insert_before(anchor.id, new.id)
+        })
     }
 
     fn insert_after(
         slf: &Bound<'_, Self>,
-        py: Python<'_>,
         anchor: PyRef<'_, PyNode>,
         new: PyRef<'_, PyNode>,
     ) -> PyResult<()> {
-        let owner = slf.clone().unbind();
-        ensure_node_owner(py, &owner, &anchor)?;
-        ensure_node_owner(py, &owner, &new)?;
-        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-        document
-            .inner
-            .insert_after(anchor.id, new.id)
-            .map_err(edit_error)
+        Self::edit(slf, &[&anchor, &new], |doc| {
+            doc.insert_after(anchor.id, new.id)
+        })
     }
 
     fn insert_child(
         slf: &Bound<'_, Self>,
-        py: Python<'_>,
         parent: PyRef<'_, PyNode>,
         index: usize,
         child: PyRef<'_, PyNode>,
     ) -> PyResult<()> {
-        let owner = slf.clone().unbind();
-        ensure_node_owner(py, &owner, &parent)?;
-        ensure_node_owner(py, &owner, &child)?;
-        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-        document
-            .inner
-            .insert_child(parent.id, index, child.id)
-            .map_err(edit_error)
+        Self::edit(slf, &[&parent, &child], |doc| {
+            doc.insert_child(parent.id, index, child.id)
+        })
     }
 
     fn replace_with(
         slf: &Bound<'_, Self>,
-        py: Python<'_>,
         target: PyRef<'_, PyNode>,
         replacement: PyRef<'_, PyNode>,
     ) -> PyResult<()> {
-        let owner = slf.clone().unbind();
-        ensure_node_owner(py, &owner, &target)?;
-        ensure_node_owner(py, &owner, &replacement)?;
-        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-        document
-            .inner
-            .replace_with(target.id, replacement.id)
-            .map_err(edit_error)
+        Self::edit(slf, &[&target, &replacement], |doc| {
+            doc.replace_with(target.id, replacement.id)
+        })
     }
 
     fn wrap(
         slf: &Bound<'_, Self>,
-        py: Python<'_>,
         target: PyRef<'_, PyNode>,
         wrapper: PyRef<'_, PyNode>,
     ) -> PyResult<Py<PyNode>> {
-        let owner = slf.clone().unbind();
-        ensure_node_owner(py, &owner, &target)?;
-        ensure_node_owner(py, &owner, &wrapper)?;
-        let id = {
-            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-            document
-                .inner
-                .wrap(target.id, wrapper.id)
-                .map_err(edit_error)?
-        };
-        py_node(py, owner, id)
+        Self::edit_node(slf, &[&target, &wrapper], |doc| {
+            doc.wrap(target.id, wrapper.id)
+        })
     }
 
-    fn unwrap(
-        slf: &Bound<'_, Self>,
-        py: Python<'_>,
-        group: PyRef<'_, PyNode>,
-    ) -> PyResult<Py<PyAny>> {
-        let owner = slf.clone().unbind();
-        ensure_node_owner(py, &owner, &group)?;
-        let ids = {
-            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-            document.inner.unwrap(group.id).map_err(edit_error)?
-        };
-        py_nodes_list(py, &owner, ids)
+    fn unwrap(slf: &Bound<'_, Self>, group: PyRef<'_, PyNode>) -> PyResult<Py<PyAny>> {
+        let ids = Self::edit(slf, &[&group], |doc| doc.unwrap(group.id))?;
+        py_nodes_list(slf.py(), &slf.clone().unbind(), ids)
     }
 
-    fn extract(
-        slf: &Bound<'_, Self>,
-        py: Python<'_>,
-        node: PyRef<'_, PyNode>,
-    ) -> PyResult<Py<PyNode>> {
-        let owner = slf.clone().unbind();
-        ensure_node_owner(py, &owner, &node)?;
-        let id = {
-            let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-            document.inner.extract(node.id).map_err(edit_error)?
-        };
-        py_node(py, owner, id)
+    fn extract(slf: &Bound<'_, Self>, node: PyRef<'_, PyNode>) -> PyResult<Py<PyNode>> {
+        Self::edit_node(slf, &[&node], |doc| doc.extract(node.id))
     }
 
-    fn remove(slf: &Bound<'_, Self>, py: Python<'_>, node: PyRef<'_, PyNode>) -> PyResult<()> {
-        let owner = slf.clone().unbind();
-        ensure_node_owner(py, &owner, &node)?;
-        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-        document.inner.remove(node.id).map_err(edit_error)
+    fn remove(slf: &Bound<'_, Self>, node: PyRef<'_, PyNode>) -> PyResult<()> {
+        Self::edit(slf, &[&node], |doc| doc.remove(node.id))
     }
 
-    fn clear(slf: &Bound<'_, Self>, py: Python<'_>, container: PyRef<'_, PyNode>) -> PyResult<()> {
-        let owner = slf.clone().unbind();
-        ensure_node_owner(py, &owner, &container)?;
-        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-        document.inner.clear(container.id).map_err(edit_error)
+    fn clear(slf: &Bound<'_, Self>, container: PyRef<'_, PyNode>) -> PyResult<()> {
+        Self::edit(slf, &[&container], |doc| doc.clear(container.id))
     }
 
     fn set_command_name(
         slf: &Bound<'_, Self>,
-        py: Python<'_>,
         node: PyRef<'_, PyNode>,
         name: &str,
     ) -> PyResult<()> {
-        let owner = slf.clone().unbind();
-        ensure_node_owner(py, &owner, &node)?;
-        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-        document
-            .inner
-            .set_command_name(node.id, name)
-            .map_err(edit_error)
+        Self::edit(slf, &[&node], |doc| doc.set_command_name(node.id, name))
     }
 
-    fn set_text(
-        slf: &Bound<'_, Self>,
-        py: Python<'_>,
-        node: PyRef<'_, PyNode>,
-        value: &str,
-    ) -> PyResult<()> {
-        let owner = slf.clone().unbind();
-        ensure_node_owner(py, &owner, &node)?;
-        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-        document.inner.set_text(node.id, value).map_err(edit_error)
+    fn set_env_name(slf: &Bound<'_, Self>, node: PyRef<'_, PyNode>, name: &str) -> PyResult<()> {
+        Self::edit(slf, &[&node], |doc| doc.set_env_name(node.id, name))
     }
 
-    fn set_char(
-        slf: &Bound<'_, Self>,
-        py: Python<'_>,
-        node: PyRef<'_, PyNode>,
-        value: &str,
-    ) -> PyResult<()> {
-        let owner = slf.clone().unbind();
-        ensure_node_owner(py, &owner, &node)?;
-        let ch = parse_char(value)?;
-        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-        document.inner.set_char(node.id, ch).map_err(edit_error)
+    fn set_text(slf: &Bound<'_, Self>, node: PyRef<'_, PyNode>, value: &str) -> PyResult<()> {
+        Self::edit(slf, &[&node], |doc| doc.set_text(node.id, value))
+    }
+
+    fn set_char(slf: &Bound<'_, Self>, node: PyRef<'_, PyNode>, value: &str) -> PyResult<()> {
+        let value = texform::bindings::parse_char(value).map_err(edit_error)?;
+        Self::edit(slf, &[&node], |doc| doc.set_char(node.id, value))
     }
 
     fn set_arg(
         slf: &Bound<'_, Self>,
-        py: Python<'_>,
         node: PyRef<'_, PyNode>,
         index: usize,
-        value: Py<PyAny>,
+        value: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
-        let owner = slf.clone().unbind();
-        ensure_node_owner(py, &owner, &node)?;
-        let value = py_arg_value(py, &owner, value.bind(py))?;
-        let mut document = slf.try_borrow_mut().map_err(borrow_error)?;
-        document
-            .inner
-            .set_arg(node.id, index, value)
-            .map_err(edit_error)
+        let value = py_arg(slf, value)?;
+        Self::edit(slf, &[&node], |doc| doc.set_arg(node.id, index, value))
     }
 }
 
@@ -952,12 +838,57 @@ struct PyNode {
     id: texform::NodeId,
 }
 
+impl PyNode {
+    fn with_ref<T>(
+        &self,
+        py: Python<'_>,
+        read: impl FnOnce(texform::NodeRef<'_>) -> T,
+    ) -> PyResult<T> {
+        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
+        Ok(read(document.inner.node(self.id).map_err(edit_error)?))
+    }
+
+    /// A handle to the node selected by `read`, or `None`.
+    fn related(
+        &self,
+        py: Python<'_>,
+        read: impl FnOnce(texform::NodeRef<'_>) -> Option<texform::NodeRef<'_>>,
+    ) -> PyResult<Py<PyAny>> {
+        let id = self.with_ref(py, |node| read(node).map(|node| node.id()))?;
+        py_optional_node(py, self.doc.clone_ref(py), id)
+    }
+
+    /// Handles to the nodes selected by `read`.
+    fn related_list(
+        &self,
+        py: Python<'_>,
+        read: impl FnOnce(texform::NodeRef<'_>) -> Vec<texform::NodeId>,
+    ) -> PyResult<Py<PyAny>> {
+        let ids = self.with_ref(py, read)?;
+        py_nodes_list(py, &self.doc, ids)
+    }
+
+    /// Expose an argument, attaching a live handle for content arguments.
+    fn arg_to_py(
+        &self,
+        py: Python<'_>,
+        arg: Option<texform::bindings::ArgRefDto>,
+    ) -> PyResult<Py<PyAny>> {
+        let Some(arg) = arg else {
+            return Ok(py.None());
+        };
+        let value = pythonize(py, &arg)?;
+        if let Some(id) = arg.node {
+            value.set_item("node", py_node(py, self.doc.clone_ref(py), id)?)?;
+        }
+        Ok(value.unbind())
+    }
+}
+
 #[pymethods]
 impl PyNode {
-    fn __eq__(&self, other: &Bound<'_, PyAny>, py: Python<'_>) -> bool {
-        other
-            .extract::<PyRef<'_, Self>>()
-            .is_ok_and(|other| self.id == other.id && same_py_document(py, &self.doc, &other.doc))
+    fn __eq__(&self, py: Python<'_>, other: PyRef<'_, Self>) -> bool {
+        self.id == other.id && self.doc.bind(py).is(other.doc.bind(py))
     }
     fn __hash__(&self) -> u64 {
         let mut state = std::collections::hash_map::DefaultHasher::new();
@@ -985,9 +916,7 @@ impl PyNode {
 
     #[pyo3(signature = (name = None))]
     fn is_command(&self, py: Python<'_>, name: Option<&str>) -> PyResult<bool> {
-        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-        let node = document.inner.node(self.id).map_err(edit_error)?;
-        Ok(match name {
+        self.with_ref(py, |node| match name {
             Some(name) => node.is_command(name),
             None => node.kind() == texform::NodeKind::Command,
         })
@@ -995,117 +924,75 @@ impl PyNode {
 
     #[pyo3(signature = (value = None))]
     fn is_char(&self, py: Python<'_>, value: Option<&str>) -> PyResult<bool> {
-        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-        let node = document.inner.node(self.id).map_err(edit_error)?;
-        Ok(match value {
-            Some(value) => node.is_char(parse_char(value)?),
+        let value = value
+            .map(texform::bindings::parse_char)
+            .transpose()
+            .map_err(edit_error)?;
+        self.with_ref(py, |node| match value {
+            Some(value) => node.is_char(value),
             None => node.kind() == texform::NodeKind::Char,
         })
     }
 
     fn is_error(&self, py: Python<'_>) -> PyResult<bool> {
-        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-        let node = document.inner.node(self.id).map_err(edit_error)?;
-        Ok(node.is_error())
+        self.with_ref(py, |node| node.is_error())
     }
 
     fn kind(&self, py: Python<'_>) -> PyResult<String> {
-        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-        let node = document.inner.node(self.id).map_err(edit_error)?;
-        Ok(format!("{:?}", node.kind()))
+        self.with_ref(py, |node| format!("{:?}", node.kind()))
     }
 
     fn parent(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let id = {
-            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-            let node = document.inner.node(self.id).map_err(edit_error)?;
-            node.parent().map(|node| node.id())
-        };
-        py_optional_node(py, self.doc.clone_ref(py), id)
+        self.related(py, |node| node.parent())
     }
 
     fn children(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let ids = {
-            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-            let node = document.inner.node(self.id).map_err(edit_error)?;
-            node.children().map(|node| node.id()).collect::<Vec<_>>()
-        };
-        py_nodes_list(py, &self.doc, ids)
+        self.related_list(py, |node| node.children().map(|node| node.id()).collect())
     }
 
     fn next_sibling(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let id = {
-            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-            let node = document.inner.node(self.id).map_err(edit_error)?;
-            node.next_sibling().map(|node| node.id())
-        };
-        py_optional_node(py, self.doc.clone_ref(py), id)
+        self.related(py, |node| node.next_sibling())
     }
 
     fn prev_sibling(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let id = {
-            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-            let node = document.inner.node(self.id).map_err(edit_error)?;
-            node.prev_sibling().map(|node| node.id())
-        };
-        py_optional_node(py, self.doc.clone_ref(py), id)
+        self.related(py, |node| node.prev_sibling())
     }
 
     fn ancestors(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let ids = {
-            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-            let node = document.inner.node(self.id).map_err(edit_error)?;
-            node.ancestors().map(|node| node.id()).collect::<Vec<_>>()
-        };
-        py_nodes_list(py, &self.doc, ids)
+        self.related_list(py, |node| node.ancestors().map(|node| node.id()).collect())
     }
 
     fn descendants(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let ids = {
-            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-            let node = document.inner.node(self.id).map_err(edit_error)?;
-            node.descendants().map(|node| node.id()).collect::<Vec<_>>()
-        };
-        py_nodes_list(py, &self.doc, ids)
+        self.related_list(py, |node| {
+            node.descendants().map(|node| node.id()).collect()
+        })
     }
 
     fn command_name(&self, py: Python<'_>) -> PyResult<Option<String>> {
-        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-        let node = document.inner.node(self.id).map_err(edit_error)?;
-        Ok(node.command_name().map(ToOwned::to_owned))
+        self.with_ref(py, |node| node.command_name().map(ToOwned::to_owned))
     }
 
     fn env_name(&self, py: Python<'_>) -> PyResult<Option<String>> {
-        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-        let node = document.inner.node(self.id).map_err(edit_error)?;
-        Ok(node.env_name().map(ToOwned::to_owned))
+        self.with_ref(py, |node| node.env_name().map(ToOwned::to_owned))
     }
 
     fn text(&self, py: Python<'_>) -> PyResult<Option<String>> {
-        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-        let node = document.inner.node(self.id).map_err(edit_error)?;
-        Ok(node.text().map(ToOwned::to_owned))
+        self.with_ref(py, |node| node.text().map(ToOwned::to_owned))
     }
 
     fn char(&self, py: Python<'_>) -> PyResult<Option<String>> {
-        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-        let node = document.inner.node(self.id).map_err(edit_error)?;
-        Ok(node.char().map(|ch| ch.to_string()))
+        self.with_ref(py, |node| node.char().map(|ch| ch.to_string()))
     }
 
     fn prime_count(&self, py: Python<'_>) -> PyResult<Option<usize>> {
-        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-        let node = document.inner.node(self.id).map_err(edit_error)?;
-        Ok(node.prime_count())
+        self.with_ref(py, |node| node.prime_count())
     }
 
     fn error_parts(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let parts = {
-            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-            let node = document.inner.node(self.id).map_err(edit_error)?;
+        let parts = self.with_ref(py, |node| {
             node.error_parts()
                 .map(|(message, snippet)| (message.to_string(), snippet.to_string()))
-        };
+        })?;
         match parts {
             Some((message, snippet)) => {
                 let out = PyDict::new(py);
@@ -1117,127 +1004,66 @@ impl PyNode {
         }
     }
 
-    fn content_mode(&self, py: Python<'_>) -> PyResult<Option<String>> {
-        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-        let node = document.inner.node(self.id).map_err(edit_error)?;
-        Ok(node
-            .content_mode()
-            .map(content_mode_to_str)
-            .map(str::to_owned))
+    fn content_mode(&self, py: Python<'_>) -> PyResult<Option<&'static str>> {
+        self.with_ref(py, |node| node.content_mode().map(ContentMode::as_str))
     }
 
     fn group_kind(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let value = {
-            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-            let node = document.inner.node(self.id).map_err(edit_error)?;
-            node.group_kind().map(py_group_kind)
-        };
-        match value {
-            Some(value) => Ok(pythonize(py, &value)?.unbind()),
-            None => Ok(py.None()),
-        }
+        let kind = self.with_ref(py, |node| {
+            node.group_kind().map(texform::bindings::GroupKindDto::from)
+        })?;
+        Ok(pythonize(py, &kind)?.unbind())
     }
 
     fn arg_count(&self, py: Python<'_>) -> PyResult<usize> {
-        let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-        let node = document.inner.node(self.id).map_err(edit_error)?;
-        Ok(node.arg_count())
+        self.with_ref(py, |node| node.arg_count())
     }
 
     fn arg(&self, py: Python<'_>, index: usize) -> PyResult<Py<PyAny>> {
-        let arg = {
-            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-            let node = document.inner.node(self.id).map_err(edit_error)?;
-            node.arg(index)
-                .map(|arg| py_arg_ref(py, &self.doc, arg))
-                .transpose()?
-        };
-        Ok(arg.unwrap_or_else(|| py.None()))
+        let arg = self.with_ref(py, |node| texform::bindings::arg_ref_to_dto(node, index))?;
+        self.arg_to_py(py, arg)
     }
 
     fn arg_slots(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let args = {
-            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-            let node = document.inner.node(self.id).map_err(edit_error)?;
-            node.arg_slots()
-                .map(|arg| {
-                    arg.map(|arg| py_arg_ref(py, &self.doc, arg))
-                        .transpose()
-                        .map(|value| value.unwrap_or_else(|| py.None()))
-                })
-                .collect::<PyResult<Vec<_>>>()?
-        };
-        let out = PyList::empty(py);
-        for arg in args {
-            out.append(arg)?;
-        }
-        Ok(out.unbind().into_any())
+        let args = self.with_ref(py, |node| {
+            (0..node.arg_count())
+                .map(|index| texform::bindings::arg_ref_to_dto(node, index))
+                .collect::<Vec<_>>()
+        })?;
+        let args = args
+            .into_iter()
+            .map(|arg| self.arg_to_py(py, arg))
+            .collect::<PyResult<Vec<_>>>()?;
+        Ok(PyList::new(py, args)?.unbind().into_any())
     }
 
     fn script_base(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let id = {
-            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-            let node = document.inner.node(self.id).map_err(edit_error)?;
-            node.script_base().map(|node| node.id())
-        };
-        py_optional_node(py, self.doc.clone_ref(py), id)
+        self.related(py, |node| node.script_base())
     }
 
     fn subscript(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let id = {
-            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-            let node = document.inner.node(self.id).map_err(edit_error)?;
-            node.subscript().map(|node| node.id())
-        };
-        py_optional_node(py, self.doc.clone_ref(py), id)
+        self.related(py, |node| node.subscript())
     }
 
     fn superscript(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let id = {
-            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-            let node = document.inner.node(self.id).map_err(edit_error)?;
-            node.superscript().map(|node| node.id())
-        };
-        py_optional_node(py, self.doc.clone_ref(py), id)
+        self.related(py, |node| node.superscript())
     }
 
     fn infix_left(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let id = {
-            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-            let node = document.inner.node(self.id).map_err(edit_error)?;
-            node.infix_left().map(|node| node.id())
-        };
-        py_optional_node(py, self.doc.clone_ref(py), id)
+        self.related(py, |node| node.infix_left())
     }
 
     fn infix_right(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let id = {
-            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-            let node = document.inner.node(self.id).map_err(edit_error)?;
-            node.infix_right().map(|node| node.id())
-        };
-        py_optional_node(py, self.doc.clone_ref(py), id)
+        self.related(py, |node| node.infix_right())
     }
 
     fn env_body(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let id = {
-            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-            let node = document.inner.node(self.id).map_err(edit_error)?;
-            node.env_body().map(|node| node.id())
-        };
-        py_optional_node(py, self.doc.clone_ref(py), id)
+        self.related(py, |node| node.env_body())
     }
 
     fn span(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let span = {
-            let document = self.doc.try_borrow(py).map_err(borrow_error)?;
-            let node = document.inner.node(self.id).map_err(edit_error)?;
-            node.span()
-        };
-        match span {
-            Some(span) => Ok(pythonize(py, &span)?.unbind()),
-            None => Ok(py.None()),
-        }
+        let span = self.with_ref(py, |node| node.span())?;
+        Ok(pythonize(py, &span)?.unbind())
     }
 }
 
@@ -1324,7 +1150,6 @@ impl PyTransformEngine {
     #[pyo3(signature = (src, config = None, **overrides))]
     fn normalize(
         &self,
-        py: Python<'_>,
         src: &str,
         config: Option<&Bound<'_, PyAny>>,
         overrides: Option<&Bound<'_, PyDict>>,
@@ -1333,10 +1158,9 @@ impl PyTransformEngine {
         // `normalize_with_report` and does not build a report DTO.
         let config =
             normalize_config_from_python(config, overrides, self.inner.default_normalize_config())?;
-        self.inner.normalize_with(src, &config).map_err(|error| {
-            binding_error_parts_to_py(py, texform::bindings::normalize_error_to_parts(error))
-                .unwrap_or_else(|error| error)
-        })
+        self.inner
+            .normalize_with(src, &config)
+            .map_err(normalize_error)
     }
 
     #[pyo3(signature = (src, config = None, **overrides))]
@@ -1352,10 +1176,7 @@ impl PyTransformEngine {
         let result = self
             .inner
             .normalize_with_report(src, &config)
-            .map_err(|error| {
-                binding_error_parts_to_py(py, texform::bindings::normalize_error_to_parts(error))
-                    .unwrap_or_else(|error| error)
-            })?;
+            .map_err(normalize_error)?;
         normalize_report_result_to_python(py, result.normalized, &result.report)
     }
 
@@ -1385,17 +1206,13 @@ impl PyTransformEngine {
         let result = self
             .inner
             .normalize_with_flatten_groups_guards(source, &config, &overlay)
-            .map_err(|error| {
-                binding_error_parts_to_py(py, texform::bindings::normalize_error_to_parts(error))
-                    .unwrap_or_else(|error| error)
-            })?;
+            .map_err(normalize_error)?;
         normalize_report_result_to_python(py, result.normalized, &result.report)
     }
 
     #[pyo3(signature = (document, config = None, **overrides))]
     fn transform(
         &self,
-        py: Python<'_>,
         document: &Bound<'_, PyDocument>,
         config: Option<&Bound<'_, PyAny>>,
         overrides: Option<&Bound<'_, PyDict>>,
@@ -1411,10 +1228,7 @@ impl PyTransformEngine {
             let mut document = document.try_borrow_mut().map_err(borrow_error)?;
             self.inner.transform_with(&mut document.inner, &config)
         }
-        .map_err(|error| {
-            binding_error_parts_to_py(py, texform::bindings::normalize_error_to_parts(error))
-                .unwrap_or_else(|error| error)
-        })?;
+        .map_err(normalize_error)?;
         Ok(())
     }
 
@@ -1436,10 +1250,7 @@ impl PyTransformEngine {
             self.inner
                 .transform_with_report(&mut document.inner, &config)
         }
-        .map_err(|error| {
-            binding_error_parts_to_py(py, texform::bindings::normalize_error_to_parts(error))
-                .unwrap_or_else(|error| error)
-        })?;
+        .map_err(normalize_error)?;
         transform_report_to_python(py, &report)
     }
 
@@ -1495,18 +1306,10 @@ fn transform_report_to_python(
 #[pyfunction]
 #[pyo3(signature = (node, **options))]
 fn serialize(node: &Bound<'_, PyAny>, options: Option<&Bound<'_, PyDict>>) -> PyResult<String> {
-    let node = depythonize::<texform::SyntaxNode>(node)
-        .map_err(|error| ParseError::new_err(format!("invalid syntax node: {error}")))?;
+    let node = syntax_node(node)?;
     let options = serialize_options_from_python(options)?;
-    let document = texform::Document::from_syntax(&node).map_err(|error| match error {
-        texform::FromSyntaxError::NotARoot => {
-            ParseError::new_err("serialize expects a syntax root")
-        }
-        _ => ParseError::new_err(error.to_string()),
-    })?;
-    document
-        .to_latex_with(&options)
-        .map_err(|error| ParseError::new_err(error.to_string()))
+    texform::bindings::serialize_syntax(&node, &options)
+        .map_err(|error| binding_error_to_py(error, None))
 }
 
 #[pyfunction]
@@ -1560,6 +1363,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("TexformError", m.py().get_type::<TexformError>())?;
     m.add("ParseError", m.py().get_type::<ParseError>())?;
     m.add("EditError", m.py().get_type::<EditError>())?;
+    m.add("ConformanceError", m.py().get_type::<ConformanceError>())?;
+    m.add_class::<PyPaired>()?;
     m.add("ConfigError", m.py().get_type::<ConfigError>())?;
     m.add("TransformError", m.py().get_type::<TransformError>())?;
     Ok(())
@@ -1832,9 +1637,7 @@ mod tests {
 
             let document = module.getattr("Document").unwrap().call0().unwrap();
             let arg = document.call_method1("create_char", ("x",)).unwrap();
-            let arg_value = PyDict::new(py);
-            arg_value.set_item("kind", "Math").unwrap();
-            arg_value.set_item("node", arg).unwrap();
+            let arg_value = arg;
 
             let command = document
                 .call_method1("create_command", ("sqrt", vec![arg_value]))
@@ -1844,7 +1647,7 @@ mod tests {
                 .call_method1("append_child", (root, &command))
                 .unwrap();
 
-            let read_arg_value = command.call_method1("arg", (0usize,)).unwrap();
+            let read_arg_value = command.call_method1("arg", (1usize,)).unwrap();
             let read_arg = read_arg_value.cast::<PyDict>().unwrap();
             assert_eq!(
                 read_arg
@@ -2948,6 +2751,140 @@ mod tests {
             globals.set_item("texform", module).unwrap();
             py.run(source, Some(&globals), None).unwrap();
         });
+    }
+
+    #[test]
+    fn python_matches_shared_binding_cases() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+            let globals = PyDict::new(py);
+            globals.set_item("texform", module).unwrap();
+            globals
+                .set_item(
+                    "CASES",
+                    include_str!("../../texform/tests/binding_cases.json"),
+                )
+                .unwrap();
+            py.run(
+                cr#"
+import json
+errors = {
+    "conformance": texform.ConformanceError,
+    "edit": texform.EditError,
+    "parse": texform.ParseError,
+}
+def value(arg):
+    if isinstance(arg, list):
+        return [value(item) for item in arg]
+    if isinstance(arg, dict):
+        return texform.Paired(value(arg["value"]), arg["open"], arg["close"])
+    return arg
+for case in json.loads(CASES):
+    kb = texform.KnowledgeBase(case["packages"]) if "packages" in case else None
+    doc = texform.Document(kb, mode=case.get("root", "math"))
+    latex = None
+    try:
+        if case["call"] == "serialize":
+            latex = texform.serialize(*case["args"])
+        elif case["call"] == "from_syntax":
+            latex = texform.Document.from_syntax(case["args"][0], kb).to_latex()
+        else:
+            options = {"mode": case["mode"]} if "mode" in case else {}
+            node = getattr(doc, case["call"])(*map(value, case["args"]), **options)
+            if "latex" in case:
+                doc.append_child(doc.root(), node)
+                latex = doc.to_latex()
+    except texform.TexformError as error:
+        assert type(error) is errors[case.get("error")], (case["name"], error)
+        assert "rule" not in case or error.rule == case["rule"], case["name"]
+        continue
+    assert "error" not in case, case["name"]
+    assert latex == case.get("latex"), (case["name"], latex)
+"#,
+                Some(&globals),
+                None,
+            )
+            .unwrap();
+        });
+    }
+
+    #[test]
+    fn python_construction_sources_modes_pairs_and_errors() {
+        run_python_test(
+            cr#"
+kb = texform.KnowledgeBase(["base", "ams", "physics"])
+doc = texform.Document(kb)
+frac = doc.create_command("frac", ["a+b", "c"])
+doc.append_child(doc.root(), frac)
+assert "\\frac" in doc.to_latex()
+assert doc.create_command("sqrt", ["x"]).arg(0) is None
+assert doc.create_command("operatorname", [True, "sn"]).arg(1)["node"].kind() == "Group"
+pair = texform.Paired("x", "[", "]")
+assert pair.value == "x" and pair.open == "[" and pair.close == "]"
+assert pair == texform.Paired("x", "[", "]") and hash(pair) == hash(texform.Paired("x", "[", "]"))
+assert pair != texform.Paired("x", "(", ")") and pair != ("x", "[", "]")
+assert repr(pair) == "Paired('x', '[', ']')"
+try:
+    pair.open = "("
+except AttributeError:
+    pass
+else:
+    raise AssertionError("Paired must be immutable")
+qty = doc.create_command("qty", [pair])
+assert qty.arg(0)["node"] is not None
+assert qty.arg(0)["form"] == {"kind": "paired", "open": "[", "close": "]"}
+scripted = doc.create_scripted("x", sub="i", sup="2")
+assert scripted.kind() == "Scripted"
+assert doc.create_delimited_group("(", ")", [scripted]).kind() == "Group"
+assert doc.create_group(children=["x", doc.create_prime(2)]).kind() == "Group"
+assert doc.create_inline_math(["x"]).kind() == "Group"
+assert doc.create_infix("over", "a", "b").kind() == "Infix"
+assert doc.create_environment("matrix", body=["a", "b"]).kind() == "Environment"
+assert doc.create_environment("matrix", body="a+b").kind() == "Environment"
+assert doc.create_environment("matrix").kind() == "Environment"
+assert doc.parse_fragment("a+b").kind() == "Group"
+assert doc.create_text("hello", mode="text").kind() == "Text"
+before = doc.to_syntax()
+for operation in (
+    lambda: doc.create_command("frac", []),
+    lambda: doc.create_prime(0),
+    lambda: doc.create_prime(-1),
+    lambda: doc.create_char("ab"),
+    lambda: doc.create_prime(1, mode="text"),
+):
+    try:
+        operation()
+    except texform.ConformanceError as error:
+        assert isinstance(error, texform.EditError)
+        assert isinstance(error.path, str) and error.rule
+    else:
+        raise AssertionError("invalid construction must fail")
+    assert doc.to_syntax() == before
+snapshot = doc.to_syntax()
+snapshot["Root"]["children"][0]["Command"]["known"] = False
+try:
+    texform.Document.from_syntax(snapshot, kb)
+except texform.ConformanceError as error:
+    assert error.path.startswith("root")
+    assert error.rule == "known_flag_mismatch"
+else:
+    raise AssertionError("strict import must reject inconsistent known flags")
+try:
+    doc.create_command("frac", ["{", "b"])
+except texform.ParseError as error:
+    assert error.diagnostics
+else:
+    raise AssertionError("invalid source must fail")
+foreign = texform.Document().create_char("x")
+try:
+    doc.create_group(children=[foreign])
+except texform.EditError:
+    pass
+else:
+    raise AssertionError("foreign content must fail")
+"#,
+        );
     }
 
     #[test]

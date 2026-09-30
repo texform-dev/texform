@@ -1,13 +1,14 @@
 use texform_core::document::Document;
-use texform_core::parse::{ParseConfig, ParseContext};
+use texform_core::parse::{KnowledgeBase, ParseConfig};
 use texform_interface::syntax_node::{GroupKind, SyntaxNode};
 
 fn parse(source: &str) -> Document {
-    let (doc, diagnostics) = ParseContext::shared()
+    let (doc, diagnostics) = KnowledgeBase::default()
         .parse(source, &ParseConfig::STRICT)
         .try_into_document()
         .unwrap_or_else(|error| panic!("{source}: {error:?}"));
     assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
+    Document::from_syntax(&doc.to_syntax()).expect("complete parser output must conform");
     doc
 }
 

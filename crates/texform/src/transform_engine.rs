@@ -81,6 +81,7 @@ impl TransformEngine {
             self.parser.inner(),
             config,
         )?;
+        debug_assert_conformant(document);
         Ok(())
     }
 
@@ -98,11 +99,13 @@ impl TransformEngine {
         config: &TransformConfig,
     ) -> Result<TransformReport, Error> {
         self.ensure_engine_document(document)?;
-        Ok(self.transform.run_with_report(
+        let report = self.transform.run_with_report(
             document.core_mut().__texform_engine_ast_mut(),
             self.parser.inner(),
             config,
-        )?)
+        )?;
+        debug_assert_conformant(document);
+        Ok(report)
     }
 
     /// Unstable research entry: apply a sparse FlattenGroups guard overlay.
@@ -119,12 +122,14 @@ impl TransformEngine {
         overlay: &texform_transform::FlattenGroupsGuardsOverlay,
     ) -> Result<TransformReport, Error> {
         self.ensure_engine_document(document)?;
-        Ok(self.transform.run_with_flatten_groups_guards(
+        let report = self.transform.run_with_flatten_groups_guards(
             document.core_mut().__texform_engine_ast_mut(),
             self.parser.inner(),
             config,
             overlay,
-        )?)
+        )?;
+        debug_assert_conformant(document);
+        Ok(report)
     }
 
     /// Parse, transform, and serialize a LaTeX formula.
@@ -307,4 +312,11 @@ impl TransformEngineBuilder {
         let transform = TransformContext::from_build_config(build_config, parser.inner())?;
         Ok(TransformEngine { parser, transform })
     }
+}
+
+fn debug_assert_conformant(document: &Document) {
+    debug_assert!(
+        document.__validate_conformance().is_ok(),
+        "transform output violates document conformance"
+    );
 }

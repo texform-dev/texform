@@ -46,6 +46,23 @@ records = kb.commands("math")  # Sorted copied records; knowledge is immutable.
 
 `items`, `remove_commands`, `remove_environments`, and `remove_delimiter_controls` are keyword options on `KnowledgeBase`. Knowledge queries have moved from `Parser` and `TransformEngine` to `KnowledgeBase`. `commands(mode)`, `environments(mode)`, `characters(mode)`, `delimiters()`, and `packages()` enumerate its contents. `KnowledgeBase([])` constructs empty knowledge. `Document(kb, mode="text")` creates a text root, and `Document.from_syntax(snapshot, kb)` rebuilds a snapshot with shared knowledge. `count_targets(source, knowledge_base=kb)` uses the same knowledge for analysis.
 
+## Constructing formulas
+
+Constructors return detached nodes. Attach the finished subtree with `append_child`. Arguments accept `Node`, source `str`, star `bool`, `None`, or immutable `Paired(value, open, close)`. Strings contain source inside the argument boundaries. Supply either every slot or only required slots; `None` omits optional slots and disables a star.
+
+```python
+doc = texform.Document()
+frac = doc.create_command("frac", ["a+b", "c"])
+scripted = doc.create_scripted(frac, sub="i", sup="2")
+paren = doc.create_delimited_group("(", ")", [scripted])
+doc.append_child(doc.root(), paren)
+print(doc.to_latex())
+```
+
+Groups accept children as nodes or source strings; a string is parsed and all its nodes are spliced into the list, so one string may yield several children. Environment bodies accept a group, a list of nodes or source strings, source, or `None` for an empty body. `parse_fragment(source, mode="math")` produces a detached group. Constructors accept `mode=` to specify the detached subtree's context; `create_group(mode, children)` uses that mode for both group content and context. Delimiters use strings: `"("`, `"\\langle"`, or `"."` for no delimiter.
+
+Invalid construction, edits, and strict `Document.from_syntax` imports raise `ConformanceError`, an `EditError` subclass with `path` and stable `rule` attributes. Invalid source arguments raise `ParseError` with `diagnostics`. A rejected operation leaves the document unchanged. `to_latex` and `serialize` check only structure, not conformance to a knowledge base. Rename environments with `set_env_name`; `set_command_name` applies to command nodes.
+
 ## Python-specific notes
 
 - `normalize` returns `str`. `transform` updates the document and returns `None`.

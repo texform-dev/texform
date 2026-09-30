@@ -1,0 +1,22 @@
+[
+  { "name": "command with source arguments", "call": "create_command", "args": ["frac", ["a+b", "c"]], "latex": "\\frac { a + b } { c }" },
+  { "name": "required slots only", "call": "create_command", "args": ["sqrt", ["x"]], "latex": "\\sqrt { x }" },
+  { "name": "optional slot filled", "call": "create_command", "args": ["sqrt", ["3", "x"]], "latex": "\\sqrt [ 3 ] { x }" },
+  { "name": "star slot", "call": "create_command", "args": ["operatorname", [true, "sn"]], "latex": "\\operatorname* {sn}" },
+  { "name": "absent star slot", "call": "create_command", "args": ["operatorname", [null, "sn"]], "latex": "\\operatorname {sn}" },
+  { "name": "paired slot", "packages": ["base", "physics"], "call": "create_command", "args": ["qty", [{ "value": "x", "open": "[", "close": "]" }]], "latex": "\\qty [ x ]" },
+  { "name": "paired slot rejects foreign pair", "packages": ["base", "physics"], "call": "create_command", "args": ["qty", [{ "value": "x", "open": "<", "close": ">" }]], "error": "conformance", "rule": "paired_delimiter" },
+  { "name": "wrong command constructor", "call": "create_command", "args": ["bf", []], "error": "conformance", "rule": "command_kind_mismatch" },
+  { "name": "unparsable source argument", "call": "create_command", "args": ["frac", ["{", "b"]], "error": "parse" },
+  { "name": "inline math defaults to a text context", "call": "create_inline_math", "args": [["x"]] },
+  { "name": "inline math in an explicit math context", "call": "create_inline_math", "args": [["x"]], "mode": "math", "error": "conformance" },
+  { "name": "delimited group defaults to a math context", "root": "text", "call": "create_delimited_group", "args": ["(", ")", ["x"]] },
+  { "name": "text follows the root mode", "root": "text", "call": "create_text", "args": ["hello"], "latex": "hello" },
+  { "name": "multi-character char", "call": "create_char", "args": ["ab"], "error": "conformance", "rule": "invalid_char" },
+  { "name": "zero primes", "call": "create_prime", "args": [0], "error": "conformance", "rule": "invalid_prime_count" },
+  { "name": "absent environment body", "call": "create_environment", "args": ["matrix", [], null], "latex": "\\begin {matrix} \\end {matrix}" },
+  { "name": "list environment body splices sources", "call": "create_environment", "args": ["matrix", [], ["a", "&", "b"]], "latex": "\\begin {matrix} a & b \\end {matrix}" },
+  { "name": "serialize skips knowledge checks", "call": "serialize", "args": [{ "Root": { "mode": "Math", "children": [{ "Command": { "name": "frac", "args": [{ "kind": "Mandatory", "no_leading_space": false, "value": { "MathContent": { "Char": "a" } } }], "known": false } }] } }], "latex": "\\frac { a }" },
+  { "name": "from_syntax checks knowledge", "call": "from_syntax", "args": [{ "Root": { "mode": "Math", "children": [{ "Command": { "name": "frac", "args": [{ "kind": "Mandatory", "no_leading_space": false, "value": { "MathContent": { "Char": "a" } } }], "known": false } }] } }], "error": "conformance", "rule": "known_flag_mismatch" },
+  { "name": "serialize keeps structural checks", "call": "serialize", "args": [{ "Root": { "mode": "Math", "children": [{ "Prime": { "count": 0 } }] } }], "error": "conformance", "rule": "invalid_prime_count" }
+]

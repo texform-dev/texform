@@ -4,8 +4,8 @@ use std::rc::Rc;
 
 use texform::bindings::{ParseConfigInput, TransformConfigInput, transform_report_to_dto};
 use texform::{
-    ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, ArgRef, ArgValue,
-    ContentMode, DelimiterRef, DelimiterValue, SyntaxNode,
+    ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, Arg, ContentMode,
+    SyntaxNode,
 };
 use wasm_bindgen::prelude::*;
 
@@ -22,6 +22,16 @@ use dto::{
     binding_dto_to_js, binding_error_parts_to_js, binding_error_to_js, config_error_to_js,
     edit_message_to_js, internal_message_to_js, js_set, parse_message_to_js, to_js_value,
 };
+
+/// Call a constructor in an explicit context mode, or in its default context.
+macro_rules! construct {
+    ($doc:expr, $mode:expr, $method:ident($($arg:expr),*)) => {
+        match $mode {
+            Some(mode) => $doc.in_mode(mode).$method($($arg),*),
+            None => $doc.$method($($arg),*),
+        }
+    };
+}
 
 type SharedDocument = Rc<RefCell<texform::Document>>;
 type NodeHandleEntry = (SharedDocument, texform::NodeId);
@@ -131,13 +141,7 @@ impl Document {
         let options = serialize_options_from_js(options)?;
         borrow_document(&self.inner)?
             .to_latex_with(&options)
-            .map_err(|error| {
-                binding_error_to_js(texform::bindings::BindingErrorDto {
-                    kind: "internal",
-                    message: error.to_string(),
-                    diagnostics: Vec::new(),
-                })
-            })
+            .map_err(|error| internal_message_to_js(error.to_string()))
     }
 
     #[wasm_bindgen(js_name = toTokenizedLatex)]
@@ -145,92 +149,164 @@ impl Document {
         let options = serialize_options_from_js(options)?;
         let result = borrow_document(&self.inner)?
             .to_tokenized_latex_with(&options)
-            .map_err(|error| {
-                binding_error_to_js(texform::bindings::BindingErrorDto {
-                    kind: "internal",
-                    message: error.to_string(),
-                    diagnostics: Vec::new(),
-                })
-            })?;
+            .map_err(|error| internal_message_to_js(error.to_string()))?;
         binding_dto_to_js(&texform::bindings::tokenized_latex_to_dto(result))
     }
 
     #[wasm_bindgen(js_name = createChar)]
-    pub fn create_char(&self, value: &str) -> Result<Node, JsValue> {
-        let mut chars = value.chars();
-        let Some(ch) = chars.next() else {
-            return Err(edit_message_to_js("createChar expects one character"));
-        };
-        if chars.next().is_some() {
-            return Err(edit_message_to_js("createChar expects one character"));
-        }
-        let id = borrow_document_mut(&self.inner)?
-            .create_char(ch)
-            .map_err(edit_error_to_js)?;
-        Ok(Node::from_parts(Rc::clone(&self.inner), id))
+    pub fn create_char(&self, value: &str, mode: Option<String>) -> Result<Node, JsValue> {
+        let ch = texform::bindings::parse_char(value).map_err(edit_error_to_js)?;
+        let mode = parse_optional_mode(mode)?;
+        self.construct(|doc| construct!(doc, mode, create_char(ch)))
     }
-
     #[wasm_bindgen(js_name = createText)]
-    pub fn create_text(&self, value: &str) -> Result<Node, JsValue> {
-        let id = borrow_document_mut(&self.inner)?
-            .create_text(value)
-            .map_err(edit_error_to_js)?;
-        Ok(Node::from_parts(Rc::clone(&self.inner), id))
+    pub fn create_text(&self, value: &str, mode: Option<String>) -> Result<Node, JsValue> {
+        let mode = parse_optional_mode(mode)?;
+        self.construct(|doc| construct!(doc, mode, create_text(value)))
     }
-
     #[wasm_bindgen(js_name = createActiveSpace)]
-    pub fn create_active_space(&self) -> Result<Node, JsValue> {
-        let id = borrow_document_mut(&self.inner)?
-            .create_active_space()
-            .map_err(edit_error_to_js)?;
-        Ok(Node::from_parts(Rc::clone(&self.inner), id))
+    pub fn create_active_space(&self, mode: Option<String>) -> Result<Node, JsValue> {
+        let mode = parse_optional_mode(mode)?;
+        self.construct(|doc| construct!(doc, mode, create_active_space()))
     }
-
     #[wasm_bindgen(js_name = createAlignmentTab)]
-    pub fn create_alignment_tab(&self) -> Result<Node, JsValue> {
-        let id = borrow_document_mut(&self.inner)?
-            .create_alignment_tab()
-            .map_err(edit_error_to_js)?;
-        Ok(Node::from_parts(Rc::clone(&self.inner), id))
+    pub fn create_alignment_tab(&self, mode: Option<String>) -> Result<Node, JsValue> {
+        let mode = parse_optional_mode(mode)?;
+        self.construct(|doc| construct!(doc, mode, create_alignment_tab()))
     }
-
+    #[wasm_bindgen(js_name = createPrime)]
+    pub fn create_prime(&self, count: usize, mode: Option<String>) -> Result<Node, JsValue> {
+        let mode = parse_optional_mode(mode)?;
+        self.construct(|doc| construct!(doc, mode, create_prime(count)))
+    }
     #[wasm_bindgen(js_name = createGroup)]
-    pub fn create_group(&self, mode: &str) -> Result<Node, JsValue> {
-        let mode = parse_content_mode(mode)?;
-        let id = borrow_document_mut(&self.inner)?
-            .create_group(mode)
-            .map_err(edit_error_to_js)?;
-        Ok(Node::from_parts(Rc::clone(&self.inner), id))
+    pub fn create_group(
+        &self,
+        group_mode: &str,
+        children: Option<JsValue>,
+        mode: Option<String>,
+    ) -> Result<Node, JsValue> {
+        let group_mode = parse_content_mode(group_mode)?;
+        let children = js_args(&self.inner, children)?;
+        let mode = parse_optional_mode(mode)?;
+        self.construct(|doc| construct!(doc, mode, create_group(group_mode, children)))
     }
-
+    #[wasm_bindgen(js_name = createDelimitedGroup)]
+    pub fn create_delimited_group(
+        &self,
+        left: &str,
+        right: &str,
+        children: Option<JsValue>,
+        mode: Option<String>,
+    ) -> Result<Node, JsValue> {
+        let left = left.parse().map_err(edit_error_to_js)?;
+        let right = right.parse().map_err(edit_error_to_js)?;
+        let children = js_args(&self.inner, children)?;
+        let mode = parse_optional_mode(mode)?;
+        self.construct(|doc| construct!(doc, mode, create_delimited_group(left, right, children)))
+    }
+    #[wasm_bindgen(js_name = createInlineMath)]
+    pub fn create_inline_math(
+        &self,
+        children: Option<JsValue>,
+        mode: Option<String>,
+    ) -> Result<Node, JsValue> {
+        let children = js_args(&self.inner, children)?;
+        let mode = parse_optional_mode(mode)?;
+        self.construct(|doc| construct!(doc, mode, create_inline_math(children)))
+    }
     #[wasm_bindgen(js_name = createCommand)]
-    pub fn create_command(&self, name: &str, args: Option<JsValue>) -> Result<Node, JsValue> {
-        let args = parse_arg_values(&self.inner, args)?;
-        self.create_command_with_args(name, args)
+    pub fn create_command(
+        &self,
+        name: &str,
+        args: Option<JsValue>,
+        mode: Option<String>,
+    ) -> Result<Node, JsValue> {
+        let args = js_args(&self.inner, args)?;
+        let mode = parse_optional_mode(mode)?;
+        self.construct(|doc| construct!(doc, mode, create_command(name, args)))
     }
-
     #[wasm_bindgen(js_name = createDeclarative)]
-    pub fn create_declarative(&self, name: &str, args: Option<JsValue>) -> Result<Node, JsValue> {
-        let args = parse_arg_values(&self.inner, args)?;
-        let id = borrow_document_mut(&self.inner)?
-            .create_declarative(name, args)
-            .map_err(edit_error_to_js)?;
-        Ok(Node::from_parts(Rc::clone(&self.inner), id))
+    pub fn create_declarative(
+        &self,
+        name: &str,
+        args: Option<JsValue>,
+        mode: Option<String>,
+    ) -> Result<Node, JsValue> {
+        let args = js_args(&self.inner, args)?;
+        let mode = parse_optional_mode(mode)?;
+        self.construct(|doc| construct!(doc, mode, create_declarative(name, args)))
     }
-
+    #[wasm_bindgen(js_name = createScripted)]
+    pub fn create_scripted(
+        &self,
+        base: JsValue,
+        sub: JsValue,
+        sup: JsValue,
+        mode: Option<String>,
+    ) -> Result<Node, JsValue> {
+        let base = js_arg(&self.inner, base)?;
+        let sub = js_optional_arg(&self.inner, sub)?;
+        let sup = js_optional_arg(&self.inner, sup)?;
+        let mode = parse_optional_mode(mode)?;
+        self.construct(|doc| construct!(doc, mode, create_scripted(base, sub, sup)))
+    }
+    #[wasm_bindgen(js_name = createInfix)]
+    pub fn create_infix(
+        &self,
+        name: &str,
+        left: JsValue,
+        right: JsValue,
+        args: Option<JsValue>,
+        mode: Option<String>,
+    ) -> Result<Node, JsValue> {
+        let left = js_arg(&self.inner, left)?;
+        let right = js_arg(&self.inner, right)?;
+        let args = js_args(&self.inner, args)?;
+        let mode = parse_optional_mode(mode)?;
+        self.construct(|doc| construct!(doc, mode, create_infix(name, left, right, args)))
+    }
+    /// An array body becomes the children of the implicit body group.
     #[wasm_bindgen(js_name = createEnvironment)]
     pub fn create_environment(
         &self,
         name: &str,
         args: Option<JsValue>,
-        body: &Node,
+        body: JsValue,
+        mode: Option<String>,
     ) -> Result<Node, JsValue> {
-        self.ensure_same_document(body)?;
-        let args = parse_arg_values(&self.inner, args)?;
+        let args = js_args(&self.inner, args)?;
+        let mode = parse_optional_mode(mode)?;
+        if js_sys::Array::is_array(&body) {
+            let children = js_args(&self.inner, Some(body))?;
+            self.construct(|doc| {
+                construct!(
+                    doc,
+                    mode,
+                    create_environment_with_children(name, args, children)
+                )
+            })
+        } else {
+            let body = js_arg(&self.inner, body)?;
+            self.construct(|doc| construct!(doc, mode, create_environment(name, args, body)))
+        }
+    }
+
+    #[wasm_bindgen(js_name = parseFragment)]
+    pub fn parse_fragment(&self, source: &str, mode: Option<String>) -> Result<Node, JsValue> {
+        let mode = mode.as_deref().map(parse_content_mode).transpose()?;
         let id = borrow_document_mut(&self.inner)?
-            .create_environment(name, args, body.id)
+            .parse_fragment(source, mode)
             .map_err(edit_error_to_js)?;
         Ok(Node::from_parts(Rc::clone(&self.inner), id))
+    }
+
+    #[wasm_bindgen(js_name = setEnvName)]
+    pub fn set_env_name(&self, node: &Node, name: &str) -> Result<(), JsValue> {
+        self.ensure_same_document(node)?;
+        borrow_document_mut(&self.inner)?
+            .set_env_name(node.id, name)
+            .map_err(edit_error_to_js)
     }
 
     #[wasm_bindgen(js_name = appendChild)]
@@ -336,7 +412,7 @@ impl Document {
     #[wasm_bindgen(js_name = setChar)]
     pub fn set_char(&self, node: &Node, value: &str) -> Result<(), JsValue> {
         self.ensure_same_document(node)?;
-        let ch = parse_single_char(value, "setChar").map_err(edit_message_to_js)?;
+        let ch = texform::bindings::parse_char(value).map_err(edit_error_to_js)?;
         borrow_document_mut(&self.inner)?
             .set_char(node.id, ch)
             .map_err(edit_error_to_js)
@@ -345,7 +421,7 @@ impl Document {
     #[wasm_bindgen(js_name = setArg)]
     pub fn set_arg(&self, node: &Node, index: usize, value: JsValue) -> Result<(), JsValue> {
         self.ensure_same_document(node)?;
-        let value = parse_arg_value(&self.inner, value)?;
+        let value = js_arg(&self.inner, value)?;
         borrow_document_mut(&self.inner)?
             .set_arg(node.id, index, value)
             .map_err(edit_error_to_js)
@@ -359,6 +435,14 @@ impl Document {
         }
     }
 
+    fn construct(
+        &self,
+        build: impl FnOnce(&mut texform::Document) -> Result<texform::NodeId, texform::EditError>,
+    ) -> Result<Node, JsValue> {
+        let id = build(&mut *borrow_document_mut(&self.inner)?).map_err(edit_error_to_js)?;
+        Ok(Node::from_parts(Rc::clone(&self.inner), id))
+    }
+
     fn ensure_same_document(&self, node: &Node) -> Result<(), JsValue> {
         if Rc::ptr_eq(&self.inner, &node.document) {
             Ok(())
@@ -367,7 +451,8 @@ impl Document {
         }
     }
 
-    fn create_command_with_args(&self, name: &str, args: Vec<ArgValue>) -> Result<Node, JsValue> {
+    #[cfg(test)]
+    fn create_command_with_args(&self, name: &str, args: Vec<Arg>) -> Result<Node, JsValue> {
         let id = borrow_document_mut(&self.inner)?
             .create_command(name, args)
             .map_err(edit_error_to_js)?;
@@ -425,9 +510,9 @@ impl Node {
     pub fn is_char(&self, value: Option<String>) -> Result<bool, JsValue> {
         let ch = value
             .as_deref()
-            .map(|value| parse_single_char(value, "isChar"))
+            .map(texform::bindings::parse_char)
             .transpose()
-            .map_err(config_error_to_js)?;
+            .map_err(edit_error_to_js)?;
         self.with_ref(|node| match ch {
             Some(ch) => node.is_char(ch),
             None => node.kind() == texform::NodeKind::Char,
@@ -498,7 +583,7 @@ impl Node {
     pub fn content_mode(&self) -> Result<JsValue, JsValue> {
         self.with_ref(|node| {
             node.content_mode()
-                .map(content_mode_to_string)
+                .map(ContentMode::as_str)
                 .map(JsValue::from)
                 .unwrap_or(JsValue::NULL)
         })
@@ -506,8 +591,9 @@ impl Node {
 
     #[wasm_bindgen(js_name = groupKind)]
     pub fn group_kind(&self) -> Result<JsValue, JsValue> {
-        let value = self.with_ref(|node| node.group_kind().map(group_kind_to_js))?;
-        Ok(value.transpose()?.unwrap_or(JsValue::NULL))
+        let kind =
+            self.with_ref(|node| node.group_kind().map(texform::bindings::GroupKindDto::from))?;
+        binding_dto_to_js(&kind)
     }
 
     #[wasm_bindgen(js_name = argCount)]
@@ -516,26 +602,18 @@ impl Node {
     }
 
     pub fn arg(&self, index: usize) -> Result<JsValue, JsValue> {
-        self.with_ref(|node| {
-            node.arg(index)
-                .map(|arg| arg_ref_to_js(&self.document, arg))
-        })
-        .and_then(|value| value.transpose())
-        .map(|value| value.unwrap_or(JsValue::NULL))
+        let arg = self.with_ref(|node| texform::bindings::arg_ref_to_dto(node, index))?;
+        self.arg_to_js(arg)
     }
 
     #[wasm_bindgen(js_name = argSlots)]
     pub fn arg_slots(&self) -> Result<js_sys::Array, JsValue> {
-        let values = self.with_ref(|node| {
-            node.arg_slots()
-                .map(|arg| arg.map(|arg| arg_ref_to_js(&self.document, arg)))
+        let args = self.with_ref(|node| {
+            (0..node.arg_count())
+                .map(|index| texform::bindings::arg_ref_to_dto(node, index))
                 .collect::<Vec<_>>()
         })?;
-        let out = js_sys::Array::new();
-        for value in values {
-            out.push(&value.transpose()?.unwrap_or(JsValue::NULL));
-        }
-        Ok(out)
+        args.into_iter().map(|arg| self.arg_to_js(arg)).collect()
     }
 
     #[wasm_bindgen(js_name = scriptBase)]
@@ -636,6 +714,22 @@ impl Node {
         let node = document.node(self.id).map_err(edit_error_to_js)?;
         Ok(f(node))
     }
+
+    /// Expose an argument, attaching a live handle for content arguments.
+    fn arg_to_js(&self, arg: Option<texform::bindings::ArgRefDto>) -> Result<JsValue, JsValue> {
+        let Some(arg) = arg else {
+            return Ok(JsValue::NULL);
+        };
+        let value = binding_dto_to_js(&arg)?;
+        if let Some(id) = arg.node {
+            js_set(
+                &value,
+                "node",
+                &Node::from_parts(Rc::clone(&self.document), id).into(),
+            )?;
+        }
+        Ok(value)
+    }
 }
 
 impl Drop for Node {
@@ -664,17 +758,6 @@ fn borrow_document_mut(
 
 fn edit_error_to_js(error: texform::EditError) -> JsValue {
     binding_error_to_js(texform::bindings::edit_error_to_dto(error))
-}
-
-fn parse_single_char(value: &str, method: &str) -> Result<char, String> {
-    let mut chars = value.chars();
-    let Some(ch) = chars.next() else {
-        return Err(format!("{method} expects one character"));
-    };
-    if chars.next().is_some() {
-        return Err(format!("{method} expects one character"));
-    }
-    Ok(ch)
 }
 
 fn nodes_to_js_array(
@@ -734,185 +817,71 @@ fn node_kind_to_string(kind: texform::NodeKind) -> &'static str {
     }
 }
 
-fn parse_arg_values(
-    document: &Rc<RefCell<texform::Document>>,
-    value: Option<JsValue>,
-) -> Result<Vec<ArgValue>, JsValue> {
-    let Some(value) = value else {
-        return Ok(Vec::new());
-    };
-    if value.is_null() || value.is_undefined() {
-        return Ok(Vec::new());
-    }
-    let args = js_sys::Array::from(&value);
-    let mut out = Vec::with_capacity(args.length() as usize);
-    for arg in args.iter() {
-        out.push(parse_arg_value(document, arg)?);
-    }
-    Ok(out)
-}
-
-fn parse_arg_value(
-    document: &Rc<RefCell<texform::Document>>,
-    value: JsValue,
-) -> Result<ArgValue, JsValue> {
-    let kind = object_string_property(&value, "kind")?;
-    match kind.as_str() {
-        "Math" => Ok(ArgValue::math(arg_node_id(document, &value)?)),
-        "Text" => Ok(ArgValue::text(arg_node_id(document, &value)?)),
-        "Delimiter" => Ok(ArgValue::delimiter(parse_delimiter_value(
-            js_sys::Reflect::get(&value, &"value".into())
-                .map_err(|_| edit_message_to_js("ArgValue.value is not readable"))?,
-        )?)),
-        "CSName" => Ok(ArgValue::cs_name(object_string_property(&value, "value")?)),
-        "Dimension" => Ok(ArgValue::dimension(object_string_property(
-            &value, "value",
-        )?)),
-        "Integer" => Ok(ArgValue::integer(object_string_property(&value, "value")?)),
-        "KeyVal" => Ok(ArgValue::key_val(object_string_property(&value, "value")?)),
-        "Column" => Ok(ArgValue::column(object_string_property(&value, "value")?)),
-        "Boolean" => {
-            let value = js_sys::Reflect::get(&value, &"value".into())
-                .map_err(|_| edit_message_to_js("ArgValue.value is not readable"))?;
-            value
-                .as_bool()
-                .map(ArgValue::boolean)
-                .ok_or_else(|| edit_message_to_js("Boolean ArgValue.value must be a boolean"))
+fn js_args(document: &SharedDocument, value: Option<JsValue>) -> Result<Vec<Arg>, JsValue> {
+    match value {
+        Some(value) if js_sys::Array::is_array(&value) => js_sys::Array::from(&value)
+            .iter()
+            .map(|arg| js_arg(document, arg))
+            .collect(),
+        Some(value) if !value.is_null() && !value.is_undefined() => {
+            Err(edit_message_to_js("arguments must be an array"))
         }
-        other => Err(edit_message_to_js(format!(
-            "unsupported ArgValue kind: {other}"
-        ))),
+        _ => Ok(Vec::new()),
     }
 }
 
-fn arg_node_id(
-    document: &Rc<RefCell<texform::Document>>,
-    value: &JsValue,
-) -> Result<texform::NodeId, JsValue> {
-    let node = js_sys::Reflect::get(value, &"node".into())
-        .map_err(|_| edit_message_to_js("ArgValue.node is not readable"))?;
-    let handle = js_sys::Reflect::get(&node, &"__texformBindingHandle".into())
-        .map_err(|_| edit_message_to_js("ArgValue.node binding handle is not readable"))?
-        .as_f64()
-        .ok_or_else(|| edit_message_to_js("ArgValue.node must be a Node"))? as u32;
+/// Read an optional script: `null` and `undefined` leave the slot empty.
+fn js_optional_arg(document: &SharedDocument, value: JsValue) -> Result<Option<Arg>, JsValue> {
+    if value.is_null() || value.is_undefined() {
+        Ok(None)
+    } else {
+        js_arg(document, value).map(Some)
+    }
+}
+
+fn js_arg(document: &SharedDocument, value: JsValue) -> Result<Arg, JsValue> {
+    if value.is_null() || value.is_undefined() {
+        return Ok(Arg::Absent);
+    }
+    if let Some(source) = value.as_string() {
+        return Ok(Arg::Source(source));
+    }
+    if let Some(star) = value.as_bool() {
+        return Ok(Arg::Star(star));
+    }
+    if !value.is_object() {
+        return Err(edit_message_to_js(
+            "argument must be a Node, source string, boolean, null, or paired value",
+        ));
+    }
+    let property = |key: &str| {
+        js_sys::Reflect::get(&value, &key.into())
+            .map_err(|_| edit_message_to_js(format!("{key} is not readable")))
+    };
+    if let Some(handle) = property("__texformBindingHandle")?.as_f64() {
+        return node_id(document, handle as u32).map(Arg::Node);
+    }
+    let (Some(open), Some(close)) = (
+        property("open")?.as_string(),
+        property("close")?.as_string(),
+    ) else {
+        return Err(edit_message_to_js("paired open and close must be strings"));
+    };
+    Arg::paired(js_arg(document, property("value")?)?, open, close).map_err(edit_error_to_js)
+}
+
+fn node_id(document: &SharedDocument, handle: u32) -> Result<texform::NodeId, JsValue> {
     NODE_HANDLES.with(|handles| {
         let handles = handles.borrow();
         let (owner, id) = handles
             .get(&handle)
-            .ok_or_else(|| edit_message_to_js("ArgValue.node must be a live Node"))?;
+            .ok_or_else(|| edit_message_to_js("argument node must be a live Node"))?;
         if Rc::ptr_eq(document, owner) {
             Ok(*id)
         } else {
             Err(edit_message_to_js("node belongs to a different document"))
         }
     })
-}
-
-fn object_string_property(value: &JsValue, key: &str) -> Result<String, JsValue> {
-    js_sys::Reflect::get(value, &key.into())
-        .map_err(|_| edit_message_to_js(format!("{key} is not readable")))?
-        .as_string()
-        .ok_or_else(|| edit_message_to_js(format!("{key} must be a string")))
-}
-
-fn parse_delimiter_value(value: JsValue) -> Result<DelimiterValue, JsValue> {
-    let kind = object_string_property(&value, "kind")?;
-    match kind.as_str() {
-        "None" => Ok(DelimiterValue::None),
-        "Char" => Ok(DelimiterValue::Char(
-            parse_single_char(&object_string_property(&value, "value")?, "delimiter value")
-                .map_err(edit_message_to_js)?,
-        )),
-        "Control" => Ok(DelimiterValue::Control(object_string_property(
-            &value, "value",
-        )?)),
-        other => Err(edit_message_to_js(format!(
-            "unsupported delimiter kind: {other}"
-        ))),
-    }
-}
-
-fn arg_ref_to_js(
-    document: &Rc<RefCell<texform::Document>>,
-    arg: ArgRef<'_>,
-) -> Result<JsValue, JsValue> {
-    let value = js_sys::Object::new();
-    match arg {
-        ArgRef::Math(node) => {
-            js_set(value.as_ref(), "kind", &"Math".into())?;
-            js_set(
-                value.as_ref(),
-                "node",
-                &Node::from_parts(Rc::clone(document), node.id()).into(),
-            )?;
-        }
-        ArgRef::Text(node) => {
-            js_set(value.as_ref(), "kind", &"Text".into())?;
-            js_set(
-                value.as_ref(),
-                "node",
-                &Node::from_parts(Rc::clone(document), node.id()).into(),
-            )?;
-        }
-        ArgRef::Delimiter(delimiter) => {
-            js_set(value.as_ref(), "kind", &"Delimiter".into())?;
-            js_set(value.as_ref(), "value", &delimiter_ref_to_js(delimiter)?)?;
-        }
-        ArgRef::CSName(text) => set_scalar_arg(&value, "CSName", text)?,
-        ArgRef::Dimension(text) => set_scalar_arg(&value, "Dimension", text)?,
-        ArgRef::Integer(text) => set_scalar_arg(&value, "Integer", text)?,
-        ArgRef::KeyVal(text) => set_scalar_arg(&value, "KeyVal", text)?,
-        ArgRef::Column(text) => set_scalar_arg(&value, "Column", text)?,
-        ArgRef::Boolean(flag) => {
-            js_set(value.as_ref(), "kind", &"Boolean".into())?;
-            js_set(value.as_ref(), "value", &JsValue::from_bool(flag))?;
-        }
-    }
-    Ok(value.into())
-}
-
-fn set_scalar_arg(value: &js_sys::Object, kind: &str, scalar: &str) -> Result<(), JsValue> {
-    js_set(value.as_ref(), "kind", &kind.into())?;
-    js_set(value.as_ref(), "value", &scalar.into())
-}
-
-fn delimiter_ref_to_js(delimiter: DelimiterRef<'_>) -> Result<JsValue, JsValue> {
-    let value = js_sys::Object::new();
-    match delimiter {
-        DelimiterRef::None => {
-            js_set(value.as_ref(), "kind", &"None".into())?;
-        }
-        DelimiterRef::Char(ch) => {
-            js_set(value.as_ref(), "kind", &"Char".into())?;
-            js_set(value.as_ref(), "value", &ch.to_string().into())?;
-        }
-        DelimiterRef::Control(name) => {
-            js_set(value.as_ref(), "kind", &"Control".into())?;
-            js_set(value.as_ref(), "value", &name.into())?;
-        }
-    }
-    Ok(value.into())
-}
-
-fn group_kind_to_js(kind: texform::GroupKindRef<'_>) -> Result<JsValue, JsValue> {
-    let value = js_sys::Object::new();
-    match kind {
-        texform::GroupKindRef::Explicit => {
-            js_set(value.as_ref(), "kind", &"Explicit".into())?;
-        }
-        texform::GroupKindRef::Implicit => {
-            js_set(value.as_ref(), "kind", &"Implicit".into())?;
-        }
-        texform::GroupKindRef::Delimited { left, right } => {
-            js_set(value.as_ref(), "kind", &"Delimited".into())?;
-            js_set(value.as_ref(), "left", &delimiter_ref_to_js(left)?)?;
-            js_set(value.as_ref(), "right", &delimiter_ref_to_js(right)?)?;
-        }
-        texform::GroupKindRef::InlineMath => {
-            js_set(value.as_ref(), "kind", &"InlineMath".into())?;
-        }
-    }
-    Ok(value.into())
 }
 
 #[wasm_bindgen]
@@ -1180,16 +1149,7 @@ pub fn serialize(node: JsValue, options: Option<JsValue>) -> Result<String, JsVa
     let node = serde_wasm_bindgen::from_value::<SyntaxNode>(node)
         .map_err(|error| parse_message_to_js(format!("invalid syntax node: {error}")))?;
     let options = serialize_options_from_js(options)?;
-    texform::Document::from_syntax(&node)
-        .map_err(|error| binding_error_to_js(texform::bindings::from_syntax_error_to_dto(error)))?
-        .to_latex_with(&options)
-        .map_err(|error| {
-            binding_error_to_js(texform::bindings::BindingErrorDto {
-                kind: "internal",
-                message: error.to_string(),
-                diagnostics: Vec::new(),
-            })
-        })
+    texform::bindings::serialize_syntax(&node, &options).map_err(binding_error_to_js)
 }
 
 impl Parser {
@@ -1284,11 +1244,8 @@ fn parse_content_mode(value: &str) -> Result<ContentMode, JsValue> {
     }
 }
 
-fn content_mode_to_string(mode: ContentMode) -> &'static str {
-    match mode {
-        ContentMode::Math => "math",
-        ContentMode::Text => "text",
-    }
+fn parse_optional_mode(mode: Option<String>) -> Result<Option<ContentMode>, JsValue> {
+    mode.as_deref().map(parse_content_mode).transpose()
 }
 
 fn command_meta_to_js(meta: &ActiveCommandRecord) -> Result<JsValue, JsValue> {
@@ -1306,7 +1263,7 @@ fn character_meta_to_js(meta: &ActiveCharacterRecord) -> Result<JsValue, JsValue
 #[cfg(test)]
 mod tests {
     use super::*;
-    use texform::{AllowedMode, CommandItem, CommandKind, ParseConfig};
+    use texform::{AllowedMode, ArgRef, CommandItem, CommandKind, ParseConfig};
 
     #[test]
     fn package_load_build_errors_use_facade_error_text() {
@@ -1506,7 +1463,9 @@ mod tests {
         let first = Document::default();
         let second = Document::default();
         let root = first.root().expect("root should be available");
-        let foreign = second.create_char("x").expect("char should be created");
+        let foreign = second
+            .create_char("x", None)
+            .expect("char should be created");
 
         assert!(
             first.append_child(&root, &foreign).is_err(),
@@ -1517,9 +1476,11 @@ mod tests {
     #[test]
     fn wasm_create_command_with_arg_roundtrips_latex() {
         let document = Document::default();
-        let arg = document.create_char("x").expect("arg should be created");
+        let arg = document
+            .create_char("x", None)
+            .expect("arg should be created");
         let command = document
-            .create_command_with_args("sqrt", vec![ArgValue::math(arg.id)])
+            .create_command_with_args("sqrt", vec![Arg::Absent, Arg::Node(arg.id)])
             .expect("command should be created");
 
         document
@@ -1530,7 +1491,7 @@ mod tests {
             .expect("command should be appended");
 
         let arg_kind = command
-            .with_ref(|node| match node.arg(0).expect("arg should be present") {
+            .with_ref(|node| match node.arg(1).expect("arg should be present") {
                 ArgRef::Math(node) => {
                     assert!(node.is_char('x'));
                     "Math"
@@ -1609,7 +1570,7 @@ mod tests {
         assert!(document.is_read_only().unwrap());
 
         assert!(
-            document.create_char("x").is_err(),
+            document.create_char("x", None).is_err(),
             "read-only document edits should fail"
         );
     }

@@ -219,6 +219,10 @@ fn knowledge_base_builder_reports_invalid_items_and_packages() {
         Err(KnowledgeBaseBuildError::InvalidContextItem { .. })
     ));
     assert!(matches!(
+        build_with(CommandItem::new("x1", CommandKind::Prefix, AllowedMode::Math, "")),
+        Err(KnowledgeBaseBuildError::InvalidName { name }) if name == "x1"
+    ));
+    assert!(matches!(
         KnowledgeBase::builder()
             .packages(&["missing-package"])
             .build(),

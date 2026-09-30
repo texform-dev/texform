@@ -1,4 +1,5 @@
 pub mod config;
+pub mod conformance;
 pub mod data;
 pub mod dump;
 pub mod output;

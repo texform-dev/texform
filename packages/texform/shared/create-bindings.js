@@ -31,6 +31,15 @@ export function createBindings({
     }
   }
 
+  class TexformConformanceError extends TexformEditError {
+    constructor(payload) {
+      super(payload);
+      this.name = "TexformConformanceError";
+      this.path = payload.path;
+      this.rule = payload.rule;
+    }
+  }
+
   class TexformConfigError extends TexformError {
     constructor(payload) {
       super(payload, "invalid texform configuration");
@@ -57,6 +66,9 @@ export function createBindings({
       ) {
         if (error.kind === "parse") {
           throw new TexformParseError(error);
+        }
+        if (error.kind === "conformance") {
+          throw new TexformConformanceError(error);
         }
         if (error.kind === "edit") {
           throw new TexformEditError(error);
@@ -93,12 +105,10 @@ export function createBindings({
   }
 
   function unwrapArgValue(value) {
-    if (
-      value &&
-      typeof value === "object" &&
-      (value.kind === "Math" || value.kind === "Text")
-    ) {
-      return { ...value, node: unwrapNode(value.node) };
+    if (value instanceof Node) return value.inner;
+    if (Array.isArray(value)) return value.map(unwrapArgValue);
+    if (value && typeof value === "object" && "value" in value) {
+      return { ...value, value: unwrapArgValue(value.value) };
     }
     return value;
   }
@@ -107,11 +117,42 @@ export function createBindings({
     return Array.isArray(values) ? values.map(unwrapArgValue) : values;
   }
 
+  // Rust validates option values; this rejects keys it never receives.
+  function checkOptions(options, keys, what) {
+    if (options == null) return {};
+    if (
+      typeof options !== "object" ||
+      Array.isArray(options) ||
+      Object.keys(options).some((key) => !keys.includes(key))
+    )
+      throw new TexformConfigError({
+        kind: "config",
+        message: `${what} accept only ${keys.join(", ")}`,
+      });
+    return options;
+  }
+
+  function constructionMode(options) {
+    return checkOptions(options, ["mode"], "construction options").mode;
+  }
+
+  // wasm-bindgen wraps out-of-range integers, so non-u32 counts stop here.
+  function primeCount(count, path) {
+    if (Number.isSafeInteger(count) && count >= 0 && count <= 0xffffffff)
+      return count;
+    throw new TexformConformanceError({
+      kind: "conformance",
+      path,
+      rule: "invalid_prime_count",
+      message: "prime count must be a positive integer",
+    });
+  }
+
   function wrapArgRef(value) {
     if (
       value &&
       typeof value === "object" &&
-      (value.kind === "Math" || value.kind === "Text")
+      (value.kind === "Math" || value.kind === "Text" || value.kind === "OperatorName")
     ) {
       return { ...value, node: wrapNode(value.node) };
     }
@@ -299,31 +340,6 @@ export function createBindings({
     }
   }
 
-  function documentOptions(options, allowMode) {
-    if (options == null) return {};
-    if (typeof options !== "object" || Array.isArray(options))
-      throw new TexformConfigError({
-        kind: "config",
-        message: "document options must be an object",
-      });
-    for (const key of Object.keys(options)) {
-      if (key !== "knowledgeBase" && !(allowMode && key === "mode"))
-        throw new TexformConfigError({
-          kind: "config",
-          message: `unknown document option: ${key}`,
-        });
-    }
-    if (
-      options.mode != null &&
-      options.mode !== "math" &&
-      options.mode !== "text"
-    )
-      throw new TexformConfigError({
-        kind: "config",
-        message: "mode must be math or text",
-      });
-    return options;
-  }
   class Document {
     knowledgeBase() {
       return wrapTexformError(
@@ -335,7 +351,7 @@ export function createBindings({
     }
     constructor(options) {
       if (!(options instanceof WasmDocument))
-        options = documentOptions(options, true);
+        options = checkOptions(options, ["knowledgeBase", "mode"], "document options");
       this.inner = wrapTexformError(() =>
         options instanceof WasmDocument
           ? options
@@ -347,7 +363,7 @@ export function createBindings({
     }
 
     static fromSyntax(node, options) {
-      options = documentOptions(options, false);
+      options = checkOptions(options, ["knowledgeBase"], "fromSyntax options");
       return wrapTexformError(
         () =>
           new Document(
@@ -393,55 +409,60 @@ export function createBindings({
       );
     }
 
-    createChar(value) {
-      return wrapTexformError(() => wrapNode(this.inner.createChar(value)));
+    createChar(value, options) {
+      return wrapTexformError(() => wrapNode(this.inner.createChar(value, constructionMode(options))));
     }
 
-    createText(value) {
-      return wrapTexformError(() => wrapNode(this.inner.createText(value)));
+    createText(value, options) {
+      return wrapTexformError(() => wrapNode(this.inner.createText(value, constructionMode(options))));
     }
 
-    createActiveSpace() {
-      return wrapTexformError(() => wrapNode(this.inner.createActiveSpace()));
+    createActiveSpace(options) {
+      return wrapTexformError(() => wrapNode(this.inner.createActiveSpace(constructionMode(options))));
     }
 
-    createAlignmentTab() {
-      return wrapTexformError(() => wrapNode(this.inner.createAlignmentTab()));
+    createAlignmentTab(options) {
+      return wrapTexformError(() => wrapNode(this.inner.createAlignmentTab(constructionMode(options))));
     }
 
-    createGroup(mode) {
-      return wrapTexformError(() => wrapNode(this.inner.createGroup(mode)));
+    createGroup(mode, children = [], options) {
+      return wrapTexformError(() => wrapNode(this.inner.createGroup(mode, unwrapArgValues(children), constructionMode(options))));
     }
 
-    createCommand(name, args) {
-      return wrapTexformError(() =>
-        wrapNode(
-          this.inner.createCommand(name, unwrapArgValues(args) ?? undefined),
-        ),
-      );
+    createDelimitedGroup(left, right, children = [], options) {
+      return wrapTexformError(() => wrapNode(this.inner.createDelimitedGroup(left, right, unwrapArgValues(children), constructionMode(options))));
     }
 
-    createDeclarative(name, args) {
-      return wrapTexformError(() =>
-        wrapNode(
-          this.inner.createDeclarative(
-            name,
-            unwrapArgValues(args) ?? undefined,
-          ),
-        ),
-      );
+    createInlineMath(children = [], options) {
+      return wrapTexformError(() => wrapNode(this.inner.createInlineMath(unwrapArgValues(children), constructionMode(options))));
     }
 
-    createEnvironment(name, args, body) {
-      return wrapTexformError(() =>
-        wrapNode(
-          this.inner.createEnvironment(
-            name,
-            unwrapArgValues(args) ?? undefined,
-            unwrapNode(body),
-          ),
-        ),
-      );
+    createScripted(base, sub = null, sup = null, options) {
+      return wrapTexformError(() => wrapNode(this.inner.createScripted(unwrapArgValue(base), unwrapArgValue(sub), unwrapArgValue(sup), constructionMode(options))));
+    }
+
+    createPrime(count, options) {
+      count = primeCount(count, "detached");
+      return wrapTexformError(() => wrapNode(this.inner.createPrime(count, constructionMode(options))));
+    }
+
+    createInfix(name, left, right, args = [], options) {
+      return wrapTexformError(() => wrapNode(this.inner.createInfix(name, unwrapArgValue(left), unwrapArgValue(right), unwrapArgValues(args), constructionMode(options))));
+    }
+
+    createCommand(name, args = [], options) {
+      return wrapTexformError(() => wrapNode(this.inner.createCommand(name, unwrapArgValues(args), constructionMode(options))));
+    }
+
+    createDeclarative(name, args = [], options) {
+      return wrapTexformError(() => wrapNode(this.inner.createDeclarative(name, unwrapArgValues(args), constructionMode(options))));
+    }
+
+    createEnvironment(name, args = [], body = null, options) {
+      return wrapTexformError(() => wrapNode(this.inner.createEnvironment(name, unwrapArgValues(args), unwrapArgValue(body), constructionMode(options))));
+    }
+    parseFragment(source, options) {
+      return wrapTexformError(() => wrapNode(this.inner.parseFragment(source, constructionMode(options))));
     }
 
     appendChild(parent, child) {
@@ -516,6 +537,10 @@ export function createBindings({
       return wrapTexformError(() =>
         this.inner.setCommandName(unwrapNode(node), name),
       );
+    }
+
+    setEnvName(node, name) {
+      return wrapTexformError(() => this.inner.setEnvName(unwrapNode(node), name));
     }
 
     setArg(node, index, value) {
@@ -683,6 +708,7 @@ export function createBindings({
     TexformError,
     TexformParseError,
     TexformEditError,
+    TexformConformanceError,
     TexformConfigError,
     TexformTransformError,
     KnowledgeBase,

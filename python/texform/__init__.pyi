@@ -490,42 +490,8 @@ class ValidateArgspecResult(TypedDict):
     parsed: list[ParsedArgSpecSlot] | None
 
 
-class DelimiterNone(TypedDict):
-    """A delimiter value meaning "no delimiter" (e.g. an open `.` in `\\left.`).
-
-    Attributes:
-        kind: Discriminator; always ``"None"``.
-    """
-
-    kind: Literal["None"]
-
-
-class DelimiterChar(TypedDict):
-    """A delimiter that is a single literal character, such as ``(`` or ``|``.
-
-    Attributes:
-        kind: Discriminator; always ``"Char"``.
-        value: The literal delimiter character.
-    """
-
-    kind: Literal["Char"]
-    value: str
-
-
-class DelimiterControl(TypedDict):
-    """A delimiter that is a control sequence, such as ``langle`` or ``lvert``.
-
-    Attributes:
-        kind: Discriminator; always ``"Control"``.
-        value: Control-sequence name without the leading backslash.
-    """
-
-    kind: Literal["Control"]
-    value: str
-
-
-DelimiterValue: TypeAlias = DelimiterNone | DelimiterChar | DelimiterControl
-"""A delimiter value: none, a literal character, or a control sequence."""
+DelimiterValue: TypeAlias = str
+"""A delimiter string: a character, a backslash-prefixed control, or a dot."""
 
 
 class GroupKindExplicit(TypedDict):
@@ -578,11 +544,21 @@ GroupKindRef: TypeAlias = (
 """The kind of a ``Group`` node: explicit, implicit, delimited, or inline-math."""
 
 
+ArgFormKind = Literal["mandatory", "optional", "star", "group", "delimited", "paired"]
+
+
+class ArgForm(TypedDict):
+    kind: ArgFormKind
+    open: NotRequired[str]
+    close: NotRequired[str]
+
+
 class MathArg(TypedDict):
     """A command argument carrying math-mode content.
 
     Attributes:
-        kind: Discriminator; always ``"Math"``.
+        form: ArgForm
+    kind: Discriminator; always ``"Math"``.
         node: The live argument-body ``Node``.
     """
 
@@ -594,7 +570,8 @@ class TextArg(TypedDict):
     """A command argument carrying text-mode content.
 
     Attributes:
-        kind: Discriminator; always ``"Text"``.
+        form: ArgForm
+    kind: Discriminator; always ``"Text"``.
         node: The live argument-body ``Node``.
     """
 
@@ -606,7 +583,8 @@ class DelimiterArg(TypedDict):
     """A command argument that is a single delimiter token.
 
     Attributes:
-        kind: Discriminator; always ``"Delimiter"``.
+        form: ArgForm
+    kind: Discriminator; always ``"Delimiter"``.
         value: The delimiter value.
     """
 
@@ -618,7 +596,8 @@ class CSNameArg(TypedDict):
     """A command argument that is a control-sequence name.
 
     Attributes:
-        kind: Discriminator; always ``"CSName"``.
+        form: ArgForm
+    kind: Discriminator; always ``"CSName"``.
         value: The control-sequence name without the leading backslash.
     """
 
@@ -630,7 +609,8 @@ class DimensionArg(TypedDict):
     """A command argument that is a TeX dimension, such as ``2pt``.
 
     Attributes:
-        kind: Discriminator; always ``"Dimension"``.
+        form: ArgForm
+    kind: Discriminator; always ``"Dimension"``.
         value: The dimension as written.
     """
 
@@ -642,7 +622,8 @@ class IntegerArg(TypedDict):
     """A command argument that is an integer literal.
 
     Attributes:
-        kind: Discriminator; always ``"Integer"``.
+        form: ArgForm
+    kind: Discriminator; always ``"Integer"``.
         value: The integer as written.
     """
 
@@ -654,7 +635,8 @@ class KeyValArg(TypedDict):
     """A command argument that is a ``key=value`` list.
 
     Attributes:
-        kind: Discriminator; always ``"KeyVal"``.
+        form: ArgForm
+    kind: Discriminator; always ``"KeyVal"``.
         value: The raw key-value text.
     """
 
@@ -666,7 +648,8 @@ class ColumnArg(TypedDict):
     """A command argument that is a tabular column specification.
 
     Attributes:
-        kind: Discriminator; always ``"Column"``.
+        form: ArgForm
+    kind: Discriminator; always ``"Column"``.
         value: The column specification as written.
     """
 
@@ -678,7 +661,8 @@ class BooleanArg(TypedDict):
     """A command argument that is a star flag, modeled as a boolean.
 
     Attributes:
-        kind: Discriminator; always ``"Boolean"``.
+        form: ArgForm
+    kind: Discriminator; always ``"Boolean"``.
         value: ``True`` when the star was present.
     """
 
@@ -690,6 +674,7 @@ ArgRef: TypeAlias = (
     MathArg
     | TextArg
     | DelimiterArg
+    | OperatorNameArg
     | CSNameArg
     | DimensionArg
     | IntegerArg
@@ -698,14 +683,41 @@ ArgRef: TypeAlias = (
     | BooleanArg
 )
 """A read command argument: one of the discriminated argument-value dicts."""
-ArgValueInput: TypeAlias = ArgRef
-"""An argument-value dict accepted when creating or setting command arguments."""
+class OperatorNameArg(TypedDict):
+    form: ArgForm
+    kind: Literal["OperatorName"]
+    node: Node
+
+
+class Paired:
+    """Immutable content and delimiter pair for an argspec Paired slot.
+
+    Pass it as a slot value to select an explicit delimiter pair. ``value`` is a detached node or source written between ``open`` and ``close``. Instances compare and hash by value.
+
+    Examples:
+        doc.create_command("sqrt", [texform.Paired("x", "[", "]"), "y"])
+    """
+    def __init__(self, value: Node | str, open: str, close: str) -> None: ...
+    @property
+    def value(self) -> Node | str: ...
+    @property
+    def open(self) -> str: ...
+    @property
+    def close(self) -> str: ...
+    def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
+
+
+Arg: TypeAlias = Node | str | bool | None | Paired
+"""Slot input: source written inside the slot, a detached content node, a star flag, absence, or an explicit ``Paired`` delimiter pair."""
 
 __all__ = [
     "Document",
     "KnowledgeBase",
     "ConfigError",
     "EditError",
+    "ConformanceError",
+    "Paired",
     "FinalizeAstConfig",
     "FlattenGroupsConfig",
     "LowerAttributesConfig",
@@ -738,7 +750,9 @@ class TexformError(Exception):
 
 
 class ParseError(TexformError):
-    """Raised when an operation required a complete tree but parsing produced none.
+    """Raised when source could not be parsed into a complete tree.
+
+    Besides the cases below, ``Document.create_*``, ``parse_fragment``, and the ``set_*`` editing methods raise it when a source string is invalid.
 
     ``TransformEngine.normalize`` raises this on input that cannot produce a
     complete tree, and ``count_targets`` raises it when the source does not parse
@@ -762,6 +776,17 @@ class EditError(TexformError):
     node that belongs to another document. The edit is rejected before it can
     corrupt the tree.
     """
+
+
+class ConformanceError(EditError):
+    """Raised when a construction, edit, or syntax import violates the knowledge base or the document's structure.
+
+    Attributes:
+        rule: A stable machine-readable rule code.
+        path: The tree path where the violation was found.
+    """
+    path: str
+    rule: str
 
 
 class ConfigError(TexformError):
@@ -822,7 +847,10 @@ class Document:
         """
 
     def knowledge_base(self) -> KnowledgeBase:
-        """Return the immutable knowledge base bound to this document."""
+        """Return the immutable knowledge base bound to this document.
+
+        Construction and edits are checked against it; ``to_latex`` is not.
+        """
     def copy(self) -> Document:
         """Deep-copy the tree into a new document with new node identities.
 
@@ -846,6 +874,9 @@ class Document:
 
         Returns:
             A new ``Document`` wrapping the snapshot.
+
+        Raises:
+            ConformanceError: If the snapshot does not conform to the knowledge base.
 
         Examples:
             result = texform.Parser().parse(r"\\frac{x}{y}")
@@ -1013,104 +1044,235 @@ class Document:
             tok["tokens"][0]["kind"]  # 'character'
         """
 
-    def create_char(self, value: str) -> Node:
-        """Stage a detached ``Char`` node owned by this document.
+    def create_char(self, value: str, *, mode: RuntimeContentMode | None = None) -> Node:
+        """Create a detached ``Char`` node owned by this document.
 
-        Staged nodes are not in the tree until attached with an edit method.
+        Staged nodes are not in the tree until attached with an edit method. The context ``mode`` defaults to the document root's mode; every ``create_*`` method accepts it as a keyword to construct in another context.
 
         Args:
-            value: The single character.
+            value: The single character. ``"&"`` is a literal ampersand written ``\\&``.
+            mode: The context mode, ``"math"`` or ``"text"``.
 
         Returns:
-            The staged ``Char`` node handle.
+            The detached ``Char`` node handle.
+
+        Raises:
+            ConformanceError: If the character cannot be written in that mode, such as ``\\``, ``^``, ``~``, or a math-mode space.
+            EditError: If the document is read-only.
         """
 
-    def create_text(self, value: str) -> Node:
-        """Stage a detached ``Text`` node owned by this document.
+    def create_text(self, value: str, *, mode: RuntimeContentMode | None = None) -> Node:
+        """Create a detached ``Text`` node owned by this document.
 
         Args:
             value: The text value.
+            mode: The context mode. Defaults to the root mode.
 
         Returns:
-            The staged ``Text`` node handle.
+            The detached ``Text`` node handle.
+
+        Raises:
+            ConformanceError: If the text cannot be written in that mode.
+            EditError: If the document is read-only.
         """
 
-    def create_active_space(self) -> Node:
-        """Stage a detached ``ActiveSpace`` node owned by this document.
+    def create_active_space(self, *, mode: RuntimeContentMode | None = None) -> Node:
+        """Create a detached ``ActiveSpace`` node owned by this document.
 
         Returns:
-            The staged ``ActiveSpace`` node handle.
+            The detached ``ActiveSpace`` node handle.
         """
 
-    def create_alignment_tab(self) -> Node:
-        """Stage a detached ``AlignmentTab`` node owned by this document.
+    def create_alignment_tab(self, *, mode: RuntimeContentMode | None = None) -> Node:
+        """Create a detached ``AlignmentTab`` node owned by this document.
 
-        This is the unescaped ``&`` that separates cells in alignment
-        environments. Use ``create_char("&")`` for a literal ampersand, which
-        serializes as ``\\&``.
+        This is the unescaped ``&`` that separates cells in alignment environments. Use ``create_char("&")`` for a literal ampersand, which serializes as ``\\&``.
 
         Returns:
-            The staged ``AlignmentTab`` node handle.
+            The detached ``AlignmentTab`` node handle.
         """
 
-    def create_group(self, mode: RuntimeContentMode) -> Node:
-        """Stage a detached ``Group`` node owned by this document.
+    def create_group(self, mode: RuntimeContentMode | None = None, children: list[Node | str] | None = None) -> Node:
+        """Create a detached brace ``Group``, built in its own ``mode``.
 
         Args:
-            mode: The content mode of the group, ``"math"`` or ``"text"``.
+            mode: The group's content mode and context. Defaults to the root mode.
+            children: Detached nodes or source strings. A string is parsed in ``mode`` and its nodes are spliced into the list, so one string may yield several children.
 
         Returns:
-            The staged ``Group`` node handle.
-        """
+            The detached ``Group`` node handle.
 
-    def create_command(
-        self, name: str, args: list[ArgValueInput] | None = None
-    ) -> Node:
-        """Stage a detached ``Command`` node owned by this document.
-
-        Args:
-            name: The command name without the leading backslash.
-            args: The argument-value dicts for the command's slots, or ``None``
-                for none. Content kinds carry a ``node``; leaf kinds carry a
-                ``value``.
-
-        Returns:
-            The staged ``Command`` node handle.
+        Raises:
+            ParseError: If a source string does not parse cleanly.
+            ConformanceError: If a child was built in another mode or an infix has siblings.
+            EditError: If a child is attached, foreign, or repeated, or the document is read-only.
 
         Examples:
             doc = texform.Document()
-            inner = doc.create_char("x")
-            cmd = doc.create_command("sqrt", [{"kind": "Math", "node": inner}])
+            group = doc.create_group("math", ["x^2", doc.create_char("y")])
+        """
+
+    def create_delimited_group(self, left: str, right: str, children: list[Node | str] | None = None, *, mode: RuntimeContentMode | None = None) -> Node:
+        """Create a detached ``\\left...\\right`` group, built in math mode.
+
+        Args:
+            left: The left delimiter source, such as ``"("`` or ``"\\langle"``.
+            right: The right delimiter source.
+            children: Detached nodes or source strings, spliced as in ``create_group``.
+            mode: The context mode. Defaults to ``"math"``.
+
+        Returns:
+            The detached delimited ``Group`` node handle.
+
+        Raises:
+            ConformanceError: If a delimiter is neither ``.`` nor registered in the knowledge base, or a child does not fit.
+            ParseError: If a source string does not parse cleanly.
+            EditError: For invalid children or a read-only document.
+        """
+
+    def create_inline_math(self, children: list[Node | str] | None = None, *, mode: RuntimeContentMode | None = None) -> Node:
+        """Create a detached ``$...$`` group whose children are math.
+
+        Args:
+            children: Detached nodes or source strings, spliced as in ``create_group``.
+            mode: The context mode. Defaults to ``"text"``.
+
+        Returns:
+            The detached inline-math ``Group`` node handle.
+
+        Raises:
+            ParseError: If a source string does not parse cleanly.
+            ConformanceError: If a child does not fit or the context is math.
+            EditError: For invalid children or a read-only document.
+        """
+
+    def create_scripted(self, base: Node | str, sub: Node | str | None = None, sup: Node | str | None = None, *, mode: RuntimeContentMode | None = None) -> Node:
+        """Create a detached ``Scripted`` node with a base and subscript and/or superscript.
+
+        Args:
+            base: The base node or source string.
+            sub: The subscript node or source, or ``None`` for none.
+            sup: The superscript node or source, or ``None`` for none.
+            mode: The context mode. Defaults to ``"math"``.
+
+        Returns:
+            The detached ``Scripted`` node handle.
+
+        Raises:
+            ConformanceError: If both scripts are absent, or the base is a scripted node, an infix, or an alignment tab.
+            ParseError: If a source string does not parse cleanly.
+            EditError: For invalid nodes or a read-only document.
+
+        Examples:
+            doc = texform.Document()
+            doc.append_child(doc.root(), doc.create_scripted("x", sup="2"))
+        """
+
+    def create_prime(self, count: int, *, mode: RuntimeContentMode | None = None) -> Node:
+        """Create a detached run of ``count`` primes.
+
+        Args:
+            count: The number of primes; must be positive.
+            mode: The context mode. Defaults to ``"math"``.
+
+        Returns:
+            The detached ``Prime`` node handle.
+
+        Raises:
+            ConformanceError: If ``count`` is zero.
+        """
+
+    def create_command(self, name: str, args: list[Arg] | None = None, *, mode: RuntimeContentMode | None = None) -> Node:
+        """Create a detached prefix ``Command`` owned by this document.
+
+        Args:
+            name: The command name without the leading backslash. A name missing from the knowledge base creates an unknown command without arguments.
+            args: Values for every signature slot, or only the required slots. A ``str`` is the source written inside the slot's boundaries; ``None`` omits an optional slot and means false in a star slot; ``Paired`` selects an explicit delimiter pair. ``bool`` sets a star slot.
+            mode: The context mode. Defaults to the root mode.
+
+        Returns:
+            The detached ``Command`` node handle.
+
+        Raises:
+            ConformanceError: If the name is not a prefix command (the message names the right constructor, such as ``create_declarative`` for ``bf``), the argument count is wrong, or an argument does not fit its slot.
+            ParseError: If a source argument does not parse cleanly.
+            EditError: For invalid nodes or a read-only document.
+
+        Examples:
+            doc = texform.Document()
+            cmd = doc.create_command("sqrt", ["x"])
             doc.append_child(doc.root(), cmd)
             doc.to_latex()  # '\\sqrt { x }'
         """
 
-    def create_declarative(
-        self, name: str, args: list[ArgValueInput] | None = None
-    ) -> Node:
-        """Stage a detached ``Declarative`` command node owned by this document.
+    def create_declarative(self, name: str, args: list[Arg] | None = None, *, mode: RuntimeContentMode | None = None) -> Node:
+        """Create a detached ``Declarative`` command such as ``\\bf``.
 
         Args:
             name: The declarative command name without the leading backslash.
-            args: The argument-value dicts for the command's slots, or ``None``.
+            args: Slot values, as for ``create_command``.
+            mode: The context mode. Defaults to the root mode.
 
         Returns:
-            The staged ``Declarative`` node handle.
+            The detached ``Declarative`` node handle.
+
+        Raises:
+            ConformanceError: Under the conditions of ``create_command``, except the record must be declarative.
+            ParseError: If a source argument does not parse cleanly.
         """
 
-    def create_environment(
-        self, name: str, args: list[ArgValueInput] | None, body: Node
-    ) -> Node:
-        """Stage a detached ``Environment`` node owned by this document.
+    def create_infix(self, name: str, left: Node | str, right: Node | str, args: list[Arg] | None = None, *, mode: RuntimeContentMode | None = None) -> Node:
+        """Create a detached ``Infix`` command such as ``\\over``.
 
         Args:
-            name: The environment name.
-            args: The argument-value dicts for the environment's slots, or
-                ``None``.
-            body: The body ``Node`` (a group) of the environment.
+            name: The infix command name without the leading backslash.
+            left: The left operand node or source string.
+            right: The right operand node or source string.
+            args: Values for extra slots, such as the dimension of ``\\above``.
+            mode: The context mode. Defaults to ``"math"``.
 
         Returns:
-            The staged ``Environment`` node handle.
+            The detached ``Infix`` node handle.
+
+        Raises:
+            ConformanceError: Under the conditions of ``create_command``, except the record must be infix.
+            ParseError: If a source operand or argument does not parse cleanly.
+        """
+
+    def create_environment(self, name: str, args: list[Arg] | None = None, body: Node | list[Node | str] | str | None = None, *, mode: RuntimeContentMode | None = None) -> Node:
+        """Create a detached ``Environment`` owned by this document.
+
+        Args:
+            name: The environment name. An unknown environment takes no arguments and uses the surrounding mode.
+            args: Slot values, as for ``create_command``.
+            body: A detached group in the body mode, a source string parsed in the recorded body mode, a list whose source strings are spliced as in ``create_group``, or ``None`` for an empty body.
+            mode: The context mode. Defaults to the root mode.
+
+        Returns:
+            The detached ``Environment`` node handle.
+
+        Raises:
+            ConformanceError: If an argument does not fit the signature or the body is not a group in the body mode.
+            ParseError: If source does not parse cleanly.
+            EditError: For invalid nodes or a read-only document.
+
+        Examples:
+            doc = texform.Document()
+            env = doc.create_environment("matrix", body="a & b")
+        """
+
+    def parse_fragment(self, source: str, *, mode: RuntimeContentMode | None = None) -> Node:
+        """Parse source into a detached implicit ``Group``.
+
+        Args:
+            source: The LaTeX source.
+            mode: The parse mode. Defaults to the root mode.
+
+        Returns:
+            The detached ``Group`` node handle.
+
+        Raises:
+            ParseError: If the source does not parse cleanly. ``diagnostics`` carries the parser diagnostics.
         """
 
     def append_child(self, parent: Node, child: Node) -> None:
@@ -1118,7 +1280,7 @@ class Document:
 
         Args:
             parent: The container node to append into.
-            child: The staged or detached node to attach.
+            child: The detached or detached node to attach.
 
         Raises:
             EditError: If the edit is invalid (read-only tree, root protection,
@@ -1130,7 +1292,7 @@ class Document:
 
         Args:
             anchor: The node to insert before.
-            new: The staged or detached node to attach.
+            new: The detached or detached node to attach.
 
         Raises:
             EditError: If the edit is invalid.
@@ -1141,7 +1303,7 @@ class Document:
 
         Args:
             anchor: The node to insert after.
-            new: The staged or detached node to attach.
+            new: The detached or detached node to attach.
 
         Raises:
             EditError: If the edit is invalid.
@@ -1153,7 +1315,7 @@ class Document:
         Args:
             parent: The container node to insert into.
             index: The zero-based position to insert at.
-            child: The staged or detached node to attach.
+            child: The detached or detached node to attach.
 
         Raises:
             EditError: If the edit is invalid, including an out-of-bounds index.
@@ -1164,7 +1326,7 @@ class Document:
 
         Args:
             target: The node to remove from its position.
-            replacement: The staged or detached node to put in its place.
+            replacement: The detached or detached node to put in its place.
 
         Raises:
             EditError: If the edit is invalid.
@@ -1175,7 +1337,7 @@ class Document:
 
         Args:
             target: The node to be wrapped.
-            wrapper: The staged container node to wrap it in.
+            wrapper: The detached container node to wrap it in.
 
         Returns:
             The ``wrapper`` node handle, now in the tree.
@@ -1204,7 +1366,7 @@ class Document:
         """
 
     def extract(self, node: Node) -> Node:
-        """Detach ``node`` from the tree and return it as a staged node.
+        """Detach ``node`` from the tree and return it as a detached node.
 
         Args:
             node: The node to remove from its position and keep.
@@ -1247,6 +1409,18 @@ class Document:
             EditError: If the edit is invalid.
         """
 
+    def set_env_name(self, node: Node, name: str) -> None:
+        """Rename an environment, keeping its arguments and body.
+
+        Args:
+            node: The ``Environment`` node to rename.
+            name: The new environment name.
+
+        Raises:
+            ConformanceError: If the new name's signature or body mode does not fit the existing arguments and body.
+            EditError: If the edit is invalid.
+        """
+
     def set_text(self, node: Node, value: str) -> None:
         """Set a text node's value in place.
 
@@ -1269,15 +1443,17 @@ class Document:
             EditError: If the edit is invalid.
         """
 
-    def set_arg(self, node: Node, index: int, value: ArgValueInput) -> None:
-        """Set the argument at ``index`` of a command-like node.
+    def set_arg(self, node: Node, index: int, value: Arg) -> None:
+        """Set the argument at ``index`` of a command-like node or environment.
 
         Args:
-            node: The command-like node whose argument is set.
+            node: The command-like node or environment whose argument is set.
             index: The zero-based slot index.
-            value: The argument-value dict to install in the slot.
+            value: The slot source (a ``str``), content node, star flag, ``None`` to clear an optional slot, or ``Paired``.
 
         Raises:
+            ConformanceError: If the value does not fit the slot.
+            ParseError: If a source string does not parse cleanly.
             EditError: If the edit is invalid, including an out-of-bounds index.
         """
 
@@ -1309,7 +1485,7 @@ class Node:
     def __hash__(self) -> int: ...
     def __repr__(self) -> str: ...
     def document(self) -> Document:
-        """Return the document that owns this handle."""
+        """Return the ``Document`` that owns this handle."""
 
     def kind(self) -> NodeKind:
         """Return the node kind as a string.
@@ -1686,9 +1862,13 @@ class NormalizeOverrides(ParseOverrides, TransformOverrides, total=False):
 class KnowledgeBase:
     """Immutable knowledge shared by parsers, engines, and documents.
 
-    Equality and hashing use instance identity. Separately constructed knowledge
-    bases are distinct even with identical recipes. Query results are copies.
-    ``packages=None`` loads the default runtime packages; ``[]`` loads none.
+    A knowledge base defines the known commands, environments, characters, and delimiters that parsing, transforms, and ``Document`` construction and edits check against. Share one instance across a ``Parser``, ``TransformEngine``, and their documents.
+
+    Equality and hashing use instance identity: separately constructed knowledge bases are distinct even with identical recipes. Query results are copies. ``packages=None`` loads the default runtime packages; ``[]`` loads none.
+
+    Examples:
+        kb = texform.KnowledgeBase(["ams"])
+        doc = texform.Parser(kb).parse(r"\\frac{a}{b}")["document"]
     """
 
     def __init__(
@@ -2534,7 +2714,7 @@ def serialize(node: SyntaxNode, **options: Unpack[SerializeOptions]) -> str:
     ordinary ``Prime`` nodes emit ``\prime`` symbols, pure prime superscripts
     serialize compactly as ``f'`` / ``f''``, and the
     serializer guarantees text idempotency. For the conceptual model, see the
-    Serialization guide.
+    Serialization guide. It checks only the structure, not conformance to any knowledge base.
 
     Args:
         node: A ``SyntaxNode`` dict, typically from ``Document.to_syntax()`` or a

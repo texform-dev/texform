@@ -14,8 +14,8 @@
 //! fails with [`EditError::ForeignNode`] instead of corrupting an unrelated tree.
 
 pub use texform_core::document::{
-    ArgRef, ArgValue, DelimiterRef, DelimiterValue, DocumentId, EditError, FromSyntaxError,
-    GroupKindRef, NodeId, NodeKind, NodeRef,
+    Arg, ArgKindRef, ArgRef, ConformanceError, ConformanceRule, DelimiterRef, DelimiterValue,
+    DocumentId, EditError, FromSyntaxError, GroupKindRef, InMode, NodeId, NodeKind, NodeRef,
 };
 pub use texform_core::serialize::SerializeOptions;
 
@@ -190,104 +190,225 @@ impl Document {
         self.inner.find_environments(name)
     }
 
-    /// Create a detached single-character node.
+    /// Create a detached character leaf in the root's mode.
     ///
-    /// The node is staged but not attached; attach it with
-    /// [`append_child`](Self::append_child) or a sibling-insert method.
+    /// `'&'` is a literal ampersand written `\&`; use
+    /// [`create_alignment_tab`](Self::create_alignment_tab) for a cell separator.
     ///
     /// # Errors
     ///
-    /// Returns [`EditError::ReadOnlyDocument`] if the document has errors.
-    pub fn create_char(&mut self, c: char) -> Result<NodeId, EditError> {
-        self.inner.create_char(c)
+    /// Returns [`EditError::ReadOnlyDocument`] for a document with errors, or a
+    /// conformance error when the character cannot be written in that mode,
+    /// such as `\`, `^`, `~`, or a math-mode space.
+    pub fn create_char(&mut self, value: char) -> Result<NodeId, EditError> {
+        self.inner.create_char(value)
     }
 
-    /// Create a detached text node.
+    /// Create a detached text run in the root's mode, which must be text.
     ///
     /// # Errors
     ///
-    /// Returns [`EditError::ReadOnlyDocument`] if the document has errors.
-    pub fn create_text(&mut self, s: impl Into<String>) -> Result<NodeId, EditError> {
-        self.inner.create_text(s)
+    /// Returns a conformance error in math mode, for any of `% $ & # _ { }`
+    /// (which are separate [`create_char`](Self::create_char) nodes), or for
+    /// characters and runs of spaces the lexer would not read back.
+    pub fn create_text(&mut self, value: impl Into<String>) -> Result<NodeId, EditError> {
+        self.inner.create_text(value)
     }
 
-    /// Create a detached active-space node (an explicit space token).
+    /// Create a detached `~` active space in the root's mode.
     ///
     /// # Errors
     ///
-    /// Returns [`EditError::ReadOnlyDocument`] if the document has errors.
+    /// Returns [`EditError::ReadOnlyDocument`] for a document with errors.
     pub fn create_active_space(&mut self) -> Result<NodeId, EditError> {
         self.inner.create_active_space()
     }
 
-    /// Create a detached alignment-tab node, the unescaped `&` that separates
-    /// cells in alignment environments.
-    ///
-    /// Use [`Document::create_char`] with `'&'` for a literal ampersand, which
-    /// serializes as `\&`.
+    /// Create a detached alignment tab, the unescaped `&` separating cells.
     ///
     /// # Errors
     ///
-    /// Returns [`EditError::ReadOnlyDocument`] if the document has errors.
+    /// Returns a conformance error unless the root is in math mode.
     pub fn create_alignment_tab(&mut self) -> Result<NodeId, EditError> {
         self.inner.create_alignment_tab()
     }
 
-    /// Create a detached, empty brace group with the given content mode.
+    /// Create a detached run of `count` primes in math mode.
     ///
     /// # Errors
     ///
-    /// Returns [`EditError::ReadOnlyDocument`] if the document has errors.
+    /// Returns a conformance error when `count` is zero.
+    pub fn create_prime(&mut self, count: usize) -> Result<NodeId, EditError> {
+        self.inner.create_prime(count)
+    }
+
+    /// Create a detached brace group of `mode`, in a `mode` context.
+    ///
+    /// Each child is a detached node or source text parsed in `mode`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EditError::InvalidSource`] for unparsable source, an error for
+    /// attached, foreign, or repeated children, or a conformance error for a
+    /// child built in another mode or an infix with siblings.
     pub fn create_group(
         &mut self,
         mode: texform_core::parse::ContentMode,
+        children: impl IntoIterator<Item = Arg>,
     ) -> Result<NodeId, EditError> {
-        self.inner.create_group(mode)
+        self.inner.create_group(mode, children)
     }
 
-    /// Create a detached command node with the given name and arguments.
+    /// Create a detached `$...$` group of math `children` in a text context.
     ///
     /// # Errors
     ///
-    /// Returns [`EditError::ReadOnlyDocument`] if the document has errors, or an
-    /// argument-shape error if `args` do not match a valid slot layout.
+    /// Same conditions as [`create_group`](Self::create_group).
+    pub fn create_inline_math(
+        &mut self,
+        children: impl IntoIterator<Item = Arg>,
+    ) -> Result<NodeId, EditError> {
+        self.inner.create_inline_math(children)
+    }
+
+    /// Create a detached `\left...\right` group in math mode.
+    ///
+    /// # Errors
+    ///
+    /// Same conditions as [`create_group`](Self::create_group), plus a
+    /// conformance error for a delimiter that is neither `.` nor registered in
+    /// the knowledge base.
+    pub fn create_delimited_group(
+        &mut self,
+        left: DelimiterValue,
+        right: DelimiterValue,
+        children: impl IntoIterator<Item = Arg>,
+    ) -> Result<NodeId, EditError> {
+        self.inner.create_delimited_group(left, right, children)
+    }
+
+    /// Create a detached scripted node in math mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns a conformance error when both scripts are absent or when the
+    /// base is a scripted node, an infix, or an alignment tab.
+    pub fn create_scripted(
+        &mut self,
+        base: impl Into<Arg>,
+        sub: Option<Arg>,
+        sup: Option<Arg>,
+    ) -> Result<NodeId, EditError> {
+        self.inner.create_scripted(base, sub, sup)
+    }
+
+    /// Create a detached prefix command in the root's mode.
+    ///
+    /// `args` covers every signature slot, or only the required slots. Names
+    /// missing from the knowledge base create unknown commands without
+    /// arguments.
+    ///
+    /// # Errors
+    ///
+    /// Returns a conformance error when the name's record is not a prefix
+    /// command (naming the constructor to use instead, such as
+    /// [`create_declarative`](Self::create_declarative) for `bf`), for a wrong
+    /// argument count, or for an argument that does not fit its slot, and
+    /// [`EditError::InvalidSource`] for unparsable source arguments.
     pub fn create_command(
         &mut self,
         name: impl Into<String>,
-        args: Vec<ArgValue>,
+        args: impl IntoIterator<Item = Arg>,
     ) -> Result<NodeId, EditError> {
         self.inner.create_command(name, args)
     }
 
-    /// Create a detached declarative command node (such as a font declaration)
-    /// with the given name and arguments.
+    /// Create a detached declarative command such as `\bf` in the root's mode.
     ///
     /// # Errors
     ///
-    /// Returns [`EditError::ReadOnlyDocument`] if the document has errors, or an
-    /// argument-shape error for invalid `args`.
+    /// Same conditions as [`create_command`](Self::create_command), except the
+    /// record must be declarative.
     pub fn create_declarative(
         &mut self,
         name: impl Into<String>,
-        args: Vec<ArgValue>,
+        args: impl IntoIterator<Item = Arg>,
     ) -> Result<NodeId, EditError> {
         self.inner.create_declarative(name, args)
     }
 
-    /// Create a detached environment node wrapping `body` (which must be a group).
+    /// Create a detached infix command such as `\over` in math mode.
+    ///
+    /// `args` fills extra slots, such as the dimension of `\above`.
     ///
     /// # Errors
     ///
-    /// Returns [`EditError::ReadOnlyDocument`] if the document has errors,
-    /// [`EditError::ForeignNode`] if `body` belongs to another document, or an
-    /// argument/container-shape error for invalid inputs.
+    /// Same conditions as [`create_command`](Self::create_command), except the
+    /// record must be infix.
+    pub fn create_infix(
+        &mut self,
+        name: impl Into<String>,
+        left: impl Into<Arg>,
+        right: impl Into<Arg>,
+        args: impl IntoIterator<Item = Arg>,
+    ) -> Result<NodeId, EditError> {
+        self.inner.create_infix(name, left, right, args)
+    }
+
+    /// Create a detached environment in the root's mode.
+    ///
+    /// `body` is a detached group, source parsed in the recorded body mode, or
+    /// [`Arg::Absent`] for an empty body; unknown environments take no
+    /// arguments and use the surrounding mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns a conformance error for an argument that does not fit the
+    /// signature or a body that is not a group in the body mode, and
+    /// [`EditError::InvalidSource`] for unparsable source.
     pub fn create_environment(
         &mut self,
         name: impl Into<String>,
-        args: Vec<ArgValue>,
-        body: NodeId,
+        args: impl IntoIterator<Item = Arg>,
+        body: impl Into<Arg>,
     ) -> Result<NodeId, EditError> {
         self.inner.create_environment(name, args, body)
+    }
+
+    /// Create a detached environment whose implicit body group holds `children`.
+    ///
+    /// Language bindings use this for a list body.
+    #[doc(hidden)]
+    pub fn create_environment_with_children(
+        &mut self,
+        name: impl Into<String>,
+        args: impl IntoIterator<Item = Arg>,
+        children: Vec<Arg>,
+    ) -> Result<NodeId, EditError> {
+        self.inner
+            .create_environment_with_children(name, args, children)
+    }
+
+    /// Parse `source` into a detached Implicit group, in `mode` or the root's mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EditError::InvalidSource`] with the parser diagnostics when the
+    /// source does not parse cleanly.
+    pub fn parse_fragment(
+        &mut self,
+        source: &str,
+        mode: Option<texform_core::parse::ContentMode>,
+    ) -> Result<NodeId, EditError> {
+        self.inner.parse_fragment(source, mode)
+    }
+
+    /// Construct nodes in an explicit context mode without changing the document.
+    ///
+    /// The view's mode replaces each constructor's default context; a node
+    /// that cannot appear in that mode is rejected.
+    pub fn in_mode(&mut self, mode: texform_core::parse::ContentMode) -> InMode<'_> {
+        self.inner.in_mode(mode)
     }
 
     /// Append `child` as the last child of `parent`.
@@ -432,6 +553,16 @@ impl Document {
         self.inner.set_command_name(id, name)
     }
 
+    /// Rename an environment while preserving its existing signature and body mode.
+    pub fn set_env_name(&mut self, id: NodeId, name: impl Into<String>) -> Result<(), EditError> {
+        self.inner.set_env_name(id, name)
+    }
+
+    #[doc(hidden)]
+    pub fn __validate_conformance(&self) -> Result<(), ConformanceError> {
+        self.inner.__validate_conformance()
+    }
+
     /// Set the content of the text node `id`.
     ///
     /// # Errors
@@ -459,7 +590,7 @@ impl Document {
     /// Returns an [`EditError`] if the document is read-only, `id` is foreign,
     /// missing, or has no argument slot at `index`, or `value` does not match
     /// the slot shape.
-    pub fn set_arg(&mut self, id: NodeId, index: usize, value: ArgValue) -> Result<(), EditError> {
+    pub fn set_arg(&mut self, id: NodeId, index: usize, value: Arg) -> Result<(), EditError> {
         self.inner.set_arg(id, index, value)
     }
 
@@ -491,9 +622,9 @@ impl Document {
 
     /// Serialize the tree to canonical LaTeX text.
     ///
-    /// The canonical serializer guarantees text idempotency: re-parsing and
-    /// re-serializing the output yields the same string. Error nodes round-trip
-    /// their captured source snippet.
+    /// Parsed and normalized output retains the existing text-idempotency
+    /// contract. Arbitrarily constructed or edited trees need not serialize
+    /// to a parse/serialize fixed point. Error nodes preserve their snippet.
     ///
     /// # Errors
     ///

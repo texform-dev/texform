@@ -188,6 +188,12 @@ The `texform` binary also parses, tokenizes, and queries the knowledge base, and
 - [`texform-cli`](crates/texform-cli/README.md) — command-line usage and the `serve` normalizer protocol
 - [`CHANGELOG.md`](CHANGELOG.md) — release history
 
+## Constructing documents
+
+Documents share an immutable `KnowledgeBase`. Constructors accept `Arg` values: detached nodes, slot source strings, star Booleans, `Absent`, or `Arg::paired(value, open, close)?`. A signature can receive all slots or only its required slots. For example, `doc.create_command("sqrt", ["x".into()])?` fills its mandatory slot and leaves the optional slot empty. Use `doc.in_mode(ContentMode::Text)` for text-context construction and `doc.parse_fragment(source, mode)` for a detached source fragment.
+
+A source string in a children list (groups, inline math, delimited groups, environment bodies) is parsed and its nodes are spliced into the list. Invalid shapes fail atomically with a structured `ConformanceError`; invalid source fragments retain parser diagnostics. Complete syntax snapshots are checked on import, while snapshots containing Error nodes remain structurally checked, read-only documents. `serialize` and `to_latex` check only structure, not conformance to a knowledge base. See [the architecture reference](ARCHITECTURE.md) for local constraints and serialization limits.
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).

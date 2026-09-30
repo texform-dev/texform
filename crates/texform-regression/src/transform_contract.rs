@@ -1,4 +1,4 @@
-use crate::{config, data, output};
+use crate::{config, conformance, data, output};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -9,7 +9,8 @@ use texform_core::document::Document;
 use texform_core::parse::{ParseConfig, ParseContext, ParseDiagnostic};
 use texform_transform::{
     BuildConfig, ContractViolation, Profile, RewriteError, RuleTarget, RuleTargetKey,
-    RuleTargetKind, TransformContext, TransformError, collect_eliminated_violations,
+    RuleTargetKind, TransformBuildError, TransformContext, TransformError,
+    collect_eliminated_violations,
 };
 
 const SCHEMA_VERSION: u32 = 1;
@@ -25,6 +26,7 @@ pub struct RunConfig {
     pub limit: Option<usize>,
     pub dry_run: bool,
     pub skip_commit_results: bool,
+    pub check_conformance: bool,
 }
 
 #[derive(Debug)]
@@ -230,6 +232,12 @@ pub fn run(config: RunConfig) -> Result<RunOutcome, Box<dyn std::error::Error>> 
     let parse_ctx = ParseContext::shared();
     let transform_ctx =
         TransformContext::from_build_config(BuildConfig::profile(Profile::Corpus), parse_ctx)?;
+    let audit_profiles = if config.check_conformance {
+        audit_profiles(parse_ctx)?
+    } else {
+        Vec::new()
+    };
+    let mut audit_failed = false;
     let attribution = build_rule_attribution(&transform_ctx);
     ensure_unique_eliminated_owners(&attribution)?;
     let commit_info = output::git_commit_info();
@@ -250,6 +258,18 @@ pub fn run(config: RunConfig) -> Result<RunOutcome, Box<dyn std::error::Error>> 
     for entry in selected {
         let data_path = config::resolve_dataset_file(&config.datasets_yaml, &entry);
         match data::check_data_file(&data_path) {
+            data::DataFileStatus::Missing if config.check_conformance => {
+                return Err(
+                    format!("[{}] conformance audit dataset is missing", entry.slug).into(),
+                );
+            }
+            data::DataFileStatus::LfsPointer if config.check_conformance => {
+                return Err(format!(
+                    "[{}] conformance audit dataset is an unresolved LFS pointer",
+                    entry.slug
+                )
+                .into());
+            }
             data::DataFileStatus::Missing => {
                 eprintln!(
                     "[{}] data file missing (run `git lfs pull` to fetch), skipping",
@@ -275,6 +295,7 @@ pub fn run(config: RunConfig) -> Result<RunOutcome, Box<dyn std::error::Error>> 
 
         let dataset_start = Instant::now();
         let before = run_accumulator.snapshot();
+        let mut audit_counts = [conformance::AuditCounts::default(); 4];
         let records_read =
             data::read_formula_record_batches(&data_path, 0, config.limit, |records| {
                 let outcomes = run_batch(&records, parse_ctx, &transform_ctx, &attribution);
@@ -287,6 +308,13 @@ pub fn run(config: RunConfig) -> Result<RunOutcome, Box<dyn std::error::Error>> 
                     &mut run_accumulator,
                     detail_writer.as_mut(),
                 )?;
+                if config.check_conformance {
+                    let counts =
+                        run_conformance_batch(&entry.slug, &records, parse_ctx, &audit_profiles);
+                    for (total, batch) in audit_counts.iter_mut().zip(counts) {
+                        total.append(batch);
+                    }
+                }
                 drop(outcomes);
                 trim_allocator();
                 Ok(())
@@ -298,6 +326,12 @@ pub fn run(config: RunConfig) -> Result<RunOutcome, Box<dyn std::error::Error>> 
             "[{}] {} formulas in {:.1}s; {} violating formula(s), {} violation(s)",
             entry.slug, records_read, elapsed, summary.violating_formulas, summary.violations
         );
+        if config.check_conformance {
+            for ((name, _, _), counts) in audit_profiles.iter().zip(audit_counts) {
+                counts.report(&entry.slug, name);
+                audit_failed |= counts.failed();
+            }
+        }
         dataset_summaries.push(summary);
     }
 
@@ -325,6 +359,9 @@ pub fn run(config: RunConfig) -> Result<RunOutcome, Box<dyn std::error::Error>> 
         write_json_pretty(&config.results_root.join("summary.json"), &summary)?;
     }
 
+    if audit_failed {
+        return Err("Transform conformance audit failed; see formula diagnostics above".into());
+    }
     Ok(RunOutcome {
         summary,
         unallowed_violations,
@@ -422,6 +459,76 @@ fn run_formula(
             violations: Vec::new(),
         },
     }
+}
+
+type AuditProfile = (&'static str, Profile, TransformContext);
+
+fn audit_profiles(parse_ctx: &ParseContext) -> Result<Vec<AuditProfile>, TransformBuildError> {
+    [
+        ("authoring", Profile::Authoring),
+        ("faithful", Profile::Faithful),
+        ("corpus", Profile::Corpus),
+        ("equiv", Profile::Equiv),
+    ]
+    .into_iter()
+    .map(|(name, profile)| {
+        TransformContext::from_build_config(BuildConfig::profile(profile), parse_ctx)
+            .map(|context| (name, profile, context))
+    })
+    .collect()
+}
+
+// This opt-in pass is separate from the Corpus eliminated-form accounting, so
+// neither additional profiles nor conformance checks change stored baselines.
+fn run_conformance_batch(
+    dataset: &str,
+    records: &[data::FormulaRecord],
+    parse_ctx: &ParseContext,
+    profiles: &[AuditProfile],
+) -> [conformance::AuditCounts; 4] {
+    records
+        .par_iter()
+        .map(|record| {
+            let parsed = parse_ctx.parse(&record.formula, &parse_config());
+            let Some(document) = parsed.document().filter(|document| !document.has_errors()) else {
+                return [conformance::AuditCounts {
+                    skipped: 1,
+                    ..Default::default()
+                }; 4];
+            };
+            let mut counts = [conformance::AuditCounts::default(); 4];
+            for ((name, profile, context), count) in profiles.iter().zip(counts.iter_mut()) {
+                let mut document = document.clone();
+                let result = context.run(document.__texform_engine_ast_mut(), parse_ctx);
+                *count = conformance::check_document(dataset, record, name, Some(&document));
+                if let Err(error) = result {
+                    // The original Corpus pass owns its formula-specific exceptions.
+                    if *profile != Profile::Corpus || !is_contract_error(&error) {
+                        count.transform_errors += 1;
+                        eprintln!(
+                            "{}",
+                            serde_json::json!({
+                                "dataset": dataset,
+                                "formula_id": record.formula_id,
+                                "formula": record.formula,
+                                "stage": name,
+                                "transform_error": error.to_string(),
+                            })
+                        );
+                    }
+                }
+            }
+            counts
+        })
+        .reduce(
+            || [conformance::AuditCounts::default(); 4],
+            |mut total, batch| {
+                for (total, batch) in total.iter_mut().zip(batch) {
+                    total.append(batch);
+                }
+                total
+            },
+        )
 }
 
 fn collect_formula_violations(
@@ -913,6 +1020,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn conformance_audit_checks_each_profile_and_counts_incomplete_inputs() {
+        let parse_ctx = ParseContext::shared();
+        let profiles = audit_profiles(parse_ctx).unwrap();
+        let records = [
+            data::FormulaRecord {
+                formula_id: "complete".into(),
+                formula: "x_i^2".into(),
+            },
+            data::FormulaRecord {
+                formula_id: "incomplete".into(),
+                formula: r"\frac{".into(),
+            },
+        ];
+        let counts = run_conformance_batch("fixture", &records, parse_ctx, &profiles);
+        for count in counts {
+            assert_eq!(count.checked, 1);
+            assert_eq!(count.skipped, 1);
+            assert!(!count.failed());
+        }
+    }
+
+    #[test]
     fn exception_lookup_matches_full_formula_violation_key() {
         let exceptions = vec![ContractException {
             dataset: "sample".to_string(),
@@ -944,6 +1073,7 @@ mod tests {
             limit: None,
             dry_run: false,
             skip_commit_results: false,
+            check_conformance: false,
         };
         let mut limited = base.clone();
         limited.limit = Some(100);
@@ -960,6 +1090,7 @@ mod tests {
             limit: None,
             dry_run: false,
             skip_commit_results: false,
+            check_conformance: false,
         };
         let mut reversed = base.clone();
         reversed.datasets.reverse();

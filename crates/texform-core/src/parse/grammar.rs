@@ -28,6 +28,7 @@
 
 #[path = "arguments.rs"]
 mod arguments;
+pub(crate) use arguments::validate_scalar_argument;
 
 use crate::parse::error::{
     ParseFailure, custom_error, with_default_diagnostic_kind, with_diagnostic_kind,
@@ -387,7 +388,12 @@ pub(crate) fn build_token_stream(src: &str) -> TokenStream<'_> {
             (tok, SimpleSpan::from(span))
         })
         .collect();
-    let eoi: SimpleSpan = SimpleSpan::new((), src.len()..src.len());
+    token_stream(tokens, src.len())
+}
+
+/// Wrap spanned tokens as a chumsky [`TokenStream`] whose input ends at byte `end`.
+pub(crate) fn token_stream<'a>(tokens: Vec<(Token, SimpleSpan)>, end: usize) -> TokenStream<'a> {
+    let eoi: SimpleSpan = SimpleSpan::new((), end..end);
     let stream = Stream::from_iter(tokens);
 
     fn identity(pair: (Token, SimpleSpan)) -> (Token, SimpleSpan) {

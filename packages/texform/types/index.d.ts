@@ -168,21 +168,10 @@ export type RuntimeContentMode = "math" | "text";
 /**
  * A delimiter token in {@link SyntaxNode} snapshot form: the literal `"None"`,
  * a single character (`{ Char }`), or a control sequence (`{ Control }`).
- *
- * @see {@link DelimiterValue}
+ * Runtime views use delimiter strings instead: `.`, one character, or a
+ * backslash-prefixed control sequence such as `\langle`.
  */
 export type Delimiter = "None" | { Char: string } | { Control: string };
-
-/**
- * A delimiter token in runtime view form, with a `kind` discriminator and a
- * payload. Returned by {@link Node.groupKind} for `Delimited` groups.
- *
- * @see {@link Delimiter}
- */
-export type DelimiterValue =
-  | { kind: "None" }
-  | { kind: "Char"; value: string }
-  | { kind: "Control"; value: string };
 
 /**
  * The kind of a group in {@link SyntaxNode} snapshot form: an `Explicit` brace
@@ -201,14 +190,14 @@ export type GroupKind =
  * The kind of a group in runtime view form, with a `kind` discriminator.
  * Returned by {@link Node.groupKind}; the discriminator keeps its capitalized
  * form (`'Explicit'`, `'Delimited'`, ...). A `Delimited` group carries
- * {@link DelimiterValue} `left` and `right` fields.
+ * `left` and `right` delimiter strings.
  *
  * @see {@link GroupKind}
  */
 export type GroupKindRef =
   | { kind: "Explicit" }
   | { kind: "Implicit" }
-  | { kind: "Delimited"; left: DelimiterValue; right: DelimiterValue }
+  | { kind: "Delimited"; left: string; right: string }
   | { kind: "InlineMath" };
 
 /**
@@ -339,36 +328,42 @@ export type NodeKind =
   | "alignmentTab"
   | "error";
 
+/** The delimiter form of an argument slot; `open` and `close` are present for `delimited` and `paired` forms. */
+export type ArgForm = { kind: "mandatory" | "optional" | "star" | "group" | "delimited" | "paired"; open?: string; close?: string };
+
 /**
  * A command/environment argument in runtime view form, returned by
  * {@link Node.arg} and {@link Node.argSlots}.
  *
- * Content kinds (`Math`, `Text`) carry a live `node` {@link Node} handle; leaf
+ * Content kinds (`Math`, `Text`, `OperatorName`) carry a live `node` {@link Node} handle; leaf
  * kinds (`Delimiter`, `CSName`, `Dimension`, `Integer`, `KeyVal`, `Column`,
- * `Boolean`) carry a `value`. The `kind` discriminator keeps its capitalized
+ * `Boolean`) carry a `value`. `Delimiter` values use source strings. The `kind` discriminator keeps its capitalized
  * form.
  *
- * @see {@link ArgumentValue}
+ * @see {@link ArgForm}
  */
-export type ArgRef =
+export type ArgRef = { form: ArgForm } & (
   | { kind: "Math"; node: Node }
   | { kind: "Text"; node: Node }
-  | { kind: "Delimiter"; value: DelimiterValue }
+  | { kind: "OperatorName"; node: Node }
+  | { kind: "Delimiter"; value: string }
   | { kind: "CSName"; value: string }
   | { kind: "Dimension"; value: string }
   | { kind: "Integer"; value: string }
   | { kind: "KeyVal"; value: string }
   | { kind: "Column"; value: string }
-  | { kind: "Boolean"; value: boolean };
+  | { kind: "Boolean"; value: boolean });
 
 /**
- * An argument value supplied to the `create*` and {@link Document.setArg}
- * staging methods. It shares the shape of {@link ArgRef}: content kinds carry a
- * `node`, leaf kinds carry a `value`.
- *
- * @see {@link ArgRef}
+ * A slot value accepted by construction and editing methods: a `string` is the source written inside the slot's boundaries, a detached {@link Node} is content, `boolean` sets a star slot, `null` omits an optional slot, and `{ value, open, close }` selects an explicit delimiter pair.
  */
-export type ArgValueInput = ArgRef;
+export type Arg = Node | string | boolean | null | { value: Arg; open: string; close: string };
+/**
+ * Options for the `create*` methods. `mode` is the context mode of the detached subtree. It defaults to text for `createInlineMath`, math for
+ * `createDelimitedGroup`, `createScripted`, `createPrime`, and `createInfix`, the group's own
+ * mode for `createGroup`, and the document root mode otherwise.
+ */
+export interface ConstructionOptions { mode?: RuntimeContentMode; }
 
 /**
  * The outcome of {@link Parser.parse} (and {@link TransformEngine.parse}): an
@@ -449,6 +444,7 @@ export interface TokenizedLatex {
  * ```
  */
 export class Document {
+  /** The immutable knowledge base bound to this document. Construction and edits are checked against it; `toLatex` is not. */
   knowledgeBase(): KnowledgeBase;
   /** Deep-copy the tree into a new document with new node identities, sharing this document's knowledge base. */
   clone(): Document;
@@ -474,6 +470,7 @@ export class Document {
    *
    * @param node - A `SyntaxNode` object, typically produced by `toSyntax()`.
    * @returns The reconstructed editable document.
+   * @remarks Throws {@link TexformConformanceError} if the snapshot does not conform to the knowledge base.
    * @example
    * ```ts
    * import { Document, Parser } from 'texform';
@@ -567,82 +564,110 @@ export class Document {
    */
   findEnvironments(name: string): Node[];
   /**
-   * Stage a detached single-character node owned by this document.
+   * Create a detached single-character node owned by this document.
    *
    * The node is not in the tree until attached with an edit method such as
-   * {@link Document.appendChild}.
+   * {@link Document.appendChild}. Every `create*` method takes `options.mode` to construct in another context; see {@link ConstructionOptions} for the defaults.
    *
-   * @param value - The single character.
-   * @returns The staged node handle.
+   * @param value - The single character. `"&"` is a literal ampersand written `\&`.
+   * @returns The detached node handle.
+   * @remarks Throws {@link TexformConformanceError} if the character cannot be
+   * written in that mode, such as `\`, `^`, `~`, or a math-mode space, and
+   * {@link TexformEditError} if the document is read-only.
    */
-  createChar(value: string): Node;
+  createChar(value: string, options?: ConstructionOptions): Node;
+  /** Create a detached text node. Throws {@link TexformConformanceError} if the text cannot be written in the mode. */
+  createText(value: string, options?: ConstructionOptions): Node;
+  /** Create a detached active-space node. */
+  createActiveSpace(options?: ConstructionOptions): Node;
+  /** Create a detached unescaped `&` cell separator. Use `createChar("&")` for a literal ampersand. */
+  createAlignmentTab(options?: ConstructionOptions): Node;
   /**
-   * Stage a detached text node owned by this document.
+   * Create a detached brace group built in its own `mode`.
    *
-   * @param value - The text content.
-   * @returns The staged node handle.
-   */
-  createText(value: string): Node;
-  /**
-   * Stage a detached active-space node (an explicit space token).
-   *
-   * @returns The staged node handle.
-   */
-  createActiveSpace(): Node;
-  /**
-   * Stage a detached alignment-tab node, the unescaped `&` that separates
-   * cells in alignment environments. Use `createChar("&")` for a literal
-   * ampersand, which serializes as `\&`.
-   *
-   * @returns The staged node handle.
-   */
-  createAlignmentTab(): Node;
-  /**
-   * Stage a detached, empty brace group with the given content mode.
-   *
-   * @param mode - The group's content mode, `"math"` or `"text"`.
-   * @returns The staged node handle.
-   */
-  createGroup(mode: RuntimeContentMode): Node;
-  /**
-   * Stage a detached command node with the given name and arguments.
-   *
-   * @param name - The command name, without the leading backslash.
-   * @param args - The argument values, or `null`/omitted for none. Each entry
-   *   is an {@link ArgValueInput} object: content kinds carry a `node`, leaf
-   *   kinds carry a `value`.
-   * @returns The staged node handle.
+   * @param mode - The group's content mode and context.
+   * @param children - Detached nodes or source strings. A string is parsed in `mode` and its nodes are spliced into the list, so one string may yield several children.
+   * @remarks Throws {@link TexformParseError} for source that does not parse cleanly, {@link TexformConformanceError} for a child built in another mode or an infix with siblings, and {@link TexformEditError} for an attached, foreign, or repeated child.
    * @example
    * ```ts
-   * const doc = new Document();
-   * const inner = doc.createChar('x');
-   * const cmd = doc.createCommand('sqrt', [{ kind: 'Math', node: inner }]);
-   * doc.appendChild(doc.root(), cmd);
+   * const group = doc.createGroup('math', ['x^2', doc.createChar('y')]);
+   * ```
+   */
+  createGroup(mode: RuntimeContentMode, children?: (Node | string)[], options?: ConstructionOptions): Node;
+  /**
+   * Create a detached `\left...\right` group, built in math mode by default.
+   *
+   * @param left - The left delimiter source, such as `"("` or `"\\langle"`.
+   * @param right - The right delimiter source.
+   * @param children - Nodes or source strings, spliced as in {@link Document.createGroup}.
+   * @remarks Throws {@link TexformConformanceError} for a delimiter that is neither `.` nor registered in the knowledge base, plus the conditions of `createGroup`.
+   */
+  createDelimitedGroup(left: string, right: string, children?: (Node | string)[], options?: ConstructionOptions): Node;
+  /**
+   * Create a detached `$...$` group of math children, in a text context by default.
+   *
+   * @param children - Nodes or source strings, spliced as in {@link Document.createGroup}.
+   * @remarks Same failure conditions as `createGroup`.
+   */
+  createInlineMath(children?: (Node | string)[], options?: ConstructionOptions): Node;
+  /**
+   * Create a detached scripted node, built in math mode by default.
+   *
+   * @param base - The base node or source.
+   * @param sub - The subscript node or source, or `null` for none.
+   * @param sup - The superscript node or source, or `null` for none.
+   * @remarks Throws {@link TexformConformanceError} if both scripts are absent or the base is a scripted node, an infix, or an alignment tab, and {@link TexformParseError} for invalid source.
+   * @example
+   * ```ts
+   * doc.appendChild(doc.root(), doc.createScripted('x', null, '2'));
+   * ```
+   */
+  createScripted(base: Node | string, sub?: Node | string | null, sup?: Node | string | null, options?: ConstructionOptions): Node;
+  /**
+   * Create a detached run of `count` primes, built in math mode by default.
+   *
+   * @remarks Throws {@link TexformConformanceError} if `count` is not positive.
+   */
+  createPrime(count: number, options?: ConstructionOptions): Node;
+  /**
+   * Create a detached infix command such as `\over`, built in math mode by default.
+   *
+   * @param left - The left operand node or source.
+   * @param right - The right operand node or source.
+   * @param args - Values for extra slots, such as the dimension of `\above`.
+   * @remarks Throws {@link TexformConformanceError} under the conditions of `createCommand`, except the record must be infix.
+   */
+  createInfix(name: string, left: Node | string, right: Node | string, args?: Arg[] | null, options?: ConstructionOptions): Node;
+  /**
+   * Create a detached prefix command.
+   *
+   * @param name - The command name without the leading backslash. A name missing from the knowledge base creates an unknown command without arguments.
+   * @param args - Values for every signature slot, or only the required slots to omit optional and star slots. See {@link Arg}.
+   * @remarks Throws {@link TexformConformanceError} if the name is not a prefix command (the message names the right constructor, such as `createDeclarative` for `bf`), the argument count is wrong, or an argument does not fit its slot; {@link TexformParseError} for invalid source arguments.
+   * @example
+   * ```ts
+   * doc.appendChild(doc.root(), doc.createCommand('sqrt', ['x']));
    * doc.toLatex(); // '\\sqrt { x }'
    * ```
    */
-  createCommand(name: string, args?: ArgValueInput[] | null): Node;
+  createCommand(name: string, args?: Arg[] | null, options?: ConstructionOptions): Node;
+  /** Create a detached declarative command such as `\bf`. Same conditions as {@link Document.createCommand}, except the record must be declarative. */
+  createDeclarative(name: string, args?: Arg[] | null, options?: ConstructionOptions): Node;
   /**
-   * Stage a detached declarative command node (such as a font declaration).
+   * Create a detached environment.
    *
-   * @param name - The declarative command name.
-   * @param args - The argument values, or `null`/omitted for none.
-   * @returns The staged node handle.
+   * @param name - The environment name. An unknown environment takes no arguments and uses the surrounding mode.
+   * @param args - Slot values, as for {@link Document.createCommand}.
+   * @param body - A detached group in the body mode, a source string parsed in the recorded body mode, a list whose source strings are spliced as in {@link Document.createGroup}, or `null` for an empty body.
+   * @remarks Throws {@link TexformConformanceError} if an argument does not fit the signature or the body is not a group in the body mode, and {@link TexformParseError} for invalid source.
    */
-  createDeclarative(name: string, args?: ArgValueInput[] | null): Node;
+  createEnvironment(name: string, args?: Arg[] | null, body?: Node | string | (Node | string)[] | null, options?: ConstructionOptions): Node;
   /**
-   * Stage a detached environment node wrapping `body`.
+   * Parse source into a detached implicit group, in `options.mode` or the root mode.
    *
-   * @param name - The environment name.
-   * @param args - The argument values, or `null`/`undefined` for none.
-   * @param body - The environment body, which must be a group {@link Node}.
-   * @returns The staged node handle.
+   * @remarks Throws {@link TexformParseError} with the diagnostics if the source does not parse cleanly.
    */
-  createEnvironment(
-    name: string,
-    args: ArgValueInput[] | null | undefined,
-    body: Node,
-  ): Node;
+  parseFragment(source: string, options?: ConstructionOptions): Node;
   /**
    * Append `child` as the last child of `parent`.
    *
@@ -723,13 +748,13 @@ export class Document {
    */
   unwrap(group: Node): Node[];
   /**
-   * Detach the subtree rooted at `node` and return it as a staged node.
+   * Detach the subtree rooted at `node` and return it as a detached node.
    *
    * The subtree is removed from its parent but kept alive, so it can be
    * re-attached elsewhere.
    *
    * @param node - The subtree root to detach.
-   * @returns The detached node, now staged.
+   * @returns The detached node.
    * @remarks Throws {@link TexformEditError} if the document is read-only, or
    * `node` is foreign, missing, or the root.
    */
@@ -782,12 +807,18 @@ export class Document {
    *
    * @param node - The command or environment node.
    * @param index - The zero-based argument slot index.
-   * @param value - The new argument value.
+   * @param value - The new argument value; see {@link Arg}. `null` clears an optional slot.
    * @remarks Throws {@link TexformEditError} if the document is read-only,
    * `node` is foreign or missing, there is no argument slot at `index`, or
-   * `value` does not match the slot shape.
+   * `value` does not match the slot shape; {@link TexformConformanceError} if the value does not fit the slot; {@link TexformParseError} for invalid source.
    */
-  setArg(node: Node, index: number, value: ArgValueInput): void;
+  setArg(node: Node, index: number, value: Arg): void;
+  /**
+   * Rename an environment, keeping its arguments and body.
+   *
+   * @remarks Throws {@link TexformConformanceError} if the new name's signature or body mode does not fit the existing arguments and body.
+   */
+  setEnvName(node: Node, name: string): void;
   /**
    * Convert the tree to a {@link SyntaxNode} object for serde and transport.
    *
@@ -801,6 +832,7 @@ export class Document {
    * ```
    */
   toSyntax(): SyntaxNode;
+
   /**
    * Export the parse-time span side table as a list of `{id, span}` entries.
    *
@@ -1028,7 +1060,7 @@ export class Node {
    *
    * The result carries a capitalized `kind` discriminator (`'Explicit'`,
    * `'Implicit'`, `'InlineMath'`, `'Delimited'`). A `Delimited` group also
-   * carries `left` and `right` {@link DelimiterValue}s.
+   * carries `left` and `right` delimiter strings such as `'('` or `'\\langle'`.
    *
    * @returns The group kind view, or `null`.
    * @example
@@ -1139,14 +1171,14 @@ export class TexformError extends Error {
    * Discriminator naming the subsystem that raised the error: `"parse"`,
    * `"edit"`, `"config"`, `"transform"`, or `"internal"`.
    */
-  readonly kind: "parse" | "edit" | "config" | "transform" | "internal";
+  readonly kind: "parse" | "edit" | "conformance" | "config" | "transform" | "internal";
 }
 
 /**
- * Thrown when an operation requires a complete tree but parsing produced none.
+ * Thrown when source could not be parsed into a complete tree.
  *
  * {@link TransformEngine.normalize} throws this on input that cannot produce a
- * complete tree. Note that {@link Parser.parse} itself never throws — it
+ * complete tree, and `Document` construction and editing methods throw it for invalid source strings. Note that {@link Parser.parse} itself never throws — it
  * returns a {@link ParseResult} instead.
  */
 export class TexformParseError extends TexformError {
@@ -1162,6 +1194,14 @@ export class TexformParseError extends TexformError {
  * index, or mixing nodes across documents.
  */
 export class TexformEditError extends TexformError {}
+
+/** Thrown when a construction, edit, or syntax import violates the knowledge base or the document's structure. */
+export class TexformConformanceError extends TexformEditError {
+  /** The tree path where the violation was found. */
+  readonly path: string;
+  /** A stable machine-readable rule code. */
+  readonly rule: string;
+}
 
 /**
  * Thrown on invalid construction or per-call configuration: unknown package or
@@ -2108,7 +2148,17 @@ export function listPackages(): PackageInfo[];
 // `Complete` out of the public API.
 export {};
 
-/** Immutable knowledge shared by parsers, engines and documents. Enumerations are sorted by name. */
+/**
+ * Immutable knowledge shared by parsers, engines and documents.
+ *
+ * It defines the known commands, environments, characters, and delimiters that parsing, transforms, and `Document` construction and edits check against. Share one instance across a {@link Parser}, {@link TransformEngine}, and their documents. Enumerations are sorted by name and returned as copies.
+ *
+ * @example
+ * ```ts
+ * const knowledgeBase = new KnowledgeBase({ packages: ['ams'] });
+ * const { document } = new Parser({ knowledgeBase }).parse(String.raw`\frac{a}{b}`);
+ * ```
+ */
 export class KnowledgeBase {
   /** Build the knowledge base once. Throws {@link TexformConfigError} for an invalid package name or item. */
   constructor(options?: KnowledgeBaseOptions);

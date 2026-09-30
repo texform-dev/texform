@@ -63,6 +63,23 @@ All parsers, engines, and documents with omitted `knowledgeBase` share the defau
 
 The JavaScript API mirrors the Rust facade one-to-one. For the full picture — the editable document tree, transform profiles, and the architecture — see the [repository README](../../README.md).
 
+## Constructing documents
+
+Constructors check the document's knowledge base before changing the tree. Arguments use live `Node` handles, source strings, booleans for star slots, or `null` for absent slots. Supply every argument slot, or only required slots to omit optional and star slots. Paired arguments accept `{ value, open, close }`; delimiters are strings such as `"("`, `"\\rangle"`, and `"."` (invisible).
+
+```js
+const doc = new Document();
+const sqrt = doc.createCommand("sqrt", [null, "x"]);
+const scripted = doc.createScripted(sqrt, "i", "2");
+const group = doc.createDelimitedGroup("(", ")", [scripted]);
+doc.appendChild(doc.root(), group);
+console.log(doc.toLatex());
+```
+
+`createGroup`, `createDelimitedGroup`, and `createInlineMath` accept arrays of nodes or source strings; a string is parsed and all its nodes are spliced into the list, so one string may yield several children. `createEnvironment` accepts a body node, source string, array of nodes or source strings, or `null` for an empty body. Other constructors include `createPrime`, `createInfix`, and `createDeclarative`. A final `{ mode: "math" | "text" }` option selects the context of a detached subtree. It defaults to text for `createInlineMath`; math for `createDelimitedGroup`, `createScripted`, `createPrime`, and `createInfix`; the group's own mode for `createGroup`; and the document's root mode otherwise. `parseFragment(source, options)` returns a detached implicit group using the same knowledge base.
+
+Invalid shapes throw `TexformConformanceError`, a `TexformEditError` subclass with `path` and `rule`. Invalid source arguments throw `TexformParseError` with diagnostics. `Document.fromSyntax` validates error-free trees against its knowledge base; trees containing error nodes remain read-only. Failed operations leave the document unchanged. `toLatex` and `serialize` check only structure, not conformance to a knowledge base.
+
 ## License
 
 Apache-2.0.

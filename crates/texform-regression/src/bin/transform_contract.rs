@@ -9,6 +9,10 @@ use texform_regression::{config, transform_contract};
     about = "Run the transform eliminated-form contract across configured datasets."
 )]
 struct Args {
+    /// Also audit output trees from Authoring, Faithful, Corpus, and Equiv.
+    #[arg(long)]
+    check_conformance: bool,
+
     /// Dataset configuration YAML. Defaults to the texform repo regression/datasets.yaml.
     #[arg(long)]
     datasets_yaml: Option<PathBuf>,
@@ -57,6 +61,7 @@ fn run(args: Args) -> Result<ExitCode, String> {
         limit: args.limit,
         dry_run: args.dry_run,
         skip_commit_results: args.skip_commit_results,
+        check_conformance: args.check_conformance,
     })
     .map_err(|error| error.to_string())?;
 

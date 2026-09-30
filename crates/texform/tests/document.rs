@@ -2,7 +2,8 @@
 
 use texform::ContentMode as M;
 use texform::{
-    ArgValue, DelimiterValue, Document, EditError, FromSyntaxError, NodeKind, SyntaxNode,
+    Arg, ConformanceError, ConformanceRule, DelimiterValue, Document, EditError, FromSyntaxError,
+    NodeKind, SyntaxNode,
 };
 
 #[test]
@@ -88,10 +89,13 @@ fn from_syntax_rejects_invalid_prime_count_without_panicking() {
         children: vec![SyntaxNode::Prime { count: 0 }],
     };
 
-    assert_eq!(
+    assert!(matches!(
         Document::from_syntax(&syntax).expect_err("zero-count prime should be rejected"),
-        FromSyntaxError::InvalidPrimeCount
-    );
+        FromSyntaxError::Conformance(ConformanceError {
+            rule: ConformanceRule::InvalidPrimeCount,
+            ..
+        })
+    ));
 }
 
 #[test]
@@ -101,19 +105,22 @@ fn from_syntax_rejects_text_mode_prime_without_panicking() {
         children: vec![SyntaxNode::Prime { count: 1 }],
     };
 
-    assert_eq!(
+    assert!(matches!(
         Document::from_syntax(&syntax).expect_err("text-mode prime should be rejected"),
-        FromSyntaxError::PrimeInTextMode
-    );
+        FromSyntaxError::Conformance(ConformanceError {
+            rule: ConformanceRule::ModeMismatch,
+            ..
+        })
+    ));
 }
 
 #[test]
-fn build_command_via_arg_value() {
+fn build_command_via_arg() {
     let mut doc = Document::new();
     let n = doc.create_char('a').unwrap();
     let d = doc.create_char('b').unwrap();
     let frac = doc
-        .create_command("frac", vec![ArgValue::math(n), ArgValue::math(d)])
+        .create_command("frac", vec![Arg::Node(n), Arg::Node(d)])
         .unwrap();
     let root = doc.root().id();
     doc.append_child(root, frac).unwrap();
@@ -124,12 +131,13 @@ fn build_command_via_arg_value() {
 #[test]
 fn build_command_with_public_delimiter_value() {
     let mut doc = Document::new();
-    let arg = ArgValue::delimiter(DelimiterValue::Control("langle".to_string()));
-    let cmd = doc.create_command("mystery", vec![arg]).unwrap();
+    let delimiter = DelimiterValue::Control("langle".to_string());
+    let arg = Arg::Source(delimiter.to_string());
+    let cmd = doc.create_command("big", vec![arg]).unwrap();
     let root = doc.root().id();
     doc.append_child(root, cmd).unwrap();
 
-    assert_eq!(doc.to_latex().unwrap(), r"\mystery \langle");
+    assert_eq!(doc.to_latex().unwrap(), r"\big \langle");
 }
 
 #[test]

@@ -101,3 +101,18 @@ Paths below are relative to this directory and describe default result roots. `-
 | `results/counter_map/` | Counter-map data products |
 
 The commit hash belongs to this texform repository even when invoked elsewhere with `--manifest-path`. Tracked summaries omit volatile timings and formula-level details. Plain transform runs write the tracked summary; use a separate result root for diagnosis and review any intentional summary refresh.
+
+## Whole-Tree Conformance Audits
+
+The optional `--check-conformance` flag checks parser output and every transform profile against the document invariants. It is disabled by default and does not change the stored regression summary schema or the ordinary parser workload. Parser checks run after both parse timers stop; overall audit wall time includes validation and must not be compared with ordinary regression wall time.
+
+Run the complete audits without the parser's usual length filter:
+
+```bash
+cargo run --release -p texform-regression --bin parser_regression -- run --dry-run --check-conformance --max-formula-len 18446744073709551615
+cargo run --release -p texform-regression --bin transform_contract -- --dry-run --check-conformance
+```
+
+The parser command above assumes a 64-bit host. Every complete strict and nonstrict result is checked. Missing documents and trees containing `Error` nodes are counted as incomplete and skipped. The transform audit runs Authoring, Faithful, Corpus, and Equiv separately on each complete parsed document; the existing Corpus eliminated-form check and its formula-specific exceptions remain in force. Conformance failures cannot be allowed by those exceptions.
+
+Each dataset reports the number of checked and incomplete trees for each mode or profile, along with violation and transform-error counts. Every conformance failure emits a JSON record to stderr containing the dataset, formula ID, source formula, mode or profile, node path, rule code, and message, including with `--dry-run`. Redirect stderr to preserve these diagnostics. Any conformance violation, transform execution error, or unavailable selected dataset fails the audit. `--limit`, parser length filtering, or a dataset selection still narrows coverage and does not establish a complete configured-corpus audit.

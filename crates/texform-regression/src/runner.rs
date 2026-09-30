@@ -18,6 +18,18 @@ pub struct FormulaResults {
 }
 
 pub fn run_parser_regression(records: &[FormulaRecord]) -> Vec<FormulaResults> {
+    run_parser_regression_with(records, |_, _, _| {})
+}
+
+/// Run the same parse workload, invoking the observer after both parse timers stop.
+pub fn run_parser_regression_with(
+    records: &[FormulaRecord],
+    observe: impl Fn(
+        &FormulaRecord,
+        &texform_core::parse::ParseResult,
+        &texform_core::parse::ParseResult,
+    ) + Sync,
+) -> Vec<FormulaResults> {
     let strict_cfg = ParseConfig::STRICT;
     let nonstrict_cfg = ParseConfig {
         reject_unknown: false,
@@ -37,6 +49,8 @@ pub fn run_parser_regression(records: &[FormulaRecord]) -> Vec<FormulaResults> {
             let nonstrict_start = Instant::now();
             let nonstrict_output = parser.parse(&record.formula, &nonstrict_cfg);
             let nonstrict_duration = nonstrict_start.elapsed();
+
+            observe(record, &strict_output, &nonstrict_output);
 
             FormulaResults {
                 strict: ParseResult {

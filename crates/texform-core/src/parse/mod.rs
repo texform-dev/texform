@@ -19,3 +19,5 @@ pub use context::{
 
 pub use context::MutationSummary;
 pub(crate) use state::ParserState;
+
+pub(crate) use context::parse_with_context_mode;

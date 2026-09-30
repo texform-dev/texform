@@ -121,6 +121,7 @@ impl Failure {
                 kind: "internal",
                 message: format!("internal panic: {}", panic_message(payload)),
                 diagnostics: Vec::new(),
+                conformance: None,
             },
             syntax: None,
         }

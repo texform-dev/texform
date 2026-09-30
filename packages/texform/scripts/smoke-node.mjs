@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import {
   Document,
@@ -8,11 +9,49 @@ import {
   TransformEngine,
   TexformConfigError,
   TexformEditError,
+  TexformConformanceError,
   TexformParseError,
   TexformTransformError,
   listPackages,
+  serialize,
   validateArgspec,
 } from "../node/index.js";
+
+// Cases shared with the Python binding tests: both must give the same LaTeX or error class.
+const bindingCases = JSON.parse(
+  readFileSync(new URL("../../../crates/texform/tests/binding_cases.json", import.meta.url), "utf8"),
+);
+const bindingErrors = {
+  conformance: TexformConformanceError,
+  edit: TexformEditError,
+  parse: TexformParseError,
+};
+for (const testCase of bindingCases) {
+  const knowledgeBase = testCase.packages && new KnowledgeBase({ packages: testCase.packages });
+  const document = new Document({ knowledgeBase, mode: testCase.root });
+  const method = testCase.call.replace(/_(\w)/g, (_, letter) => letter.toUpperCase());
+  let latex;
+  try {
+    if (method === "serialize") {
+      latex = serialize(...testCase.args);
+    } else if (method === "fromSyntax") {
+      latex = Document.fromSyntax(testCase.args[0], { knowledgeBase }).toLatex();
+    } else {
+      const options = testCase.mode ? [{ mode: testCase.mode }] : [];
+      const node = document[method](...testCase.args, ...options);
+      if ("latex" in testCase) {
+        document.appendChild(document.root(), node);
+        latex = document.toLatex();
+      }
+    }
+  } catch (error) {
+    assert.equal(error.constructor, bindingErrors[testCase.error], `${testCase.name}: ${error}`);
+    if (testCase.rule) assert.equal(error.rule, testCase.rule, testCase.name);
+    continue;
+  }
+  assert.equal(testCase.error, undefined, `${testCase.name} should fail`);
+  assert.equal(latex, testCase.latex, testCase.name);
+}
 
 const parsed = validateArgspec("!s");
 if (!parsed.valid || parsed.argCount !== 1) {
@@ -749,3 +788,52 @@ expectError(
 
 assert(Object.isFrozen(customKnowledge));
 assert.throws(() => { customKnowledge.extra = true; }, TypeError);
+
+// Construction checks knowledge and preserves structured error information.
+const buildDoc = new Document();
+const buildSqrt = buildDoc.createCommand("sqrt", [null, "x"]);
+assert.equal(buildSqrt.arg(0), null);
+assert.equal(buildSqrt.arg(1).kind, "Math");
+const buildScript = buildDoc.createScripted(buildSqrt, "i", "2");
+const buildGroup = buildDoc.createDelimitedGroup("(", ")", [buildScript]);
+buildDoc.appendChild(buildDoc.root(), buildGroup);
+assert.equal(new Parser().parse(buildDoc.toLatex()).document.hasErrors(), false);
+const beforeFailedBuild = buildDoc.toLatex();
+assert.throws(() => buildDoc.createCommand("frac", ["x"]), error =>
+  error instanceof TexformConformanceError && error instanceof TexformEditError &&
+  typeof error.path === "string" && error.rule === "argument_count");
+assert.equal(buildDoc.toLatex(), beforeFailedBuild);
+assert.throws(() => buildDoc.parseFragment("{"), error =>
+  error instanceof TexformParseError && error.diagnostics.length > 0);
+const buildOperator = buildDoc.createCommand("operatorname", [null, "sin"]);
+assert.equal(buildOperator.arg(0).value, false);
+assert.equal(buildOperator.arg(1).kind, "OperatorName");
+assert.equal(buildDoc.createCommand("big", ["("]).arg(0).value, "(");
+assert.equal(buildDoc.createPrime(2).primeCount(), 2);
+assert.equal(buildDoc.createGroup("math", ["x", "y"]).children.length, 2);
+assert.equal(buildDoc.createEnvironment("matrix", [], ["x", "y"]).envBody().kind, "group");
+const textBuild = new Document({ mode: "text" });
+textBuild.appendChild(textBuild.root(), textBuild.createInlineMath(["x"]));
+assert.throws(() => buildDoc.createInlineMath(["x"], { mode: "math" }), TexformConformanceError);
+assert.throws(() => Document.fromSyntax({ Root: { mode: "Math", children: [{ Prime: { count: 0 } }] } }), TexformConformanceError);
+const foreignBuild = new Document().createChar("x");
+assert.throws(() => buildDoc.createCommand("sqrt", [null, foreignBuild]), TexformEditError);
+
+const physicsBuild = new Document({ knowledgeBase: new KnowledgeBase({ packages: ["base", "physics"] }) });
+const pairedBuild = physicsBuild.createCommand("qty", [{ value: "x", open: "(", close: ")" }]);
+const pairedSlot = pairedBuild.argSlots().find(arg => arg?.form.kind === "paired");
+assert(pairedSlot);
+assert.equal(pairedSlot.form.open, "(");
+assert.equal(pairedSlot.form.close, ")");
+assert.throws(() => buildDoc.createPrime(-1), TexformConformanceError);
+assert.throws(() => buildDoc.createPrime(1.5), TexformConformanceError);
+assert.throws(() => new cjs.Document().createCommand("frac", ["x"]), cjs.TexformConformanceError);
+
+for (const api of [{ Document, TexformConformanceError }, cjs]) {
+  assert.throws(() => new api.Document().createCommand("bf"), error => {
+    assert(error instanceof api.TexformConformanceError);
+    assert.equal(error.rule, "command_kind_mismatch");
+    assert.match(error.message, /declarative constructor/);
+    return true;
+  });
+}

@@ -1,5 +1,6 @@
 import type {
   Document,
+  Node,
   NormalizeReportResult,
   ParseConfig,
   Parser,
@@ -145,3 +146,15 @@ new EngineClass({ profile: "corpus", items: [] });
 parser.lookupCommand("frac", "math");
 // @ts-expect-error KnowledgeBase is a live object.
 new ParserClass({ knowledgeBase: { packages: ["base"] } });
+
+// Construction accepts source strings and live nodes, with explicit context modes.
+const constructionDoc = new DocumentClass();
+const constructedSqrt = constructionDoc.createCommand("sqrt", [null, "x"]);
+constructionDoc.createScripted(constructedSqrt, "i", "2");
+constructionDoc.createDelimitedGroup("(", "\\rangle", ["x"]);
+constructionDoc.createInlineMath(["x"], { mode: "text" });
+constructionDoc.createInfix("over", "x", "y");
+constructionDoc.createEnvironment("matrix", [], ["x", "y"]);
+constructionDoc.parseFragment("x", { mode: "math" });
+// @ts-expect-error Argument dictionaries were replaced by Arg inputs.
+constructionDoc.createCommand("sqrt", [{ kind: "Math", node: constructedSqrt }]);

@@ -18,6 +18,7 @@ export const {
   TexformError,
   TexformParseError,
   TexformEditError,
+  TexformConformanceError,
   TexformConfigError,
   TexformTransformError,
   KnowledgeBase,

@@ -141,6 +141,14 @@ pub(crate) fn binding_error_parts_to_js(parts: texform::bindings::BindingErrorPa
         if let Err(error) = js_set(&value, "kind", &parts.error.kind.into()) {
             return error;
         }
+        if let Some(conformance) = &parts.error.conformance {
+            if let Err(error) = js_set(&value, "path", &conformance.path.as_str().into()) {
+                return error;
+            }
+            if let Err(error) = js_set(&value, "rule", &conformance.rule.into()) {
+                return error;
+            }
+        }
         if parts.error.kind == "parse" {
             let diagnostics = to_js_value(&parts.error.diagnostics).unwrap_or(JsValue::NULL);
             let document = match parts.document {
@@ -163,6 +171,7 @@ fn binding_error_name(kind: &str) -> &'static str {
     match kind {
         "parse" => "TexformParseError",
         "edit" => "TexformEditError",
+        "conformance" => "TexformConformanceError",
         "config" => "TexformConfigError",
         "transform" => "TexformTransformError",
         _ => "TexformError",
@@ -170,31 +179,19 @@ fn binding_error_name(kind: &str) -> &'static str {
 }
 
 pub(crate) fn config_error_to_js(message: impl Into<String>) -> JsValue {
-    binding_error_to_js(texform::bindings::config_error_to_dto(message))
+    binding_error_to_js(texform::bindings::BindingErrorDto::new("config", message))
 }
 
 pub(crate) fn parse_message_to_js(message: impl Into<String>) -> JsValue {
-    binding_error_to_js(texform::bindings::BindingErrorDto {
-        kind: "parse",
-        message: message.into(),
-        diagnostics: Vec::new(),
-    })
+    binding_error_to_js(texform::bindings::BindingErrorDto::new("parse", message))
 }
 
 pub(crate) fn edit_message_to_js(message: impl Into<String>) -> JsValue {
-    binding_error_to_js(texform::bindings::BindingErrorDto {
-        kind: "edit",
-        message: message.into(),
-        diagnostics: Vec::new(),
-    })
+    binding_error_to_js(texform::bindings::BindingErrorDto::new("edit", message))
 }
 
 pub(crate) fn internal_message_to_js(message: impl Into<String>) -> JsValue {
-    binding_error_to_js(texform::bindings::BindingErrorDto {
-        kind: "internal",
-        message: message.into(),
-        diagnostics: Vec::new(),
-    })
+    binding_error_to_js(texform::bindings::BindingErrorDto::new("internal", message))
 }
 
 #[cfg(not(target_arch = "wasm32"))]

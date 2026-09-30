@@ -18,7 +18,7 @@ use crate::column_parser::parse_column_template;
 use crate::dimension::is_valid_dimension_unit;
 use crate::knowledge::{ArgForm, ArgSpec, DelimiterToken, ValueKind};
 use crate::lexer::Token;
-use crate::parse::ParserState;
+use crate::parse::{ParseConfig, ParseContext, ParserState};
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentSlot, ArgumentValue, ContentMode, Delimiter, GroupKind,
     SyntaxNode,
@@ -28,8 +28,76 @@ use super::{
     ArgumentParser, ContentParser, ParserError, ParserInput, ParserInputExt, TokenStream,
     TrackedNode, build_token_stream, content_block_parser_with_source, delimiter,
     insignificant_whitespace, math_atom_argument_parser, maybe_braced, maybe_braced_or_empty,
-    optional_bracketed, optional_bracketed_or_empty, text_argument_item_parser,
+    optional_bracketed, optional_bracketed_or_empty, text_argument_item_parser, token_stream,
 };
+
+/// Check that the argument parser reads a stored scalar value back from its slot.
+///
+/// The slot's token stream is the recorded boundaries around the lexed value.
+/// Values the parser rejects or normalizes, such as comments, early boundaries,
+/// or `1,5pt`, cannot be represented in the slot.
+pub(crate) fn validate_scalar_argument(
+    ctx: &ParseContext,
+    argument: &crate::ast::Argument,
+    spec: &'static ArgSpec,
+) -> Result<(), &'static str> {
+    use crate::ast::{ArgumentKind as Form, ArgumentValue as Value, Delimiter as Boundary};
+    use logos::Logos;
+
+    let raw = match &argument.value {
+        Value::CSName(raw)
+        | Value::Dimension(raw)
+        | Value::Integer(raw)
+        | Value::KeyVal(raw)
+        | Value::Column(raw) => raw,
+        _ => return Ok(()),
+    };
+    let boundary = |delimiter: &Boundary| match delimiter {
+        Boundary::None => Token::Char('.'),
+        Boundary::Char('{') => Token::LBrace,
+        Boundary::Char('}') => Token::RBrace,
+        Boundary::Char('[') => Token::LBracket,
+        Boundary::Char(']') => Token::RBracket,
+        Boundary::Char(c) => Token::Char(*c),
+        Boundary::Control(name) => Token::ControlSeq(name.clone()),
+    };
+    let (open, close) = match &argument.kind {
+        Form::Mandatory | Form::Group => (Token::LBrace, Token::RBrace),
+        Form::Optional => (Token::LBracket, Token::RBracket),
+        Form::Delimited { open, close } | Form::Paired { open, close } => {
+            (boundary(open), boundary(close))
+        }
+        Form::Star => return Err("scalar arguments cannot use star form"),
+    };
+    let mut tokens = vec![(open, SimpleSpan::from(0..0))];
+    for (token, span) in Token::lexer(raw).spanned() {
+        tokens.push((
+            token.map_err(|()| "invalid character in argument")?,
+            span.into(),
+        ));
+    }
+    tokens.push((close, SimpleSpan::from(raw.len()..raw.len())));
+
+    let config = ParseConfig::default();
+    let state = ParserState::new(ctx, &config, raw);
+    // Scalar slots never read content, so no content grammar is needed.
+    let no_content: ContentParser<'_> = empty().to(Vec::new()).boxed();
+    let parsed = argument_parser(&state, no_content.clone(), no_content, spec)
+        .then_ignore(end())
+        .parse(token_stream(tokens, raw.len()))
+        .into_output()
+        .and_then(|argument| argument.slot);
+    match parsed.map(|argument| argument.value) {
+        Some(
+            ArgumentValue::CSName(value)
+            | ArgumentValue::Dimension(value)
+            | ArgumentValue::Integer(value)
+            | ArgumentValue::KeyVal(value)
+            | ArgumentValue::Column(value),
+        ) if value == *raw => Ok(()),
+        _ => Err("the argument parser does not read this value back from its slot"),
+    }
+}
 
 /// Parsed argument slot bundled with its tracked content subtree.
 ///

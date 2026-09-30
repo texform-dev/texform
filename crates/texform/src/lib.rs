@@ -86,8 +86,9 @@ pub use config::{
     NormalizeConfig, Profile, RewriteConfig, RuleKey, TransformConfig, rule_key_from_name,
 };
 pub use document::{
-    ArgRef, ArgValue, DelimiterRef, DelimiterValue, Document, DocumentId, EditError,
-    FromSyntaxError, GroupKindRef, NodeId, NodeKind, NodeRef, NodeSpanEntry,
+    Arg, ArgKindRef, ArgRef, ConformanceError, ConformanceRule, DelimiterRef, DelimiterValue,
+    Document, DocumentId, EditError, FromSyntaxError, GroupKindRef, InMode, NodeId, NodeKind,
+    NodeRef, NodeSpanEntry,
 };
 pub use error::{Error, NormalizeError, TransformBuildError, TransformError};
 pub use knowledge::{

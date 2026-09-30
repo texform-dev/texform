@@ -33,3 +33,11 @@ uv run python -c 'import texform; texform.Parser(); print("texform ok")'
 ```
 
 The Rust test suite exercises Python objects, config conversion, and exception behavior through PyO3. The import check verifies the installed extension loads; rebuild with `maturin develop` after changing native code. CI also builds and imports a wheel, but that smoke check does not replace the behavior tests.
+
+Construction inputs are `Node | str | bool | None | Paired`, with source strings parsed in the target slot's mode. `Paired` is frozen. Preserve structured `ConformanceError.path` and `.rule` when mapping edit and syntax-import failures; source failures carry `ParseError.diagnostics`. Constructors expose `mode=` instead of Rust's borrowed `InMode` view.
+
+Run the construction type examples with a temporary checker installation (no production dependency):
+
+```bash
+MYPYPATH=python uvx mypy --strict crates/texform-python/type-tests/construction.py
+```

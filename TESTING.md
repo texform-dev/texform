@@ -12,6 +12,7 @@ Choose checks by the behavior affected. This guide owns test placement and valid
 | Phase scheduling, guards, and rule interactions | `crates/texform-transform/tests/` |
 | Python conversion and exception behavior | Embedded Python tests in `crates/texform-python/src/` |
 | JavaScript runtime behavior | `packages/texform/scripts/smoke-node.mjs` against rebuilt WASM |
+| Construction and error behavior shared by Python and JavaScript | `crates/texform/tests/binding_cases.json`, run by both binding suites |
 | TypeScript declarations | `packages/texform/type-tests/` and the package type check |
 | Command-line behavior and the `serve` protocol | `crates/texform-cli/tests/`: integration tests that drive the built `texform` binary |
 

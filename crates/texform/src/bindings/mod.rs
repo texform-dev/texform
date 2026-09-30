@@ -7,15 +7,16 @@ pub use input::{
     RewriteConfigInput, SerializeOptionsInput, TransformConfigInput,
 };
 pub use read::{ReadError, format_read_error, read, snake_to_camel};
+pub use texform_core::document::parse_char;
 
 use crate::argspec::parsed_arg_spec_slot;
 use crate::diagnostics::{
     FinalizeAstReport, FlattenGroupsReport, LowerAttributesReport, TransformReport,
 };
 use crate::{
-    ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, Document, EditError,
-    Error, FromSyntaxError, ParseDiagnostic, ParsedArgSpecSlot, SerializationTokenKind,
-    TokenizedLatex,
+    ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, ArgKindRef, ArgRef,
+    Document, EditError, Error, FromSyntaxError, GroupKindRef, NodeId, NodeRef, ParseDiagnostic,
+    ParsedArgSpecSlot, SerializationTokenKind, SerializeOptions, SyntaxNode, TokenizedLatex,
 };
 use texform_transform::{
     Attr, AttrValue, AttributeFormCounts, MathFontValue, SizeValue, StyleValue, TextFamily,
@@ -55,10 +56,7 @@ pub fn tokenized_latex_to_dto(result: TokenizedLatex) -> TokenizedLatexDto {
                     SerializationTokenKind::Raw => "raw",
                     SerializationTokenKind::Error => "error",
                 },
-                mode: match token.mode {
-                    crate::ContentMode::Math => "math",
-                    crate::ContentMode::Text => "text",
-                },
+                mode: token.mode.as_str(),
             })
             .collect(),
     }
@@ -142,6 +140,19 @@ pub struct BindingErrorDto {
     pub kind: &'static str,
     pub message: String,
     pub diagnostics: Vec<ParseDiagnostic>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conformance: Option<ConformanceErrorDto>,
+}
+
+impl BindingErrorDto {
+    pub fn new(kind: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+            diagnostics: Vec::new(),
+            conformance: None,
+        }
+    }
 }
 
 pub struct BindingErrorParts {
@@ -260,7 +271,7 @@ pub fn env_info_to_dto(record: &ActiveEnvironmentRecord) -> EnvInfoDto {
     EnvInfoDto {
         name: record.name.to_string(),
         allowed_mode: record.allowed_mode.as_str(),
-        body_mode: content_mode_to_dto_key(record.body_mode),
+        body_mode: record.body_mode.as_str(),
         spec_string: record.argspec.source.to_string(),
         from_packages: record
             .from_packages
@@ -290,47 +301,25 @@ pub fn character_info_to_dto(record: &ActiveCharacterRecord) -> CharacterInfoDto
 }
 
 pub fn normalize_error_to_parts(error: crate::NormalizeError) -> BindingErrorParts {
-    match error {
+    let kind = match error {
         Error::Parse(error) => {
             let message = error.to_string();
             let (document, diagnostics) = error.into_parts();
-            BindingErrorParts {
+            return BindingErrorParts {
                 error: BindingErrorDto {
-                    kind: "parse",
-                    message,
                     diagnostics,
+                    ..BindingErrorDto::new("parse", message)
                 },
                 document,
-            }
+            };
         }
-        Error::MissingProfile | Error::UnknownRule(_) | Error::TransformBuild(_) => {
-            BindingErrorParts {
-                error: BindingErrorDto {
-                    kind: "config",
-                    message: error.to_string(),
-                    diagnostics: Vec::new(),
-                },
-                document: None,
-            }
-        }
-        Error::KnowledgeBaseMismatch | Error::IncompleteTree | Error::Transform(_) => {
-            BindingErrorParts {
-                error: BindingErrorDto {
-                    kind: "transform",
-                    message: error.to_string(),
-                    diagnostics: Vec::new(),
-                },
-                document: None,
-            }
-        }
-        Error::Serialize(_) => BindingErrorParts {
-            error: BindingErrorDto {
-                kind: "internal",
-                message: error.to_string(),
-                diagnostics: Vec::new(),
-            },
-            document: None,
-        },
+        Error::MissingProfile | Error::UnknownRule(_) | Error::TransformBuild(_) => "config",
+        Error::KnowledgeBaseMismatch | Error::IncompleteTree | Error::Transform(_) => "transform",
+        Error::Serialize(_) => "internal",
+    };
+    BindingErrorParts {
+        error: BindingErrorDto::new(kind, error.to_string()),
+        document: None,
     }
 }
 
@@ -369,27 +358,139 @@ pub fn list_packages_to_dto() -> Vec<PackageInfoDto> {
         .collect()
 }
 
-pub fn from_syntax_error_to_dto(error: FromSyntaxError) -> BindingErrorDto {
+/// The structured part of a conformance failure; the message stays on [`BindingErrorDto`].
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct ConformanceErrorDto {
+    pub path: String,
+    pub rule: &'static str,
+}
+
+fn conformance_error_to_dto(error: crate::ConformanceError) -> BindingErrorDto {
+    let message = error.to_string();
     BindingErrorDto {
-        kind: "parse",
-        message: error.to_string(),
-        diagnostics: Vec::new(),
+        conformance: Some(ConformanceErrorDto {
+            path: error.path,
+            rule: error.rule.as_str(),
+        }),
+        ..BindingErrorDto::new("conformance", message)
+    }
+}
+
+pub fn from_syntax_error_to_dto(error: FromSyntaxError) -> BindingErrorDto {
+    match error {
+        FromSyntaxError::Conformance(error) => conformance_error_to_dto(error),
+        _ => BindingErrorDto::new("parse", error.to_string()),
     }
 }
 
 pub fn edit_error_to_dto(error: EditError) -> BindingErrorDto {
-    BindingErrorDto {
-        kind: "edit",
-        message: error.to_string(),
-        diagnostics: Vec::new(),
+    match error {
+        EditError::Conformance(error) => conformance_error_to_dto(error),
+        EditError::InvalidSource(diagnostics) => BindingErrorDto {
+            diagnostics,
+            ..BindingErrorDto::new("parse", "source fragment contains parse errors")
+        },
+        _ => BindingErrorDto::new("edit", error.to_string()),
     }
 }
 
-pub fn config_error_to_dto(message: impl Into<String>) -> BindingErrorDto {
-    BindingErrorDto {
-        kind: "config",
-        message: message.into(),
-        diagnostics: Vec::new(),
+/// Serialize a syntax root after structural checks only, for the bindings' `serialize`.
+///
+/// It needs no knowledge base and does not check knowledge conformance.
+pub fn serialize_syntax(
+    node: &SyntaxNode,
+    options: &SerializeOptions,
+) -> Result<String, BindingErrorDto> {
+    texform_core::document::Document::serialize_syntax(node, options)
+        .map_err(from_syntax_error_to_dto)
+}
+
+/// The syntax form attached to a present argument value.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct ArgKindDto {
+    pub kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub open: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub close: Option<String>,
+}
+
+impl From<ArgKindRef<'_>> for ArgKindDto {
+    fn from(kind: ArgKindRef<'_>) -> Self {
+        let (open, close) = match kind {
+            ArgKindRef::Delimited { open, close } | ArgKindRef::Paired { open, close } => {
+                (Some(open.to_string()), Some(close.to_string()))
+            }
+            _ => (None, None),
+        };
+        Self {
+            kind: kind.as_str(),
+            open,
+            close,
+        }
+    }
+}
+
+/// A present argument with its form.
+///
+/// Content arguments carry `node`, which each binding exposes as a live node
+/// handle; leaf arguments carry `value`.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct ArgRefDto {
+    pub kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<serde_json::Value>,
+    pub form: ArgKindDto,
+    #[serde(skip)]
+    pub node: Option<NodeId>,
+}
+
+/// Read argument `index` of `node`; `None` for an absent slot.
+pub fn arg_ref_to_dto(node: NodeRef<'_>, index: usize) -> Option<ArgRefDto> {
+    let form = node.arg_kind(index)?.into();
+    let (kind, value, node) = match node.arg(index)? {
+        ArgRef::Math(node) => ("Math", None, Some(node.id())),
+        ArgRef::Text(node) => ("Text", None, Some(node.id())),
+        ArgRef::OperatorName(node) => ("OperatorName", None, Some(node.id())),
+        ArgRef::Delimiter(value) => ("Delimiter", Some(value.to_string().into()), None),
+        ArgRef::CSName(value) => ("CSName", Some(value.into()), None),
+        ArgRef::Dimension(value) => ("Dimension", Some(value.into()), None),
+        ArgRef::Integer(value) => ("Integer", Some(value.into()), None),
+        ArgRef::KeyVal(value) => ("KeyVal", Some(value.into()), None),
+        ArgRef::Column(value) => ("Column", Some(value.into()), None),
+        ArgRef::Boolean(value) => ("Boolean", Some(value.into()), None),
+    };
+    Some(ArgRefDto {
+        kind,
+        value,
+        form,
+        node,
+    })
+}
+
+/// A group's kind; delimited groups carry their delimiter strings.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct GroupKindDto {
+    pub kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub left: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub right: Option<String>,
+}
+
+impl From<GroupKindRef<'_>> for GroupKindDto {
+    fn from(kind: GroupKindRef<'_>) -> Self {
+        let (kind, delimiters) = match kind {
+            GroupKindRef::Explicit => ("Explicit", None),
+            GroupKindRef::Implicit => ("Implicit", None),
+            GroupKindRef::Delimited { left, right } => ("Delimited", Some((left, right))),
+            GroupKindRef::InlineMath => ("InlineMath", None),
+        };
+        Self {
+            kind,
+            left: delimiters.map(|(left, _)| left.to_string()),
+            right: delimiters.map(|(_, right)| right.to_string()),
+        }
     }
 }
 
@@ -398,13 +499,6 @@ fn command_kind_to_dto_key(kind: texform_core::parse::CommandKind) -> &'static s
         texform_core::parse::CommandKind::Prefix => "prefix",
         texform_core::parse::CommandKind::Infix => "infix",
         texform_core::parse::CommandKind::Declarative => "declarative",
-    }
-}
-
-fn content_mode_to_dto_key(mode: texform_interface::syntax_node::ContentMode) -> &'static str {
-    match mode {
-        texform_interface::syntax_node::ContentMode::Math => "math",
-        texform_interface::syntax_node::ContentMode::Text => "text",
     }
 }
 

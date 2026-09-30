@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 use texform_regression::stats::ModeStats;
-use texform_regression::{config, data, output, runner};
+use texform_regression::{config, conformance, data, output, runner};
 
 const DEFAULT_MAX_FORMULA_LEN: usize = 10_000;
 
@@ -51,6 +51,10 @@ struct CommonArgs {
 
 #[derive(Args)]
 struct RunArgs {
+    /// Audit every complete parse tree outside the parse timers; fail on violations.
+    #[arg(long)]
+    check_conformance: bool,
+
     #[command(flatten)]
     common: CommonArgs,
 
@@ -102,6 +106,7 @@ struct VerifyArgs {
 }
 
 struct ExecutionArgs {
+    check_conformance: bool,
     limit: Option<usize>,
     offset: usize,
     skip_commit_results: bool,
@@ -179,7 +184,22 @@ fn load_context(args: &CommonArgs) -> Result<RegressionContext, String> {
 
 fn run_command(args: RunArgs) -> Result<(), String> {
     let context = load_context(&args.common)?;
+    if args.check_conformance {
+        for slug in &args.common.datasets {
+            if !context
+                .config
+                .datasets
+                .iter()
+                .any(|entry| &entry.slug == slug)
+            {
+                return Err(format!("Unknown conformance audit dataset: {slug}"));
+            }
+        }
+    }
     let selected = context.config.filter_by_slugs(&args.common.datasets);
+    if selected.is_empty() && args.check_conformance {
+        return Err("No datasets selected for conformance audit".to_string());
+    }
     if selected.is_empty() {
         eprintln!(
             "No datasets selected. Available: {:?}",
@@ -194,6 +214,7 @@ fn run_command(args: RunArgs) -> Result<(), String> {
     }
 
     let execution = ExecutionArgs {
+        check_conformance: args.check_conformance,
         limit: args.limit,
         offset: args.offset,
         skip_commit_results: args.skip_commit_results,
@@ -210,7 +231,7 @@ fn run_command(args: RunArgs) -> Result<(), String> {
         &context.commits_root,
         RunOptions {
             write: !args.dry_run,
-            strict_errors: false,
+            strict_errors: args.check_conformance,
         },
     )?;
 
@@ -250,6 +271,7 @@ fn run_refresh(args: RefreshArgs) -> Result<(), String> {
     };
     let context = load_context(&common)?;
     let execution = ExecutionArgs {
+        check_conformance: false,
         limit: None,
         offset: 0,
         skip_commit_results: false,
@@ -300,6 +322,7 @@ fn run_verify(args: VerifyArgs) -> Result<(), String> {
     let context = load_context(&args.common)?;
     let selected = selected_datasets(&context.config, &args.common.datasets, "verify")?;
     let execution = ExecutionArgs {
+        check_conformance: false,
         limit: None,
         offset: 0,
         skip_commit_results: false,
@@ -357,6 +380,7 @@ fn run_datasets(
     } else {
         None
     };
+    let mut audit_failed = false;
     let mut summaries = Vec::new();
     let mut total_tasks = 0_usize;
     let mut total_strict_failed = 0_usize;
@@ -422,6 +446,7 @@ fn run_datasets(
         } else {
             None
         };
+        let mut audit_counts = [conformance::AuditCounts::default(); 2];
         let mut processed_records = 0_usize;
         let mut commit_writer = if options.write {
             commit_info
@@ -444,7 +469,15 @@ fn run_datasets(
                 accumulator.append_filtered(filtered_count);
 
                 if !kept.is_empty() {
-                    let results = runner::run_parser_regression(&kept);
+                    let results = if args.check_conformance {
+                        let (results, counts) = conformance::run_parser_audit(&entry.slug, &kept);
+                        for (total, batch) in audit_counts.iter_mut().zip(counts) {
+                            total.append(batch);
+                        }
+                        results
+                    } else {
+                        runner::run_parser_regression(&kept)
+                    };
                     collect_slow_samples(&mut slow_nonstrict, &kept, &results, false, 5, None);
                     collect_slow_samples(
                         &mut slow_strict,
@@ -518,6 +551,12 @@ fn run_datasets(
             format_mode_stats("strict", &summary.strict),
             format_mode_stats("nonstrict", &summary.nonstrict),
         );
+        if args.check_conformance {
+            for (stage, counts) in ["strict", "nonstrict"].into_iter().zip(audit_counts) {
+                counts.report(&entry.slug, stage);
+                audit_failed |= counts.failed();
+            }
+        }
         print_slow_samples(&entry.slug, "nonstrict", &slow_nonstrict);
         print_slow_samples(&entry.slug, "strict", &slow_strict);
     }
@@ -576,6 +615,9 @@ fn run_datasets(
         }
     }
 
+    if audit_failed {
+        return Err("Parser conformance audit failed; see formula diagnostics above".to_string());
+    }
     Ok(RunResult { summaries })
 }
 
