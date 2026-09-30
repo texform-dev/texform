@@ -331,6 +331,9 @@ export type NodeKind =
 /** The delimiter form of an argument slot; `open` and `close` are present for `delimited` and `paired` forms. */
 export type ArgForm = { kind: "mandatory" | "optional" | "star" | "group" | "delimited" | "paired"; open?: string; close?: string };
 
+/** The parent slot a {@link Node} fills; `index` is set for indexed slots such as children and arguments. */
+export type NodeSlot = { kind: "child" | "arg" | "script_base" | "subscript" | "superscript" | "infix_left" | "infix_right" | "env_body"; index: number | null };
+
 /**
  * A command/environment argument in runtime view form, returned by
  * {@link Node.arg} and {@link Node.argSlots}.
@@ -820,6 +823,36 @@ export class Document {
    */
   setEnvName(node: Node, name: string): void;
   /**
+   * Resolve a path to a node handle. Paths are rooted and use the scheme of {@link Node.path}; edits shift them, so use paths read from the current tree.
+   *
+   * @remarks Throws {@link TexformEditError} if the path does not exist.
+   */
+  nodeAt(path: string): Node;
+  /** Deep-copy a subtree of this document as a detached node. */
+  cloneNode(node: Node): Node;
+  /**
+   * Copy a subtree from another document into this one as a detached node, validating it against this document's knowledge base.
+   *
+   * @remarks Throws {@link TexformConformanceError} if the subtree does not conform to this knowledge base.
+   */
+  importNode(node: Node): Node;
+  /**
+   * Set or clear the subscript of `node`. A non-scripted node becomes the base of a new scripted node; an existing scripted base is resolved automatically.
+   *
+   * @param value - The subscript node or source, or omit/`null` to clear it.
+   * @returns The resulting scripted node, or the base when clearing the last script collapses the wrapper.
+   * @remarks Throws {@link TexformConformanceError} if the base cannot carry scripts and {@link TexformParseError} for invalid source.
+   */
+  setSubscript(node: Node, value?: Arg): Node;
+  /** Set or clear the superscript of `node`; behaves like {@link Document.setSubscript}. */
+  setSuperscript(node: Node, value?: Arg): Node;
+  /** Change only the boundaries of a filled paired argument. Throws {@link TexformConformanceError} if the slot is not a filled paired slot or the delimiters are not allowed. */
+  setArgDelimiters(node: Node, index: number, open: string, close: string): void;
+  /** Change the delimiters of a `\left...\right` group. Throws {@link TexformConformanceError} for a delimiter that is neither `.` nor registered. */
+  setDelimiters(node: Node, left: string, right: string): void;
+  /** Set the number of primes in a prime node. Throws {@link TexformConformanceError} if `count` is not positive. */
+  setPrimeCount(node: Node, count: number): void;
+  /**
    * Convert the tree to a {@link SyntaxNode} object for serde and transport.
    *
    * This is the structured-data channel, distinct from the LaTeX text channel
@@ -1077,6 +1110,14 @@ export class Node {
    * @returns The slot count.
    */
   argCount(): number;
+  /** The node's current path from the root, or `null` if detached. Edits change it; {@link Document.nodeAt} resolves it. */
+  path(): string | null;
+  /** The slot this node fills in its parent, or `null` for the root and detached nodes. */
+  slot(): NodeSlot | null;
+  /** Whether the knowledge base knows this command or environment; `null` for other kinds. */
+  isKnown(): boolean | null;
+  /** The delimiter form of the argument slot at `index`, or `null` if there is no such slot. */
+  argKind(index: number): ArgForm | null;
   /**
    * The argument at `index`, or `null` if the slot is empty.
    *

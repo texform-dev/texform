@@ -63,6 +63,23 @@ Groups accept children as nodes or source strings; a string is parsed and all it
 
 Invalid construction, edits, and strict `Document.from_syntax` imports raise `ConformanceError`, an `EditError` subclass with `path` and stable `rule` attributes. Invalid source arguments raise `ParseError` with `diagnostics`. A rejected operation leaves the document unchanged. `to_latex` and `serialize` check only structure, not conformance to a knowledge base. Rename environments with `set_env_name`; `set_command_name` applies to command nodes.
 
+## Editing and locating nodes
+
+`node.path()` describes its current location, such as `root.child.0.base`; detached nodes return `None`. Save a path before copying a document, then use `copy.node_at(path)` to locate the corresponding node. Missing paths raise `EditError`. `node.slot()` returns a dictionary with a snake_case `kind` and optional `index`, while `node.is_known()` reports knowledge status for command-like nodes and environments.
+
+```python
+doc = texform.Parser().parse("x_i")["document"]
+base = doc.node_at("root.child.0.base")
+scripted = doc.set_superscript(base, "2")
+assert scripted == doc.node_at("root.child.0")
+doc.set_subscript(base, None)
+doc.set_superscript(base, None)  # Both scripts absent: collapse to the base.
+```
+
+`set_subscript` and `set_superscript` accept the same argument inputs as constructors and return the resulting wrapper or base. `set_arg` fills or clears optional slots, toggles stars, and preserves existing paired boundaries when given an ordinary value. `set_arg_delimiters` changes paired boundaries; `set_delimiters` changes a delimited group; `set_prime_count` requires a positive count.
+
+`clone_node(node)` makes a detached deep copy within the document. `import_node(node)` takes a handle from any document, copying it and checking the subtree against the destination knowledge base. Error subtrees cannot be imported from another document. The source remains unchanged, and a same-document import behaves as a clone.
+
 ## Python-specific notes
 
 - `normalize` returns `str`. `transform` updates the document and returns `None`.

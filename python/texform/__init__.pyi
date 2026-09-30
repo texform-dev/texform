@@ -545,6 +545,9 @@ GroupKindRef: TypeAlias = (
 
 
 ArgFormKind = Literal["mandatory", "optional", "star", "group", "delimited", "paired"]
+NodeSlotKind = Literal[
+    "child", "arg", "script_base", "subscript", "superscript", "infix_left", "infix_right", "env_body"
+]
 
 
 class ArgForm(TypedDict):
@@ -1443,6 +1446,125 @@ class Document:
             EditError: If the edit is invalid.
         """
 
+    def set_subscript(self, target: Node, sub: Arg) -> Node:
+        """Set or clear the subscript of ``target``.
+
+        If ``target`` is not scripted, it becomes the base of a new ``Scripted`` node; an existing scripted base is resolved automatically.
+
+        Args:
+            target: The base node or an existing ``Scripted`` node.
+            sub: The new subscript node or source, or ``None`` to clear it.
+
+        Returns:
+            The resulting ``Scripted`` node, or the base when clearing the last script collapses the wrapper.
+
+        Raises:
+            ConformanceError: If the base cannot carry scripts.
+            ParseError: If a source string does not parse cleanly.
+            EditError: If the edit is invalid.
+        """
+
+    def set_superscript(self, target: Node, sup: Arg) -> Node:
+        """Set or clear the superscript of ``target``.
+
+        Behaves like ``set_subscript`` for the superscript slot.
+
+        Args:
+            target: The base node or an existing ``Scripted`` node.
+            sup: The new superscript node or source, or ``None`` to clear it.
+
+        Returns:
+            The resulting ``Scripted`` node, or the base after a collapse.
+
+        Raises:
+            ConformanceError: If the base cannot carry scripts.
+            ParseError: If a source string does not parse cleanly.
+            EditError: If the edit is invalid.
+        """
+
+    def set_arg_delimiters(self, node: Node, index: int, open: str, close: str) -> None:
+        """Change only the boundaries of a filled paired argument.
+
+        Args:
+            node: The command-like node.
+            index: The zero-based slot index.
+            open: The new opening delimiter source.
+            close: The new closing delimiter source.
+
+        Raises:
+            ConformanceError: If the slot is not a filled paired slot or the delimiters are not allowed.
+            EditError: If the edit is invalid.
+        """
+
+    def set_delimiters(self, node: Node, left: str, right: str) -> None:
+        """Change the delimiters of a ``\\left...\\right`` group.
+
+        Args:
+            node: The delimited ``Group`` node.
+            left: The new left delimiter source.
+            right: The new right delimiter source.
+
+        Raises:
+            ConformanceError: If a delimiter is neither ``.`` nor registered in the knowledge base.
+            EditError: If the edit is invalid.
+        """
+
+    def set_prime_count(self, node: Node, count: int) -> None:
+        """Set the number of primes in a ``Prime`` node.
+
+        Args:
+            node: The ``Prime`` node.
+            count: The new count; must be positive.
+
+        Raises:
+            ConformanceError: If ``count`` is not positive.
+            EditError: If the edit is invalid.
+        """
+
+    def clone_node(self, node: Node) -> Node:
+        """Deep-copy a subtree of this document as a detached node.
+
+        Args:
+            node: The subtree root to copy.
+
+        Returns:
+            The detached copy, ready to attach.
+
+        Raises:
+            EditError: If ``node`` is foreign or missing, or the document is read-only.
+        """
+
+    def import_node(self, node: Node) -> Node:
+        """Copy a subtree from another document into this one as a detached node.
+
+        The subtree is validated against this document's knowledge base, so importing across knowledge bases can fail where ``clone_node`` cannot.
+
+        Args:
+            node: A node of another document.
+
+        Returns:
+            The detached copy, owned by this document.
+
+        Raises:
+            ConformanceError: If the subtree does not conform to this knowledge base.
+            EditError: If the edit is invalid.
+        """
+
+    def node_at(self, path: str) -> Node:
+        """Resolve a tree path to a node handle.
+
+        Paths are rooted at ``root`` and use the scheme of ``Node.path()``; use paths read from the current tree, since edits shift them.
+
+        Args:
+            path: A path such as one returned by ``Node.path()``.
+
+        Returns:
+            The node at that path.
+
+        Raises:
+            EditError: If the path does not exist.
+        """
+
     def set_arg(self, node: Node, index: int, value: Arg) -> None:
         """Set the argument at ``index`` of a command-like node or environment.
 
@@ -1456,6 +1578,11 @@ class Document:
             ParseError: If a source string does not parse cleanly.
             EditError: If the edit is invalid, including an out-of-bounds index.
         """
+
+
+class NodeSlot(TypedDict):
+    kind: NodeSlotKind
+    index: int | None
 
 
 class Node:
@@ -1484,6 +1611,26 @@ class Node:
     def __eq__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
     def __repr__(self) -> str: ...
+    def path(self) -> str | None:
+        """Return the node's current path from the root, or ``None`` if detached.
+
+        The path reflects the tree now and changes after edits; ``Document.node_at`` resolves it.
+        """
+
+    def slot(self) -> NodeSlot | None:
+        """Return the slot this node fills in its parent, or ``None`` for the root and detached nodes.
+
+        Returns:
+            A dict with the slot ``kind`` and, for indexed slots such as children and arguments, its ``index``.
+        """
+
+    def is_known(self) -> bool | None:
+        """Report whether the document's knowledge base knows this command or environment.
+
+        Returns:
+            ``True`` or ``False`` for command-like nodes and environments, ``None`` for other kinds.
+        """
+
     def document(self) -> Document:
         """Return the ``Document`` that owns this handle."""
 

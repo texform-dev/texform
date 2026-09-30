@@ -821,6 +821,80 @@ impl PyDocument {
         Self::edit(slf, &[&node], |doc| doc.set_char(node.id, value))
     }
 
+    fn set_subscript(
+        slf: &Bound<'_, Self>,
+        target: PyRef<'_, PyNode>,
+        sub: Option<Bound<'_, PyAny>>,
+    ) -> PyResult<Py<PyNode>> {
+        let sub = sub.map(|sub| py_arg(slf, &sub)).transpose()?;
+        Self::edit_node(slf, &[&target], |doc| doc.set_subscript(target.id, sub))
+    }
+
+    fn set_superscript(
+        slf: &Bound<'_, Self>,
+        target: PyRef<'_, PyNode>,
+        sup: Option<Bound<'_, PyAny>>,
+    ) -> PyResult<Py<PyNode>> {
+        let sup = sup.map(|sup| py_arg(slf, &sup)).transpose()?;
+        Self::edit_node(slf, &[&target], |doc| doc.set_superscript(target.id, sup))
+    }
+
+    fn set_arg_delimiters(
+        slf: &Bound<'_, Self>,
+        node: PyRef<'_, PyNode>,
+        index: usize,
+        open: &str,
+        close: &str,
+    ) -> PyResult<()> {
+        Self::edit(slf, &[&node], |doc| {
+            doc.set_arg_delimiters(node.id, index, open, close)
+        })
+    }
+
+    fn set_delimiters(
+        slf: &Bound<'_, Self>,
+        node: PyRef<'_, PyNode>,
+        left: &str,
+        right: &str,
+    ) -> PyResult<()> {
+        Self::edit(slf, &[&node], |doc| {
+            doc.set_delimiters(node.id, left, right)
+        })
+    }
+
+    fn set_prime_count(
+        slf: &Bound<'_, Self>,
+        node: PyRef<'_, PyNode>,
+        count: i128,
+    ) -> PyResult<()> {
+        Self::edit(slf, &[&node], |doc| {
+            doc.set_prime_count(node.id, prime_count(count))
+        })
+    }
+
+    fn clone_node(slf: &Bound<'_, Self>, node: PyRef<'_, PyNode>) -> PyResult<Py<PyNode>> {
+        Self::edit_node(slf, &[&node], |doc| doc.clone_node(node.id))
+    }
+
+    fn import_node(slf: &Bound<'_, Self>, node: PyRef<'_, PyNode>) -> PyResult<Py<PyNode>> {
+        if node.doc.bind(slf.py()).is(slf) {
+            return Self::clone_node(slf, node);
+        }
+        let source = node.doc.try_borrow(slf.py()).map_err(borrow_error)?;
+        Self::edit_node(slf, &[], |doc| doc.import_node(&source.inner, node.id))
+    }
+
+    fn node_at(slf: &Bound<'_, Self>, path: &str) -> PyResult<Py<PyNode>> {
+        let id = slf
+            .try_borrow()
+            .map_err(borrow_error)?
+            .inner
+            .node_at(path)
+            .map_err(edit_error)?
+            .id();
+        py_node(slf.py(), slf.clone().unbind(), id)
+    }
+
     fn set_arg(
         slf: &Bound<'_, Self>,
         node: PyRef<'_, PyNode>,
@@ -903,13 +977,32 @@ impl PyNode {
                     .command_name()
                     .or_else(|| node.env_name())
                     .unwrap_or("");
-                format!("<Node {:?} {name} {:?}>", node.kind(), self.id)
+                format!(
+                    "<Node {:?} {name} at {}>",
+                    node.kind(),
+                    node.path().as_deref().unwrap_or("detached")
+                )
             })
         }) {
             Some(value) => value,
             None => format!("<Node unavailable {:?}>", self.id),
         }
     }
+    fn path(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.with_ref(py, |node| node.path())
+    }
+
+    fn slot(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let slot = self.with_ref(py, |node| {
+            node.slot().map(texform::bindings::NodeSlotDto::from)
+        })?;
+        Ok(pythonize(py, &slot)?.unbind())
+    }
+
+    fn is_known(&self, py: Python<'_>) -> PyResult<Option<bool>> {
+        self.with_ref(py, |node| node.is_known())
+    }
+
     fn document(&self, py: Python<'_>) -> Py<PyDocument> {
         self.doc.clone_ref(py)
     }
@@ -2807,6 +2900,104 @@ for case in json.loads(CASES):
             )
             .unwrap();
         });
+    }
+
+    #[test]
+    fn python_editing_paths_and_imports() {
+        run_python_test(
+            cr#"
+doc = texform.Parser().parse("x_i")["document"]
+scripted = doc.node_at("root.child.0")
+base = scripted.script_base()
+assert base.path() == "root.child.0.base"
+assert base.slot() == {"kind": "script_base", "index": None}
+assert scripted.slot() == {"kind": "child", "index": 0}
+assert doc.root().slot() is None and doc.root().path() == "root"
+assert base.is_known() is None
+assert base.path() in repr(base)
+assert doc.set_superscript(base, "2") == scripted
+assert scripted.superscript() is not None
+assert doc.set_subscript(base, None) == scripted
+assert doc.set_superscript(base, None) == base
+assert base.path() == "root.child.0"
+variant = doc.copy()
+variant.set_char(variant.node_at(base.path()), "y")
+assert base.char() == "x"
+for cloned in (doc.clone_node(base), doc.import_node(base)):
+    assert cloned != base and cloned.char() == "x"
+    assert cloned.path() is None and cloned.slot() is None
+    doc.set_char(cloned, "z")
+assert base.char() == "x"
+imported = variant.import_node(base)
+assert imported.document() is variant and imported.char() == "x"
+try:
+    doc.node_at("root.child.99")
+except texform.EditError:
+    pass
+else:
+    raise AssertionError("missing path must fail")
+kb = texform.KnowledgeBase(["base", "ams", "physics"])
+source = texform.Parser(kb).parse(r"\qty(x)")["document"]
+qty = source.root().children()[0]
+assert qty.is_known() is True
+empty = texform.Document(texform.KnowledgeBase([]))
+try:
+    empty.import_node(qty)
+except texform.ConformanceError as error:
+    assert error.rule == "unknown_with_arguments"
+else:
+    raise AssertionError("cross-knowledge import must validate")
+broken = texform.Parser().parse("{")["document"]
+assert broken is not None and broken.has_errors()
+try:
+    empty.import_node(broken.root())
+except texform.ConformanceError as error:
+    assert error.rule == "error_node"
+else:
+    raise AssertionError("error subtree must fail")
+empty.append_child(empty.root(), empty.create_char("x"))
+assert empty.to_latex() == "x"
+"#,
+        );
+    }
+
+    #[test]
+    fn python_slot_and_scalar_edits_preserve_forms() {
+        run_python_test(
+            cr#"
+doc = texform.Document(texform.KnowledgeBase(["base", "ams", "physics"]))
+qty = doc.create_command("qty", [texform.Paired("x", "(", ")")])
+doc.set_arg(qty, 0, "y")
+assert qty.arg(0)["form"] == {"kind": "paired", "open": "(", "close": ")"}
+doc.set_arg_delimiters(qty, 0, "[", "]")
+assert qty.arg(0)["form"] == {"kind": "paired", "open": "[", "close": "]"}
+sqrt = doc.create_command("sqrt", ["x"])
+doc.set_arg(sqrt, 0, "3")
+assert sqrt.arg(0)["form"]["kind"] == "optional"
+doc.set_arg(sqrt, 0, None)
+assert sqrt.arg(0) is None
+operator = doc.create_command("operatorname", ["sn"])
+doc.set_arg(operator, 0, True)
+assert operator.arg(0)["value"] is True
+doc.set_arg(operator, 0, None)
+assert operator.arg(0)["value"] is False
+assert operator.arg(1)["kind"] == "OperatorName"
+group = doc.create_delimited_group("(", ")", ["x"])
+doc.set_delimiters(group, r"\langle", r"\rangle")
+assert group.group_kind()["left"] == r"\langle"
+prime = doc.create_prime(1)
+doc.set_prime_count(prime, 3)
+assert prime.prime_count() == 3
+for count in (0, -1):
+    try:
+        doc.set_prime_count(prime, count)
+    except texform.ConformanceError as error:
+        assert error.rule == "invalid_prime_count"
+    else:
+        raise AssertionError("non-positive primes must fail")
+assert prime.prime_count() == 3
+"#,
+        );
     }
 
     #[test]

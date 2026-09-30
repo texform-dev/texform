@@ -13,6 +13,30 @@ pub enum NodeSlot {
     EnvBody,
 }
 
+impl NodeSlot {
+    /// The snake_case slot kind used by bindings.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Child(_) => "child",
+            Self::Arg(_) => "arg",
+            Self::ScriptBase => "script_base",
+            Self::Subscript => "subscript",
+            Self::Superscript => "superscript",
+            Self::InfixLeft => "infix_left",
+            Self::InfixRight => "infix_right",
+            Self::EnvBody => "env_body",
+        }
+    }
+
+    /// The child or argument index, for indexed slots.
+    pub const fn index(self) -> Option<usize> {
+        match self {
+            Self::Child(index) | Self::Arg(index) => Some(index),
+            _ => None,
+        }
+    }
+}
+
 impl From<Slot> for NodeSlot {
     fn from(slot: Slot) -> Self {
         match slot {
@@ -28,7 +52,7 @@ impl From<Slot> for NodeSlot {
     }
 }
 
-/// Writes the compact path segment used by conformance errors and
+/// Writes the compact path segment used by [`NodeRef::path`] and
 /// [`Document::node_spans`], such as `child.2`, `arg.0.content`, or `sub`.
 impl std::fmt::Display for NodeSlot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -45,7 +69,60 @@ impl std::fmt::Display for NodeSlot {
     }
 }
 
+impl NodeRef<'_> {
+    /// Current root-relative path, or `None` for any node in a detached subtree.
+    /// Sibling edits may change this path without changing the node's identity.
+    pub fn path(&self) -> Option<String> {
+        let path = self.doc.conformance_path(self.raw);
+        path.starts_with("root").then_some(path)
+    }
+
+    /// Position in the immediate parent, including within detached subtrees.
+    pub fn slot(&self) -> Option<NodeSlot> {
+        self.doc.ast.slot(self.raw).map(NodeSlot::from)
+    }
+
+    /// Knowledge status for commands and environments; other node kinds return `None`.
+    pub fn is_known(&self) -> Option<bool> {
+        known_flag(self.node())
+    }
+}
+
 impl Document {
+    /// Resolve a current root-relative path in the format returned by `node_spans`.
+    /// Malformed paths, absent slots, and scalar argument values return `NodeNotFound`.
+    pub fn node_at(&self, path: &str) -> Result<NodeRef<'_>, EditError> {
+        let mut parts = path.split('.');
+        if parts.next() != Some("root") {
+            return Err(EditError::NodeNotFound);
+        }
+        let mut node = self.root();
+        while let Some(part) = parts.next() {
+            node = match part {
+                "child" => {
+                    let index = path_index(parts.next())?;
+                    node.children().nth(index)
+                }
+                "arg" => {
+                    let index = path_index(parts.next())?;
+                    if parts.next() != Some("content") {
+                        return Err(EditError::NodeNotFound);
+                    }
+                    node.arg(index).and_then(ArgRef::as_node)
+                }
+                "base" => node.script_base(),
+                "sub" => node.subscript(),
+                "sup" => node.superscript(),
+                "left" => node.infix_left(),
+                "right" => node.infix_right(),
+                "body" => node.env_body(),
+                _ => None,
+            }
+            .ok_or(EditError::NodeNotFound)?;
+        }
+        Ok(node)
+    }
+
     /// Context mode of `id`, derived from its ancestors' slots.
     pub(super) fn context_mode(&self, id: RawNodeId) -> ContentMode {
         if let Some(mode) = self.local_context(id) {
@@ -155,4 +232,15 @@ pub(super) fn path_below(ast: &Ast, top: RawNodeId, mut id: RawNodeId, label: &s
         path.push_str(&slot.to_string());
     }
     path
+}
+
+fn path_index(part: Option<&str>) -> Result<usize, EditError> {
+    let part = part.ok_or(EditError::NodeNotFound)?;
+    if part.is_empty()
+        || !part.bytes().all(|byte| byte.is_ascii_digit())
+        || (part.len() > 1 && part.starts_with('0'))
+    {
+        return Err(EditError::NodeNotFound);
+    }
+    part.parse().map_err(|_| EditError::NodeNotFound)
 }

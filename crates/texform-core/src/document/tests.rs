@@ -267,12 +267,15 @@ mod behavior {
             .try_into_document()
             .unwrap()
             .0;
+        let body = doc.root().children().next().unwrap().env_body().unwrap();
+        let body = body.id();
         let nodes = doc.ast.node_count();
         // Each operation parses a source input before a later check fails.
         doc.create_command("frac", ["y".into(), Arg::Star(true)])
             .unwrap_err();
         doc.create_environment_with_children("unknownenv", ["a".into()], vec!["x".into()])
             .unwrap_err();
+        doc.set_subscript(body, Some("i".into())).unwrap_err();
         // Spliced sources are staged node by node before the group check.
         doc.create_group(ContentMode::Math, ["a".into(), r"b \over c".into()])
             .unwrap_err();

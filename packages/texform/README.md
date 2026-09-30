@@ -80,6 +80,21 @@ console.log(doc.toLatex());
 
 Invalid shapes throw `TexformConformanceError`, a `TexformEditError` subclass with `path` and `rule`. Invalid source arguments throw `TexformParseError` with diagnostics. `Document.fromSyntax` validates error-free trees against its knowledge base; trees containing error nodes remain read-only. Failed operations leave the document unchanged. `toLatex` and `serialize` check only structure, not conformance to a knowledge base.
 
+## Editing and addressing
+
+`node.path()` returns its current rooted path, or `null` for detached nodes. `document.nodeAt(path)` resolves a path and throws if it is missing. `node.slot()` describes its parent slot using a snake_case `kind` and a nullable `index`; roots and detached nodes return `null`. Paths can change after edits, so save them before modifying the tree.
+
+```js
+const original = parser.parse("x_i").document;
+const base = original.root().children[0].scriptBase();
+const variant = original.clone();
+variant.setSuperscript(variant.nodeAt(base.path()), "2");
+```
+
+`setSubscript` and `setSuperscript` accept a node or source string and return the resulting wrapper. Omit the value, or pass `undefined` or `null`, to clear a script; clearing the last script returns the collapsed base. Passing an existing script base edits its parent wrapper. `cloneNode(node)` copies a subtree within a document; `importNode(node)` copies from the node's owning document and checks the destination knowledge base. Both return detached nodes.
+
+Use `setArgDelimiters` for a Paired argument's boundaries, `setDelimiters` for a delimited group, and `setPrimeCount` for a positive prime count. `setArg` preserves existing Paired boundaries when given an ordinary value. `node.argKind(index)` exposes the argument form (also available as `node.arg(index).form`), and `node.isKnown()` returns a boolean for commands and environments or `null` otherwise.
+
 ## License
 
 Apache-2.0.

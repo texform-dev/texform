@@ -88,7 +88,7 @@ pub use config::{
 pub use document::{
     Arg, ArgKindRef, ArgRef, ConformanceError, ConformanceRule, DelimiterRef, DelimiterValue,
     Document, DocumentId, EditError, FromSyntaxError, GroupKindRef, InMode, NodeId, NodeKind,
-    NodeRef, NodeSpanEntry,
+    NodeRef, NodeSlot, NodeSpanEntry,
 };
 pub use error::{Error, NormalizeError, TransformBuildError, TransformError};
 pub use knowledge::{

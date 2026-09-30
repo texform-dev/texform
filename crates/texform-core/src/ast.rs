@@ -1005,6 +1005,60 @@ impl Ast {
         self.adopt_child(parent, replacement, slot);
     }
 
+    /// Put `wrap(id)` in `id`'s position, with `id` as a child of the wrapper.
+    ///
+    /// `id` may occupy any slot or be a detached root. The wrapper may also
+    /// adopt other detached roots.
+    ///
+    /// # Panics
+    ///
+    /// Panics under the conditions of [`Ast::new_node`], or if the wrapper
+    /// cannot occupy `id`'s slot.
+    pub fn wrap_node(&mut self, id: NodeId, wrap: impl FnOnce(NodeId) -> Node) -> NodeId {
+        let link = self.parent(id);
+        if link.is_some() {
+            self.release_child_as_detached_root(id);
+        }
+        let wrapper = self.new_node(wrap(id));
+        if let Some(ParentLink { parent, slot }) = link {
+            self.assert_slot_shape(slot, wrapper);
+            *self.node_mut(parent).child_mut(slot) = wrapper;
+            self.adopt_child(parent, wrapper, slot);
+        }
+        wrapper
+    }
+
+    /// Put `child`, a direct child of `id`, in `id`'s position and remove `id`
+    /// with its other subtrees.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `child` is not a direct child of `id`, or if `child` cannot
+    /// occupy `id`'s slot.
+    pub fn replace_with_child(&mut self, id: NodeId, child: NodeId) {
+        assert!(id != self.root, "Cannot replace root node");
+        assert_eq!(
+            self.parent_id(child),
+            Some(id),
+            "Replacement must be a direct child"
+        );
+        let link = self.parent(id);
+        self.parent.remove(id);
+        self.detached_roots.remove(&id);
+        let node = self.nodes.remove(id).expect("Invalid NodeId");
+        for (other, _) in Self::node_edges(&node) {
+            self.release_child_as_detached_root(other);
+            if other != child {
+                self.remove_detached(other);
+            }
+        }
+        if let Some(ParentLink { parent, slot }) = link {
+            self.assert_slot_shape(slot, child);
+            *self.node_mut(parent).child_mut(slot) = child;
+            self.adopt_child(parent, child, slot);
+        }
+    }
+
     /// Remove an attached node and its entire subtree from the arena.
     ///
     /// This is implemented as [`Ast::detach`] followed by

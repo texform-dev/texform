@@ -145,7 +145,7 @@ All user-facing editing goes through `Document` and is fallible by design:
 - **Cross-document mixing is rejected.** A `NodeId` carries the identity of its owning document, so an edit referencing a node from another document fails with `EditError::ForeignNode` instead of silently corrupting an unrelated tree.
 - **Trees with errors are read-only.** If `has_errors()`, every editing method returns `EditError::ReadOnlyDocument`. Read-only-ness is fixed at construction; since the tree cannot be edited, its error count cannot change. The only use case for an error tree is inspection, so this keeps the contract simple.
 
-Setter names add `set_` to the corresponding accessor name.
+Setter names add `set_` to the corresponding accessor name; `set_delimiters` and `set_arg_delimiters` are exceptions because they change boundaries within `group_kind()` and `arg_kind(i)` without changing the kind.
 
 ## Knowledge Conformance
 
@@ -167,6 +167,16 @@ The rules are:
 `from_syntax` and `from_syntax_with` validate complete input against their knowledge base. Input containing Error nodes receives structural checks only and remains read-only; even a clean subtree of such a document is not assumed conforming. Structural checks still reject nested roots, non-group environment bodies, and zero Prime counts before arena conversion. Conformance failures include a path rooted at `root` or `detached`, a stable snake_case rule code, and a message; an invalid delimiter string not yet tied to a node has an empty path. Source parse failures carry parser diagnostics.
 
 Normal release parsing and transformation do not run an additional whole-tree conformance pass. Explicit corpus audits validate complete parser output and every transform profile; debug edits and transforms assert the invariant.
+
+### Deterministic Edits and Addressing
+
+`set_subscript` and `set_superscript` resolve a scripted base to its existing Scripted parent. Setting the final script to absence collapses the wrapper while preserving the base identity; setting absence on an ordinary node is a no-op. Wrapping a root, environment body, Infix, AlignmentTab, or text-mode node is rejected. Detached subtrees support the same operations and retain their context mode.
+
+`set_arg` can fill or clear optional slots and maps absent Star input to Boolean false. Ordinary Paired argument replacement preserves its existing boundaries; `set_arg_delimiters` changes only a filled Paired slot's boundaries and checks the knowledge-base candidates. Group delimiters, prime counts, and command/environment names have checked setters. All checks precede adopting input nodes, and source arguments parsed for a failed edit are discarded.
+
+`clone_node` returns an independent detached subtree. `import_node` also permits different knowledge bases, but validates the entire imported subtree against the destination unless the source is complete and shares its knowledge-base instance. Error-containing subtrees cannot be imported; even an Error-free subtree of an incomplete source requires validation. Copying or importing the document root returns an Implicit group. Document copies preserve knowledge identity but allocate a new document identity.
+
+`NodeRef::path` and `Document::node_at` use the existing `node_spans` paths. Paths describe the current rooted tree rather than persistent node identity; sibling edits can change indexes. Detached nodes and their descendants have no rooted path. `NodeSlot` describes their immediate parent relationship, including relationships inside detached subtrees. `arg_kind` exposes actual filled-slot forms, while empty-slot signatures remain available from the knowledge base.
 
 ## Serialization and Serde
 

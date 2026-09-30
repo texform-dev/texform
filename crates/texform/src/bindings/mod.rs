@@ -851,3 +851,19 @@ mod tests {
         assert_eq!(dto.attributes[1].emitted.prefixes, 8);
     }
 }
+
+/// Host-language description of a node's immediate parent slot.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct NodeSlotDto {
+    pub kind: &'static str,
+    pub index: Option<usize>,
+}
+
+impl From<crate::NodeSlot> for NodeSlotDto {
+    fn from(slot: crate::NodeSlot) -> Self {
+        Self {
+            kind: slot.as_str(),
+            index: slot.index(),
+        }
+    }
+}

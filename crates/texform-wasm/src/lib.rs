@@ -418,6 +418,86 @@ impl Document {
             .map_err(edit_error_to_js)
     }
 
+    #[wasm_bindgen(js_name = nodeAt)]
+    pub fn node_at(&self, path: &str) -> Result<Node, JsValue> {
+        let id = borrow_document(&self.inner)?
+            .node_at(path)
+            .map_err(edit_error_to_js)?
+            .id();
+        Ok(Node::from_parts(Rc::clone(&self.inner), id))
+    }
+
+    #[wasm_bindgen(js_name = cloneNode)]
+    pub fn clone_node(&self, node: &Node) -> Result<Node, JsValue> {
+        self.ensure_same_document(node)?;
+        let id = borrow_document_mut(&self.inner)?
+            .clone_node(node.id)
+            .map_err(edit_error_to_js)?;
+        Ok(Node::from_parts(Rc::clone(&self.inner), id))
+    }
+
+    #[wasm_bindgen(js_name = importNode)]
+    pub fn import_node(&self, node: &Node) -> Result<Node, JsValue> {
+        if Rc::ptr_eq(&self.inner, &node.document) {
+            return self.clone_node(node);
+        }
+        let source = borrow_document(&node.document)?;
+        let id = borrow_document_mut(&self.inner)?
+            .import_node(&source, node.id)
+            .map_err(edit_error_to_js)?;
+        Ok(Node::from_parts(Rc::clone(&self.inner), id))
+    }
+
+    #[wasm_bindgen(js_name = setSubscript)]
+    pub fn set_subscript(&self, node: &Node, value: JsValue) -> Result<Node, JsValue> {
+        self.ensure_same_document(node)?;
+        let value = js_optional_arg(&self.inner, value)?;
+        let id = borrow_document_mut(&self.inner)?
+            .set_subscript(node.id, value)
+            .map_err(edit_error_to_js)?;
+        Ok(Node::from_parts(Rc::clone(&self.inner), id))
+    }
+
+    #[wasm_bindgen(js_name = setSuperscript)]
+    pub fn set_superscript(&self, node: &Node, value: JsValue) -> Result<Node, JsValue> {
+        self.ensure_same_document(node)?;
+        let value = js_optional_arg(&self.inner, value)?;
+        let id = borrow_document_mut(&self.inner)?
+            .set_superscript(node.id, value)
+            .map_err(edit_error_to_js)?;
+        Ok(Node::from_parts(Rc::clone(&self.inner), id))
+    }
+
+    #[wasm_bindgen(js_name = setArgDelimiters)]
+    pub fn set_arg_delimiters(
+        &self,
+        node: &Node,
+        index: usize,
+        open: &str,
+        close: &str,
+    ) -> Result<(), JsValue> {
+        self.ensure_same_document(node)?;
+        borrow_document_mut(&self.inner)?
+            .set_arg_delimiters(node.id, index, open, close)
+            .map_err(edit_error_to_js)
+    }
+
+    #[wasm_bindgen(js_name = setDelimiters)]
+    pub fn set_delimiters(&self, node: &Node, left: &str, right: &str) -> Result<(), JsValue> {
+        self.ensure_same_document(node)?;
+        borrow_document_mut(&self.inner)?
+            .set_delimiters(node.id, left, right)
+            .map_err(edit_error_to_js)
+    }
+
+    #[wasm_bindgen(js_name = setPrimeCount)]
+    pub fn set_prime_count(&self, node: &Node, count: usize) -> Result<(), JsValue> {
+        self.ensure_same_document(node)?;
+        borrow_document_mut(&self.inner)?
+            .set_prime_count(node.id, count)
+            .map_err(edit_error_to_js)
+    }
+
     #[wasm_bindgen(js_name = setArg)]
     pub fn set_arg(&self, node: &Node, index: usize, value: JsValue) -> Result<(), JsValue> {
         self.ensure_same_document(node)?;
@@ -594,6 +674,29 @@ impl Node {
         let kind =
             self.with_ref(|node| node.group_kind().map(texform::bindings::GroupKindDto::from))?;
         binding_dto_to_js(&kind)
+    }
+
+    pub fn path(&self) -> Result<JsValue, JsValue> {
+        self.with_ref(|node| node.path().map(JsValue::from).unwrap_or(JsValue::NULL))
+    }
+
+    pub fn slot(&self) -> Result<JsValue, JsValue> {
+        let slot = self.with_ref(|node| node.slot().map(texform::bindings::NodeSlotDto::from))?;
+        binding_dto_to_js(&slot)
+    }
+
+    #[wasm_bindgen(js_name = isKnown)]
+    pub fn is_known(&self) -> Result<JsValue, JsValue> {
+        self.with_ref(|node| node.is_known().map(JsValue::from).unwrap_or(JsValue::NULL))
+    }
+
+    #[wasm_bindgen(js_name = argKind)]
+    pub fn arg_kind(&self, index: usize) -> Result<JsValue, JsValue> {
+        let form = self.with_ref(|node| {
+            node.arg_kind(index)
+                .map(texform::bindings::ArgKindDto::from)
+        })?;
+        binding_dto_to_js(&form)
     }
 
     #[wasm_bindgen(js_name = argCount)]

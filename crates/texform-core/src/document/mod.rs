@@ -19,6 +19,7 @@ mod path;
 pub use conformance::{ConformanceError, ConformanceRule};
 pub use construct::{Arg, InMode, parse_char};
 mod edit;
+mod import;
 pub use path::NodeSlot;
 #[cfg(test)]
 mod tests;
@@ -1113,6 +1114,15 @@ impl<'a> NodeRef<'a> {
             },
             GroupKind::InlineMath => GroupKindRef::InlineMath,
         }
+    }
+}
+
+/// Knowledge flag of a command-like or environment node.
+fn known_flag(node: &Node) -> Option<bool> {
+    match node {
+        Node::Command { known, .. } | Node::Environment { known, .. } => Some(*known),
+        Node::Infix { .. } | Node::Declarative { .. } => Some(true),
+        _ => None,
     }
 }
 

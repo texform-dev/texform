@@ -19,3 +19,6 @@ texform-core.workspace = true
 texform-interface.workspace = true
 texform-knowledge.workspace = true
 texform-transform.workspace = true
+
+[dev-dependencies]
+proptest = "1"

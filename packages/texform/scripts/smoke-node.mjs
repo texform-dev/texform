@@ -837,3 +837,67 @@ for (const api of [{ Document, TexformConformanceError }, cjs]) {
     return true;
   });
 }
+
+// Exercise the editing boundary through both distributed wrappers.
+for (const api of [{ Document, Parser, TexformEditError, TexformConformanceError }, cjs]) {
+  const editDoc = new api.Parser().parse("x_i").document;
+  const base = editDoc.root().children[0].scriptBase();
+  assert.deepEqual(base.slot(), { kind: "script_base", index: null });
+  assert.equal(base.path(), "root.child.0.base");
+  assert(editDoc.nodeAt(base.path()).isSameNode(base));
+  assert.equal(base.isKnown(), null);
+  assert.equal(editDoc.root().slot(), null);
+  assert.throws(() => editDoc.nodeAt("root.child.99"), api.TexformEditError);
+  const scripted = editDoc.setSuperscript(base, "2");
+  assert.equal(scripted.kind, "scripted");
+  assert.deepEqual(scripted.superscript().slot(), { kind: "superscript", index: null });
+  editDoc.setSubscript(base);
+  const collapsed = editDoc.setSuperscript(base, null);
+  assert(collapsed.isSameNode(base));
+  assert.equal(editDoc.toLatex(), "x");
+  assert.deepEqual(base.slot(), { kind: "child", index: 0 });
+  const copy = editDoc.cloneNode(base);
+  assert.equal(copy.path(), null);
+  assert.equal(copy.slot(), null);
+  assert(!copy.isSameNode(base));
+  assert.equal(editDoc.importNode(base).path(), null);
+  const destination = new api.Document();
+  const imported = destination.importNode(base);
+  destination.appendChild(destination.root(), imported);
+  destination.setChar(imported, "y");
+  assert.equal(editDoc.toLatex(), "x");
+  assert.equal(destination.toLatex(), "y");
+  const detachedScript = destination.setSubscript(destination.createChar("z"), "j");
+  assert.equal(detachedScript.path(), null);
+  assert.equal(destination.setSubscript(detachedScript, undefined).kind, "char");
+  const delimiters = destination.createDelimitedGroup("(", ")", ["x"]);
+  destination.setDelimiters(delimiters, "[", "]");
+  assert.deepEqual(delimiters.groupKind(), { kind: "Delimited", left: "[", right: "]" });
+  const prime = destination.createPrime(1);
+  destination.setPrimeCount(prime, 3);
+  assert.equal(prime.primeCount(), 3);
+  for (const invalid of [0, -1, 1.5, 2 ** 32]) {
+    assert.throws(() => destination.setPrimeCount(prime, invalid), api.TexformConformanceError);
+  }
+  const operator = destination.createCommand("operatorname", [null, "sin"]);
+  assert.equal(operator.isKnown(), true);
+  assert.equal(operator.arg(1).kind, "OperatorName");
+  assert.equal(operator.arg(1).node.kind, "group");
+  assert.deepEqual(operator.argKind(1), operator.arg(1).form);
+  assert.equal(operator.argKind(99), null);
+}
+const incompatibleImport = new Document({ knowledgeBase: new KnowledgeBase({ packages: [] }) });
+const importBefore = incompatibleImport.toLatex();
+assert.throws(() => incompatibleImport.importNode(buildOperator), TexformConformanceError);
+assert.equal(incompatibleImport.toLatex(), importBefore);
+assert.throws(() => buildDoc.cloneNode(foreignBuild), TexformEditError);
+const forbiddenScriptHost = new Document({ mode: "text" });
+const forbiddenText = forbiddenScriptHost.createText("hello");
+forbiddenScriptHost.appendChild(forbiddenScriptHost.root(), forbiddenText);
+assert.throws(() => forbiddenScriptHost.setSubscript(forbiddenText, "i"), TexformConformanceError);
+assert.equal(forbiddenScriptHost.toLatex(), "hello");
+const pairedIndex = pairedBuild.argSlots().findIndex(arg => arg?.form.kind === "paired");
+physicsBuild.setArgDelimiters(pairedBuild, pairedIndex, "[", "]");
+physicsBuild.setArg(pairedBuild, pairedIndex, "y");
+assert.deepEqual(pairedBuild.argKind(pairedIndex), { kind: "paired", open: "[", close: "]" });
+assert.equal(pairedBuild.arg(pairedIndex).node.children[0].char, "y");

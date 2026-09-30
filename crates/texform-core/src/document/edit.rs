@@ -254,6 +254,182 @@ impl Document {
         })
     }
 
+    /// Replace a subscript, wrapping the target or collapsing an empty script node.
+    pub fn set_subscript(
+        &mut self,
+        target: NodeId,
+        value: Option<Arg>,
+    ) -> Result<NodeId, EditError> {
+        self.set_script(target, value, false)
+    }
+
+    /// Replace a superscript, resolving a scripted base to its existing wrapper.
+    pub fn set_superscript(
+        &mut self,
+        target: NodeId,
+        value: Option<Arg>,
+    ) -> Result<NodeId, EditError> {
+        self.set_script(target, value, true)
+    }
+
+    fn set_script(
+        &mut self,
+        target: NodeId,
+        value: Option<Arg>,
+        upper: bool,
+    ) -> Result<NodeId, EditError> {
+        self.check_writable()?;
+        let mut raw = self.check_node_owner(target)?;
+        if raw == self.ast.root() {
+            return Err(EditError::CannotEditRoot);
+        }
+        if let Some(ParentLink {
+            parent,
+            slot: Slot::ScriptBase,
+        }) = self.ast.parent(raw)
+        {
+            raw = parent;
+        }
+        let (base, mut subscript, mut superscript) = match self.ast.node(raw) {
+            Node::Scripted {
+                base,
+                subscript,
+                superscript,
+            } => (*base, *subscript, *superscript),
+            _ if value.is_none() => return Ok(NodeId::new(self.id, raw)),
+            _ => (raw, None, None),
+        };
+        self.transact(|doc, staged| {
+            let value = value
+                .map(|value| doc.content(staged, value, ContentMode::Math))
+                .transpose()
+                .map_err(|error| error.under(&doc.conformance_path(raw)))?;
+            if let Some(child) = value {
+                doc.check_no_cycle(child, raw)?;
+            }
+            let old = std::mem::replace(
+                if upper {
+                    &mut superscript
+                } else {
+                    &mut subscript
+                },
+                value,
+            );
+            let result = if subscript.is_none() && superscript.is_none() {
+                doc.check_edited_node(raw, doc.ast.node(base))?;
+                let mode = doc.detached_modes.remove(raw);
+                doc.ast.replace_with_child(raw, base);
+                if let Some(mode) = mode {
+                    doc.detached_modes.insert(base, mode);
+                }
+                base
+            } else {
+                let proposed = Node::Scripted {
+                    base,
+                    subscript,
+                    superscript,
+                };
+                doc.check_edited_node(raw, &proposed)?;
+                if let Some(child) = value {
+                    doc.detached_modes.remove(child);
+                }
+                if base == raw {
+                    let mode = doc.detached_modes.remove(raw);
+                    let wrapper = doc.ast.wrap_node(raw, |_| proposed);
+                    if let Some(mode) = mode {
+                        doc.detached_modes.insert(wrapper, mode);
+                    }
+                    wrapper
+                } else {
+                    doc.ast.replace_node(raw, proposed);
+                    if let Some(old) = old {
+                        doc.ast.remove_detached(old);
+                    }
+                    raw
+                }
+            };
+            doc.debug_assert_conformance();
+            Ok(NodeId::new(doc.id, result))
+        })
+    }
+
+    /// Change only the actual boundaries of a filled paired argument.
+    pub fn set_arg_delimiters(
+        &mut self,
+        id: NodeId,
+        index: usize,
+        open: impl AsRef<str>,
+        close: impl AsRef<str>,
+    ) -> Result<(), EditError> {
+        self.check_writable()?;
+        let raw = self.check_node_owner(id)?;
+        let mut proposed = self.ast.node(raw).clone();
+        let args = match &mut proposed {
+            Node::Command { args, .. }
+            | Node::Infix { args, .. }
+            | Node::Declarative { args, .. }
+            | Node::Environment { args, .. } => args,
+            _ => {
+                return Err(EditError::SlotShapeMismatch {
+                    expected: "command-like node",
+                });
+            }
+        };
+        let slot = args.get_mut(index).ok_or(EditError::IndexOutOfBounds)?;
+        let Some(Argument {
+            kind:
+                ArgumentKind::Paired {
+                    open: left,
+                    close: right,
+                },
+            ..
+        }) = slot
+        else {
+            return Err(EditError::SlotShapeMismatch {
+                expected: "filled paired argument",
+            });
+        };
+        (*left, *right) = parse_delimiters(open.as_ref(), close.as_ref())
+            .map_err(|error| error.under(&format!("{}.arg.{index}", self.conformance_path(raw))))?;
+        self.commit_payload(raw, proposed)
+    }
+
+    /// Change the delimiters of a delimited group.
+    pub fn set_delimiters(
+        &mut self,
+        id: NodeId,
+        left: impl AsRef<str>,
+        right: impl AsRef<str>,
+    ) -> Result<(), EditError> {
+        self.check_writable()?;
+        let raw = self.check_node_owner(id)?;
+        let mut proposed = self.ast.node(raw).clone();
+        let Node::Group {
+            kind: GroupKind::Delimited { left: l, right: r },
+            ..
+        } = &mut proposed
+        else {
+            return Err(EditError::SlotShapeMismatch {
+                expected: "delimited group",
+            });
+        };
+        (*l, *r) = parse_delimiters(left.as_ref(), right.as_ref())
+            .map_err(|error| error.under(&self.conformance_path(raw)))?;
+        self.commit_payload(raw, proposed)
+    }
+
+    /// Set a positive prime count on a prime node.
+    pub fn set_prime_count(&mut self, id: NodeId, count: usize) -> Result<(), EditError> {
+        self.check_writable()?;
+        let raw = self.check_node_owner(id)?;
+        if !matches!(self.ast.node(raw), Node::Prime { .. }) {
+            return Err(EditError::SlotShapeMismatch {
+                expected: "prime node",
+            });
+        }
+        self.commit_payload(raw, Node::Prime { count })
+    }
+
     /// Wrap a group-child target with a detached root/group wrapper.
     pub fn wrap(&mut self, target: NodeId, wrapper: NodeId) -> Result<NodeId, EditError> {
         self.check_writable()?;
@@ -366,4 +542,11 @@ impl Document {
         self.debug_assert_conformance();
         Ok(())
     }
+}
+
+fn parse_delimiters(left: &str, right: &str) -> Result<(Delimiter, Delimiter), EditError> {
+    Ok((
+        left.parse::<DelimiterValue>()?.into_ast(),
+        right.parse::<DelimiterValue>()?.into_ast(),
+    ))
 }

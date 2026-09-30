@@ -543,6 +543,39 @@ export function createBindings({
       return wrapTexformError(() => this.inner.setEnvName(unwrapNode(node), name));
     }
 
+    nodeAt(path) {
+      return wrapTexformError(() => wrapNode(this.inner.nodeAt(path)));
+    }
+
+    cloneNode(node) {
+      return wrapTexformError(() => wrapNode(this.inner.cloneNode(unwrapNode(node))));
+    }
+
+    importNode(node) {
+      return wrapTexformError(() => wrapNode(this.inner.importNode(unwrapNode(node))));
+    }
+
+    setSubscript(node, value) {
+      return wrapTexformError(() => wrapNode(this.inner.setSubscript(unwrapNode(node), unwrapArgValue(value))));
+    }
+
+    setSuperscript(node, value) {
+      return wrapTexformError(() => wrapNode(this.inner.setSuperscript(unwrapNode(node), unwrapArgValue(value))));
+    }
+
+    setArgDelimiters(node, index, open, close) {
+      return wrapTexformError(() => this.inner.setArgDelimiters(unwrapNode(node), index, open, close));
+    }
+
+    setDelimiters(node, left, right) {
+      return wrapTexformError(() => this.inner.setDelimiters(unwrapNode(node), left, right));
+    }
+
+    setPrimeCount(node, count) {
+      count = primeCount(count, node.path() ?? "detached");
+      return wrapTexformError(() => this.inner.setPrimeCount(unwrapNode(node), count));
+    }
+
     setArg(node, index, value) {
       return wrapTexformError(() =>
         this.inner.setArg(unwrapNode(node), index, unwrapArgValue(value)),
@@ -657,6 +690,22 @@ export function createBindings({
 
     groupKind() {
       return wrapTexformError(() => this.inner.groupKind());
+    }
+
+    path() {
+      return wrapTexformError(() => this.inner.path());
+    }
+
+    slot() {
+      return wrapTexformError(() => this.inner.slot());
+    }
+
+    isKnown() {
+      return wrapTexformError(() => this.inner.isKnown());
+    }
+
+    argKind(index) {
+      return wrapTexformError(() => this.inner.argKind(index));
     }
 
     argCount() {

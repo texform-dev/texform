@@ -16,6 +16,7 @@
 pub use texform_core::document::{
     Arg, ArgKindRef, ArgRef, ConformanceError, ConformanceRule, DelimiterRef, DelimiterValue,
     DocumentId, EditError, FromSyntaxError, GroupKindRef, InMode, NodeId, NodeKind, NodeRef,
+    NodeSlot,
 };
 pub use texform_core::serialize::SerializeOptions;
 
@@ -592,6 +593,65 @@ impl Document {
     /// the slot shape.
     pub fn set_arg(&mut self, id: NodeId, index: usize, value: Arg) -> Result<(), EditError> {
         self.inner.set_arg(id, index, value)
+    }
+
+    /// Resolve a current rooted tree path.
+    pub fn node_at(&self, path: &str) -> Result<NodeRef<'_>, EditError> {
+        self.inner.node_at(path)
+    }
+
+    /// Deep-copy a subtree within this document.
+    pub fn clone_node(&mut self, node: NodeId) -> Result<NodeId, EditError> {
+        self.inner.clone_node(node)
+    }
+
+    /// Import a subtree, validating it against this document's knowledge base.
+    pub fn import_node(&mut self, other: &Document, node: NodeId) -> Result<NodeId, EditError> {
+        self.inner.import_node(&other.inner, node)
+    }
+
+    /// Replace a subscript, resolving an existing scripted base automatically.
+    pub fn set_subscript(
+        &mut self,
+        target: NodeId,
+        value: Option<Arg>,
+    ) -> Result<NodeId, EditError> {
+        self.inner.set_subscript(target, value)
+    }
+
+    /// Replace a superscript, returning the wrapper or its collapsed base.
+    pub fn set_superscript(
+        &mut self,
+        target: NodeId,
+        value: Option<Arg>,
+    ) -> Result<NodeId, EditError> {
+        self.inner.set_superscript(target, value)
+    }
+
+    /// Change only the boundaries of a filled paired argument.
+    pub fn set_arg_delimiters(
+        &mut self,
+        node: NodeId,
+        index: usize,
+        open: impl AsRef<str>,
+        close: impl AsRef<str>,
+    ) -> Result<(), EditError> {
+        self.inner.set_arg_delimiters(node, index, open, close)
+    }
+
+    /// Change the boundaries of a delimited group.
+    pub fn set_delimiters(
+        &mut self,
+        node: NodeId,
+        left: impl AsRef<str>,
+        right: impl AsRef<str>,
+    ) -> Result<(), EditError> {
+        self.inner.set_delimiters(node, left, right)
+    }
+
+    /// Set a positive prime count.
+    pub fn set_prime_count(&mut self, node: NodeId, count: usize) -> Result<(), EditError> {
+        self.inner.set_prime_count(node, count)
     }
 
     /// Export the parse-time span side table as a list of `(path, span)` entries.

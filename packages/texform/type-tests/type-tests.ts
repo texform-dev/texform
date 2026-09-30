@@ -158,3 +158,18 @@ constructionDoc.createEnvironment("matrix", [], ["x", "y"]);
 constructionDoc.parseFragment("x", { mode: "math" });
 // @ts-expect-error Argument dictionaries were replaced by Arg inputs.
 constructionDoc.createCommand("sqrt", [{ kind: "Math", node: constructedSqrt }]);
+
+const edited: Node = constructionDoc.setSubscript(constructedSqrt, "i");
+constructionDoc.setSuperscript(edited, undefined);
+constructionDoc.setSubscript(edited, null);
+constructionDoc.setArgDelimiters(constructedSqrt, 0, "[", "]");
+constructionDoc.setDelimiters(constructedSqrt, "(", ")");
+constructionDoc.setPrimeCount(constructedSqrt, 2);
+const copied: Node = constructionDoc.cloneNode(edited);
+const imported: Node = constructionDoc.importNode(copied);
+const currentPath: string | null = imported.path();
+const currentSlot: import("../types/index.js").NodeSlot | null = imported.slot();
+const knownNode: boolean | null = imported.isKnown();
+const argumentForm: import("../types/index.js").ArgForm | null = imported.argKind(0);
+constructionDoc.nodeAt("root");
+void [currentPath, currentSlot, knownNode, argumentForm];
