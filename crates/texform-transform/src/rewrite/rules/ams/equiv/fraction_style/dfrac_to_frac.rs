@@ -1,5 +1,8 @@
 //! Rewrite the AMS display-style fraction command to frac.
 //!
+//! Explicit math style affects fraction size in scripts and other style contexts.
+//! Dropping it is suitable for equivalence comparison, not corpus labels.
+//!
 //! ```yaml
 //! proposal: dfrac-to-frac
 //! triggers:
@@ -19,7 +22,7 @@ use crate::rewrite::alias_rule;
 alias_rule! {
     pub static DFRAC_TO_FRAC: DfracToFracRule {
         key: Ams / "dfrac-to-frac",
-        level: Corpus,
+        level: Equiv,
         summary: "Rewrite the AMS display-style fraction command to frac.",
         fidelity: Reading,
         enabled_by_packages: [Ams],
@@ -38,7 +41,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: DFRAC_TO_FRAC,
-        level: Corpus,
+        level: Equiv,
         examples: [
         {
             label: plain,
