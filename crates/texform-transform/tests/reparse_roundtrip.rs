@@ -296,6 +296,9 @@ fn companion_fixes_keep_parser_shaped_trees() {
         r"\begin{array}{cc}\rm{ab} & y\end{array}",
         r"\begin{matrix} a \over b \end{matrix}",
         r"\begin{array}{c} a \over b \end{array}",
+        // Equation numbers keep math content inside text-mode tags.
+        r"\eqalignno{x&=y&(n_i)\cr}",
+        r"\eqalignno{x&=y&{\frac{n}{m}}\cr\cr z&=w&(1.2)}",
         // Lowering consumes argument containers in one run.
         r"\mathbf{{{\rm{ab}}}}",
         r"{\rm{ }}",

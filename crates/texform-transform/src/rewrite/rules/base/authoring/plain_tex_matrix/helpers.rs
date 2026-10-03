@@ -102,11 +102,11 @@ pub(super) fn linebreak_command() -> Node {
     linebreak_command_node()
 }
 
-pub(super) fn tag_command(tag: NodeId) -> Node {
+pub(super) fn tag_command(tag: NodeId, star: bool) -> Node {
     Node::Command {
         name: ams::cmd::TAG.name.to_string(),
         args: vec![
-            star_slot(false),
+            star_slot(star),
             crate::rewrite::helpers::mandatory_content_slot(tag, crate::ast::ContentMode::Text),
         ],
         known: true,
