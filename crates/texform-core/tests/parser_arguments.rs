@@ -2,7 +2,8 @@ mod support;
 
 use support::{
     assert_first_diagnostic_span_eq, collect_messages, command_item, contains_command_named,
-    contains_error_node, parse_many_with_items, parse_single_with_items, parse_with_items,
+    contains_error_node, environment_item, parse_many_with_items, parse_single_with_items,
+    parse_with_items,
 };
 use texform_core::parse::{
     AllowedMode, CommandKind, ContextItem, ParseContext, ParseContextBuilder, ParseResult,
@@ -894,6 +895,43 @@ fn text_argument_keeps_trailing_space_after_non_chunk_item() {
             Some(&SyntaxNode::Text(" ".to_string())),
             "{source}: unexpected children: {children:?}"
         );
+    }
+}
+
+#[test]
+fn text_environment_keeps_trailing_space_before_its_end() {
+    // The same trailing space must not hide the `\end` of a text environment,
+    // including a whitespace-only body and an unknown environment.
+    let items = [
+        text_command_item(),
+        environment_item("textenv", AllowedMode::Text, ContentMode::Text, ""),
+    ];
+    for (name, reject_unknown) in [("textenv", true), ("unknown", false)] {
+        for body in ["{} ", "$x$ ", " "] {
+            let source = format!(r"\text{{\begin{{{name}}}{body}\end{{{name}}}}}");
+            let output = parse_with_items(&items, &source, reject_unknown);
+            assert!(
+                output.diagnostics.is_empty(),
+                "{source}: unexpected diagnostics: {:?}",
+                output.diagnostics
+            );
+            let (_, args) = first_command(&output);
+            let ArgumentValue::TextContent(content) = &expect_arg(&args[0]).value else {
+                panic!("{source}: expected text content, got {:?}", args[0]);
+            };
+            let SyntaxNode::Environment { body, .. } = content else {
+                panic!("{source}: expected environment, got {content:?}");
+            };
+            let last = match body.as_ref() {
+                SyntaxNode::Group { children, .. } => children.last(),
+                node => Some(node),
+            };
+            assert_eq!(
+                last,
+                Some(&SyntaxNode::Text(" ".to_string())),
+                "{source}: unexpected body: {body:?}"
+            );
+        }
     }
 }
 

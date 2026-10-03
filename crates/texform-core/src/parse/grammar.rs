@@ -2956,10 +2956,10 @@ where
             input.rewind(checkpoint.clone());
             let at_stop = input.parse(stop_boundary.clone()).is_ok();
             input.rewind(checkpoint.clone());
-            if natural_end && leading_ws && !items.is_empty() {
+            if leading_ws && (at_stop || natural_end && !items.is_empty()) {
                 // Items such as `$x$`, `\^n`, or a single-token argument
                 // (`\emph k`) leave a following space unconsumed; it is still
-                // text content before the group closes.
+                // text content before the group or environment closes.
                 match input.parse(normal_item.clone()) {
                     Ok(item) => items.push(item),
                     Err(err) => {
