@@ -155,11 +155,6 @@ pub(crate) mod base {
             pub(crate) mod big_class_variants_to_big;
             pub(crate) mod bigg_class_variants_to_bigg;
         }
-        pub(crate) mod limit_placement {
-            pub(crate) mod helpers;
-            pub(crate) mod limits_drop;
-            pub(crate) mod nolimits_drop;
-        }
         pub(crate) mod root_family {
             pub(crate) mod leftroot_drop;
             pub(crate) mod uproot_drop;
@@ -187,6 +182,11 @@ pub(crate) mod base {
             pub(crate) mod big_delimiter_size_drop;
             pub(crate) mod bigg_delimiter_size_drop;
             pub(crate) mod helpers;
+        }
+        pub(crate) mod limit_placement {
+            pub(crate) mod helpers;
+            pub(crate) mod limits_drop;
+            pub(crate) mod nolimits_drop;
         }
         pub(crate) mod spacing_drop {
             pub(crate) mod enspace_drop;
@@ -387,8 +387,6 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::corpus::big_class_variants::Bigg_class_variants_to_Bigg::BIGG_CLASS_VARIANTS_TO_BIGG,
     &base::corpus::big_class_variants::big_class_variants_to_big::BIG_CLASS_VARIANTS_TO_BIG,
     &base::corpus::big_class_variants::bigg_class_variants_to_bigg::BIGG_CLASS_VARIANTS_TO_BIGG,
-    &base::corpus::limit_placement::limits_drop::LIMITS_DROP,
-    &base::corpus::limit_placement::nolimits_drop::NOLIMITS_DROP,
     &base::corpus::root_family::leftroot_drop::LEFTROOT_DROP,
     &base::corpus::root_family::uproot_drop::UPROOT_DROP,
     &base::corpus::spacing_drop::allowbreak_drop::ALLOWBREAK_DROP,
@@ -403,6 +401,8 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::equiv::fixed_delimiter_size::Bigg_delimiter_size_drop::BIGG_DELIMITER_SIZE_DROP,
     &base::equiv::fixed_delimiter_size::big_delimiter_size_drop::BIG_DELIMITER_SIZE_DROP,
     &base::equiv::fixed_delimiter_size::bigg_delimiter_size_drop::BIGG_DELIMITER_SIZE_DROP,
+    &base::equiv::limit_placement::limits_drop::LIMITS_DROP,
+    &base::equiv::limit_placement::nolimits_drop::NOLIMITS_DROP,
     &base::equiv::spacing_drop::enspace_drop::ENSPACE_DROP,
     &base::equiv::spacing_drop::qquad_drop::QQUAD_DROP,
     &base::equiv::spacing_drop::quad_drop::QUAD_DROP,

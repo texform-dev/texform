@@ -163,7 +163,7 @@ fn fixed_delimiter_size_rules_are_enabled_only_by_the_equiv_profile() {
 }
 
 #[test]
-fn limit_placement_rules_are_enabled_by_the_corpus_profile() {
+fn limit_placement_rules_are_enabled_only_by_the_equiv_profile() {
     let parse_ctx = ParseContext::from_packages(&["base"]);
     let corpus =
         TransformContext::from_build_config(BuildConfig::profile(Profile::Corpus), &parse_ctx)
@@ -178,8 +178,8 @@ fn limit_placement_rules_are_enabled_by_the_corpus_profile() {
                 .rewrite_plan()
                 .rules()
                 .iter()
-                .any(|rule| rule.meta().key.name == rule_name),
-            "{rule_name} should be enabled by the corpus profile"
+                .all(|rule| rule.meta().key.name != rule_name),
+            "{rule_name} should not be enabled by the corpus profile"
         );
         assert!(
             equiv
