@@ -6,7 +6,10 @@
 //!   - cmd:eqalign
 //! consumes:
 //!   eliminates: cmd:eqalign
-//!   touches: cmd:cr
+//!   touches:
+//!     - cmd:cr
+//!     - 'cmd:\'
+//!     - cmd:newline
 //! produces: env:aligned
 //! rewrite_patterns:
 //!   - {from: '\eqalign{#1 \cr #2}', to: '\begin{aligned} #1 \\ #2 \end{aligned}'}
@@ -29,7 +32,7 @@ define_rule! {
         triggers: cmd_targets![&base::cmd::EQALIGN],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::EQALIGN],
-            touches: cmd_targets![&base::cmd::CR],
+            touches: cmd_targets![&base::cmd::CR, &base::cmd::_BACKSLASH, &base::cmd::NEWLINE],
         },
         produces: RuleProduces {
             targets: env_targets![&ams::env::ALIGNED],
@@ -72,4 +75,17 @@ mod tests {
         ]
     }
     // END: Generated examples
+
+    transform_examples! {
+        rule: EQALIGN_TO_ALIGNED_ENV,
+        level: Authoring,
+        examples: [
+            {
+                label: keeps_starred_row_separators,
+                packages: ["base", "ams"],
+                input: r"\eqalign{a&=b\\*c&=d\\*}",
+                expected: r"\begin{aligned}a&=b\\*c&=d\\*\end{aligned}",
+            },
+        ]
+    }
 }

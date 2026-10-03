@@ -6,7 +6,10 @@
 //!   - cmd:matrix
 //! consumes:
 //!   eliminates: cmd:matrix
-//!   touches: cmd:cr
+//!   touches:
+//!     - cmd:cr
+//!     - 'cmd:\'
+//!     - cmd:newline
 //! produces: env:matrix
 //! rewrite_patterns:
 //!   - {from: '\matrix{#1 \cr #2}', to: '\begin{matrix} #1 \\ #2 \end{matrix}'}
@@ -29,7 +32,7 @@ define_rule! {
         triggers: cmd_targets![&base::cmd::MATRIX],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::MATRIX],
-            touches: cmd_targets![&base::cmd::CR],
+            touches: cmd_targets![&base::cmd::CR, &base::cmd::_BACKSLASH, &base::cmd::NEWLINE],
         },
         produces: RuleProduces {
             targets: env_targets![&ams::env::MATRIX],
@@ -72,4 +75,29 @@ mod tests {
         ]
     }
     // END: Generated examples
+
+    transform_examples! {
+        rule: MATRIX_TO_MATRIX_ENV,
+        level: Authoring,
+        examples: [
+            {
+                label: drops_a_default_final_row_terminator,
+                packages: ["base", "ams"],
+                input: r"\matrix{a\cr b\cr}",
+                expected: r"\begin{matrix}a\\b\end{matrix}",
+            },
+            {
+                label: accepts_linebreaks_as_row_separators,
+                packages: ["base", "ams"],
+                input: r"\matrix{a&b\\c&d\\*[2pt]e&f}",
+                expected: r"\begin{matrix}a&b\\c&d\\*[2pt]e&f\end{matrix}",
+            },
+            {
+                label: keeps_a_spaced_final_row_terminator,
+                packages: ["base", "ams"],
+                input: r"\matrix{a&b\\c&d\\[2pt]}",
+                expected: r"\begin{matrix}a&b\\c&d\\[2pt]\end{matrix}",
+            },
+        ]
+    }
 }

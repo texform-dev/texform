@@ -1,7 +1,7 @@
 use texform_knowledge::builtin::{ams, base};
 use texform_knowledge::specs::{BuiltinCommandRecord, BuiltinEnvironmentRecord};
 
-use crate::ast::{ArgumentSlot, Node, NodeId};
+use crate::ast::{ArgumentSlot, ArgumentValue, Node, NodeId};
 use crate::rewrite::RuleError;
 use crate::rewrite::helpers::{linebreak_command_node, star_slot};
 use crate::rewrite::rule::{RuleEffect, RuleKey};
@@ -38,46 +38,76 @@ pub(super) fn mandatory_math_body(
 }
 
 fn cr_body_children(cx: &mut RuleContext<'_>, body: NodeId) -> Vec<NodeId> {
-    let rows = cr_rows(cx, body);
-    let row_count = rows.len();
     let mut children = Vec::new();
 
-    for (index, row) in rows.into_iter().enumerate() {
-        children.extend(row);
-        if index + 1 < row_count {
-            children.push(cx.ast.new_node(linebreak_command()));
-        }
+    for row in alignment_rows(cx, body) {
+        children.extend(row.children);
+        children.extend(row.terminator);
     }
 
     children
 }
 
-pub(super) fn cr_rows(cx: &mut RuleContext<'_>, body: NodeId) -> Vec<Vec<NodeId>> {
+/// A row of a plain-TeX alignment body and the `\\` that ends it, if any.
+pub(super) struct AlignmentRow {
+    pub children: Vec<NodeId>,
+    pub terminator: Option<NodeId>,
+}
+
+/// Splits a plain-TeX alignment body at known `\cr`, `\\`, and `\newline` row
+/// separators. `\cr` and `\newline` become `\\`, while `\\` keeps its `*` and
+/// spacing. A final separator only ends the last row, so it is dropped unless
+/// it carries `*` or spacing.
+pub(super) fn alignment_rows(cx: &mut RuleContext<'_>, body: NodeId) -> Vec<AlignmentRow> {
     let source_children = match cx.ast.node(body) {
         Node::Group { children, .. } => children.clone(),
         _ => vec![body],
     };
-    let mut rows = vec![Vec::new()];
+    let mut rows = Vec::new();
+    let mut children = Vec::new();
 
     for child in source_children {
-        if is_cr_command(cx, child) {
-            rows.push(Vec::new());
-        } else {
-            let cloned = cx.ast.clone_subtree(child);
-            rows.last_mut()
-                .expect("rows should always contain the current row")
-                .push(cloned);
+        let terminator = match cx.ast.node(child) {
+            Node::Command { name, known: true, .. } if name == base::cmd::_BACKSLASH.name => {
+                cx.ast.clone_subtree(child)
+            }
+            Node::Command { name, args, known: true }
+                if args.is_empty()
+                    && (name == base::cmd::CR.name || name == base::cmd::NEWLINE.name) =>
+            {
+                cx.ast.new_node(linebreak_command())
+            }
+            _ => {
+                children.push(cx.ast.clone_subtree(child));
+                continue;
+            }
+        };
+        rows.push(AlignmentRow {
+            children: std::mem::take(&mut children),
+            terminator: Some(terminator),
+        });
+    }
+
+    match rows.last_mut() {
+        Some(last) if children.is_empty() => {
+            if let Some(terminator) = last.terminator.take_if(|t| is_default_linebreak(cx, *t)) {
+                cx.ast.remove_detached(terminator);
+            }
         }
+        _ => rows.push(AlignmentRow { children, terminator: None }),
     }
 
     rows
 }
 
-fn is_cr_command(cx: &RuleContext<'_>, node_id: NodeId) -> bool {
-    matches!(
-        cx.ast.node(node_id),
-        Node::Command { name, args, .. } if name == base::cmd::CR.name && args.is_empty()
-    )
+fn is_default_linebreak(cx: &RuleContext<'_>, node_id: NodeId) -> bool {
+    let Node::Command { args, .. } = cx.ast.node(node_id) else {
+        return false;
+    };
+    args.iter().all(|slot| {
+        slot.as_ref()
+            .is_none_or(|arg| arg.value == ArgumentValue::Boolean(false))
+    })
 }
 
 pub(super) fn replace_with_environment(
