@@ -1,5 +1,9 @@
 //! Drop explicit limits from an audited operator while preserving attached scripts.
 //!
+//! The operator whitelist establishes notation identity, not default placement.
+//! Without math-style context, dropping the modifier may move visible scripts.
+//! This projection is suitable only for equivalence comparison.
+//!
 //! ```yaml
 //! proposal: limits-drop
 //! triggers:
@@ -22,7 +26,7 @@ use crate::rewrite::{cmd_targets, define_rule};
 define_rule! {
     pub static LIMITS_DROP: LimitsDropRule {
         key: Base / "limits-drop",
-        level: Corpus,
+        level: Equiv,
         summary: "Drop explicit limits from an audited operator while preserving attached scripts.",
         fidelity: Reading,
         enabled_by_packages: [Base],
@@ -48,7 +52,7 @@ mod tests {
     // START: Generated examples; DO NOT modify
     transform_examples! {
         rule: LIMITS_DROP,
-        level: Corpus,
+        level: Equiv,
         examples: [
         {
             label: base_bare,
@@ -98,7 +102,7 @@ mod tests {
 
     transform_examples! {
         rule: LIMITS_DROP,
-        level: Corpus,
+        level: Equiv,
         examples: [
         {
             label: preserves_isolated_modifier,
