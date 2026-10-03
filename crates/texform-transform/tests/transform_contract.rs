@@ -202,7 +202,12 @@ fn fraction_style_equiv_rules_are_enabled_only_by_the_equiv_profile() {
         TransformContext::from_build_config(BuildConfig::profile(Profile::Equiv), &parse_ctx)
             .expect("equiv transform context should build");
 
-    for rule_name in ["cfrac-to-frac", "dbinom-and-tbinom-to-binom"] {
+    for rule_name in [
+        "cfrac-to-frac",
+        "dbinom-and-tbinom-to-binom",
+        "dfrac-to-frac",
+        "tfrac-to-frac",
+    ] {
         assert!(
             corpus
                 .rewrite_plan()
