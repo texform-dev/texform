@@ -1,4 +1,6 @@
-//! Rewrite eqalignno to the standard align environment.
+//! Rewrite eqalignno to the standard align* environment.
+//!
+//! The third alignment cell is mathematical content, not a text-only equation number. A complete outer parenthesis pair becomes \tag; other nonempty cells use \tag* so no parentheses are added. Rows without a numbering cell get no tag, matching \eqalignno, which never numbers rows automatically.
 //!
 //! ```yaml
 //! proposal: eqalignno-to-align-env
@@ -8,10 +10,10 @@
 //!   eliminates: cmd:eqalignno
 //!   touches: cmd:cr
 //! produces:
-//!   - env:align
+//!   - env:align*
 //!   - cmd:tag
 //! rewrite_patterns:
-//!   - {from: '\eqalignno{#1&#2&(#3) \cr #4&#5&(#6)}', to: '\begin{align} #1&#2 \tag{#3}\\ #4&#5 \tag{#6} \end{align}'}
+//!   - {from: '\eqalignno{#1&#2&(#3) \cr #4&#5&(#6)}', to: '\begin{align*} #1&#2 \tag{#3}\\ #4&#5 \tag{#6} \end{align*}'}
 //! ```
 
 use texform_knowledge::builtin::ams;
@@ -20,7 +22,7 @@ use texform_knowledge::builtin::base;
 use super::helpers::{
     cr_rows, linebreak_command, mandatory_math_body, replace_with_environment, tag_command,
 };
-use crate::ast::{Node, NodeId};
+use crate::ast::{ContentMode, GroupKind, Node, NodeId};
 use crate::rewrite::RuleError;
 use crate::rewrite::rule::{RuleConsumes, RuleProduces, RuleTarget};
 use crate::rewrite::rule_context::RuleContext;
@@ -30,7 +32,7 @@ define_rule! {
     pub static EQALIGNNO_TO_ALIGN_ENV: EqalignnoToAlignEnvRule {
         key: Base / "eqalignno-to-align-env",
         level: Authoring,
-        summary: "Rewrite eqalignno to the standard align environment.",
+        summary: "Rewrite eqalignno to the standard align* environment.",
         fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::EQALIGNNO],
@@ -39,7 +41,7 @@ define_rule! {
             touches: cmd_targets![&base::cmd::CR],
         },
         produces: RuleProduces {
-            targets: &[RuleTarget::Environment(&ams::env::ALIGN), RuleTarget::Command(&ams::cmd::TAG)],
+            targets: &[RuleTarget::Environment(&ams::env::ALIGN_STAR), RuleTarget::Command(&ams::cmd::TAG)],
         },
         apply(rule, cx, node_id) {
             let Some(command) = cx.match_command(node_id, &base::cmd::EQALIGNNO) else {
@@ -52,79 +54,128 @@ define_rule! {
                 &command.args[0],
                 base::cmd::EQALIGNNO.name,
             )?;
-            let rows = cr_rows(cx, body);
+            let mut rows = cr_rows(cx, body);
+            // A final \cr terminates its row and leaves one empty trailing segment.
+            // Dropping only that segment keeps internal and explicit final empty rows.
+            if rows.len() > 1 && rows.last().is_some_and(Vec::is_empty) {
+                rows.pop();
+            }
             let row_count = rows.len();
             let mut children = Vec::new();
 
             for (index, row) in rows.into_iter().enumerate() {
                 let (row, tag) = split_eqalignno_row(Self::KEY, cx, row)?;
                 children.extend(row);
-                children.push(cx.ast.new_node(tag_command(tag)));
+                if let Some(tag) = tag {
+                    children.push(cx.ast.new_node(tag));
+                }
                 if index + 1 < row_count {
                     children.push(cx.ast.new_node(linebreak_command()));
                 }
             }
 
-            replace_with_environment(cx, node_id, &ams::env::ALIGN, Vec::new(), children);
+            replace_with_environment(cx, node_id, &ams::env::ALIGN_STAR, Vec::new(), children);
             Ok(crate::rewrite::rule::RuleEffect::Applied)
         }
     }
 }
 
+/// Splits off the numbering cell after the second top-level `&` and returns
+/// the remaining row with the tag command for a nonempty numbering cell.
 fn split_eqalignno_row(
     rule: crate::rewrite::rule::RuleKey,
     cx: &mut RuleContext<'_>,
     mut row: Vec<NodeId>,
-) -> Result<(Vec<NodeId>, NodeId), RuleError> {
-    let Some(last) = row.last().copied() else {
-        return Err(cx.for_rule(rule).invalid_shape(r"\eqalignno row should not be empty"));
-    };
-    if !matches!(cx.ast.node(last), Node::Char(')')) {
-        return Err(cx.for_rule(rule).invalid_shape(r"\eqalignno row should end with a parenthesized tag"));
-    }
-
+) -> Result<(Vec<NodeId>, Option<Node>), RuleError> {
     let Some(amp_index) = row
-        .windows(2)
-        .rposition(|pair| {
-            matches!(cx.ast.node(pair[0]), Node::AlignmentTab)
-                && matches!(cx.ast.node(pair[1]), Node::Char('('))
-        })
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| matches!(cx.ast.node(**node), Node::AlignmentTab))
+        .nth(1)
+        .map(|(index, _)| index)
     else {
-        return Err(cx.for_rule(rule).invalid_shape(r"\eqalignno row should contain a final &(...) tag"));
+        return Ok((row, None));
     };
 
-    let tag_tail = row.split_off(amp_index);
-    let tag = text_node_from_math_nodes(rule, cx, &tag_tail[2..tag_tail.len() - 1])?;
-    for node in tag_tail {
-        cx.ast.remove_detached(node);
+    let mut tag_nodes = row.split_off(amp_index + 1);
+    if tag_nodes
+        .iter()
+        .any(|node| matches!(cx.ast.node(*node), Node::AlignmentTab))
+    {
+        return Err(cx
+            .for_rule(rule)
+            .invalid_shape(r"\eqalignno rows should contain at most three alignment cells"));
+    }
+    cx.ast.remove_detached(row.pop().expect("the numbering separator exists"));
+    if tag_nodes.is_empty() {
+        return Ok((row, None));
     }
 
-    Ok((row, tag))
+    let parenthesized = has_outer_parentheses(cx, &tag_nodes);
+    if parenthesized {
+        cx.ast.remove_detached(tag_nodes.pop().expect("a parenthesized tag ends with `)`"));
+        cx.ast.remove_detached(tag_nodes.remove(0));
+    }
+    let tag = tag_content(cx, tag_nodes);
+    Ok((row, Some(tag_command(tag, !parenthesized))))
 }
 
-fn text_node_from_math_nodes(
-    rule: crate::rewrite::rule::RuleKey,
-    cx: &mut RuleContext<'_>,
-    nodes: &[NodeId],
-) -> Result<NodeId, RuleError> {
-    let mut text = String::new();
-    for node in nodes {
+/// Returns whether the first `(` and the last `)` enclose the whole cell.
+fn has_outer_parentheses(cx: &RuleContext<'_>, nodes: &[NodeId]) -> bool {
+    if !matches!(nodes.first().map(|node| cx.ast.node(*node)), Some(Node::Char('('))) {
+        return false;
+    }
+    let mut depth = 0;
+    for (index, node) in nodes.iter().enumerate() {
         match cx.ast.node(*node) {
-            Node::Char(ch) => text.push(*ch),
-            Node::Text(value) => text.push_str(value),
-            _ => {
-                return Err(cx.for_rule(rule).invalid_shape(r"\eqalignno tags should contain text-like content"));
+            Node::Char('(') => depth += 1,
+            Node::Char(')') => {
+                depth -= 1;
+                if depth == 0 {
+                    return index + 1 == nodes.len();
+                }
             }
+            _ => {}
         }
     }
-    Ok(cx.ast.new_node(Node::Text(text)))
+    false
+}
+
+fn tag_content(cx: &mut RuleContext<'_>, nodes: Vec<NodeId>) -> NodeId {
+    // Digits and periods look the same in text and math, so such tags become
+    // plain text. Other tags keep their math subtree as inline math inside the
+    // text-mode tag argument.
+    let mut text = String::new();
+    let plain = nodes.iter().all(|node| match cx.ast.node(*node) {
+        Node::Char(ch) if ch.is_ascii_digit() || *ch == '.' => {
+            text.push(*ch);
+            true
+        }
+        _ => false,
+    });
+    if plain {
+        for node in nodes {
+            cx.ast.remove_detached(node);
+        }
+        return cx.ast.new_node(Node::Text(text));
+    }
+
+    let math = cx.ast.new_node(Node::Group {
+        children: nodes,
+        kind: GroupKind::InlineMath,
+        mode: ContentMode::Math,
+    });
+    cx.ast.new_node(Node::Group {
+        children: vec![math],
+        kind: GroupKind::Implicit,
+        mode: ContentMode::Text,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::rewrite::transform_examples;
-    use crate::rewrite::{run_one_rule_for_test, RewriteError, RuleLevel, RuleError};
 
     // START: Generated examples; DO NOT modify
     transform_examples! {
@@ -135,32 +186,64 @@ mod tests {
             label: eqalignno_right_tag_branch,
             packages: ["base", "ams"],
             input: r"\eqalignno{F(x)&=\int_0^x f(t)\,dt&(1)\cr F'(x)&=f(x)&(2)\cr F''(x)&=f'(x)&(3)}",
-            expected: r"\begin{align} F(x)&=\int_0^x f(t)\,dt \tag{1}\\ F'(x)&=f(x) \tag{2}\\ F''(x)&=f'(x) \tag{3} \end{align}",
+            expected: r"\begin{align*} F(x)&=\int_0^x f(t)\,dt \tag{1}\\ F'(x)&=f(x) \tag{2}\\ F''(x)&=f'(x) \tag{3} \end{align*}",
         },
         ]
     }
     // END: Generated examples
 
-    #[test]
-    fn rejects_non_text_like_tag_content() {
-        let parse_ctx = crate::parse::ParseContext::from_packages(&["base", "ams"]);
-        let mut ast = crate::parse_to_ast_for_test(&parse_ctx, r"\eqalignno{x&=y&(n_i)}", &texform_core::parse::ParseConfig::STRICT);
-
-        let err = run_one_rule_for_test(
-            &mut ast,
-            &parse_ctx,
-            &EQALIGNNO_TO_ALIGN_ENV,
-            RuleLevel::Authoring,
-        )
-            .expect_err("scripted equation tags are not valid text-like tag content");
-
-        assert!(matches!(
-            err,
-            crate::TransformError::Rewrite(RewriteError::Rule {
-                kind: RuleError::InvalidNodeShape { message },
-                ..
-            })
-                if message.contains("text-like content")
-        ));
+    transform_examples! {
+        rule: EQALIGNNO_TO_ALIGN_ENV,
+        level: Authoring,
+        examples: [
+            {
+                label: drops_the_segment_after_a_final_row_terminator,
+                packages: ["base", "ams"],
+                input: r"\eqalignno{x&=y&(1)\cr}",
+                expected: r"\begin{align*}x&=y\tag{1}\end{align*}",
+            },
+            {
+                label: keeps_digits_and_periods_as_text,
+                packages: ["base", "ams"],
+                input: r"\eqalignno{x&=y&(1.2)}",
+                expected: r"\begin{align*}x&=y\tag{1.2}\end{align*}",
+            },
+            {
+                label: stars_tags_without_outer_parentheses,
+                packages: ["base", "ams"],
+                input: r"\eqalignno{x&=y&1}",
+                expected: r"\begin{align*}x&=y\tag*{1}\end{align*}",
+            },
+            {
+                label: keeps_other_tag_content_as_math,
+                packages: ["base", "ams"],
+                input: r"\eqalignno{x&=y&(2a^*)}",
+                expected: r"\begin{align*}x&=y\tag{$2a^*$}\end{align*}",
+            },
+            {
+                label: keeps_separate_parenthesized_parts_as_one_starred_tag,
+                packages: ["base", "ams"],
+                input: r"\eqalignno{x&=y&(n)+(m)}",
+                expected: r"\begin{align*}x&=y\tag*{$(n)+(m)$}\end{align*}",
+            },
+            {
+                label: leaves_rows_without_a_number_untagged,
+                packages: ["base", "ams"],
+                input: r"\eqalignno{x&=y&\cr z&=w\cr\cr u&=v&(2)\cr}",
+                expected: r"\begin{align*}x&=y\\z&=w\\\\u&=v\tag{2}\end{align*}",
+            },
+            {
+                label: ignores_alignment_tabs_nested_in_the_number,
+                packages: ["base", "ams"],
+                input: r"\eqalignno{x&=y&\begin{matrix}n&i\end{matrix}}",
+                expected: r"\begin{align*}x&=y\tag*{$\begin{matrix}n&i\end{matrix}$}\end{align*}",
+            },
+            {
+                label: starts_rows_with_leading_scripts,
+                packages: ["base", "ams"],
+                input: r"\eqalignno{x&=y&(1)\cr_Mx&=z&(2)\cr}",
+                expected: r"\begin{align*}x&=y\tag{1}\\{}_Mx&=z\tag{2}\end{align*}",
+            },
+        ]
     }
 }
