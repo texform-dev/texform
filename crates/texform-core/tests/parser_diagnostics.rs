@@ -1384,3 +1384,46 @@ fn deep_unclosed_groups_and_empty_input_finish_quickly() {
         );
     }
 }
+
+#[test]
+fn invalid_character_reports_source_bytes_without_a_document() {
+    // The non-ASCII prefix checks byte offsets; the environment and `\left`
+    // exercise diagnostic rescans that must not lex past the invalid byte.
+    for (src, offset, character) in [
+        ("é\u{0}x", 2, "\u{0}"),
+        ("\\begin{matrix}\u{1b}\\left x", 14, "\u{1b}"),
+    ] {
+        let output = parse_shared(src, &ParseConfig::default());
+        assert!(output.document().is_none(), "{src:?}");
+        assert_eq!(output.diagnostics.len(), 1, "{src:?}");
+        let diagnostic = &output.diagnostics[0];
+        assert_eq!(diagnostic.kind, Some(ParseDiagnosticKind::InvalidCharacter));
+        assert_eq!(diagnostic.span.start, offset);
+        assert_eq!(diagnostic.span.end, offset + 1);
+        assert_eq!(diagnostic.found.as_deref(), Some(character));
+        assert!(
+            diagnostic.message.contains(&format!("{character:?}")),
+            "{diagnostic:?}"
+        );
+    }
+}
+
+#[test]
+fn only_unsupported_control_characters_are_invalid() {
+    for character in (0u8..32).chain([127]).map(char::from) {
+        let src = format!("x{character}y");
+        let output = parse_shared(&src, &ParseConfig::STRICT);
+        if matches!(character, '\t' | '\n' | '\r' | '\u{c}') {
+            assert!(output.diagnostics.is_empty(), "{src:?}");
+        } else {
+            assert_eq!(
+                diagnostic_kinds(&output),
+                [Some(ParseDiagnosticKind::InvalidCharacter)],
+                "{src:?}"
+            );
+        }
+    }
+
+    let commented = parse_shared("x%\u{1b}\ny", &ParseConfig::STRICT);
+    assert!(commented.diagnostics.is_empty());
+}

@@ -3,19 +3,12 @@
 use super::context::*;
 use super::error::ParseFailure;
 use crate::lexer::Token;
-use logos::Logos;
-type LexedSource = Vec<(Token, std::ops::Range<usize>)>;
+type LexedSource = Vec<(Token, chumsky::span::SimpleSpan)>;
 
 fn lex_source(src: &str) -> LexedSource {
-    Token::lexer(src)
-        .spanned()
-        .map(|(token, span)| {
-            let token = token.unwrap_or_else(|()| {
-                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
-            });
-            (token, span)
-        })
-        .collect()
+    // Invalid input is rejected before parsing; a failed diagnostic rescan must
+    // not create tokens from a different, sanitized source.
+    super::grammar::lex_source(src).unwrap_or_default()
 }
 
 pub(super) fn convert_diagnostic(
@@ -75,6 +68,13 @@ pub(super) fn convert_diagnostic(
         found,
         contexts,
     };
+
+    if kind == Some(ParseDiagnosticKind::InvalidCharacter) {
+        diagnostic.found = src
+            .get(diagnostic.span.start..diagnostic.span.end)
+            .map(str::to_owned);
+        return (1, diagnostic);
+    }
 
     supplement_comment_truncated_argument(src, raw_eof, &mut kind, &mut diagnostic);
     if let Some(direct) = &err.direct
@@ -1015,7 +1015,7 @@ fn find_environment_mode_error_at_span(
     None
 }
 
-fn environment_body_start(tokens: &[(Token, std::ops::Range<usize>)], begin_index: usize) -> usize {
+fn environment_body_start(tokens: &LexedSource, begin_index: usize) -> usize {
     let mut index = begin_index + 1;
     while matches!(tokens.get(index), Some((Token::Whitespaces, _))) {
         index += 1;

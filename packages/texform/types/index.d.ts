@@ -70,6 +70,7 @@ export type ParseDiagnosticKind =
   | "comment-truncated-argument"
   | "environment-mode-error"
   | "environment-name-mismatch"
+  | "invalid-character"
   | "left-right-delimiter"
   | "max-group-depth-exceeded"
   | "raw-expected-found"

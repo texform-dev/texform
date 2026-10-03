@@ -373,22 +373,32 @@ pub(crate) type ParserError<'a> = extra::Err<ParseFailure<'a>>;
 pub(crate) type ParserInput<'src, 'parse> =
     InputRef<'src, 'parse, TokenStream<'src>, ParserError<'src>>;
 
-/// Lex a source string and wrap the result as a chumsky [`TokenStream`].
-///
-/// # Panics
-///
-/// Panics if the lexer encounters an unrecognizable byte (catcode 9/15).
-pub(crate) fn build_token_stream(src: &str) -> TokenStream<'_> {
-    let tokens: Vec<(Token, SimpleSpan)> = Token::lexer(src)
+/// Lex without discarding unrecognized input or treating it as an invariant failure.
+pub(crate) fn lex_source(src: &str) -> Result<Vec<(Token, SimpleSpan)>, ParseFailure<'static>> {
+    Token::lexer(src)
         .spanned()
-        .map(|(tok, span)| {
-            let tok = tok.unwrap_or_else(|()| {
-                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
-            });
-            (tok, SimpleSpan::from(span))
+        .map(|(token, span)| {
+            token
+                .map(|token| (token, SimpleSpan::from(span.clone())))
+                .map_err(|()| {
+                    custom_error(
+                        SimpleSpan::from(span.clone()),
+                        format!(
+                            "Invalid character {:?} at byte offset {}..{}",
+                            &src[span.clone()],
+                            span.start,
+                            span.end
+                        ),
+                        ParseDiagnosticKind::InvalidCharacter,
+                    )
+                })
         })
-        .collect();
-    token_stream(tokens, src.len())
+        .collect()
+}
+
+/// Lex a source string and wrap the result as a chumsky [`TokenStream`].
+pub(crate) fn build_token_stream(src: &str) -> Result<TokenStream<'_>, ParseFailure<'static>> {
+    Ok(token_stream(lex_source(src)?, src.len()))
 }
 
 /// Wrap spanned tokens as a chumsky [`TokenStream`] whose input ends at byte `end`.
@@ -1165,7 +1175,7 @@ pub fn parse(
     src: &str,
     reject_unknown: bool,
 ) -> Result<Spanned<SyntaxNode>, Vec<Rich<'static, Token>>> {
-    let token_stream = build_token_stream(src);
+    let token_stream = build_token_stream(src).map_err(|error| vec![error.into_rich()])?;
     let config = if reject_unknown {
         ParseConfig {
             reject_unknown: true,
@@ -1316,16 +1326,14 @@ fn is_direct_environment_header_error(err: &ParseFailure<'_>) -> bool {
 
 fn scan_environment_stack_before(src: &str, limit: usize) -> Vec<String> {
     let mut stack = Vec::new();
-    let tokens: Vec<(Token, std::ops::Range<usize>)> = Token::lexer(src)
+    let tokens: Result<Vec<_>, ()> = Token::lexer(src)
         .spanned()
-        .map(|(token, span)| {
-            let token = token.unwrap_or_else(|()| {
-                panic!("Lexer error at byte offset {}..{}", span.start, span.end)
-            });
-            (token, span)
-        })
         .take_while(|(_, span)| span.start < limit)
+        .map(|(token, span)| token.map(|token| (token, span)))
         .collect();
+    let Ok(tokens) = tokens else {
+        return stack;
+    };
 
     let mut index = 0;
     while index < tokens.len() {
@@ -1469,11 +1477,10 @@ fn normalize_recovery_message(
         );
     }
 
-    let tokens: Vec<Token> = Token::lexer(src)
-        .map(|token| {
-            token.unwrap_or_else(|()| panic!("Lexer error while normalizing recovery message"))
-        })
-        .collect();
+    let Ok(tokens) = lex_source(src) else {
+        return (message, kind);
+    };
+    let tokens: Vec<Token> = tokens.into_iter().map(|(token, _)| token).collect();
     let mut stack = Vec::new();
     let mut index = 0;
 
@@ -1590,15 +1597,7 @@ fn invalid_left_recovery_diagnostic(
     search_start: usize,
     search_end: usize,
 ) -> Option<ParseFailure<'static>> {
-    let tokens: Vec<(Token, SimpleSpan)> = Token::lexer(src)
-        .spanned()
-        .map(|(token, span)| {
-            let token = token.unwrap_or_else(|()| {
-                panic!("Lexer error while scanning recoverable \\left diagnostic")
-            });
-            (token, SimpleSpan::from(span))
-        })
-        .collect();
+    let tokens = lex_source(src).ok()?;
 
     let mut index = 0;
     while index < tokens.len() {

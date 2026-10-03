@@ -225,7 +225,10 @@ fn parse_content_substream(
     source_offset: usize,
 ) -> (Option<TrackedNode>, Vec<ParseFailure<'static>>) {
     let src = tokens_to_string(tokens);
-    let token_stream = build_token_stream(src.as_str());
+    let token_stream = match build_token_stream(src.as_str()) {
+        Ok(tokens) => tokens,
+        Err(error) => return (None, vec![error.shifted(source_offset)]),
+    };
     let sub_state = ParserState::new(state.ctx, state.config, src.as_str());
     let parser = content_block_parser_with_source(mode, &sub_state, src.as_str());
 
@@ -288,7 +291,7 @@ fn recover_direct_error_substream(
         .min()
         .unwrap_or(src.len());
     let recover_src = src.get(..recover_end).unwrap_or(src);
-    let token_stream = build_token_stream(recover_src);
+    let token_stream = build_token_stream(recover_src).ok()?;
     let sub_state = ParserState::new(state.ctx, state.config, recover_src);
     let parser = content_block_parser_with_source(mode, &sub_state, recover_src);
     let (tracked, errors) = parser.parse(token_stream).into_output_errors();
@@ -535,7 +538,7 @@ fn parse_delimited_value<'src, 'parse>(
                 .ignore_then(dimension())
                 .then_ignore(insignificant_whitespace())
                 .then_ignore(end())
-                .parse(build_token_stream(src.as_str()))
+                .parse(build_token_stream(src.as_str())?)
                 .into_result()
                 .map_err(|_| {
                     let cursor = input.cursor();
@@ -552,7 +555,7 @@ fn parse_delimited_value<'src, 'parse>(
                 .ignore_then(integer())
                 .then_ignore(insignificant_whitespace())
                 .then_ignore(end())
-                .parse(build_token_stream(src.as_str()))
+                .parse(build_token_stream(src.as_str())?)
                 .into_result()
                 .map_err(|_| {
                     let cursor = input.cursor();
@@ -589,7 +592,7 @@ fn parse_delimited_value<'src, 'parse>(
                 .ignore_then(delimiter(state.ctx))
                 .then_ignore(insignificant_whitespace())
                 .then_ignore(end())
-                .parse(build_token_stream(src.as_str()))
+                .parse(build_token_stream(src.as_str())?)
                 .into_result()
                 .map_err(|_| {
                     let cursor = input.cursor();

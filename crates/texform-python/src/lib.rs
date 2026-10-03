@@ -1474,6 +1474,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn python_invalid_character_raises_ordinary_parse_error() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "_native").expect("module");
+            _native(&module).expect("init module");
+            let engine = module
+                .getattr("TransformEngine")
+                .unwrap()
+                .call1(("corpus",))
+                .unwrap();
+            let error = engine
+                .call_method1("normalize", ("\u{1b}",))
+                .expect_err("invalid input should raise a parse error");
+            // A lexer panic would surface as `PanicException`, which `except Exception` misses.
+            assert!(error.is_instance_of::<ParseError>(py));
+            assert!(error.is_instance_of::<PyException>(py));
+            assert!(error.value(py).getattr("document").unwrap().is_none());
+        });
+    }
+
+    #[test]
     fn python_parse_returns_document_and_diagnostics() {
         Python::attach(|py| {
             let module = PyModule::new(py, "_native").expect("module");

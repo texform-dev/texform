@@ -53,6 +53,8 @@ pub enum ParseDiagnosticKind {
     EnvironmentModeError,
     /// An `\end{...}` name did not match the opening `\begin{...}`.
     EnvironmentNameMismatch,
+    /// A source character could not be tokenized, so no document was produced.
+    InvalidCharacter,
     /// A `\left ... \right` group had an invalid delimiter or a missing
     /// `\right`.
     LeftRightDelimiter,
@@ -83,6 +85,7 @@ impl ParseDiagnosticKind {
             ParseDiagnosticKind::CommentTruncatedArgument => "comment-truncated-argument",
             ParseDiagnosticKind::EnvironmentModeError => "environment-mode-error",
             ParseDiagnosticKind::EnvironmentNameMismatch => "environment-name-mismatch",
+            ParseDiagnosticKind::InvalidCharacter => "invalid-character",
             ParseDiagnosticKind::LeftRightDelimiter => "left-right-delimiter",
             ParseDiagnosticKind::MaxGroupDepthExceeded => "max-group-depth-exceeded",
             ParseDiagnosticKind::RawExpectedFound => "raw-expected-found",
@@ -897,7 +900,15 @@ pub(crate) fn parse_with_context_mode(
     config: &ParseConfig,
     mode: ContentMode,
 ) -> ParseResult {
-    let token_stream = build_token_stream(src);
+    let token_stream = match build_token_stream(src) {
+        Ok(tokens) => tokens,
+        Err(error) => {
+            return ParseResult {
+                document: None,
+                diagnostics: vec![convert_diagnostic(ctx, src, error).1],
+            };
+        }
+    };
     let (output, mut errors) = parse_raw(ctx, src, token_stream, config, mode);
 
     let document = output.map(|tracked| {
