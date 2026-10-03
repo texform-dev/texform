@@ -213,6 +213,8 @@ LowerAttributes reads prefix and declarative targets from the attribute map. Pre
 
 Normalization requires a complete tree: `TransformEngine::transform` and `normalize` return `Error::IncompleteTree` when `document.has_errors()`. Empty input is complete and normalizes normally. In-place transformation requires the document and engine to share the same immutable `KnowledgeBase` instance; a different instance produces `Error::KnowledgeBaseMismatch`. Independently built knowledge bases remain distinct even with identical packages and customizations. Default parsers, engines, and documents share one process-wide instance; document clones preserve it, and `Document::from_syntax_with` accepts an explicit instance. Requesting a report does not relax those checks.
 
+Unknown commands and environments do not block normalization, but output for such input carries no accuracy guarantee because the knowledge base has no signature for them; see [unknown commands and environments](crates/texform-transform/README.md#unknown-commands-and-environments).
+
 When Rewrite is enabled, declared eliminated forms are checked after all enabled mutation phases. This final validation is read-only; a remaining eliminated form is a transform error. The [rule authoring guide](crates/texform-transform/src/rewrite/rules/README.md#metadata-and-the-rewrite-contract) defines the metadata contract.
 
 ## Knowledge and Argument Specifications

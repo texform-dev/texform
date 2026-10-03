@@ -82,6 +82,10 @@ The scheduler relies on three phase contracts:
 
 Prefix singleton arguments directly use their sole content node, matching FlattenGroups' canonical slot shape. This internal AST shape is visible through document inspection; serialization is unchanged by removing the redundant implicit wrapper. Argument containers preserve user brace layers during parsing. FlattenGroups removes direct redundant argument layers independently of preservation guards; LowerAttributes consumes these same layers before collecting a prefix body.
 
+## Unknown commands and environments
+
+TeXForm does not guarantee accurate transform output when the input contains unknown commands or environments (nodes parsed with `known: false`). The knowledge base has no signature for them, so their arguments, scope, and spacing are unknown: the groups that follow an unknown command are ordinary siblings that phases may flatten or regroup, and rules still rewrite known commands inside them. The engine has no special handling for such nodes. Callers that need to exclude these formulas can parse with `ParseConfig::reject_unknown`, which reports unknown names as diagnostics, or check `NodeRef::is_known` before transforming; it returns `Some(false)` for unknown commands and environments. Python uses the same names (`ParseConfig(reject_unknown=True)`, `node.is_known()`); JavaScript uses `rejectUnknown` and `node.isKnown()`.
+
 ## Configuration
 
 ### `TransformConfig`
