@@ -2,6 +2,13 @@ use texform_argspec::{ArgForm, ContentMode, DelimiterToken, ValueKind, parse_arg
 use texform_knowledge::argspec;
 
 #[test]
+fn until_macro_matches_runtime_parse() {
+    let actual = argspec!(r"u{\of} m u{\stop}:I");
+    let expected = parse_arg_specs(actual.source, "until").unwrap();
+    assert_eq!(actual.args, expected.as_slice());
+}
+
+#[test]
 fn test_argspec_macro_matches_runtime_parse_for_empty_spec() {
     let expected = parse_arg_specs("", "empty").expect("empty spec should be valid");
     let actual = argspec!("");

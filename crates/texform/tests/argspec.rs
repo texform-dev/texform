@@ -1,4 +1,14 @@
 #[test]
+fn validate_argspec_exposes_until_terminator() {
+    let result = texform::validate_argspec(r"u{\of} m");
+    assert!(result.valid);
+    let slots = result.parsed.unwrap();
+    assert!(matches!(&slots[0].form, texform::ArgSpecFormInfo::Until {
+        close: texform::DelimiterTokenInfo::ControlSeq { value },
+    } if value == "of"));
+}
+
+#[test]
 fn validate_argspec_reports_success() {
     let result = texform::validate_argspec("s o m");
 

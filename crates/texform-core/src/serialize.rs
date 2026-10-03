@@ -1009,6 +1009,9 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             (ArgumentKind::Optional, value) => {
                 self.emit_scalar_wrapped(value, "[", "]", mode, opening_boundary)
             }
+            (ArgumentKind::Until { close }, value) => {
+                self.emit_until_argument(close, value, mode, opening_boundary)
+            }
             (ArgumentKind::Delimited { open, close }, ArgumentValue::MathContent(node))
             | (ArgumentKind::Paired { open, close }, ArgumentValue::MathContent(node)) => self
                 .emit_recorded_delimiters(
@@ -1551,6 +1554,72 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             BoundaryPolicy::SuppressOptionalSpace,
             self.options,
         );
+    }
+
+    fn emit_until_argument(
+        &mut self,
+        close: &Delimiter,
+        value: &ArgumentValue,
+        mode: ContentMode,
+        opening_boundary: BoundaryPolicy,
+    ) {
+        if let Some((child, content_mode)) = value.content() {
+            self.writer.emit_with_boundary(
+                mode,
+                AtomKind::Brace,
+                SerializationTokenKind::Delimiter,
+                "{",
+                opening_boundary,
+                self.options,
+            );
+            // A TeX delimited parameter strips exactly this protective brace layer.
+            // Explicit content groups belong to the argument and must survive.
+            let content_mode = if matches!(value, ArgumentValue::OperatorNameContent(_)) {
+                ContentMode::Text
+            } else {
+                content_mode
+            };
+            let compact_math_inner = content_mode == ContentMode::Math
+                && self.options.group_inner_spacing == MathGroupInnerSpacing::Compact;
+            let pending = compact_math_inner.then(|| self.writer.begin_suppressed_boundary());
+            match self.ast.node(child) {
+                Node::Group {
+                    children,
+                    kind: GroupKind::Implicit,
+                    ..
+                } => {
+                    for &child in children {
+                        self.visit(child, content_mode);
+                    }
+                }
+                _ => self.visit(child, content_mode),
+            }
+            if let Some(pending) = pending {
+                self.writer.end_suppressed_boundary(pending);
+            }
+            self.writer.emit_with_semantic_mode(
+                EmissionModes::new(
+                    if compact_math_inner {
+                        mode
+                    } else {
+                        content_mode
+                    },
+                    mode,
+                ),
+                AtomKind::Brace,
+                SerializationTokenKind::Delimiter,
+                "}",
+                if compact_math_inner {
+                    BoundaryPolicy::SuppressOptionalSpace
+                } else {
+                    BoundaryPolicy::Auto
+                },
+                self.options,
+            );
+        } else {
+            self.emit_scalar_wrapped(value, "{", "}", mode, opening_boundary);
+        }
+        self.emit_delimiter_with_boundary(close, mode, mode, BoundaryPolicy::SuppressOptionalSpace);
     }
 
     fn emit_recorded_delimiters(

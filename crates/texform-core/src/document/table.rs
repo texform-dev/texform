@@ -221,6 +221,7 @@ impl ArgumentTable {
         };
         let form = ArgKindRef::from(&argument.kind);
         let (open, close) = match form {
+            ArgKindRef::Until { close } => (None, Some(close.to_string())),
             ArgKindRef::Delimited { open, close } | ArgKindRef::Paired { open, close } => {
                 (Some(open.to_string()), Some(close.to_string()))
             }

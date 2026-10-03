@@ -151,6 +151,8 @@ pub enum ArgumentKind {
     Star,
     /// Required braced-group form
     Group,
+    /// Required argument ending at a control-word terminator (`u{\name}`)
+    Until { close: Delimiter },
     /// Delimited argument with a matched open / close pair
     Delimited { open: Delimiter, close: Delimiter },
     /// Paired-candidate argument that records the matched delimiters
@@ -1705,6 +1707,9 @@ impl Ast {
             ArgumentKind::Optional => syntax_node::ArgumentKind::Optional,
             ArgumentKind::Star => syntax_node::ArgumentKind::Star,
             ArgumentKind::Group => syntax_node::ArgumentKind::Group,
+            ArgumentKind::Until { close } => syntax_node::ArgumentKind::Until {
+                close: self.to_syntax_delimiter(close),
+            },
             ArgumentKind::Delimited { open, close } => syntax_node::ArgumentKind::Delimited {
                 open: self.to_syntax_delimiter(open),
                 close: self.to_syntax_delimiter(close),
@@ -1970,6 +1975,9 @@ impl Ast {
             syntax_node::ArgumentKind::Optional => ArgumentKind::Optional,
             syntax_node::ArgumentKind::Star => ArgumentKind::Star,
             syntax_node::ArgumentKind::Group => ArgumentKind::Group,
+            syntax_node::ArgumentKind::Until { close } => ArgumentKind::Until {
+                close: Self::convert_delimiter(close),
+            },
             syntax_node::ArgumentKind::Delimited { open, close } => ArgumentKind::Delimited {
                 open: Self::convert_delimiter(open),
                 close: Self::convert_delimiter(close),

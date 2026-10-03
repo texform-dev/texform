@@ -119,6 +119,9 @@ pub(super) fn spec_kind(spec: &ArgSpec) -> ArgumentKind {
         ArgForm::Standard => ArgumentKind::Optional,
         ArgForm::Star => ArgumentKind::Star,
         ArgForm::Group => ArgumentKind::Group,
+        ArgForm::Until { close } => ArgumentKind::Until {
+            close: delimiter(close),
+        },
         ArgForm::Delimited { open, close } => ArgumentKind::Delimited {
             open: delimiter(open),
             close: delimiter(close),

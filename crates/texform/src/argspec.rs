@@ -93,6 +93,11 @@ pub enum ArgSpecFormInfo {
     Star,
     /// A brace-group argument.
     Group,
+    /// A required argument ending at a control-word terminator (`u{\name}`).
+    Until {
+        /// The terminating control word.
+        close: DelimiterTokenInfo,
+    },
     /// An argument bounded by an explicit open/close delimiter pair.
     Delimited {
         /// The opening delimiter token.
@@ -207,6 +212,9 @@ fn arg_spec_form_info(form: &ArgForm) -> ArgSpecFormInfo {
         ArgForm::Standard => ArgSpecFormInfo::Standard,
         ArgForm::Star => ArgSpecFormInfo::Star,
         ArgForm::Group => ArgSpecFormInfo::Group,
+        ArgForm::Until { close } => ArgSpecFormInfo::Until {
+            close: delimiter_token_info(close),
+        },
         ArgForm::Delimited { open, close } => ArgSpecFormInfo::Delimited {
             open: delimiter_token_info(open),
             close: delimiter_token_info(close),

@@ -530,6 +530,9 @@ fn check_argument(
         (ArgumentKind::Mandatory, ArgForm::Standard) => spec.required,
         (ArgumentKind::Optional, ArgForm::Standard) => !spec.required,
         (ArgumentKind::Star, ArgForm::Star) | (ArgumentKind::Group, ArgForm::Group) => true,
+        (ArgumentKind::Until { close }, ArgForm::Until { close: expected }) => {
+            matches_delimiter(close, expected)
+        }
         (ArgumentKind::Delimited { open, close }, ArgForm::Delimited { open: a, close: b }) => {
             matches_delimiter(open, a) && matches_delimiter(close, b)
         }
