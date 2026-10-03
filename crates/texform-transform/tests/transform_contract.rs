@@ -16,6 +16,20 @@ fn parse_to_ast(parse_ctx: &ParseContext, src: &str) -> Ast {
     Ast::from_syntax_root(&document.to_syntax())
 }
 
+/// `\over` as an argument-free prefix command. The parser only produces infix
+/// `\over`, so `over-to-frac` skips this node and the eliminated form survives
+/// the rewrite phase.
+fn ast_with_prefix_over() -> Ast {
+    Ast::from_syntax_root(&SyntaxNode::Root {
+        mode: ContentMode::Math,
+        children: vec![SyntaxNode::Command {
+            name: "over".to_string(),
+            args: Vec::new(),
+            known: true,
+        }],
+    })
+}
+
 #[test]
 fn transform_contract_collector_reports_all_eliminated_form_violations() {
     let parse_ctx = ParseContext::from_packages(&["base"]);
@@ -40,14 +54,14 @@ fn transform_contract_collector_reports_all_eliminated_form_violations() {
 #[test]
 fn transform_contract_engine_reports_violation_after_full_pipeline() {
     let parse_ctx = ParseContext::from_packages(&["base"]);
-    let mut ast = parse_to_ast(&parse_ctx, r"A \buildrel f \over = B");
+    let mut ast = ast_with_prefix_over();
     let context =
         TransformContext::from_build_config(BuildConfig::profile(Profile::Authoring), &parse_ctx)
             .expect("transform context should build");
 
     let err = context
         .run(&mut ast, &parse_ctx)
-        .expect_err("full transform should fail on an uneliminated over infix");
+        .expect_err("full transform should fail on an uneliminated over");
 
     assert_contract_error(
         err,
@@ -59,7 +73,7 @@ fn transform_contract_engine_reports_violation_after_full_pipeline() {
 #[test]
 fn transform_contract_rewrite_phase_does_not_run_eliminated_form_check() {
     let parse_ctx = ParseContext::from_packages(&["base"]);
-    let mut ast = parse_to_ast(&parse_ctx, r"A \buildrel f \over = B");
+    let mut ast = ast_with_prefix_over();
     let context =
         TransformContext::from_build_config(BuildConfig::profile(Profile::Authoring), &parse_ctx)
             .expect("transform context should build");

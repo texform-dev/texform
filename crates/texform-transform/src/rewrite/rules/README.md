@@ -83,7 +83,7 @@ Domain guards such as whitelists, neighbor-class checks, and package-owner predi
 - **`eliminates`**: targets the enabled rewrite pipeline **promises** to remove from successful output in the rule's declared domain. These targets alone feed `collect_eliminated_violations`. If a valid input branch intentionally returns `Skipped` and may preserve the same target, use a touches-only conditional rule instead. A transform error aborts the pipeline and is not a residual-target contract case.
 - **`touches`**: static **structural partners** in the rewrite shape that the rule rewrites, splits, or co-consumes without promising global elimination. They join `C` for trigger-membership validation, dependency ordering, and runtime-mutation invalidation. They are not eliminate owners and are not checked after the fixed point.
 
-**Put in `touches`:** fixed partners or separators in multi-command forms (`buildrel` + `over`, plain-TeX matrix bodies + `cr`); sibling targets co-consumed with the trigger (`not` + `in`); the partial source itself when the rule only rewrites some occurrences (`dots` → `ldots`/`cdots`).
+**Put in `touches`:** fixed partners or separators in multi-command forms (plain-TeX matrix bodies + `cr`); sibling targets co-consumed with the trigger (`not` + `in`); the partial source itself when the rule only rewrites some occurrences (`dots` → `ldots`/`cdots`).
 
 **Do not put in `touches`:** eligibility / classification / adjacency probes resolved only by runtime predicates (for example the atom after `\dots`, or an operator whitelist checked before dropping `\limits`). Document those in the rule comment and tests.
 
@@ -93,7 +93,7 @@ Over-declaring `touches` invents false dependency edges and makes any runtime mu
 
 `RuleMeta.triggers` is the required scheduling entry list. The engine attempts the rule only on nodes matching `triggers`.
 
-For ordinary single-target rules, set `triggers` to the eliminated target. Use a smaller trigger list when a rule consumes multiple targets but has a smaller natural entry point. Examples include owner-command structures such as `\buildrel ... \over ...` and `\root ... \of ...`.
+For ordinary single-target rules, set `triggers` to the eliminated target. Use a smaller trigger list when a rule consumes multiple targets but has a smaller natural entry point. Examples include owner-command structures such as `\matrix{a \cr b}`.
 
 Do not use `triggers` to hide dependencies. Every trigger target must also appear in `eliminates` or `touches`.
 
@@ -106,14 +106,14 @@ consumes: RuleConsumes {
 ```
 
 ```rust
-triggers: cmd_targets![&base::cmd::BUILDREL],
+triggers: cmd_targets![&base::cmd::MATRIX],
 consumes: RuleConsumes {
-    eliminates: cmd_targets![&base::cmd::BUILDREL],
-    touches: cmd_targets![&base::cmd::OVER],
+    eliminates: cmd_targets![&base::cmd::MATRIX],
+    touches: cmd_targets![&base::cmd::CR],
 },
 ```
 
-Here `cmd:over` is a touched separator inside the structure, not a global eliminated-form contract owned by `buildrel-expand`.
+Here `cmd:cr` is a touched separator inside the structure, not a global eliminated-form contract owned by `matrix-to-matrix-env`.
 
 ### Touches-only rules
 

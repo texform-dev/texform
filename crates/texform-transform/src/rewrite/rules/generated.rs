@@ -141,6 +141,9 @@ pub(crate) mod base {
             pub(crate) mod helpers;
             pub(crate) mod small_spacer_merge_to_enspace;
         }
+        pub(crate) mod stacked_operator {
+            pub(crate) mod buildrel_to_stackrel;
+        }
         pub(crate) mod tex_class_wrapper {
             pub(crate) mod duplicate_mathrel_wrapper_drop;
         }
@@ -210,7 +213,6 @@ pub(crate) mod base {
             pub(crate) mod mskip_to_mspace;
         }
         pub(crate) mod stacked_operator {
-            pub(crate) mod buildrel_expand;
             pub(crate) mod helpers;
             pub(crate) mod stackbin_expand;
             pub(crate) mod stackrel_expand;
@@ -381,6 +383,7 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::authoring::spacing_merge::double_enspace_to_quad::DOUBLE_ENSPACE_TO_QUAD,
     &base::authoring::spacing_merge::double_quad_to_qquad::DOUBLE_QUAD_TO_QQUAD,
     &base::authoring::spacing_merge::small_spacer_merge_to_enspace::SMALL_SPACER_MERGE_TO_ENSPACE,
+    &base::authoring::stacked_operator::buildrel_to_stackrel::BUILDREL_TO_STACKREL,
     &base::authoring::tex_class_wrapper::duplicate_mathrel_wrapper_drop::DUPLICATE_MATHREL_WRAPPER_DROP,
     &base::corpus::big_class_variants::Big_class_variants_to_Big::BIG_CLASS_VARIANTS_TO_BIG,
     &base::corpus::big_class_variants::Bigg_class_variants_to_Bigg::BIGG_CLASS_VARIANTS_TO_BIGG,
@@ -414,7 +417,6 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::faithful::character_normalize::semantic_dots_to_ldots::SEMANTIC_DOTS_TO_LDOTS,
     &base::faithful::spacing_alias::mkern_to_mspace::MKERN_TO_MSPACE,
     &base::faithful::spacing_alias::mskip_to_mspace::MSKIP_TO_MSPACE,
-    &base::faithful::stacked_operator::buildrel_expand::BUILDREL_EXPAND,
     &base::faithful::stacked_operator::stackbin_expand::STACKBIN_EXPAND,
     &base::faithful::stacked_operator::stackrel_expand::STACKREL_EXPAND,
     &physics::authoring::character_alias::divsymbol_to_divisionsymbol::DIVSYMBOL_TO_DIVISIONSYMBOL,

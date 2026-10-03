@@ -186,6 +186,11 @@ fn generated_inputs_preserve_parser_and_transform_structure() {
             r"\root 3\of{x}^2",
             r"\root{a\of b}\of x",
             r"\frac{\root n_i\of{x}}{y}",
+            r"A\buildrel f\over=B",
+            r"a\over\buildrel b\over c",
+            r"\buildrel{a\over b}\over=",
+            r"\buildrel x\over =^2",
+            r"\frac{\buildrel a\over =}{b}",
         ]
         .map(str::to_owned),
     );
