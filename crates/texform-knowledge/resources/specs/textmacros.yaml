@@ -134,7 +134,7 @@ commands:
   - name: emph
     kind: prefix
     argspec: m:T
-    allowed_mode: text
+    allowed_mode: both
     tags:
       - presentation
   - name: enspace
@@ -355,6 +355,10 @@ commands:
     tags:
       - spacing
       - mathjax-extension
+  - name: text
+    kind: prefix
+    argspec: m:T
+    allowed_mode: text
   - name: textbf
     kind: prefix
     argspec: m:T

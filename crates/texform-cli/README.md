@@ -188,12 +188,12 @@ Parsing uses the command record above. The character record is separate metadata
 ```console
 $ texform packages
 ams         35 commands, 28 environments
-base        267 commands, 7 environments
+base        270 commands, 7 environments
 bboldx      12 commands, 0 environments
 boldsymbol  1 command, 0 environments
 braket      11 commands, 0 environments
 physics     182 commands, 1 environment
-textmacros  76 commands, 0 environments
+textmacros  77 commands, 0 environments
 ```
 
 ### `texform argspec validate`

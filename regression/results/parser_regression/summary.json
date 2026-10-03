@@ -9,14 +9,14 @@
       "length_filtered_count": 0,
       "length_filtered_rate_pct": 0.00,
       "strict": {
-        "ok": 91832,
-        "failed": 1747,
-        "failure_rate_pct": 1.87
+        "ok": 91835,
+        "failed": 1744,
+        "failure_rate_pct": 1.86
       },
       "nonstrict": {
-        "ok": 93321,
-        "failed": 258,
-        "failure_rate_pct": 0.28
+        "ok": 93293,
+        "failed": 286,
+        "failure_rate_pct": 0.31
       }
     },
     {
@@ -28,14 +28,14 @@
       "length_filtered_count": 1,
       "length_filtered_rate_pct": 0.00,
       "strict": {
-        "ok": 593888,
-        "failed": 12913,
-        "failure_rate_pct": 2.13
+        "ok": 597173,
+        "failed": 9628,
+        "failure_rate_pct": 1.59
       },
       "nonstrict": {
-        "ok": 606377,
-        "failed": 424,
-        "failure_rate_pct": 0.07
+        "ok": 606466,
+        "failed": 335,
+        "failure_rate_pct": 0.06
       }
     },
     {
@@ -47,13 +47,13 @@
       "length_filtered_count": 3,
       "length_filtered_rate_pct": 0.00,
       "strict": {
-        "ok": 480993,
-        "failed": 11140,
+        "ok": 480994,
+        "failed": 11139,
         "failure_rate_pct": 2.26
       },
       "nonstrict": {
-        "ok": 491808,
-        "failed": 325,
+        "ok": 491809,
+        "failed": 324,
         "failure_rate_pct": 0.07
       }
     },
@@ -66,14 +66,14 @@
       "length_filtered_count": 0,
       "length_filtered_rate_pct": 0.00,
       "strict": {
-        "ok": 32008,
-        "failed": 2096,
-        "failure_rate_pct": 6.15
+        "ok": 32047,
+        "failed": 2057,
+        "failure_rate_pct": 6.03
       },
       "nonstrict": {
-        "ok": 33942,
-        "failed": 162,
-        "failure_rate_pct": 0.48
+        "ok": 33962,
+        "failed": 142,
+        "failure_rate_pct": 0.42
       }
     }
   ],
@@ -85,14 +85,14 @@
     "length_filtered_count": 4,
     "length_filtered_rate_pct": 0.00,
     "strict": {
-      "ok": 1198721,
-      "failed": 27896,
-      "failure_rate_pct": 2.27
+      "ok": 1202049,
+      "failed": 24568,
+      "failure_rate_pct": 2.00
     },
     "nonstrict": {
-      "ok": 1225448,
-      "failed": 1169,
-      "failure_rate_pct": 0.10
+      "ok": 1225530,
+      "failed": 1087,
+      "failure_rate_pct": 0.09
     }
   }
 }

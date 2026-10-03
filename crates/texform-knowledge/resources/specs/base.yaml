@@ -384,6 +384,10 @@ commands:
     allowed_mode: math
     tags:
       - spacing
+  - name: ensuremath
+    kind: prefix
+    argspec: m
+    allowed_mode: both
   - name: eqalign
     kind: prefix
     argspec: m
@@ -404,7 +408,7 @@ commands:
   - name: fbox
     kind: prefix
     argspec: m:T
-    allowed_mode: math
+    allowed_mode: both
     tags:
       - presentation
   - name: frac
@@ -448,7 +452,7 @@ commands:
   - name: hbox
     kind: prefix
     argspec: m:T
-    allowed_mode: math
+    allowed_mode: both
     tags:
       - decoration
       - discouraged
@@ -550,7 +554,7 @@ commands:
   - name: label
     kind: prefix
     argspec: m:N
-    allowed_mode: math
+    allowed_mode: both
     tags:
       - invisible
   - name: large
@@ -636,7 +640,7 @@ commands:
   - name: makebox
     kind: prefix
     argspec: o:L O{c}:N m:T
-    allowed_mode: math
+    allowed_mode: both
     tags:
       - presentation
   - name: mathbb
@@ -819,7 +823,7 @@ commands:
   - name: mbox
     kind: prefix
     argspec: m:T
-    allowed_mode: math
+    allowed_mode: both
     tags:
       - decoration
   - name: middle
@@ -1001,7 +1005,7 @@ commands:
   - name: parbox
     kind: prefix
     argspec: O{c}:N m:L m:T
-    allowed_mode: math
+    allowed_mode: both
     tags:
       - presentation
   - name: phantom
@@ -1050,6 +1054,12 @@ commands:
     allowed_mode: math
     tags:
       - spacing
+  - name: raisebox
+    kind: prefix
+    argspec: m:L o:L o:L m:T
+    allowed_mode: both
+    tags:
+      - presentation
   - name: ref
     kind: prefix
     argspec: m:N
@@ -1088,6 +1098,12 @@ commands:
     tags:
       - spacing
       - mathjax-extension
+  - name: scalebox
+    kind: prefix
+    argspec: m:N o:N m:T
+    allowed_mode: both
+    tags:
+      - presentation
   - name: scriptscriptstyle
     kind: declarative
     argspec: ''
@@ -1528,7 +1544,7 @@ environments:
   - name: math
     argspec: ''
     body_mode: math
-    allowed_mode: math
+    allowed_mode: both
     tags:
       - discouraged
 characters:
@@ -2575,6 +2591,11 @@ delimiters:
     allowed_mode: math
     unicode_value: ⟮
     attributes: {}
+  - name: llbracket
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⟦
+    attributes: {}
   - name: lmoustache
     is_control_sequence: true
     allowed_mode: math
@@ -2619,6 +2640,11 @@ delimiters:
     is_control_sequence: true
     allowed_mode: math
     unicode_value: ⎱
+    attributes: {}
+  - name: rrbracket
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: ⟧
     attributes: {}
   - name: uparrow
     is_control_sequence: true
