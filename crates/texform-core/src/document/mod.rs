@@ -1231,6 +1231,9 @@ pub enum ArgKindRef<'a> {
     Optional,
     Star,
     Group,
+    Until {
+        close: DelimiterRef<'a>,
+    },
     Delimited {
         open: DelimiterRef<'a>,
         close: DelimiterRef<'a>,
@@ -1249,6 +1252,7 @@ impl ArgKindRef<'_> {
             Self::Optional => "optional",
             Self::Star => "star",
             Self::Group => "group",
+            Self::Until { .. } => "until",
             Self::Delimited { .. } => "delimited",
             Self::Paired { .. } => "paired",
         }
@@ -1262,6 +1266,9 @@ impl<'a> From<&'a ArgumentKind> for ArgKindRef<'a> {
             ArgumentKind::Optional => Self::Optional,
             ArgumentKind::Star => Self::Star,
             ArgumentKind::Group => Self::Group,
+            ArgumentKind::Until { close } => Self::Until {
+                close: close.into(),
+            },
             ArgumentKind::Delimited { open, close } => Self::Delimited {
                 open: open.into(),
                 close: close.into(),

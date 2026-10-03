@@ -1083,7 +1083,7 @@ commands:
       - discouraged
   - name: root
     kind: prefix
-    argspec: m
+    argspec: u{\of} m
     allowed_mode: math
     tags:
       - discouraged

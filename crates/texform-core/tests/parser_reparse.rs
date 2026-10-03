@@ -165,6 +165,14 @@ fn test_optional_argument_reparse_keeps_known_command() {
 }
 
 #[test]
+fn test_argument_reparse_keeps_comment_separated_control_words_apart() {
+    // The comment leaves no whitespace token between `\le` and `q`; reparsing
+    // the collected tokens must not merge them into `\leq`.
+    assert_same_structure("\\sqrt[\\le% comment\nq]{x}", r"\sqrt[\le q]{x}");
+    assert_same_structure("\\root\\le% comment\nq\\of{x}", r"\root\le q\of{x}");
+}
+
+#[test]
 fn test_delimited_content_argument_reparse_keeps_known_command() {
     let ctx = test_context_with_items([
         command_item("probe", CommandKind::Prefix, AllowedMode::Math, "r()"),

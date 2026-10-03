@@ -3,6 +3,41 @@ use std::borrow::Cow;
 use texform_argspec::{ArgForm, ArgSpec, ContentMode, DelimiterToken, ValueKind, parse_arg_specs};
 
 #[test]
+fn test_until_form_takes_one_control_word_terminator() {
+    let specs = parse_arg_specs(r"u{\of} m u{\stop}:I", "until").unwrap();
+    assert!(specs[0].required);
+    assert_eq!(
+        specs[0].form,
+        ArgForm::Until {
+            close: DelimiterToken::ControlSeq(Cow::Owned("of".into())),
+        }
+    );
+    assert_eq!(specs[2].kind, ValueKind::Integer);
+}
+
+#[test]
+fn test_until_form_rejects_terminators_other_than_one_control_word() {
+    for (spec, message) in [
+        ("u", "expected `{`"),
+        ("u{}", "requires a terminator"),
+        ("u{;}", "must be a control word"),
+        ("u{*}", "must be a control word"),
+        (r"u{\\}", "not the control symbol `\\\\`"),
+        (r"u{\,}", "not the control symbol `\\,`"),
+        (r"u{\of\to}", "exactly one control word"),
+        (r"u{\of x}", "exactly one control word"),
+        (r"u{\of}:D", "cannot use star or delimiter value kind"),
+        (
+            r"!u{\of}",
+            "`!` prefix is only valid for optional argument forms",
+        ),
+    ] {
+        let err = parse_arg_specs(spec, "invalid").expect_err(spec);
+        assert!(err.to_string().contains(message), "{spec}: {err}");
+    }
+}
+
+#[test]
 fn test_parse_arg_specs_xparse_style() {
     let specs = parse_arg_specs("s o m g", "xparse").expect("s o m g should be valid");
     assert_eq!(specs.len(), 4);

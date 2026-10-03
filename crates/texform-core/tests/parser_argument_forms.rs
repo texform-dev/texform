@@ -790,6 +790,62 @@ fn test_special_character_delimiters_match_their_lexer_tokens() {
 }
 
 #[test]
+fn test_until_form_reads_through_its_terminator_outside_braces() {
+    // `\root` is `u{\of} m`. As with TeX delimited parameters, an argument that
+    // is exactly one braced group loses that brace layer, and braces hide the
+    // terminator.
+    assert_same_structure(r"\root{1+2}\of x", r"\root 1+2\of x");
+    assert_eq!(parse_degree(r"\root 3\of{x}"), SyntaxNode::Char('3'));
+    let SyntaxNode::Group { children, .. } = parse_degree(r"\root{{n}}\of{x}") else {
+        panic!("expected degree group");
+    };
+    assert!(matches!(
+        children.as_slice(),
+        [SyntaxNode::Group {
+            kind: GroupKind::Explicit,
+            ..
+        }]
+    ));
+    let (result, _) = parse(r"\root{a\of b}\of x", false).unwrap();
+    let (_, args) = extract_first_command(result);
+    assert_eq!(args.len(), 2);
+    assert_eq!(
+        expect_arg(&args[0]).kind,
+        ArgumentKind::Until {
+            close: Delimiter::Control("of")
+        }
+    );
+    assert!(support::contains_command_named(
+        unwrap_content(&args[0]),
+        "of"
+    ));
+    assert_eq!(unwrap_content(&args[1]), &SyntaxNode::Char('x'));
+}
+
+fn parse_degree(src: &str) -> SyntaxNode {
+    let (result, _) = parse(src, false).unwrap();
+    let (_, args) = extract_first_command(result);
+    unwrap_content(&args[0]).clone()
+}
+
+#[test]
+fn test_until_form_requires_its_terminator_in_the_same_group() {
+    for (src, message) in [
+        (r"\root n_i{x}", "missing terminator for argument"),
+        (
+            r"{\root n}\of{x}",
+            "missing terminator before closing group",
+        ),
+    ] {
+        let messages = parse(src, false).expect_err(src);
+        assert!(
+            messages.iter().any(|m| m.contains(message)),
+            "{src}: {messages:?}"
+        );
+    }
+}
+
+#[test]
 fn test_mqty_supports_star_plus_optional_paired_slot() {
     let (starred, _) = parse(r"\mqty*|x|", false).unwrap();
     let (name, args) = extract_first_command(starred);

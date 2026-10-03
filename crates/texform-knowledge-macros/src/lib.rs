@@ -75,6 +75,12 @@ fn render_arg_form(form: &ArgForm) -> TokenStream2 {
         ArgForm::Standard => quote!(::texform_knowledge::specs::ArgForm::Standard),
         ArgForm::Star => quote!(::texform_knowledge::specs::ArgForm::Star),
         ArgForm::Group => quote!(::texform_knowledge::specs::ArgForm::Group),
+        ArgForm::Until { close } => {
+            let close = render_delimiter_token(close);
+            quote! {
+                ::texform_knowledge::specs::ArgForm::Until { close: #close }
+            }
+        }
         ArgForm::Delimited { open, close } => {
             let open = render_delimiter_token(open);
             let close = render_delimiter_token(close);

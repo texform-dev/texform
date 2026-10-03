@@ -83,6 +83,9 @@ fn describe_slot(slot: &ParsedArgSpecSlot) -> String {
     match &slot.form {
         ArgSpecFormInfo::Standard | ArgSpecFormInfo::Star => {}
         ArgSpecFormInfo::Group => parts.push("braced".to_owned()),
+        ArgSpecFormInfo::Until { close } => {
+            parts.push(format!("until {}", delimiter(close)));
+        }
         ArgSpecFormInfo::Delimited { open, close } => {
             parts.push(format!(
                 "delimited by {} {}",

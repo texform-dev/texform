@@ -420,6 +420,7 @@ pub struct ArgKindDto {
 impl From<ArgKindRef<'_>> for ArgKindDto {
     fn from(kind: ArgKindRef<'_>) -> Self {
         let (open, close) = match kind {
+            ArgKindRef::Until { close } => (None, Some(close.to_string())),
             ArgKindRef::Delimited { open, close } | ArgKindRef::Paired { open, close } => {
                 (Some(open.to_string()), Some(close.to_string()))
             }

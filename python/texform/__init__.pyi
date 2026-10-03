@@ -121,7 +121,7 @@ ArgSpecKindType = Literal[
     "star",
 ]
 """Value kind of one parsed argspec slot (content, delimiter, star, ...)."""
-ArgSpecFormType = Literal["standard", "star", "group", "delimited", "paired"]
+ArgSpecFormType = Literal["standard", "star", "group", "until", "delimited", "paired"]
 """Surface form of one parsed argspec slot (mandatory, optional group, paired, ...)."""
 
 
@@ -546,7 +546,7 @@ GroupKindRef: TypeAlias = (
 """The kind of a ``Group`` node: explicit, implicit, delimited, or inline-math."""
 
 
-ArgFormKind = Literal["mandatory", "optional", "star", "group", "delimited", "paired"]
+ArgFormKind = Literal["mandatory", "optional", "star", "group", "until", "delimited", "paired"]
 NodeSlotKind = Literal[
     "child", "arg", "script_base", "subscript", "superscript", "infix_left", "infix_right", "env_body"
 ]

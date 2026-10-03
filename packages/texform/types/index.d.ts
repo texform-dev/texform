@@ -204,8 +204,8 @@ export type GroupKindRef =
 
 /**
  * The syntactic kind of a command argument in {@link SyntaxNode} snapshot form
- * (mandatory, optional, starred, group, or a delimited/paired form carrying its
- * `open`/`close` delimiters).
+ * (mandatory, optional, starred, group, until, or delimited/paired).
+ * Until forms carry `close`; delimited/paired forms carry `open` and `close`.
  *
  * @see {@link ArgSpecFormInfo}
  */
@@ -214,6 +214,7 @@ export type ArgumentKind =
   | "Optional"
   | "Star"
   | "Group"
+  | { Until: { close: Delimiter } }
   | { Delimited: { open: Delimiter; close: Delimiter } }
   | { Paired: { open: Delimiter; close: Delimiter } };
 
@@ -330,8 +331,8 @@ export type NodeKind =
   | "alignmentTab"
   | "error";
 
-/** The delimiter form of an argument slot; `open` and `close` are present for `delimited` and `paired` forms. */
-export type ArgForm = { kind: "mandatory" | "optional" | "star" | "group" | "delimited" | "paired"; open?: string; close?: string };
+/** The delimiter form of an argument slot; `close` is present for `until`, and both `open` and `close` for `delimited` and `paired` forms. */
+export type ArgForm = { kind: "mandatory" | "optional" | "star" | "group" | "until" | "delimited" | "paired"; open?: string; close?: string };
 
 /** The parent slot a {@link Node} fills; `index` is set for indexed slots such as children and arguments. */
 export type NodeSlot = { kind: "child" | "arg" | "script_base" | "subscript" | "superscript" | "infix_left" | "infix_right" | "env_body"; index: number | null };
@@ -1355,6 +1356,7 @@ export type ArgSpecFormInfo =
   | { type: "standard" }
   | { type: "star" }
   | { type: "group" }
+  | { type: "until"; close: DelimiterTokenInfo }
   | { type: "delimited"; open: DelimiterTokenInfo; close: DelimiterTokenInfo }
   | {
       type: "paired";

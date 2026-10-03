@@ -181,6 +181,11 @@ fn generated_inputs_preserve_parser_and_transform_structure() {
             "\\text{a\\\nb}",
             r"\mathrm{C \}",
             r"\xrightarrow[{\right]}]{x}",
+            r"\root\of{x}",
+            r"\root{1+2}\of x",
+            r"\root 3\of{x}^2",
+            r"\root{a\of b}\of x",
+            r"\frac{\root n_i\of{x}}{y}",
         ]
         .map(str::to_owned),
     );

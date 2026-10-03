@@ -1,7 +1,7 @@
 //! Argument parsing for commands and environments.
 //!
 //! Each argument slot in a command spec ([`ArgSpec`]) describes a form (standard,
-//! star, group, delimited, paired) and a value kind (content, delimiter,
+//! star, group, until, delimited, paired) and a value kind (content, delimiter,
 //! dimension, integer, key-value, column, CS-name). The [`argument_parser`]
 //! function dispatches on form × kind to build the appropriate chumsky parser,
 //! while [`arguments_parser`] sequences them for a full argument list.
@@ -60,6 +60,8 @@ pub(crate) fn validate_scalar_argument(
     let (open, close) = match &argument.kind {
         Form::Mandatory | Form::Group => (Token::LBrace, Token::RBrace),
         Form::Optional => (Token::LBracket, Token::RBracket),
+        // The protective brace layer precedes the terminator (`{raw}\of`).
+        Form::Until { close } => (Token::LBrace, boundary(close)),
         Form::Delimited { open, close } | Form::Paired { open, close } => {
             (boundary(open), boundary(close))
         }
@@ -71,6 +73,9 @@ pub(crate) fn validate_scalar_argument(
             token.map_err(|()| "invalid character in argument")?,
             span.into(),
         ));
+    }
+    if matches!(argument.kind, Form::Until { .. }) {
+        tokens.push((Token::RBrace, SimpleSpan::from(raw.len()..raw.len())));
     }
     tokens.push((close, SimpleSpan::from(raw.len()..raw.len())));
 
@@ -214,6 +219,35 @@ fn collect_delimited_tokens<'src, 'parse>(
     }
 
     Ok(tokens)
+}
+
+/// Collect a TeX delimited parameter without an opening boundary.
+fn collect_until_tokens<'src, 'parse>(
+    input: &mut ParserInput<'src, 'parse>,
+    close: &DelimiterToken,
+) -> Result<Vec<Token>, ParseFailure<'src>> {
+    let start = input.cursor();
+    let mut tokens = Vec::new();
+    let mut braces = 0usize;
+    loop {
+        let Some(token) = input.peek() else {
+            return Err(input.err_since(&start, "missing terminator for argument"));
+        };
+        if braces == 0 && token_matches_delimiter(&token, close) {
+            input.next();
+            return Ok(tokens);
+        }
+        match token {
+            Token::LBrace => braces += 1,
+            Token::RBrace if braces == 0 => {
+                return Err(input.err_since(&start, "missing terminator before closing group"));
+            }
+            Token::RBrace => braces -= 1,
+            _ => {}
+        }
+        input.next();
+        tokens.push(token);
+    }
 }
 
 /// Re-parse a collected token sequence as a full content sub-expression.
@@ -1019,6 +1053,36 @@ pub(super) fn argument_parser<'a>(
                     value,
                 ))))
             }
+            ArgForm::Until { close } => {
+                let mut tokens = collect_until_tokens(input, close)?;
+                let mut content_offset = input.span_from_cursor(&arg_start).start;
+                // TeX strips one brace layer when a delimited parameter is a single group.
+                if tokens.first() == Some(&Token::LBrace)
+                    && tokens.last() == Some(&Token::RBrace)
+                    && let Some(inner) = enclosing_braces(&tokens)
+                {
+                    content_offset += tokens_to_string(&tokens[..inner.start]).len();
+                    tokens = tokens[inner].to_vec();
+                }
+                let kind = ArgumentKind::Until {
+                    close: syntax_delimiter(close),
+                };
+                if let Some(mode) = spec.kind.content_mode() {
+                    let content =
+                        parse_tokens_as_content(input, state, mode, tokens, content_offset)?;
+                    return Ok(TrackedArgumentSlot {
+                        slot: Some(Argument::from_value(
+                            kind,
+                            argument_content_value_for_kind(spec.kind, content.node.clone()),
+                        )),
+                        content: Some(content),
+                    });
+                }
+                let value = parse_delimited_value(input, state, spec.kind, tokens, spec.nullable)?;
+                Ok(TrackedArgumentSlot::untracked(Some(Argument::from_value(
+                    kind, value,
+                ))))
+            }
             ArgForm::Delimited { open, close } => {
                 let has_open =
                     matches!(input.peek(), Some(token) if token_matches_delimiter(&token, open));
@@ -1257,7 +1321,14 @@ pub(crate) fn collect_braced_tokens<'src, 'parse>(
 /// Serialize a token sequence back into a LaTeX string for re-parsing.
 fn tokens_to_string(tokens: &[Token]) -> String {
     let mut out = String::new();
+    let mut control_word = false;
     for token in tokens {
+        // Comments can separate a control word from a letter without yielding
+        // whitespace tokens. Re-lexing must not merge their original tokens.
+        if control_word && matches!(token, Token::Char(c) if c.is_ascii_alphabetic()) {
+            out.push(' ');
+        }
+        control_word = matches!(token, Token::ControlSeq(name) if name.chars().all(|c| c.is_ascii_alphabetic()));
         match token {
             Token::ControlSeq(name) => {
                 out.push('\\');

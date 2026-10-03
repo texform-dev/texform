@@ -198,6 +198,37 @@ fn constructed_arguments_preserve_tight_optional_adjacency() {
 }
 
 #[test]
+fn constructed_until_arguments_reparse_with_their_terminators_protected() {
+    use texform_core::parse::{AllowedMode, CommandItem, CommandKind};
+    let kb = KnowledgeBase::builder()
+        .packages(&["base"])
+        .item(CommandItem::new(
+            "probe",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            r"u{\of}:N",
+        ))
+        .build()
+        .unwrap();
+    let mut doc = Document::with_knowledge_base(&kb, ContentMode::Math);
+    // Slot sources are written inside the boundaries, so this `\of` is content.
+    let x = doc.create_char('x').unwrap();
+    let root = doc
+        .create_command("root", [r"a\of b".into(), x.into()])
+        .unwrap();
+    let probe = doc.create_command("probe", ["eq:1".into()]).unwrap();
+    doc.append_child(doc.root().id(), root).unwrap();
+    doc.append_child(doc.root().id(), probe).unwrap();
+    let latex = doc.to_latex().unwrap();
+    let (parsed, diagnostics) = kb
+        .parse(&latex, &Default::default())
+        .try_into_document()
+        .unwrap();
+    assert!(diagnostics.is_empty());
+    assert_eq!(parsed.to_syntax(), doc.to_syntax(), "{latex}");
+}
+
+#[test]
 fn body_and_argument_reuse_is_rejected_before_adoption() {
     use texform_core::parse::{AllowedMode, EnvironmentItem};
     let kb = KnowledgeBase::builder()

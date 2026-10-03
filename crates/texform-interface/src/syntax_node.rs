@@ -46,6 +46,8 @@ pub enum ArgumentKind {
     ///
     /// Requiredness is enforced by the spec/parser rather than this enum.
     Group,
+    /// Required argument ending at a control-word terminator (`u{\name}`).
+    Until { close: Delimiter },
     /// Single delimited argument (`r` / `d`) with matched delimiters.
     Delimited { open: Delimiter, close: Delimiter },
     /// Paired-candidate argument (`r` / `d` with `<l,r>` pair list) with matched delimiters.

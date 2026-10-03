@@ -149,6 +149,16 @@ fn paired_arguments_export_selected_boundaries_and_infix_preorder() {
 }
 
 #[test]
+fn until_arguments_export_only_their_terminator() {
+    let doc = parse(&KnowledgeBase::default(), r"\root n\of x");
+    let tables = doc.to_columnar();
+    check_columns(&tables);
+    let until = row(&tables.args.form, Some("until"));
+    assert_eq!(tables.args.open[until], None);
+    assert_eq!(tables.args.close[until].as_deref(), Some(r"\of"));
+}
+
+#[test]
 fn incomplete_documents_export_unknown_empty_slots_and_all_scalar_payloads() {
     let values = [
         ArgumentValue::CSName("eq:one".into()),

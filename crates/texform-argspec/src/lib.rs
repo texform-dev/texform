@@ -14,6 +14,10 @@ pub enum ArgForm {
     Standard,
     Star,
     Group,
+    /// Required argument ending at one control-word terminator (`u{\name}`).
+    Until {
+        close: DelimiterToken,
+    },
     Delimited {
         open: DelimiterToken,
         close: DelimiterToken,
@@ -199,6 +203,7 @@ impl<'a> ArgSpecParser<'a> {
             's' => (false, ArgForm::Star, false),
             'g' => (false, ArgForm::Group, false),
             'G' => (false, ArgForm::Group, true),
+            'u' => (true, self.parse_until_form()?, false),
             'r' => {
                 if self.peek_char() == Some('<') {
                     let pairs = self.parse_pair_list()?;
@@ -349,6 +354,36 @@ impl<'a> ArgSpecParser<'a> {
         }
     }
 
+    /// Parse the `{\name}` terminator of a `u` form.
+    ///
+    /// The terminator must be exactly one control word. Characters and control
+    /// symbols collide with lexer tokens and with alignment, script, and spacing
+    /// syntax, and multi-token terminators are not supported.
+    fn parse_until_form(&mut self) -> Result<ArgForm, ArgSpecParseError> {
+        self.expect_char('{')?;
+        match self.next_char() {
+            Some('\\') => {}
+            Some('}') => return Err(self.err("until form requires a terminator such as `u{\\of}`")),
+            Some(_) => {
+                return Err(self.err("until terminator must be a control word such as `\\of`"));
+            }
+            None => return Err(self.err("missing until terminator")),
+        }
+        let name = self.parse_control_sequence_name()?;
+        if !name.starts_with(|c: char| c.is_ascii_alphabetic()) {
+            return Err(self.err(format!(
+                "until terminator must be a control word, not the control symbol `\\{name}`"
+            )));
+        }
+        if self.peek_char() != Some('}') {
+            return Err(self.err("until terminator must be exactly one control word"));
+        }
+        self.cursor += 1;
+        Ok(ArgForm::Until {
+            close: DelimiterToken::ControlSeq(Cow::Owned(name)),
+        })
+    }
+
     fn parse_pair_list(
         &mut self,
     ) -> Result<Cow<'static, [(DelimiterToken, DelimiterToken)]>, ArgSpecParseError> {
@@ -449,6 +484,11 @@ impl<'a> ArgSpecParser<'a> {
             ArgForm::Group => {
                 if spec.kind.is_star() {
                     return Err(self.err("group form cannot use star value kind"));
+                }
+            }
+            ArgForm::Until { .. } => {
+                if spec.kind.is_star() || spec.kind.is_delimiter() {
+                    return Err(self.err("until form cannot use star or delimiter value kind"));
                 }
             }
             ArgForm::Delimited { .. } | ArgForm::Paired { .. } => {
