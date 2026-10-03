@@ -1257,7 +1257,14 @@ pub(crate) fn collect_braced_tokens<'src, 'parse>(
 /// Serialize a token sequence back into a LaTeX string for re-parsing.
 fn tokens_to_string(tokens: &[Token]) -> String {
     let mut out = String::new();
+    let mut control_word = false;
     for token in tokens {
+        // Comments can separate a control word from a letter without yielding
+        // whitespace tokens. Re-lexing must not merge their original tokens.
+        if control_word && matches!(token, Token::Char(c) if c.is_ascii_alphabetic()) {
+            out.push(' ');
+        }
+        control_word = matches!(token, Token::ControlSeq(name) if name.chars().all(|c| c.is_ascii_alphabetic()));
         match token {
             Token::ControlSeq(name) => {
                 out.push('\\');
