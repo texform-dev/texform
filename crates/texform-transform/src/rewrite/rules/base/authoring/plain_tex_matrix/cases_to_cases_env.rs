@@ -6,7 +6,10 @@
 //!   - cmd:cases
 //! consumes:
 //!   eliminates: cmd:cases
-//!   touches: cmd:cr
+//!   touches:
+//!     - cmd:cr
+//!     - 'cmd:\'
+//!     - cmd:newline
 //! produces: env:cases
 //! rewrite_patterns:
 //!   - {from: '\cases{#1 \cr #2}', to: '\begin{cases} #1 \\ #2 \end{cases}'}
@@ -29,7 +32,7 @@ define_rule! {
         triggers: cmd_targets![&base::cmd::CASES],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::CASES],
-            touches: cmd_targets![&base::cmd::CR],
+            touches: cmd_targets![&base::cmd::CR, &base::cmd::_BACKSLASH, &base::cmd::NEWLINE],
         },
         produces: RuleProduces {
             targets: env_targets![&ams::env::CASES],
@@ -72,4 +75,17 @@ mod tests {
         ]
     }
     // END: Generated examples
+
+    transform_examples! {
+        rule: CASES_TO_CASES_ENV,
+        level: Authoring,
+        examples: [
+            {
+                label: rewrites_newline_row_separators,
+                packages: ["base", "ams"],
+                input: r"\cases{a&b\newline c&d\newline}",
+                expected: r"\begin{cases}a&b\\c&d\end{cases}",
+            },
+        ]
+    }
 }

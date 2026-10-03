@@ -6,7 +6,10 @@
 //!   - cmd:pmatrix
 //! consumes:
 //!   eliminates: cmd:pmatrix
-//!   touches: cmd:cr
+//!   touches:
+//!     - cmd:cr
+//!     - 'cmd:\'
+//!     - cmd:newline
 //! produces: env:pmatrix
 //! rewrite_patterns:
 //!   - {from: '\pmatrix{#1 \cr #2}', to: '\begin{pmatrix} #1 \\ #2 \end{pmatrix}'}
@@ -29,7 +32,7 @@ define_rule! {
         triggers: cmd_targets![&base::cmd::PMATRIX],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::PMATRIX],
-            touches: cmd_targets![&base::cmd::CR],
+            touches: cmd_targets![&base::cmd::CR, &base::cmd::_BACKSLASH, &base::cmd::NEWLINE],
         },
         produces: RuleProduces {
             targets: env_targets![&ams::env::PMATRIX],
@@ -72,4 +75,17 @@ mod tests {
         ]
     }
     // END: Generated examples
+
+    transform_examples! {
+        rule: PMATRIX_TO_PMATRIX_ENV,
+        level: Authoring,
+        examples: [
+            {
+                label: accepts_linebreaks_as_row_separators,
+                packages: ["base", "ams"],
+                input: r"\pmatrix{a\\ b}",
+                expected: r"\begin{pmatrix}a\\b\end{pmatrix}",
+            },
+        ]
+    }
 }

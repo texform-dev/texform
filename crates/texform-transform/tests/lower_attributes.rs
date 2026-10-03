@@ -190,7 +190,7 @@ fn alignment_separators_end_declarative_scope() {
     );
     serialized_with_packages(
         r"\pmatrix{0 & i \bf{1} \cr 0 & 0 \cr}",
-        r"\begin{pmatrix} 0 & i \mathbf{1} \\ 0 & 0 \\ \end{pmatrix}",
+        r"\begin{pmatrix} 0 & i \mathbf{1} \\ 0 & 0 \end{pmatrix}",
         packages,
     );
     serialized_with_packages(

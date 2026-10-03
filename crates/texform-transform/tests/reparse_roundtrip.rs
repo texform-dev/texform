@@ -299,6 +299,9 @@ fn companion_fixes_keep_parser_shaped_trees() {
         // Equation numbers keep math content inside text-mode tags.
         r"\eqalignno{x&=y&(n_i)\cr}",
         r"\eqalignno{x&=y&{\frac{n}{m}}\cr\cr z&=w&(1.2)}",
+        // Plain alignment row separators keep their `*` and spacing.
+        r"\matrix{a&b\\*[2pt]c&d\\[2pt]}",
+        r"\eqalignno{x&=y&(1)\\[2pt]z&=w&(2)\newline}",
         // Lowering consumes argument containers in one run.
         r"\mathbf{{{\rm{ab}}}}",
         r"{\rm{ }}",

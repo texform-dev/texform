@@ -8,7 +8,10 @@
 //!   - cmd:eqalignno
 //! consumes:
 //!   eliminates: cmd:eqalignno
-//!   touches: cmd:cr
+//!   touches:
+//!     - cmd:cr
+//!     - 'cmd:\'
+//!     - cmd:newline
 //! produces:
 //!   - env:align*
 //!   - cmd:tag
@@ -20,7 +23,7 @@ use texform_knowledge::builtin::ams;
 use texform_knowledge::builtin::base;
 
 use super::helpers::{
-    cr_rows, linebreak_command, mandatory_math_body, replace_with_environment, tag_command,
+    alignment_rows, mandatory_math_body, replace_with_environment, tag_command,
 };
 use crate::ast::{ContentMode, GroupKind, Node, NodeId};
 use crate::rewrite::RuleError;
@@ -38,7 +41,7 @@ define_rule! {
         triggers: cmd_targets![&base::cmd::EQALIGNNO],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::EQALIGNNO],
-            touches: cmd_targets![&base::cmd::CR],
+            touches: cmd_targets![&base::cmd::CR, &base::cmd::_BACKSLASH, &base::cmd::NEWLINE],
         },
         produces: RuleProduces {
             targets: &[RuleTarget::Environment(&ams::env::ALIGN_STAR), RuleTarget::Command(&ams::cmd::TAG)],
@@ -54,24 +57,15 @@ define_rule! {
                 &command.args[0],
                 base::cmd::EQALIGNNO.name,
             )?;
-            let mut rows = cr_rows(cx, body);
-            // A final \cr terminates its row and leaves one empty trailing segment.
-            // Dropping only that segment keeps internal and explicit final empty rows.
-            if rows.len() > 1 && rows.last().is_some_and(Vec::is_empty) {
-                rows.pop();
-            }
-            let row_count = rows.len();
             let mut children = Vec::new();
 
-            for (index, row) in rows.into_iter().enumerate() {
-                let (row, tag) = split_eqalignno_row(Self::KEY, cx, row)?;
-                children.extend(row);
+            for row in alignment_rows(cx, body) {
+                let (content, tag) = split_eqalignno_row(Self::KEY, cx, row.children)?;
+                children.extend(content);
                 if let Some(tag) = tag {
                     children.push(cx.ast.new_node(tag));
                 }
-                if index + 1 < row_count {
-                    children.push(cx.ast.new_node(linebreak_command()));
-                }
+                children.extend(row.terminator);
             }
 
             replace_with_environment(cx, node_id, &ams::env::ALIGN_STAR, Vec::new(), children);
@@ -243,6 +237,18 @@ mod tests {
                 packages: ["base", "ams"],
                 input: r"\eqalignno{x&=y&(1)\cr_Mx&=z&(2)\cr}",
                 expected: r"\begin{align*}x&=y\tag{1}\\{}_Mx&=z\tag{2}\end{align*}",
+            },
+            {
+                label: keeps_linebreaks_out_of_the_number_cell,
+                packages: ["base", "ams"],
+                input: r"\eqalignno{x&=y&(1)\\[2pt]z&=w&(2)\newline}",
+                expected: r"\begin{align*}x&=y\tag{1}\\[2pt]z&=w\tag{2}\end{align*}",
+            },
+            {
+                label: does_not_split_rows_inside_groups,
+                packages: ["base", "ams"],
+                input: r"\eqalignno{x&=y&({\cr})}",
+                expected: r"\begin{align*}x&=y\tag{${\cr}$}\end{align*}",
             },
         ]
     }
