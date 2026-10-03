@@ -54,11 +54,7 @@ pub(crate) fn validate_scalar_argument(
     };
     let boundary = |delimiter: &Boundary| match delimiter {
         Boundary::None => Token::Char('.'),
-        Boundary::Char('{') => Token::LBrace,
-        Boundary::Char('}') => Token::RBrace,
-        Boundary::Char('[') => Token::LBracket,
-        Boundary::Char(']') => Token::RBracket,
-        Boundary::Char(c) => Token::Char(*c),
+        Boundary::Char(c) => char_delimiter_token(*c),
         Boundary::Control(name) => Token::ControlSeq(name.clone()),
     };
     let (open, close) = match &argument.kind {
@@ -124,11 +120,7 @@ impl TrackedArgumentSlot {
 /// Check whether a lexed token matches a spec-defined delimiter token.
 fn token_matches_delimiter(token: &Token, delimiter: &DelimiterToken) -> bool {
     match delimiter {
-        DelimiterToken::Char('{') => matches!(token, Token::LBrace),
-        DelimiterToken::Char('}') => matches!(token, Token::RBrace),
-        DelimiterToken::Char('[') => matches!(token, Token::LBracket),
-        DelimiterToken::Char(']') => matches!(token, Token::RBracket),
-        DelimiterToken::Char(c) => matches!(token, Token::Char(tc) if *tc == *c),
+        DelimiterToken::Char(c) => *token == char_delimiter_token(*c),
         DelimiterToken::ControlSeq(name) => {
             matches!(token, Token::ControlSeq(token_name) if token_name == name.as_ref())
         }
@@ -137,12 +129,30 @@ fn token_matches_delimiter(token: &Token, delimiter: &DelimiterToken) -> bool {
 
 fn delimiter_token(delimiter: &DelimiterToken) -> Token {
     match delimiter {
-        DelimiterToken::Char('{') => Token::LBrace,
-        DelimiterToken::Char('}') => Token::RBrace,
-        DelimiterToken::Char('[') => Token::LBracket,
-        DelimiterToken::Char(']') => Token::RBracket,
-        DelimiterToken::Char(c) => Token::Char(*c),
+        DelimiterToken::Char(c) => char_delimiter_token(*c),
         DelimiterToken::ControlSeq(name) => Token::ControlSeq(name.to_string()),
+    }
+}
+
+/// Map a single-character delimiter to the token the lexer produces for it.
+///
+/// Argspec parsing rejects characters that never lex as a single token of
+/// their own (`%`, apostrophes, whitespace, control characters), so every
+/// accepted delimiter appears here or as `Token::Char`.
+fn char_delimiter_token(c: char) -> Token {
+    match c {
+        '{' => Token::LBrace,
+        '}' => Token::RBrace,
+        '[' => Token::LBracket,
+        ']' => Token::RBracket,
+        '*' => Token::Star,
+        '$' => Token::MathShift,
+        '&' => Token::Alignment,
+        '#' => Token::Parameter,
+        '^' => Token::Superscript,
+        '_' => Token::Subscript,
+        '~' => Token::ActiveChar,
+        c => Token::Char(c),
     }
 }
 

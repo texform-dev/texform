@@ -751,6 +751,45 @@ fn test_required_group_and_delimited_forms_have_distinct_ast_kinds() {
 }
 
 #[test]
+fn test_special_character_delimiters_match_their_lexer_tokens() {
+    // These characters lex as dedicated tokens rather than `Token::Char`.
+    let ctx = test_context_with_items([
+        command_item("stars", CommandKind::Prefix, AllowedMode::Math, "d**"),
+        command_item("tildes", CommandKind::Prefix, AllowedMode::Math, "r~~"),
+        command_item("scripts", CommandKind::Prefix, AllowedMode::Math, "d<^,_>"),
+    ]);
+    for (src, open, close) in [
+        (r"\stars*x*", '*', '*'),
+        (r"\tildes~x~", '~', '~'),
+        (r"\scripts^x_", '^', '_'),
+    ] {
+        let output = ctx.parse(src, &ParseConfig::STRICT);
+        assert!(
+            output.diagnostics.is_empty(),
+            "{src}: unexpected diagnostics: {:?}",
+            output.diagnostics
+        );
+        let syntax = output.document().expect("parse result").to_syntax();
+        let SyntaxNode::Root { children, .. } = &syntax else {
+            panic!("expected root, got {syntax:?}");
+        };
+        assert_eq!(children.len(), 1, "{src}: {children:?}");
+        let (_, args) = extract_first_command(syntax.clone());
+        let arg = expect_arg(&args[0]);
+        assert_eq!(arg.value, ArgumentValue::MathContent(SyntaxNode::Char('x')));
+        assert!(
+            matches!(
+                &arg.kind,
+                ArgumentKind::Delimited { open: o, close: c } | ArgumentKind::Paired { open: o, close: c }
+                    if *o == Delimiter::Char(open) && *c == Delimiter::Char(close)
+            ),
+            "{src}: {:?}",
+            arg.kind
+        );
+    }
+}
+
+#[test]
 fn test_mqty_supports_star_plus_optional_paired_slot() {
     let (starred, _) = parse(r"\mqty*|x|", false).unwrap();
     let (name, args) = extract_first_command(starred);

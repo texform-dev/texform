@@ -344,7 +344,7 @@ impl<'a> ArgSpecParser<'a> {
                 self.parse_control_sequence_name()?,
             ))),
             Some(c) if c.is_whitespace() => Err(self.err("delimiter token cannot be whitespace")),
-            Some(c) => Ok(DelimiterToken::Char(c)),
+            Some(c) => self.char_delimiter_token(c),
             None => Err(self.err("missing delimiter token")),
         }
     }
@@ -378,9 +378,28 @@ impl<'a> ArgSpecParser<'a> {
             Some('<') | Some('>') | Some(',') => {
                 Err(self.err("`<`, `>`, `,` are reserved in pair syntax"))
             }
-            Some(c) => Ok(DelimiterToken::Char(c)),
+            Some(c) => self.char_delimiter_token(c),
             None => Err(self.err("missing pair delimiter token")),
         }
+    }
+
+    /// Accept a single-character delimiter only if the lexer produces a token
+    /// for it alone; otherwise the delimiter could never match parsed input.
+    fn char_delimiter_token(&self, c: char) -> Result<DelimiterToken, ArgSpecParseError> {
+        let reason = match c {
+            '%' => "starts a comment",
+            '\'' | '\u{2019}' => "is lexed as a prime",
+            c if c.is_ascii_control() => "is not valid source text",
+            _ => return Ok(DelimiterToken::Char(c)),
+        };
+        let shown = if c.is_ascii_control() {
+            c.escape_debug().to_string()
+        } else {
+            c.to_string()
+        };
+        Err(self.err(format!(
+            "delimiter token `{shown}` {reason} and can never match"
+        )))
     }
 
     fn parse_control_sequence_name(&mut self) -> Result<String, ArgSpecParseError> {

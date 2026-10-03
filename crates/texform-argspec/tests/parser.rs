@@ -475,3 +475,16 @@ fn test_parse_arg_specs_rejects_required_paired_with_no_space_prefix() {
             .contains("`!` prefix is only valid for optional argument forms")
     );
 }
+
+#[test]
+fn test_parse_arg_specs_rejects_delimiters_without_their_own_token() {
+    for (spec, message) in [
+        ("d%%", "`%` starts a comment"),
+        ("r''", "`'` is lexed as a prime"),
+        ("d<\u{2019},)>", "`\u{2019}` is lexed as a prime"),
+        ("d\u{1}\u{1}", "`\\u{1}` is not valid source text"),
+    ] {
+        let err = parse_arg_specs(spec, "invalid").expect_err(spec);
+        assert!(err.to_string().contains(message), "{spec}: {err}");
+    }
+}
