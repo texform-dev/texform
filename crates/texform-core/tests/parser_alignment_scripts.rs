@@ -14,8 +14,12 @@ fn parse(source: &str) -> Document {
 
 fn assert_cell_start(children: &[SyntaxNode]) {
     assert_eq!(children[0], SyntaxNode::AlignmentTab);
-    let SyntaxNode::Scripted { base, .. } = &children[1] else {
-        panic!("expected a scripted expression after the alignment tab: {children:?}");
+    assert_empty_base_script(&children[1]);
+}
+
+fn assert_empty_base_script(node: &SyntaxNode) {
+    let SyntaxNode::Scripted { base, .. } = node else {
+        panic!("expected a scripted expression after the separator: {node:?}");
     };
     assert!(
         matches!(base.as_ref(), SyntaxNode::Group { kind: GroupKind::Implicit, children, .. } if children.is_empty())
@@ -56,6 +60,34 @@ fn alignment_environment_keeps_separators_before_empty_base_scripts() {
     assert_cell_start(&children[4..]);
     let latex = doc.to_latex().unwrap();
     assert_eq!(parse(&latex).to_latex().unwrap(), latex);
+}
+
+#[test]
+fn scripts_after_row_separators_start_a_new_row_with_an_empty_base() {
+    for (source, separator) in [
+        (r"a\\_i b", "\\"),
+        (r"a\\*[2pt]^2 b", "\\"),
+        (r"a\cr_M^N b", "cr"),
+        (r"a\newline'' b", "newline"),
+    ] {
+        let doc = parse(&format!(r"\begin{{matrix}}{source}\end{{matrix}}"));
+        let SyntaxNode::Root { children, .. } = doc.to_syntax() else {
+            unreachable!()
+        };
+        let SyntaxNode::Environment { body, .. } = &children[0] else {
+            unreachable!()
+        };
+        let SyntaxNode::Group { children, .. } = body.as_ref() else {
+            unreachable!()
+        };
+        assert!(
+            matches!(&children[1], SyntaxNode::Command { name, .. } if name == separator),
+            "{source}: {children:?}"
+        );
+        assert_empty_base_script(&children[2]);
+        let latex = doc.to_latex().unwrap();
+        assert_eq!(parse(&latex).to_latex().unwrap(), latex, "{source}");
+    }
 }
 
 #[test]

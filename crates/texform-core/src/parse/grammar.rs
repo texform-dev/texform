@@ -948,6 +948,16 @@ fn missing_script_operand_failure<'src, 'parse>(
     )
 }
 
+/// Returns whether `node` ends an alignment cell: `&`, or a row separator
+/// (`\\`, `\cr`, `\newline`) with any of its own arguments.
+fn is_cell_separator(node: &SyntaxNode) -> bool {
+    match node {
+        SyntaxNode::AlignmentTab => true,
+        SyntaxNode::Command { name, .. } => matches!(name.as_str(), "\\" | "cr" | "newline"),
+        _ => false,
+    }
+}
+
 /// Empty implicit group used as a script base, with a zero-width span at `pos`.
 fn empty_script_base(pos: usize) -> TrackedNode {
     TrackedNode::leaf(
@@ -1018,9 +1028,10 @@ where
         input.parse(atom_for_scripts.clone())?
     };
 
-    // Alignment tabs end a cell, so following scripts start the next cell
-    // with an empty base rather than binding to the separator itself.
-    if matches!(base.node, SyntaxNode::AlignmentTab) {
+    // Alignment tabs and row separators end a cell, so following scripts
+    // start the next cell with an empty base rather than binding to the
+    // separator itself.
+    if is_cell_separator(&base.node) {
         return Ok(ScriptComponents {
             base,
             subscript: None,
