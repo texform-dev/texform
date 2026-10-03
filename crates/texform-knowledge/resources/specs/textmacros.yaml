@@ -169,7 +169,7 @@ commands:
       - discouraged
   - name: hspace
     kind: prefix
-    argspec: m:L
+    argspec: s m:L
     allowed_mode: text
     tags:
       - spacing

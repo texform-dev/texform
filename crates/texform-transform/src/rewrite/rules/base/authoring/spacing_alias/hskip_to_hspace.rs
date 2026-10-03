@@ -20,7 +20,7 @@ use texform_knowledge::builtin::base;
 
 use super::helpers::consume_following_text_separator;
 use crate::ast::{ArgumentKind, ArgumentValue};
-use crate::rewrite::helpers::{dimension_slot, prefix_command_node};
+use crate::rewrite::helpers::{dimension_slot, prefix_command_node, star_slot};
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::rewrite::{cmd_targets, define_rule};
 
@@ -60,7 +60,10 @@ define_rule! {
 
             cx.ast.replace_node(
                 node_id,
-                prefix_command_node(&base::cmd::HSPACE, vec![dimension_slot(dimension)]),
+                prefix_command_node(
+                    &base::cmd::HSPACE,
+                    vec![star_slot(false), dimension_slot(dimension)],
+                ),
             );
             consume_following_text_separator(cx.ast, node_id);
             Ok(RuleEffect::Applied)

@@ -269,6 +269,8 @@ fn companion_fixes_keep_parser_shaped_trees() {
     for source in [
         // Rewritten nodes match what the parser builds.
         r"\Biggr\}",
+        r"A\hskip 1em B",
+        r"\text{A\hskip 1em B}",
         r"\Bigl\{",
         r"\newline",
         r"\break",
