@@ -1298,6 +1298,48 @@ fn test_compact_math_group_inner_spacing_affects_optional_argument_brackets() {
 }
 
 #[test]
+fn test_until_argument_keeps_one_protective_brace_layer() {
+    // The parser strips one brace layer from an until argument, so the
+    // serializer always restores exactly one: explicit inner groups survive and
+    // braced terminators stay inside the argument.
+    let compact = SerializeOptions {
+        group_inner_spacing: MathGroupInnerSpacing::Compact,
+        ..SerializeOptions::default()
+    };
+    for (src, padded, compacted) in [
+        (
+            r"\root n\of x",
+            r"\root { n }\of { x }",
+            r"\root {n}\of {x}",
+        ),
+        (
+            r"\root{{n}}\of{x}",
+            r"\root { { n } }\of { x }",
+            r"\root {{n}}\of {x}",
+        ),
+        (
+            r"\root{a\of b}\of x",
+            r"\root { a \of b }\of { x }",
+            r"\root {a \of b}\of {x}",
+        ),
+    ] {
+        let ast = parse_to_ast(src);
+        for (options, expected) in [
+            (&SerializeOptions::default(), padded),
+            (&compact, compacted),
+        ] {
+            let latex = serialize_with(&ast, options);
+            assert_eq!(latex, expected, "{src}");
+            assert_eq!(
+                parse_to_ast(&latex).to_syntax_root(),
+                ast.to_syntax_root(),
+                "{src}"
+            );
+        }
+    }
+}
+
+#[test]
 fn test_serialize_escaped_syntax_chars_round_trips_as_visible_chars() {
     let first = serialize(&parse_to_ast(r"\%\$\#\_\{\}"));
     let second = serialize(&parse_to_ast(&first));

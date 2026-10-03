@@ -270,7 +270,7 @@ commands:
       - decoration
   - name: buildrel
     kind: prefix
-    argspec: m
+    argspec: u{\over} m
     allowed_mode: math
     tags:
       - discouraged
@@ -1083,7 +1083,7 @@ commands:
       - discouraged
   - name: root
     kind: prefix
-    argspec: m
+    argspec: u{\of} m
     allowed_mode: math
     tags:
       - discouraged

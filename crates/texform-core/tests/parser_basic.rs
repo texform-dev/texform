@@ -677,24 +677,38 @@ fn test_infix_over_allows_empty_right_operand() {
 }
 
 #[test]
-fn test_repeated_buildrel_over_parses_as_separate_infixes() {
-    let ctx = ParseContext::from_packages(&["base"]);
-    let src = r"\cdots\to K\buildrel f\over\longrightarrow K\buildrel f\over\longrightarrow K";
+fn test_buildrel_consumes_its_over_terminator() {
+    // `\buildrel` is `u{\over} m`, so the terminating `\over` never forms an
+    // infix, while an outer `\over` and a braced `\over` stay infix.
+    let (chain, _) = parse(r"K\buildrel f\over\to K\buildrel g\over\to K", false).unwrap();
+    let SyntaxNode::Root { children, .. } = &chain else {
+        panic!("expected root, got {chain:?}");
+    };
+    assert_eq!(children.len(), 5, "{children:?}");
+    assert!(
+        children
+            .iter()
+            .all(|child| !matches!(child, SyntaxNode::Infix { .. }))
+    );
 
-    for config in [ParseConfig::STRICT, ParseConfig::LENIENT] {
-        let output = ctx.parse(src, &config);
-        assert!(
-            output.diagnostics.is_empty(),
-            "diagnostics for {:?}: {:?}",
-            config,
-            output.diagnostics
-        );
-        assert!(
-            output.document().is_some(),
-            "expected parse result for {:?}",
-            config
-        );
-    }
+    let (outer, _) = parse(r"a\over\buildrel b\over c", false).unwrap();
+    let SyntaxNode::Root { children, .. } = &outer else {
+        panic!("expected root, got {outer:?}");
+    };
+    let [SyntaxNode::Infix { name, right, .. }] = children.as_slice() else {
+        panic!("expected one outer infix, got {children:?}");
+    };
+    assert_eq!(name, "over");
+    assert!(matches!(&**right, SyntaxNode::Command { name, .. } if name == "buildrel"));
+
+    let (braced, _) = parse(r"\buildrel{a\over b}\over=", false).unwrap();
+    let (name, args) = extract_first_command(braced);
+    assert_eq!(name, "buildrel");
+    assert!(matches!(
+        unwrap_content(&args[0]),
+        SyntaxNode::Infix { name, .. } if name == "over"
+    ));
+    assert_eq!(unwrap_content(&args[1]), &SyntaxNode::Char('='));
 }
 
 #[test]

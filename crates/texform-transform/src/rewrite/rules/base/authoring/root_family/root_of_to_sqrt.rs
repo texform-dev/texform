@@ -6,7 +6,6 @@
 //!   - cmd:root
 //! consumes:
 //!   eliminates: cmd:root
-//!   touches: cmd:of
 //! produces: cmd:sqrt
 //! rewrite_patterns:
 //!   - {from: '\root #1 \of #2', to: '\sqrt[#1]{#2}'}
@@ -14,7 +13,7 @@
 
 use texform_knowledge::builtin::base;
 
-use crate::ast::{Argument, ArgumentKind, ArgumentValue, ContentMode, GroupKind, Node, NodeId, Slot};
+use crate::ast::{Argument, ArgumentKind, ArgumentValue, ContentMode, Delimiter, NodeId};
 use crate::rewrite::helpers::{mandatory_content_slot, prefix_command_node};
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleKey, RuleProduces};
 use crate::rewrite::rule_context::RuleContext;
@@ -30,7 +29,7 @@ define_rule! {
         triggers: cmd_targets![&base::cmd::ROOT],
         consumes: RuleConsumes {
             eliminates: cmd_targets![&base::cmd::ROOT],
-            touches: cmd_targets![&base::cmd::OF],
+            touches: &[],
         },
         produces: RuleProduces {
             targets: cmd_targets![&base::cmd::SQRT],
@@ -49,62 +48,19 @@ fn rewrite_root_of(
     let Some(root) = cx.match_command(node_id, &base::cmd::ROOT) else {
         return Ok(RuleEffect::Skipped);
     };
-    cx.for_rule(rule_key).expect_arg_len(root.args, 1, "\\root")?;
-    let degree_head = cx.for_rule(rule_key).mandatory_math_content(&root.args[0], "\\root", "degree")?;
-
-    let Some(parent_link) = cx.ast.parent(node_id) else {
-        return Err(cx.for_rule(rule_key).invalid_shape("\\root should be attached to a parent"));
+    cx.for_rule(rule_key).expect_arg_len(root.args, 2, "\\root")?;
+    let degree = match &root.args[0] {
+        Some(Argument {
+            kind:
+                ArgumentKind::Until {
+                    close: Delimiter::Control(name),
+                },
+            value: ArgumentValue::MathContent(degree),
+            ..
+        }) if name == "of" => *degree,
+        _ => return Err(cx.for_rule(rule_key).invalid_shape("\\root degree should end at \\of")),
     };
-    let Slot::GroupChild(root_index) = parent_link.slot else {
-        return Err(cx.for_rule(rule_key).invalid_shape("\\root should appear as math-list content"));
-    };
-
-    let siblings = cx.ast.children(parent_link.parent).to_vec();
-    let Some(of_index) = siblings
-        .iter()
-        .enumerate()
-        .skip(root_index + 1)
-        .find_map(|(index, &sibling)| cx.match_command(sibling, &base::cmd::OF).map(|_| index))
-    else {
-        return Err(cx.for_rule(rule_key).invalid_shape("\\root should be followed by \\of"));
-    };
-    let of = cx
-        .match_command(siblings[of_index], &base::cmd::OF)
-        .expect("\\of index should still refer to an \\of command");
-    cx.for_rule(rule_key).expect_no_args(of.args, "\\of")?;
-
-    if siblings.get(of_index + 1).is_none() {
-        return Err(cx.for_rule(rule_key).invalid_shape("\\of should be followed by a radicand"));
-    }
-
-    cx.ast.replace_node(node_id, Node::Text(String::new()));
-
-    let parent_id = parent_link.parent;
-    let mut degree_tail = Vec::new();
-    for _ in (root_index + 1)..of_index {
-        let child = cx.ast.children(parent_id)[root_index + 1];
-        degree_tail.push(cx.ast.detach(child));
-    }
-
-    let of_node = cx.ast.children(parent_id)[root_index + 1];
-    let detached_of = cx.ast.detach(of_node);
-    cx.ast.remove_detached(detached_of);
-
-    let radicand = cx.ast.children(parent_id)[root_index + 1];
-    let radicand = cx.ast.detach(radicand);
-
-    let degree = if degree_tail.is_empty() {
-        degree_head
-    } else {
-        let mut degree_children = Vec::with_capacity(degree_tail.len() + 1);
-        degree_children.push(degree_head);
-        degree_children.extend(degree_tail);
-        cx.ast.new_node(Node::Group {
-            children: degree_children,
-            kind: GroupKind::Implicit,
-            mode: ContentMode::Math,
-        })
-    };
+    let radicand = cx.for_rule(rule_key).mandatory_math_content(&root.args[1], "\\root", "radicand")?;
 
     cx.ast.replace_node(
         node_id,
@@ -126,7 +82,7 @@ fn rewrite_root_of(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{ArgumentKind, ArgumentValue};
+    use crate::ast::{ArgumentKind, ArgumentValue, Node};
     use crate::parse::ParseContext;
     use crate::rewrite::transform_examples;
     use crate::rewrite::{run_one_rule_for_test, RuleLevel};
@@ -154,13 +110,43 @@ mod tests {
             label: braced_degree,
             packages: ["base"],
             input: r"\root {1+2} \of x",
-            expected: r"\sqrt[1+2]{x}",
+            expected: r"\sqrt[{1+2}]{x}",
         },
         {
             label: bare_radicand_keeps_following_siblings,
             packages: ["base"],
             input: r"a+\root n \of y+z",
             expected: r"a+\sqrt[n]{y}+z",
+        },
+        {
+            label: single_group_degree_loses_one_brace_layer,
+            packages: ["base"],
+            input: r"\root{1+2}\of x",
+            expected: r"\sqrt[1+2]{x}",
+        },
+        {
+            label: unbraced_scripted_degree,
+            packages: ["base"],
+            input: r"\root n_i\of{x}",
+            expected: r"\sqrt[n_i]{x}",
+        },
+        {
+            label: braced_terminator_stays_in_degree,
+            packages: ["base"],
+            input: r"\root{a\of b}\of x",
+            expected: r"\sqrt[a\of b]{x}",
+        },
+        {
+            label: empty_degree_keeps_empty_optional,
+            packages: ["base"],
+            input: r"\root\of{x}",
+            expected: r"\sqrt[]{x}",
+        },
+        {
+            label: scripts_after_radicand_bind_to_root,
+            packages: ["base"],
+            input: r"\root 3\of{x}^2",
+            expected: r"\sqrt[3]{x}^2",
         },
         ]
     }

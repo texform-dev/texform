@@ -133,16 +133,9 @@ fn report_collection_preserves_output_ast_and_errors() {
     }
 
     assert_same_error(&engine, "{", &engine.default_normalize_config());
-    let authoring = TransformEngine::builder()
-        .knowledge_base(kb(&["base"]))
-        .profile(Profile::Authoring)
-        .build()
-        .expect("authoring");
-    assert_same_error(
-        &authoring,
-        r"A \buildrel f \over = B",
-        &authoring.default_normalize_config(),
-    );
+    // One rewrite iteration cannot reach the fixed point after a rewrite applies.
+    let capped = config_with(&engine, |config| config.rewrite.max_iterations = 1);
+    assert_same_error(&engine, r"A \over B", &capped);
 }
 
 #[test]
@@ -162,18 +155,12 @@ fn one_engine_does_not_keep_report_state_across_calls() {
         .expect_err("parse failure");
     assert!(error_category(&failed).starts_with("parse:"));
 
-    let authoring = TransformEngine::builder()
-        .knowledge_base(kb(&["base"]))
-        .profile(Profile::Authoring)
-        .build()
-        .expect("authoring");
-    let contract = authoring
-        .transform_with_report(
-            &mut parsed(&authoring, r"A \buildrel f \over = B"),
-            authoring.default_transform_config(),
-        )
-        .expect_err("contract failure");
-    assert!(error_category(&contract).starts_with("transform:"));
+    let mut capped = *engine.default_transform_config();
+    capped.rewrite.max_iterations = 1;
+    let transform = engine
+        .transform_with_report(&mut parsed(&engine, r"A \over B"), &capped)
+        .expect_err("transform failure");
+    assert!(error_category(&transform).starts_with("transform:"));
 
     let second = engine
         .normalize_with_report(src, &config)
