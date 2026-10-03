@@ -278,7 +278,17 @@ fn recover_false_keeps_nonstrict_unknowns_without_partial_recovery() {
         output.document().is_none(),
         "recover=false should not keep a partial tree for malformed input"
     );
-    assert_eq!(collect_messages(&output), vec!["not a command"]);
+    assert_eq!(
+        diagnostic_kinds(&output),
+        [Some(ParseDiagnosticKind::RawExpectedFound)]
+    );
+    let span = &output.diagnostics[0].span;
+    assert_eq!((span.start, span.end), (13, 13));
+    assert!(
+        output.diagnostics[0].expected.iter().any(|e| e == "'}'"),
+        "{:?}",
+        output.diagnostics
+    );
 }
 
 #[test]
@@ -1426,4 +1436,70 @@ fn only_unsupported_control_characters_are_invalid() {
 
     let commented = parse_shared("x%\u{1b}\ny", &ParseConfig::STRICT);
     assert!(commented.diagnostics.is_empty());
+}
+
+#[test]
+fn malformed_input_never_reports_parser_branch_failures() {
+    for src in [
+        "}",
+        "{",
+        "{x$",
+        "$",
+        r"\left(x",
+        r"\begin{matrix}x",
+        r"\frac{a}{b",
+        r"\sqrt[x",
+    ] {
+        for config in [ParseConfig::STRICT, ParseConfig::LENIENT] {
+            let output = parse_shared(src, &config);
+            assert!(!output.diagnostics.is_empty(), "{src}");
+            for diagnostic in &output.diagnostics {
+                assert_ne!(diagnostic.message, "not a command", "{src}");
+                assert!(diagnostic.kind.is_some(), "{src}: {diagnostic:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn unclosed_explicit_group_reports_closing_brace_at_end_of_input() {
+    let src = "{é";
+    let output = parse_shared(src, &ParseConfig::STRICT);
+    let diagnostic = &output.diagnostics[0];
+    assert!(
+        diagnostic.expected.iter().any(|e| e == "'}'"),
+        "{diagnostic:?}"
+    );
+    assert_eq!(diagnostic.found, None);
+    let span = &diagnostic.span;
+    assert_eq!((span.start, span.end), (src.len(), src.len()));
+}
+
+#[test]
+fn missing_environment_end_reports_unclosed_environment() {
+    // A missing `\end` is reported at end of input; an incomplete `\end`
+    // header is reported over the header itself.
+    for (src, start, found) in [
+        (r"\begin{align}é", 15, None),
+        (r"\begin{matrix}x\end", 15, Some(r"\end")),
+        (r"\begin{matrix}x\end{matrix", 15, Some(r"\end{matrix")),
+    ] {
+        for config in [ParseConfig::STRICT, ParseConfig::LENIENT] {
+            let output = parse_shared(src, &config);
+            let diagnostic = output
+                .diagnostics
+                .iter()
+                .find(|d| d.kind == Some(ParseDiagnosticKind::UnclosedEnvironment))
+                .unwrap_or_else(|| panic!("{src}: {:?}", output.diagnostics));
+            let name = if src.contains("align") {
+                "align"
+            } else {
+                "matrix"
+            };
+            assert_eq!(diagnostic.expected, [format!("\\end{{{name}}}")]);
+            assert_eq!(diagnostic.found.as_deref(), found, "{src}");
+            assert_eq!(diagnostic.span.start, start, "{src}");
+            assert_eq!(diagnostic.span.end, src.len(), "{src}");
+        }
+    }
 }

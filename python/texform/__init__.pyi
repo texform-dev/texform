@@ -18,6 +18,7 @@ ParseDiagnosticKind = Literal[
     "max-group-depth-exceeded",
     "raw-expected-found",
     "text-script-error",
+    "unclosed-environment",
     "unclosed-inline-math",
     "unexpected-math-shift",
     "unknown-command",

@@ -17,7 +17,7 @@ pub(crate) struct DirectDiagnostic {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct EnvironmentDiagnostic {
-    pub(crate) name: String,
+    pub(crate) name: Option<String>,
     pub(crate) expected_name: String,
 }
 #[derive(Clone, Debug)]
@@ -55,7 +55,21 @@ impl<'a> ParseFailure<'a> {
         self.direct = Some(Box::new(DirectDiagnostic {
             span,
             environment: Some(EnvironmentDiagnostic {
-                name,
+                name: Some(name),
+                expected_name,
+            }),
+        }));
+        self
+    }
+    pub(crate) fn at_missing_environment_end(
+        mut self,
+        span: SimpleSpan,
+        expected_name: String,
+    ) -> Self {
+        self.direct = Some(Box::new(DirectDiagnostic {
+            span,
+            environment: Some(EnvironmentDiagnostic {
+                name: None,
                 expected_name,
             }),
         }));
@@ -163,6 +177,23 @@ impl fmt::Display for ParseFailure<'_> {
 impl<'a> Error<'a, TokenStream<'a>> for ParseFailure<'a> {
     #[inline]
     fn merge(self, other: Self) -> Self {
+        // Branch-control failures only reject a parser alternative. They must
+        // not override a user-facing diagnostic at the same input position.
+        if self.is_control && !other.is_control {
+            return other;
+        }
+        if !self.is_control && other.is_control {
+            return self;
+        }
+        // Imperative parsers report alternatives at their entry cursor, even
+        // when a nested failure came from a later position. Keep its captured
+        // source diagnostic rather than merging in entry-token expectations.
+        if self.direct.is_some() && other.direct.is_none() {
+            return self;
+        }
+        if self.direct.is_none() && other.direct.is_some() {
+            return other;
+        }
         // Rich prefers the first Custom reason, then the second Custom, then
         // merges ExpectedFound. Its left-hand contexts remain unchanged.
         let use_other = !matches!(self.reason(), RichReason::Custom(_))
@@ -200,6 +231,14 @@ impl<'a, L: Into<RichPattern<'a, Token>>> LabelError<'a, TokenStream<'a>, L> for
         found: Option<MaybeRef<'a, Token>>,
         span: SimpleSpan,
     ) -> Self {
+        if self.is_control {
+            return <Self as LabelError<'a, TokenStream<'a>, L>>::expected_found(
+                expected, found, span,
+            );
+        }
+        if self.direct.is_some() {
+            return self;
+        }
         Self {
             rich: <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, L>>::merge_expected_found(
                 self.rich, expected, found, span,
@@ -331,6 +370,35 @@ mod tests {
         assert_eq!(error.kind, Some(ParseDiagnosticKind::ArgumentValidation));
         assert_eq!(error.expected().count(), 2);
     }
+
+    #[test]
+    fn branch_control_failures_never_replace_syntax_or_direct_diagnostics() {
+        for diagnostic in [generic("closing brace"), direct("argument is invalid")] {
+            for error in [
+                merge(
+                    ParseFailure::custom((2..3).into(), "not a command").control(),
+                    diagnostic.clone(),
+                ),
+                merge(
+                    diagnostic.clone(),
+                    ParseFailure::custom((2..3).into(), "not a command").control(),
+                ),
+            ] {
+                assert!(!error.is_control);
+                assert!(error.matches_tree_diagnostic(&diagnostic));
+            }
+        }
+        let error =
+            <Failure as LabelError<'static, TokenStream<'static>, &str>>::merge_expected_found(
+                ParseFailure::custom((2..3).into(), "not a command").control(),
+                ["closing brace"],
+                Some(Token::RBrace.into()),
+                (2..3).into(),
+            );
+        assert!(!error.is_control);
+        assert!(matches!(error.reason(), RichReason::ExpectedFound { .. }));
+        assert_eq!(error.found(), Some(&Token::RBrace));
+    }
     #[test]
     fn merge_preserves_rich_context_selection_and_expected_found_order() {
         let mut left = generic("left");
@@ -426,7 +494,10 @@ mod tests {
             let shifted = error.into_owned().shifted(100);
             let source = shifted.direct.as_ref().expect("selected direct source");
             assert_eq!(source.span, (108..112).into());
-            assert_eq!(source.environment.as_ref().unwrap().name, "align");
+            assert_eq!(
+                source.environment.as_ref().unwrap().name.as_deref(),
+                Some("align")
+            );
             assert_eq!(source.environment.as_ref().unwrap().expected_name, "matrix");
         }
         let mut labelled = environment.clone();

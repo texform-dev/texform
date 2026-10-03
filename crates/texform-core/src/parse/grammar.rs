@@ -733,7 +733,16 @@ where
             .with_diagnostics(vec![diagnostic]));
         };
 
-        let result = input.parse(content.clone().then_ignore(just(Token::RBrace)));
+        let result = input
+            .parse(content.clone().then_ignore(just(Token::RBrace)))
+            .map_err(|error| {
+                if error.direct.is_some() {
+                    error
+                } else {
+                    let span = *error.span();
+                    error.at_source(span)
+                }
+            });
         // _guard drops here: depth is restored on both Ok and Err paths.
 
         result.map(move |children| {
@@ -996,26 +1005,17 @@ where
 {
     let ws = insignificant_whitespace();
 
-    let preserve_atom_error = matches!(input.peek(), Some(Token::ControlSeq(_)));
-    let base_opt = if preserve_atom_error {
-        Some(input.parse(atom_for_scripts.clone())?)
+    let base = if matches!(
+        input.peek(),
+        Some(Token::Superscript | Token::Subscript | Token::Prime(_))
+    ) {
+        // A leading marker has an empty base. Otherwise preserve the atom's
+        // failure, including an unclosed group, instead of replacing it with a
+        // generic optional-atom branch failure.
+        let pos_cursor = input.cursor();
+        empty_script_base(input.span_from_cursor(&pos_cursor).start)
     } else {
-        input.parse(atom_for_scripts.clone().or_not())?
-    };
-    let base = match base_opt {
-        Some(base) => base,
-        None => match input.peek() {
-            Some(Token::Superscript) | Some(Token::Subscript) | Some(Token::Prime(_)) => {
-                // Note: span_from_cursor with the same cursor is unreliable for zero-width spans
-                // in chumsky's MappedInput — the cursor's end field defaults to eoi.
-                let pos_cursor = input.cursor();
-                empty_script_base(input.span_from_cursor(&pos_cursor).start)
-            }
-            _ => {
-                let cursor = input.cursor();
-                return Err(input.err_peek_or_point(&cursor, "expected atom or script marker"));
-            }
-        },
+        input.parse(atom_for_scripts.clone())?
     };
 
     // Alignment tabs end a cell, so following scripts start the next cell
@@ -1908,10 +1908,9 @@ fn command_head_parser<'src, 'parse>(
     let meta = match lookup_command_for_parse(ctx, &name, current_mode) {
         ModeLookup::Found(meta) if meta.kind == expected_kind => meta,
         ModeLookup::Found(_) => {
-            return Err(ParseFailure::custom(
-                cmd_span,
-                format!("not {}", expected_kind.label()),
-            ));
+            return Err(
+                ParseFailure::custom(cmd_span, format!("not {}", expected_kind.label())).control(),
+            );
         }
         ModeLookup::WrongMode => {
             return Err(custom_error(
@@ -2310,15 +2309,20 @@ fn environment_parser<'a>(
             "Environment {} missing closing \\end{{{}}}",
             expected_end, expected_end
         );
+        let missing_end_error = |span| {
+            custom_error(
+                span,
+                missing_end_message.clone(),
+                ParseDiagnosticKind::UnclosedEnvironment,
+            )
+            .at_missing_environment_end(span, expected_end.clone())
+        };
 
         let end_start = input.cursor();
 
         if input.parse(control_seq("end")).is_err() {
             if is_outer_closing_boundary(input.peek().as_ref()) {
-                return Err(ParseFailure::custom(
-                    input.span_from_cursor(&end_start),
-                    missing_end_message.clone(),
-                ));
+                return Err(missing_end_error(input.span_from_cursor(&end_start)));
             }
 
             let checkpoint = input.save();
@@ -2329,18 +2333,16 @@ fn environment_parser<'a>(
             input.rewind(checkpoint);
 
             return match probe_result {
-                Ok(_) => Err(ParseFailure::custom(
-                    input.span_from_cursor(&end_start),
-                    missing_end_message.clone(),
-                )),
+                Ok(_) => Err(missing_end_error(input.span_from_cursor(&end_start))),
                 Err(err) => Err(err),
             };
         }
         let _ = input.parse(ws.clone());
 
         let end_name = input.parse(env_name_parser()).map_err(|_| {
+            let error = missing_end_error(input.span_from_cursor(&end_start));
             input.rewind(body_recovery_start.clone());
-            ParseFailure::custom(input.span_from_cursor(&end_start), missing_end_message)
+            error
         })?;
         let end_span = input.span_from_cursor(&end_start);
 

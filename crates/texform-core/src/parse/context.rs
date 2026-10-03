@@ -64,6 +64,8 @@ pub enum ParseDiagnosticKind {
     RawExpectedFound,
     /// Sub/superscript syntax appeared in text mode, where it is not allowed.
     TextScriptError,
+    /// An environment was opened but its closing `\end{...}` was missing.
+    UnclosedEnvironment,
     /// An inline math segment (`$ ... $`) was opened but never closed.
     UnclosedInlineMath,
     /// A math-shift `$` appeared where it is not expected inside a math formula.
@@ -90,6 +92,7 @@ impl ParseDiagnosticKind {
             ParseDiagnosticKind::MaxGroupDepthExceeded => "max-group-depth-exceeded",
             ParseDiagnosticKind::RawExpectedFound => "raw-expected-found",
             ParseDiagnosticKind::TextScriptError => "text-script-error",
+            ParseDiagnosticKind::UnclosedEnvironment => "unclosed-environment",
             ParseDiagnosticKind::UnclosedInlineMath => "unclosed-inline-math",
             ParseDiagnosticKind::UnexpectedMathShift => "unexpected-math-shift",
             ParseDiagnosticKind::UnknownCommand => "unknown-command",

@@ -81,9 +81,16 @@ pub(super) fn convert_diagnostic(
         && let Some(environment) = &direct.environment
     {
         let expected = &environment.expected_name;
-        let found = &environment.name;
         diagnostic.expected = vec![format!("\\end{{{expected}}}")];
-        diagnostic.found = Some(format!("\\end{{{found}}}"));
+        diagnostic.found = environment
+            .name
+            .as_ref()
+            .map(|found| format!("\\end{{{found}}}"))
+            .or_else(|| {
+                src.get(diagnostic.span.start..diagnostic.span.end)
+                    .filter(|snippet| !snippet.is_empty())
+                    .map(str::to_owned)
+            });
     }
     let normalized_eof = supplement_diagnostic_contexts(
         ctx,
