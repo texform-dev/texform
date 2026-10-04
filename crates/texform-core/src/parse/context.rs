@@ -925,10 +925,16 @@ pub(crate) fn parse_with_context_mode(
         .map(|err| convert_diagnostic(ctx, src, err))
         .collect();
     diagnostics.sort_by_key(|(priority, _)| *priority);
-    let diagnostics = diagnostics
-        .into_iter()
-        .map(|(_, diagnostic)| diagnostic)
-        .collect();
+    // Distinct parser failures can normalize to the same public diagnostic,
+    // e.g. a raw end-of-input failure rewritten as the unclosed environment the
+    // environment parser also reports.
+    let mut unique: Vec<ParseDiagnostic> = Vec::with_capacity(diagnostics.len());
+    for (_, diagnostic) in diagnostics {
+        if !unique.contains(&diagnostic) {
+            unique.push(diagnostic);
+        }
+    }
+    let diagnostics = unique;
 
     ParseResult {
         document,

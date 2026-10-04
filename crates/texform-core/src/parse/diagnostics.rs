@@ -168,10 +168,12 @@ fn supplement_diagnostic_contexts(
     supplement_unclosed_inline_math_message(kind, src, diagnostic);
     supplement_unexpected_math_shift_message(kind, src, diagnostic);
     supplement_missing_script_content_message(kind, src, diagnostic);
-    let mut normalized_eof = supplement_generic_unclosed_message(kind, src, raw_eof, diagnostic);
+    let mut kind = kind;
+    let mut normalized_eof =
+        supplement_generic_unclosed_message(&mut kind, src, raw_eof, diagnostic);
     if !direct {
         normalized_eof |=
-            supplement_environment_mode_error_message(kind, ctx, src, &mut lexed, diagnostic);
+            supplement_environment_mode_error_message(&mut kind, ctx, src, &mut lexed, diagnostic);
         supplement_environment_mismatch_message(kind, src, &mut lexed, diagnostic);
         supplement_unknown_environment_message(kind, ctx, src, &mut lexed, diagnostic);
     }
@@ -348,12 +350,12 @@ fn supplement_missing_script_content_message(
 }
 
 fn supplement_generic_unclosed_message(
-    kind: Option<ParseDiagnosticKind>,
+    kind: &mut Option<ParseDiagnosticKind>,
     src: &str,
     raw_eof: bool,
     diagnostic: &mut ParseDiagnostic,
 ) -> bool {
-    if kind != Some(ParseDiagnosticKind::RawExpectedFound) || !raw_eof {
+    if *kind != Some(ParseDiagnosticKind::RawExpectedFound) || !raw_eof {
         return false;
     }
 
@@ -368,10 +370,15 @@ fn supplement_generic_unclosed_message(
     }
 
     if let Some(env_name) = last_unclosed_environment_name(src) {
+        // Match the diagnostic the environment parser reports directly.
+        *kind = Some(ParseDiagnosticKind::UnclosedEnvironment);
+        diagnostic.kind = *kind;
         diagnostic.message = format!(
             "Environment {} missing closing \\end{{{}}}",
             env_name, env_name
         );
+        diagnostic.expected = vec![format!("\\end{{{env_name}}}")];
+        diagnostic.found = None;
         return true;
     }
 
@@ -471,7 +478,7 @@ fn find_inline_math_shift_after_command(src: &str, command_span: Span) -> Option
 }
 
 fn supplement_environment_mode_error_message(
-    kind: Option<ParseDiagnosticKind>,
+    kind: &mut Option<ParseDiagnosticKind>,
     ctx: &ParseContext,
     src: &str,
     lexed: &mut Option<LexedSource>,
@@ -480,7 +487,7 @@ fn supplement_environment_mode_error_message(
     // Fallback: raw ExpectedFound errors come from chumsky before
     // TeXForm has a parser-private diagnostic kind to attach.
     if !matches!(
-        kind,
+        *kind,
         Some(ParseDiagnosticKind::RawExpectedFound | ParseDiagnosticKind::EnvironmentNameMismatch)
     ) {
         return false;
@@ -504,6 +511,8 @@ fn supplement_environment_mode_error_message(
         return false;
     };
 
+    *kind = Some(ParseDiagnosticKind::EnvironmentModeError);
+    diagnostic.kind = *kind;
     diagnostic.message = format!(
         "Environment {} is not allowed in {} mode",
         name, disallowed_mode
