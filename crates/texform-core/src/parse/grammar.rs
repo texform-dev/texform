@@ -39,7 +39,9 @@ use chumsky::{
 };
 use logos::Logos;
 
-use crate::knowledge::{ActiveCommandRecord, ActiveEnvironmentRecord, ArgSpec, CommandKind};
+use crate::knowledge::{
+    ActiveCommandRecord, ActiveEnvironmentRecord, ArgForm, ArgSpec, CommandKind,
+};
 use crate::lexer::Token;
 use crate::parse::{ParseConfig, ParseContext, ParseDiagnosticKind, ParserState};
 use texform_interface::syntax_node::{ArgumentSlot, ContentMode, Delimiter, GroupKind, SyntaxNode};
@@ -305,12 +307,44 @@ fn parse_argument_slots<'src, 'parse>(
     args: &'static [ArgSpec],
     context_label: &'static str,
 ) -> Result<Vec<TrackedArgumentSlot>, ParseFailure<'src>> {
+    parse_argument_slots_with(
+        input,
+        state,
+        math_content,
+        text_content,
+        args,
+        context_label,
+        false,
+    )
+}
+
+/// Parse argument slots; `skip_space_before_optional` lets optional `!`
+/// bracket slots skip whitespace that is followed by `[`. Whitespace not
+/// followed by `[` is left unconsumed, and star slots never skip it.
+fn parse_argument_slots_with<'src, 'parse>(
+    input: &mut ParserInput<'src, 'parse>,
+    state: &'src ParserState<'src>,
+    math_content: ContentParser<'src>,
+    text_content: ContentParser<'src>,
+    args: &'static [ArgSpec],
+    context_label: &'static str,
+    skip_space_before_optional: bool,
+) -> Result<Vec<TrackedArgumentSlot>, ParseFailure<'src>> {
     let ws = insignificant_whitespace();
     let mut slots = Vec::with_capacity(args.len());
 
     for spec in args {
         if !spec.no_leading_space {
             let _ = input.parse(ws.clone());
+        } else if skip_space_before_optional
+            && !spec.required
+            && matches!(spec.form, ArgForm::Standard)
+        {
+            let checkpoint = input.save();
+            let _ = input.parse(ws.clone());
+            if !matches!(input.peek(), Some(Token::LBracket)) {
+                input.rewind(checkpoint);
+            }
         }
 
         let arg_start = input.cursor();
@@ -2113,13 +2147,17 @@ fn prefix_command_parser<'a>(
             Err(err) => return Err(err),
         };
 
-        let cmd_args = parse_argument_slots(
+        // `\\` is the only command whose argument spacing depends on the
+        // enclosing environment; see `row_break_skips_spaces_in_environment`.
+        let skip_space_before_optional = name == "\\" && state.row_break_skips_spaces();
+        let cmd_args = parse_argument_slots_with(
             input,
             state,
             math_content.clone(),
             text_content.clone(),
             meta.argspec.args,
             "command argument",
+            skip_space_before_optional,
         )?;
 
         let span = input.span_from_cursor(&cmd_start);
@@ -2230,6 +2268,28 @@ fn env_name_parser<'a>() -> impl Parser<'a, TokenStream<'a>, String, ParserError
     .labelled("environment name")
 }
 
+/// Whether `\\` inside environment `name` skips spaces before its `[...]`
+/// argument.
+///
+/// LaTeX core array-like environments (`array`, `eqnarray`) end rows with
+/// `\@arraycr`, which looks ahead with `\@ifnextchar` and skips spaces, so
+/// `\\ [2pt]` takes `[2pt]` as the row spacing. amsmath environments
+/// (`align`, `gather`, `matrix`, `cases`, `split`, `subarray`, ...) end rows
+/// with `\math@cr`, which uses `\new@ifnextchar` and deliberately does not
+/// skip spaces, so a row may start with an interval such as `[a,b]`. `darray`
+/// is MathJax's display-style `array`. Every other environment, the top
+/// level, and unknown or runtime-defined environments keep the non-skipping
+/// behavior. MathJax never skips these spaces; its source notes the same
+/// LaTeX distinction as a TODO.
+///
+/// `\@arraycr` also skips spaces before `*`, but `\\ *` stays content here:
+/// rows of block matrices commonly start with a `*` entry, which MathJax and
+/// KaTeX render, and normalizing `\ast` to `*` would otherwise turn content
+/// into the star argument on reparse.
+fn row_break_skips_spaces_in_environment(name: &str) -> bool {
+    matches!(name, "array" | "darray" | "eqnarray" | "eqnarray*")
+}
+
 /// Parse a full environment including body and closing tag.
 fn environment_parser<'a>(
     state: &'a ParserState<'a>,
@@ -2294,7 +2354,11 @@ fn environment_parser<'a>(
             ContentMode::Text => text_content.clone(),
         };
         let body_recovery_start = input.save();
-        let body = input.parse(env_body_parser(body_mode, body_content))?;
+        let body = {
+            let _row_break_policy =
+                state.enter_environment_body(known && row_break_skips_spaces_in_environment(&name));
+            input.parse(env_body_parser(body_mode, body_content))?
+        };
 
         let expected_end = name.clone();
         let missing_end_message = format!(

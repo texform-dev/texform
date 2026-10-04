@@ -3,7 +3,8 @@
 //! [`ParserState`] is the runtime companion to [`ParseContext`] and
 //! [`ParseConfig`]: it bundles the immutable knowledge base reference, the
 //! user-facing config, and the source string with the *mutable* per-call
-//! counters that the parser needs (currently just brace-group depth).
+//! state that the parser needs: brace-group depth and the row-break spacing
+//! policy of the innermost enclosing environment.
 //!
 //! The split exists because `ParseContext` is meant to be reused across many
 //! parse calls with different configs; it cannot own a mutable depth counter
@@ -22,6 +23,7 @@ pub(crate) struct ParserState<'a> {
     pub(crate) config: &'a ParseConfig,
     pub(crate) src: &'a str,
     group_depth: Cell<usize>,
+    row_break_skips_spaces: Cell<bool>,
     recovery_diagnostics: RefCell<Vec<ParseFailure<'static>>>,
 }
 
@@ -32,6 +34,7 @@ impl<'a> ParserState<'a> {
             config,
             src,
             group_depth: Cell::new(0),
+            row_break_skips_spaces: Cell::new(false),
             recovery_diagnostics: RefCell::new(Vec::new()),
         }
     }
@@ -50,6 +53,24 @@ impl<'a> ParserState<'a> {
         }
         self.group_depth.set(prev + 1);
         Some(GroupGuard { state: self, prev })
+    }
+
+    /// Enter an environment body whose `\\` does (`true`) or does not
+    /// (`false`) skip spaces before its `[...]` argument.
+    ///
+    /// The returned guard restores the enclosing policy on drop, so the
+    /// innermost environment always decides. Argument subparses start from a
+    /// fresh state, so content inside command arguments uses the default
+    /// (non-skipping) policy.
+    pub(crate) fn enter_environment_body(&self, row_break_skips_spaces: bool) -> RowBreakGuard<'_> {
+        let prev = self.row_break_skips_spaces.replace(row_break_skips_spaces);
+        RowBreakGuard { state: self, prev }
+    }
+
+    /// Whether `\\` in the current environment body skips spaces before its
+    /// `[...]` argument.
+    pub(crate) fn row_break_skips_spaces(&self) -> bool {
+        self.row_break_skips_spaces.get()
     }
 
     pub(crate) fn push_recovery_diagnostic(&self, diagnostic: ParseFailure<'static>) {
@@ -78,6 +99,18 @@ pub(crate) struct GroupGuard<'a> {
 impl Drop for GroupGuard<'_> {
     fn drop(&mut self) {
         self.state.group_depth.set(self.prev);
+    }
+}
+
+/// RAII handle returned by [`ParserState::enter_environment_body`].
+pub(crate) struct RowBreakGuard<'a> {
+    state: &'a ParserState<'a>,
+    prev: bool,
+}
+
+impl Drop for RowBreakGuard<'_> {
+    fn drop(&mut self) {
+        self.state.row_break_skips_spaces.set(self.prev);
     }
 }
 
