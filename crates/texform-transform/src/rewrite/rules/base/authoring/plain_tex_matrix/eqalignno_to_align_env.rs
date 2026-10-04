@@ -8,15 +8,22 @@
 //!   - cmd:eqalignno
 //! consumes:
 //!   eliminates: cmd:eqalignno
-//!   touches:
-//!     - cmd:cr
-//!     - 'cmd:\'
-//!     - cmd:newline
+//!   touches: [cmd:cr, cmd:\, cmd:newline]
 //! produces:
 //!   - env:align*
 //!   - cmd:tag
 //! rewrite_patterns:
-//!   - {from: '\eqalignno{#1&#2&(#3) \cr #4&#5&(#6)}', to: '\begin{align*} #1&#2 \tag{#3}\\ #4&#5 \tag{#6} \end{align*}'}
+//!   - {label: parenthesized-numeric-number, from: '\eqalignno{#1&#2&(#3)}', to: '\begin{align*} #1&#2 \tag{#3} \end{align*}'}
+//!   - {label: raw-numeric-number, from: '\eqalignno{#1&#2&#3}', to: '\begin{align*} #1&#2 \tag*{#3} \end{align*}'}
+//!   - {label: parenthesized-math-number, from: '\eqalignno{#1&#2&(#3)}', to: '\begin{align*} #1&#2 \tag{$#3$} \end{align*}'}
+//!   - {label: raw-math-number, from: '\eqalignno{#1&#2&#3}', to: '\begin{align*} #1&#2 \tag*{$#3$} \end{align*}'}
+//!   - {label: empty-number-cell, from: '\eqalignno{#1&#2&}', to: '\begin{align*} #1&#2 \end{align*}'}
+//!   - {label: missing-number-cell, from: '\eqalignno{#1&#2}', to: '\begin{align*} #1&#2 \end{align*}'}
+//!   - {label: final-row-terminator, from: '\eqalignno{#1&#2&(#3)\cr}', to: '\begin{align*} #1&#2 \tag{#3} \end{align*}'}
+//!   - {label: internal-empty-row, from: '\eqalignno{#1&#2&(#3)\cr\cr#4&#5&(#6)}', to: '\begin{align*} #1&#2 \tag{#3}\\\\#4&#5 \tag{#6} \end{align*}'}
+//!   - {label: linebreak-arguments, from: '\eqalignno{#1&#2&(#3)\\*[#4]}', to: '\begin{align*} #1&#2 \tag{#3}\\*[#4] \end{align*}'}
+//!   - {label: newline, from: '\eqalignno{#1&#2&(#3)\newline#4&#5&(#6)}', to: '\begin{align*} #1&#2 \tag{#3}\\#4&#5 \tag{#6} \end{align*}'}
+//!   - {label: leading-row-scripts, from: '\eqalignno{#1&#2&(#3)\cr_{#4}^{#5}#6&#7&(#8)}', to: '\begin{align*} #1&#2 \tag{#3}\\{}_{#4}^{#5}#6&#7 \tag{#8} \end{align*}'}
 //! ```
 
 use texform_knowledge::builtin::ams;

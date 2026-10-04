@@ -6,9 +6,11 @@
 //!   - cmd:root
 //! consumes:
 //!   eliminates: cmd:root
+//!   touches: null
 //! produces: cmd:sqrt
 //! rewrite_patterns:
-//!   - {from: '\root #1 \of #2', to: '\sqrt[#1]{#2}'}
+//!   - {label: degree, from: '\root #1 \of #2', to: '\sqrt[#1]{#2}'}
+//!   - {label: empty-degree, from: '\root\of #1', to: '\sqrt[]{#1}'}
 //! ```
 
 use texform_knowledge::builtin::base;
