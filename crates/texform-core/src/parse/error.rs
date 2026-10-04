@@ -1,7 +1,6 @@
 //! Parser-private semantics attached to Chumsky's rich errors.
 use super::{ParseDiagnosticKind, grammar::TokenStream};
 use crate::lexer::Token;
-use chumsky::span::Span;
 use chumsky::{
     error::{Error, Rich, RichPattern, RichReason},
     label::LabelError,
@@ -140,8 +139,8 @@ impl<'a> ParseFailure<'a> {
             direct: self.direct,
         }
     }
-    pub(crate) fn shifted(mut self, offset: usize) -> Self {
-        let shift = |s: SimpleSpan| SimpleSpan::new((), s.start + offset..s.end + offset);
+    /// Rewrite the primary, context, and direct-diagnostic spans with `shift`.
+    pub(crate) fn map_spans(mut self, shift: impl Fn(SimpleSpan) -> SimpleSpan) -> Self {
         let mut rich = match self.rich.reason() {
             RichReason::Custom(message) => Rich::custom(shift(*self.span()), message),
             RichReason::ExpectedFound { expected, found } => <Rich<'a, Token> as LabelError<
@@ -300,6 +299,7 @@ pub(crate) fn with_diagnostic_kind<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chumsky::span::Span;
     type Failure = ParseFailure<'static>;
     fn generic(label: &'static str) -> Failure {
         <Failure as LabelError<'static, TokenStream<'static>, &str>>::expected_found(
@@ -468,7 +468,10 @@ mod tests {
             "argument",
             (1..4).into(),
         );
-        let shifted = error.clone().into_owned().shifted(10);
+        let shifted = error
+            .clone()
+            .into_owned()
+            .map_spans(|s| SimpleSpan::new((), s.start + 10..s.end + 10));
         assert_eq!(*error.span(), (2..3).into());
         assert_eq!(*shifted.span(), (12..13).into());
         assert_eq!(*shifted.contexts().next().unwrap().1, (11..14).into());
@@ -491,7 +494,9 @@ mod tests {
                 direct("other").at_source((30..35).into()),
             ),
         ] {
-            let shifted = error.into_owned().shifted(100);
+            let shifted = error
+                .into_owned()
+                .map_spans(|s| SimpleSpan::new((), s.start + 100..s.end + 100));
             let source = shifted.direct.as_ref().expect("selected direct source");
             assert_eq!(source.span, (108..112).into());
             assert_eq!(

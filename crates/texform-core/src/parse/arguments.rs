@@ -161,19 +161,138 @@ fn char_delimiter_token(c: char) -> Token {
     }
 }
 
+/// Tokens collected for an argument, with the source span of each token.
+///
+/// The spans let a subparse of the reconstructed token string report
+/// positions in the enclosing source; see [`SourceMap`].
+#[derive(Debug, Clone, Default)]
+pub(crate) struct CollectedTokens {
+    pub tokens: Vec<Token>,
+    pub spans: Vec<SimpleSpan>,
+}
+
+impl CollectedTokens {
+    fn push(&mut self, token: Token, span: SimpleSpan) {
+        self.tokens.push(token);
+        self.spans.push(span);
+    }
+
+    /// Keep only `inner`, a range enclosed by a brace pair, and move `base`
+    /// past the opening brace so empty content stays inside the braces.
+    fn strip_to(&mut self, inner: std::ops::Range<usize>, base: &mut usize) {
+        if let Some(open) = inner.start.checked_sub(1) {
+            *base = self.spans[open].end;
+        }
+        self.spans = self.spans[inner.clone()].to_vec();
+        self.tokens = self.tokens[inner].to_vec();
+    }
+}
+
+/// Consume the next token together with its source span.
+fn next_spanned<'src, 'parse>(
+    input: &mut ParserInput<'src, 'parse>,
+) -> Option<(Token, SimpleSpan)> {
+    let cursor = input.cursor();
+    let token = input.next()?;
+    Some((token, input.span_from_cursor(&cursor)))
+}
+
+/// Maps byte positions in a reconstructed token string back to the source.
+///
+/// Reconstruction drops comments, collapses whitespace runs, and may insert a
+/// separator space, so the relation is not a constant offset. Span starts map
+/// to the start of the token at or after the position; span ends map to the
+/// end of the token at or before it. Positions inside dropped or inserted
+/// material therefore snap to the nearest real token, and a position with no
+/// token on that side maps to `base`, the start of the content in the source.
+#[derive(Debug)]
+struct SourceMap {
+    starts: Vec<usize>,
+    ends: Vec<usize>,
+}
+
+impl SourceMap {
+    fn new(
+        len: usize,
+        ranges: &[std::ops::Range<usize>],
+        spans: &[SimpleSpan],
+        base: usize,
+    ) -> Self {
+        let mut starts = vec![None; len + 1];
+        let mut ends = vec![None; len + 1];
+        for (range, span) in ranges.iter().zip(spans) {
+            let source_len = span.end - span.start;
+            // Lengths differ only for collapsed whitespace and normalized
+            // control symbols or primes; clamp inner positions to the token.
+            for offset in 0..range.len() {
+                starts[range.start + offset] = Some(span.start + offset.min(source_len));
+            }
+            for offset in 1..=range.len() {
+                ends[range.start + offset] = Some(if offset == range.len() {
+                    span.end
+                } else {
+                    span.start + offset.min(source_len)
+                });
+            }
+        }
+
+        let mut ends_filled = Vec::with_capacity(len + 1);
+        let mut previous = base;
+        for end in ends {
+            previous = end.unwrap_or(previous);
+            ends_filled.push(previous);
+        }
+        let mut starts_filled = vec![0; len + 1];
+        let mut next = ends_filled[len];
+        for position in (0..=len).rev() {
+            next = starts[position].unwrap_or(next);
+            starts_filled[position] = next;
+        }
+
+        Self {
+            starts: starts_filled,
+            ends: ends_filled,
+        }
+    }
+
+    /// Map a span in the reconstructed string to the source.
+    fn span(&self, span: SimpleSpan) -> SimpleSpan {
+        let last = self.starts.len() - 1;
+        let start = self.starts[span.start.min(last)];
+        if span.end <= span.start {
+            return SimpleSpan::new((), start..start);
+        }
+        let end = self.ends[span.end.min(last)].max(start);
+        SimpleSpan::new((), start..end)
+    }
+}
+
+/// A reconstructed token string ready for re-parsing, with its source map.
+struct SubparseSource {
+    src: String,
+    map: SourceMap,
+}
+
+impl SubparseSource {
+    fn new(tokens: &CollectedTokens, base: usize) -> Self {
+        let (src, ranges) = reconstruct_tokens(&tokens.tokens);
+        let map = SourceMap::new(src.len(), &ranges, &tokens.spans, base);
+        Self { src, map }
+    }
+}
+
 /// Protection belongs to the argument syntax, not its content tree.
 fn strip_content_protection(
-    tokens: &mut Vec<Token>,
-    offset: &mut usize,
+    collected: &mut CollectedTokens,
+    base: &mut usize,
     open: Option<Token>,
     close: Token,
 ) {
-    let Some(inner) = enclosing_braces(tokens) else {
+    let Some(inner) = enclosing_braces(&collected.tokens) else {
         return;
     };
-    if ContentBoundary::new(open, close).needs_protection(&tokens[inner.clone()]) {
-        *offset += tokens_to_string(&tokens[..inner.start]).len();
-        *tokens = tokens[inner].to_vec();
+    if ContentBoundary::new(open, close).needs_protection(&collected.tokens[inner.clone()]) {
+        collected.strip_to(inner, base);
     }
 }
 
@@ -194,7 +313,7 @@ fn collect_delimited_tokens<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
     open: &DelimiterToken,
     close: &DelimiterToken,
-) -> Result<Vec<Token>, ParseFailure<'src>> {
+) -> Result<CollectedTokens, ParseFailure<'src>> {
     let start = input.cursor();
     let next = match input.peek() {
         Some(token) => token,
@@ -206,16 +325,16 @@ fn collect_delimited_tokens<'src, 'parse>(
     input.next();
 
     let mut boundary = ContentBoundary::new(Some(delimiter_token(open)), delimiter_token(close));
-    let mut tokens = Vec::new();
+    let mut tokens = CollectedTokens::default();
     loop {
-        let token = match input.next() {
-            Some(token) => token,
+        let (token, span) = match next_spanned(input) {
+            Some(next) => next,
             None => return Err(input.err_since(&start, "unclosed delimited argument")),
         };
         if boundary.ends_at(&token) {
             break;
         }
-        tokens.push(token);
+        tokens.push(token, span);
     }
 
     Ok(tokens)
@@ -225,9 +344,9 @@ fn collect_delimited_tokens<'src, 'parse>(
 fn collect_until_tokens<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
     close: &DelimiterToken,
-) -> Result<Vec<Token>, ParseFailure<'src>> {
+) -> Result<CollectedTokens, ParseFailure<'src>> {
     let start = input.cursor();
-    let mut tokens = Vec::new();
+    let mut tokens = CollectedTokens::default();
     let mut braces = 0usize;
     loop {
         let Some(token) = input.peek() else {
@@ -245,8 +364,8 @@ fn collect_until_tokens<'src, 'parse>(
             Token::RBrace => braces -= 1,
             _ => {}
         }
-        input.next();
-        tokens.push(token);
+        let (token, span) = next_spanned(input).expect("peeked token should be available");
+        tokens.push(token, span);
     }
 }
 
@@ -262,53 +381,49 @@ fn collect_until_tokens<'src, 'parse>(
 /// Keeping the diagnostics alongside the optional tree lets the caller decide
 /// whether this subparse should stay recoverable or fall back to the outer
 /// argument error path without re-running the parser.
+///
+/// Spans are computed against the reconstructed string and only translated
+/// back to the enclosing source through `source.map` once the subparse is
+/// complete, so all span comparisons here use subparse-local positions.
 fn parse_content_substream(
     state: &ParserState<'_>,
     mode: ContentMode,
-    tokens: &[Token],
-    source_offset: usize,
+    source: &SubparseSource,
 ) -> (Option<TrackedNode>, Vec<ParseFailure<'static>>) {
-    let src = tokens_to_string(tokens);
-    let token_stream = match build_token_stream(src.as_str()) {
+    let src = source.src.as_str();
+    let map = |span: SimpleSpan| source.map.span(span);
+    let token_stream = match build_token_stream(src) {
         Ok(tokens) => tokens,
-        Err(error) => return (None, vec![error.shifted(source_offset)]),
+        Err(error) => return (None, vec![error.map_spans(map)]),
     };
-    let sub_state = ParserState::new(state.ctx, state.config, src.as_str());
-    let parser = content_block_parser_with_source(mode, &sub_state, src.as_str());
+    let sub_state = ParserState::new(state.ctx, state.config, src);
+    let parser = content_block_parser_with_source(mode, &sub_state, src);
 
     let (tracked, errors) = parser
         .then_ignore(end())
         .parse(token_stream)
         .into_output_errors();
 
-    let mut shifted_errors: Vec<_> = sub_state
-        .take_recovery_diagnostics()
-        .into_iter()
-        .map(|err| err.shifted(source_offset))
-        .collect();
-    shifted_errors.extend(
-        errors
-            .into_iter()
-            .map(|err| err.into_owned().shifted(source_offset)),
-    );
-    let diagnostics = filter_outer_errors(shifted_errors.clone(), source_offset + src.len());
+    let mut local_errors = sub_state.take_recovery_diagnostics();
+    local_errors.extend(errors.into_iter().map(ParseFailure::into_owned));
+    let diagnostics = filter_outer_errors(local_errors.clone(), src.len());
 
     let (tracked, diagnostics) = if let Some(tracked) = tracked {
         (Some(tracked), diagnostics)
-    } else if let Some((tracked, recover_diagnostics)) = recover_direct_error_substream(
-        mode,
-        state,
-        src.as_str(),
-        source_offset,
-        shifted_errors.as_slice(),
-    ) {
+    } else if let Some((tracked, recover_diagnostics)) =
+        recover_direct_error_substream(mode, state, src, local_errors.as_slice())
+    {
         (Some(tracked), recover_diagnostics)
     } else {
         (None, diagnostics)
     };
 
+    let diagnostics: Vec<_> = diagnostics
+        .into_iter()
+        .map(|err| err.map_spans(map))
+        .collect();
     let tracked = tracked.map(|tracked| {
-        normalize_content_subparse(mode, tracked.offset(source_offset))
+        normalize_content_subparse(mode, tracked.map_spans(&map))
             .with_diagnostics(diagnostics.clone())
     });
 
@@ -316,14 +431,14 @@ fn parse_content_substream(
 }
 
 // Retry the block parser without `end()` and only accept it when it surfaces a direct inner error.
+// Spans stay local to `src`; the caller maps them back to the source.
 fn recover_direct_error_substream(
     mode: ContentMode,
     state: &ParserState<'_>,
     src: &str,
-    source_offset: usize,
-    shifted_errors: &[ParseFailure<'static>],
+    local_errors: &[ParseFailure<'static>],
 ) -> Option<(TrackedNode, Vec<ParseFailure<'static>>)> {
-    let recover_end = shifted_errors
+    let recover_end = local_errors
         .iter()
         .filter(|err| {
             matches!(
@@ -331,7 +446,7 @@ fn recover_direct_error_substream(
                 chumsky::error::RichReason::ExpectedFound { .. }
             )
         })
-        .map(|err| err.span().start.saturating_sub(source_offset))
+        .map(|err| err.span().start)
         .min()
         .unwrap_or(src.len());
     let recover_src = src.get(..recover_end).unwrap_or(src);
@@ -339,16 +454,8 @@ fn recover_direct_error_substream(
     let sub_state = ParserState::new(state.ctx, state.config, recover_src);
     let parser = content_block_parser_with_source(mode, &sub_state, recover_src);
     let (tracked, errors) = parser.parse(token_stream).into_output_errors();
-    let mut diagnostics: Vec<_> = sub_state
-        .take_recovery_diagnostics()
-        .into_iter()
-        .map(|err| err.shifted(source_offset))
-        .collect();
-    diagnostics.extend(
-        errors
-            .into_iter()
-            .map(|err| err.into_owned().shifted(source_offset)),
-    );
+    let mut diagnostics = sub_state.take_recovery_diagnostics();
+    diagnostics.extend(errors.into_iter().map(ParseFailure::into_owned));
 
     let tracked_has_direct = tracked
         .as_ref()
@@ -459,22 +566,21 @@ fn normalize_content_subparse(mode: ContentMode, tracked: TrackedNode) -> Tracke
 }
 
 fn whitespace_only_text_content_node(
-    tokens: &[Token],
-    source_offset: usize,
+    tokens: &CollectedTokens,
+    source: &SubparseSource,
 ) -> Option<TrackedNode> {
-    if tokens.is_empty() {
-        return None;
-    }
-    if !tokens
-        .iter()
-        .all(|token| matches!(token, Token::Whitespaces))
+    if tokens.tokens.is_empty()
+        || !tokens
+            .tokens
+            .iter()
+            .all(|token| matches!(token, Token::Whitespaces))
     {
         return None;
     }
 
     Some(TrackedNode::leaf(
         SyntaxNode::Text(" ".to_string()),
-        SimpleSpan::new((), source_offset..source_offset + 1),
+        source.map.span(SimpleSpan::new((), 0..source.src.len())),
     ))
 }
 
@@ -486,16 +592,17 @@ fn parse_tokens_as_content<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
     state: &'parse ParserState<'parse>,
     mode: ContentMode,
-    tokens: Vec<Token>,
-    source_offset: usize,
+    tokens: CollectedTokens,
+    base: usize,
 ) -> Result<TrackedNode, ParseFailure<'src>> {
+    let source = SubparseSource::new(&tokens, base);
     if mode == ContentMode::Text
-        && let Some(content) = whitespace_only_text_content_node(&tokens, source_offset)
+        && let Some(content) = whitespace_only_text_content_node(&tokens, &source)
     {
         return Ok(content);
     }
 
-    let (content, diagnostics) = parse_content_substream(state, mode, &tokens, source_offset);
+    let (content, diagnostics) = parse_content_substream(state, mode, &source);
     if let Some(content) = content {
         return Ok(content);
     }
@@ -530,8 +637,8 @@ fn parse_tokens_as_content<'src, 'parse>(
             return Err(generic_error.clone().into_owned());
         }
 
-        let snippet = tokens_to_string(tokens.as_slice());
-        let span = SimpleSpan::new((), source_offset..source_offset + snippet.len());
+        let span = source.map.span(SimpleSpan::new((), 0..source.src.len()));
+        let snippet = source.src;
         return Ok(TrackedNode::leaf(
             SyntaxNode::Error {
                 message: normalized_inner_generic_message(generic_error),
@@ -560,11 +667,7 @@ fn parse_delimited_value<'src, 'parse>(
 ) -> Result<ArgumentValue, ParseFailure<'src>> {
     match kind {
         ValueKind::Content { .. } | ValueKind::OperatorName => {
-            let mode = kind
-                .content_mode()
-                .expect("content-like value kind should have a content mode");
-            let content = parse_tokens_as_content(input, state, mode, tokens, 0)?;
-            Ok(argument_content_value_for_kind(kind, content.node))
+            unreachable!("content arguments are parsed by their form with source spans")
         }
         ValueKind::CSName => {
             if nullable && tokens.iter().all(|t| matches!(t, Token::Whitespaces)) {
@@ -961,10 +1064,10 @@ pub(super) fn argument_parser<'a>(
                                 &DelimiterToken::Char('{'),
                                 &DelimiterToken::Char('}'),
                             )?;
-                            if spec.nullable && tokens.is_empty() {
+                            if spec.nullable && tokens.tokens.is_empty() {
                                 String::new()
                             } else {
-                                parse_tokens_as_cs_name(input, &tokens)?
+                                parse_tokens_as_cs_name(input, &tokens.tokens)?
                             }
                         } else {
                             let cursor = input.cursor();
@@ -984,11 +1087,14 @@ pub(super) fn argument_parser<'a>(
                             return Ok(TrackedArgumentSlot::untracked(None));
                         };
                         let value = if spec.nullable
-                            && tokens.iter().all(|t| matches!(t, Token::Whitespaces))
+                            && tokens
+                                .tokens
+                                .iter()
+                                .all(|t| matches!(t, Token::Whitespaces))
                         {
                             String::new()
                         } else {
-                            parse_tokens_as_cs_name(input, &tokens)?
+                            parse_tokens_as_cs_name(input, &tokens.tokens)?
                         };
                         Ok(TrackedArgumentSlot::untracked(Some(Argument::from_value(
                             ArgumentKind::Optional,
@@ -1047,7 +1153,8 @@ pub(super) fn argument_parser<'a>(
                     });
                 }
 
-                let value = parse_delimited_value(input, state, spec.kind, tokens, spec.nullable)?;
+                let value =
+                    parse_delimited_value(input, state, spec.kind, tokens.tokens, spec.nullable)?;
                 Ok(TrackedArgumentSlot::untracked(Some(Argument::from_value(
                     ArgumentKind::Group,
                     value,
@@ -1057,12 +1164,11 @@ pub(super) fn argument_parser<'a>(
                 let mut tokens = collect_until_tokens(input, close)?;
                 let mut content_offset = input.span_from_cursor(&arg_start).start;
                 // TeX strips one brace layer when a delimited parameter is a single group.
-                if tokens.first() == Some(&Token::LBrace)
-                    && tokens.last() == Some(&Token::RBrace)
-                    && let Some(inner) = enclosing_braces(&tokens)
+                if tokens.tokens.first() == Some(&Token::LBrace)
+                    && tokens.tokens.last() == Some(&Token::RBrace)
+                    && let Some(inner) = enclosing_braces(&tokens.tokens)
                 {
-                    content_offset += tokens_to_string(&tokens[..inner.start]).len();
-                    tokens = tokens[inner].to_vec();
+                    tokens.strip_to(inner, &mut content_offset);
                 }
                 let kind = ArgumentKind::Until {
                     close: syntax_delimiter(close),
@@ -1078,7 +1184,8 @@ pub(super) fn argument_parser<'a>(
                         content: Some(content),
                     });
                 }
-                let value = parse_delimited_value(input, state, spec.kind, tokens, spec.nullable)?;
+                let value =
+                    parse_delimited_value(input, state, spec.kind, tokens.tokens, spec.nullable)?;
                 Ok(TrackedArgumentSlot::untracked(Some(Argument::from_value(
                     kind, value,
                 ))))
@@ -1131,7 +1238,8 @@ pub(super) fn argument_parser<'a>(
                     });
                 }
 
-                let value = parse_delimited_value(input, state, spec.kind, tokens, spec.nullable)?;
+                let value =
+                    parse_delimited_value(input, state, spec.kind, tokens.tokens, spec.nullable)?;
                 Ok(TrackedArgumentSlot::untracked(Some(Argument::from_value(
                     ArgumentKind::Delimited {
                         open: syntax_delimiter(open),
@@ -1189,7 +1297,8 @@ pub(super) fn argument_parser<'a>(
                     });
                 }
 
-                let value = parse_delimited_value(input, state, spec.kind, tokens, spec.nullable)?;
+                let value =
+                    parse_delimited_value(input, state, spec.kind, tokens.tokens, spec.nullable)?;
                 Ok(TrackedArgumentSlot::untracked(Some(Argument::from_value(
                     ArgumentKind::Paired {
                         open: syntax_delimiter(open),
@@ -1220,7 +1329,7 @@ fn delimiter_token_source_len(delimiter: &DelimiterToken) -> usize {
 pub(crate) fn collect_optional_bracketed_tokens<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
     match_brackets: bool,
-) -> Result<Option<Vec<Token>>, ParseFailure<'src>> {
+) -> Result<Option<CollectedTokens>, ParseFailure<'src>> {
     if !matches!(input.peek(), Some(Token::LBracket)) {
         return Ok(None);
     }
@@ -1228,13 +1337,13 @@ pub(crate) fn collect_optional_bracketed_tokens<'src, 'parse>(
     let start = input.cursor();
     input.next();
 
-    let mut tokens = Vec::new();
+    let mut tokens = CollectedTokens::default();
     let mut brace_depth = 0usize;
     let mut bracket_depth = 0usize;
 
     loop {
-        let token = match input.next() {
-            Some(token) => token,
+        let (token, span) = match next_spanned(input) {
+            Some(next) => next,
             None => return Err(input.err_since(&start, "unclosed bracket argument")),
         };
 
@@ -1243,32 +1352,26 @@ pub(crate) fn collect_optional_bracketed_tokens<'src, 'parse>(
                 if match_brackets && brace_depth == 0 {
                     bracket_depth += 1;
                 }
-                tokens.push(Token::LBracket);
             }
             Token::RBracket => {
                 if brace_depth == 0 {
                     if match_brackets && bracket_depth > 0 {
                         bracket_depth -= 1;
-                        tokens.push(Token::RBracket);
-                        continue;
+                    } else {
+                        break;
                     }
-                    break;
                 }
-                tokens.push(Token::RBracket);
             }
-            Token::LBrace => {
-                brace_depth += 1;
-                tokens.push(Token::LBrace);
-            }
+            Token::LBrace => brace_depth += 1,
             Token::RBrace => {
                 if brace_depth == 0 {
                     return Err(input.err_since(&start, "unbalanced brace in bracket argument"));
                 }
                 brace_depth -= 1;
-                tokens.push(Token::RBrace);
             }
-            other => tokens.push(other),
+            _ => {}
         }
+        tokens.push(token, span);
     }
 
     Ok(Some(tokens))
@@ -1280,19 +1383,19 @@ pub(crate) fn collect_optional_bracketed_tokens<'src, 'parse>(
 pub(crate) fn collect_braced_tokens<'src, 'parse>(
     input: &mut ParserInput<'src, 'parse>,
     allow_nested: bool,
-) -> Result<Vec<Token>, ParseFailure<'src>> {
+) -> Result<CollectedTokens, ParseFailure<'src>> {
     let start = input.cursor();
     match input.next() {
         Some(Token::LBrace) => {}
         _ => return Err(input.err_since(&start, "expected '{'")),
     }
 
-    let mut tokens = Vec::new();
+    let mut tokens = CollectedTokens::default();
     let mut depth = 0usize;
 
     loop {
-        let token = match input.next() {
-            Some(token) => token,
+        let (token, span) = match next_spanned(input) {
+            Some(next) => next,
             None => return Err(input.err_since(&start, "unclosed brace argument")),
         };
 
@@ -1302,17 +1405,16 @@ pub(crate) fn collect_braced_tokens<'src, 'parse>(
                     return Err(input.err_since(&start, "nested braces not allowed"));
                 }
                 depth += 1;
-                tokens.push(Token::LBrace);
             }
             Token::RBrace => {
                 if depth == 0 {
                     break;
                 }
                 depth -= 1;
-                tokens.push(Token::RBrace);
             }
-            other => tokens.push(other),
+            _ => {}
         }
+        tokens.push(token, span);
     }
 
     Ok(tokens)
@@ -1320,7 +1422,14 @@ pub(crate) fn collect_braced_tokens<'src, 'parse>(
 
 /// Serialize a token sequence back into a LaTeX string for re-parsing.
 fn tokens_to_string(tokens: &[Token]) -> String {
+    reconstruct_tokens(tokens).0
+}
+
+/// Serialize a token sequence for re-parsing, also returning the byte range
+/// each token occupies in the output.
+fn reconstruct_tokens(tokens: &[Token]) -> (String, Vec<std::ops::Range<usize>>) {
     let mut out = String::new();
+    let mut ranges = Vec::with_capacity(tokens.len());
     let mut control_word = false;
     for token in tokens {
         // Comments can separate a control word from a letter without yielding
@@ -1328,6 +1437,7 @@ fn tokens_to_string(tokens: &[Token]) -> String {
         if control_word && matches!(token, Token::Char(c) if c.is_ascii_alphabetic()) {
             out.push(' ');
         }
+        let start = out.len();
         control_word = matches!(token, Token::ControlSeq(name) if name.chars().all(|c| c.is_ascii_alphabetic()));
         match token {
             Token::ControlSeq(name) => {
@@ -1354,8 +1464,9 @@ fn tokens_to_string(tokens: &[Token]) -> String {
             Token::Whitespaces => out.push(' '),
             Token::Comment => {}
         }
+        ranges.push(start..out.len());
     }
-    out
+    (out, ranges)
 }
 
 /// Validate that `raw` is a well-formed `key=value,…` sequence.
@@ -1530,9 +1641,9 @@ fn keyval_value<'a>(
                 return Err(input.err_since(&start, "expected keyval argument"));
             }
             let tokens = collect_braced_tokens(input, true)?;
-            tokens_to_string(&tokens)
+            tokens_to_string(&tokens.tokens)
         } else if let Some(tokens) = collect_optional_bracketed_tokens(input, false)? {
-            tokens_to_string(&tokens)
+            tokens_to_string(&tokens.tokens)
         } else {
             return Ok(String::new());
         };
@@ -1560,9 +1671,9 @@ fn column_spec_value<'a>(
                 return Err(input.err_since(&start, "expected column argument"));
             }
             let tokens = collect_braced_tokens(input, true)?;
-            tokens_to_string(&tokens)
+            tokens_to_string(&tokens.tokens)
         } else if let Some(tokens) = collect_optional_bracketed_tokens(input, false)? {
-            tokens_to_string(&tokens)
+            tokens_to_string(&tokens.tokens)
         } else {
             String::new()
         };

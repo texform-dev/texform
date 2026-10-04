@@ -104,21 +104,22 @@ impl TrackedNode {
         self
     }
 
-    /// Shift all spans by `offset` bytes. Used when content was re-parsed from
-    /// a token sub-stream whose positions start at 0.
-    pub(crate) fn offset(self, offset: usize) -> Self {
+    /// Rewrite all spans with `map`. Used when content was re-parsed from a
+    /// reconstructed token string whose positions must be mapped back to the
+    /// enclosing source.
+    pub(crate) fn map_spans(self, map: &impl Fn(SimpleSpan) -> SimpleSpan) -> Self {
         TrackedNode {
             node: self.node,
-            span: shift_simple_span(self.span, offset),
+            span: map(self.span),
             span_kids: self
                 .span_kids
                 .into_iter()
-                .map(|kid| shift_span_tree(kid, offset))
+                .map(|kid| map_span_tree(kid, map))
                 .collect(),
             diagnostics: self
                 .diagnostics
                 .into_iter()
-                .map(|err| err.shifted(offset))
+                .map(|err| err.map_spans(map))
                 .collect(),
         }
     }
@@ -268,19 +269,14 @@ fn items_span(items: &[TrackedNode], fallback: usize) -> SimpleSpan {
     }
 }
 
-/// Shift a span by `offset` bytes.
-fn shift_simple_span(span: SimpleSpan, offset: usize) -> SimpleSpan {
-    SimpleSpan::new((), span.start + offset..span.end + offset)
-}
-
-/// Shift every span in a span subtree by `offset` bytes.
-fn shift_span_tree(tree: SpanTree, offset: usize) -> SpanTree {
+/// Rewrite every span in a span subtree with `map`.
+fn map_span_tree(tree: SpanTree, map: &impl Fn(SimpleSpan) -> SimpleSpan) -> SpanTree {
     SpanTree {
-        span: shift_simple_span(tree.span, offset),
+        span: map(tree.span),
         kids: tree
             .kids
             .into_iter()
-            .map(|kid| shift_span_tree(kid, offset))
+            .map(|kid| map_span_tree(kid, map))
             .collect(),
     }
 }
