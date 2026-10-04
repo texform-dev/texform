@@ -233,6 +233,7 @@ commands:
   - name: bmod
     kind: prefix
     argspec: ''
+    allowed_mode: both
   - name: boxed
     kind: prefix
     argspec: m
@@ -796,6 +797,7 @@ commands:
   - name: mathstrut
     kind: prefix
     argspec: ''
+    allowed_mode: both
     tags:
       - invisible
   - name: mathtt
@@ -935,9 +937,9 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
-  - kind: prefix
+  - name: of
+    kind: prefix
     argspec: ''
-    name: of
     allowed_mode: math
   - name: oldstyle
     kind: declarative
@@ -1024,6 +1026,7 @@ commands:
   - name: pmb
     kind: prefix
     argspec: m
+    allowed_mode: both
   - name: pmod
     kind: prefix
     argspec: m
@@ -1144,6 +1147,7 @@ commands:
   - name: skew
     kind: prefix
     argspec: m:I m m
+    allowed_mode: both
   - name: small
     kind: declarative
     argspec: ''
