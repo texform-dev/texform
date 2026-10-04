@@ -197,3 +197,69 @@ fn node_refs_expose_infix_operand_spans() {
     assert_span(right_children[0], 10, 11);
     assert_span(right_children[2], 12, 13);
 }
+
+fn content_arg<'a>(command: NodeRef<'a>, index: usize) -> NodeRef<'a> {
+    command
+        .arg(index)
+        .and_then(ArgRef::as_node)
+        .expect("expected content argument")
+}
+
+fn assert_source_text(node: NodeRef<'_>, src: &str, expected: &str) {
+    let span = node.span().expect("expected node span");
+    assert_eq!(&src[span.start..span.end], expected, "{src}: {span:?}");
+}
+
+/// Assert that an argument holds `p`, `+`, `q` and that each child, and the
+/// argument itself, maps to its own text in `src`.
+fn assert_p_plus_q_argument(argument: NodeRef<'_>, src: &str, expected_argument: &str) {
+    assert_source_text(argument, src, expected_argument);
+    let children: Vec<_> = argument.children().collect();
+    assert_eq!(children.len(), 3, "{src}");
+    for (child, expected) in children.into_iter().zip(["p", "+", "q"]) {
+        assert_source_text(child, src, expected);
+    }
+}
+
+#[test]
+fn argument_content_spans_skip_comments_and_collapsed_whitespace() {
+    // Argument content is re-parsed from a reconstruction that drops comments
+    // and collapses whitespace; node spans must still index the input.
+    let src = "\\frac{p  %c\n+  q}{x}";
+    let document = parse_ok(src);
+    let frac = first_root_child(&document);
+    assert_p_plus_q_argument(content_arg(frac, 0), src, "p  %c\n+  q");
+    assert_source_text(content_arg(frac, 1), src, "x");
+
+    let src = "\\root p %c\n+  q\\of x";
+    let document = parse_ok(src);
+    let root = first_root_child(&document);
+    assert_p_plus_q_argument(content_arg(root, 0), src, "p %c\n+  q");
+    assert_source_text(content_arg(root, 1), src, "x");
+
+    let src = "\\root {p %c\n+  q}\\of x";
+    let document = parse_ok(src);
+    assert_p_plus_q_argument(
+        content_arg(first_root_child(&document), 0),
+        src,
+        "p %c\n+  q",
+    );
+
+    let src = "\\sqrt[p %c\n+  q]{x}";
+    let document = parse_ok(src);
+    let sqrt = first_root_child(&document);
+    assert_p_plus_q_argument(content_arg(sqrt, 0), src, "p %c\n+  q");
+    assert_source_text(content_arg(sqrt, 1), src, "x");
+}
+
+#[test]
+fn nested_argument_content_spans_compose_source_mappings() {
+    let src = "\\frac{%c\n\\sqrt{p  %c\n+  q}}{x}";
+    let document = parse_ok(src);
+    let frac = first_root_child(&document);
+    let sqrt = content_arg(frac, 0);
+    assert_eq!(sqrt.command_name(), Some("sqrt"));
+    assert_source_text(sqrt, src, "\\sqrt{p  %c\n+  q}");
+    assert_p_plus_q_argument(content_arg(sqrt, 1), src, "p  %c\n+  q");
+    assert_source_text(content_arg(frac, 1), src, "x");
+}

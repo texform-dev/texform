@@ -1450,7 +1450,11 @@ fn malformed_input_never_reports_parser_branch_failures() {
         r"\frac{a}{b",
         r"\sqrt[x",
     ] {
-        for config in [ParseConfig::STRICT, ParseConfig::LENIENT] {
+        let reject_unknown = ParseConfig {
+            reject_unknown: true,
+            ..ParseConfig::LENIENT
+        };
+        for config in [reject_unknown, ParseConfig::LENIENT] {
             let output = parse_shared(src, &config);
             assert!(!output.diagnostics.is_empty(), "{src}");
             for diagnostic in &output.diagnostics {
@@ -1484,7 +1488,11 @@ fn missing_environment_end_reports_unclosed_environment() {
         (r"\begin{matrix}x\end", 15, Some(r"\end")),
         (r"\begin{matrix}x\end{matrix", 15, Some(r"\end{matrix")),
     ] {
-        for config in [ParseConfig::STRICT, ParseConfig::LENIENT] {
+        let reject_unknown = ParseConfig {
+            reject_unknown: true,
+            ..ParseConfig::LENIENT
+        };
+        for config in [reject_unknown, ParseConfig::LENIENT] {
             let output = parse_shared(src, &config);
             let diagnostic = output
                 .diagnostics
@@ -1500,6 +1508,46 @@ fn missing_environment_end_reports_unclosed_environment() {
             assert_eq!(diagnostic.found.as_deref(), found, "{src}");
             assert_eq!(diagnostic.span.start, start, "{src}");
             assert_eq!(diagnostic.span.end, src.len(), "{src}");
+        }
+    }
+}
+
+#[test]
+fn argument_subparse_diagnostics_point_at_original_source() {
+    // Argument content is re-parsed from a reconstruction that drops comments
+    // and collapses whitespace; reported spans must still index the input.
+    for src in [
+        "\\root a%comment\n+\\bad\\of x",
+        r"\root a  +  \bad\of x",
+        "\\root {a%c\n+\\bad}\\of x",
+        "\\buildrel a %c\n \\bad\\over x",
+        "\\frac{a%comment\n+\\bad}{x}",
+        r"\frac{a  +  \bad}{x}",
+        "\\sqrt[a%comment\n+\\bad]{x}",
+        "\\sqrt[{a %c\n]\\bad}]{x}",
+        "\\frac{\\sqrt{a  %c\n+\\bad}}{x}",
+        "\\frac{\\sqrt[a %c\n]{\\frac{b}{%c\n  \\bad}}}{x}",
+    ] {
+        let reject_unknown = ParseConfig {
+            reject_unknown: true,
+            ..ParseConfig::LENIENT
+        };
+        for config in [reject_unknown, ParseConfig::LENIENT] {
+            let output = parse_shared(src, &config);
+            if config.reject_unknown {
+                let spans: Vec<_> = output
+                    .diagnostics
+                    .iter()
+                    .map(|diagnostic| &src[diagnostic.span.start..diagnostic.span.end])
+                    .collect();
+                assert_eq!(spans, [r"\bad"], "{src}: {:?}", output.diagnostics);
+            } else {
+                assert!(
+                    output.diagnostics.is_empty(),
+                    "{src}: {:?}",
+                    output.diagnostics
+                );
+            }
         }
     }
 }
