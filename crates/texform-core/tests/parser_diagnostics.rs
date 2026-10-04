@@ -1592,3 +1592,33 @@ fn environment_in_wrong_mode_reports_mode_error_kind_in_both_modes() {
         );
     }
 }
+
+#[test]
+fn strict_custom_errors_keep_inner_source_span() {
+    // Strict parsing propagates the inner failure out of item and argument
+    // parsers; it must not take the span of the enclosing item list.
+    for src in [
+        r"a+\bad",
+        r"\sqrt{x}\bad",
+        r"\frac{\bad}{x}",
+        r"a+\frac{\bad}{x}",
+        r"a+\frac{x}{\bad}",
+        r"a+\sqrt[\bad]{x}",
+        r"a+\frac{x}{\text{$\bad$}}",
+        "\\frac{a%comment\n+\\bad}{x}",
+        "\\frac{\\sqrt[a %c\n]{\\frac{b}{%c\n  \\bad}}}{x}",
+    ] {
+        let output = parse_shared(src, &ParseConfig::STRICT);
+        let spans: Vec<_> = output
+            .diagnostics
+            .iter()
+            .map(|diagnostic| &src[diagnostic.span.start..diagnostic.span.end])
+            .collect();
+        assert_eq!(spans, [r"\bad"], "{src}: {:?}", output.diagnostics);
+        assert_eq!(
+            diagnostic_kinds(&output),
+            vec![Some(ParseDiagnosticKind::UnknownCommand)],
+            "{src}"
+        );
+    }
+}
