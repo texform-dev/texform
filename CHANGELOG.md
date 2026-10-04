@@ -3,6 +3,31 @@
 All notable changes to TeXForm are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
+## [0.9.0] - 2026-10-04
+
+### Added
+
+- Cover latex text containers and delimiters
+
+### Fixed
+
+- **Breaking:** Parse `buildrel` through `over`
+- **Breaking:** Parse `root` degrees through `of`
+- Read `\\ [dimen]` as row spacing in LaTeX arrays
+- Keep strict diagnostics at the failing token
+- Report environment errors with their specific kinds
+- Map argument diagnostics back to the source
+- Keep delimiters of unbraced compound arguments
+- Start a new row for scripts after row separators
+- Recognize starred `hspace` in both modes
+- Match special-character argument delimiters
+- Keep trailing spaces before text environment endings
+- Preserve actionable syntax diagnostics
+- Return diagnostics for invalid source characters
+- Split plain alignments at `\\` and `\newline`
+- Convert `\eqalignno` numbering cells to `\tag`
+- Preserve explicit limit placement in `Corpus`
+- Preserve explicit fraction styles in `Corpus`
 
 ## [0.8.0] - 2026-09-30
 
