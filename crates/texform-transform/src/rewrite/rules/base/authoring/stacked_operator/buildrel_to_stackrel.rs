@@ -113,6 +113,12 @@ mod tests {
             expected: r"\stackrel{x}{=}^2",
         },
         {
+            label: unbraced_delimited_operator_keeps_its_delimiters,
+            packages: ["base"],
+            input: r"\buildrel a\over\left(x\right)",
+            expected: r"\stackrel{a}{\left(x\right)}",
+        },
+        {
             label: grouped_operator_keeps_its_scripts,
             packages: ["base"],
             input: r"\buildrel x\over{=^2}",

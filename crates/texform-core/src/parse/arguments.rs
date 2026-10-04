@@ -1579,9 +1579,13 @@ fn column_spec_value<'a>(
 
 /// Fold argument content, retaining a container around a sole brace group.
 /// The container owns the argument braces; its child owns the user's braces.
+///
+/// Only brace groups are folded: a `\left...\right` or inline-math group read
+/// as an unbraced argument is itself the argument value, and unwrapping it
+/// would drop its delimiters.
 pub(crate) fn normalize_argument_value(mode: ContentMode, node: SyntaxNode) -> SyntaxNode {
     match node {
-        SyntaxNode::Group { children, .. } => fold_items(mode, children),
+        SyntaxNode::Group { children, .. } if is_brace_group(&node) => fold_items(mode, children),
         other => other,
     }
 }
