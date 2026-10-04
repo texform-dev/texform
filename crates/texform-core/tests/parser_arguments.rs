@@ -6,7 +6,8 @@ use support::{
     parse_with_items,
 };
 use texform_core::parse::{
-    AllowedMode, CommandKind, ContextItem, ParseContext, ParseContextBuilder, ParseResult,
+    AllowedMode, CommandKind, ContextItem, ParseConfig, ParseContext, ParseContextBuilder,
+    ParseResult,
 };
 use texform_interface::syntax_node::{
     Argument, ArgumentKind, ArgumentValue, ContentMode, Delimiter, GroupKind, SyntaxNode,
@@ -591,6 +592,51 @@ fn non_braced_sqrt_and_frac_arguments_leave_following_scripts_outside() {
         }
         other => panic!("expected outer scripted frac command, got {:?}", other),
     }
+}
+
+#[test]
+fn non_braced_mandatory_argument_keeps_compound_item_structure() {
+    // An unbraced compound item is the whole argument value, exactly as if it
+    // were braced; its own delimiters must not be stripped.
+    for (unbraced, braced) in [
+        (r"\frac\left(x\right)2", r"\frac{\left(x\right)}{2}"),
+        (r"\frac\left(x+y\right)2", r"\frac{\left(x+y\right)}{2}"),
+        (
+            r"\buildrel a\over\left(x\right)",
+            r"\buildrel a\over{\left(x\right)}",
+        ),
+        (r"\text$x$", r"\text{$x$}"),
+        (r"\frac\sqrt{x}y", r"\frac{\sqrt{x}}{y}"),
+        (
+            r"\frac\begin{array}{c}a\end{array}2",
+            r"\frac{\begin{array}{c}a\end{array}}{2}",
+        ),
+    ] {
+        let unbraced_output = ParseContext::shared().parse(unbraced, &ParseConfig::STRICT);
+        let braced_output = ParseContext::shared().parse(braced, &ParseConfig::STRICT);
+        assert!(
+            unbraced_output.diagnostics.is_empty(),
+            "unexpected diagnostics for {unbraced}: {:?}",
+            unbraced_output.diagnostics
+        );
+        let tree = single_root_child(&unbraced_output);
+        assert_eq!(tree, single_root_child(&braced_output), "{unbraced}");
+
+        // The serialized form reparses to the same tree.
+        let document = unbraced_output.document().expect("expected parse result");
+        let serialized = support::parser::serialize_node(&document.to_syntax());
+        let reparsed = ParseContext::shared().parse(&serialized, &ParseConfig::STRICT);
+        assert_eq!(single_root_child(&reparsed), tree, "{serialized}");
+    }
+
+    let output = ParseContext::shared().parse(r"\frac\left(x\right)2", &ParseConfig::STRICT);
+    assert!(matches!(
+        expect_command_with_math_arg(&single_root_child(&output), "frac", 0),
+        SyntaxNode::Group {
+            kind: GroupKind::Delimited { .. },
+            ..
+        }
+    ));
 }
 
 #[test]
