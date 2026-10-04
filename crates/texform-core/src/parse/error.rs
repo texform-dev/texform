@@ -162,6 +162,23 @@ impl<'a> ParseFailure<'a> {
         Self { rich, ..self }
     }
 }
+
+/// Rebuild a Custom `rich` error at `span`, keeping its message and contexts.
+fn with_primary_span<'a>(rich: Rich<'a, Token>, span: SimpleSpan) -> Rich<'a, Token> {
+    let RichReason::Custom(message) = rich.reason() else {
+        return rich;
+    };
+    let mut rebuilt = Rich::custom(span, message);
+    for (label, context_span) in rich.contexts() {
+        <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, RichPattern<'a, Token>>>::in_context(
+            &mut rebuilt,
+            label.clone(),
+            *context_span,
+        );
+    }
+    rebuilt
+}
+
 impl<'a> Deref for ParseFailure<'a> {
     type Target = Rich<'a, Token>;
     fn deref(&self) -> &Self::Target {
@@ -194,16 +211,25 @@ impl<'a> Error<'a, TokenStream<'a>> for ParseFailure<'a> {
             return other;
         }
         // Rich prefers the first Custom reason, then the second Custom, then
-        // merges ExpectedFound. Its left-hand contexts remain unchanged.
+        // merges ExpectedFound. Its left-hand span and contexts remain unchanged.
         let use_other = !matches!(self.reason(), RichReason::Custom(_))
             && matches!(other.reason(), RichReason::Custom(_));
+        // A winning right-hand Custom reason keeps its own span: the left-hand
+        // span is only where an enclosing alternative started (often the first
+        // item of the list), not where the reported failure happened.
+        let other_span = use_other.then(|| *other.span());
         let (kind, is_control, direct) = if use_other {
             (other.kind, other.is_control, other.direct)
         } else {
             (self.kind, self.is_control, self.direct)
         };
+        let mut rich =
+            <Rich<'a, Token> as Error<'a, TokenStream<'a>>>::merge(self.rich, other.rich);
+        if let Some(span) = other_span {
+            rich = with_primary_span(rich, span);
+        }
         Self {
-            rich: <Rich<'a, Token> as Error<'a, TokenStream<'a>>>::merge(self.rich, other.rich),
+            rich,
             kind,
             is_control,
             direct,
@@ -407,13 +433,21 @@ mod tests {
             "left context",
             (1..4).into(),
         );
-        let mut right = direct("right reason");
+        let mut right = custom_error(
+            (5..7).into(),
+            "right reason",
+            ParseDiagnosticKind::CommandModeError,
+        );
         <Failure as LabelError<'static, TokenStream<'static>, &str>>::in_context(
             &mut right,
             "right context",
             (0..4).into(),
         );
         let merged = merge(left, right);
+        // The winning right-hand Custom reason keeps its own span.
+        assert_eq!(merged.span().start(), 5);
+        assert_eq!(merged.span().end(), 7);
+        assert_eq!(merged.reason().to_string(), "right reason");
         assert_eq!(
             merged
                 .contexts()
