@@ -1551,3 +1551,44 @@ fn argument_subparse_diagnostics_point_at_original_source() {
         }
     }
 }
+
+#[test]
+fn unclosed_environment_at_eof_reports_unclosed_environment_kind() {
+    // The unclosed brace group makes the parser fail with a raw end-of-input
+    // error, which the diagnostic layer attributes to the open environment.
+    for config in [ParseConfig::STRICT, ParseConfig::LENIENT] {
+        let output = parse_shared(r"\begin{matrix} {a", &config);
+        assert_eq!(
+            diagnostic_kinds(&output),
+            vec![Some(ParseDiagnosticKind::UnclosedEnvironment)],
+            "abort_on_error={}: {:?}",
+            config.abort_on_error,
+            output.diagnostics
+        );
+        let diagnostic = &output.diagnostics[0];
+        assert_eq!(
+            diagnostic.message,
+            r"Environment matrix missing closing \end{matrix}"
+        );
+        assert_eq!(diagnostic.expected, vec![r"\end{matrix}".to_string()]);
+        assert_eq!(diagnostic.found, None);
+    }
+}
+
+#[test]
+fn environment_in_wrong_mode_reports_mode_error_kind_in_both_modes() {
+    for config in [ParseConfig::STRICT, ParseConfig::LENIENT] {
+        let output = parse_shared(r"\text{\begin{matrix}a\end{matrix}}", &config);
+        assert_eq!(
+            diagnostic_kinds(&output),
+            vec![Some(ParseDiagnosticKind::EnvironmentModeError)],
+            "abort_on_error={}: {:?}",
+            config.abort_on_error,
+            output.diagnostics
+        );
+        assert_eq!(
+            output.diagnostics[0].message,
+            "Environment matrix is not allowed in text mode"
+        );
+    }
+}
