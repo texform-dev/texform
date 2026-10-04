@@ -6,13 +6,14 @@
 //!   - cmd:cases
 //! consumes:
 //!   eliminates: cmd:cases
-//!   touches:
-//!     - cmd:cr
-//!     - 'cmd:\'
-//!     - cmd:newline
+//!   touches: [cmd:cr, cmd:\, cmd:newline]
 //! produces: env:cases
 //! rewrite_patterns:
-//!   - {from: '\cases{#1 \cr #2}', to: '\begin{cases} #1 \\ #2 \end{cases}'}
+//!   - {label: cr, from: '\cases{#1 \cr #2}', to: '\begin{cases} #1 \\ #2 \end{cases}'}
+//!   - {label: linebreak-arguments, from: '\cases{#1 \\*[#2] #3}', to: '\begin{cases} #1 \\*[#2] #3 \end{cases}'}
+//!   - {label: newline, from: '\cases{#1 \newline #2}', to: '\begin{cases} #1 \\ #2 \end{cases}'}
+//!   - {label: leading-row-scripts, from: '\cases{#1 \cr_{#2}^{#3}#4}', to: '\begin{cases} #1 \\{}_{#2}^{#3}#4 \end{cases}'}
+//!   - {label: leading-row-primes, from: '\cases{#1 \cr''#2}', to: '\begin{cases} #1 \\{}''#2 \end{cases}'}
 //! ```
 
 use texform_knowledge::builtin::ams;

@@ -6,13 +6,14 @@
 //!   - cmd:eqalign
 //! consumes:
 //!   eliminates: cmd:eqalign
-//!   touches:
-//!     - cmd:cr
-//!     - 'cmd:\'
-//!     - cmd:newline
+//!   touches: [cmd:cr, cmd:\, cmd:newline]
 //! produces: env:aligned
 //! rewrite_patterns:
-//!   - {from: '\eqalign{#1 \cr #2}', to: '\begin{aligned} #1 \\ #2 \end{aligned}'}
+//!   - {label: cr, from: '\eqalign{#1 \cr #2}', to: '\begin{aligned} #1 \\ #2 \end{aligned}'}
+//!   - {label: linebreak-arguments, from: '\eqalign{#1 \\*[#2] #3}', to: '\begin{aligned} #1 \\*[#2] #3 \end{aligned}'}
+//!   - {label: newline, from: '\eqalign{#1 \newline #2}', to: '\begin{aligned} #1 \\ #2 \end{aligned}'}
+//!   - {label: leading-row-scripts, from: '\eqalign{#1 \cr_{#2}^{#3}#4}', to: '\begin{aligned} #1 \\{}_{#2}^{#3}#4 \end{aligned}'}
+//!   - {label: leading-row-primes, from: '\eqalign{#1 \cr''#2}', to: '\begin{aligned} #1 \\{}''#2 \end{aligned}'}
 //! ```
 
 use texform_knowledge::builtin::ams;

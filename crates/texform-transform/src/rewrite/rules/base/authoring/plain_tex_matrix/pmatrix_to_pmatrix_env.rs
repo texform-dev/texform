@@ -6,13 +6,14 @@
 //!   - cmd:pmatrix
 //! consumes:
 //!   eliminates: cmd:pmatrix
-//!   touches:
-//!     - cmd:cr
-//!     - 'cmd:\'
-//!     - cmd:newline
+//!   touches: [cmd:cr, cmd:\, cmd:newline]
 //! produces: env:pmatrix
 //! rewrite_patterns:
-//!   - {from: '\pmatrix{#1 \cr #2}', to: '\begin{pmatrix} #1 \\ #2 \end{pmatrix}'}
+//!   - {label: cr, from: '\pmatrix{#1 \cr #2}', to: '\begin{pmatrix} #1 \\ #2 \end{pmatrix}'}
+//!   - {label: linebreak-arguments, from: '\pmatrix{#1 \\*[#2] #3}', to: '\begin{pmatrix} #1 \\*[#2] #3 \end{pmatrix}'}
+//!   - {label: newline, from: '\pmatrix{#1 \newline #2}', to: '\begin{pmatrix} #1 \\ #2 \end{pmatrix}'}
+//!   - {label: leading-row-scripts, from: '\pmatrix{#1 \cr_{#2}^{#3}#4}', to: '\begin{pmatrix} #1 \\{}_{#2}^{#3}#4 \end{pmatrix}'}
+//!   - {label: leading-row-primes, from: '\pmatrix{#1 \cr''#2}', to: '\begin{pmatrix} #1 \\{}''#2 \end{pmatrix}'}
 //! ```
 
 use texform_knowledge::builtin::ams;

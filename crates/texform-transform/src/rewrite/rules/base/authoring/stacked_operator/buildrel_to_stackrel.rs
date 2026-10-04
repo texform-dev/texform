@@ -9,7 +9,8 @@
 //!   touches: null
 //! produces: cmd:stackrel
 //! rewrite_patterns:
-//!   - {from: '\buildrel #1 \over #2', to: '\stackrel{#1}{#2}'}
+//!   - {label: operator, from: '\buildrel #1 \over #2', to: '\stackrel{#1}{#2}'}
+//!   - {label: operator-external-scripts, from: '\buildrel #1 \over #2_{#3}^{#4}', to: '\stackrel{#1}{#2}_{#3}^{#4}'}
 //! ```
 
 use texform_knowledge::builtin::base;
