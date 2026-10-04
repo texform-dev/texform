@@ -209,3 +209,99 @@ fn test_newline_command_preserves_no_leading_space_behavior() {
         other => panic!("Expected root node, got {:?}", other),
     }
 }
+
+fn parse_and_serialize(ctx: &ParseContext, src: &str) -> String {
+    let output = ctx.parse(src, &ParseConfig::STRICT);
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics for {src}: {:?}",
+        output.diagnostics
+    );
+    serialize_node(
+        &output
+            .document()
+            .unwrap_or_else(|| panic!("expected parse result for {src}"))
+            .to_syntax(),
+    )
+}
+
+#[test]
+fn test_latex_array_linebreak_skips_spaces_before_spacing() {
+    // LaTeX core `\@arraycr` looks ahead with `\@ifnextchar`, which skips
+    // spaces.
+    let ctx = ParseContext::from_packages(&["ams", "base"]);
+
+    for (src, expected) in [
+        (
+            r"\begin{array}{c} a \\ [-5pt] b \end{array}",
+            r"\begin {array} {c} a \\[-5pt] b \end {array}",
+        ),
+        (
+            r"\begin{array}{c} a \\* [2pt] b \end{array}",
+            r"\begin {array} {c} a \\*[2pt] b \end {array}",
+        ),
+        // A spaced `*` stays a matrix entry.
+        (
+            r"\begin{array}{cc} a & b \\ * & c \end{array}",
+            r"\begin {array} {cc} a & b \\ * & c \end {array}",
+        ),
+        (
+            r"\begin{eqnarray} a \\ [1pt] b \end{eqnarray}",
+            r"\begin {eqnarray} a \\[1pt] b \end {eqnarray}",
+        ),
+        (
+            r"\begin{eqnarray*} a \\ [1pt] b \end{eqnarray*}",
+            r"\begin {eqnarray*} a \\[1pt] b \end {eqnarray*}",
+        ),
+        // Whitespace not followed by an argument stays content separation.
+        (
+            r"\begin{array}{c} a \\ b \end{array}",
+            r"\begin {array} {c} a \\ b \end {array}",
+        ),
+    ] {
+        let serialized = parse_and_serialize(&ctx, src);
+        assert_eq!(serialized, expected, "for {src}");
+        assert_eq!(parse_and_serialize(&ctx, &serialized), serialized);
+    }
+}
+
+#[test]
+fn test_amsmath_and_top_level_linebreak_keep_spaced_bracket_as_content() {
+    // amsmath `\math@cr` uses `\new@ifnextchar`, which does not skip spaces,
+    // so a row may start with an interval.
+    let ctx = ParseContext::from_packages(&["ams", "base"]);
+
+    for (src, expected) in [
+        (
+            r"\begin{align} a \\ [a,b] \end{align}",
+            r"\begin {align} a \\ [ a , b ] \end {align}",
+        ),
+        (
+            r"\begin{pmatrix} a \\ [a,b] \end{pmatrix}",
+            r"\begin {pmatrix} a \\ [ a , b ] \end {pmatrix}",
+        ),
+        (
+            r"\begin{subarray}{c} a \\ [a,b] \end{subarray}",
+            r"\begin {subarray} {c} a \\ [ a , b ] \end {subarray}",
+        ),
+        (r"a \\ [a,b]", r"a \\ [ a , b ]"),
+        // The innermost environment decides, in both nesting directions.
+        (
+            r"\begin{array}{c} \begin{matrix} a \\ [a,b] \end{matrix} \\ [2pt] c \end{array}",
+            r"\begin {array} {c} \begin {matrix} a \\ [ a , b ] \end {matrix} \\[2pt] c \end {array}",
+        ),
+        (
+            r"\begin{aligned} \begin{array}{c} a \\ [2pt] b \end{array} \\ [a,b] \end{aligned}",
+            r"\begin {aligned} \begin {array} {c} a \\[2pt] b \end {array} \\ [ a , b ] \end {aligned}",
+        ),
+        // Command arguments do not inherit the array policy.
+        (
+            r"\begin{array}{c} \substack{a \\ [a,b]} \end{array}",
+            r"\begin {array} {c} \substack { a \\ [ a , b ] } \end {array}",
+        ),
+    ] {
+        let serialized = parse_and_serialize(&ctx, src);
+        assert_eq!(serialized, expected, "for {src}");
+        assert_eq!(parse_and_serialize(&ctx, &serialized), serialized);
+    }
+}
