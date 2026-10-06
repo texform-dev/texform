@@ -124,6 +124,7 @@ import {
   Parser as ParserClass,
   Document as DocumentClass,
   TransformEngine as EngineClass,
+  listRules,
 } from "../types/index.js";
 const kb = new KnowledgeBase({ packages: ["base"], removeCommands: ["foo"] });
 const sharedParser = new ParserClass({ knowledgeBase: kb });
@@ -181,3 +182,14 @@ const knownNode: boolean | null = imported.isKnown();
 const argumentForm: import("../types/index.js").ArgForm | null = imported.argKind(0);
 constructionDoc.nodeAt("root");
 void [currentPath, currentSlot, knownNode, argumentForm];
+
+const ruleInfo = listRules()[0];
+const ruleLevel: import("../types/index.js").RuleLevel | undefined = ruleInfo?.level;
+const ruleFidelity: import("../types/index.js").RuleFidelity | undefined = ruleInfo?.fidelity;
+new EngineClass({
+  profile: "corpus",
+  disableRules: listRules().map((rule) => rule.key),
+});
+// @ts-expect-error Rule info fields are camelCase in JavaScript.
+ruleInfo?.enabled_by_packages;
+void [ruleLevel, ruleFidelity];

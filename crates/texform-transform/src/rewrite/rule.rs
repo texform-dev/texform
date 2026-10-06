@@ -22,6 +22,8 @@ use crate::ast::NodeId;
 use crate::rewrite::RuleError;
 use crate::rewrite::rule_context::RuleContext;
 
+/// The first transform profile that accepts a rule's output as a suitable
+/// product, ordered from least to most destructive of stylistic detail.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RuleLevel {
     /// Rules whose output is suitable for authoring-oriented normalization.
@@ -37,6 +39,16 @@ pub enum RuleLevel {
 }
 
 impl RuleLevel {
+    /// Lower-case name matching the corresponding transform profile.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            RuleLevel::Authoring => "authoring",
+            RuleLevel::Faithful => "faithful",
+            RuleLevel::Corpus => "corpus",
+            RuleLevel::Equiv => "equiv",
+        }
+    }
+
     /// Lowest fidelity a rule at this level may declare.
     ///
     /// `level` and `fidelity` answer different questions. `level` determines
@@ -64,6 +76,17 @@ pub enum RuleFidelity {
     Reading,
     /// Rendering is equivalent under the reference renderer.
     Render,
+}
+
+impl RuleFidelity {
+    /// Lower-case name of the guarantee.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            RuleFidelity::Math => "math",
+            RuleFidelity::Reading => "reading",
+            RuleFidelity::Render => "render",
+        }
+    }
 }
 
 /// Unique identifier for a rule, composed of its package and a human-readable name.

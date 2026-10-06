@@ -1422,6 +1422,11 @@ fn list_packages(py: Python<'_>) -> PyResult<Py<PyAny>> {
 }
 
 #[pyfunction]
+fn list_rules(py: Python<'_>) -> PyResult<Py<PyAny>> {
+    Ok(pythonize(py, &texform::bindings::list_rules_to_dto())?.unbind())
+}
+
+#[pyfunction]
 #[pyo3(signature = (src, config = None, *, knowledge_base = None))]
 fn count_targets(
     py: Python<'_>,
@@ -1449,6 +1454,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(serialize, m)?)?;
     m.add_function(wrap_pyfunction!(validate_argspec, m)?)?;
     m.add_function(wrap_pyfunction!(list_packages, m)?)?;
+    m.add_function(wrap_pyfunction!(list_rules, m)?)?;
     m.add_class::<PyParseConfig>()?;
     m.add_class::<PyLowerAttributesConfig>()?;
     m.add_class::<PyRewriteConfig>()?;
@@ -3169,6 +3175,21 @@ for make in (texform.Parser, lambda **kw: texform.TransformEngine("equiv", **kw)
         pass
     else:
         raise AssertionError("knowledge options belong to KnowledgeBase")
+"#,
+        );
+    }
+
+    #[test]
+    fn python_list_rules_returns_snake_case_rule_infos() {
+        run_python_test(
+            cr#"
+rules = texform.list_rules()
+keys = [rule["key"] for rule in rules]
+assert keys == sorted(keys) and len(set(keys)) == len(keys)
+over = next(rule for rule in rules if rule["key"] == "base/over-to-frac")
+assert over["level"] == "authoring" and over["fidelity"] == "render"
+assert over["enabled_by_packages"] == ["base"]
+texform.TransformEngine("corpus", disable_rules=keys)
 "#,
         );
     }

@@ -2230,6 +2230,50 @@ export interface PackageInfo {
  */
 export function listPackages(): PackageInfo[];
 
+/**
+ * A rewrite rule's worst-case equivalence guarantee over its declared input
+ * domain, ordered least to most faithful: `math` (mathematical meaning is
+ * preserved, rendering may change), `reading` (notation content, reading order,
+ * and structural roles are preserved), `render` (rendering is equivalent under
+ * the reference renderer).
+ */
+export type RuleFidelity = "math" | "reading" | "render";
+
+/**
+ * Summary of one built-in rewrite rule, returned by {@link listRules}.
+ */
+export interface RuleInfo {
+  /** Stable rule key, such as `"base/over-to-frac"`, accepted by `disableRules`. */
+  key: string;
+  /** The first profile that accepts the rule's output. */
+  level: RuleLevel;
+  /** Worst-case equivalence guarantee of the rule. */
+  fidelity: RuleFidelity;
+  /** One-line description of what the rule does. */
+  summary: string;
+  /** Packages that make the rule loadable when any one of them is enabled. */
+  enabledByPackages: string[];
+}
+
+/**
+ * List all built-in rewrite rules, sorted by key.
+ *
+ * The keys are the identifiers accepted by the `disableRules` option of
+ * {@link TransformEngine} and reported in {@link RewriteReport} `rules`. A rule
+ * runs only when the engine's profile selects its level and the knowledge base
+ * enables one of its packages.
+ *
+ * @returns One {@link RuleInfo} per built-in rule.
+ * @example
+ * ```ts
+ * import { listRules } from 'texform';
+ *
+ * listRules().find((rule) => rule.key === 'base/over-to-frac');
+ * // { key: 'base/over-to-frac', level: 'authoring', fidelity: 'render', summary: '...', enabledByPackages: ['base'] }
+ * ```
+ */
+export function listRules(): RuleInfo[];
+
 // A .d.ts module implicitly exports every top-level declaration unless it
 // contains an explicit `export {}`. This keeps file-local helpers such as
 // `Complete` out of the public API.

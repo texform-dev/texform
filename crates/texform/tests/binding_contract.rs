@@ -217,3 +217,21 @@ fn list_packages_reports_known_packages_with_counts() {
     let base = packages.iter().find(|info| info.name == "base").unwrap();
     assert!(base.environments > 0, "base should have environments");
 }
+
+#[test]
+fn list_rules_reports_metadata_for_disableable_keys() {
+    let rules = texform::list_rules();
+    let over = rules
+        .iter()
+        .find(|rule| rule.key.to_string() == "base/over-to-frac")
+        .expect("base/over-to-frac should be listed");
+
+    assert_eq!(over.level, texform::RuleLevel::Authoring);
+    assert_eq!(over.fidelity, texform::RuleFidelity::Render);
+    assert_eq!(over.enabled_by_packages, ["base"]);
+    assert!(!over.summary.is_empty());
+    for rule in &rules {
+        let name = rule.key.to_string();
+        assert_eq!(texform::rule_key_from_name(&name), Some(rule.key), "{name}");
+    }
+}

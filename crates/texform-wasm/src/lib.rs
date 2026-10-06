@@ -1320,6 +1320,11 @@ pub fn list_packages() -> Result<JsValue, JsValue> {
     binding_dto_to_js(&texform::bindings::list_packages_to_dto())
 }
 
+#[wasm_bindgen(js_name = listRules)]
+pub fn list_rules() -> Result<JsValue, JsValue> {
+    binding_dto_to_js(&texform::bindings::list_rules_to_dto())
+}
+
 fn transform_report_to_js(
     report: &texform::diagnostics::TransformReport,
 ) -> Result<JsValue, JsValue> {

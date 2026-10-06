@@ -6,6 +6,7 @@ export function createBindings({
   serialize: wasmSerialize,
   validateArgspec,
   listPackages: wasmListPackages,
+  listRules: wasmListRules,
 }) {
   class TexformError extends Error {
     constructor(payload, fallback = "texform error") {
@@ -756,6 +757,7 @@ export function createBindings({
   const serialize = (node, options) =>
     wrapTexformError(() => wasmSerialize(node, options ?? undefined));
   const listPackages = () => wrapTexformError(() => wasmListPackages());
+  const listRules = () => wrapTexformError(() => wasmListRules());
 
   return {
     TexformError,
@@ -772,5 +774,6 @@ export function createBindings({
     serialize,
     validateArgspec,
     listPackages,
+    listRules,
   };
 }

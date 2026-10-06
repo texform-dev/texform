@@ -13,6 +13,7 @@ import {
   TexformParseError,
   TexformTransformError,
   listPackages,
+  listRules,
   serialize,
   validateArgspec,
 } from "../node/index.js";
@@ -428,6 +429,18 @@ if (
   throw new Error("listPackages should report base with record counts");
 }
 
+const rules = listRules();
+const listedRuleKeys = rules.map((rule) => rule.key);
+assert.deepEqual(listedRuleKeys, [...listedRuleKeys].sort(), "listRules should sort by key");
+assert.equal(new Set(listedRuleKeys).size, listedRuleKeys.length, "listRules keys should be unique");
+assert.deepEqual(rules.find((rule) => rule.key === "base/over-to-frac"), {
+  key: "base/over-to-frac",
+  level: "authoring",
+  fidelity: "render",
+  summary: "Rewrite infix over to an explicit frac command.",
+  enabledByPackages: ["base"],
+});
+
 const flattenStrict = {
   enabled: true,
   preserveRenderedSpacing: true,
@@ -641,7 +654,7 @@ assert.deepEqual(Object.keys(firstReport.report.rewrite).sort(), [
 ]);
 assert.ok(firstReport.report.rewrite.iterations > 0);
 const ruleKeys = firstReport.report.rewrite.rules.map((rule) => rule.key);
-assert.deepEqual(ruleKeys, [...ruleKeys].sort());
+assert.deepEqual(listedRuleKeys, [...listedRuleKeys].sort());
 assert.ok(
   firstReport.report.rewrite.rules.some((rule) => rule.appliedCount > 0),
 );

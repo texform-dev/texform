@@ -57,7 +57,7 @@ Arrows point from a crate to the crates it depends on. Everything below `texform
 
 | Crate | Responsibility |
 |-------|----------------|
-| `texform` | Public facade. Re-exports the stable surface: `Parser`, `TransformEngine`, `Document`, `ParseResult`, serialization, `validate_argspec`, analysis helpers, and package metadata. The only general-purpose Rust crate other code should depend on. |
+| `texform` | Public facade. Re-exports the stable surface: `Parser`, `TransformEngine`, `Document`, `ParseResult`, serialization, `validate_argspec`, analysis helpers, and package and rewrite rule metadata. The only general-purpose Rust crate other code should depend on. |
 | `texform-core` | The parser, the internal `Ast` arena, the canonical serializer, and the public `Document` DOM layer. |
 | `texform-transform` | The phase-oriented rewrite/normalization engine that operates on a parsed tree. |
 | `texform-knowledge` | The command and environment knowledge base: which names are known, and what argument shapes they take. |

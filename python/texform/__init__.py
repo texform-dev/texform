@@ -21,6 +21,7 @@ from ._native import (
     TransformError,
     count_targets,
     list_packages,
+    list_rules,
     serialize,
     validate_argspec,
 )
@@ -46,6 +47,7 @@ __all__ = [
     "TransformError",
     "count_targets",
     "list_packages",
+    "list_rules",
     "serialize",
     "validate_argspec",
 ]

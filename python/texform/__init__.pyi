@@ -4,6 +4,13 @@ from typing_extensions import NotRequired, Unpack
 
 TransformProfile = Literal["authoring", "faithful", "corpus", "equiv"]
 """Normalization profile name: ``"authoring"``, ``"faithful"``, ``"corpus"``, or ``"equiv"``."""
+RuleLevel = Literal["authoring", "faithful", "corpus", "equiv"]
+"""The first profile that accepts a rewrite rule's output as a suitable product."""
+RuleFidelity = Literal["math", "reading", "render"]
+"""A rewrite rule's worst-case equivalence guarantee, least to most faithful:
+``"math"`` (meaning preserved, rendering may change), ``"reading"`` (notation
+content, reading order, and structural roles preserved), or ``"render"``
+(rendering equivalent under the reference renderer)."""
 RuntimeContentMode = Literal["math", "text"]
 """Runtime content mode reported by the tree API: ``"math"`` or ``"text"``."""
 ParseDiagnosticKind = Literal[
@@ -239,6 +246,26 @@ class PackageInfo(TypedDict):
     name: str
     commands: int
     environments: int
+
+
+class RuleInfo(TypedDict):
+    """Summary of one built-in rewrite rule.
+
+    Attributes:
+        key: The stable rule key, such as ``"base/over-to-frac"``, accepted by
+            the ``disable_rules`` argument of ``TransformEngine``.
+        level: The first profile that accepts the rule's output.
+        fidelity: The rule's worst-case equivalence guarantee.
+        summary: A one-line description of what the rule does.
+        enabled_by_packages: Packages that make the rule loadable when any one
+            of them is enabled.
+    """
+
+    key: str
+    level: RuleLevel
+    fidelity: RuleFidelity
+    summary: str
+    enabled_by_packages: list[str]
 
 
 class ErrorParts(TypedDict):
@@ -737,6 +764,7 @@ __all__ = [
     "TransformError",
     "count_targets",
     "list_packages",
+    "list_rules",
     "serialize",
     "validate_argspec",
 ]
@@ -2836,6 +2864,26 @@ def list_packages() -> list[PackageInfo]:
 
     See Also:
         PackageInfo, Parser, TransformEngine
+    """
+
+def list_rules() -> list[RuleInfo]:
+    """List the built-in rewrite rules, sorted by key.
+
+    The returned keys are the rule identifiers accepted by the
+    ``disable_rules`` argument of ``TransformEngine`` and reported in rewrite
+    statistics. A rule runs only when the engine's profile selects its level and
+    the knowledge base enables one of its packages.
+
+    Returns:
+        A list of ``RuleInfo`` dicts, each ``{"key": str, "level": str,
+        "fidelity": str, "summary": str, "enabled_by_packages": list[str]}``.
+
+    Examples:
+        [rule for rule in texform.list_rules() if rule["key"] == "base/over-to-frac"]
+        # [{'key': 'base/over-to-frac', 'level': 'authoring', 'fidelity': 'render', ...}]
+
+    See Also:
+        RuleInfo, TransformEngine
     """
 
 CommandSpacing = Literal["spaced", "minimal"]

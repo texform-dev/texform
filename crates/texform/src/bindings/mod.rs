@@ -360,6 +360,28 @@ pub fn list_packages_to_dto() -> Vec<PackageInfoDto> {
         .collect()
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct RuleInfoDto {
+    pub key: String,
+    pub level: &'static str,
+    pub fidelity: &'static str,
+    pub summary: String,
+    pub enabled_by_packages: Vec<String>,
+}
+
+pub fn list_rules_to_dto() -> Vec<RuleInfoDto> {
+    crate::list_rules()
+        .into_iter()
+        .map(|info| RuleInfoDto {
+            key: info.key.to_string(),
+            level: info.level.as_str(),
+            fidelity: info.fidelity.as_str(),
+            summary: info.summary,
+            enabled_by_packages: info.enabled_by_packages,
+        })
+        .collect()
+}
+
 /// The structured part of a conformance failure; the message stays on [`BindingErrorDto`].
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct ConformanceErrorDto {

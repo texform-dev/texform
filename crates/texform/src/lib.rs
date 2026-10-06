@@ -75,6 +75,7 @@ pub mod error;
 pub mod knowledge;
 pub mod parse_result;
 pub mod parser;
+pub mod rules;
 pub mod serialize;
 pub mod transform_engine;
 
@@ -96,6 +97,7 @@ pub use knowledge::{
 };
 pub use parse_result::{ParseError, ParseResult};
 pub use parser::{Parser, ParserBuilder};
+pub use rules::{RuleFidelity, RuleInfo, RuleLevel, list_rules};
 pub use serialize::{
     AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, InfixGrouping,
     MathGroupInnerSpacing, ScriptOrder, ScriptSpacing, SerializationToken, SerializationTokenKind,

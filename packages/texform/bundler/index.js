@@ -4,6 +4,7 @@ import init, {
   Parser as WasmParser,
   TransformEngine as WasmTransformEngine,
   listPackages as wasmListPackages,
+  listRules as wasmListRules,
   serialize as wasmSerialize,
   validate_argspec,
 } from "../wasm/web/texform_wasm.js";
@@ -20,6 +21,7 @@ const bindings = createBindings({
   serialize: wasmSerialize,
   validateArgspec: validate_argspec,
   listPackages: wasmListPackages,
+  listRules: wasmListRules,
 });
 
 export const {
@@ -37,4 +39,5 @@ export const {
   serialize,
   validateArgspec,
   listPackages,
+  listRules,
 } = bindings;
