@@ -2,7 +2,7 @@
 
 wasm-bindgen bindings that back the [`texform` package on npm](https://www.npmjs.com/package/texform). Not published to crates.io.
 
-This crate compiles to the WebAssembly module wrapped by the npm package in [`packages/texform/`](../../packages/texform/), which adds the Node/bundler dual entry points and the public TypeScript declarations. Immutable `KnowledgeBase` handles share instance identity across parsers, engines, and documents. Knowledge options and queries belong to `KnowledgeBase`; parser and engine constructors receive an optional shared handle. Live `Document` and `Node` handles expose the shared facade model, and errors surface as structured JavaScript exceptions. Construction accepts nodes, source strings, star booleans, absent values, and paired values through the shared core `Arg` model. Constructor options select a detached subtree context mode. Knowledge violations become `TexformConformanceError` with `path` and `rule`; malformed source becomes `TexformParseError` with diagnostics. Configuration objects are camelCase overlays read through the shared `texform::bindings` path; unknown keys and type errors become `TexformConfigError`.
+This crate compiles to the WebAssembly module wrapped by the npm package in [`packages/texform/`](../../packages/texform/), which adds the Node, bundler, and explicitly initialized web entry points and the public TypeScript declarations. Immutable `KnowledgeBase` handles share instance identity across parsers, engines, and documents. Knowledge options and queries belong to `KnowledgeBase`; parser and engine constructors receive an optional shared handle. Live `Document` and `Node` handles expose the shared facade model, and errors surface as structured JavaScript exceptions. Construction accepts nodes, source strings, star booleans, absent values, and paired values through the shared core `Arg` model. Constructor options select a detached subtree context mode. Knowledge violations become `TexformConformanceError` with `path` and `rule`; malformed source becomes `TexformParseError` with diagnostics. Configuration objects are camelCase overlays read through the shared `texform::bindings` path; unknown keys and type errors become `TexformConfigError`.
 
 ## Local development
 
@@ -21,6 +21,11 @@ Keep exported WASM shapes, `packages/texform/shared/create-bindings.js`, and `pa
 ```bash
 bun run --cwd packages/texform check
 bun run --cwd packages/texform smoke:node
+bun run --cwd packages/texform smoke:web
 ```
 
 `check` compiles declarations and type tests with TypeScript; it does not execute WASM. `smoke:node` checks the real Node wrapper, including config validation, errors, and transform behavior. Use both for API or runtime changes. Host Rust tests alone do not cover the JavaScript boundary; browser-specific changes also need a browser check.
+
+## Browser entry points
+
+Use `texform/node` for build-time scripts, `texform/bundler` for automatic initialization at module load, and `texform/web` for lazy initialization, Workers, or a custom WASM source. The web entry exports the ordinary API plus `init({ wasm }?)`; await initialization before API calls. See the [npm loading guide](../../packages/texform/README.md#loading-webassembly) for asset handling, supported bundlers, and Vite configuration. Browser validation must exercise both web and bundler entries in Vite dev and production builds with only `optimizeDeps.exclude: ["texform"]`.

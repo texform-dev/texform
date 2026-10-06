@@ -51,13 +51,39 @@ All parsers, engines, and documents with omitted `knowledgeBase` share the defau
 
 - `normalize` returns a string. `transform` updates the document and returns `undefined`.
 - `normalizeWithReport` returns `{ normalized, report }`. `transformWithReport` returns the report object. Both accept the same camelCase overlays as the plain methods. Output text and errors follow the ordinary transform contract. Report fields, phase divisions, and counters are diagnostic and are not a stable compatibility promise.
-- The package ships two entry points for loading the WebAssembly module. The default `texform` import resolves to the Node entry in Node.js and to the bundler entry in browser-oriented bundlers; `texform/node` and `texform/bundler` force one explicitly.
-- The bundler entry initializes the WebAssembly module at module load time and expects a modern bundler with support for top-level `await` and `.wasm` assets (e.g. Vite, webpack 5).
+- The default `texform` import resolves to `texform/node` in Node.js and `texform/bundler` in browser-oriented bundlers. Use `texform/web` for explicit initialization, lazy loading, or Web Workers.
+- The bundler entry initializes WebAssembly at module load time and requires top-level `await` support. See [loading WebAssembly](#loading-webassembly) for bundler configuration.
 - All names follow JavaScript conventions: methods and fields are camelCase (`toLatex`, `validateArgspec` returns `argCount`), and missing values are `null`.
 - Parse, transform, normalize, and serialize take camelCase overlay objects. `null` / `undefined` / omitted means not set. Unknown keys, snake_case keys, arrays in object positions, and wrong scalar types throw `TexformConfigError` with a field path. Enum string values stay snake_case (`"sub_first"`).
 - `parser.defaultParseConfig()`, `engine.defaultParseConfig()`, and `engine.defaultTransformConfig()` return the complete defaults actually in force.
 - Parse and edit errors throw structured exceptions (`TexformParseError` and friends); no Rust panic ever crosses the boundary.
 - TypeScript declarations are bundled — no separate `@types` package.
+
+## Loading WebAssembly
+
+Use `texform/node` in build scripts and Node.js applications, `texform/bundler` for automatic initialization, or `texform/web` when initialization should wait until the API is needed:
+
+```ts
+import { init, Parser } from "texform/web";
+
+await init();
+const parser = new Parser();
+const parsed = parser.parse("x^2");
+```
+
+Importing `texform/web` does not instantiate WebAssembly. API calls before initialization throw `TexformError` with an instruction to await `init()`. Concurrent and repeated calls share one Promise; a failed attempt allows a later retry. The same entry works in Web Workers without browser globals. Error classes can be used before initialization.
+
+Both browser entries locate the `.wasm` asset using the generated glue's standard `new URL(..., import.meta.url)`. Vite, webpack 5, and Parcel 2 support this asset form. With Vite, exclude the package from dependency prebundling so that the glue retains its asset URL:
+
+```ts
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  optimizeDeps: { exclude: ["texform"] },
+});
+```
+
+Rollup and esbuild require an asset plugin, or you can supply the source explicitly with `await init({ wasm })`. The source accepts a `WebAssembly.Module`, `BufferSource`, `Response`, `Promise<Response>` (such as `fetch(...)`), `URL`, or string URL. If omitted, initialization uses the generated glue's default asset location.
 
 ## Learn more
 

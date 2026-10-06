@@ -33,6 +33,11 @@
       "types": "./types/index.d.ts",
       "import": "./bundler/index.js",
       "default": "./bundler/index.js"
+    },
+    "./web": {
+      "types": "./types/web.d.ts",
+      "import": "./web/index.js",
+      "default": "./web/index.js"
     }
   },
   "main": "./node/index.cjs",
@@ -44,7 +49,8 @@
     "node/",
     "shared/",
     "types/",
-    "wasm/"
+    "wasm/",
+    "web/"
   ],
   "scripts": {
     "build:wasm:node": "wasm-pack build ../../crates/texform-wasm --target nodejs --out-dir pkg",
@@ -52,7 +58,8 @@
     "sync:wasm": "node scripts/sync-wasm.mjs",
     "prepare:publish": "bun run build:wasm:node && bun run build:wasm:web && bun run sync:wasm",
     "check": "tsc -p tsconfig.json --noEmit",
-    "smoke:node": "node scripts/smoke-node.mjs"
+    "smoke:node": "node scripts/smoke-node.mjs",
+    "smoke:web": "node scripts/smoke-web.mjs"
   },
   "devDependencies": {
     "typescript": "~5.9"

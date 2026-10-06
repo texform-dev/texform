@@ -4,9 +4,10 @@ export function createBindings({
   Parser: WasmParser,
   TransformEngine: WasmTransformEngine,
   serialize: wasmSerialize,
-  validateArgspec,
+  validateArgspec: wasmValidateArgspec,
   listPackages: wasmListPackages,
   listRules: wasmListRules,
+  isInitialized = () => true,
 }) {
   class TexformError extends Error {
     constructor(payload, fallback = "texform error") {
@@ -55,7 +56,14 @@ export function createBindings({
     }
   }
 
+  function requireInitialized() {
+    if (!isInitialized()) {
+      throw new TexformError({ message: "Call await init() before using texform/web APIs." });
+    }
+  }
+
   function wrapTexformError(callback) {
+    requireInitialized();
     try {
       return callback();
     } catch (error) {
@@ -351,6 +359,7 @@ export function createBindings({
       return wrapTexformError(() => new Document(this.inner.clone()));
     }
     constructor(options) {
+      requireInitialized();
       if (!(options instanceof WasmDocument))
         options = checkOptions(options, ["knowledgeBase", "mode"], "document options");
       this.inner = wrapTexformError(() =>
@@ -364,6 +373,7 @@ export function createBindings({
     }
 
     static fromSyntax(node, options) {
+      requireInitialized();
       options = checkOptions(options, ["knowledgeBase"], "fromSyntax options");
       return wrapTexformError(
         () =>
@@ -614,6 +624,7 @@ export function createBindings({
       return new Document(this.inner.document());
     }
     constructor(inner) {
+      requireInitialized();
       this.inner = inner;
     }
 
@@ -756,6 +767,7 @@ export function createBindings({
 
   const serialize = (node, options) =>
     wrapTexformError(() => wasmSerialize(node, options ?? undefined));
+  const validateArgspec = (source) => wrapTexformError(() => wasmValidateArgspec(source));
   const listPackages = () => wrapTexformError(() => wasmListPackages());
   const listRules = () => wrapTexformError(() => wasmListRules());
 
