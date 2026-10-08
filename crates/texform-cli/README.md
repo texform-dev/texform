@@ -276,7 +276,7 @@ A session looks like this (`→` is client to server, `←` is server to client;
 | --- | --- | --- |
 | `initialize` | `{}` | `{"protocolVersion":1,"serverInfo":{...}}` |
 | `configure` | `{"id":string,"config":{"profile":string,"packages"?:[string],"overrides"?:object}}` | `{"resolved":object}` |
-| `normalize` | `{"config":string,"latex":string,"timing"?:bool}` | `{"output":string,"timing"?:object}` |
+| `normalize` | `{"config":string,"latex":string,"timing"?:bool,"report"?:bool}` | `{"output":string,"timing"?:object,"report"?:object}` |
 | `shutdown` | `{}` | `null` |
 
 `params` must be an object; `initialize` and `shutdown` also accept omitted `params`. Unknown members of `params` itself are ignored, while unknown members of `config` and `overrides` are rejected (see [Versioning](#versioning)).
@@ -326,6 +326,8 @@ An unknown profile, an unknown package, or an invalid override (including `rewri
 #### `normalize`
 
 Normalizes `latex` with the configuration stored under `config`. The result is identical to `TransformEngine::normalize_with` in the Rust facade for the same input and effective config. A formula that fails to normalize is a normal outcome, reported as error code `1` (see [Errors](#errors)). An unknown `config` id fails with `-32602`.
+
+With `report: true`, the response also carries the shared transform report, including `warnings` for unknown input commands and environments and `flatten_groups.guard_hits.unknown_command_arguments`. The report uses snake_case, as in `normalize --json --report`. The plain response omits `report`; requesting it does not change output or error handling.
 
 With `timing: true`, the response also carries per-stage durations (see [Timing](#timing)).
 

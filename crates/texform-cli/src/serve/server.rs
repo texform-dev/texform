@@ -8,7 +8,10 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use texform::ParseDiagnostic;
-use texform::bindings::{NormalizeConfigInput, format_read_error, normalize_error_to_parts, read};
+use texform::bindings::{
+    NormalizeConfigInput, TransformReportDto, format_read_error, normalize_error_to_parts, read,
+    transform_report_to_dto,
+};
 
 use super::rpc::RpcError;
 use crate::normalizer::{Normalizer, ProfileName};
@@ -93,11 +96,19 @@ impl Server {
         })?;
         let timing = params.timing.unwrap_or(false);
         let mut timings = StageTimings::default();
-        let outcome =
-            normalizer.normalize_staged(&params.latex, &mut Stopwatch::start(timing), &mut timings);
+        let outcome = normalizer.normalize_staged(
+            &params.latex,
+            params.report.unwrap_or(false),
+            &mut Stopwatch::start(timing),
+            &mut timings,
+        );
         let timing = timing.then_some(timings);
         match outcome {
-            Ok(output) => Ok(to_json(NormalizeResult { output, timing })),
+            Ok((output, report)) => Ok(to_json(NormalizeResult {
+                output,
+                report,
+                timing,
+            })),
             Err(error) => {
                 let error = normalize_error_to_parts(error).error;
                 let data = FailureData {
@@ -127,9 +138,10 @@ impl Normalizer {
     fn normalize_staged(
         &self,
         latex: &str,
+        with_report: bool,
         clock: &mut Stopwatch,
         timings: &mut StageTimings,
-    ) -> Result<String, texform::Error> {
+    ) -> Result<(String, Option<TransformReportDto>), texform::Error> {
         let parsed = self
             .engine
             .parser()
@@ -138,15 +150,21 @@ impl Normalizer {
         timings.parse_ns = clock.lap();
         let (mut document, _diagnostics) = parsed?;
 
-        let transformed = self
-            .engine
-            .transform_with(&mut document, &self.config.transform);
+        let transformed = if with_report {
+            self.engine
+                .transform_with_report(&mut document, &self.config.transform)
+                .map(Some)
+        } else {
+            self.engine
+                .transform_with(&mut document, &self.config.transform)
+                .map(|()| None)
+        };
         timings.transform_ns = clock.lap();
-        transformed?;
+        let report = transformed?;
 
         let serialized = document.to_latex();
         timings.serialize_ns = clock.lap();
-        Ok(serialized?)
+        Ok((serialized?, report.as_ref().map(transform_report_to_dto)))
     }
 }
 
@@ -225,6 +243,7 @@ struct NormalizeParams {
     config: String,
     latex: String,
     timing: Option<bool>,
+    report: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -256,6 +275,8 @@ struct Resolved {
 #[derive(Serialize)]
 struct NormalizeResult {
     output: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    report: Option<TransformReportDto>,
     #[serde(skip_serializing_if = "Option::is_none")]
     timing: Option<StageTimings>,
 }

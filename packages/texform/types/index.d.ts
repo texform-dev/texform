@@ -1688,6 +1688,16 @@ export interface FlattenGroupsReport {
   guardHits: FlattenGroupsGuardCounts;
 }
 
+/** An unknown input name whose arguments or scope cannot be guaranteed. */
+export interface TransformWarning {
+  /** The unknown input name's category. */
+  kind: "unknown-command" | "unknown-environment";
+  /** Name without command or environment delimiters. */
+  name: string;
+  /** Explanation of the semantic uncertainty. */
+  message: string;
+}
+
 /**
  * Diagnostic report for one explicit report call.
  *
@@ -1698,6 +1708,8 @@ export interface FlattenGroupsReport {
  * the snake_case data exposed by the Python binding.
  */
 export interface TransformReport {
+  /** Unknown input names, deduplicated and sorted by kind and name. */
+  warnings: TransformWarning[];
   /** LowerAttributes activity, summed across its two passes. */
   lowerAttributes: LowerAttributesReport;
   /** Rewrite iterations and per-rule outcomes. */

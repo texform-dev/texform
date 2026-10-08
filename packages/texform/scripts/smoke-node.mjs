@@ -640,9 +640,14 @@ assert.match(missingArgspec.message, /argspec/);
 const reportSource = String.raw`a \over b + {\bf x}`;
 const plainReportText = engine.normalize(reportSource);
 const firstReport = engine.normalizeWithReport(reportSource);
+assert.deepEqual(firstReport.report.warnings, []);
 const unknownSource = String.raw`\unknown{a}{b}+\unknown{c}`;
 const unknownReport = engine.normalizeWithReport(unknownSource);
 assert.equal(unknownReport.normalized, engine.normalize(unknownSource));
+assert.equal(unknownReport.report.warnings.length, 1);
+assert.equal(unknownReport.report.warnings[0].kind, "unknown-command");
+assert.equal(unknownReport.report.warnings[0].name, "unknown");
+assert.ok(unknownReport.report.warnings[0].message);
 assert.ok(unknownReport.report.flattenGroups.guardHits.unknownCommandArguments > 0);
 assert.equal(typeof plainReportText, "string");
 assert.equal(firstReport.normalized, plainReportText);
@@ -651,6 +656,7 @@ assert.deepEqual(Object.keys(firstReport.report).sort(), [
   "flattenGroups",
   "lowerAttributes",
   "rewrite",
+  "warnings",
 ]);
 assert.deepEqual(Object.keys(firstReport.report.rewrite).sort(), [
   "iterations",

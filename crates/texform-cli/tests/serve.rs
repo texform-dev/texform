@@ -19,6 +19,32 @@ const NORMALIZE_FAILED: i64 = 1;
 
 const UNCLOSED_FRACTION: &str = r"\frac{a";
 
+#[test]
+fn optional_reports_expose_unknown_names_without_changing_plain_output() {
+    let source = r"\unknown{a}{b}+\unknown{c}";
+    let served = serve(
+        &[],
+        &[
+            initialize(0),
+            configure(1, "corpus", json!({"profile": "corpus"})),
+            normalize(2, "corpus", source, false),
+            request(
+                3,
+                "normalize",
+                json!({"config": "corpus", "latex": source, "report": true, "timing": true}),
+            ),
+        ],
+    );
+    let plain = &served.response(2)["result"];
+    let reported = &served.response(3)["result"];
+    assert_eq!(plain["output"], reported["output"]);
+    assert!(plain.get("report").is_none());
+    assert_eq!(reported["report"]["warnings"].as_array().unwrap().len(), 1);
+    assert_eq!(reported["report"]["warnings"][0]["kind"], "unknown-command");
+    assert_eq!(reported["report"]["warnings"][0]["name"], "unknown");
+    assert!(reported["timing"].is_object());
+}
+
 fn all_packages() -> Vec<String> {
     texform::list_packages()
         .into_iter()

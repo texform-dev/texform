@@ -24,6 +24,7 @@ pub(crate) fn execute(
     recorder: &mut ReportRecorder,
 ) -> Result<(), TransformError> {
     const MAX_ROUNDS: usize = 8;
+    recorder.record_unknown_names(ast);
     let enabled = [
         cfg.lower_attributes.enabled,
         cfg.rewrite.enabled,

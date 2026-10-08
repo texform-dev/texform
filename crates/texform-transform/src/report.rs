@@ -1,13 +1,25 @@
 //! Aggregate transform report and the call-scoped collector.
 
+use crate::ast::{Ast, Node};
 use crate::finalize_ast::FinalizeAstReport;
 use crate::flatten_groups::FlattenGroupsReport;
 use crate::lower_attributes::LowerAttributesReport;
 use crate::rewrite::{RewriteReport, RuleKey};
+use std::collections::BTreeSet;
+
+/// A semantic uncertainty in the input, independent of phase execution.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TransformWarning {
+    /// No command signature is available in the active knowledge base.
+    UnknownCommand { name: String },
+    /// No environment signature is available in the active knowledge base.
+    UnknownEnvironment { name: String },
+}
 
 /// Phase-oriented summary of a single transform run.
 ///
-/// Each field aggregates what its phase observed across all scheduling rounds.
+/// Phase fields aggregate observations across all scheduling rounds; warnings
+/// describe unknown input names independently of phase execution.
 /// The phase buckets remain LowerAttributes, Rewrite, FinalizeAst, and
 /// FlattenGroups. Counters are not a single "number of output changes" and
 /// must not be added together. This is the Rust-native report; bindings
@@ -15,6 +27,9 @@ use crate::rewrite::{RewriteReport, RuleKey};
 /// statistics are diagnostic.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TransformReport {
+    /// Unknown input names, deduplicated and sorted by kind and name. These
+    /// warnings do not make a successful transform fail.
+    pub warnings: Vec<TransformWarning>,
     /// Attribute canonicalization counts, summed over all invocations.
     pub lower_attributes: LowerAttributesReport,
     /// Fixed-point iteration count and per-rule application counts.
@@ -32,6 +47,34 @@ pub struct ReportRecorder {
 }
 
 impl ReportRecorder {
+    /// Scan the input once, only for an explicitly requested report. Rewrites
+    /// cannot hide unknown names and scheduling rounds cannot duplicate them.
+    pub(crate) fn record_unknown_names(&mut self, ast: &Ast) {
+        let Some(report) = &mut self.report else {
+            return;
+        };
+        report.warnings = ast
+            .find_all(ast.root(), |node| {
+                matches!(
+                    node,
+                    Node::Command { known: false, .. } | Node::Environment { known: false, .. }
+                )
+            })
+            .into_iter()
+            .map(|id| match ast.node(id) {
+                Node::Command { name, .. } => {
+                    TransformWarning::UnknownCommand { name: name.clone() }
+                }
+                Node::Environment { name, .. } => {
+                    TransformWarning::UnknownEnvironment { name: name.clone() }
+                }
+                _ => unreachable!("find_all selects unknown commands and environments"),
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+    }
+
     /// Collector for a call that does not request a report.
     pub fn disabled() -> Self {
         Self { report: None }

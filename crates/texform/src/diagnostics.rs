@@ -9,7 +9,7 @@ pub use texform_transform::{
     Attr, AttrValue, AttributeFormCounts, AttributeSet, AttributeStat, FinalizeAstReport,
     FlattenGroupsActionCounts, FlattenGroupsGuardCounts, FlattenGroupsReport,
     LowerAttributesReport, MathFontValue, RewriteReport, RewriteRuleStat, SizeValue, StyleValue,
-    TextFamily, TextSeries, TextShape, TransformReport,
+    TextFamily, TextSeries, TextShape, TransformReport, TransformWarning,
 };
 
 /// Normalized text plus the diagnostic report from one explicit report call.

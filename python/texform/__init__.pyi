@@ -426,6 +426,14 @@ class FlattenGroupsReport(TypedDict):
     guard_hits: FlattenGroupsGuardCounts
 
 
+class TransformWarning(TypedDict):
+    """An unknown input name whose arguments or scope cannot be guaranteed."""
+
+    kind: Literal["unknown-command", "unknown-environment"]
+    name: str
+    message: str
+
+
 class TransformReport(TypedDict):
     """Diagnostic report for one explicit report call.
 
@@ -436,6 +444,7 @@ class TransformReport(TypedDict):
     exposes the same data in camelCase.
 
     Attributes:
+        warnings: Unknown input names, deduplicated and sorted by kind and name.
         lower_attributes: LowerAttributes activity, summed across its two passes.
         rewrite: Rewrite iterations and per-rule outcomes.
         finalize_ast: Prime merges and text normalizations.
@@ -445,6 +454,7 @@ class TransformReport(TypedDict):
         NormalizeReportResult, TransformEngine
     """
 
+    warnings: list[TransformWarning]
     lower_attributes: LowerAttributesReport
     rewrite: RewriteReport
     finalize_ast: FinalizeAstReport

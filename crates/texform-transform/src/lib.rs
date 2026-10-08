@@ -28,7 +28,7 @@ pub use lower_attributes::{
     Attr, AttrValue, AttributeFormCounts, AttributeSet, AttributeStat, LowerAttributesConfig,
     LowerAttributesReport, MathFontValue, SizeValue, StyleValue, TextFamily, TextSeries, TextShape,
 };
-pub use report::TransformReport;
+pub use report::{TransformReport, TransformWarning};
 pub use rewrite::{
     ContractViolation, PackageName, Plan as RewritePlan, PlanBuildError, RewriteError,
     RewriteReport, RewriteRule, RewriteRuleStat, RuleAvailabilityFailure, RuleConsumes, RuleEffect,

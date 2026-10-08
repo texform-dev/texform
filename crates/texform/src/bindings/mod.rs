@@ -66,10 +66,18 @@ pub fn tokenized_latex_to_dto(result: TokenizedLatex) -> TokenizedLatexDto {
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct TransformReportDto {
+    pub warnings: Vec<TransformWarningDto>,
     pub lower_attributes: LowerAttributesReportDto,
     pub rewrite: RewriteReportDto,
     pub finalize_ast: FinalizeAstReportDto,
     pub flatten_groups: FlattenGroupsReportDto,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct TransformWarningDto {
+    pub kind: String,
+    pub name: String,
+    pub message: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -239,6 +247,17 @@ pub fn transform_report_to_dto(report: &TransformReport) -> TransformReportDto {
     rules.sort_by(|left, right| left.key.cmp(&right.key));
 
     TransformReportDto {
+        warnings: report.warnings.iter().map(|warning| {
+            let (kind, name, spelling) = match warning {
+                texform_transform::TransformWarning::UnknownCommand { name } => ("unknown-command", name, format!("\\{name}")),
+                texform_transform::TransformWarning::UnknownEnvironment { name } => ("unknown-environment", name, format!("environment `{name}`")),
+            };
+            TransformWarningDto {
+                kind: kind.to_owned(),
+                name: name.clone(),
+                message: format!("Unknown {spelling}: its arguments and scope are not known; normalization may change its meaning."),
+            }
+        }).collect(),
         lower_attributes: lower_attributes_report_to_dto(&report.lower_attributes),
         rewrite: RewriteReportDto {
             iterations: report.rewrite.iterations,
