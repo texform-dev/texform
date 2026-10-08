@@ -71,6 +71,10 @@ cache-keys = [
     { file = "python/texform/py.typed" },
 ]
 
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
