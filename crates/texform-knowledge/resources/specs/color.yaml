@@ -1,0 +1,32 @@
+commands:
+  - name: color
+    kind: declarative
+    argspec: o:N m:N
+    allowed_mode: both
+    tags:
+      - presentation
+  - name: colorbox
+    kind: prefix
+    argspec: o:N m:N m:T
+    allowed_mode: both
+    tags:
+      - presentation
+  - name: definecolor
+    kind: prefix
+    argspec: m:N m:N m:N
+    allowed_mode: both
+    tags:
+      - invisible
+      - newdefine
+  - name: fcolorbox
+    kind: prefix
+    argspec: o:N m:N o:N m:N m:T
+    allowed_mode: both
+    tags:
+      - presentation
+  - name: textcolor
+    kind: prefix
+    argspec: o:N m:N m
+    allowed_mode: math
+    tags:
+      - presentation

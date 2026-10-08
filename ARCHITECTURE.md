@@ -191,7 +191,7 @@ The serializer covers the full node vocabulary, including emitting an `Error` no
 
 A brace group directly occupying an argument, script, infix operand, or environment-body slot represents that slot's own container. Explicit and Implicit identify construction history, not different scope semantics. Command arguments retain an implicit container around a sole user-written brace group. Content in optional, delimited, and paired arguments receives protective braces when its tokens would close the argument early; parsing removes exactly that necessary outer protection. These protection braces are not AST nodes.
 
-Default knowledge packages are `base`, `ams`, `braket`, `textmacros`, `bboldx`, and `boldsymbol`. Load `physics` explicitly to opt into its command redefinitions and optional trigonometric arguments. Without it, physics-only commands are unknown; standard `\div`, `\Re`, and `\Im` retain their base meanings.
+Default knowledge packages are `base`, `ams`, `braket`, `textmacros`, `bboldx`, `boldsymbol`, and `color`. Load `physics` explicitly to opt into its command redefinitions and optional trigonometric arguments. Without it, physics-only commands are unknown; standard `\div`, `\Re`, and `\Im` retain their base meanings.
 
 The serializer guarantees **text idempotency** — `serialize(parse(serialize(parse(src)))) == serialize(parse(src))`: parsing the canonical output and re-serializing always produces the same string. This is a text-level guarantee; `parse(serialize(ast))` is not required to recover the exact same AST kind. Output style is configurable through `SerializeOptions` (see the [`texform` API docs](https://docs.rs/texform) for the option axes).
 

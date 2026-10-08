@@ -57,7 +57,7 @@ Corpus failures need investigation before baseline or allow-list changes. A tran
 TEXFORM_ROUNDTRIP_CORPUS=/path/to/formulas.txt cargo test --release -p texform-transform --test reparse_roundtrip -- --ignored --nocapture
 ```
 
-The audit explicitly loads the six default packages, so it does not depend on the library defaults.
+The audit explicitly loads a fixed six-package selection, so it does not depend on the library defaults.
 
 ## Hooks and CI
 

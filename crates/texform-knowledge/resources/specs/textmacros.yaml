@@ -365,6 +365,12 @@ commands:
     allowed_mode: text
     tags:
       - presentation
+  - name: textcolor
+    kind: prefix
+    argspec: o:N m:N m:T
+    allowed_mode: text
+    tags:
+      - presentation
   - name: textit
     kind: prefix
     argspec: m:T

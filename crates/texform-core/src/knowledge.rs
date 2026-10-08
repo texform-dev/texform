@@ -54,13 +54,14 @@ const RUNTIME_PACKAGE_NAME: &str = "runtime";
 const UNKNOWN_PACKAGE_NAME: &str = "unknown";
 // Runtime defaults intentionally differ from the full builtin registry:
 // Physics requires explicit loading; without its overrides, braket is enabled by default.
-const DEFAULT_PACKAGE_NAMES: [&str; 6] = [
+const DEFAULT_PACKAGE_NAMES: [&str; 7] = [
     "base",
     "ams",
     "braket",
     "textmacros",
     "bboldx",
     "boldsymbol",
+    "color",
 ];
 const PHYSICS_COMMAND_MERGE_DENYLIST: [&str; 3] = ["Pr", "det", "exp"];
 

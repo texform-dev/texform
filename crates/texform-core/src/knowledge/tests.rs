@@ -523,7 +523,8 @@ fn test_default_package_names_exclude_physics() {
             "braket",
             "textmacros",
             "bboldx",
-            "boldsymbol"
+            "boldsymbol",
+            "color"
         ]
     );
 }

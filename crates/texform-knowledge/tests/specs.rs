@@ -14,6 +14,7 @@ fn package_name_import_order_matches_transform_order() {
             PackageName::Textmacros,
             PackageName::Bboldx,
             PackageName::Boldsymbol,
+            PackageName::Color,
         ]
     );
     assert_eq!(
@@ -29,6 +30,7 @@ fn package_name_import_order_matches_transform_order() {
             "textmacros",
             "bboldx",
             "boldsymbol",
+            "color",
         ]
     );
 }
@@ -52,6 +54,7 @@ fn all_resource_specs_are_registered() {
             "bboldx",
             "boldsymbol",
             "braket",
+            "color",
             "physics",
             "textmacros"
         ]

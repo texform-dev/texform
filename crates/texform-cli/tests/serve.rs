@@ -190,6 +190,7 @@ fn configure_defaults_match_the_library_and_all_packages_remain_explicit() {
             "bboldx",
             "boldsymbol",
             "braket",
+            "color",
             "textmacros"
         ])
     );

@@ -47,9 +47,9 @@
       "length_filtered_count": 3,
       "length_filtered_rate_pct": 0.00,
       "strict": {
-        "ok": 480994,
-        "failed": 11139,
-        "failure_rate_pct": 2.26
+        "ok": 481754,
+        "failed": 10379,
+        "failure_rate_pct": 2.11
       },
       "nonstrict": {
         "ok": 491809,
@@ -85,9 +85,9 @@
     "length_filtered_count": 4,
     "length_filtered_rate_pct": 0.00,
     "strict": {
-      "ok": 1202030,
-      "failed": 24587,
-      "failure_rate_pct": 2.00
+      "ok": 1202790,
+      "failed": 23827,
+      "failure_rate_pct": 1.94
     },
     "nonstrict": {
       "ok": 1225509,

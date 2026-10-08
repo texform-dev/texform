@@ -32,7 +32,7 @@ TeXForm is that missing layer. It parses formulas against a real command knowled
 <tr>
 <td valign="top">
 
-Formulas parse into real syntax trees, driven by xparse-style argument specifications for every command in `base`, `ams`, `physics`, `braket`, `bboldx`, `boldsymbol`, and `textmacros`. Unknown commands and unparseable fragments survive as explicit nodes — under your control, never a crash.
+Formulas parse into real syntax trees, driven by xparse-style argument specifications for every command in `base`, `ams`, `physics`, `braket`, `bboldx`, `boldsymbol`, `textmacros`, and `color`. Unknown commands and unparseable fragments survive as explicit nodes — under your control, never a crash.
 
 </td>
 <td valign="top">

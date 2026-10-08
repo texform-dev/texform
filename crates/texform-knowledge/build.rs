@@ -17,7 +17,7 @@ use specs_yaml::{
 };
 use texform_argspec::parse_arg_specs;
 
-const MANAGED_PACKAGE_IMPORT_ORDER: [&str; 7] = [
+const MANAGED_PACKAGE_IMPORT_ORDER: [&str; 8] = [
     "base",
     "ams",
     "braket",
@@ -25,6 +25,7 @@ const MANAGED_PACKAGE_IMPORT_ORDER: [&str; 7] = [
     "textmacros",
     "bboldx",
     "boldsymbol",
+    "color",
 ];
 
 fn main() {

@@ -18,6 +18,7 @@ pub fn defaults() -> Vec<String> {
         "textmacros",
         "bboldx",
         "boldsymbol",
+        "color",
     ]
     .into_iter()
     .map(str::to_owned)
