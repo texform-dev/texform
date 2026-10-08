@@ -387,6 +387,7 @@ class FlattenGroupsGuardCounts(TypedDict):
     ``command_contact``. These counters are not a partition of preserved groups.
 
     Attributes:
+        unknown_command_arguments: Possible arguments following an unknown command.
         declarative_scope: Declarative-scope protection.
         script_base: Script-base protection.
         env_body: Environment-body protection.
@@ -400,6 +401,7 @@ class FlattenGroupsGuardCounts(TypedDict):
         delimited_pair: Delimited-pair protection.
     """
 
+    unknown_command_arguments: int
     declarative_scope: int
     script_base: int
     env_body: int

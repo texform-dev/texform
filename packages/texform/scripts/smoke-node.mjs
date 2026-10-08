@@ -640,6 +640,10 @@ assert.match(missingArgspec.message, /argspec/);
 const reportSource = String.raw`a \over b + {\bf x}`;
 const plainReportText = engine.normalize(reportSource);
 const firstReport = engine.normalizeWithReport(reportSource);
+const unknownSource = String.raw`\unknown{a}{b}+\unknown{c}`;
+const unknownReport = engine.normalizeWithReport(unknownSource);
+assert.equal(unknownReport.normalized, engine.normalize(unknownSource));
+assert.ok(unknownReport.report.flattenGroups.guardHits.unknownCommandArguments > 0);
 assert.equal(typeof plainReportText, "string");
 assert.equal(firstReport.normalized, plainReportText);
 assert.deepEqual(Object.keys(firstReport.report).sort(), [
@@ -689,6 +693,7 @@ assert.deepEqual(
     "leadingAtomSpacingChar",
     "loneAtomSpacingChar",
     "scriptBase",
+    "unknownCommandArguments",
   ],
 );
 assert.equal("guards" in firstReport.report.flattenGroups, false);

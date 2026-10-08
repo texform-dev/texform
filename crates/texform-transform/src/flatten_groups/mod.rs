@@ -44,7 +44,8 @@ impl FlattenGroupsConfig {
     pub const DEFAULTS: Self = Self::STRICT;
 }
 
-/// Complete FlattenGroups protection set for one run.
+/// Configurable FlattenGroups protection set for one run. Possible arguments
+/// following unknown commands are always protected when the phase runs.
 ///
 /// This type is an unstable research/internal surface. Field names, layout, and
 /// the run-with-guards entry may change without notice. Doc comments describe
@@ -209,6 +210,9 @@ pub struct FlattenGroupsActionCounts {
 /// `command_contact` and must not be added to it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FlattenGroupsGuardCounts {
+    /// Group kept as a possible argument in a brace-group sequence following
+    /// an unknown command, independently of rendered-spacing guards.
+    pub unknown_command_arguments: usize,
     /// Group kept because its subtree holds a declarative command, so
     /// flattening would leak declarative scope into following siblings.
     pub declarative_scope: usize,
@@ -317,6 +321,10 @@ fn try_unwrap(
     let Some(link) = ast.parent(node) else {
         return false;
     };
+    if is_possible_unknown_argument(ast, link) {
+        recorder.flatten_groups(|report| report.guard_hits.unknown_command_arguments += 1);
+        return false;
+    }
     // The argument already owns its scope and cell boundary. Its direct
     // singleton container needs no additional preservation guard.
     let argument_slot = matches!(link.slot, Slot::Argument(_));
@@ -422,6 +430,42 @@ fn try_unwrap(
         Slot::EnvBody => return false,
     }
     true
+}
+
+fn is_possible_unknown_argument(ast: &Ast, link: ParentLink) -> bool {
+    let sequence_link = if link.slot == Slot::ScriptBase {
+        ast.parent(link.parent)
+    } else {
+        Some(link)
+    };
+    let Some(ParentLink {
+        parent,
+        slot: Slot::GroupChild(index),
+    }) = sequence_link
+    else {
+        return false;
+    };
+    // The parser cannot attach arguments without a signature. Keep every
+    // adjacent brace group, including empty groups and scripted arguments.
+    for &sibling in ast.children(parent)[..index].iter().rev() {
+        match ast.node(sibling) {
+            Node::Group {
+                kind: GroupKind::Explicit | GroupKind::Implicit,
+                ..
+            } => continue,
+            Node::Text(text) if text.trim().is_empty() => continue,
+            _ => return is_unknown_command(ast, sibling),
+        }
+    }
+    false
+}
+
+fn is_unknown_command(ast: &Ast, node: NodeId) -> bool {
+    match ast.node(node) {
+        Node::Command { known: false, .. } => true,
+        Node::Scripted { base, .. } => is_unknown_command(ast, *base),
+        _ => false,
+    }
 }
 
 fn is_lone_prime_superscript_group(ast: &Ast, node: NodeId, link: ParentLink) -> bool {

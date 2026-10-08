@@ -624,3 +624,35 @@ fn disabled_phase_skips_flatten_even_with_overlay() {
     assert_eq!(outcome.text, "{ { a } }");
     assert_eq!(outcome.report.actions.replaced_single_child, 0);
 }
+
+#[test]
+fn unknown_commands_keep_all_adjacent_brace_arguments_in_every_strategy() {
+    for strategy in [
+        FlattenGroupsConfig::STRICT,
+        FlattenGroupsConfig::STRUCTURAL_ONLY,
+    ] {
+        let outcome = run_flatten_groups_with_config(r"\unknown{a}{}{bc}+{d}", strategy);
+        assert_eq!(outcome.text, r"\unknown { a } { } { b c } + d");
+        assert!(outcome.report.guard_hits.unknown_command_arguments >= 3);
+    }
+}
+
+#[test]
+fn unknown_argument_protection_keeps_scripted_arguments_and_command_bases() {
+    for (source, expected) in [
+        (r"\unknown{a}^2", r"\unknown { a } ^ { 2 }"),
+        (r"\unknown_1{a}{b}", r"\unknown _ { 1 } { a } { b }"),
+    ] {
+        let outcome = run_flatten_groups_with_config(source, FlattenGroupsConfig::STRUCTURAL_ONLY);
+        assert_eq!(outcome.text, expected);
+        assert!(outcome.report.guard_hits.unknown_command_arguments > 0);
+    }
+}
+
+#[test]
+fn known_commands_and_nonadjacent_groups_keep_the_existing_flattening_behavior() {
+    let outcome =
+        run_flatten_groups_with_config(r"\cos{a}{b}+{c}", FlattenGroupsConfig::STRUCTURAL_ONLY);
+    assert_eq!(outcome.text, r"\cos a b + c");
+    assert_eq!(outcome.report.guard_hits.unknown_command_arguments, 0);
+}

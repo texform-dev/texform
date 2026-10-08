@@ -1654,6 +1654,8 @@ export interface FlattenGroupsActionCounts {
  * `commandContact`. These counters are not a partition of preserved groups.
  */
 export interface FlattenGroupsGuardCounts {
+  /** Possible arguments following an unknown command. */
+  unknownCommandArguments: number;
   /** Declarative-scope protection. */
   declarativeScope: number;
   /** Script-base protection. */

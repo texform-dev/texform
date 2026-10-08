@@ -3328,6 +3328,9 @@ assert second == first
 
 report = first["report"]
 assert set(report) == {"lower_attributes", "rewrite", "finalize_ast", "flatten_groups"}
+unknown = engine.normalize_with_report(r"\unknown{a}{b}+\unknown{c}")
+assert unknown["normalized"] == engine.normalize(r"\unknown{a}{b}+\unknown{c}")
+assert unknown["report"]["flatten_groups"]["guard_hits"]["unknown_command_arguments"] > 0
 assert set(report["rewrite"]) == {"iterations", "rules"}
 assert report["rewrite"]["iterations"] > 0
 rules = report["rewrite"]["rules"]
@@ -3345,6 +3348,7 @@ assert set(flatten["actions"]) == {
     "unwrapped_slot",
 }
 assert set(flatten["guard_hits"]) == {
+    "unknown_command_arguments",
     "declarative_scope",
     "script_base",
     "env_body",
