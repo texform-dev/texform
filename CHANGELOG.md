@@ -3,17 +3,21 @@
 All notable changes to TeXForm are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
-## [0.9.1] - 2026-10-08
+
+## [0.9.1] - 2026-10-09
+
+This release adds the `color` package to the default knowledge base, gives transform reports warnings for unknown input, and adds a rule catalog API and an explicit `texform/web` entry for browsers. Unknown commands now keep the brace groups that follow them, so their argument boundaries survive normalization. Formulas that use color commands now parse with known signatures, which changes their parsed trees and normalized output.
 
 ### Added
 
-- Add the `color` package
-- Add unknown input warnings to transform reports
-- Add `list_rules` rule catalog
+- The `color` package covers `\color`, `\textcolor`, `\definecolor`, `\colorbox`, and `\fcolorbox`, and is loaded by default in the library and the command-line tool, which now default to seven packages. `\color[model]{color}` is a declaration with LaTeX and MathJax 3/4 semantics, scoped to its enclosing group, not the two-argument form of MathJax's legacy `colorv2`. `\textcolor` takes `o:N m:N m` in math mode and `o:N m:N m:T` in text mode. Color names, models, and specifications are kept as literal strings: they are not validated and control sequences in them are not expanded, so `\color{\mycolor}x` still fails to parse.
+- Transform reports include `warnings` that list the unknown command and environment names in the input, deduplicated and sorted by kind and name. They are collected whenever a report is requested, even with every phase disabled, and do not make a transform fail. Rust, Python, and JavaScript report types expose them, and `texform serve` `normalize` accepts an optional `report` request that returns the same report; plain responses and normalizer protocol v1 are unchanged.
+- `texform::list_rules()`, Python `list_rules()`, and JavaScript `listRules()` return every built-in rewrite rule sorted by key, with its `level`, `fidelity`, `summary`, and enabling packages, so rule keys for `disableRules` and report statistics can be discovered. The facade re-exports `RuleLevel` and `RuleFidelity`; TypeScript adds `RuleFidelity` and `RuleInfo`, and the Python stubs add `RuleLevel`, `RuleFidelity`, and `RuleInfo`.
+- The npm package adds a `texform/web` entry for browsers that need to defer WebAssembly loading or supply the module themselves. Call `init()` or `init({ wasm })` before using the API; it is idempotent, can be retried after a failure, and reports typed initialization errors. The default bundler entry is unchanged. With Vite, exclude `texform` from `optimizeDeps`.
 
 ### Fixed
 
-- Preserve unknown command argument groups
+- Brace groups directly after an unknown command are no longer flattened. In `\unknown{a}{}{bc}`, the empty group and the braces around `bc` were treated as redundant and removed, which lost the argument boundaries. Every profile now keeps them, including empty groups and a group used as a script base such as `\unknown{a}^2`, and the guard report counts them as `unknown_command_arguments`. This keeps the boundaries, not the meaning of unknown input; other phases still normalize the group contents.
 
 ## [0.9.0] - 2026-10-04
 
