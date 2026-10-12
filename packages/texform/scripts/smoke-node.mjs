@@ -689,6 +689,7 @@ assert.deepEqual(Object.keys(firstReport.report.flattenGroups.actions).sort(), [
 assert.deepEqual(
   Object.keys(firstReport.report.flattenGroups.guardHits).sort(),
   [
+    "argumentCapture",
     "commandContact",
     "commandContactViaScriptedBase",
     "declarativeScope",

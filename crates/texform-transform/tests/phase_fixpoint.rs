@@ -55,6 +55,7 @@ fn phase(
             cfg.flatten_groups.enabled
                 && flatten_groups::run(
                     ast,
+                    p,
                     &flatten_groups::FlattenGroupsGuards::from_config(cfg.flatten_groups),
                     &mut r,
                 )

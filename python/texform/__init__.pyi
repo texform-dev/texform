@@ -388,6 +388,8 @@ class FlattenGroupsGuardCounts(TypedDict):
 
     Attributes:
         unknown_command_arguments: Possible arguments following an unknown command.
+        argument_capture: Groups whose leading delimiter the preceding command
+            could read as an omitted optional or delimited argument.
         declarative_scope: Declarative-scope protection.
         script_base: Script-base protection.
         env_body: Environment-body protection.
@@ -402,6 +404,7 @@ class FlattenGroupsGuardCounts(TypedDict):
     """
 
     unknown_command_arguments: int
+    argument_capture: int
     declarative_scope: int
     script_base: int
     env_body: int

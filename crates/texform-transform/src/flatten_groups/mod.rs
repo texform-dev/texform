@@ -2,7 +2,11 @@
 
 use serde::{Deserialize, Deserializer};
 
-use crate::ast::{ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, ParentLink, Slot};
+use crate::ast::{
+    ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, ParentLink, Slot,
+};
+use crate::knowledge::{ArgForm, DelimiterToken};
+use crate::parse::ParseContext;
 use crate::report::ReportRecorder;
 
 /// Public per-run switches for FlattenGroups: whether the phase runs, and
@@ -45,7 +49,9 @@ impl FlattenGroupsConfig {
 }
 
 /// Configurable FlattenGroups protection set for one run. Possible arguments
-/// following unknown commands are always protected when the phase runs.
+/// following unknown commands and groups whose leading delimiter a preceding
+/// command could capture as an omitted argument are always protected when the
+/// phase runs.
 ///
 /// This type is an unstable research/internal surface. Field names, layout, and
 /// the run-with-guards entry may change without notice. Doc comments describe
@@ -213,6 +219,10 @@ pub struct FlattenGroupsGuardCounts {
     /// Group kept as a possible argument in a brace-group sequence following
     /// an unknown command, independently of rendered-spacing guards.
     pub unknown_command_arguments: usize,
+    /// Group kept because removing its braces would let the preceding command
+    /// read the group's leading delimiter as an omitted trailing optional or
+    /// delimited argument, independently of rendered-spacing guards.
+    pub argument_capture: usize,
     /// Group kept because its subtree holds a declarative command, so
     /// flattening would leak declarative scope into following siblings.
     pub declarative_scope: usize,
@@ -244,8 +254,16 @@ pub struct FlattenGroupsGuardCounts {
 }
 
 /// Returns whether a group was spliced or a content slot was redirected.
-pub fn run(ast: &mut Ast, guards: &FlattenGroupsGuards, recorder: &mut ReportRecorder) -> bool {
-    visit(ast, ast.root(), false, guards, recorder).changed
+///
+/// `parse_ctx` supplies the argument signatures used to decide whether a
+/// preceding command could capture a spliced group's leading delimiter.
+pub fn run(
+    ast: &mut Ast,
+    parse_ctx: &ParseContext,
+    guards: &FlattenGroupsGuards,
+    recorder: &mut ReportRecorder,
+) -> bool {
+    visit(ast, ast.root(), false, parse_ctx, guards, recorder).changed
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -260,6 +278,7 @@ fn visit(
     ast: &mut Ast,
     node: NodeId,
     in_env_body: bool,
+    parse_ctx: &ParseContext,
     guards: &FlattenGroupsGuards,
     recorder: &mut ReportRecorder,
 ) -> SubtreeFlags {
@@ -282,6 +301,7 @@ fn visit(
                 ast,
                 child,
                 in_env_body || slot == Slot::EnvBody,
+                parse_ctx,
                 guards,
                 recorder,
             );
@@ -293,7 +313,7 @@ fn visit(
     }
 
     if ast.contains(node) {
-        flags.changed |= try_unwrap(ast, node, flags, in_env_body, guards, recorder);
+        flags.changed |= try_unwrap(ast, node, flags, in_env_body, parse_ctx, guards, recorder);
     }
 
     flags
@@ -304,6 +324,7 @@ fn try_unwrap(
     node: NodeId,
     flags: SubtreeFlags,
     in_env_body: bool,
+    parse_ctx: &ParseContext,
     guards: &FlattenGroupsGuards,
     recorder: &mut ReportRecorder,
 ) -> bool {
@@ -323,6 +344,10 @@ fn try_unwrap(
     };
     if is_possible_unknown_argument(ast, link) {
         recorder.flatten_groups(|report| report.guard_hits.unknown_command_arguments += 1);
+        return false;
+    }
+    if is_possible_argument_capture(ast, parse_ctx, node, link) {
+        recorder.flatten_groups(|report| report.guard_hits.argument_capture += 1);
         return false;
     }
     // The argument already owns its scope and cell boundary. Its direct
@@ -425,7 +450,7 @@ fn try_unwrap(
             redirect_single_child_slot(ast, node, recorder);
             // Its slot changed: guards that preserved the nested group as a
             // sequence child must now be checked in the promoted slot.
-            try_unwrap(ast, child, flags, in_env_body, guards, recorder);
+            try_unwrap(ast, child, flags, in_env_body, parse_ctx, guards, recorder);
         }
         Slot::EnvBody => return false,
     }
@@ -458,6 +483,129 @@ fn is_possible_unknown_argument(ast: &Ast, link: ParentLink) -> bool {
         }
     }
     false
+}
+
+/// Whether splicing this group would place its leading delimiter directly
+/// after a command that still has an omitted trailing optional or delimited
+/// slot accepting that delimiter. A reparse would then read the delimiter as
+/// an argument, as in `\sin{[2]}x` → `\sin[2]x` when `\sin` takes `o`.
+///
+/// Only the delimiters the argument signature declares are checked. A command
+/// that grabs more in some renderer than its signature records, such as the
+/// `physics` `\sin` reading a following `(...)`, is not protected.
+fn is_possible_argument_capture(
+    ast: &Ast,
+    parse_ctx: &ParseContext,
+    node: NodeId,
+    link: ParentLink,
+) -> bool {
+    let sequence_link = if link.slot == Slot::ScriptBase {
+        ast.parent(link.parent)
+    } else {
+        Some(link)
+    };
+    let Some(
+        sequence_link @ ParentLink {
+            parent,
+            slot: Slot::GroupChild(index),
+        },
+    ) = sequence_link
+    else {
+        return false;
+    };
+    let Some(&first) = ast.children(node).first() else {
+        return false;
+    };
+    let Some(mode) = context_mode(ast, sequence_link) else {
+        return false;
+    };
+    let mut after_space = false;
+    for &sibling in ast.children(parent)[..index].iter().rev() {
+        let (name, args) = match ast.node(sibling) {
+            Node::Text(text) if text.trim().is_empty() => {
+                after_space = true;
+                continue;
+            }
+            Node::Command {
+                name,
+                args,
+                known: true,
+            }
+            | Node::Declarative { name, args } => (name, args),
+            // A command carrying scripts has already stopped reading arguments.
+            _ => return false,
+        };
+        let Some(record) = parse_ctx.lookup_command(name, mode) else {
+            return false;
+        };
+        let spec = record.argspec.args;
+        if spec.len() != args.len() {
+            return false;
+        }
+        // Arguments are read in order, so only slots after the last supplied
+        // one can still take a following token. An absent star is stored as
+        // `false` rather than as an empty slot.
+        let start = args
+            .iter()
+            .rposition(|slot| {
+                slot.as_ref().is_some_and(|argument| {
+                    argument.kind != ArgumentKind::Star
+                        || argument.value != ArgumentValue::Boolean(false)
+                })
+            })
+            .map_or(0, |last| last + 1);
+        for slot in &spec[start..] {
+            if slot.required {
+                return false;
+            }
+            if after_space && slot.no_leading_space {
+                continue;
+            }
+            if form_opens_with(ast, &slot.form, first) {
+                return true;
+            }
+        }
+        return false;
+    }
+    false
+}
+
+/// Whether `node` begins with a token that opens an argument of `form`.
+fn form_opens_with(ast: &Ast, form: &ArgForm, node: NodeId) -> bool {
+    match form {
+        ArgForm::Standard => starts_with_char(ast, node, '['),
+        ArgForm::Star => starts_with_char(ast, node, '*'),
+        ArgForm::Group => matches!(
+            ast.node(node),
+            Node::Group {
+                kind: GroupKind::Explicit | GroupKind::Implicit,
+                ..
+            }
+        ),
+        ArgForm::Delimited { open, .. } => starts_with_token(ast, node, open),
+        ArgForm::Paired { pairs } => pairs
+            .iter()
+            .any(|(open, _)| starts_with_token(ast, node, open)),
+        ArgForm::Until { .. } => false,
+    }
+}
+
+fn starts_with_token(ast: &Ast, node: NodeId, token: &DelimiterToken) -> bool {
+    match token {
+        DelimiterToken::Char(c) => starts_with_char(ast, node, *c),
+        DelimiterToken::ControlSeq(control) => matches!(
+            ast.node(node),
+            Node::Command { name, .. } if name == control.as_ref()
+        ),
+    }
+}
+
+fn starts_with_char(ast: &Ast, node: NodeId, c: char) -> bool {
+    match ast.node(node) {
+        Node::Char(value) => *value == c,
+        Node::Text(text) => text.starts_with(c),
+        _ => false,
+    }
 }
 
 fn is_unknown_command(ast: &Ast, node: NodeId) -> bool {

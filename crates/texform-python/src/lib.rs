@@ -3354,6 +3354,7 @@ assert set(flatten["actions"]) == {
 }
 assert set(flatten["guard_hits"]) == {
     "unknown_command_arguments",
+    "argument_capture",
     "declarative_scope",
     "script_base",
     "env_body",

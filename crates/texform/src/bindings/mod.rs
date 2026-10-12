@@ -215,6 +215,7 @@ pub struct FlattenGroupsActionCountsDto {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct FlattenGroupsGuardCountsDto {
     pub unknown_command_arguments: usize,
+    pub argument_capture: usize,
     pub declarative_scope: usize,
     pub script_base: usize,
     pub env_body: usize,
@@ -595,6 +596,7 @@ fn flatten_groups_report_to_dto(report: &FlattenGroupsReport) -> FlattenGroupsRe
         },
         guard_hits: FlattenGroupsGuardCountsDto {
             unknown_command_arguments: report.guard_hits.unknown_command_arguments,
+            argument_capture: report.guard_hits.argument_capture,
             declarative_scope: report.guard_hits.declarative_scope,
             script_base: report.guard_hits.script_base,
             env_body: report.guard_hits.env_body,
@@ -808,6 +810,7 @@ mod tests {
         };
         report.flatten_groups.guard_hits = texform_transform::FlattenGroupsGuardCounts {
             unknown_command_arguments: 3,
+            argument_capture: 4,
             declarative_scope: 5,
             script_base: 6,
             env_body: 7,
@@ -826,6 +829,7 @@ mod tests {
         assert_eq!(dto.actions.replaced_single_child, 2);
         assert_eq!(dto.actions.inlined_multi_child, 3);
         assert_eq!(dto.actions.unwrapped_slot, 4);
+        assert_eq!(dto.guard_hits.argument_capture, 4);
         assert_eq!(dto.guard_hits.declarative_scope, 5);
         assert_eq!(dto.guard_hits.script_base, 6);
         assert_eq!(dto.guard_hits.env_body, 7);

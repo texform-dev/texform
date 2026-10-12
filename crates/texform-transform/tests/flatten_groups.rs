@@ -17,7 +17,15 @@ fn run_flatten_groups(src: &str) -> Outcome {
 }
 
 fn run_flatten_groups_with_config(src: &str, config: FlattenGroupsConfig) -> Outcome {
-    run_flatten_groups_case(src, config, None)
+    run_flatten_groups_case(&["base", "ams"], src, config, None)
+}
+
+fn run_flatten_groups_with_packages(
+    packages: &[&str],
+    src: &str,
+    config: FlattenGroupsConfig,
+) -> Outcome {
+    run_flatten_groups_case(packages, src, config, None)
 }
 
 fn run_flatten_groups_with_overlay(
@@ -27,15 +35,16 @@ fn run_flatten_groups_with_overlay(
 ) -> Outcome {
     let mut overlay = FlattenGroupsGuardsOverlay::default();
     configure(&mut overlay);
-    run_flatten_groups_case(src, config, Some(overlay))
+    run_flatten_groups_case(&["base", "ams"], src, config, Some(overlay))
 }
 
 fn run_flatten_groups_case(
+    packages: &[&str],
     src: &str,
     flatten_groups: FlattenGroupsConfig,
     overlay: Option<FlattenGroupsGuardsOverlay>,
 ) -> Outcome {
-    let parse_ctx = ParseContext::from_packages(&["base", "ams"]);
+    let parse_ctx = ParseContext::from_packages(packages);
     let mut ast = parse_to_ast(&parse_ctx, src, &ParseConfig::default());
     let config = TransformConfig {
         lower_attributes: LowerAttributesConfig::DISABLED,
@@ -646,6 +655,71 @@ fn unknown_argument_protection_keeps_scripted_arguments_and_command_bases() {
         let outcome = run_flatten_groups_with_config(source, FlattenGroupsConfig::STRUCTURAL_ONLY);
         assert_eq!(outcome.text, expected);
         assert!(outcome.report.guard_hits.unknown_command_arguments > 0);
+    }
+}
+
+#[test]
+fn groups_opening_an_omitted_optional_argument_stay_in_every_strategy() {
+    for strategy in [
+        FlattenGroupsConfig::STRICT,
+        FlattenGroupsConfig::STRUCTURAL_ONLY,
+    ] {
+        for (packages, source, expected) in [
+            // `physics` gives `\sin` an optional `[...]` exponent slot.
+            (
+                &["base", "ams", "physics"][..],
+                r"\sin{[2]}x",
+                r"\sin { [ 2 ] } x",
+            ),
+            // The inner group is spliced into the outer one, which is then
+            // protected as a group opening with `[`.
+            (
+                &["base", "ams", "physics"],
+                r"\sin{{[2]}}x",
+                r"\sin { [ 2 ] } x",
+            ),
+            // `\\` keeps an omitted `[dim]` slot after an absent star.
+            (&["base", "ams"], r"a\\{[x]}b", r"a \\ { [ x ] } b"),
+            (&["base", "ams"], r"a\\{*}b", r"a \\ { * } b"),
+            (&["base", "ams"], r"a\\*{[x]}b", r"a \\* { [ x ] } b"),
+        ] {
+            let outcome = run_flatten_groups_with_packages(packages, source, strategy);
+            assert_eq!(outcome.text, expected, "{source}");
+            assert!(outcome.report.guard_hits.argument_capture > 0, "{source}");
+        }
+    }
+}
+
+#[test]
+fn groups_that_no_slot_could_capture_still_flatten() {
+    for (packages, source, expected) in [
+        // Base `\sin` takes no arguments.
+        (&["base", "ams"][..], r"\sin{[2]}x", r"\sin [ 2 ] x"),
+        // A command carrying scripts has stopped reading arguments.
+        (
+            &["base", "ams", "physics"],
+            r"\sin^2{[2]}x",
+            r"\sin ^ { 2 } [ 2 ] x",
+        ),
+        // The group does not start with the optional delimiter.
+        (&["base", "ams", "physics"], r"\sin{2}x", r"\sin 2 x"),
+        // `\sqrt` read its mandatory argument, after which nothing is open.
+        (&["base", "ams"], r"\sqrt{x}{[n]}", r"\sqrt { x } [ n ]"),
+        // Known limitation: the signature of the `physics` `\cos` records no
+        // `(...)` slot, so the parenthesis group is not protected.
+        (
+            &["base", "ams", "physics"],
+            r"\cos{(\omega R)}",
+            r"\cos ( \omega R )",
+        ),
+    ] {
+        let outcome = run_flatten_groups_with_packages(
+            packages,
+            source,
+            FlattenGroupsConfig::STRUCTURAL_ONLY,
+        );
+        assert_eq!(outcome.text, expected, "{source}");
+        assert_eq!(outcome.report.guard_hits.argument_capture, 0, "{source}");
     }
 }
 

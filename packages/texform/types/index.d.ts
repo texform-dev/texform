@@ -1656,6 +1656,11 @@ export interface FlattenGroupsActionCounts {
 export interface FlattenGroupsGuardCounts {
   /** Possible arguments following an unknown command. */
   unknownCommandArguments: number;
+  /**
+   * Groups whose leading delimiter the preceding command could read as an
+   * omitted optional or delimited argument.
+   */
+  argumentCapture: number;
   /** Declarative-scope protection. */
   declarativeScope: number;
   /** Script-base protection. */

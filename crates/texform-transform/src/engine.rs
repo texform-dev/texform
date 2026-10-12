@@ -66,7 +66,7 @@ pub(crate) fn execute(
                 )
                 .map_err(TransformError::Rewrite)?,
                 2 => finalize_ast::run(ast, &cfg.finalize_ast, recorder),
-                3 => flatten_groups::run(ast, &guards, recorder),
+                3 => flatten_groups::run(ast, parse_ctx, &guards, recorder),
                 _ => unreachable!("phase index comes from the fixed schedule"),
             };
             if changed {
