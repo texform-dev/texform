@@ -211,25 +211,23 @@ See [RuleFidelity](../../../README.md#rulefidelity) for the fidelity ladder, per
 
 ## alias_rule!
 
-Use `alias_rule!` only for prefix-command canonicalization where aliases and the canonical command share the same `allowed_mode` and `argspec.source`, and the rule only renames the command:
+Use `alias_rule!` only for prefix-command canonicalization where aliases and the canonical command share the same `allowed_mode` and `argspec.source`, and the rule only renames the command. Every alias must be fully equivalent to the canonical command in every input; physics.sty defines `\dv` as `\derivative`, for example:
 
 ```rust
 alias_rule! {
-    pub static TRACE_TO_TR: TraceToTrRule {
-        key: Physics / "trace-to-tr",
+    pub static DERIVATIVE_TO_DV: DerivativeToDvRule {
+        key: Physics / "derivative-to-dv",
         level: Authoring,
-        summary: "Canonicalize \\Tr, \\trace, and \\Trace into \\tr",
+        summary: "Collapse derivative to the compact dv command.",
         fidelity: Render,
         enabled_by_packages: [Physics],
-        canonical: &physics::cmd::TR,
-        aliases: [
-            &physics::cmd::TR_2,
-            &physics::cmd::TRACE,
-            &physics::cmd::TRACE_2,
-        ],
+        canonical: &physics::cmd::DV,
+        aliases: [&physics::cmd::DERIVATIVE],
     }
 }
 ```
+
+When an alias renders like the canonical command only in some contexts, write a `define_rule!` that checks them. physics.sty prints `\trace(x)` with literal parentheses but `\tr(x)` with an auto-sized fence, so `physics/trace-to-tr` renames only a bare `\trace`.
 
 `alias_rule!` enforces only structural invariants:
 
