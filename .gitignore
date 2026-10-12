@@ -23,3 +23,6 @@ python/texform/_native*.pyd
 python/texform/_native*.dylib
 
 *.profraw
+
+# Scratch output for local investigations
+.cache/
