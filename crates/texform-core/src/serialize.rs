@@ -17,13 +17,19 @@
 //!
 //! Most spacing rules are concentrated in the atom writer's boundary decision.
 //! Optional math spacing inspects the previous atom, the next atom, the
-//! content mode, and the active [`SerializeOptions`]. Control-word separation
-//! is a separate decision: it combines that atom's identity with the last
-//! emitted byte and the next character, following the lexer's ASCII command
-//! names. Text mode adds no other spaces. A few wrapper/scalar helpers still
-//! append a preformatted space directly (environment-name spacing, empty
-//! padded groups). That byte is part of the emitted ending, so later boundary
-//! checks must not insert a second lexical separator from the old atom kind.
+//! content mode, and the active [`SerializeOptions`]. Lexical separators are
+//! a separate decision that no option can remove. Control-word separation
+//! combines the previous atom's identity with the emitted ending and the next
+//! character, following the lexer's ASCII command names; it covers control
+//! sequences, `\left` / `\right` delimiters such as `\langle`, and error
+//! snippets. In math mode, a control sequence also stays separated from a
+//! sibling `[` or `*`, which could otherwise be absorbed as an optional or
+//! star argument (`\\ [6pt]`). Text mode adds no other spaces.
+//!
+//! A few wrapper/scalar helpers still append a preformatted space directly
+//! (environment-name spacing, empty padded groups). That byte is part of the
+//! emitted ending, so later boundary checks must not insert a second lexical
+//! separator from the old atom kind.
 //! The serializer never repairs spacing with a post-pass string replacement.
 
 use crate::{argument_delimiters::ContentBoundary, lexer::Token};
@@ -166,12 +172,18 @@ pub struct SerializeOptions {
 /// token in math mode.
 ///
 /// `Spaced`: `\frac { a }` — `Minimal`: `\frac{ a }`.
-/// `Minimal` removes only that optional command-to-structure space. It still
-/// keeps a lexical separator when the output ends in an unterminated control
-/// word and the next character is an ASCII letter (`\alpha x`). That matches
-/// the lexer: consecutive ASCII letters form a control word, and one
-/// non-letter (`\,`, `\ `) is a finished control symbol. A trailing `*`,
-/// whitespace, digit, or structural delimiter has already closed the name.
+/// `Minimal` removes only that optional command-to-structure space. Lexical
+/// separators are kept regardless of this setting:
+///
+/// - The output ends in an unterminated control word, including a delimiter
+///   such as `\left\langle` or an error snippet, and the next character is an
+///   ASCII letter (`\alpha x`, `\left\langle B`). That matches the lexer:
+///   consecutive ASCII letters form a control word, and one non-letter (`\,`,
+///   `\ `) is a finished control symbol. A trailing `*`, whitespace, digit, or
+///   structural delimiter has already closed the name.
+/// - In math mode, a control sequence is followed by a sibling `[` or `*`
+///   that is not its own argument (`\\ [6pt]` as row content, `\\ *`).
+///   Gluing would let the command absorb it as an optional or star argument.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CommandSpacing {
@@ -545,13 +557,16 @@ impl<R: Recorder> AtomWriter<R> {
     /// and the upcoming `next` atom. Rules are checked top-down; the first
     /// matching branch wins.
     ///
-    /// The first rule is the lexical control-word separator. It is not optional
-    /// math spacing: compact options and [`BoundaryPolicy::SuppressOptionalSpace`]
-    /// cannot cancel it, and text mode has no later rule that could add it.
-    /// Only an unterminated control word (control-sequence identity plus an
-    /// ASCII-letter ending) followed by an ASCII letter needs it. A letter at
-    /// the end of ordinary text is not a command name, and a control symbol
-    /// such as `\,` is already terminated.
+    /// The first rules are lexical separators. They are not optional math
+    /// spacing: compact options and [`BoundaryPolicy::SuppressOptionalSpace`]
+    /// cannot cancel them.
+    ///
+    /// - An unterminated control word followed by an ASCII letter needs a
+    ///   space. Text mode has no later rule that could add it. A letter at the
+    ///   end of ordinary text is not a command name, and a control symbol such
+    ///   as `\,` is already terminated.
+    /// - In math mode, a control sequence followed by a sibling `[` or `*`
+    ///   keeps a space. See [`Self::needs_sibling_argument_separator`].
     #[inline(always)]
     fn should_insert_space(
         &self,
@@ -565,7 +580,9 @@ impl<R: Recorder> AtomWriter<R> {
             return false;
         };
 
-        if self.needs_control_word_separator(next_text) {
+        if self.needs_control_word_separator(next_text)
+            || self.needs_sibling_argument_separator(mode, next, next_text)
+        {
             return true;
         }
 
@@ -637,14 +654,60 @@ impl<R: Recorder> AtomWriter<R> {
         continues && self.ends_unterminated_control_word()
     }
 
+    /// A control-sequence atom always starts with `\`, so its last byte
+    /// decides. Delimiter tokens (`\langle` after `\left`) and raw fragments
+    /// (error snippets such as `\frac`) may also end in a control word, but
+    /// they may equally be a plain character or ordinary letters (`(`, a
+    /// dimension, an environment name). For those, scan the trailing letter
+    /// run and require an odd backslash run before it: `\\b` is the control
+    /// symbol `\\` followed by a letter, not a control word.
     #[inline]
     fn ends_unterminated_control_word(&self) -> bool {
-        matches!(self.previous, Some(AtomKind::ControlSequence))
-            && self
-                .output
-                .as_bytes()
-                .last()
-                .is_some_and(u8::is_ascii_alphabetic)
+        let bytes = self.output.as_bytes();
+        match self.previous {
+            Some(AtomKind::ControlSequence) => bytes.last().is_some_and(u8::is_ascii_alphabetic),
+            Some(AtomKind::DelimiterToken | AtomKind::RawFragment) => {
+                let name_start = bytes
+                    .iter()
+                    .rposition(|byte| !byte.is_ascii_alphabetic())
+                    .map_or(0, |index| index + 1);
+                let backslashes = bytes[..name_start]
+                    .iter()
+                    .rev()
+                    .take_while(|&&byte| byte == b'\\')
+                    .count();
+                name_start < bytes.len() && backslashes % 2 == 1
+            }
+            _ => false,
+        }
+    }
+
+    /// `true` when a sibling `[` or `*` would be read as an argument of the
+    /// preceding control sequence.
+    ///
+    /// Argspecs such as `\\`'s `!s !o` refuse to skip spaces before the
+    /// optional star and bracket, so the parser keeps `\\ [6pt]` (row
+    /// content) and `\\ *` as siblings. Gluing them would reparse as a row
+    /// spacing argument or a starred form. The serializer has no knowledge
+    /// base, so it keeps the space after every control sequence, including
+    /// unknown ones and `\\*` (the star suffix restores the control-sequence
+    /// identity). Argument-owned openers are emitted as [`AtomKind::Brace`] or
+    /// [`AtomKind::DelimiterToken`] (`\sqrt[3]`, `\big[`), and a star argument
+    /// is attached without a boundary decision, so they stay unaffected.
+    ///
+    /// Text mode is exempt: math mode drops the source space from the tree,
+    /// while text content keeps it in the following text chunk (`\\ [x]`).
+    #[inline]
+    fn needs_sibling_argument_separator(
+        &self,
+        mode: ContentMode,
+        next: AtomKind,
+        next_text: &str,
+    ) -> bool {
+        matches!(mode, ContentMode::Math)
+            && matches!(self.previous, Some(AtomKind::ControlSequence))
+            && !matches!(next, AtomKind::Brace | AtomKind::DelimiterToken)
+            && matches!(next_text.as_bytes().first(), Some(b'[' | b'*'))
     }
 
     fn finish(self) -> R::Output {
@@ -1933,7 +1996,9 @@ mod tests {
 
         assert_eq!(writer.finish(), "abc def");
     }
-    use AtomKind::{ControlSequence, MathChar, MathDigit, Prime, TextChunk};
+    use AtomKind::{
+        Brace, ControlSequence, DelimiterToken, MathChar, MathDigit, Prime, RawFragment, TextChunk,
+    };
     use ContentMode::{Math, Text};
 
     /// Ordinary atom: the writer decides the boundary.
@@ -2040,6 +2105,95 @@ mod tests {
                 (Math, MathChar, EMIT, "x"),
             ]),
             r"\alpha x"
+        );
+    }
+
+    #[test]
+    fn control_word_delimiters_and_error_snippets_keep_letter_separator() {
+        // `\left\langle B` and an error snippet ending in `\frac` must not
+        // glue into a longer control word, even with optional space suppressed.
+        assert_eq!(
+            write_atoms(&[
+                (Math, DelimiterToken, SUPPRESS, r"\langle"),
+                (Math, MathChar, SUPPRESS, "B"),
+            ]),
+            r"\langle B"
+        );
+        assert_eq!(
+            write_atoms(&[
+                (Text, RawFragment, EMIT, r"\frac"),
+                (Text, TextChunk, EMIT, "b"),
+            ]),
+            r"\frac b"
+        );
+        // A plain delimiter, ordinary raw letters, or `\\` before a letter
+        // ends no control word.
+        assert_eq!(
+            write_atoms(&[
+                (Math, DelimiterToken, SUPPRESS, "("),
+                (Math, MathChar, SUPPRESS, "B"),
+            ]),
+            "(B"
+        );
+        assert_eq!(
+            write_atoms(&[
+                (Text, RawFragment, EMIT, r"\\pt"),
+                (Text, TextChunk, EMIT, "b"),
+            ]),
+            r"\\ptb"
+        );
+    }
+
+    #[test]
+    fn sibling_bracket_or_star_stays_apart_from_control_sequence() {
+        // `\\ [6pt]` and `\\ *` as row content would be absorbed by `\\`'s
+        // `!s !o` slots if glued.
+        assert_eq!(
+            write_atoms(&[
+                (Math, ControlSequence, EMIT, r"\\"),
+                (Math, MathChar, SUPPRESS, "["),
+            ]),
+            r"\\ ["
+        );
+        assert_eq!(
+            write_atoms(&[
+                (Math, ControlSequence, EMIT, r"\\"),
+                (Math, MathChar, SUPPRESS, "*"),
+            ]),
+            r"\\ *"
+        );
+        let options = SerializeOptions::default();
+        let mut writer = AtomWriter::new(NoopRecorder);
+        let public = SerializationTokenKind::Character;
+        writer.emit(Math, ControlSequence, public, r"\\", &options);
+        writer.emit_star_suffix(Math);
+        writer.emit_with_boundary(
+            Math,
+            MathChar,
+            public,
+            "[",
+            BoundaryPolicy::SuppressOptionalSpace,
+            &options,
+        );
+        assert_eq!(writer.finish(), r"\\* [");
+    }
+
+    #[test]
+    fn argument_owned_bracket_follows_command_spacing() {
+        // Optional-argument brackets and delimiter arguments are not siblings.
+        assert_eq!(
+            write_atoms(&[
+                (Math, ControlSequence, EMIT, r"\sqrt"),
+                (Math, Brace, SUPPRESS, "["),
+            ]),
+            r"\sqrt["
+        );
+        assert_eq!(
+            write_atoms(&[
+                (Math, ControlSequence, EMIT, r"\big"),
+                (Math, DelimiterToken, SUPPRESS, "["),
+            ]),
+            r"\big["
         );
     }
 }
