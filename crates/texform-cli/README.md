@@ -105,9 +105,16 @@ texform normalize --profile corpus --report --json 'a \over b'
 $ printf '%s\n' 'a \over b' '\frac{a' '\dv{f}{x}' | texform normalize --profile corpus --lines 2>/dev/null
 \frac { a } { b }
 
-\frac { \mathrm { d } f } { \mathrm { d } x }
+\dv { f } { x }
 $ echo $?
 1
+```
+
+`physics` is not loaded by default, so `\dv` stays an unknown command in the output above. Load it with the global `--packages` option to expand it:
+
+```console
+$ echo '\dv{f}{x}' | texform --packages base,physics normalize --profile corpus
+\frac { \mathrm { d } f } { \mathrm { d } x }
 ```
 
 ### `texform parse`
@@ -192,8 +199,9 @@ base        270 commands, 7 environments
 bboldx      12 commands, 0 environments
 boldsymbol  1 command, 0 environments
 braket      11 commands, 0 environments
+color       5 commands, 0 environments
 physics     182 commands, 1 environment
-textmacros  77 commands, 0 environments
+textmacros  78 commands, 0 environments
 ```
 
 ### `texform argspec validate`
@@ -230,7 +238,7 @@ valid: 3 arguments
 
 ```console
 $ texform normalize --profile corpus --json '\frac{a'
-{"ok":false,"error":{"kind":"parse","message":"parse produced an incomplete document","diagnostics":[{"kind":"argument-validation","message":"unclosed brace argument","span":{"start":5,"end":6},"expected":[],"found":null,"contexts":[{"label":"command argument","span":{"start":5,"end":7}}]}]}}
+{"ok":false,"error":{"kind":"parse","message":"parse produced an incomplete document","diagnostics":[{"kind":"argument-validation","message":"unclosed brace argument","span":{"start":5,"end":7},"expected":[],"found":null,"contexts":[{"label":"command argument","span":{"start":5,"end":7}}]}]}}
 $ texform tokenize --json 'x^2'
 [{"text":"x","start_byte":0,"end_byte":1,"kind":"character","mode":"math"},{"text":"^","start_byte":2,"end_byte":3,"kind":"character","mode":"math"},{"text":"{","start_byte":4,"end_byte":5,"kind":"delimiter","mode":"math"},{"text":"2","start_byte":6,"end_byte":7,"kind":"character","mode":"math"},{"text":"}","start_byte":8,"end_byte":9,"kind":"delimiter","mode":"math"}]
 ```
