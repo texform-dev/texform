@@ -6,6 +6,7 @@ pub(crate) use texform_core::parse;
 #[cfg(test)]
 pub(crate) use texform_core::serialize;
 
+mod argument_capture;
 pub mod config;
 pub mod context;
 mod engine;

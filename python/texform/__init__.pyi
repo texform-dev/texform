@@ -388,8 +388,9 @@ class FlattenGroupsGuardCounts(TypedDict):
 
     Attributes:
         unknown_command_arguments: Possible arguments following an unknown command.
-        argument_capture: Groups whose leading delimiter the preceding command
-            could read as an omitted optional or delimited argument.
+        argument_capture: Groups whose removal would let a command before or
+            inside them read the next token as an omitted optional or
+            delimited argument.
         declarative_scope: Declarative-scope protection.
         script_base: Script-base protection.
         env_body: Environment-body protection.

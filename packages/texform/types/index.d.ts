@@ -1603,8 +1603,8 @@ export interface FlattenGroupsGuardCounts {
   /** Possible arguments following an unknown command. */
   unknownCommandArguments: number;
   /**
-   * Groups whose leading delimiter the preceding command could read as an
-   * omitted optional or delimited argument.
+   * Groups whose removal would let a command before or inside them read the
+   * next token as an omitted optional or delimited argument.
    */
   argumentCapture: number;
   /** Declarative-scope protection. */

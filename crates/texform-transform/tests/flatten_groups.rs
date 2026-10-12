@@ -659,7 +659,7 @@ fn unknown_argument_protection_keeps_scripted_arguments_and_command_bases() {
 }
 
 #[test]
-fn groups_opening_an_omitted_optional_argument_stay_in_every_strategy() {
+fn groups_whose_splice_lets_a_command_read_an_omitted_argument_stay_in_every_strategy() {
     for strategy in [
         FlattenGroupsConfig::STRICT,
         FlattenGroupsConfig::STRUCTURAL_ONLY,
@@ -682,6 +682,30 @@ fn groups_opening_an_omitted_optional_argument_stay_in_every_strategy() {
             (&["base", "ams"], r"a\\{[x]}b", r"a \\ { [ x ] } b"),
             (&["base", "ams"], r"a\\{*}b", r"a \\ { * } b"),
             (&["base", "ams"], r"a\\*{[x]}b", r"a \\* { [ x ] } b"),
+            // Splicing also joins the group's last child to the next sibling.
+            (
+                &["base", "ams", "physics"],
+                r"{\sin}[2]x",
+                r"{ \sin } [ 2 ] x",
+            ),
+            (&["base", "ams"], r"a{\\}*b", r"a { \\ } * b"),
+            (
+                &["base", "ams", "textmacros"],
+                r"\text{a{\\}*b}",
+                r"\text {a{\\}*b}",
+            ),
+            // An empty group joins its two neighbors directly.
+            (
+                &["base", "ams", "physics"],
+                r"\sin{}[2]x",
+                r"\sin { } [ 2 ] x",
+            ),
+            (
+                &["base", "ams", "textmacros"],
+                r"\text{a\\{}*b}",
+                r"\text {a\\{}*b}",
+            ),
+            (&["base", "ams", "physics"], r"{\qty}(a)", r"{ \qty } ( a )"),
         ] {
             let outcome = run_flatten_groups_with_packages(packages, source, strategy);
             assert_eq!(outcome.text, expected, "{source}");
@@ -703,6 +727,8 @@ fn groups_that_no_slot_could_capture_still_flatten() {
         ),
         // The group does not start with the optional delimiter.
         (&["base", "ams", "physics"], r"\sin{2}x", r"\sin 2 x"),
+        // Nothing after the group opens an optional slot of its last child.
+        (&["base", "ams", "physics"], r"{\sin}x", r"\sin x"),
         // `\sqrt` read its mandatory argument, after which nothing is open.
         (&["base", "ams"], r"\sqrt{x}{[n]}", r"\sqrt { x } [ n ]"),
         // Known limitation: the signature of the `physics` `\cos` records no
