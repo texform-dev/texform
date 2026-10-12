@@ -96,7 +96,9 @@ pub(super) fn convert_diagnostic(
         ctx,
         src,
         kind,
-        err.direct.is_some(),
+        err.direct
+            .as_ref()
+            .is_some_and(|direct| direct.environment.is_some()),
         raw_eof,
         &mut diagnostic,
     );
@@ -131,7 +133,7 @@ fn parse_diagnostic_priority(diagnostic: &ParseDiagnostic, raw_eof: bool) -> u8 
 /// is a generic expected/found mismatch: genuine `\begin`/`\end` name
 /// mismatches already set [`ParseDiagnosticKind::EnvironmentNameMismatch`]
 /// explicitly at the environment parser.
-fn infer_raw_diagnostic_kind(err: &ParseFailure<'_>) -> Option<ParseDiagnosticKind> {
+pub(super) fn infer_raw_diagnostic_kind(err: &ParseFailure<'_>) -> Option<ParseDiagnosticKind> {
     use chumsky::error::{RichPattern, RichReason};
     let RichReason::ExpectedFound { expected, found } = err.reason() else {
         return None;
@@ -159,7 +161,7 @@ fn supplement_diagnostic_contexts(
     ctx: &ParseContext,
     src: &str,
     kind: Option<ParseDiagnosticKind>,
-    direct: bool,
+    direct_environment: bool,
     raw_eof: bool,
     diagnostic: &mut ParseDiagnostic,
 ) -> bool {
@@ -171,7 +173,9 @@ fn supplement_diagnostic_contexts(
     let mut kind = kind;
     let mut normalized_eof =
         supplement_generic_unclosed_message(&mut kind, src, raw_eof, diagnostic);
-    if !direct {
+    // Environment parsers attach the exact names; other direct diagnostics only
+    // pin a source position and may still be generic environment failures.
+    if !direct_environment {
         normalized_eof |=
             supplement_environment_mode_error_message(&mut kind, ctx, src, &mut lexed, diagnostic);
         supplement_environment_mismatch_message(kind, src, &mut lexed, diagnostic);
@@ -234,6 +238,9 @@ fn supplement_unclosed_inline_math_message(
         && let Some(span) = find_inline_math_shift_after_command(src, diagnostic.span.clone())
     {
         diagnostic.span = span;
+        diagnostic.found = Some("$".to_string());
+    } else if src.get(diagnostic.span.start..diagnostic.span.end) == Some("$") {
+        // The inline-math parser reports an unclosed formula at its opener.
         diagnostic.found = Some("$".to_string());
     }
 }
@@ -587,7 +594,9 @@ fn supplement_argument_validation_span(
     let Some(span_text) = src.get(diagnostic.span.start..diagnostic.span.end) else {
         return;
     };
-    if !span_text.starts_with('\\') {
+    // A span on the found token is the offending argument itself, not the
+    // command whose argument surface should be reported.
+    if !span_text.starts_with('\\') || diagnostic.found.as_deref() == Some(span_text) {
         return;
     }
 

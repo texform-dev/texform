@@ -11,7 +11,8 @@
 //! avoids exposing delimiter nesting to the main combinator graph.
 
 use crate::argument_delimiters::{ContentBoundary, enclosing_braces};
-use crate::parse::error::ParseFailure;
+use crate::parse::diagnostics::infer_raw_diagnostic_kind;
+use crate::parse::error::{ParseFailure, with_diagnostic_kind};
 use chumsky::prelude::*;
 
 use crate::column_parser::parse_column_template;
@@ -634,7 +635,21 @@ fn parse_tokens_as_content<'src, 'parse>(
 
     if let Some(generic_error) = generic_error {
         if state.config.reject_unknown {
-            return Err(generic_error.clone().into_owned());
+            // The argument parser reports this failure at its own entry, where
+            // it would merge with entry-token expectations. Pin it to its source
+            // and classify it as conversion would, before the enclosing argument
+            // slot applies its default kind.
+            let mut err = generic_error.clone().into_owned();
+            if err.kind.is_none()
+                && let Some(kind) = infer_raw_diagnostic_kind(&err)
+            {
+                err = with_diagnostic_kind(err, kind);
+            }
+            if err.direct.is_none() {
+                let span = *err.span();
+                err = err.at_source(span);
+            }
+            return Err(err);
         }
 
         let span = source.map.span(SimpleSpan::new((), 0..source.src.len()));

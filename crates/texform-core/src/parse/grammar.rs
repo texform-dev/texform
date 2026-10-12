@@ -356,7 +356,14 @@ fn parse_argument_slots_with<'src, 'parse>(
                 .next()
                 .map(|(_, span)| *span)
                 .unwrap_or_else(|| input.span_from_cursor(&arg_start));
-            let err = err.with_context(context_label, arg_span);
+            let mut err = err.with_context(context_label, arg_span);
+            // Enclosing imperative parsers re-report this failure at their entry
+            // cursor, where Rich would keep a sibling's entry-token span. Pin
+            // the argument failure to its own source position.
+            if err.direct.is_none() {
+                let span = *err.span();
+                err = err.at_source(span);
+            }
             if let Some(kind) = original_kind {
                 with_diagnostic_kind(err, kind)
             } else {
@@ -2642,13 +2649,27 @@ where
 {
     let ctx = state.ctx;
     let reject_unknown = state.config.reject_unknown;
-    let dollar_inline_math = just(Token::MathShift)
-        .ignore_then(implicit_group_parser(
-            ContentMode::Math,
-            math_content.clone(),
+    let dollar_inline_math_content = implicit_group_parser(ContentMode::Math, math_content.clone());
+    let dollar_inline_math = custom(move |input| {
+        let start = input.cursor();
+        input.parse(just(Token::MathShift))?;
+        let opener = input.span_from_cursor(&start);
+        let content = input.parse(dollar_inline_math_content.clone())?;
+        let at_end = input.peek().is_none();
+        if let Err(err) = input.parse(just(Token::MathShift)) {
+            // Only the parser knows which `$` is unclosed once inner formulas
+            // such as `\text{$y$}` have closed their own; report it there.
+            return Err(if at_end {
+                with_diagnostic_kind(err, ParseDiagnosticKind::UnclosedInlineMath).at_span(opener)
+            } else {
+                err
+            });
+        }
+        Ok(inline_math_group_from_tracked(
+            content,
+            input.span_from_cursor(&start),
         ))
-        .then_ignore(just(Token::MathShift))
-        .map_with(|tracked, e| inline_math_group_from_tracked(tracked, e.span()));
+    });
     let control_sequence_inline_math = control_seq("(")
         .ignore_then(implicit_group_parser(
             ContentMode::Math,

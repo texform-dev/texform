@@ -74,6 +74,13 @@ impl<'a> ParseFailure<'a> {
         }));
         self
     }
+    /// Move the primary span to `span`, keeping the reason, contexts, and kind.
+    pub(crate) fn at_span(self, span: SimpleSpan) -> Self {
+        Self {
+            rich: with_primary_span(self.rich, span),
+            ..self
+        }
+    }
     pub(crate) fn control(mut self) -> Self {
         self.is_control = true;
         self
@@ -163,12 +170,20 @@ impl<'a> ParseFailure<'a> {
     }
 }
 
-/// Rebuild a Custom `rich` error at `span`, keeping its message and contexts.
+/// Rebuild `rich` at `span`, keeping its reason and contexts.
 fn with_primary_span<'a>(rich: Rich<'a, Token>, span: SimpleSpan) -> Rich<'a, Token> {
-    let RichReason::Custom(message) = rich.reason() else {
-        return rich;
+    let mut rebuilt = match rich.reason() {
+        RichReason::Custom(message) => Rich::custom(span, message),
+        RichReason::ExpectedFound { expected, found } => <Rich<'a, Token> as LabelError<
+            'a,
+            TokenStream<'a>,
+            RichPattern<'a, Token>,
+        >>::expected_found(
+            expected.iter().cloned(),
+            found.clone(),
+            span,
+        ),
     };
-    let mut rebuilt = Rich::custom(span, message);
     for (label, context_span) in rich.contexts() {
         <Rich<'a, Token> as LabelError<'a, TokenStream<'a>, RichPattern<'a, Token>>>::in_context(
             &mut rebuilt,

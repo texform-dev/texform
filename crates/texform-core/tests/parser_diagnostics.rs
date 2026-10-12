@@ -1622,3 +1622,85 @@ fn strict_custom_errors_keep_inner_source_span() {
         );
     }
 }
+
+#[test]
+fn strict_expected_found_errors_keep_inner_source_span() {
+    // Generic expected-token failures inside an argument must not merge into
+    // the expectations of the enclosing list's first item.
+    for (src, at, kind) in [
+        (r"a+\frac{1}", "", ParseDiagnosticKind::ArgumentValidation),
+        (r"a+\frac 1 }", "}", ParseDiagnosticKind::ArgumentValidation),
+        (
+            r"a+\frac 1 \bad",
+            r"\bad",
+            ParseDiagnosticKind::ArgumentValidation,
+        ),
+        (
+            r"a+\hspace{x}",
+            "x",
+            ParseDiagnosticKind::ArgumentValidation,
+        ),
+        (
+            r"a+\frac{\right)}{2}",
+            r"\right",
+            ParseDiagnosticKind::RawExpectedFound,
+        ),
+        (
+            r"a+\text{a$x}",
+            "$",
+            ParseDiagnosticKind::UnclosedInlineMath,
+        ),
+        (
+            r"a+\text{\begin{matrix}a\end{matrix}}",
+            r"\begin{matrix}",
+            ParseDiagnosticKind::EnvironmentModeError,
+        ),
+    ] {
+        let output = parse_shared(src, &ParseConfig::STRICT);
+        assert_eq!(
+            diagnostic_kinds(&output),
+            vec![Some(kind)],
+            "{src}: {:?}",
+            output.diagnostics
+        );
+        let span = &output.diagnostics[0].span;
+        assert_eq!(
+            &src[span.start..span.end],
+            at,
+            "{src}: {:?}",
+            output.diagnostics
+        );
+        if at.is_empty() {
+            assert_eq!(span.start, src.len(), "{src}");
+        }
+    }
+}
+
+#[test]
+fn unclosed_inline_math_points_at_its_own_opener() {
+    // Closed inner formulas, including those nested in `\text`, must not be
+    // mistaken for the unclosed opener.
+    for (src, opener) in [
+        (r"\text{$x}", 6),
+        (r"\text{$a$ b $c}", 12),
+        (r"\text{$x+\text{$y$}}", 6),
+        (r"\frac{x}{\text{$a$ b $c}}", 21),
+    ] {
+        for config in [ParseConfig::STRICT, ParseConfig::LENIENT] {
+            let output = parse_shared(src, &config);
+            let diagnostic = &output.diagnostics[0];
+            assert_eq!(
+                diagnostic.kind,
+                Some(ParseDiagnosticKind::UnclosedInlineMath),
+                "{src}: {:?}",
+                output.diagnostics
+            );
+            assert_eq!(
+                (diagnostic.span.start, diagnostic.span.end),
+                (opener, opener + 1),
+                "{src} (abort_on_error={})",
+                config.abort_on_error
+            );
+        }
+    }
+}
