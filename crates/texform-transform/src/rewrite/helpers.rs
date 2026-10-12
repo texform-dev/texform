@@ -117,6 +117,156 @@ pub fn remove_node_preserving_slot(ast: &mut Ast, node_id: NodeId) {
     );
 }
 
+/// Returns the base of a scripted node, or the node itself when it carries no scripts.
+pub fn script_base(ast: &Ast, node_id: NodeId) -> NodeId {
+    match ast.node(node_id) {
+        Node::Scripted { base, .. } => *base,
+        _ => node_id,
+    }
+}
+
+/// Reports whether the sibling after `node_id` is `(`, `[`, or an explicit math brace group.
+///
+/// The sibling counts by its script base. A node that is not a sequence child,
+/// such as a scripted base or a single-child slot, has no following sibling
+/// and reports `false`.
+pub fn followed_by_paren_bracket_or_group(ast: &Ast, node_id: NodeId) -> bool {
+    if !matches!(ast.slot(node_id), Some(Slot::GroupChild(_))) {
+        return false;
+    }
+    let Some(next) = ast.next_sibling(node_id) else {
+        return false;
+    };
+    matches!(
+        ast.node(script_base(ast, next)),
+        Node::Char('(' | '[')
+            | Node::Group {
+                kind: GroupKind::Explicit,
+                mode: ContentMode::Math,
+                ..
+            }
+    )
+}
+
+/// Finds the sibling index that closes the `open` character at `opener_index` of `parent`.
+///
+/// Nested `open`/`close` pairs are matched, and scripted characters count by
+/// their base. Delimiters inside groups are not siblings and are ignored.
+/// Returns `None` when the opener is unbalanced within the sequence.
+pub fn matching_sibling_delimiter(
+    ast: &Ast,
+    parent: NodeId,
+    opener_index: usize,
+    open: char,
+    close: char,
+) -> Option<usize> {
+    let siblings = ast.children(parent);
+    let mut depth = 0usize;
+    for (index, sibling) in siblings.iter().enumerate().skip(opener_index + 1) {
+        match ast.node(script_base(ast, *sibling)) {
+            Node::Char(ch) if *ch == open => depth += 1,
+            Node::Char(ch) if *ch == close => {
+                if depth == 0 {
+                    return Some(index);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Replaces the siblings `start..=end` of `parent` with a `\left...\right` group.
+///
+/// The siblings at `start` and `end` are the literal opening and closing
+/// delimiter characters and are dropped; the siblings between them become the
+/// fence body. Scripts on the closing character move to the fence. Returns the
+/// node now occupying index `start`.
+///
+/// The caller chooses `left` and `right`; the helper does not compare them
+/// with the dropped characters. The opener must be an unscripted character,
+/// because scripts on it would have no place on the fence, and the closer
+/// must be a character or a scripted character.
+pub fn replace_siblings_with_auto_fence(
+    ast: &mut Ast,
+    parent: NodeId,
+    start: usize,
+    end: usize,
+    left: Delimiter,
+    right: Delimiter,
+) -> NodeId {
+    assert!(
+        start < end,
+        "auto fence needs distinct opening and closing siblings"
+    );
+    debug_assert!(
+        matches!(ast.node(ast.children(parent)[start]), Node::Char(_)),
+        "auto fence opener should be an unscripted character"
+    );
+    debug_assert!(
+        matches!(
+            ast.node(script_base(ast, ast.children(parent)[end])),
+            Node::Char(_)
+        ),
+        "auto fence closer should be a character"
+    );
+    let mut removed = ast.detach_children_range(parent, start..end + 1);
+    let closer = removed
+        .pop()
+        .expect("range should contain a closing sibling");
+    let opener = removed.remove(0);
+    ast.remove_detached(opener);
+
+    let fence = ast.new_node(Node::Group {
+        children: removed,
+        kind: GroupKind::Delimited { left, right },
+        mode: ContentMode::Math,
+    });
+    let replacement = match ast.node(closer) {
+        Node::Scripted {
+            subscript,
+            superscript,
+            ..
+        } => {
+            let (subscript, superscript) = (*subscript, *superscript);
+            ast.replace_node_drop_detached_children(
+                closer,
+                Node::Scripted {
+                    base: fence,
+                    subscript,
+                    superscript,
+                },
+            );
+            closer
+        }
+        _ => {
+            ast.remove_detached(closer);
+            fence
+        }
+    };
+    ast.insert_child(parent, start, replacement);
+    replacement
+}
+
+/// Turns a group into a `\left...\right` group in place, keeping its children.
+pub fn convert_group_to_auto_fence(
+    ast: &mut Ast,
+    group: NodeId,
+    left: Delimiter,
+    right: Delimiter,
+) {
+    let Node::Group { children, mode, .. } = ast.node(group) else {
+        panic!("auto fence conversion expects a group node");
+    };
+    let replacement = Node::Group {
+        children: children.clone(),
+        kind: GroupKind::Delimited { left, right },
+        mode: *mode,
+    };
+    ast.replace_node(group, replacement);
+}
+
 #[derive(Clone, Copy)]
 pub enum FenceToken {
     Char(char),
@@ -135,6 +285,118 @@ impl FenceToken {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parse::ParseContext;
+    use crate::serialize::serialize;
+    use texform_core::parse::ParseConfig;
+
+    fn parse_base(input: &str) -> Ast {
+        let parse_ctx = ParseContext::from_packages(&["base"]);
+        crate::parse_to_ast_for_test(&parse_ctx, input, &ParseConfig::STRICT)
+    }
+
+    #[test]
+    fn detects_paren_bracket_or_group_after_sequence_child() {
+        let ast = parse_base(r"\alpha(x)\beta[x]\gamma{x}\delta^2(x)\epsilon x");
+        let children = ast.children(ast.root()).to_vec();
+        let command = |name: &str| {
+            children
+                .iter()
+                .copied()
+                .find(|child| {
+                    matches!(ast.node(script_base(&ast, *child)), Node::Command { name: n, .. } if n == name)
+                })
+                .unwrap()
+        };
+
+        assert!(followed_by_paren_bracket_or_group(&ast, command("alpha")));
+        assert!(followed_by_paren_bracket_or_group(&ast, command("beta")));
+        assert!(followed_by_paren_bracket_or_group(&ast, command("gamma")));
+        assert!(!followed_by_paren_bracket_or_group(
+            &ast,
+            command("epsilon")
+        ));
+        // The scripted base is not a sequence child, so it has no following sibling.
+        let delta = script_base(&ast, command("delta"));
+        assert!(!followed_by_paren_bracket_or_group(&ast, delta));
+    }
+
+    #[test]
+    fn matches_nested_sibling_delimiters_through_scripts() {
+        let ast = parse_base(r"x(a(b)^2c)^3d");
+        let root = ast.root();
+
+        assert_eq!(matching_sibling_delimiter(&ast, root, 1, '(', ')'), Some(7));
+        assert_eq!(matching_sibling_delimiter(&ast, root, 3, '(', ')'), Some(5));
+    }
+
+    #[test]
+    fn reports_unbalanced_sibling_delimiter() {
+        let ast = parse_base(r"(a{)}b");
+
+        assert_eq!(
+            matching_sibling_delimiter(&ast, ast.root(), 0, '(', ')'),
+            None
+        );
+    }
+
+    #[test]
+    fn replaces_sibling_range_with_auto_fence_carrying_closing_scripts() {
+        let mut ast = parse_base(r"x(a+b)^2c");
+        let root = ast.root();
+
+        replace_siblings_with_auto_fence(
+            &mut ast,
+            root,
+            1,
+            5,
+            Delimiter::Char('('),
+            Delimiter::Char(')'),
+        );
+
+        assert_eq!(
+            serialize(&ast),
+            serialize(&parse_base(r"x\left(a+b\right)^2c"))
+        );
+        ast.assert_invariants();
+    }
+
+    #[test]
+    fn replaces_sibling_range_with_empty_auto_fence() {
+        let mut ast = parse_base(r"[]");
+        let root = ast.root();
+
+        replace_siblings_with_auto_fence(
+            &mut ast,
+            root,
+            0,
+            1,
+            Delimiter::Char('['),
+            Delimiter::Char(']'),
+        );
+
+        assert_eq!(serialize(&ast), serialize(&parse_base(r"\left[\right]")));
+        ast.assert_invariants();
+    }
+
+    #[test]
+    fn converts_explicit_group_to_auto_fence_in_place() {
+        let mut ast = parse_base(r"x{a+b}^2");
+        let scripted = ast.children(ast.root())[1];
+        let group = script_base(&ast, scripted);
+
+        convert_group_to_auto_fence(
+            &mut ast,
+            group,
+            Delimiter::Control("{".to_string()),
+            Delimiter::Control("}".to_string()),
+        );
+
+        assert_eq!(
+            serialize(&ast),
+            serialize(&parse_base(r"x\left\{a+b\right\}^2"))
+        );
+        ast.assert_invariants();
+    }
 
     #[test]
     fn removes_group_child_without_leaving_an_empty_group() {
