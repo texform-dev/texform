@@ -202,6 +202,8 @@ Guard hit counters use the names below. They still count the first matching situ
 
 | Guard or sub-count | `guard_hits` field |
 | --- | --- |
+| Unknown-command protection (always on) | `unknown_command_arguments` |
+| Argument-capture protection (always on) | `argument_capture` |
 | `declarative_scope` | `declarative_scope` |
 | `script_base` | `script_base` |
 | `env_body` | `env_body` |
