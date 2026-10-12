@@ -46,7 +46,8 @@
 //! Semantics follow LaTeX physics.sty. None of these names has a base
 //! command, so each becomes `\operatorname` with its printed name. Trig-family
 //! names use `\trigbraces` (`o d()`), `\tr` and `\Tr` use `\opbraces`
-//! (`g o d()`), and `\erf`, `\trace`, and `\Trace` are plain
+//! (`g o d()`, recorded as one paired `d<(,)><[,]><{,}>` slot because only
+//! the first group is fenced), and `\erf`, `\trace`, and `\Trace` are plain
 //! `\DeclareMathOperator` commands whose following delimiters stay literal.
 //! The long names `\sine`, `\cosine`, `\naturallogarithm`, and `\Probability`
 //! are the original operators saved with `\let`; the rule rewrites them only
@@ -61,10 +62,6 @@
 //! follows the fence, about another 1/6 em after it: about 1/3 em in the worst
 //! case. Script styles show no difference. No compensating space is inserted.
 //!
-//! An opening delimiter that carries scripts, as in `\tr(^2x)`, is renamed
-//! without a fence: xparse would still grab it, but the AST attaches the
-//! scripts to the opener, which has no place on a fence.
-//!
 //! MathJax differs: it reads `\asin[2]x` as a power, auto-sizes `\erf(...)`
 //! and `\trace(...)`, hides the braces of `\tr{...}`, and prints `\tr[...]`
 //! literally.
@@ -72,7 +69,9 @@
 use texform_knowledge::builtin::{ams, base, physics};
 use texform_knowledge::specs::BuiltinCommandRecord;
 
-use super::helpers::{ArgumentBraces, find_fence_argument, replace_with_fence};
+use super::helpers::{
+    ArgumentBraces, fence_argument, replace_with_fenced_operator, with_power,
+};
 use crate::ast::{Ast, ContentMode, GroupKind, Node};
 use crate::rewrite::helpers::{
     followed_by_paren_bracket_or_group, mandatory_operator_name_slot, prefix_command_node,
@@ -151,41 +150,40 @@ define_rule! {
             else {
                 return Ok(RuleEffect::Skipped);
             };
-            let power = {
+            let (power, argument) = {
                 let command = cx
                     .match_command(node_id, record)
                     .expect("matched command should still match");
                 let subject = command.subject();
                 let scoped = cx.for_rule(Self::KEY);
-                if braces == ArgumentBraces::Trig {
-                    scoped.expect_arg_len(command.args, 1, &subject)?;
-                    scoped.optional_math_content(&command.args[0], &subject, "power")?
-                } else {
-                    scoped.expect_no_args(command.args, &subject)?;
-                    None
+                match braces {
+                    ArgumentBraces::Trig => {
+                        scoped.expect_arg_len(command.args, 2, &subject)?;
+                        (
+                            scoped.optional_math_content(&command.args[0], &subject, "power")?,
+                            fence_argument(&scoped, &command.args[1], &subject)?,
+                        )
+                    }
+                    ArgumentBraces::Operator => {
+                        scoped.expect_arg_len(command.args, 1, &subject)?;
+                        (None, fence_argument(&scoped, &command.args[0], &subject)?)
+                    }
+                    ArgumentBraces::Plain => {
+                        scoped.expect_no_args(command.args, &subject)?;
+                        (None, None)
+                    }
                 }
             };
-            let argument = find_fence_argument(cx.ast, node_id, braces);
-            let grabbed = argument.is_some();
-            if let Some(argument) = argument {
-                replace_with_fence(cx.ast, argument);
-            }
 
             let operator = operatorname_node(cx.ast, printed);
-            match power {
-                Some(power) if grabbed => {
+            match (argument, power) {
+                (Some(argument), power) => {
                     let operator = cx.ast.new_node(operator);
-                    cx.ast.replace_node_drop_detached_children(
-                        node_id,
-                        Node::Scripted {
-                            base: operator,
-                            subscript: None,
-                            superscript: Some(power),
-                        },
-                    );
+                    let operator = with_power(cx.ast, operator, power);
+                    replace_with_fenced_operator(cx.ast, node_id, operator, argument);
                 }
                 // Without parentheses, physics prints the power as literal `[...]`.
-                Some(power) => {
+                (None, Some(power)) => {
                     let operator = cx.ast.new_node(operator);
                     let mut after = vec![cx.ast.new_node(Node::Char('['))];
                     cx.ast.append_cloned_math_content(&mut after, power);
@@ -197,7 +195,7 @@ define_rule! {
                         after,
                     );
                 }
-                None => cx.ast.replace_node_drop_detached_children(node_id, operator),
+                (None, None) => cx.ast.replace_node_drop_detached_children(node_id, operator),
             }
             Ok(RuleEffect::Applied)
         }
@@ -340,8 +338,8 @@ mod tests {
     }
 
     #[test]
-    fn unbalanced_parenthesis_renamed_only() {
-        assert_eq!(rewrite(r"\tr(A"), canonical(r"\operatorname{tr}(A"));
+    fn script_after_opener_stays_in_fence() {
+        assert_eq!(rewrite(r"\tr(^2x)"), canonical(r"\operatorname{tr}\left(^2x\right)"));
     }
 
     #[test]

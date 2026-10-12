@@ -143,6 +143,12 @@ mod tests {
             expected: r"\sin{}[x]",
         },
         {
+            label: wraps_a_command_that_would_read_an_empty_group,
+            packages: ["base", "physics"],
+            input: r"\exp\big(x\big)",
+            expected: r"{\exp}(x)",
+        },
+        {
             label: preserves_required_argument_slot_for_null_delimiter,
             packages: ["base"],
             input: r"\sqrt\big.",

@@ -705,7 +705,17 @@ fn groups_whose_splice_lets_a_command_read_an_omitted_argument_stay_in_every_str
                 r"\text{a\\{}*b}",
                 r"\text {a\\{}*b}",
             ),
+            // `physics` functions read a following `(...)` as an auto-sized
+            // argument, and `\exp` also reads a brace group.
+            (
+                &["base", "ams", "physics"],
+                r"\cos{(\omega R)}",
+                r"\cos { ( \omega R ) }",
+            ),
+            (&["base", "ams", "physics"], r"{\cos}(x)", r"{ \cos } ( x )"),
+            (&["base", "ams", "physics"], r"\cos{}(x)", r"\cos { } ( x )"),
             (&["base", "ams", "physics"], r"{\qty}(a)", r"{ \qty } ( a )"),
+            (&["base", "ams", "physics"], r"{\exp}{x}", r"{ \exp } x"),
         ] {
             let outcome = run_flatten_groups_with_packages(packages, source, strategy);
             assert_eq!(outcome.text, expected, "{source}");
@@ -731,13 +741,6 @@ fn groups_that_no_slot_could_capture_still_flatten() {
         (&["base", "ams", "physics"], r"{\sin}x", r"\sin x"),
         // `\sqrt` read its mandatory argument, after which nothing is open.
         (&["base", "ams"], r"\sqrt{x}{[n]}", r"\sqrt { x } [ n ]"),
-        // Known limitation: the signature of the `physics` `\cos` records no
-        // `(...)` slot, so the parenthesis group is not protected.
-        (
-            &["base", "ams", "physics"],
-            r"\cos{(\omega R)}",
-            r"\cos ( \omega R )",
-        ),
     ] {
         let outcome = run_flatten_groups_with_packages(
             packages,

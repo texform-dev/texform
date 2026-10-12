@@ -1,8 +1,8 @@
-use crate::ast::{Ast, ContentMode, Delimiter, GroupKind, Node, NodeId, Slot};
-use crate::rewrite::helpers::{
-    convert_group_to_auto_fence, matching_sibling_delimiter, replace_siblings_with_auto_fence,
-    script_base,
+use crate::ast::{
+    ArgumentKind, ArgumentSlot, ArgumentValue, Ast, ContentMode, Delimiter, GroupKind, Node, NodeId,
 };
+use crate::rewrite::RuleError;
+use crate::rewrite::rule_context::RuleScopedContext;
 
 /// How physics.sty lets a named function grab the argument that follows it.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -10,107 +10,88 @@ pub(super) enum ArgumentBraces {
     /// `\trigbraces` (`o d()`): an optional power, then auto-sized parentheses.
     /// The power is printed literally as `[...]` when no parentheses follow.
     Trig,
-    /// `\opbraces` (`g o d()`): only the first of `{...}`, `[...]`, or `(...)`
-    /// becomes an auto-sized fence; any later bracket or parenthesis group
-    /// is printed literally.
+    /// `\opbraces`: only the first of `{...}`, `[...]`, or `(...)` becomes an
+    /// auto-sized fence, recorded as one paired `d<(,)><[,]><{,}>` slot; any
+    /// later bracket or parenthesis group is printed literally.
     Operator,
     /// `\DeclareMathOperator`: following delimiters are ordinary characters.
     Plain,
 }
 
-/// The argument physics.sty grabs after a named function.
-pub(super) enum FenceArgument {
-    /// A braced group (possibly carrying scripts) right after the command.
-    Braced { group: NodeId },
-    /// Literal delimiter characters at `start..=end` of `parent`.
-    Delimited {
-        parent: NodeId,
-        start: usize,
-        end: usize,
-        open: char,
-        close: char,
-    },
+/// An auto-sized argument the parser attached to a physics named function.
+pub(super) struct FenceArgument {
+    body: NodeId,
+    left: Delimiter,
+    right: Delimiter,
 }
 
-/// Finds the argument physics.sty would grab after `command`.
+/// Reads the `d()` or paired slot that holds a physics auto-sized argument.
 ///
-/// xparse skips spaces and matches nested delimiters of the same kind; brace
-/// groups hide their delimiters, which the AST already isolates. A command
-/// that carries scripts grabs nothing. An opening parenthesis or bracket that
-/// carries scripts is reported as no argument even though xparse would grab
-/// it, because the scripts have no place on a fence. An unbalanced opener
-/// grabs nothing; LaTeX would report a runaway argument there.
-pub(super) fn find_fence_argument(
-    ast: &Ast,
+/// Returns `None` for an omitted slot. A brace pair prints as `\{...\}`.
+pub(super) fn fence_argument(
+    scoped: &RuleScopedContext<'_, '_>,
+    slot: &ArgumentSlot,
+    subject: &str,
+) -> Result<Option<FenceArgument>, RuleError> {
+    let Some(argument) = slot else {
+        return Ok(None);
+    };
+    let (ArgumentKind::Delimited { open, close } | ArgumentKind::Paired { open, close }) =
+        &argument.kind
+    else {
+        return Err(scoped.invalid_shape(format!(
+            "{subject} auto-sized argument should be a delimited slot"
+        )));
+    };
+    let ArgumentValue::MathContent(body) = argument.value else {
+        return Err(scoped.invalid_shape(format!(
+            "{subject} auto-sized argument should be math content"
+        )));
+    };
+    let fence = |delimiter: &Delimiter| match delimiter {
+        Delimiter::Char(brace @ ('{' | '}')) => Delimiter::Control(brace.to_string()),
+        other => other.clone(),
+    };
+    Ok(Some(FenceArgument {
+        body,
+        left: fence(open),
+        right: fence(close),
+    }))
+}
+
+/// Replaces `command` with `operator` followed by a `\left...\right` fence
+/// around the grabbed argument.
+///
+/// Scripts on the command were written after the closing delimiter, so they
+/// move to the fence, matching physics.sty, which closes the fence inside a
+/// `\mathclose` group. `operator` must be a detached root.
+pub(super) fn replace_with_fenced_operator(
+    ast: &mut Ast,
     command: NodeId,
-    braces: ArgumentBraces,
-) -> Option<FenceArgument> {
-    if braces == ArgumentBraces::Plain {
-        return None;
-    }
-    let Some(Slot::GroupChild(index)) = ast.slot(command) else {
-        return None;
-    };
-    let parent = ast.parent_id(command)?;
-    let start = index + 1;
-    let opener = *ast.children(parent).get(start)?;
-
-    let group = script_base(ast, opener);
-    if braces == ArgumentBraces::Operator
-        && matches!(
-            ast.node(group),
-            Node::Group {
-                kind: GroupKind::Explicit,
-                mode: ContentMode::Math,
-                ..
-            }
-        )
-    {
-        return Some(FenceArgument::Braced { group });
-    }
-
-    let (open, close) = match ast.node(opener) {
-        Node::Char('(') => ('(', ')'),
-        Node::Char('[') if braces == ArgumentBraces::Operator => ('[', ']'),
-        _ => return None,
-    };
-    let end = matching_sibling_delimiter(ast, parent, start, open, close)?;
-    Some(FenceArgument::Delimited {
-        parent,
-        start,
-        end,
-        open,
-        close,
-    })
+    operator: NodeId,
+    argument: FenceArgument,
+) {
+    let mut children = Vec::new();
+    ast.append_cloned_math_content(&mut children, argument.body);
+    let fence = ast.new_node(Node::Group {
+        children,
+        kind: GroupKind::Delimited {
+            left: argument.left,
+            right: argument.right,
+        },
+        mode: ContentMode::Math,
+    });
+    ast.replace_with_math_sequence_preserving_scripts(command, Vec::new(), operator, vec![fence]);
 }
 
-/// Rewrites a grabbed argument into a `\left...\right` fence in place.
-///
-/// Scripts on the closing delimiter or on the braced group stay on the fence,
-/// matching physics.sty, which closes the fence inside a `\mathclose` group.
-pub(super) fn replace_with_fence(ast: &mut Ast, argument: FenceArgument) {
-    match argument {
-        FenceArgument::Braced { group } => convert_group_to_auto_fence(
-            ast,
-            group,
-            Delimiter::Control("{".to_string()),
-            Delimiter::Control("}".to_string()),
-        ),
-        FenceArgument::Delimited {
-            parent,
-            start,
-            end,
-            open,
-            close,
-        } => {
-            replace_siblings_with_auto_fence(
-                ast,
-                parent,
-                start,
-                end,
-                Delimiter::Char(open),
-                Delimiter::Char(close),
-            );
+/// Raises `operator` to a copy of the grabbed `\trigbraces` power, as
+/// physics.sty prints `\sin[n](x)` as `\sin^{n}` followed by the fence.
+pub(super) fn with_power(ast: &mut Ast, operator: NodeId, power: Option<NodeId>) -> NodeId {
+    match power {
+        Some(power) => {
+            let power = ast.clone_subtree(power);
+            ast.superscript(operator, power)
         }
+        None => operator,
     }
 }

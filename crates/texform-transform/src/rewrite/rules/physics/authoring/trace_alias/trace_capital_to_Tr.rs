@@ -51,7 +51,7 @@ define_rule! {
 
             cx.ast.replace_node_drop_detached_children(
                 node_id,
-                prefix_command_node(&physics::cmd::TR_2, Vec::new()),
+                prefix_command_node(&physics::cmd::TR_2, vec![None; physics::cmd::TR_2.argspec.args.len()]),
             );
             Ok(RuleEffect::Applied)
         }

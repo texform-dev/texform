@@ -205,9 +205,6 @@ pub(crate) mod base {
             pub(crate) mod semantic_dots_to_cdots;
             pub(crate) mod semantic_dots_to_ldots;
         }
-        pub(crate) mod named_fn_expand {
-            pub(crate) mod physics_operator_fence_expand;
-        }
         pub(crate) mod spacing_alias {
             pub(crate) mod helpers;
             pub(crate) mod mkern_to_mspace;
@@ -306,6 +303,7 @@ pub(crate) mod physics {
             pub(crate) mod helpers;
             pub(crate) mod named_fn_paren_expand;
             pub(crate) mod named_fn_to_operatorname;
+            pub(crate) mod physics_operator_fence_expand;
             pub(crate) mod rank_to_operatorname_rank;
         }
         pub(crate) mod vector_expand {
@@ -420,7 +418,6 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::faithful::character_normalize::rightarrow_to_to::RIGHTARROW_TO_TO,
     &base::faithful::character_normalize::semantic_dots_to_cdots::SEMANTIC_DOTS_TO_CDOTS,
     &base::faithful::character_normalize::semantic_dots_to_ldots::SEMANTIC_DOTS_TO_LDOTS,
-    &base::faithful::named_fn_expand::physics_operator_fence_expand::PHYSICS_OPERATOR_FENCE_EXPAND,
     &base::faithful::spacing_alias::mkern_to_mspace::MKERN_TO_MSPACE,
     &base::faithful::spacing_alias::mskip_to_mspace::MSKIP_TO_MSPACE,
     &base::faithful::stacked_operator::stackbin_expand::STACKBIN_EXPAND,
@@ -468,6 +465,7 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &physics::faithful::matrix_builder_expand::zmat_to_xmat::ZMAT_TO_XMAT,
     &physics::faithful::named_fn_expand::named_fn_paren_expand::NAMED_FN_PAREN_EXPAND,
     &physics::faithful::named_fn_expand::named_fn_to_operatorname::NAMED_FN_TO_OPERATORNAME,
+    &physics::faithful::named_fn_expand::physics_operator_fence_expand::PHYSICS_OPERATOR_FENCE_EXPAND,
     &physics::faithful::named_fn_expand::rank_to_operatorname_rank::RANK_TO_OPERATORNAME_RANK,
     &physics::faithful::vector_expand::va_to_vec_mathbf::VA_TO_VEC_MATHBF,
     &physics::faithful::vector_expand::vb_to_mathbf::VB_TO_MATHBF,

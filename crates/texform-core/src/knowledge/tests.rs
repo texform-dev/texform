@@ -487,7 +487,7 @@ fn test_exact_order_path_preserves_override_order_for_non_mergeable_conflicts() 
         .lookup_command("arccos")
         .expect("expected arccos after loading base and physics");
     assert_from_packages(arccos.from_packages, &["physics"]);
-    assert_eq!(arccos.argspec.len(), 1);
+    assert_eq!(arccos.argspec.len(), 2);
 
     let physics_then_base =
         try_build_kb_from_exact_packages(&["physics", "base"]).expect("expected exact build");
@@ -601,13 +601,11 @@ fn test_exact_duplicate_records_collect_all_source_packages() {
 }
 
 #[test]
-fn test_physics_denylist_commands_do_not_merge() {
+fn test_physics_operators_with_auto_sized_arguments_do_not_merge_with_base() {
     let kb = build_default_kb(Some(&["base", "physics"]));
 
     for name in ["Pr", "det", "exp"] {
-        let command = kb
-            .lookup_command(name)
-            .expect("expected denylisted command");
+        let command = kb.lookup_command(name).expect("expected physics operator");
         assert_from_packages(command.from_packages, &["physics"]);
     }
 }
@@ -619,8 +617,8 @@ fn test_spec_mismatch_commands_do_not_merge_under_public_loading() {
     let arccos = kb
         .lookup_command("arccos")
         .expect("expected arccos command");
-    assert_eq!(arccos.argspec.source, "o");
-    assert_eq!(arccos.argspec.len(), 1);
+    assert_eq!(arccos.argspec.source, "o d()");
+    assert_eq!(arccos.argspec.len(), 2);
     assert_from_packages(arccos.from_packages, &["physics"]);
 
     let bbb = kb.lookup_command("Bbb").expect("expected Bbb command");

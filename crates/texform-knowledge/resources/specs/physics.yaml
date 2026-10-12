@@ -13,7 +13,7 @@ commands:
     allowed_mode: math
   - name: acos
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: acosecant
     kind: prefix
@@ -25,7 +25,7 @@ commands:
     allowed_mode: math
   - name: acot
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: acotangent
     kind: prefix
@@ -33,7 +33,7 @@ commands:
     allowed_mode: math
   - name: acsc
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: admat
     kind: prefix
@@ -49,7 +49,7 @@ commands:
     allowed_mode: math
   - name: arccos
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: arccosecant
     kind: prefix
@@ -61,7 +61,7 @@ commands:
     allowed_mode: math
   - name: arccot
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: arccotangent
     kind: prefix
@@ -69,11 +69,11 @@ commands:
     allowed_mode: math
   - name: arccsc
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: arcsec
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: arcsecant
     kind: prefix
@@ -81,7 +81,7 @@ commands:
     allowed_mode: math
   - name: arcsin
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: arcsine
     kind: prefix
@@ -89,7 +89,7 @@ commands:
     allowed_mode: math
   - name: arctan
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: arctangent
     kind: prefix
@@ -97,7 +97,7 @@ commands:
     allowed_mode: math
   - name: asec
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: asecant
     kind: prefix
@@ -105,7 +105,7 @@ commands:
     allowed_mode: math
   - name: asin
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: asine
     kind: prefix
@@ -113,7 +113,7 @@ commands:
     allowed_mode: math
   - name: atan
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: atangent
     kind: prefix
@@ -151,7 +151,7 @@ commands:
     allowed_mode: math
   - name: cos
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: cosecant
     kind: prefix
@@ -159,7 +159,7 @@ commands:
     allowed_mode: math
   - name: cosh
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: cosine
     kind: prefix
@@ -167,7 +167,7 @@ commands:
     allowed_mode: math
   - name: cot
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: cotangent
     kind: prefix
@@ -175,15 +175,15 @@ commands:
     allowed_mode: math
   - name: coth
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: csc
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: csch
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: curl
     kind: prefix
@@ -201,7 +201,7 @@ commands:
     allowed_mode: math
   - name: det
     kind: prefix
-    argspec: ''
+    argspec: d<(,)><[,]><{,}>
     allowed_mode: math
   - name: determinant
     kind: prefix
@@ -257,7 +257,7 @@ commands:
     allowed_mode: math
   - name: exp
     kind: prefix
-    argspec: ''
+    argspec: d<(,)><[,]><{,}>
     allowed_mode: math
   - name: expectationvalue
     kind: prefix
@@ -355,11 +355,11 @@ commands:
     allowed_mode: math
   - name: ln
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: log
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: logarithm
     kind: prefix
@@ -467,7 +467,7 @@ commands:
     allowed_mode: math
   - name: Pr
     kind: prefix
-    argspec: ''
+    argspec: d<(,)><[,]><{,}>
     allowed_mode: math
   - name: principalvalue
     kind: prefix
@@ -621,7 +621,7 @@ commands:
       - mathjax-extension
   - name: sec
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: secant
     kind: prefix
@@ -629,11 +629,11 @@ commands:
     allowed_mode: math
   - name: sech
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: sin
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: sine
     kind: prefix
@@ -641,7 +641,7 @@ commands:
     allowed_mode: math
   - name: sinh
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: smallmatrixquantity
     kind: prefix
@@ -681,7 +681,7 @@ commands:
       - mathjax-extension
   - name: tan
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: tangent
     kind: prefix
@@ -689,15 +689,15 @@ commands:
     allowed_mode: math
   - name: tanh
     kind: prefix
-    argspec: o
+    argspec: o d()
     allowed_mode: math
   - name: tr
     kind: prefix
-    argspec: ''
+    argspec: d<(,)><[,]><{,}>
     allowed_mode: math
   - name: Tr
     kind: prefix
-    argspec: ''
+    argspec: d<(,)><[,]><{,}>
     allowed_mode: math
   - name: trace
     kind: prefix

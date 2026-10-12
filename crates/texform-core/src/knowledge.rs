@@ -63,7 +63,6 @@ const DEFAULT_PACKAGE_NAMES: [&str; 7] = [
     "boldsymbol",
     "color",
 ];
-const PHYSICS_COMMAND_MERGE_DENYLIST: [&str; 3] = ["Pr", "det", "exp"];
 
 pub fn default_package_names() -> &'static [&'static str] {
     &DEFAULT_PACKAGE_NAMES
@@ -858,10 +857,6 @@ fn from_packages_are_managed(packages: &[&str]) -> bool {
     !packages.is_empty() && packages.iter().all(|package| is_managed_package(package))
 }
 
-fn is_physics_denylisted_command(name: &str) -> bool {
-    PHYSICS_COMMAND_MERGE_DENYLIST.contains(&name)
-}
-
 fn merge_tags(existing: &[&str], incoming: &[&str]) -> Vec<String> {
     let mut merged = Vec::new();
     for &tag in existing.iter().chain(incoming.iter()) {
@@ -886,17 +881,13 @@ fn merge_from_packages(existing: &[&str], incoming: &[&str]) -> Vec<String> {
 }
 
 /// Two commands are mergeable iff they share name, kind, and argspec source,
-/// both come from managed packages, and neither side is a physics-denylisted
-/// command (Pr, det, exp — these intentionally override base definitions).
+/// and both come from managed packages.
 fn should_merge_command(existing: &ActiveCommandRecord, incoming: &ActiveCommandRecord) -> bool {
     existing.name == incoming.name
         && existing.kind == incoming.kind
         && existing.argspec.source == incoming.argspec.source
         && from_packages_are_managed(existing.from_packages)
         && from_packages_are_managed(incoming.from_packages)
-        && !(is_physics_denylisted_command(existing.name)
-            && (existing.from_packages.contains(&"physics")
-                || incoming.from_packages.contains(&"physics")))
 }
 
 fn should_merge_environment(

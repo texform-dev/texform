@@ -32,7 +32,10 @@
 //! Semantics follow LaTeX physics.sty, where these names use `\trigbraces`
 //! (`o d()`): `\sin[n](...)` prints a power and auto-sized parentheses, while
 //! `\sin[n]` without parentheses prints `[n]` literally. MathJax reads that
-//! last branch as a power, so the rule leaves it unchanged.
+//! last branch as a power, so the rule leaves it unchanged. The physics
+//! records hold the parentheses as a `d()` slot, so the rule rewrites only an
+//! argument the parser attached; parentheses separated from the command, as
+//! in `{\sin}(x)` or `\sin{}(x)`, stay literal.
 //!
 //! Physics closes the fence inside `\mathopen{}\mathclose\bgroup...\egroup`,
 //! so it acts as a closing atom, while an explicit `\left...\right` fence is
@@ -44,7 +47,7 @@
 use texform_knowledge::builtin::{base, physics};
 use texform_knowledge::specs::BuiltinCommandRecord;
 
-use super::helpers::{ArgumentBraces, find_fence_argument, replace_with_fence};
+use super::helpers::{fence_argument, replace_with_fenced_operator, with_power};
 use crate::ast::Node;
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::rewrite::{cmd_targets, define_rule};
@@ -96,35 +99,31 @@ define_rule! {
             {
                 return Ok(RuleEffect::Skipped);
             }
-            let power = {
+            let (power, argument) = {
                 let command = cx
                     .match_command(node_id, record)
                     .expect("matched command should still match");
                 let subject = command.subject();
                 let scoped = cx.for_rule(Self::KEY);
-                scoped.expect_arg_len(command.args, 1, &subject)?;
-                scoped.optional_math_content(&command.args[0], &subject, "power")?
+                scoped.expect_arg_len(command.args, 2, &subject)?;
+                (
+                    scoped.optional_math_content(&command.args[0], &subject, "power")?,
+                    fence_argument(&scoped, &command.args[1], &subject)?,
+                )
             };
-            let Some(argument) = find_fence_argument(cx.ast, node_id, ArgumentBraces::Trig) else {
+            // Without parentheses, MathJax reads `[n]` as a power while LaTeX
+            // prints it literally, so the command is left unchanged.
+            let Some(argument) = argument else {
                 return Ok(RuleEffect::Skipped);
             };
 
-            replace_with_fence(cx.ast, argument);
-            if let Some(power) = power {
-                let base = cx.ast.new_node(Node::Command {
-                    name: record.name.to_string(),
-                    args: vec![None],
-                    known: true,
-                });
-                cx.ast.replace_node_drop_detached_children(
-                    node_id,
-                    Node::Scripted {
-                        base,
-                        subscript: None,
-                        superscript: Some(power),
-                    },
-                );
-            }
+            let operator = cx.ast.new_node(Node::Command {
+                name: record.name.to_string(),
+                args: vec![None; record.argspec.args.len()],
+                known: true,
+            });
+            let operator = with_power(cx.ast, operator, power);
+            replace_with_fenced_operator(cx.ast, node_id, operator, argument);
             Ok(RuleEffect::Applied)
         }
     }
@@ -187,18 +186,13 @@ mod tests {
     }
 
     #[test]
-    fn unbalanced_parenthesis_preserved() {
-        assert_eq!(rewrite(r"\sin(x+\frac{a}{b}"), canonical(r"\sin(x+\frac{a}{b}"));
-    }
-
-    #[test]
     fn parenthesis_inside_group_is_not_a_closer() {
         assert_eq!(rewrite(r"\sin(x{y)}z)"), canonical(r"\sin\left(x{y)}z\right)"));
     }
 
     #[test]
-    fn scripted_opener_preserved() {
-        assert_eq!(rewrite(r"\sin(^2x)"), canonical(r"\sin(^2x)"));
+    fn script_after_opener_stays_in_fence() {
+        assert_eq!(rewrite(r"\sin(^2x)"), canonical(r"\sin\left(^2x\right)"));
     }
 
     #[test]
