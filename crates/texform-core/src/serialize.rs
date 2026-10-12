@@ -174,35 +174,23 @@ impl From<Style> for SerializeOptions {
     }
 }
 
+/// Layout decisions resolved from a [`Style`]. Both styles write subscripts
+/// first and brace infix operands only when required, so neither is a setting.
 #[derive(Clone, Copy)]
 pub(crate) struct StyleSettings {
+    /// Insert optional math-mode spaces between atoms.
     optional_space: bool,
-    script_braces: BracePolicy,
-    script_order: ScriptOrder,
-    infix_braces: BracePolicy,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum BracePolicy {
-    Always,
-    WhenRequired,
-}
-
-#[derive(Clone, Copy)]
-enum ScriptOrder {
-    SubFirst,
+    /// Drop a script's braces when it is a single token
+    /// (see `Serializer::single_script_token`).
+    bare_scripts: bool,
 }
 
 impl Style {
     pub(crate) const fn settings(self) -> StyleSettings {
+        let compact = matches!(self, Self::Compact);
         StyleSettings {
-            optional_space: matches!(self, Self::Spaced),
-            script_braces: match self {
-                Self::Spaced => BracePolicy::Always,
-                Self::Compact => BracePolicy::WhenRequired,
-            },
-            script_order: ScriptOrder::SubFirst,
-            infix_braces: BracePolicy::WhenRequired,
+            optional_space: !compact,
+            bare_scripts: compact,
         }
     }
 }
@@ -514,41 +502,16 @@ impl<R: Recorder> AtomWriter<R> {
             return false;
         }
 
-        // --- Below this point, we are in math mode ---
-
-        if matches!(prev, AtomKind::ControlSequence) {
-            return true;
+        // Math mode separates every atom pair except digit runs and `$`
+        // delimiters, which bind tightly to their content (`$x$`). Prime marks
+        // are emitted attached to their script base, so only the atom after a
+        // prime run reaches this decision.
+        match (prev, next) {
+            (AtomKind::MathDigit, AtomKind::MathDigit) => false,
+            (AtomKind::ControlSequence | AtomKind::Prime, _) => true,
+            (AtomKind::Dollar, _) | (_, AtomKind::Dollar) => false,
+            _ => true,
         }
-
-        if matches!((prev, next), (AtomKind::MathDigit, AtomKind::MathDigit)) {
-            return false;
-        }
-
-        if matches!(prev, AtomKind::MathChar | AtomKind::MathDigit)
-            && matches!(next, AtomKind::MathChar | AtomKind::MathDigit)
-        {
-            return true;
-        }
-
-        // Prime marks are always emitted attached to their script base, so
-        // only the atom after a prime run needs a boundary decision.
-        if matches!(prev, AtomKind::Prime) && matches!(next, AtomKind::ScriptMark) {
-            return true;
-        }
-        if matches!(prev, AtomKind::Prime) {
-            return true;
-        }
-
-        // `$` delimiters bind tightly to their content (`$x$`, not `$ x $`).
-        if matches!(prev, AtomKind::Dollar) || matches!(next, AtomKind::Dollar) {
-            return false;
-        }
-
-        if matches!(prev, AtomKind::ScriptMark) || matches!(next, AtomKind::ScriptMark) {
-            return true;
-        }
-
-        true
     }
 
     /// `true` when `next_text` would extend an unterminated ASCII control word.
@@ -1137,16 +1100,11 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         superscript: Option<NodeId>,
     ) {
         self.visit(base, ContentMode::Math);
-
-        match self.options.script_order {
-            ScriptOrder::SubFirst => {
-                if let Some(node) = subscript {
-                    self.emit_script('_', node);
-                }
-                if let Some(node) = superscript {
-                    self.emit_superscript(node);
-                }
-            }
+        if let Some(node) = subscript {
+            self.emit_script('_', node);
+        }
+        if let Some(node) = superscript {
+            self.emit_superscript(node);
         }
     }
 
@@ -1180,7 +1138,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             BoundaryPolicy::Auto,
             self.options,
         );
-        if self.options.script_braces == BracePolicy::WhenRequired
+        if self.options.bare_scripts
             && let Some(token) = self.single_script_token(node)
         {
             self.visit(token, ContentMode::Math);
@@ -1371,29 +1329,17 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             return;
         }
 
-        match self.options.infix_braces {
-            BracePolicy::Always => self.emit_wrapped_content(
+        if self.infix_operand_requires_braces(node) {
+            self.emit_wrapped_content(
                 node,
                 ContentMode::Math,
                 ContentMode::Math,
                 "{",
                 "}",
                 BoundaryPolicy::Auto,
-            ),
-            BracePolicy::WhenRequired => {
-                if self.infix_operand_requires_braces(node) {
-                    self.emit_wrapped_content(
-                        node,
-                        ContentMode::Math,
-                        ContentMode::Math,
-                        "{",
-                        "}",
-                        BoundaryPolicy::Auto,
-                    );
-                } else {
-                    self.emit_unwrapped_infix_operand(node);
-                }
-            }
+            );
+        } else {
+            self.emit_unwrapped_infix_operand(node);
         }
     }
 
