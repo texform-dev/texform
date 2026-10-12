@@ -1,58 +1,53 @@
-//! Collapse the long natural logarithm helper to the standard ln operator.
+//! Collapse a bare natural logarithm helper to the standard ln operator.
 //!
 //! ```yaml
 //! proposal: naturallogarithm-to-ln
 //! triggers:
 //!   - cmd:naturallogarithm
 //! consumes:
-//!   eliminates: cmd:naturallogarithm
-//!   touches: null
+//!   eliminates: null
+//!   touches: cmd:naturallogarithm
 //! produces: cmd:ln
 //! rewrite_patterns:
-//!   - {from: \naturallogarithm, to: \ln}
+//!   - {label: bare, from: \naturallogarithm, to: \ln}
 //! ```
+//!
+//! In LaTeX physics.sty, `\naturallogarithm` is the original `\ln` saved with
+//! `\let`, a plain operator that grabs nothing, while the redefined `\ln` grabs
+//! a following `[...]` power and `(...)` argument. The rule renames only a bare
+//! `\naturallogarithm`, one not followed by `(`, `[`, or a brace group; scripts
+//! on the command keep it bare. The other branches are left to `physics/named-
+//! fn-to-operatorname`.
 
-use texform_knowledge::builtin::base;
-use texform_knowledge::builtin::physics;
+use texform_knowledge::builtin::{base, physics};
 
-use crate::ast::Node;
-use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};
+use super::helpers::rename_bare_named_function;
+use crate::rewrite::rule::{RuleConsumes, RuleProduces};
 use crate::rewrite::{cmd_targets, define_rule};
 
 define_rule! {
     pub static NATURALLOGARITHM_TO_LN: NaturallogarithmToLnRule {
         key: Physics / "naturallogarithm-to-ln",
         level: Authoring,
-        summary: "Collapse the long natural logarithm helper to the standard ln operator.",
+        summary: "Collapse a bare natural logarithm helper to the standard ln operator.",
         fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::NATURALLOGARITHM],
         consumes: RuleConsumes {
-            eliminates: cmd_targets![&physics::cmd::NATURALLOGARITHM],
-            touches: &[],
+            eliminates: &[],
+            touches: cmd_targets![&physics::cmd::NATURALLOGARITHM],
         },
         produces: RuleProduces {
             targets: cmd_targets![&base::cmd::LN],
         },
         apply(_rule, cx, node_id) {
-            let args = match cx.node(node_id) {
-                Node::Command { name, args, .. }
-                    if name == physics::cmd::NATURALLOGARITHM.name =>
-                {
-                    args.clone()
-                }
-                _ => return Ok(RuleEffect::Skipped),
-            };
-
-            cx.ast.replace_node(
+            rename_bare_named_function(
+                cx,
+                Self::KEY,
                 node_id,
-                Node::Command {
-                    name: base::cmd::LN.name.to_string(),
-                    args,
-                    known: true,
-                },
-            );
-            Ok(RuleEffect::Applied)
+                &physics::cmd::NATURALLOGARITHM,
+                &base::cmd::LN,
+            )
         }
     }
 }
@@ -60,7 +55,11 @@ define_rule! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parse::ParseContext;
     use crate::rewrite::transform_examples;
+    use crate::rewrite::{RuleLevel, run_one_rule_for_test};
+    use crate::serialize::serialize;
+    use texform_core::parse::ParseConfig;
 
     // START: Generated examples; DO NOT modify
     transform_examples! {
@@ -73,13 +72,29 @@ mod tests {
             input: r"S=k_B\naturallogarithm W",
             expected: r"S=k_B\ln W",
         },
-        {
-            label: naturallogarithm_product,
-            packages: ["base", "physics"],
-            input: r"\naturallogarithm(xy)=\naturallogarithm x+\naturallogarithm y",
-            expected: r"\ln(xy)=\ln x+\ln y",
-        },
         ]
     }
     // END: Generated examples
+
+    fn rewrite(input: &str) -> String {
+        let parse_ctx = ParseContext::from_packages(&["base", "physics"]);
+        let mut ast = crate::parse_to_ast_for_test(&parse_ctx, input, &ParseConfig::STRICT);
+        run_one_rule_for_test(&mut ast, &parse_ctx, &NATURALLOGARITHM_TO_LN, RuleLevel::Authoring)
+            .expect("rule should run");
+        ast.assert_invariants();
+        serialize(&ast)
+    }
+
+    fn canonical(input: &str) -> String {
+        let parse_ctx = ParseContext::from_packages(&["base", "physics"]);
+        serialize(&crate::parse_to_ast_for_test(&parse_ctx, input, &ParseConfig::STRICT))
+    }
+
+    #[test]
+    fn argument_followers_preserved() {
+        // `\ln` would grab a following argument that `\naturallogarithm` leaves literal.
+        assert_eq!(rewrite(r"\naturallogarithm(\frac{x}{y})"), canonical(r"\naturallogarithm(\frac{x}{y})"));
+        assert_eq!(rewrite(r"\naturallogarithm[2](x)"), canonical(r"\naturallogarithm[2](x)"));
+        assert_eq!(rewrite(r"\naturallogarithm{x}"), canonical(r"\naturallogarithm{x}"));
+    }
 }

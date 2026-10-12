@@ -235,6 +235,7 @@ pub(crate) mod physics {
         }
         pub(crate) mod named_fn_to_short {
             pub(crate) mod cosine_to_cos;
+            pub(crate) mod helpers;
             pub(crate) mod naturallogarithm_to_ln;
             pub(crate) mod probability_to_pr;
             pub(crate) mod sine_to_sin;
