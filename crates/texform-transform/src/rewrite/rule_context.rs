@@ -296,6 +296,21 @@ impl<'a> RuleContext<'a> {
             .or_else(|| self.lookup_env(name, ContentMode::Text))
     }
 
+    /// Separates `node_id` from a preceding command that a reparse would let
+    /// read it as an omitted trailing argument, with an empty group or by
+    /// wrapping the command. Returns whether it changed the tree.
+    pub fn separate_from_preceding_command(&mut self, node_id: NodeId) -> bool {
+        let (math_catalog, text_catalog) = (self.math_catalog, self.text_catalog);
+        crate::argument_capture::separate_from_preceding_command(
+            self.ast,
+            |name, mode| match mode {
+                ContentMode::Math => math_catalog.lookup_command(name),
+                ContentMode::Text => text_catalog.lookup_command(name),
+            },
+            node_id,
+        )
+    }
+
     /// Looks up a command record by name directly in the selected knowledge-base lane.
     pub fn lookup_command(&self, name: &str, mode: ContentMode) -> Option<&ActiveCommandRecord> {
         self.catalog(mode).lookup_command(name)

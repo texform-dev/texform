@@ -131,6 +131,18 @@ mod tests {
             expected: r"a\lbrace b",
         },
         {
+            label: keeps_delimiter_from_being_read_as_an_optional_argument,
+            packages: ["base"],
+            input: r"a\\\big[x\big]b",
+            expected: r"a\\{}[x]b",
+        },
+        {
+            label: keeps_delimiter_from_being_read_as_a_physics_argument,
+            packages: ["base", "physics"],
+            input: r"\sin\big[x\big]",
+            expected: r"\sin{}[x]",
+        },
+        {
             label: preserves_required_argument_slot_for_null_delimiter,
             packages: ["base"],
             input: r"\sqrt\big.",

@@ -6,7 +6,7 @@
 //! and a following token must check it, as in `\sin{}[2]` → `\sin[2]` when the
 //! `physics` `\sin` takes `o`.
 
-use crate::ast::{ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId};
+use crate::ast::{ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, Slot};
 use crate::knowledge::{ActiveCommandRecord, ArgForm, DelimiterToken};
 
 /// Whether the nearest node of `before`, walked backwards from a boundary, is
@@ -81,6 +81,73 @@ pub(crate) fn boundary_captures<'a, 'r>(
         }
     }
     false
+}
+
+/// Separates `node` from a preceding command that would read it as an
+/// omitted trailing argument. Returns whether it changed the tree.
+///
+/// Use this after a rewrite places `node` where a separator used to be. An
+/// empty group goes before `node`, as in `\\{}[x]`, unless the command would
+/// read that group too; then the command itself is wrapped, as in
+/// `{\exp}(x)`. FlattenGroups keeps either group.
+pub(crate) fn separate_from_preceding_command<'r>(
+    ast: &mut Ast,
+    lookup: impl Fn(&str, ContentMode) -> Option<&'r ActiveCommandRecord> + Copy,
+    node: NodeId,
+) -> bool {
+    let Some(Slot::GroupChild(index)) = ast.slot(node) else {
+        return false;
+    };
+    let Some(parent) = ast.parent_id(node) else {
+        return false;
+    };
+    let mode = match ast.node(parent) {
+        Node::Root { mode, .. } | Node::Group { mode, .. } => *mode,
+        _ => return false,
+    };
+    let siblings = ast.children(parent);
+    let (before, after) = siblings.split_at(index);
+    if !boundary_captures(ast, lookup, mode, before.iter().rev(), after.iter()) {
+        return false;
+    }
+
+    let Some(command) = before
+        .iter()
+        .rev()
+        .copied()
+        .find(|&sibling| !is_whitespace_text(ast, sibling))
+    else {
+        return false;
+    };
+    let Some(Slot::GroupChild(command_index)) = ast.slot(command) else {
+        return false;
+    };
+
+    let separator = ast.new_node(Node::Group {
+        children: Vec::new(),
+        kind: GroupKind::Explicit,
+        mode,
+    });
+    let siblings = ast.children(parent);
+    if !boundary_captures(
+        ast,
+        lookup,
+        mode,
+        siblings[..index].iter().rev(),
+        std::iter::once(&separator),
+    ) {
+        ast.insert_child(parent, index, separator);
+        return true;
+    }
+    ast.remove_detached(separator);
+    let command = ast.detach_children_range(parent, command_index..command_index + 1);
+    let group = ast.new_node(Node::Group {
+        children: command,
+        kind: GroupKind::Explicit,
+        mode,
+    });
+    ast.insert_child(parent, command_index, group);
+    true
 }
 
 fn is_whitespace_text(ast: &Ast, node: NodeId) -> bool {
