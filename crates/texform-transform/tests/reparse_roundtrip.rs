@@ -279,6 +279,23 @@ fn design_examples_reach_the_expected_output_in_one_run() {
 }
 
 #[test]
+fn scripted_commands_keep_omitted_slots_away_from_siblings() {
+    let mut packages = PACKAGES.to_vec();
+    packages.push("physics");
+    let p = ParseContext::from_packages(&packages);
+    let engines = engines(&p);
+    // Each script command has an omitted slot that the sibling would fill.
+    for source in [
+        r"e^{\grad}(f)",
+        r"x^{\qand}*",
+        r"x^{\sin}[2]",
+        r"x^{\Re}{z}",
+    ] {
+        check(&p, &engines, source).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
+#[test]
 #[ignore = "set TEXFORM_ROUNDTRIP_CORPUS to a complete single-line corpus file"]
 fn corpus_preserves_parser_and_transform_structure() {
     use std::io::BufRead;

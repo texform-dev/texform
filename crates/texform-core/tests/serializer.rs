@@ -1810,7 +1810,8 @@ fn compact_style_keeps_lexical_boundaries_and_readable_scripts() {
         (r"x_{\alpha}y+x_{\alpha}2", r"x_\alpha y+x_\alpha 2"),
         (r"x_{\{}y+x_{\%}2", r"x_\{ y+x_\% 2"),
         (r"\Gamma_{\prime}", r"\Gamma_\prime"),
-        (r"x_{~}y+x_{\displaystyle}", r"x_~ y+x_\displaystyle"),
+        // A bare declarative switch would apply beyond the script in TeX.
+        (r"x_{~}y+x_{\displaystyle}", r"x_~ y+x_{\displaystyle}"),
         (
             r"x^{\frac{a}{b}}+x_{ij}+x^{}",
             r"x^{\frac{a}{b}}+x_{ij}+x^{}",
@@ -1859,7 +1860,7 @@ fn style_options_reject_removed_keys_and_invalid_values() {
 }
 
 #[test]
-fn compact_script_tests_emitted_arguments_instead_of_slot_count() {
+fn compact_script_keeps_braces_around_commands_with_argument_slots() {
     let ctx = texform_core::parse::ParseContextBuilder::empty()
         .item(support::command_item(
             "probe",
@@ -1870,19 +1871,31 @@ fn compact_script_tests_emitted_arguments_instead_of_slot_count() {
         .build()
         .unwrap();
     let options = Style::Compact.into();
-    for (source, expected) in [
-        (r"x_{\probe}2", r"x_\probe 2"),
-        (r"x_{\probe*}", r"x_{\probe*}"),
-        (r"x_{\probe[a]}", r"x_{\probe[a]}"),
+    // Without braces, the omitted star and optional slots would take `*` and
+    // `[a]`; braces stay even when the sibling could not be captured.
+    for source in [
+        r"x_{\probe}*",
+        r"x_{\probe}[a]",
+        r"x_{\probe}2",
+        r"x_{\probe*}",
+        r"x_{\probe[a]}",
     ] {
         let ast = parse_to_ast_with_context(&ctx, source);
         let output = serialize_with(&ast, &options);
-        assert_eq!(output, expected);
+        assert_eq!(output, source);
         assert_eq!(
-            serialize_with(&parse_to_ast_with_context(&ctx, &output), &options),
-            output
+            parse_to_ast_with_context(&ctx, &output).to_syntax_root(),
+            ast.to_syntax_root()
         );
     }
+
+    // An unknown command may be an argument-taking macro.
+    let (document, _) = ctx
+        .parse(r"x_{\foo}{a}", &texform_core::parse::ParseConfig::default())
+        .try_into_document()
+        .unwrap();
+    let ast = Ast::from_syntax_root(&document.to_syntax());
+    assert_eq!(serialize_with(&ast, &options), r"x_{\foo}{a}");
 }
 
 #[test]

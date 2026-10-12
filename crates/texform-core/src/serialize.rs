@@ -153,7 +153,8 @@ pub enum Style {
     /// Explicit token spacing, byte-stable across releases.
     #[default]
     Spaced,
-    /// Lexically required spaces and readable single-token scripts.
+    /// Lexically required spaces, and unbraced scripts for single tokens that
+    /// take no arguments and switch no state (`x_i`, `x^\alpha`).
     /// Layout may improve across releases while preserving parsed structure.
     Compact,
 }
@@ -180,7 +181,7 @@ impl From<Style> for SerializeOptions {
 pub(crate) struct StyleSettings {
     /// Insert optional math-mode spaces between atoms.
     optional_space: bool,
-    /// Drop a script's braces when it is a single token
+    /// Drop a script's braces when it is a single safe token
     /// (see `Serializer::single_script_token`).
     bare_scripts: bool,
 }
@@ -1156,6 +1157,14 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     }
 
     /// Inspect the emitted shape after removing only the slot's own container.
+    ///
+    /// A bare script must reparse as exactly this token and keep its TeX
+    /// meaning. A known command qualifies only when its matched argspec has no
+    /// slots: an omitted optional, star, or delimited slot would capture the
+    /// following sibling once the closing brace is gone (`x^{\sin}[2]`).
+    /// Unknown commands may be argument-taking macros outside the knowledge
+    /// base, and a declarative switch would extend its scope past the script
+    /// (`x^{\rm} a`), so both keep their braces.
     fn single_script_token(&self, node: NodeId) -> Option<NodeId> {
         let node = match self.ast.node(node) {
             Node::Group {
@@ -1167,17 +1176,9 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         };
         match self.ast.node(node) {
             Node::Char(_) | Node::ActiveSpace | Node::Prime { count: 1 } => Some(node),
-            Node::Command { args, .. } | Node::Declarative { args, .. }
-                if args.iter().all(|slot| match slot {
-                    None => true,
-                    Some(arg) => matches!(
-                        (&arg.kind, &arg.value),
-                        (ArgumentKind::Star, ArgumentValue::Boolean(false))
-                    ),
-                }) =>
-            {
-                Some(node)
-            }
+            Node::Command {
+                args, known: true, ..
+            } if args.is_empty() => Some(node),
             _ => None,
         }
     }
