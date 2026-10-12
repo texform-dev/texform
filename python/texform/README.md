@@ -88,7 +88,7 @@ doc.set_superscript(base, None)  # Both scripts absent: collapse to the base.
 - All names follow Python conventions: methods and dict keys are snake_case (`to_latex`, `validate_argspec` returns `arg_count`).
 - `config` is a complete configuration class (`ParseConfig` / `TransformConfig`). Other keyword arguments are overlays (`normalize(src, rewrite={"enabled": False})`). Saved dicts expand with `**saved_overrides`. Nested override values must be dicts, not config class instances.
 - `parser.default_parse_config()`, `engine.default_parse_config()`, and `engine.default_transform_config()` return the complete defaults actually in force. Nested assignment sticks: `cfg = engine.default_transform_config(); cfg.rewrite.enabled = False`.
-- Serialize options are keywords too: `document.to_latex(script_order="sup_first")`.
+- Serialize options are keywords too: `document.to_latex(style="compact")`.
 - Unknown keys, wrong types, and arrays where an object is expected raise `ConfigError` with a field path. `None` / omitted means not set.
 - Parse and edit errors raise structured exceptions (`texform.ParseError` and friends); no Rust panic ever crosses the boundary.
 - The package ships `py.typed` and `.pyi` stubs, so type checkers and IDE completion work out of the box.

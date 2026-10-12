@@ -42,11 +42,10 @@ const parseOverrides: ParseConfig = { rejectUnknown: true };
 parser.parse(src, parseOverrides);
 
 const serializeOptions = {
-  scriptSpacing: "compact" as const,
-  scriptOrder: "sup_first" as const,
+  style: "compact" as const,
 };
 doc.toLatex(serializeOptions);
-doc.toTokenizedLatex({ groupInnerSpacing: "compact" });
+doc.toTokenizedLatex({ style: "compact" });
 
 // @ts-expect-error — nested math.scripts is no longer a serialize option
 doc.toLatex({ math: { scripts: { order: "sup_first" } } });
@@ -193,3 +192,8 @@ new EngineClass({
 // @ts-expect-error Rule info fields are camelCase in JavaScript.
 ruleInfo?.enabled_by_packages;
 void [ruleLevel, ruleFidelity];
+
+// @ts-expect-error — removed serializer option
+doc.toLatex({ scriptOrder: "sup_first" });
+// @ts-expect-error — unknown style
+doc.toLatex({ style: "pretty" });

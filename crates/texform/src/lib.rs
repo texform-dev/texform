@@ -99,9 +99,8 @@ pub use parse_result::{ParseError, ParseResult};
 pub use parser::{Parser, ParserBuilder};
 pub use rules::{RuleFidelity, RuleInfo, RuleLevel, list_rules};
 pub use serialize::{
-    AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, InfixGrouping,
-    MathGroupInnerSpacing, ScriptOrder, ScriptSpacing, SerializationToken, SerializationTokenKind,
-    SerializeError, SerializeOptions, TokenizedLatex,
+    SerializationToken, SerializationTokenKind, SerializeError, SerializeOptions, Style,
+    TokenizedLatex,
 };
 pub use transform_engine::{TransformEngine, TransformEngineBuilder};
 

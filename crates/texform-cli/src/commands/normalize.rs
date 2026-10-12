@@ -7,7 +7,7 @@ use texform::bindings::{NormalizeConfigInput, TransformReportDto, transform_repo
 
 use super::run_formulas;
 use crate::input::{FormulaInput, read_config};
-use crate::normalizer::{Normalizer, ProfileName};
+use crate::normalizer::{Normalizer, ProfileName, StyleName};
 use crate::output::{Format, Success, ok_line, usage_error};
 
 #[derive(clap::Args)]
@@ -18,6 +18,10 @@ pub struct Args {
     /// Transform profile
     #[arg(long, value_enum)]
     profile: ProfileName,
+
+    /// Output style
+    #[arg(long, value_enum, default_value = "spaced")]
+    style: StyleName,
 
     /// Overrides layered on the profile defaults, as JSON or `@FILE`
     #[arg(long, value_name = "JSON|@FILE")]
@@ -54,14 +58,25 @@ pub fn run(args: Args, packages: &[String]) -> ExitCode {
         Format::Text
     };
     run_formulas(&args.input, format, |latex| {
+        let (mut document, _) = engine
+            .parser()
+            .parse_with(latex, &config.parse)
+            .try_into_document()
+            .map_err(texform::Error::from)?;
+        let options = texform::SerializeOptions::from(texform::Style::from(args.style));
         if args.report {
-            let result = engine.normalize_with_report(latex, &config)?;
+            let report = engine.transform_with_report(&mut document, &config.transform)?;
             return Ok(Success::Json(ok_line(Normalized {
-                output: result.normalized,
-                report: Some(transform_report_to_dto(&result.report)),
+                output: document
+                    .to_latex_with(&options)
+                    .map_err(texform::Error::from)?,
+                report: Some(transform_report_to_dto(&report)),
             })));
         }
-        let output = engine.normalize_with(latex, &config)?;
+        engine.transform_with(&mut document, &config.transform)?;
+        let output = document
+            .to_latex_with(&options)
+            .map_err(texform::Error::from)?;
         Ok(if args.json {
             Success::Json(ok_line(Normalized {
                 output,

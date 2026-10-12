@@ -131,11 +131,11 @@ if (!(doc.root() instanceof Node)) {
 }
 const defaultLatex = doc.toLatex();
 const compactLatex = doc.toLatex({
-  groupInnerSpacing: "compact",
+  style: "compact",
 });
 if (defaultLatex === compactLatex) {
   throw new Error(
-    "serialize options should accept camelCase groupInnerSpacing",
+    "serialize options should accept style",
   );
 }
 const unicodeDoc = parser.parse(String.raw`\text{\%𝒜}`).document;
@@ -595,8 +595,8 @@ assert.equal(
 assert.equal(engine.normalize(overSrc, { rewrite: null }), omittedNormalize);
 
 const defaultLatexAgain = doc.toLatex();
-assert.equal(doc.toLatex({ scriptSpacing: undefined }), defaultLatexAgain);
-assert.equal(doc.toLatex({ scriptSpacing: null }), defaultLatexAgain);
+assert.equal(doc.toLatex({ style: undefined }), defaultLatexAgain);
+assert.equal(doc.toLatex({ style: null }), defaultLatexAgain);
 
 const nestedError = expectError(
   () => doc.toLatex({ math: { scripts: { order: "sup_first" } } }),
@@ -605,12 +605,12 @@ const nestedError = expectError(
 assert.match(nestedError.message, /unknown field `math`/);
 
 const supFirstError = expectError(
-  () => doc.toLatex({ scriptOrder: "supFirst" }),
+  () => doc.toLatex({ style: "pretty" }),
   TexformConfigError,
 );
-assert.match(supFirstError.message, /scriptOrder/);
-assert.match(supFirstError.message, /sub_first/);
-assert.match(supFirstError.message, /sup_first/);
+assert.match(supFirstError.message, /style/);
+assert.match(supFirstError.message, /spaced/);
+assert.match(supFirstError.message, /compact/);
 
 expectError(
   () => doc.toLatex({ scriptOrdre: "sup_first" }),
@@ -952,3 +952,10 @@ physicsBuild.setArgDelimiters(pairedBuild, pairedIndex, "[", "]");
 physicsBuild.setArg(pairedBuild, pairedIndex, "y");
 assert.deepEqual(pairedBuild.argKind(pairedIndex), { kind: "paired", open: "[", close: "]" });
 assert.equal(pairedBuild.arg(pairedIndex).node.children[0].char, "y");
+
+assert.equal(doc.toLatex({style: "compact"}), "x^y");
+assert.equal(doc.toTokenizedLatex({style: "compact"}).latex, "x^y");
+assert.equal(serialize(doc.toSyntax(), {style: "compact"}), "x^y");
+for (const key of ["commandSpacing", "groupInnerSpacing", "adjacentCharSpacing", "scriptSpacing", "scriptOrder", "infixOperandGrouping", "environmentNameSpacing"]) {
+  expectError(() => doc.toLatex({[key]: "compact"}), TexformConfigError);
+}

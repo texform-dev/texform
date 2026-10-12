@@ -21,6 +21,8 @@ Programs that process LaTeX formulas — cleaning OCR training data, comparing f
 
 TeXForm is that missing layer. It parses formulas against a real command knowledge base, gives you an editable document tree, and normalizes formulas into canonical forms tuned for specific downstream uses.
 
+The serializer defaults to byte-stable `spaced` output. Select `Style::Compact` through `SerializeOptions { style: Style::Compact }` for concise output such as `\frac{a}{b}+x_i^2`. Python uses `doc.to_latex(style="compact")`, JavaScript uses `doc.toLatex({ style: "compact" })`, and the CLI accepts `normalize --style compact`. Compact output preserves parsed structure and text idempotency; its layout may improve across releases.
+
 ## What TeXForm gives you
 
 <table>
@@ -37,7 +39,7 @@ Formulas parse into real syntax trees, driven by xparse-style argument specifica
 </td>
 <td valign="top">
 
-Parsing produces a `Document` — a DOM-style tree you can query, mutate, and serialize back to LaTeX. Edits are validated and return structured errors; no panic ever reaches the caller. The canonical serializer guarantees text idempotency.
+Parsing produces a `Document` — a DOM-style tree you can query, mutate, and serialize back to LaTeX. Edits are validated and return structured errors; no panic ever reaches the caller. The serializer guarantees text idempotency.
 
 </td>
 <td valign="top">

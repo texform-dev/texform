@@ -2755,17 +2755,51 @@ mod tests {
             assert_eq!(default, "x _ { i } ^ { 2 }");
 
             let kwargs = PyDict::new(py);
-            kwargs.set_item("script_spacing", "compact").unwrap();
-            kwargs.set_item("script_order", "sup_first").unwrap();
+            kwargs.set_item("style", "compact").unwrap();
             let compact = document
                 .call_method("to_latex", (), Some(&kwargs))
                 .unwrap()
                 .extract::<String>()
                 .unwrap();
-            assert_eq!(compact, "x^{ 2 }_{ i }");
+            assert_eq!(compact, "x_i^2");
+            let tokenized = document
+                .call_method("to_tokenized_latex", (), Some(&kwargs))
+                .unwrap();
+            assert_eq!(
+                tokenized
+                    .get_item("latex")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                compact
+            );
+            for key in [
+                "command_spacing",
+                "group_inner_spacing",
+                "adjacent_char_spacing",
+                "script_spacing",
+                "script_order",
+                "infix_operand_grouping",
+                "environment_name_spacing",
+            ] {
+                let removed = PyDict::new(py);
+                removed.set_item(key, "compact").unwrap();
+                let error = document
+                    .call_method("to_latex", (), Some(&removed))
+                    .unwrap_err();
+                assert!(error.is_instance_of::<ConfigError>(py));
+                assert!(error.to_string().contains("style"));
+            }
+            let invalid = PyDict::new(py);
+            invalid.set_item("style", "pretty").unwrap();
+            let error = document
+                .call_method("to_latex", (), Some(&invalid))
+                .unwrap_err();
+            assert!(error.is_instance_of::<ConfigError>(py));
+            assert!(error.to_string().contains("spaced") && error.to_string().contains("compact"));
 
             let none_kwargs = PyDict::new(py);
-            none_kwargs.set_item("script_order", py.None()).unwrap();
+            none_kwargs.set_item("style", py.None()).unwrap();
             let omitted = document
                 .call_method("to_latex", (), Some(&none_kwargs))
                 .unwrap()
@@ -2783,7 +2817,7 @@ mod tests {
             assert!(error.is_instance_of::<ConfigError>(py));
             let message = error.to_string();
             assert!(message.contains("unknown field `math`"), "{message}");
-            assert!(message.contains("script_order"), "{message}");
+            assert!(message.contains("style"), "{message}");
 
             let misspelled = PyDict::new(py);
             misspelled.set_item("script_ordre", "sup_first").unwrap();
@@ -2802,9 +2836,7 @@ mod tests {
 
             let syntax = document.call_method0("to_syntax").unwrap();
             let serialize_kwargs = PyDict::new(py);
-            serialize_kwargs
-                .set_item("group_inner_spacing", "compact")
-                .unwrap();
+            serialize_kwargs.set_item("style", "compact").unwrap();
             let serialized = module
                 .getattr("serialize")
                 .unwrap()
@@ -2812,7 +2844,7 @@ mod tests {
                 .unwrap()
                 .extract::<String>()
                 .unwrap();
-            assert_eq!(serialized, "x _ {i} ^ {2}");
+            assert_eq!(serialized, "x_i^2");
         });
     }
 

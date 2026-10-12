@@ -154,6 +154,7 @@ fn configure_resolves_the_effective_config() {
         .into_config(engine.default_normalize_config());
     let mut expected = serde_json::to_value(NormalizeConfigInput::from_config(overrides)).unwrap();
     expected["profile"] = json!("authoring");
+    expected["style"] = json!("spaced");
     // The serve-level `--packages` applies when `packages` is omitted.
     expected["packages"] = json!(["ams", "base"]);
     assert_eq!(*first, expected);
@@ -539,4 +540,30 @@ fn unknown_startup_package_is_a_usage_error() {
 
     assert_eq!(output.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&output.stderr).contains("missing"));
+}
+
+#[test]
+fn style_is_resolved_and_invalid_reconfiguration_preserves_it() {
+    let served = serve(
+        &[],
+        &[
+            initialize(0),
+            configure(1, "c", json!({"profile": "corpus", "style": "compact"})),
+            normalize(2, "c", "x_i^2", true),
+            configure(3, "c", json!({"profile": "corpus", "style": "pretty"})),
+            request(
+                4,
+                "normalize",
+                json!({"config": "c", "latex": "x_i^2", "report": true}),
+            ),
+            configure(5, "s", json!({"profile": "corpus"})),
+            normalize(6, "s", "x_i^2", false),
+        ],
+    );
+    assert_eq!(served.response(1)["result"]["resolved"]["style"], "compact");
+    assert_eq!(served.response(2)["result"]["output"], "x_i^2");
+    assert_eq!(served.error_code(3), INVALID_PARAMS);
+    assert_eq!(served.response(4)["result"]["output"], "x_i^2");
+    assert_eq!(served.response(5)["result"]["resolved"]["style"], "spaced");
+    assert_eq!(served.response(6)["result"]["output"], "x _ { i } ^ { 2 }");
 }

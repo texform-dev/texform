@@ -26,8 +26,14 @@ pub struct Server {
     default_packages: Vec<String>,
     initialized: bool,
     shut_down: bool,
-    /// Normalizers that `normalize` requests reference by id.
-    configs: HashMap<String, Normalizer>,
+    /// Configurations that `normalize` requests reference by id.
+    configs: HashMap<String, Configured>,
+}
+
+/// A configured normalizer plus the output style of its session.
+struct Configured {
+    normalizer: Normalizer,
+    style: texform::Style,
 }
 
 impl Server {
@@ -81,23 +87,31 @@ impl Server {
             Normalizer::build(spec.profile, requested, spec.overrides.unwrap_or_default())
                 .map_err(RpcError::invalid_params)?;
         let resolved = to_json(Resolved {
+            style: spec.style,
             profile: spec.profile,
             packages: packages::canonical(requested),
             config: NormalizeConfigInput::from_config(normalizer.config.clone()),
         });
-        self.configs.insert(id, normalizer);
+        self.configs.insert(
+            id,
+            Configured {
+                normalizer,
+                style: spec.style,
+            },
+        );
         Ok(serde_json::json!({ "resolved": resolved }))
     }
 
     fn normalize(&mut self, params: Option<Value>) -> Result<Value, RpcError> {
         let params: NormalizeParams = parse_params(params)?;
-        let normalizer = self.configs.get(&params.config).ok_or_else(|| {
+        let configured = self.configs.get(&params.config).ok_or_else(|| {
             RpcError::invalid_params(format!("config `{}` is not configured", params.config))
         })?;
         let timing = params.timing.unwrap_or(false);
         let mut timings = StageTimings::default();
-        let outcome = normalizer.normalize_staged(
+        let outcome = configured.normalizer.normalize_staged(
             &params.latex,
+            configured.style,
             params.report.unwrap_or(false),
             &mut Stopwatch::start(timing),
             &mut timings,
@@ -130,7 +144,7 @@ impl Server {
 
 impl Normalizer {
     /// `TransformEngine::normalize_with`, composed from its public stages so
-    /// each stage can be timed.
+    /// each stage can be timed, with the output serialized in `style`.
     ///
     /// Timed and untimed requests both run this exact sequence, so `timing`
     /// cannot change the output or the error classification. A stage's time is
@@ -138,6 +152,7 @@ impl Normalizer {
     fn normalize_staged(
         &self,
         latex: &str,
+        style: texform::Style,
         with_report: bool,
         clock: &mut Stopwatch,
         timings: &mut StageTimings,
@@ -162,7 +177,7 @@ impl Normalizer {
         timings.transform_ns = clock.lap();
         let report = transformed?;
 
-        let serialized = document.to_latex();
+        let serialized = document.to_latex_with(&style.into());
         timings.serialize_ns = clock.lap();
         Ok((serialized?, report.as_ref().map(transform_report_to_dto)))
     }
@@ -232,6 +247,8 @@ struct ConfigureParams {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, expecting = "an object")]
 struct ConfigSpec {
+    #[serde(default)]
+    style: texform::Style,
     profile: ProfileName,
     packages: Option<Vec<String>>,
     overrides: Option<NormalizeConfigInput>,
@@ -266,6 +283,7 @@ struct ServerInfo {
 /// Fully expanded effective config plus the engine selection.
 #[derive(Serialize)]
 struct Resolved {
+    style: texform::Style,
     profile: ProfileName,
     packages: Vec<String>,
     #[serde(flatten)]

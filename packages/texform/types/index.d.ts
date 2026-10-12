@@ -395,7 +395,7 @@ export interface ParseResult {
   diagnostics: ParseDiagnostic[];
 }
 
-/** Closed semantic categories emitted by canonical tokenized serialization. */
+/** Closed semantic categories emitted by tokenized serialization. */
 export type SerializationTokenKind =
   | "control_sequence"
   | "character"
@@ -404,7 +404,7 @@ export type SerializationTokenKind =
   | "raw"
   | "error";
 
-/** One non-empty canonical serialization fragment. */
+/** One non-empty serialization fragment. */
 export interface SerializationToken {
   /** Fragment text, decoded from bytes `[startByte, endByte)` of the UTF-8 encoding of `latex`. */
   text: string;
@@ -418,9 +418,9 @@ export interface SerializationToken {
   mode: "math" | "text";
 }
 
-/** Canonical LaTeX and tokens produced by the same serializer traversal. */
+/** Serialized LaTeX and tokens produced by the same serializer traversal. */
 export interface TokenizedLatex {
-  /** Canonical LaTeX string, identical to {@link Document.toLatex}. */
+  /** Serialized LaTeX string, identical to {@link Document.toLatex}. */
   latex: string;
   /** Ordered, non-overlapping, non-empty fragments. Gaps contain serializer-inserted spacing. Empty error snippets emit no token. */
   tokens: SerializationToken[];
@@ -923,37 +923,37 @@ export class Document {
    */
   nodeSpans(): NodeSpanEntry[];
   /**
-   * Serialize the tree back to LaTeX text using the canonical serializer.
+   * Serialize the tree back to LaTeX text.
    *
    * The serializer guarantees text idempotency: re-parsing and re-serializing
    * the output yields the same string. `Error` nodes round-trip their captured
    * source snippet verbatim, and pure prime superscripts serialize compactly as
    * `f'` or `f''`. There is intentionally no method named `serialize` on
-   * `Document`. For the full option axes, see the Serialization guide and
+   * `Document`. For the output styles, see the Serialization guide and
    * {@link SerializeOptions}.
    *
    * @see {@link Serialization}
    * @param options - A {@link SerializeOptions} object, or omit/`null` for the
    *   default (spaced) style.
-   * @returns The canonical LaTeX string.
+   * @returns The serialized LaTeX string.
    * @example
    * ```ts
    * const doc = new Parser().parse(String.raw`x^2`).document;
-   * doc.toLatex();                                              // 'x ^ { 2 }'
-   * doc.toLatex({ scriptSpacing: 'compact' }); // 'x^{ 2 }'
+   * doc.toLatex();                    // 'x ^ { 2 }'
+   * doc.toLatex({ style: 'compact' }); // 'x^2'
    * ```
    */
   toLatex(options?: SerializeOptions | null): string;
   /**
-   * Serialize canonical LaTeX together with typed output tokens.
+   * Serialize the tree to LaTeX together with typed output tokens.
    *
    * Token spans use UTF-8 byte offsets, not JavaScript UTF-16 indices. Empty
    * error snippets produce no zero-width token; use {@link Document.hasErrors}
    * to detect whether the document contains error nodes.
    *
-   * @param options - Serializer style overlay. Same axes as {@link Document.toLatex}.
+   * @param options - A {@link SerializeOptions} object, as for {@link Document.toLatex}.
    *   `null` / `undefined` / omitted keeps the default (spaced) style.
-   * @returns Canonical LaTeX plus typed fragments from the same traversal.
+   * @returns Serialized LaTeX plus typed fragments from the same traversal.
    * @example
    * ```ts
    * const tok = new Parser().parse('x^2').document!.toTokenizedLatex();
@@ -1479,84 +1479,30 @@ export type ContextItem =
       name: string;
     };
 
-/**
- * Spacing around control sequences in serialized output: `"spaced"` pads around
- * them; `"minimal"` emits only the separation LaTeX requires.
- */
-export type CommandSpacing = "spaced" | "minimal";
+/** Spaced output is byte-stable; compact preserves structure and text idempotency. */
+export type Style = "spaced" | "compact";
 
 /**
- * Inner spacing of math groups: `"padded"` writes `{ x }`; `"compact"` writes
- * `{x}`.
- */
-export type MathGroupInnerSpacing = "padded" | "compact";
-
-/**
- * Spacing between adjacent characters: `"spaced"` writes `a b c`; `"compact"`
- * writes `abc`.
- */
-export type AdjacentCharSpacing = "spaced" | "compact";
-
-/**
- * Spacing around script operators: `"spaced"` writes `x _ { i } ^ { 2 }`;
- * `"compact"` writes `x_{ i }^{ 2 }`.
- */
-export type ScriptSpacing = "spaced" | "compact";
-
-/**
- * Order of subscript and superscript in serialized output: `"sub_first"` writes
- * `x _ { i } ^ { 2 }`; `"sup_first"` writes `x ^ { 2 } _ { i }`. The values stay
- * snake_case to match the Python binding.
- */
-export type ScriptOrder = "sub_first" | "sup_first";
-
-/**
- * Bracing of infix operands (`\over`, `\atop`, ...): `"when_required"` braces
- * an operand only when the surrounding syntax needs it; `"always_explicit"`
- * braces every non-empty operand.
- */
-export type InfixGrouping = "always_explicit" | "when_required";
-
-/**
- * Spacing after `\begin` / `\end`: `"spaced"` writes `\begin {matrix}`;
- * `"compact"` writes `\begin{matrix}`.
- */
-export type EnvironmentNameSpacing = "spaced" | "compact";
-
-/**
- * Options controlling serialized LaTeX output style.
+ * Options for {@link Document.toLatex}, {@link Document.toTokenizedLatex},
+ * and {@link serialize}. Unknown keys and invalid values throw
+ * `TexformConfigError`. For a task-oriented walkthrough, see the
+ * Serialization guide.
  *
- * A flat object keyed by camelCase names. `null` / `undefined` / omitted means
- * "not set". Unknown keys, snake_case keys, arrays in object positions, and
- * wrong scalar types throw {@link TexformConfigError} with a field path. Enum
- * string values stay snake_case (`"sub_first"`). Passed to
- * {@link Document.toLatex} and {@link serialize}. For a task-oriented
- * walkthrough, see the Serialization guide.
- *
- * @see {@link Serialization}
  * @example
  * ```ts
- * const result = new Parser().parse(String.raw`x_i^2`);
- * if (!result.document) throw new Error('parse failed');
- * const syntax = result.document.toSyntax();
- * serialize(syntax, { scriptOrder: 'sup_first' }); // 'x ^ { 2 } _ { i }'
+ * const doc = new Parser().parse(String.raw`\frac{a}{b}+x_i^2`).document;
+ * doc.toLatex(); // '\\frac { a } { b } + x _ { i } ^ { 2 }'
+ * doc.toLatex({ style: 'compact' }); // '\\frac{a}{b}+x_i^2'
  * ```
  */
 export interface SerializeOptions {
-  /** Spacing around control sequences. Default `"spaced"`. */
-  commandSpacing?: CommandSpacing | null;
-  /** Inner spacing of math groups. Default `"padded"`. */
-  groupInnerSpacing?: MathGroupInnerSpacing | null;
-  /** Spacing between adjacent characters. Default `"spaced"`. */
-  adjacentCharSpacing?: AdjacentCharSpacing | null;
-  /** Spacing around script operators. Default `"spaced"`. */
-  scriptSpacing?: ScriptSpacing | null;
-  /** Order of subscript and superscript. Default `"sub_first"`. */
-  scriptOrder?: ScriptOrder | null;
-  /** Bracing of infix operands. Default `"when_required"`. */
-  infixOperandGrouping?: InfixGrouping | null;
-  /** Spacing after `\begin` / `\end`. Default `"spaced"`. */
-  environmentNameSpacing?: EnvironmentNameSpacing | null;
+  /**
+   * `"spaced"` (default when omitted or `null`) separates every token and is
+   * byte-stable across releases. `"compact"` keeps only required spaces and
+   * drops braces around single-token scripts; it preserves parsed structure,
+   * but its layout may improve across releases.
+   */
+  style?: Style | null;
 }
 
 /**
@@ -1732,7 +1678,7 @@ export interface TransformReport {
  * not build this object.
  */
 export interface NormalizeReportResult {
-  /** The canonical LaTeX after parsing and normalization. */
+  /** The serialized LaTeX after parsing and normalization. */
   normalized: string;
   /** The diagnostic report for this call. */
   report: TransformReport;
@@ -2084,7 +2030,7 @@ export class TransformEngine {
    * @param config - A {@link NormalizeConfig} overlay, or omit/`null` to use
    *   the engine defaults. The same `{ rewrite: { enabled: false } }` shape is
    *   accepted by {@link TransformEngine.transform}.
-   * @returns The canonical LaTeX string. This path does not build a report.
+   * @returns The serialized LaTeX string. This path does not build a report.
    * @example
    * ```ts
    * const engine = new TransformEngine({ profile: 'corpus' });
@@ -2165,8 +2111,7 @@ export class TransformEngine {
 }
 
 /**
- * Render a {@link SyntaxNode} object to LaTeX text using the canonical
- * serializer.
+ * Render a {@link SyntaxNode} object to LaTeX text.
  *
  * `Error` nodes round-trip their captured snippet. An ordinary `Prime` emits
  * `\prime` symbols, while a pure prime superscript serializes compactly as
@@ -2181,7 +2126,7 @@ export class TransformEngine {
  *   {@link Document.toSyntax} or a stored snapshot.
  * @param options - A {@link SerializeOptions} object, or omit/`null` for the
  *   default (spaced) style.
- * @returns The canonical LaTeX string.
+ * @returns The serialized LaTeX string.
  * @example
  * ```ts
  * import { Parser, serialize } from 'texform';
@@ -2189,8 +2134,8 @@ export class TransformEngine {
  * const result = new Parser().parse(String.raw`x^2`);
  * if (!result.document) throw new Error('parse failed');
  * const syntax = result.document.toSyntax();
- * serialize(syntax);                                                // 'x ^ { 2 }'
- * serialize(syntax, { scriptSpacing: 'compact' }); // 'x^{ 2 }'
+ * serialize(syntax);                       // 'x ^ { 2 }'
+ * serialize(syntax, { style: 'compact' }); // 'x^2'
  * ```
  */
 export function serialize(

@@ -312,7 +312,7 @@ const SCOPE_PACKAGES: &[&str] = &["base", "textmacros"];
 /// the table never hardcodes serializer spacing.
 type ScopeCase = (&'static str, &'static str, &'static str, char, char);
 
-/// A case whose canonical serialization the phase must leave unchanged.
+/// A case whose serialization the phase must leave unchanged.
 const fn kept(
     source: &'static str,
     declarative: &'static str,

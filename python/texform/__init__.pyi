@@ -115,7 +115,7 @@ Span: TypeAlias = dict[str, int]
 SerializationTokenKind = Literal[
     "control_sequence", "character", "delimiter", "text", "raw", "error"
 ]
-"""Semantic category of one canonical serialization fragment."""
+"""Semantic category of one serialization fragment."""
 ArgSpecKindType = Literal[
     "content",
     "operatorname",
@@ -194,7 +194,7 @@ class NodeSpanEntry(TypedDict):
 
 
 class SerializationToken(TypedDict):
-    """One canonical serialization fragment with UTF-8 byte offsets.
+    """One serialization fragment with UTF-8 byte offsets.
 
     ``start_byte`` / ``end_byte`` index the accompanying ``TokenizedLatex.latex``
     string and are UTF-8 byte offsets, not Python code-point indices. Spans do
@@ -203,8 +203,8 @@ class SerializationToken(TypedDict):
     Attributes:
         text: The UTF-8 decoding of the byte slice
             ``latex.encode("utf-8")[start_byte:end_byte]``.
-        start_byte: Inclusive UTF-8 byte offset into the canonical LaTeX string.
-        end_byte: Exclusive UTF-8 byte offset into the canonical LaTeX string.
+        start_byte: Inclusive UTF-8 byte offset into the serialized LaTeX string.
+        end_byte: Exclusive UTF-8 byte offset into the serialized LaTeX string.
         kind: Semantic category of the fragment (control sequence, character, ...).
         mode: Semantic math/text mode of the fragment, independent of spacing
             policy.
@@ -218,13 +218,13 @@ class SerializationToken(TypedDict):
 
 
 class TokenizedLatex(TypedDict):
-    """Canonical LaTeX and tokens produced by the same serializer traversal.
+    """Serialized LaTeX and tokens produced by the same serializer traversal.
 
     Text and tokenized output share one traversal and spacing policy; this is
     not a second lexer pass.
 
     Attributes:
-        latex: The canonical LaTeX string, identical to ``Document.to_latex()``.
+        latex: The serialized LaTeX string, identical to ``Document.to_latex()``.
         tokens: Ordered, non-overlapping, non-empty fragments. Gaps between
             spans contain serializer-inserted spacing.
     """
@@ -471,7 +471,7 @@ class NormalizeReportResult(TypedDict):
     object.
 
     Attributes:
-        normalized: The canonical LaTeX string.
+        normalized: The serialized LaTeX string.
         report: The diagnostic transform report for this call.
 
     See Also:
@@ -1083,19 +1083,18 @@ class Document:
         """
 
     def to_latex(self, **options: Unpack[SerializeOptions]) -> str:
-        """Serialize the tree back to LaTeX text using the canonical serializer.
+        """Serialize the tree back to LaTeX text.
 
         ``Error`` nodes round-trip their captured source snippet verbatim, so a
         partial tree round-trips losslessly. The serializer guarantees text
-        idempotency: re-parsing and re-serializing canonical output yields the
+        idempotency: re-parsing and re-serializing the output yields the
         same string. There is intentionally no method named ``serialize`` on
         ``Document``; this is the text channel and ``to_syntax()`` is the data
         channel.
 
         Args:
-            **options: Serializer style overlays. Omitted keys and explicit
-                ``None`` keep the default (spaced) style. See
-                ``SerializeOptions`` for the full option axes.
+            **options: ``SerializeOptions`` keywords. Omitted keys and
+                explicit ``None`` keep the default (spaced) style.
 
         Returns:
             The serialized LaTeX string.
@@ -1108,22 +1107,22 @@ class Document:
 
         Examples:
             doc = texform.Parser().parse(r"x^2")["document"]
-            doc.to_latex()                                              # 'x ^ { 2 }'
-            doc.to_latex(script_spacing="compact")                           # 'x^{ 2 }'
+            doc.to_latex()                  # 'x ^ { 2 }'
+            doc.to_latex(style="compact")   # 'x^2'
 
         See Also:
             SerializeOptions, serialize, Document.to_syntax
         """
 
     def to_tokenized_latex(self, **options: Unpack[SerializeOptions]) -> TokenizedLatex:
-        """Serialize canonical LaTeX together with typed output tokens.
+        """Serialize the tree to LaTeX together with typed output tokens.
 
         ``start_byte`` and ``end_byte`` are UTF-8 byte offsets, not Python
         string indices. Empty error snippets produce no zero-width token; use
         ``has_errors()`` to detect whether the document contains error nodes.
 
         Args:
-            options: Serializer style overlays. Same axes as ``to_latex``.
+            options: ``SerializeOptions`` keywords, as for ``to_latex``.
                 Omitted keys and explicit ``None`` keep the default (spaced)
                 style.
 
@@ -2370,7 +2369,7 @@ class TransformEngine:
         Normalization is gated on a complete tree. If the input cannot produce a
         complete tree, ``normalize`` raises ``ParseError`` carrying the
         diagnostics and the partial document. Empty input is complete and
-        normalizes normally. This path returns the canonical string and does
+        normalizes normally. This path returns the serialized string and does
         not build a report.
 
         Args:
@@ -2383,7 +2382,7 @@ class TransformEngine:
                 config class instances.
 
         Returns:
-            The canonical LaTeX string.
+            The serialized LaTeX string.
 
         Raises:
             ParseError: If the source does not parse into a complete tree.
@@ -2901,73 +2900,35 @@ def list_rules() -> list[RuleInfo]:
         RuleInfo, TransformEngine
     """
 
-CommandSpacing = Literal["spaced", "minimal"]
-"""Spacing around control sequences in serialized output: ``"spaced"`` pads
-around them; ``"minimal"`` emits only the separation LaTeX requires."""
-
-MathGroupInnerSpacing = Literal["padded", "compact"]
-"""Inner spacing of math groups: ``"padded"`` writes ``{ x }``; ``"compact"``
-writes ``{x}``."""
-
-AdjacentCharSpacing = Literal["spaced", "compact"]
-"""Spacing between adjacent characters: ``"spaced"`` writes ``a b c``;
-``"compact"`` writes ``abc``."""
-
-ScriptSpacing = Literal["spaced", "compact"]
-"""Spacing around script operators: ``"spaced"`` writes ``x _ { i } ^ { 2 }``;
-``"compact"`` writes ``x_{ i }^{ 2 }``."""
-
-ScriptOrder = Literal["sub_first", "sup_first"]
-"""Order of subscript and superscript in serialized output: ``"sub_first"``
-writes ``x _ { i } ^ { 2 }``; ``"sup_first"`` writes ``x ^ { 2 } _ { i }``."""
-
-InfixGrouping = Literal["always_explicit", "when_required"]
-"""Bracing of infix operands (``\\over``, ``\\atop``, ...):
-``"when_required"`` braces an operand only when the surrounding syntax needs
-it; ``"always_explicit"`` braces every non-empty operand."""
-
-EnvironmentNameSpacing = Literal["spaced", "compact"]
-"""Spacing after ``\\begin`` / ``\\end``: ``"spaced"`` writes
-``\\begin {matrix}``; ``"compact"`` writes ``\\begin{matrix}``."""
-
+Style = Literal["spaced", "compact"]
+"""Spaced output is byte-stable; compact preserves structure and text idempotency."""
 
 class SerializeOptions(TypedDict, total=False):
-    """Options controlling serialized LaTeX output style.
+    """Options for ``Document.to_latex``, ``Document.to_tokenized_latex``, and ``serialize``.
 
-    A flat dict keyed by snake_case names. Passed as keywords to
-    ``Document.to_latex`` and ``serialize``. Unknown keys and wrong types raise
-    ``ConfigError``. For a task-oriented walkthrough, see the Serialization
-    guide.
+    Passed as keywords. Omitted or ``None`` ``style`` selects the default
+    spaced style. Unknown keys and invalid values raise ``ConfigError``. For a
+    task-oriented walkthrough, see the Serialization guide.
 
     Attributes:
-        command_spacing: Spacing around control sequences. Default ``"spaced"``.
-        group_inner_spacing: Inner spacing of math groups. Default ``"padded"``.
-        adjacent_char_spacing: Spacing between adjacent characters. Default ``"spaced"``.
-        script_spacing: Spacing around script operators. Default ``"spaced"``.
-        script_order: Order of subscript and superscript. Default ``"sub_first"``.
-        infix_operand_grouping: Bracing of infix operands. Default ``"when_required"``.
-        environment_name_spacing: Spacing after ``\\begin`` / ``\\end``. Default ``"spaced"``.
+        style: ``"spaced"`` separates every token and is byte-stable across
+            releases. ``"compact"`` keeps only required spaces and drops braces
+            around single-token scripts; it preserves parsed structure, but its
+            layout may improve across releases.
 
     Examples:
-        result = texform.Parser().parse(r"x_i^2")
-        syntax = result["document"].to_syntax()
-        texform.serialize(syntax, script_order="sup_first")  # 'x ^ { 2 } _ { i }'
+        doc = texform.Parser().parse(r"\\frac{a}{b}+x_i^2")["document"]
+        doc.to_latex()                  # '\\frac { a } { b } + x _ { i } ^ { 2 }'
+        doc.to_latex(style="compact")   # '\\frac{a}{b}+x_i^2'
 
     See Also:
         Document.to_latex, serialize
     """
-
-    command_spacing: CommandSpacing | None
-    group_inner_spacing: MathGroupInnerSpacing | None
-    adjacent_char_spacing: AdjacentCharSpacing | None
-    script_spacing: ScriptSpacing | None
-    script_order: ScriptOrder | None
-    infix_operand_grouping: InfixGrouping | None
-    environment_name_spacing: EnvironmentNameSpacing | None
+    style: Style | None
 
 
 def serialize(node: SyntaxNode, **options: Unpack[SerializeOptions]) -> str:
-    """Render a ``SyntaxNode`` dict to LaTeX text using the canonical serializer.
+    """Render a ``SyntaxNode`` dict to LaTeX text.
 
     This is the free-function counterpart to ``Document.to_latex()``; both take
     the same keyword options. ``Error`` nodes round-trip their captured snippet,
@@ -2994,7 +2955,7 @@ def serialize(node: SyntaxNode, **options: Unpack[SerializeOptions]) -> str:
         assert document is not None
         syntax = document.to_syntax()
         texform.serialize(syntax)                                            # 'x ^ { 2 }'
-        texform.serialize(syntax, script_spacing="compact")                  # 'x^{ 2 }'
+        texform.serialize(syntax, style="compact")                          # 'x^2'
 
     See Also:
         SerializeOptions, Document.to_latex, Serialization

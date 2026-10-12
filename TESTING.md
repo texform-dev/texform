@@ -51,7 +51,7 @@ Corpus failures need investigation before baseline or allow-list changes. A tran
 
 ## Structural Round Trips
 
-`crates/texform-transform/tests/reparse_roundtrip.rs` checks parser and transform structure as well as output strings. To audit a prepared UTF-8 corpus containing one formula per line, run:
+`crates/texform-transform/tests/reparse_roundtrip.rs` checks parser and transform structure as well as output strings. To audit a prepared UTF-8 corpus containing one formula per line (or a `.jsonl` file containing one JSON string per line to preserve embedded newlines), run:
 
 ```bash
 TEXFORM_ROUNDTRIP_CORPUS=/path/to/formulas.txt cargo test --release -p texform-transform --test reparse_roundtrip -- --ignored --nocapture

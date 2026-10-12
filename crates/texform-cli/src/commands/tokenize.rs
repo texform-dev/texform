@@ -1,4 +1,4 @@
-//! `texform tokenize`: split the canonical serialization into typed tokens.
+//! `texform tokenize`: split the serialization into typed tokens.
 
 use std::process::ExitCode;
 
@@ -57,7 +57,7 @@ impl Pipeline {
 
     /// A complete document, normalized when a profile was given. The
     /// normalize path is `TransformEngine::normalize_with` stopped before
-    /// serialization. Token offsets refer to that canonical serialization.
+    /// serialization. Token offsets refer to that serialization.
     fn document(&self, latex: &str) -> Result<Document, texform::Error> {
         match self {
             Self::Parse { parser, config } => {

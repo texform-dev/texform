@@ -34,7 +34,7 @@ texform [--packages <a,b,...>] <COMMAND> [OPTIONS]
 | --- | --- |
 | [`normalize`](#texform-normalize) | Normalize formulas with a transform profile |
 | [`parse`](#texform-parse) | Parse formulas and inspect their syntax trees |
-| [`tokenize`](#texform-tokenize) | Split the canonical serialization of formulas into typed tokens |
+| [`tokenize`](#texform-tokenize) | Split the spaced serialization of formulas into typed tokens |
 | [`info`](#texform-info) | Show knowledge-base records for a control sequence or an environment |
 | [`packages`](#texform-packages) | List the built-in knowledge packages |
 | [`argspec validate`](#texform-argspec-validate) | Check an xparse-style argument specification |
@@ -94,12 +94,12 @@ The normalize config has the same keys and resolves the same way as the `normali
 ### `texform normalize`
 
 ```bash
-texform normalize --profile corpus 'a \over b'
+texform normalize --profile corpus --style compact 'a \over b'
 texform normalize --profile authoring --config '{"rewrite":{"enabled":false}}' --lines < formulas.txt
 texform normalize --profile corpus --report --json 'a \over b'
 ```
 
-`--profile` is required: one of `authoring`, `faithful`, `corpus`, or `equiv`. The output is identical to `TransformEngine::normalize_with` in the Rust facade for the same packages, profile, and config. `--report` adds the transform report to each result and requires `--json`.
+`--profile` is required: one of `authoring`, `faithful`, `corpus`, or `equiv`. The default `--style spaced` output is identical to `TransformEngine::normalize_with` in the Rust facade for the same packages, profile, and config. Choose `--style compact` for concise output such as `x_i^2`. Style also applies to `--json` and `--report`, and is separate from `--config`; `tokenize` always uses spaced output. `--report` adds the transform report to each result and requires `--json`.
 
 ```console
 $ printf '%s\n' 'a \over b' '\frac{a' '\dv{f}{x}' | texform normalize --profile corpus --lines 2>/dev/null
@@ -144,7 +144,7 @@ The diagnostic source is named `<argument>`, `<stdin>`, or `<line N>` after wher
 
 ### `texform tokenize`
 
-Lists tokens from the canonical serialization of each formula (`Document::to_tokenized_latex`), rather than lexing the original input. With `--profile`, the formula is normalized before tokenization. Partial documents fail as in `parse`.
+Lists tokens from the spaced serialization of each formula (`Document::to_tokenized_latex`), rather than lexing the original input. With `--profile`, the formula is normalized before tokenization. Partial documents fail as in `parse`.
 
 The default output is a compact list: `[kind("text"), kind("text", mode=text), ...]`. Human-readable kinds abbreviate `character` to `char`, `control_sequence` to `control_seq`, and `delimiter` to `delim`; `text`, `raw`, and `error` retain their names. JSON keeps the full kind names. Math mode is implicit; only non-math tokens show their mode. Text uses JSON string quoting to preserve spaces and escape newlines, quotes, and backslashes. Empty formulas print `[]`. Each formula occupies one output line, without colors, column alignment, or manual line wrapping. Under `--lines`, failures write an empty placeholder line and diagnostics go to stderr.
 
@@ -155,7 +155,7 @@ $ texform tokenize '\text{a b}'
 
 `--json` directly emits an array of token objects, without an `ok` or `latex` wrapper. Each object preserves the bindings' `text`, `kind`, `mode`, `start_byte`, and `end_byte` fields. An empty formula produces `[]`. Under `--lines`, each successful input line produces one array on one output line; a failure produces the standard error object, keeping the correspondence with input lines.
 
-Offsets refer to the canonical serialization, or the normalized serialization when `--profile` is supplied, not to the input string. Spaces between tokens belong to that serialization; joining token texts with spaces is not a way to reconstruct it, particularly in text mode.
+Offsets refer to the spaced serialization, or the normalized serialization when `--profile` is supplied, not to the input string. Spaces between tokens belong to that serialization; joining token texts with spaces is not a way to reconstruct it, particularly in text mode.
 
 ### `texform info`
 
@@ -233,7 +233,7 @@ valid: 3 arguments
 - `error.kind` is `parse` (the formula did not parse into a complete tree), `transform` (a normalization step failed), or `internal` (an internal error, including a panic inside TeXForm, which fails only that formula). `error.diagnostics` lists parse diagnostics for `parse` failures and is empty otherwise; each diagnostic has `kind`, `message`, `span` (`start` and `end` byte offsets into the formula), `expected`, `found`, and `contexts`. Failures carry `syntax` only from `parse`, and only when a partial document exists.
 - `syntax` is the serialized `SyntaxNode`, the tree format of `Document::to_syntax` in Rust, of `to_syntax()` in Python, and of `toSyntax()` in JavaScript.
 - `report` is the transform report of `normalize_with_report`. Its fields are diagnostic and carry no compatibility promise.
-- Each token is `{"text","start_byte","end_byte","kind","mode"}`. The offsets are UTF-8 byte offsets into the canonical serialization (after normalization when `--profile` is supplied); `kind` is `control_sequence`, `character`, `delimiter`, `text`, `raw`, or `error`, and `mode` is `math` or `text`.
+- Each token is `{"text","start_byte","end_byte","kind","mode"}`. The offsets are UTF-8 byte offsets into the spaced serialization (after normalization when `--profile` is supplied); `kind` is `control_sequence`, `character`, `delimiter`, `text`, `raw`, or `error`, and `mode` is `math` or `text`.
 - The `info` records are the results of `lookup_command`, `lookup_character`, and `lookup_env` in the bindings.
 
 ```console
@@ -283,7 +283,7 @@ A session looks like this (`→` is client to server, `←` is server to client;
 | Method | `params` | `result` |
 | --- | --- | --- |
 | `initialize` | `{}` | `{"protocolVersion":1,"serverInfo":{...}}` |
-| `configure` | `{"id":string,"config":{"profile":string,"packages"?:[string],"overrides"?:object}}` | `{"resolved":object}` |
+| `configure` | `{"id":string,"config":{"profile":string,"style"?:string,"packages"?:[string],"overrides"?:object}}` | `{"resolved":object}` |
 | `normalize` | `{"config":string,"latex":string,"timing"?:bool,"report"?:bool}` | `{"output":string,"timing"?:object,"report"?:object}` |
 | `shutdown` | `{}` | `null` |
 
@@ -305,17 +305,20 @@ Must be the first request. Any other method received earlier fails with `-32002`
 
 #### `configure`
 
+The optional `style` field sits beside `profile` and accepts `"spaced"` (default) or `"compact"`. `resolved.style` echoes the effective value. Invalid styles return invalid params without replacing the existing session configuration.
+
 Builds a normalizer from `config` and stores it under `id` for later `normalize` requests. Configuring an existing `id` replaces its entry; a failed `configure` leaves the previous entry unchanged.
 
 - `profile`: one of `authoring`, `faithful`, `corpus`, `equiv`. It selects the rule set and the default config.
 - `packages`: knowledge packages to load. When omitted, the server's `--packages` value applies, and without that, the same seven runtime packages as the library (`physics` is opt-in). Clients that need a fixed selection should specify it explicitly and record `resolved`.
-- `overrides`: config values layered over the profile defaults. It accepts any subset of the keys in `resolved` other than `profile` and `packages`, with the same nesting; nested objects may also be partial.
+- `overrides`: config values layered over the profile defaults. It accepts any subset of the keys in `resolved` other than `profile`, `style`, and `packages`, with the same nesting; nested objects may also be partial.
 
 `resolved` is the complete effective config, suitable for recording alongside results:
 
 ```json
 {
   "profile": "authoring",
+  "style": "spaced",
   "packages": ["ams", "base", "bboldx", "boldsymbol", "braket", "color", "textmacros"],
   "reject_unknown": false,
   "abort_on_error": false,

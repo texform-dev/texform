@@ -5,10 +5,8 @@ use texform_core::{
     ast::{Argument, ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId},
     parse::{AllowedMode, CommandKind, ParseContext},
     serialize::{
-        AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, InfixGrouping,
-        MathGroupInnerSpacing, ScriptOrder, ScriptSpacing, SerializationTokenKind,
-        SerializeOptions, TokenizedLatex, serialize, serialize_tokenized, serialize_tokenized_with,
-        serialize_with,
+        SerializationTokenKind, SerializeOptions, Style, TokenizedLatex, serialize,
+        serialize_tokenized, serialize_tokenized_with, serialize_with,
     },
 };
 
@@ -188,10 +186,7 @@ fn escaped_ampersand_stays_literal_and_alignment_tabs_stay_bare() {
 fn tokenized_options_never_change_canonical_text() {
     let ast = parse_to_ast(r"\sqrt[3]{x_i}");
     let options = SerializeOptions {
-        script_spacing: ScriptSpacing::Compact,
-        group_inner_spacing: MathGroupInnerSpacing::Compact,
-        command_spacing: CommandSpacing::Minimal,
-        ..SerializeOptions::default()
+        style: Style::Compact,
     };
 
     let result = serialize_tokenized_with(&ast, &options);
@@ -375,33 +370,30 @@ fn test_serialize_root_does_not_emit_extra_braces() {
 }
 
 #[test]
-fn test_serialize_with_minimal_command_spacing() {
+fn test_serialize_with_compact_style() {
     let ast = parse_to_ast(r"\sqrt{a}");
     let options = SerializeOptions {
-        command_spacing: CommandSpacing::Minimal,
-        ..SerializeOptions::default()
+        style: Style::Compact,
     };
 
-    assert_eq!(serialize_with(&ast, &options), r"\sqrt{ a }");
+    assert_eq!(serialize_with(&ast, &options), r"\sqrt{a}");
 }
 
 #[test]
 fn test_compact_math_group_inner_spacing_affects_command_wrapper_braces() {
     let ast = parse_to_ast(r"\sqrt{a}");
     let options = SerializeOptions {
-        group_inner_spacing: MathGroupInnerSpacing::Compact,
-        ..SerializeOptions::default()
+        style: Style::Compact,
     };
 
-    assert_eq!(serialize_with(&ast, &options), r"\sqrt {a}");
+    assert_eq!(serialize_with(&ast, &options), r"\sqrt{a}");
 }
 
 #[test]
 fn test_serialize_with_compact_adjacent_char_spacing() {
     let ast = parse_to_ast("a+b");
     let options = SerializeOptions {
-        adjacent_char_spacing: AdjacentCharSpacing::Compact,
-        ..SerializeOptions::default()
+        style: Style::Compact,
     };
 
     assert_eq!(serialize_with(&ast, &options), "a+b");
@@ -498,19 +490,6 @@ fn test_serialize_prime_superscript_uses_shorthand() {
 }
 
 #[test]
-fn test_serialize_prime_superscript_respects_script_order() {
-    assert_eq!(serialize(&parse_to_ast("f_n'")), "f _ { n }'");
-
-    let ast = parse_to_ast("f_n'");
-    let options = SerializeOptions {
-        script_order: ScriptOrder::SupFirst,
-        ..SerializeOptions::default()
-    };
-
-    assert_eq!(serialize_with(&ast, &options), "f' _ { n }");
-}
-
-#[test]
 fn test_serialize_mixed_prime_superscript_keeps_script_group() {
     assert_eq!(serialize(&parse_to_ast("f'^2")), r"f ^ { \prime 2 }");
 }
@@ -554,8 +533,7 @@ fn bare_quote_and_nested_quote_preserve_their_empty_base() {
     }
 
     let compact = SerializeOptions {
-        group_inner_spacing: MathGroupInnerSpacing::Compact,
-        ..SerializeOptions::default()
+        style: Style::Compact,
     };
     assert_eq!(serialize_with(&parse_to_ast("'"), &compact), "{}'");
 }
@@ -586,22 +564,10 @@ fn grouped_prime_superscript_uses_prime_commands() {
 fn test_compact_math_group_inner_spacing_affects_script_wrapper_braces() {
     let ast = parse_to_ast("x^2_i");
     let options = SerializeOptions {
-        group_inner_spacing: MathGroupInnerSpacing::Compact,
-        ..SerializeOptions::default()
+        style: Style::Compact,
     };
 
-    assert_eq!(serialize_with(&ast, &options), "x _ {i} ^ {2}");
-}
-
-#[test]
-fn test_serialize_with_sup_first_order() {
-    let ast = parse_to_ast("x_i^2");
-    let options = SerializeOptions {
-        script_order: ScriptOrder::SupFirst,
-        ..SerializeOptions::default()
-    };
-
-    assert_eq!(serialize_with(&ast, &options), "x ^ { 2 } _ { i }");
+    assert_eq!(serialize_with(&ast, &options), "x_i^2");
 }
 
 #[test]
@@ -644,13 +610,12 @@ fn test_empty_group_uses_single_inner_padding_space() {
 
 #[test]
 fn test_compact_math_group_inner_spacing_removes_brace_padding() {
-    let ast = parse_to_ast("{} {a}");
+    let ast = parse_to_ast("{}{a}");
     let options = SerializeOptions {
-        group_inner_spacing: MathGroupInnerSpacing::Compact,
-        ..SerializeOptions::default()
+        style: Style::Compact,
     };
 
-    assert_eq!(serialize_with(&ast, &options), "{} {a}");
+    assert_eq!(serialize_with(&ast, &options), "{}{a}");
 }
 
 #[test]
@@ -958,28 +923,25 @@ fn test_serialize_environment_uses_spaced_header_by_default() {
 fn test_serialize_with_compact_environment_header() {
     let ast = parse_to_ast(r"\begin {matrix}ab\end {matrix}");
     let options = SerializeOptions {
-        environment_name_spacing: EnvironmentNameSpacing::Compact,
-        ..SerializeOptions::default()
+        style: Style::Compact,
     };
 
     assert_eq!(
         serialize_with(&ast, &options),
-        r"\begin{matrix} a b \end{matrix}"
+        r"\begin{matrix}ab\end{matrix}"
     );
 }
 
 #[test]
-fn test_environment_name_spacing_is_independent_from_command_spacing() {
+fn compact_environment_headers_and_content_share_style() {
     let ast = parse_to_ast(r"\begin {matrix}ab\end {matrix}");
     let options = SerializeOptions {
-        command_spacing: CommandSpacing::Minimal,
-        environment_name_spacing: EnvironmentNameSpacing::Spaced,
-        ..SerializeOptions::default()
+        style: Style::Compact,
     };
 
     assert_eq!(
         serialize_with(&ast, &options),
-        r"\begin {matrix} a b \end {matrix}"
+        r"\begin{matrix}ab\end{matrix}"
     );
 }
 
@@ -1013,22 +975,10 @@ fn test_serialize_flat_declarative_without_scope_wrapper() {
 }
 
 #[test]
-fn test_serialize_infix_always_explicit_groups_operands() {
-    let ast = parse_to_ast(r"a \over b");
-    let options = SerializeOptions {
-        infix_operand_grouping: InfixGrouping::AlwaysExplicit,
-        ..SerializeOptions::default()
-    };
-
-    assert_eq!(serialize_with(&ast, &options), r"{ a } \over { b }");
-}
-
-#[test]
 fn test_serialize_infix_when_required_keeps_nested_braces() {
     let ast = parse_to_ast(r"{a \over b} \over c");
     let options = SerializeOptions {
-        infix_operand_grouping: InfixGrouping::WhenRequired,
-        ..SerializeOptions::default()
+        style: Style::Spaced,
     };
 
     assert_eq!(serialize_with(&ast, &options), r"{ a \over b } \over c");
@@ -1038,35 +988,10 @@ fn test_serialize_infix_when_required_keeps_nested_braces() {
 fn test_serialize_infix_when_required_keeps_flat_declarative_unbraced() {
     let ast = parse_to_ast(r"a \displaystyle b \over c");
     let options = SerializeOptions {
-        infix_operand_grouping: InfixGrouping::WhenRequired,
-        ..SerializeOptions::default()
+        style: Style::Spaced,
     };
 
     assert_eq!(serialize_with(&ast, &options), r"a \displaystyle b \over c");
-}
-
-#[test]
-fn test_serialize_infix_empty_left_operand_stays_unbraced() {
-    let ast = parse_to_ast(r"\over x");
-    let explicit = SerializeOptions {
-        infix_operand_grouping: InfixGrouping::AlwaysExplicit,
-        ..SerializeOptions::default()
-    };
-
-    assert_eq!(serialize(&ast), r"\over x");
-    assert_eq!(serialize_with(&ast, &explicit), r"\over { x }");
-}
-
-#[test]
-fn test_serialize_infix_empty_right_operand_stays_unbraced() {
-    let ast = parse_to_ast(r"x \over");
-    let explicit = SerializeOptions {
-        infix_operand_grouping: InfixGrouping::AlwaysExplicit,
-        ..SerializeOptions::default()
-    };
-
-    assert_eq!(serialize(&ast), r"x \over");
-    assert_eq!(serialize_with(&ast, &explicit), r"{ x } \over");
 }
 
 #[test]
@@ -1268,33 +1193,30 @@ fn test_serialize_text_mode_paired_scalar_stays_compact() {
 fn test_serialize_with_compact_script_spacing() {
     let ast = parse_to_ast("x^2_i");
     let options = SerializeOptions {
-        script_spacing: ScriptSpacing::Compact,
-        ..SerializeOptions::default()
+        style: Style::Compact,
     };
 
-    assert_eq!(serialize_with(&ast, &options), "x_{ i }^{ 2 }");
+    assert_eq!(serialize_with(&ast, &options), "x_i^2");
 }
 
 #[test]
-fn test_serialize_minimal_command_spacing_compacts_left_right_delimiter() {
+fn test_serialize_compact_style_compacts_left_right_delimiter() {
     let ast = parse_to_ast(r"\left (a+b\right )");
     let options = SerializeOptions {
-        command_spacing: CommandSpacing::Minimal,
-        ..SerializeOptions::default()
+        style: Style::Compact,
     };
 
-    assert_eq!(serialize_with(&ast, &options), r"\left( a + b \right)");
+    assert_eq!(serialize_with(&ast, &options), r"\left(a+b\right)");
 }
 
 #[test]
 fn test_compact_math_group_inner_spacing_affects_optional_argument_brackets() {
     let ast = parse_to_ast(r"\sqrt[3]{x}");
     let options = SerializeOptions {
-        group_inner_spacing: MathGroupInnerSpacing::Compact,
-        ..SerializeOptions::default()
+        style: Style::Compact,
     };
 
-    assert_eq!(serialize_with(&ast, &options), r"\sqrt [3] {x}");
+    assert_eq!(serialize_with(&ast, &options), r"\sqrt[3]{x}");
 }
 
 #[test]
@@ -1303,24 +1225,19 @@ fn test_until_argument_keeps_one_protective_brace_layer() {
     // serializer always restores exactly one: explicit inner groups survive and
     // braced terminators stay inside the argument.
     let compact = SerializeOptions {
-        group_inner_spacing: MathGroupInnerSpacing::Compact,
-        ..SerializeOptions::default()
+        style: Style::Compact,
     };
     for (src, padded, compacted) in [
-        (
-            r"\root n\of x",
-            r"\root { n }\of { x }",
-            r"\root {n}\of {x}",
-        ),
+        (r"\root n\of x", r"\root { n }\of { x }", r"\root{n}\of{x}"),
         (
             r"\root{{n}}\of{x}",
             r"\root { { n } }\of { x }",
-            r"\root {{n}}\of {x}",
+            r"\root{{n}}\of{x}",
         ),
         (
             r"\root{a\of b}\of x",
             r"\root { a \of b }\of { x }",
-            r"\root {a \of b}\of {x}",
+            r"\root{a\of b}\of{x}",
         ),
     ] {
         let ast = parse_to_ast(src);
@@ -1377,45 +1294,15 @@ fn test_serialize_is_text_idempotent_for_canonical_samples() {
     }
 }
 
-fn all_serialize_option_combinations() -> Vec<SerializeOptions> {
-    let mut options = Vec::with_capacity(128);
-    for command_spacing in [CommandSpacing::Spaced, CommandSpacing::Minimal] {
-        for group_inner_spacing in [
-            MathGroupInnerSpacing::Padded,
-            MathGroupInnerSpacing::Compact,
-        ] {
-            for adjacent_char_spacing in [AdjacentCharSpacing::Spaced, AdjacentCharSpacing::Compact]
-            {
-                for script_spacing in [ScriptSpacing::Spaced, ScriptSpacing::Compact] {
-                    for script_order in [ScriptOrder::SubFirst, ScriptOrder::SupFirst] {
-                        for infix_operand_grouping in
-                            [InfixGrouping::WhenRequired, InfixGrouping::AlwaysExplicit]
-                        {
-                            for environment_name_spacing in [
-                                EnvironmentNameSpacing::Spaced,
-                                EnvironmentNameSpacing::Compact,
-                            ] {
-                                options.push(SerializeOptions {
-                                    command_spacing,
-                                    group_inner_spacing,
-                                    adjacent_char_spacing,
-                                    script_spacing,
-                                    script_order,
-                                    infix_operand_grouping,
-                                    environment_name_spacing,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    options
+fn all_styles() -> Vec<SerializeOptions> {
+    [Style::Spaced, Style::Compact]
+        .into_iter()
+        .map(Into::into)
+        .collect()
 }
 
 #[test]
-fn every_serialize_option_combination_matches_tokenized_latex() {
+fn every_style_matches_tokenized_latex() {
     let complete = [
         r"\sqrt[3]{x}",
         r"\text{a}",
@@ -1439,8 +1326,8 @@ fn every_serialize_option_combination_matches_tokenized_latex() {
     };
     let trees = complete.iter().chain(std::iter::once(&error));
 
-    let combinations = all_serialize_option_combinations();
-    assert_eq!(combinations.len(), 128);
+    let combinations = all_styles();
+    assert_eq!(combinations.len(), 2);
 
     for ast in trees {
         for options in &combinations {
@@ -1453,7 +1340,7 @@ fn every_serialize_option_combination_matches_tokenized_latex() {
 }
 
 #[test]
-fn every_serialize_option_combination_is_text_idempotent_on_complete_formulas() {
+fn every_style_is_text_idempotent_on_complete_formulas() {
     let sources = [
         r"\sqrt[3]{x}",
         r"\text{a}",
@@ -1465,7 +1352,7 @@ fn every_serialize_option_combination_is_text_idempotent_on_complete_formulas() 
         "f'",
         "f'^2",
     ];
-    let combinations = all_serialize_option_combinations();
+    let combinations = all_styles();
 
     for src in sources {
         let ast = parse_to_ast(src);
@@ -1575,23 +1462,13 @@ fn text_wrapper(nodes: Vec<Node>) -> Ast {
     ast
 }
 
-fn minimal_command_spacing() -> SerializeOptions {
+fn compact_style() -> SerializeOptions {
     SerializeOptions {
-        command_spacing: CommandSpacing::Minimal,
-        ..SerializeOptions::default()
+        style: Style::Compact,
     }
 }
 
 /// Every optional space the options can remove, removed at once.
-fn fully_compact() -> SerializeOptions {
-    SerializeOptions {
-        command_spacing: CommandSpacing::Minimal,
-        group_inner_spacing: MathGroupInnerSpacing::Compact,
-        adjacent_char_spacing: AdjacentCharSpacing::Compact,
-        script_spacing: ScriptSpacing::Compact,
-        ..SerializeOptions::default()
-    }
-}
 
 #[test]
 fn text_control_symbols_do_not_inject_body_whitespace() {
@@ -1662,13 +1539,13 @@ fn handcrafted_control_word_keeps_lexical_separator_under_compact_options() {
     let text = text_wrapper(vec![command_node("dagger"), Node::Char('x')]);
     for options in [
         SerializeOptions::default(),
-        minimal_command_spacing(),
-        fully_compact(),
+        compact_style(),
+        compact_style(),
     ] {
         assert_eq!(serialize_with(&math, &options), r"\alpha x");
-        let text_expected = match options.command_spacing {
-            CommandSpacing::Spaced => r"\text {\dagger x}",
-            CommandSpacing::Minimal => r"\text{\dagger x}",
+        let text_expected = match options.style {
+            Style::Spaced => r"\text {\dagger x}",
+            Style::Compact => r"\text{\dagger x}",
         };
         assert_eq!(serialize_with(&text, &options), text_expected);
     }
@@ -1678,7 +1555,7 @@ fn handcrafted_control_word_keeps_lexical_separator_under_compact_options() {
     let letter = grouped.new_node(Node::Char('x'));
     let group = group_node(&mut grouped, ContentMode::Math, &[command, letter]);
     grouped.append_child(grouped.root(), group);
-    assert_eq!(serialize_with(&grouped, &fully_compact()), r"{\alpha x}");
+    assert_eq!(serialize_with(&grouped, &compact_style()), r"{\alpha x}");
 
     // The separator is a real gap between two tokens, and it survives a round
     // trip through the parser.
@@ -1725,7 +1602,7 @@ fn handcrafted_control_word_does_not_add_lexical_space_before_digit_whitespace_o
     nested.append_child(nested.root(), text);
     assert_eq!(serialize(&nested), r"\text {\dagger{x}}");
     assert_eq!(
-        serialize_with(&nested, &minimal_command_spacing()),
+        serialize_with(&nested, &compact_style()),
         r"\text{\dagger{x}}"
     );
 
@@ -1736,10 +1613,7 @@ fn handcrafted_control_word_does_not_add_lexical_space_before_digit_whitespace_o
     math_group.append_child(math_group.root(), alpha);
     math_group.append_child(math_group.root(), brace);
     assert_eq!(serialize(&math_group), r"\alpha { 1 }");
-    assert_eq!(
-        serialize_with(&math_group, &minimal_command_spacing()),
-        r"\alpha{ 1 }"
-    );
+    assert_eq!(serialize_with(&math_group, &compact_style()), r"\alpha{1}");
 }
 
 #[test]
@@ -1755,7 +1629,7 @@ fn starprobe_star_does_not_inject_text_space() {
     let text = parse_to_ast_with_context(&ctx, r"\text{\starprobe*x}");
     assert_eq!(serialize(&text), r"\text {\starprobe*x}");
     assert_eq!(
-        serialize_with(&text, &minimal_command_spacing()),
+        serialize_with(&text, &compact_style()),
         r"\text{\starprobe*x}"
     );
 
@@ -1775,26 +1649,23 @@ fn starprobe_star_does_not_inject_text_space() {
 
     let math = parse_to_ast_with_context(&ctx, r"\starprobe*x");
     assert_eq!(serialize(&math), r"\starprobe* x");
-    assert_eq!(
-        serialize_with(&math, &minimal_command_spacing()),
-        r"\starprobe* x"
-    );
+    assert_eq!(serialize_with(&math, &compact_style()), r"\starprobe*x");
 }
 
 #[test]
-fn minimal_operatorname_star_keeps_math_space_after_argument() {
+fn compact_operatorname_star_keeps_argument_tight() {
     // The star glues to the name and the argument stays compact, but the math
     // atom after the argument still needs its optional space.
     let ast = parse_to_ast(r"\operatorname*{x}y");
-    let options = minimal_command_spacing();
-    assert_eq!(serialize_with(&ast, &options), r"\operatorname*{x} y");
+    let options = compact_style();
+    assert_eq!(serialize_with(&ast, &options), r"\operatorname*{x}y");
     assert_eq!(
         serialize_with(&parse_to_ast(&serialize_with(&ast, &options)), &options),
-        r"\operatorname*{x} y"
+        r"\operatorname*{x}y"
     );
 
     let tokenized = serialize_tokenized_with(&ast, &options);
-    assert_eq!(tokenized.latex, r"\operatorname*{x} y");
+    assert_eq!(tokenized.latex, r"\operatorname*{x}y");
     assert_token_contract(&tokenized);
     let star = token_at(&tokenized, "*");
     assert_eq!(tokenized.tokens[star - 1].text, r"\operatorname");
@@ -1806,7 +1677,7 @@ fn minimal_operatorname_star_keeps_math_space_after_argument() {
     );
     let follower = token_at(&tokenized, "y");
     assert_eq!(tokenized.tokens[follower].mode, ContentMode::Math);
-    assert_eq!(gap_before(&tokenized, follower), " ");
+    assert_eq!(gap_before(&tokenized, follower), "");
 }
 
 #[test]
@@ -1822,12 +1693,11 @@ fn direct_output_paths_keep_a_single_written_space() {
     assert_eq!(tokenized.tokens[begin + 1].text, "{");
     assert_eq!(gap_before(&tokenized, begin + 1), " ");
     let compact_name = SerializeOptions {
-        environment_name_spacing: EnvironmentNameSpacing::Compact,
-        ..SerializeOptions::default()
+        style: Style::Compact,
     };
     assert_eq!(
         serialize_with(&matrix, &compact_name),
-        r"\begin{matrix} x \end{matrix}"
+        r"\begin{matrix}x\end{matrix}"
     );
 
     let empty = serialize_tokenized(&parse_to_ast("{}"));
@@ -1837,10 +1707,7 @@ fn direct_output_paths_keep_a_single_written_space() {
 
     let frac = parse_to_ast(r"\frac{}{a}");
     assert_eq!(serialize(&frac), r"\frac { } { a }");
-    assert_eq!(
-        serialize_with(&frac, &minimal_command_spacing()),
-        r"\frac{ } { a }"
-    );
+    assert_eq!(serialize_with(&frac, &compact_style()), r"\frac{}{a}");
 
     // A padded empty group right after a control word keeps exactly one space.
     let mut padded = Ast::new();
@@ -1849,10 +1716,7 @@ fn direct_output_paths_keep_a_single_written_space() {
     padded.append_child(padded.root(), command);
     padded.append_child(padded.root(), group);
     assert_eq!(serialize(&padded), r"\alpha { }");
-    assert_eq!(
-        serialize_with(&padded, &minimal_command_spacing()),
-        r"\alpha{ }"
-    );
+    assert_eq!(serialize_with(&padded, &compact_style()), r"\alpha{}");
 }
 
 #[test]
@@ -1870,20 +1734,6 @@ fn empty_error_keeps_control_word_separation_for_the_next_atom() {
         vec![command_node("alpha"), empty_error_node(), Node::Char('1')],
     );
     assert_eq!(serialize(&digit), r"\alpha1");
-}
-
-#[test]
-fn serialize_options_serde_fills_omitted_fields_from_defaults() {
-    let options: SerializeOptions =
-        serde_json::from_str(r#"{"script_order":"sup_first"}"#).unwrap();
-    assert_eq!(options.script_order, ScriptOrder::SupFirst);
-    assert_eq!(
-        options,
-        SerializeOptions {
-            script_order: ScriptOrder::SupFirst,
-            ..SerializeOptions::default()
-        }
-    );
 }
 
 #[test]
@@ -1905,14 +1755,8 @@ fn constructed_optional_content_protects_closing_tokens_in_all_spacing_styles() 
             ))],
         });
         ast.append_child(ast.root(), command);
-        for spacing in [
-            MathGroupInnerSpacing::Padded,
-            MathGroupInnerSpacing::Compact,
-        ] {
-            let options = SerializeOptions {
-                group_inner_spacing: spacing,
-                ..SerializeOptions::default()
-            };
+        for style in [Style::Spaced, Style::Compact] {
+            let options = SerializeOptions { style };
             let result = serialize_tokenized_with(&ast, &options);
             assert_eq!(result.latex, serialize_with(&ast, &options));
             assert_token_contract(&result);
@@ -1942,4 +1786,128 @@ fn nested_optional_arguments_reuse_protection_decisions() {
     let output = serialize(&ast);
     assert_eq!(serialize(&parse_to_ast(&output)), output);
     assert_eq!(serialize_tokenized(&ast).latex, output);
+}
+
+#[test]
+fn compact_style_keeps_lexical_boundaries_and_readable_scripts() {
+    let options = Style::Compact.into();
+    for (source, expected) in [
+        (r"\frac{a}{b}+x_i^2", r"\frac{a}{b}+x_i^2"),
+        (
+            r"\left(\sin\theta\right)+f'(x)",
+            r"\left(\sin\theta\right)+f'(x)",
+        ),
+        (
+            r"\begin{pmatrix}a&b\\c&d\end{pmatrix}",
+            r"\begin{pmatrix}a&b\\c&d\end{pmatrix}",
+        ),
+        (
+            r"\begin{aligned}a\\ [6pt] b\end{aligned}",
+            r"\begin{aligned}a\\ [6pt]b\end{aligned}",
+        ),
+        (r"\alpha x+x^{10}", r"\alpha x+x^{10}"),
+        (r"x^{2}3+x_{i}y", r"x^2 3+x_i y"),
+        (r"x_{\alpha}y+x_{\alpha}2", r"x_\alpha y+x_\alpha 2"),
+        (r"x_{\{}y+x_{\%}2", r"x_\{ y+x_\% 2"),
+        (r"\Gamma_{\prime}", r"\Gamma_\prime"),
+        (r"x_{~}y+x_{\displaystyle}", r"x_~ y+x_\displaystyle"),
+        (
+            r"x^{\frac{a}{b}}+x_{ij}+x^{}",
+            r"x^{\frac{a}{b}}+x_{ij}+x^{}",
+        ),
+        (r"x_{{i}}+x_{\prime\prime}", r"x_{{i}}+x_{\prime\prime}"),
+    ] {
+        let ast = parse_to_ast(source);
+        let output = serialize_with(&ast, &options);
+        assert_eq!(output, expected, "{source}");
+        assert_eq!(
+            serialize_with(&parse_to_ast(&output), &options),
+            output,
+            "{source}"
+        );
+        let tokenized = serialize_tokenized_with(&ast, &options);
+        assert_eq!(tokenized.latex, output);
+        assert_token_contract(&tokenized);
+    }
+}
+
+#[test]
+fn style_options_reject_removed_keys_and_invalid_values() {
+    for key in [
+        "command_spacing",
+        "group_inner_spacing",
+        "adjacent_char_spacing",
+        "script_spacing",
+        "script_order",
+        "infix_operand_grouping",
+        "environment_name_spacing",
+    ] {
+        let error = serde_json::from_value::<SerializeOptions>(serde_json::json!({key: "compact"}))
+            .unwrap_err();
+        assert!(error.to_string().contains("style"));
+    }
+    for value in ["pretty", "Compact", ""] {
+        let error = serde_json::from_value::<SerializeOptions>(serde_json::json!({"style": value}))
+            .unwrap_err();
+        assert!(error.to_string().contains("spaced"));
+        assert!(error.to_string().contains("compact"));
+    }
+    assert_eq!(
+        serde_json::from_str::<SerializeOptions>("{}").unwrap(),
+        Style::Spaced.into()
+    );
+}
+
+#[test]
+fn compact_script_tests_emitted_arguments_instead_of_slot_count() {
+    let ctx = texform_core::parse::ParseContextBuilder::empty()
+        .item(support::command_item(
+            "probe",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "s o",
+        ))
+        .build()
+        .unwrap();
+    let options = Style::Compact.into();
+    for (source, expected) in [
+        (r"x_{\probe}2", r"x_\probe 2"),
+        (r"x_{\probe*}", r"x_{\probe*}"),
+        (r"x_{\probe[a]}", r"x_{\probe[a]}"),
+    ] {
+        let ast = parse_to_ast_with_context(&ctx, source);
+        let output = serialize_with(&ast, &options);
+        assert_eq!(output, expected);
+        assert_eq!(
+            serialize_with(&parse_to_ast_with_context(&ctx, &output), &options),
+            output
+        );
+    }
+}
+
+#[test]
+fn environment_header_spacing_does_not_change_text_token_modes() {
+    let mut ast = ast_with(ContentMode::Text, vec![]);
+    let child = ast.new_node(Node::Char('x'));
+    let body = group_node(&mut ast, ContentMode::Text, &[child]);
+    let env = ast.new_node(Node::Environment {
+        name: "probe".into(),
+        args: vec![],
+        body,
+        known: false,
+    });
+    ast.append_child(ast.root(), env);
+    for (style, expected) in [
+        (Style::Spaced, r"\begin {probe}{x}\end {probe}"),
+        (Style::Compact, r"\begin{probe}{x}\end{probe}"),
+    ] {
+        let result = serialize_tokenized_with(&ast, &style.into());
+        assert_eq!(result.latex, expected);
+        assert!(
+            result
+                .tokens
+                .iter()
+                .all(|token| token.mode == ContentMode::Text)
+        );
+    }
 }

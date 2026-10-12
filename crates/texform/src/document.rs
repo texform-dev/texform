@@ -685,7 +685,7 @@ impl Document {
         self.inner.to_syntax()
     }
 
-    /// Serialize the tree to canonical LaTeX text.
+    /// Serialize the tree to LaTeX text in the selected style.
     ///
     /// Parsed and normalized output retains the existing text-idempotency
     /// contract. Arbitrarily constructed or edited trees need not serialize
@@ -707,7 +707,7 @@ impl Document {
         self.inner.to_latex_with(options)
     }
 
-    /// Serialize to canonical LaTeX and record typed output tokens in the same pass.
+    /// Serialize to LaTeX and record typed output tokens in the same pass.
     ///
     /// Every token has a closed semantic kind and a UTF-8 byte span into `latex`.
     /// The token stream is not an error-node inventory: use [`Self::has_errors`]

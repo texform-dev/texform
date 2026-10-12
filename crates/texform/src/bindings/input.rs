@@ -3,10 +3,7 @@ use crate::{
     EnvironmentItem, FinalizeAstConfig, FlattenGroupsConfig, LowerAttributesConfig,
     NormalizeConfig, ParseConfig, RewriteConfig, SerializeOptions, TransformConfig,
 };
-use texform_core::serialize::{
-    AdjacentCharSpacing, CommandSpacing, EnvironmentNameSpacing, InfixGrouping,
-    MathGroupInnerSpacing, ScriptOrder, ScriptSpacing,
-};
+use texform_core::serialize::Style;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(default, deny_unknown_fields, expecting = "an object")]
@@ -223,50 +220,19 @@ impl NormalizeConfigInput {
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(default, deny_unknown_fields, expecting = "an object")]
 pub struct SerializeOptionsInput {
-    pub command_spacing: Option<CommandSpacing>,
-    pub group_inner_spacing: Option<MathGroupInnerSpacing>,
-    pub adjacent_char_spacing: Option<AdjacentCharSpacing>,
-    pub script_spacing: Option<ScriptSpacing>,
-    pub script_order: Option<ScriptOrder>,
-    pub infix_operand_grouping: Option<InfixGrouping>,
-    pub environment_name_spacing: Option<EnvironmentNameSpacing>,
+    pub style: Option<Style>,
 }
 
 impl SerializeOptionsInput {
     pub fn into_config(self, mut base: SerializeOptions) -> SerializeOptions {
-        if let Some(command_spacing) = self.command_spacing {
-            base.command_spacing = command_spacing;
-        }
-        if let Some(group_inner_spacing) = self.group_inner_spacing {
-            base.group_inner_spacing = group_inner_spacing;
-        }
-        if let Some(adjacent_char_spacing) = self.adjacent_char_spacing {
-            base.adjacent_char_spacing = adjacent_char_spacing;
-        }
-        if let Some(script_spacing) = self.script_spacing {
-            base.script_spacing = script_spacing;
-        }
-        if let Some(script_order) = self.script_order {
-            base.script_order = script_order;
-        }
-        if let Some(infix_operand_grouping) = self.infix_operand_grouping {
-            base.infix_operand_grouping = infix_operand_grouping;
-        }
-        if let Some(environment_name_spacing) = self.environment_name_spacing {
-            base.environment_name_spacing = environment_name_spacing;
+        if let Some(style) = self.style {
+            base.style = style;
         }
         base
     }
-
     pub fn from_config(config: SerializeOptions) -> Self {
         Self {
-            command_spacing: Some(config.command_spacing),
-            group_inner_spacing: Some(config.group_inner_spacing),
-            adjacent_char_spacing: Some(config.adjacent_char_spacing),
-            script_spacing: Some(config.script_spacing),
-            script_order: Some(config.script_order),
-            infix_operand_grouping: Some(config.infix_operand_grouping),
-            environment_name_spacing: Some(config.environment_name_spacing),
+            style: Some(config.style),
         }
     }
 }
@@ -819,26 +785,17 @@ mod tests {
     fn serialize_options_input_partial_overlay_changes_only_set_leaf() {
         let base = SerializeOptions::default();
         let out = SerializeOptionsInput {
-            script_order: Some(ScriptOrder::SupFirst),
-            ..Default::default()
+            style: Some(Style::Compact),
         }
         .into_config(base.clone());
 
-        assert_eq!(out.script_order, ScriptOrder::SupFirst);
-        assert_eq!(out.script_spacing, base.script_spacing);
-        assert_eq!(out.command_spacing, base.command_spacing);
-        assert_eq!(out.group_inner_spacing, base.group_inner_spacing);
-        assert_eq!(out.adjacent_char_spacing, base.adjacent_char_spacing);
-        assert_eq!(out.infix_operand_grouping, base.infix_operand_grouping);
-        assert_eq!(out.environment_name_spacing, base.environment_name_spacing);
+        assert_eq!(out.style, Style::Compact);
     }
 
     #[test]
     fn serialize_options_input_from_config_into_config_is_identity() {
         let cfg = SerializeOptions {
-            script_order: ScriptOrder::SupFirst,
-            environment_name_spacing: EnvironmentNameSpacing::Compact,
-            ..SerializeOptions::default()
+            style: Style::Compact,
         };
         assert_eq!(
             SerializeOptionsInput::from_config(cfg.clone())

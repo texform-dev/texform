@@ -43,7 +43,7 @@ enum Command {
     Normalize(normalize::Args),
     /// Parse formulas and print their syntax trees
     Parse(parse::Args),
-    /// Split the canonical serialization of formulas into tokens
+    /// Split the serialization of formulas into tokens
     Tokenize(tokenize::Args),
     /// Show knowledge-base records for a control sequence or an environment
     Info(info::Args),

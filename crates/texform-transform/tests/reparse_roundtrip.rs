@@ -5,7 +5,7 @@ mod phase_cases;
 use texform_core::{
     ast::Ast,
     parse::{ParseConfig, ParseContext},
-    serialize::serialize,
+    serialize::{Style, serialize, serialize_with},
 };
 use texform_interface::syntax_node::{ArgumentSlot, ArgumentValue, GroupKind, SyntaxNode};
 use texform_transform::{BuildConfig, Profile, TransformContext};
@@ -101,29 +101,57 @@ fn check(p: &ParseContext, engines: &[TransformContext], source: &str) -> Result
     let Some(original) = parse(p, source) else {
         return Ok(());
     };
-    let serialized = serialize(&original);
+    let mut errors = Vec::new();
+    for style in [Style::Spaced, Style::Compact] {
+        if let Err(error) = check_style(p, engines, source, &original, style) {
+            errors.push(format!("{style:?} {error}"));
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("\n"))
+    }
+}
+
+fn check_style(
+    p: &ParseContext,
+    engines: &[TransformContext],
+    source: &str,
+    original: &Ast,
+    style: Style,
+) -> Result<(), String> {
+    let options = style.into();
+    let print = |ast: &Ast| serialize_with(ast, &options);
+    let serialized = print(original);
     let reparsed =
         parse(p, &serialized).ok_or_else(|| format!("parser failed: {source} => {serialized}"))?;
     if canonical(original.to_syntax_root(), false) != canonical(reparsed.to_syntax_root(), false) {
         return Err(format!("parser structure: {source} => {serialized}"));
+    }
+    if serialized != print(&reparsed) {
+        return Err(format!(
+            "{style:?} parser idempotency: {source} => {serialized} => {}",
+            print(&reparsed)
+        ));
     }
     for (profile, engine) in PROFILES.into_iter().zip(engines) {
         let mut ast = original.clone();
         if engine.run(&mut ast, p).is_err() {
             continue;
         }
-        let once = serialize(&ast);
+        let once = print(&ast);
         let mut second = parse(p, &once)
             .ok_or_else(|| format!("{profile:?} parse failed: {source} => {once}"))?;
         engine
             .run(&mut second, p)
             .map_err(|e| format!("{profile:?} second transform: {source}: {e}"))?;
         if canonical(ast.to_syntax_root(), false) != canonical(second.to_syntax_root(), false)
-            || once != serialize(&second)
+            || once != print(&second)
         {
             return Err(format!(
                 "{profile:?} transform structure: {source} => {once} => {}",
-                serialize(&second)
+                print(&second)
             ));
         }
         let stable = ast.to_syntax_root();
@@ -259,8 +287,13 @@ fn corpus_preserves_parser_and_transform_structure() {
     let engines = engines(&p);
     let mut failures = 0;
     let mut checked = 0;
-    for line in std::io::BufReader::new(std::fs::File::open(path).unwrap()).lines() {
-        let source = line.unwrap();
+    for line in std::io::BufReader::new(std::fs::File::open(&path).unwrap()).lines() {
+        let line = line.unwrap();
+        let source = if path.ends_with(".jsonl") {
+            serde_json::from_str::<String>(&line).unwrap()
+        } else {
+            line
+        };
         checked += 1;
         if let Err(error) = check(&p, &engines, &source) {
             eprintln!("{error}");

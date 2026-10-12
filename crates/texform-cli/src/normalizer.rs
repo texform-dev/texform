@@ -61,3 +61,19 @@ impl Normalizer {
         Ok(Self { engine, config })
     }
 }
+
+/// Serializer style as written on the command line.
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum StyleName {
+    Spaced,
+    Compact,
+}
+
+impl From<StyleName> for texform::Style {
+    fn from(name: StyleName) -> Self {
+        match name {
+            StyleName::Spaced => Self::Spaced,
+            StyleName::Compact => Self::Compact,
+        }
+    }
+}

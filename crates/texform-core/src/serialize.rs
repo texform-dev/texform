@@ -1,4 +1,4 @@
-//! Canonical AST serializer — converts [`Ast`] back to LaTeX text.
+//! Deterministic AST serializer — converts [`Ast`] back to LaTeX text.
 //!
 //! The serializer is independent of the transform stage: it covers the full AST
 //! node vocabulary and makes no assumptions about whether the input has been
@@ -27,7 +27,7 @@
 //! star argument (`\\ [6pt]`). Text mode adds no other spaces.
 //!
 //! A few wrapper/scalar helpers still append a preformatted space directly
-//! (environment-name spacing, empty padded groups). That byte is part of the
+//! (empty padded groups). That byte is part of the
 //! emitted ending, so later boundary checks must not insert a second lexical
 //! separator from the old atom kind.
 //! The serializer never repairs spacing with a post-pass string replacement.
@@ -42,7 +42,7 @@ use crate::ast::{
     Node, NodeId,
 };
 
-/// Serialize an AST to LaTeX using the default canonical style.
+/// Serialize an AST to LaTeX using the default spaced style.
 pub fn serialize(ast: &Ast) -> String {
     serialize_with(ast, &SerializeOptions::default())
 }
@@ -50,27 +50,29 @@ pub fn serialize(ast: &Ast) -> String {
 /// Serialize an AST to LaTeX with explicit style options.
 pub fn serialize_with(ast: &Ast, options: &SerializeOptions) -> String {
     let protection = RefCell::new(HashMap::new());
-    let mut serializer = Serializer::new(ast, options, NoopRecorder, &protection);
+    let settings = options.style.settings();
+    let mut serializer = Serializer::new(ast, &settings, NoopRecorder, &protection);
     serializer.serialize_root();
     serializer.finish()
 }
 
-/// Serialize an AST to canonical LaTeX and record its typed output tokens.
+/// Serialize an AST to LaTeX and record its typed output tokens.
 pub fn serialize_tokenized(ast: &Ast) -> TokenizedLatex {
     serialize_tokenized_with(ast, &SerializeOptions::default())
 }
 
-/// Serialize an AST to canonical LaTeX and typed output tokens with explicit options.
+/// Serialize an AST to LaTeX and typed output tokens with explicit options.
 pub fn serialize_tokenized_with(ast: &Ast, options: &SerializeOptions) -> TokenizedLatex {
     let protection = RefCell::new(HashMap::new());
-    let mut serializer = Serializer::new(ast, options, TokenRecorder::default(), &protection);
+    let settings = options.style.settings();
+    let mut serializer = Serializer::new(ast, &settings, TokenRecorder::default(), &protection);
     serializer.serialize_root();
     serializer.finish()
 }
 
 /// Error type for fallible LaTeX serialization.
 ///
-/// The current canonical serializer is infallible; this type exists so the
+/// The current serializer is infallible; this type exists so the
 /// public `Document::to_latex*` API can stay stable if serialization later
 /// grows validation or IO-free failure modes.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -90,7 +92,7 @@ impl std::fmt::Display for SerializeError {
 
 impl std::error::Error for SerializeError {}
 
-/// Canonical LaTeX and the typed tokens recorded during the same serialization pass.
+/// Serialized LaTeX and the typed tokens recorded during the same serialization pass.
 ///
 /// Token categories and boundaries are part of the stable `texform` facade
 /// contract. Tokens are ordered and non-empty; gaps contain only inserted
@@ -104,13 +106,13 @@ impl std::error::Error for SerializeError {}
 ///   error node, so its `has_errors()` remains true.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TokenizedLatex {
-    /// Canonical LaTeX string, identical to [`Document::to_latex`].
+    /// Serialized LaTeX string, identical to [`Document::to_latex`].
     pub latex: String,
     /// Non-empty fragments covering `latex`, in order. Empty error snippets emit no token.
     pub tokens: Vec<SerializationToken>,
 }
 
-/// A non-empty canonical serialization fragment and its UTF-8 byte span.
+/// A non-empty serialization fragment and its UTF-8 byte span.
 ///
 /// `span` indexes the returned [`TokenizedLatex::latex`] string and selects
 /// exactly `text`. Spans do not overlap. `mode` records the semantic math/text
@@ -127,7 +129,7 @@ pub struct SerializationToken {
     pub mode: ContentMode,
 }
 
-/// Stable semantic categories for canonical serialization fragments.
+/// Stable semantic categories for serialization fragments.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SerializationTokenKind {
     /// A control sequence such as `\frac` or `\,`, including the leading backslash.
@@ -144,141 +146,65 @@ pub enum SerializationTokenKind {
     Error,
 }
 
-/// Top-level serialization options.
-///
-/// Every axis is a top-level field. Omitted keys deserialize to the default;
-/// unknown keys, including the former nested `math` / `syntax` objects, are
-/// rejected.
+/// Output style. Both styles are deterministic and text-idempotent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Style {
+    /// Explicit token spacing, byte-stable across releases.
+    #[default]
+    Spaced,
+    /// Lexically required spaces and readable single-token scripts.
+    /// Layout may improve across releases while preserving parsed structure.
+    Compact,
+}
+
+/// Serialization options. Omitted fields use the spaced style; unknown keys fail.
+/// Spaced output is byte-stable; compact output preserves parsed structure and
+/// is idempotent, but its layout may improve across releases.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SerializeOptions {
-    /// Space between a command and the following structural token.
-    pub command_spacing: CommandSpacing,
-    /// Padding inside math brace groups and wrapper-owned argument braces.
-    pub group_inner_spacing: MathGroupInnerSpacing,
-    /// Explicit space between adjacent math character atoms (digits stay glued).
-    pub adjacent_char_spacing: AdjacentCharSpacing,
-    /// Spaces immediately around `_` and `^` markers.
-    pub script_spacing: ScriptSpacing,
-    /// Fixed output order of subscript and superscript.
-    pub script_order: ScriptOrder,
-    /// Brace policy for math infix operands such as `\over`.
-    pub infix_operand_grouping: InfixGrouping,
-    /// Space between `\begin` / `\end` and the name brace.
-    pub environment_name_spacing: EnvironmentNameSpacing,
+    /// Output style; [`Style::Spaced`] when omitted.
+    pub style: Style,
 }
 
-/// Whether to insert a space between a command and the following structural
-/// token in math mode.
-///
-/// `Spaced`: `\frac { a }` — `Minimal`: `\frac{ a }`.
-/// `Minimal` removes only that optional command-to-structure space. Lexical
-/// separators are kept regardless of this setting:
-///
-/// - The output ends in an unterminated control word, including a delimiter
-///   such as `\left\langle` or an error snippet, and the next character is an
-///   ASCII letter (`\alpha x`, `\left\langle B`). That matches the lexer:
-///   consecutive ASCII letters form a control word, and one non-letter (`\,`,
-///   `\ `) is a finished control symbol. A trailing `*`, whitespace, digit, or
-///   structural delimiter has already closed the name.
-/// - In math mode, a control sequence is followed by a sibling `[` or `*`
-///   that is not its own argument (`\\ [6pt]` as row content, `\\ *`).
-///   Gluing would let the command absorb it as an optional or star argument.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CommandSpacing {
-    /// Insert a space between a command and the following structural token (`\frac { a }`).
-    #[default]
-    Spaced,
-    /// Omit the optional command-to-structure space (`\frac{ a }`). An ASCII letter still stays separated from an unterminated control word.
-    Minimal,
+impl From<Style> for SerializeOptions {
+    fn from(style: Style) -> Self {
+        Self { style }
+    }
 }
 
-/// Controls the inside spacing of math brace groups.
-///
-/// `Padded`: `{ a }`, `{ }`, `x ^ { 2 }`.
-/// `Compact`: `{a}`, `{}`, `x ^ {2}`.
-///
-/// This applies both to explicit/implicit `Group` nodes and to wrapper-owned
-/// braces emitted for command/script arguments. Text-mode content and scalar
-/// fragments (environment names, dimensions, etc.) are never padded.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum MathGroupInnerSpacing {
-    /// Pad inside math braces: `{ a }`, `{ }`, `x ^ { 2 }`.
-    #[default]
-    Padded,
-    /// Compact inside math braces: `{a}`, `{}`, `x ^ {2}`.
-    Compact,
+#[derive(Clone, Copy)]
+pub(crate) struct StyleSettings {
+    optional_space: bool,
+    script_braces: BracePolicy,
+    script_order: ScriptOrder,
+    infix_braces: BracePolicy,
 }
 
-/// Whether adjacent math character atoms get explicit space separation.
-///
-/// `Spaced`: `a b c + d` — `Compact`: `abc+d`.
-/// Letters and symbols follow this setting; adjacent digits are always
-/// glued (see `MathDigit`), so multi-digit numbers stay compact.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AdjacentCharSpacing {
-    /// Separate adjacent math character atoms: `a b c + d`.
-    #[default]
-    Spaced,
-    /// Glue adjacent math character atoms: `abc+d`. Digits stay glued in either mode.
-    Compact,
-}
-
-/// Whether to insert spaces immediately around `_` and `^` markers.
-///
-/// `Spaced`: `x _ { i }` — `Compact`: `x_{ i }`.
-/// This only controls the marker boundary itself; inner brace spacing still
-/// follows the normal math group rules.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ScriptSpacing {
-    /// Space around script markers: `x _ { i }`.
-    #[default]
-    Spaced,
-    /// Tight script markers: `x_{ i }`. Inner brace spacing still follows group rules.
-    Compact,
-}
-
-/// Fixed output order for subscript and superscript.
-///
-/// `SubFirst`: `x _ { i } ^ { 2 }` — `SupFirst`: `x ^ { 2 } _ { i }`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ScriptOrder {
-    /// Write the subscript before the superscript: `x _ { i } ^ { 2 }`.
-    #[default]
-    SubFirst,
-    /// Write the superscript before the subscript: `x ^ { 2 } _ { i }`.
-    SupFirst,
-}
-
-/// Whether math infix operands are always braced or only when needed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum InfixGrouping {
-    /// Always wrap infix operands in explicit braces.
-    AlwaysExplicit,
-    /// Brace infix operands only when required for correct structure.
-    #[default]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BracePolicy {
+    Always,
     WhenRequired,
 }
 
-/// Whether `\begin` / `\end` get a space before the name brace.
-///
-/// `Spaced` -> `\begin {matrix}`, `Compact` -> `\begin{matrix}`.
-/// The environment name inside `{}` is always compact, and this setting is
-/// independent from [`CommandSpacing`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EnvironmentNameSpacing {
-    /// Space before the name brace: `\begin {matrix}`.
-    #[default]
-    Spaced,
-    /// Tight name brace: `\begin{matrix}`. Independent of [`CommandSpacing`].
-    Compact,
+#[derive(Clone, Copy)]
+enum ScriptOrder {
+    SubFirst,
+}
+
+impl Style {
+    pub(crate) const fn settings(self) -> StyleSettings {
+        StyleSettings {
+            optional_space: matches!(self, Self::Spaced),
+            script_braces: match self {
+                Self::Spaced => BracePolicy::Always,
+                Self::Compact => BracePolicy::WhenRequired,
+            },
+            script_order: ScriptOrder::SubFirst,
+            infix_braces: BracePolicy::WhenRequired,
+        }
+    }
 }
 
 /// Private atom classification used solely by [`AtomWriter`] to decide
@@ -418,7 +344,7 @@ impl Recorder for TokenRecorder {
 struct AtomWriter<R> {
     output: String,
     previous: Option<AtomKind>,
-    pending_suppressed_boundaries: usize,
+    unbraced_script: bool,
     recorder: R,
 }
 
@@ -428,7 +354,7 @@ impl<R: Recorder> AtomWriter<R> {
         Self {
             output: String::new(),
             previous: None,
-            pending_suppressed_boundaries: 0,
+            unbraced_script: false,
             recorder,
         }
     }
@@ -440,7 +366,7 @@ impl<R: Recorder> AtomWriter<R> {
         kind: AtomKind,
         public_kind: SerializationTokenKind,
         text: &str,
-        options: &SerializeOptions,
+        options: &StyleSettings,
     ) {
         self.emit_with_boundary(mode, kind, public_kind, text, BoundaryPolicy::Auto, options);
     }
@@ -453,7 +379,7 @@ impl<R: Recorder> AtomWriter<R> {
         public_kind: SerializationTokenKind,
         text: &str,
         boundary: BoundaryPolicy,
-        options: &SerializeOptions,
+        options: &StyleSettings,
     ) {
         self.emit_with_semantic_mode(
             EmissionModes::same(mode),
@@ -473,22 +399,17 @@ impl<R: Recorder> AtomWriter<R> {
         public_kind: SerializationTokenKind,
         text: &str,
         boundary: BoundaryPolicy,
-        options: &SerializeOptions,
+        options: &StyleSettings,
     ) {
         // Empty text is not a token. Updating `previous` here would drop an
         // open control word before the next real emission.
         if text.is_empty() {
             return;
         }
-        let boundary = if self.pending_suppressed_boundaries > 0 {
-            self.pending_suppressed_boundaries = 0;
-            BoundaryPolicy::SuppressOptionalSpace
-        } else {
-            boundary
-        };
         if self.should_insert_space(modes.spacing, spacing_kind, text, boundary, options) {
             self.output.push(' ');
         }
+        self.unbraced_script = false;
         let start = self.output.len();
         self.output.push_str(text);
         let end = self.output.len();
@@ -512,6 +433,7 @@ impl<R: Recorder> AtomWriter<R> {
         if text.is_empty() {
             return;
         }
+        self.unbraced_script = false;
         let start = self.output.len();
         self.output.push_str(text);
         let end = self.output.len();
@@ -539,18 +461,6 @@ impl<R: Recorder> AtomWriter<R> {
         self.previous = previous;
     }
 
-    fn begin_suppressed_boundary(&mut self) -> usize {
-        let previous_depth = self.pending_suppressed_boundaries;
-        self.pending_suppressed_boundaries += 1;
-        previous_depth
-    }
-
-    fn end_suppressed_boundary(&mut self, previous_depth: usize) {
-        if self.pending_suppressed_boundaries > previous_depth {
-            self.pending_suppressed_boundaries = previous_depth;
-        }
-    }
-
     /// Central boundary-decision function.
     ///
     /// Returns `true` when a space should be inserted between the previous atom
@@ -574,7 +484,7 @@ impl<R: Recorder> AtomWriter<R> {
         next: AtomKind,
         next_text: &str,
         boundary: BoundaryPolicy,
-        options: &SerializeOptions,
+        options: &StyleSettings,
     ) -> bool {
         let Some(prev) = self.previous else {
             return false;
@@ -584,6 +494,15 @@ impl<R: Recorder> AtomWriter<R> {
             || self.needs_sibling_argument_separator(mode, next, next_text)
         {
             return true;
+        }
+
+        if !options.optional_space {
+            return self.unbraced_script
+                && matches!(mode, ContentMode::Math)
+                && next_text
+                    .as_bytes()
+                    .first()
+                    .is_some_and(u8::is_ascii_alphanumeric);
         }
 
         if matches!(boundary, BoundaryPolicy::SuppressOptionalSpace) {
@@ -598,12 +517,7 @@ impl<R: Recorder> AtomWriter<R> {
         // --- Below this point, we are in math mode ---
 
         if matches!(prev, AtomKind::ControlSequence) {
-            return match next {
-                AtomKind::Brace | AtomKind::DelimiterToken => {
-                    matches!(options.command_spacing, CommandSpacing::Spaced)
-                }
-                _ => true,
-            };
+            return true;
         }
 
         if matches!((prev, next), (AtomKind::MathDigit, AtomKind::MathDigit)) {
@@ -613,13 +527,13 @@ impl<R: Recorder> AtomWriter<R> {
         if matches!(prev, AtomKind::MathChar | AtomKind::MathDigit)
             && matches!(next, AtomKind::MathChar | AtomKind::MathDigit)
         {
-            return matches!(options.adjacent_char_spacing, AdjacentCharSpacing::Spaced);
+            return true;
         }
 
         // Prime marks are always emitted attached to their script base, so
         // only the atom after a prime run needs a boundary decision.
         if matches!(prev, AtomKind::Prime) && matches!(next, AtomKind::ScriptMark) {
-            return matches!(options.script_spacing, ScriptSpacing::Spaced);
+            return true;
         }
         if matches!(prev, AtomKind::Prime) {
             return true;
@@ -631,7 +545,7 @@ impl<R: Recorder> AtomWriter<R> {
         }
 
         if matches!(prev, AtomKind::ScriptMark) || matches!(next, AtomKind::ScriptMark) {
-            return matches!(options.script_spacing, ScriptSpacing::Spaced);
+            return true;
         }
 
         true
@@ -643,7 +557,7 @@ impl<R: Recorder> AtomWriter<R> {
     /// and `\` plus a single other character as a finished control symbol.
     /// Reading one trailing byte is enough: `*`, whitespace, `)`, digits, and
     /// any other non-letter mean the name is already closed. Direct space
-    /// appends (environment-name spacing, empty-group padding) show up here
+    /// appends (empty-group padding) show up here
     /// without a second scan of the output.
     #[inline]
     fn needs_control_word_separator(&self, next_text: &str) -> bool {
@@ -722,7 +636,7 @@ impl<R: Recorder> AtomWriter<R> {
 /// is needed.
 struct Serializer<'a, R> {
     ast: &'a Ast,
-    options: &'a SerializeOptions,
+    options: &'a StyleSettings,
     writer: AtomWriter<R>,
     protection: &'a RefCell<HashMap<NodeId, bool>>,
 }
@@ -730,7 +644,7 @@ struct Serializer<'a, R> {
 impl<'a, R: Recorder> Serializer<'a, R> {
     fn new(
         ast: &'a Ast,
-        options: &'a SerializeOptions,
+        options: &'a StyleSettings,
         recorder: R,
         protection: &'a RefCell<HashMap<NodeId, bool>>,
     ) -> Self {
@@ -823,16 +737,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     fn visit_group(&mut self, kind: GroupKind, child_mode: ContentMode, children: &[NodeId]) {
         match kind {
             GroupKind::Explicit | GroupKind::Implicit => {
-                if matches!(child_mode, ContentMode::Math)
-                    && matches!(
-                        self.options.group_inner_spacing,
-                        MathGroupInnerSpacing::Compact
-                    )
-                {
-                    self.emit_compact_math_brace_group(children);
-                } else {
-                    self.emit_wrapped(child_mode, AtomKind::Brace, "{", "}", children);
-                }
+                self.emit_wrapped(child_mode, AtomKind::Brace, "{", "}", children);
             }
             GroupKind::Delimited { left, right } => {
                 self.writer.emit(
@@ -938,12 +843,6 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     }
 
     /// Emit `\begin {name}` or `\end {name}` (or compact `\begin{name}`).
-    ///
-    /// Environment header spacing is intentionally controlled here instead of
-    /// piggybacking on the generic command-to-brace rule, so it stays
-    /// independent from `CommandSpacing`. The optional space is appended
-    /// directly and closes the control word; the following `{` must not get a
-    /// second lexical separator from the still-current command atom.
     fn emit_environment_head(&mut self, outer_mode: ContentMode, head: &str, name: &str) {
         self.writer.emit(
             outer_mode,
@@ -953,19 +852,12 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             self.options,
         );
 
-        if matches!(
-            self.options.environment_name_spacing,
-            EnvironmentNameSpacing::Spaced
-        ) {
-            self.writer.output.push(' ');
-        }
-
-        self.writer.emit_with_boundary(
-            outer_mode,
+        self.writer.emit_with_semantic_mode(
+            EmissionModes::new(ContentMode::Math, outer_mode),
             AtomKind::Brace,
             SerializationTokenKind::Delimiter,
             "{",
-            BoundaryPolicy::SuppressOptionalSpace,
+            BoundaryPolicy::Auto,
             self.options,
         );
         self.writer.emit_with_boundary(
@@ -1255,14 +1147,6 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                     self.emit_superscript(node);
                 }
             }
-            ScriptOrder::SupFirst => {
-                if let Some(node) = superscript {
-                    self.emit_superscript(node);
-                }
-                if let Some(node) = subscript {
-                    self.emit_script('_', node);
-                }
-            }
         }
     }
 
@@ -1286,21 +1170,23 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         );
     }
 
-    /// Emit a single `_` or `^` followed by its braced argument.
-    ///
+    /// Emit a script, omitting braces only for a single standalone token.
     fn emit_script(&mut self, marker: char, node: NodeId) {
-        let boundary = match self.options.script_spacing {
-            ScriptSpacing::Spaced => BoundaryPolicy::Auto,
-            ScriptSpacing::Compact => BoundaryPolicy::SuppressOptionalSpace,
-        };
         self.writer.emit_with_boundary(
             ContentMode::Math,
             AtomKind::ScriptMark,
             SerializationTokenKind::Character,
             &marker.to_string(),
-            boundary,
+            BoundaryPolicy::Auto,
             self.options,
         );
+        if self.options.script_braces == BracePolicy::WhenRequired
+            && let Some(token) = self.single_script_token(node)
+        {
+            self.visit(token, ContentMode::Math);
+            self.writer.unbraced_script = true;
+            return;
+        }
         self.emit_wrapped_content(
             node,
             ContentMode::Math,
@@ -1309,6 +1195,33 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             "}",
             BoundaryPolicy::Auto,
         );
+    }
+
+    /// Inspect the emitted shape after removing only the slot's own container.
+    fn single_script_token(&self, node: NodeId) -> Option<NodeId> {
+        let node = match self.ast.node(node) {
+            Node::Group {
+                children,
+                kind: GroupKind::Explicit | GroupKind::Implicit,
+                ..
+            } if children.len() == 1 => children[0],
+            _ => node,
+        };
+        match self.ast.node(node) {
+            Node::Char(_) | Node::ActiveSpace | Node::Prime { count: 1 } => Some(node),
+            Node::Command { args, .. } | Node::Declarative { args, .. }
+                if args.iter().all(|slot| match slot {
+                    None => true,
+                    Some(arg) => matches!(
+                        (&arg.kind, &arg.value),
+                        (ArgumentKind::Star, ArgumentValue::Boolean(false))
+                    ),
+                }) =>
+            {
+                Some(node)
+            }
+            _ => None,
+        }
     }
 
     fn emit_superscript(&mut self, node: NodeId) {
@@ -1329,15 +1242,12 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         children: &[NodeId],
     ) {
         // Empty math brace groups need special handling to produce `{ }`
-        // instead of `{}` under Padded mode — the normal visitor path would
+        // instead of `{}` under spaced style — the normal visitor path would
         // emit `{` then immediately `}` with no content in between.
         if children.is_empty()
             && matches!(mode, ContentMode::Math)
             && matches!(kind, AtomKind::Brace)
-            && matches!(
-                self.options.group_inner_spacing,
-                MathGroupInnerSpacing::Padded
-            )
+            && self.options.optional_space
         {
             self.emit_padded_empty_group(mode, kind, open, close);
             return;
@@ -1358,31 +1268,6 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             kind,
             SerializationTokenKind::Delimiter,
             close,
-            self.options,
-        );
-    }
-
-    fn emit_compact_math_brace_group(&mut self, children: &[NodeId]) {
-        self.writer.emit(
-            ContentMode::Math,
-            AtomKind::Brace,
-            SerializationTokenKind::Delimiter,
-            "{",
-            self.options,
-        );
-
-        let pending = self.writer.begin_suppressed_boundary();
-        for &child in children {
-            self.visit(child, ContentMode::Math);
-        }
-        self.writer.end_suppressed_boundary(pending);
-
-        self.writer.emit_with_boundary(
-            ContentMode::Math,
-            AtomKind::Brace,
-            SerializationTokenKind::Delimiter,
-            "}",
-            BoundaryPolicy::SuppressOptionalSpace,
             self.options,
         );
     }
@@ -1441,14 +1326,6 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             self.options,
         );
 
-        let compact_math_inner = matches!(content_mode, ContentMode::Math)
-            && matches!(
-                self.options.group_inner_spacing,
-                MathGroupInnerSpacing::Compact
-            );
-
-        let pending = compact_math_inner.then(|| self.writer.begin_suppressed_boundary());
-
         match self.ast.node(child) {
             Node::Group {
                 children,
@@ -1457,10 +1334,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             } => {
                 if children.is_empty()
                     && matches!(*child_mode, ContentMode::Math)
-                    && matches!(
-                        self.options.group_inner_spacing,
-                        MathGroupInnerSpacing::Padded
-                    )
+                    && self.options.optional_space
                 {
                     // Same direct padding as `emit_padded_empty_group`: the space is
                     // the emitted ending, not a second lexical separator.
@@ -1482,24 +1356,12 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             _ => self.visit(child, content_mode),
         }
 
-        if let Some(pending) = pending {
-            self.writer.end_suppressed_boundary(pending);
-        }
-        let close_mode = if compact_math_inner {
-            wrapper_mode
-        } else {
-            content_mode
-        };
         self.writer.emit_with_semantic_mode(
-            EmissionModes::new(close_mode, wrapper_mode),
+            EmissionModes::new(content_mode, wrapper_mode),
             AtomKind::Brace,
             SerializationTokenKind::Delimiter,
             close,
-            if compact_math_inner {
-                BoundaryPolicy::SuppressOptionalSpace
-            } else {
-                BoundaryPolicy::Auto
-            },
+            BoundaryPolicy::Auto,
             self.options,
         );
     }
@@ -1509,8 +1371,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             return;
         }
 
-        match self.options.infix_operand_grouping {
-            InfixGrouping::AlwaysExplicit => self.emit_wrapped_content(
+        match self.options.infix_braces {
+            BracePolicy::Always => self.emit_wrapped_content(
                 node,
                 ContentMode::Math,
                 ContentMode::Math,
@@ -1518,7 +1380,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 "}",
                 BoundaryPolicy::Auto,
             ),
-            InfixGrouping::WhenRequired => {
+            BracePolicy::WhenRequired => {
                 if self.infix_operand_requires_braces(node) {
                     self.emit_wrapped_content(
                         node,
@@ -1642,9 +1504,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             } else {
                 content_mode
             };
-            let compact_math_inner = content_mode == ContentMode::Math
-                && self.options.group_inner_spacing == MathGroupInnerSpacing::Compact;
-            let pending = compact_math_inner.then(|| self.writer.begin_suppressed_boundary());
+
             match self.ast.node(child) {
                 Node::Group {
                     children,
@@ -1657,26 +1517,12 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 }
                 _ => self.visit(child, content_mode),
             }
-            if let Some(pending) = pending {
-                self.writer.end_suppressed_boundary(pending);
-            }
             self.writer.emit_with_semantic_mode(
-                EmissionModes::new(
-                    if compact_math_inner {
-                        mode
-                    } else {
-                        content_mode
-                    },
-                    mode,
-                ),
+                EmissionModes::new(content_mode, mode),
                 AtomKind::Brace,
                 SerializationTokenKind::Delimiter,
                 "}",
-                if compact_math_inner {
-                    BoundaryPolicy::SuppressOptionalSpace
-                } else {
-                    BoundaryPolicy::Auto
-                },
+                BoundaryPolicy::Auto,
                 self.options,
             );
         } else {
@@ -1935,7 +1781,7 @@ mod tests {
 
     #[test]
     fn test_atom_writer_glues_star_to_control_sequence() {
-        let options = SerializeOptions::default();
+        let options = Style::Spaced.settings();
         let mut writer = AtomWriter::new(NoopRecorder);
 
         writer.emit(
@@ -1952,7 +1798,7 @@ mod tests {
 
     #[test]
     fn lexical_separator_overrides_suppressed_optional_space() {
-        let options = SerializeOptions::default();
+        let options = Style::Spaced.settings();
         let mut writer = AtomWriter::new(NoopRecorder);
 
         writer.emit(
@@ -1976,7 +1822,7 @@ mod tests {
 
     #[test]
     fn test_atom_writer_keeps_text_chunk_compact() {
-        let options = SerializeOptions::default();
+        let options = Style::Spaced.settings();
         let mut writer = AtomWriter::new(NoopRecorder);
 
         writer.emit(
@@ -2013,7 +1859,7 @@ mod tests {
     /// Boundary decisions never read the public token kind, so it is pinned
     /// here and the cases vary only mode, atom kind, boundary, and text.
     fn write_atoms(atoms: &[(ContentMode, AtomKind, Option<BoundaryPolicy>, &str)]) -> String {
-        let options = SerializeOptions::default();
+        let options = Style::Spaced.settings();
         let public = SerializationTokenKind::Character;
         let mut writer = AtomWriter::new(NoopRecorder);
         for (mode, kind, boundary, text) in atoms {
@@ -2162,7 +2008,7 @@ mod tests {
             ]),
             r"\\ *"
         );
-        let options = SerializeOptions::default();
+        let options = Style::Spaced.settings();
         let mut writer = AtomWriter::new(NoopRecorder);
         let public = SerializationTokenKind::Character;
         writer.emit(Math, ControlSequence, public, r"\\", &options);

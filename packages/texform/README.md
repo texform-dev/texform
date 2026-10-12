@@ -54,7 +54,7 @@ All parsers, engines, and documents with omitted `knowledgeBase` share the defau
 - The default `texform` import resolves to `texform/node` in Node.js and `texform/bundler` in browser-oriented bundlers. Use `texform/web` for explicit initialization, lazy loading, or Web Workers.
 - The bundler entry initializes WebAssembly at module load time and requires top-level `await` support. See [loading WebAssembly](#loading-webassembly) for bundler configuration.
 - All names follow JavaScript conventions: methods and fields are camelCase (`toLatex`, `validateArgspec` returns `argCount`), and missing values are `null`.
-- Parse, transform, normalize, and serialize take camelCase overlay objects. `null` / `undefined` / omitted means not set. Unknown keys, snake_case keys, arrays in object positions, and wrong scalar types throw `TexformConfigError` with a field path. Enum string values stay snake_case (`"sub_first"`).
+- Parse, transform, normalize, and serialize take camelCase overlay objects. `null` / `undefined` / omitted means not set. Unknown keys, snake_case keys, arrays in object positions, and wrong scalar types throw `TexformConfigError` with a field path. Serializer options accept `style: "spaced" | "compact"`; former spacing and script-order keys are rejected.
 - `parser.defaultParseConfig()`, `engine.defaultParseConfig()`, and `engine.defaultTransformConfig()` return the complete defaults actually in force.
 - Parse and edit errors throw structured exceptions (`TexformParseError` and friends); no Rust panic ever crosses the boundary.
 - TypeScript declarations are bundled — no separate `@types` package.

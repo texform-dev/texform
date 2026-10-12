@@ -485,3 +485,32 @@ fn closed_stdout_stops_without_waiting_for_stdin_eof() {
         }
     }
 }
+
+#[test]
+fn normalize_compact_style_applies_to_text_json_and_reports() {
+    for extra in [vec![], vec!["--json"], vec!["--json", "--report"]] {
+        let mut args = vec!["normalize", "--profile", "corpus", "--style", "compact"];
+        args.extend(extra);
+        let run = texform(&args, r"\frac{a}{b}+x_i^2");
+        assert_eq!(run.code(), 0, "{}", run.stderr);
+        if args.contains(&"--json") {
+            let result = &run.json_lines()[0];
+            assert_eq!(result["output"], r"\frac{a}{b}+x_i^2");
+            assert_eq!(result.get("report").is_some(), args.contains(&"--report"));
+        } else {
+            assert_eq!(run.stdout.trim_end(), r"\frac{a}{b}+x_i^2");
+        }
+    }
+    assert_eq!(
+        texform(
+            &["normalize", "--profile", "corpus", "--style", "pretty"],
+            "x"
+        )
+        .code(),
+        USAGE
+    );
+    assert_eq!(
+        texform(&["tokenize", "--style", "compact"], "x").code(),
+        USAGE
+    );
+}

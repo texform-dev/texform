@@ -753,14 +753,14 @@ mod tests {
         .expect_err("legacy nested keys should be rejected");
         let message = format_read_error(&error, "serialize options", |key| key.to_owned());
         assert!(message.contains("unknown field `math`"), "{message}");
-        assert!(message.contains("script_order"), "{message}");
+        assert!(message.contains("style"), "{message}");
     }
 
     #[test]
     fn serialize_options_null_leaf_is_equivalent_to_omitted() {
         let omitted = read::<SerializeOptionsInput>(json!({})).unwrap();
-        let explicit_null = read::<SerializeOptionsInput>(json!({ "script_order": null })).unwrap();
+        let explicit_null = read::<SerializeOptionsInput>(json!({ "style": null })).unwrap();
         assert_eq!(omitted, explicit_null);
-        assert_eq!(explicit_null.script_order, None);
+        assert_eq!(explicit_null.style, None);
     }
 }

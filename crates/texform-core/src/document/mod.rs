@@ -424,7 +424,7 @@ impl Document {
         &mut self.ast
     }
 
-    /// Serialize to LaTeX using the default canonical style.
+    /// Serialize to LaTeX using the default spaced style.
     pub fn to_latex(&self) -> Result<String, SerializeError> {
         Ok(serialize(&self.ast))
     }
@@ -434,7 +434,7 @@ impl Document {
         Ok(serialize_with(&self.ast, options))
     }
 
-    /// Serialize to canonical LaTeX and record typed tokens from the same traversal.
+    /// Serialize to LaTeX and record typed tokens from the same traversal.
     ///
     /// Token spans are UTF-8 byte offsets into the returned LaTeX. An empty error
     /// snippet does not produce a token; use [`Self::has_errors`] to detect error nodes.

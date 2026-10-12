@@ -97,7 +97,7 @@ fn document_exposes_stable_tokenized_serialization_contract() {
 
 #[test]
 fn serialize_options_are_constructible_from_the_facade() {
-    use texform::{Parser, ScriptOrder, ScriptSpacing, SerializeOptions};
+    use texform::{Parser, SerializeOptions, Style};
 
     let parser = Parser::builder().build();
     let document = parser
@@ -106,16 +106,14 @@ fn serialize_options_are_constructible_from_the_facade() {
         .expect("parse should produce a document")
         .0;
     let options = SerializeOptions {
-        script_spacing: ScriptSpacing::Compact,
-        script_order: ScriptOrder::SupFirst,
-        ..SerializeOptions::default()
+        style: Style::Compact,
     };
 
     assert_eq!(
         document
             .to_latex_with(&options)
             .expect("document should serialize"),
-        "x^{ 2 }_{ i }"
+        "x_i^2"
     );
 }
 
