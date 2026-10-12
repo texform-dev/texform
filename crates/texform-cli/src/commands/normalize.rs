@@ -2,8 +2,7 @@
 
 use std::process::ExitCode;
 
-use serde::Serialize;
-use texform::bindings::{NormalizeConfigInput, TransformReportDto, transform_report_to_dto};
+use texform::bindings::NormalizeConfigInput;
 
 use super::run_formulas;
 use crate::input::{FormulaInput, read_config};
@@ -36,19 +35,12 @@ pub struct Args {
     json: bool,
 }
 
-#[derive(Serialize)]
-struct Normalized {
-    output: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    report: Option<TransformReportDto>,
-}
-
 pub fn run(args: Args, packages: &[String]) -> ExitCode {
     let overrides = match read_config::<NormalizeConfigInput>(args.config.as_deref()) {
         Ok(overrides) => overrides,
         Err(message) => return usage_error(message),
     };
-    let Normalizer { engine, config } = match Normalizer::build(args.profile, packages, overrides) {
+    let normalizer = match Normalizer::build(args.profile, packages, overrides) {
         Ok(normalizer) => normalizer,
         Err(error) => return usage_error(error),
     };
@@ -57,34 +49,14 @@ pub fn run(args: Args, packages: &[String]) -> ExitCode {
     } else {
         Format::Text
     };
+    let style = texform::Style::from(args.style);
     run_formulas(&args.input, format, |latex| {
-        let (mut document, _) = engine
-            .parser()
-            .parse_with(latex, &config.parse)
-            .try_into_document()
-            .map_err(texform::Error::from)?;
-        let options = texform::SerializeOptions::from(texform::Style::from(args.style));
-        if args.report {
-            let report = engine.transform_with_report(&mut document, &config.transform)?;
-            return Ok(Success::Json(ok_line(Normalized {
-                output: document
-                    .to_latex_with(&options)
-                    .map_err(texform::Error::from)?,
-                report: Some(transform_report_to_dto(&report)),
-            })));
-        }
-        engine.transform_with(&mut document, &config.transform)?;
-        let output = document
-            .to_latex_with(&options)
-            .map_err(texform::Error::from)?;
+        let normalized = normalizer.normalize(latex, style, args.report)?;
         Ok(if args.json {
-            Success::Json(ok_line(Normalized {
-                output,
-                report: None,
-            }))
+            Success::Json(ok_line(normalized))
         } else {
             Success::Text {
-                line: output,
+                line: normalized.output,
                 warnings: Vec::new(),
             }
         })

@@ -2,7 +2,6 @@
 
 use std::any::Any;
 use std::collections::HashMap;
-use std::time::Instant;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -10,11 +9,10 @@ use serde_json::Value;
 use texform::ParseDiagnostic;
 use texform::bindings::{
     NormalizeConfigInput, TransformReportDto, format_read_error, normalize_error_to_parts, read,
-    transform_report_to_dto,
 };
 
 use super::rpc::RpcError;
-use crate::normalizer::{Normalizer, ProfileName};
+use crate::normalizer::{Normalized, Normalizer, ProfileName, StageTimings, Stopwatch};
 use crate::output::panic_message;
 use crate::{build_info, packages};
 
@@ -118,7 +116,7 @@ impl Server {
         );
         let timing = timing.then_some(timings);
         match outcome {
-            Ok((output, report)) => Ok(to_json(NormalizeResult {
+            Ok(Normalized { output, report }) => Ok(to_json(NormalizeResult {
                 output,
                 report,
                 timing,
@@ -139,47 +137,6 @@ impl Server {
         let EmptyParams {} = parse_params(params)?;
         self.shut_down = true;
         Ok(Value::Null)
-    }
-}
-
-impl Normalizer {
-    /// `TransformEngine::normalize_with`, composed from its public stages so
-    /// each stage can be timed, with the output serialized in `style`.
-    ///
-    /// Timed and untimed requests both run this exact sequence, so `timing`
-    /// cannot change the output or the error classification. A stage's time is
-    /// recorded only if the stage ran.
-    fn normalize_staged(
-        &self,
-        latex: &str,
-        style: texform::Style,
-        with_report: bool,
-        clock: &mut Stopwatch,
-        timings: &mut StageTimings,
-    ) -> Result<(String, Option<TransformReportDto>), texform::Error> {
-        let parsed = self
-            .engine
-            .parser()
-            .parse_with(latex, &self.config.parse)
-            .try_into_document();
-        timings.parse_ns = clock.lap();
-        let (mut document, _diagnostics) = parsed?;
-
-        let transformed = if with_report {
-            self.engine
-                .transform_with_report(&mut document, &self.config.transform)
-                .map(Some)
-        } else {
-            self.engine
-                .transform_with(&mut document, &self.config.transform)
-                .map(|()| None)
-        };
-        timings.transform_ns = clock.lap();
-        let report = transformed?;
-
-        let serialized = document.to_latex_with(&style.into());
-        timings.serialize_ns = clock.lap();
-        Ok((serialized?, report.as_ref().map(transform_report_to_dto)))
     }
 }
 
@@ -207,27 +164,6 @@ fn to_json(value: impl Serialize) -> Value {
     // Every value serialized here consists of strings, numbers, booleans,
     // options, sequences, and structs, which cannot fail to serialize.
     serde_json::to_value(value).expect("protocol values serialize to JSON")
-}
-
-/// Measures consecutive stages. A disabled stopwatch never reads the clock.
-struct Stopwatch {
-    last: Option<Instant>,
-}
-
-impl Stopwatch {
-    fn start(enabled: bool) -> Self {
-        Self {
-            last: enabled.then(Instant::now),
-        }
-    }
-
-    /// Nanoseconds since the previous lap, or `None` when disabled.
-    fn lap(&mut self) -> Option<u64> {
-        let last = self.last?;
-        let now = Instant::now();
-        self.last = Some(now);
-        Some(u64::try_from(now.duration_since(last).as_nanos()).unwrap_or(u64::MAX))
-    }
 }
 
 #[derive(Deserialize)]
@@ -305,15 +241,4 @@ struct FailureData {
     diagnostics: Vec<ParseDiagnostic>,
     #[serde(skip_serializing_if = "Option::is_none")]
     timing: Option<StageTimings>,
-}
-
-/// Stage durations in nanoseconds; stages that did not run are omitted.
-#[derive(Default, Serialize)]
-struct StageTimings {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    parse_ns: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    transform_ns: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    serialize_ns: Option<u64>,
 }

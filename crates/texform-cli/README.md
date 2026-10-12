@@ -99,7 +99,7 @@ texform normalize --profile authoring --config '{"rewrite":{"enabled":false}}' -
 texform normalize --profile corpus --report --json 'a \over b'
 ```
 
-`--profile` is required: one of `authoring`, `faithful`, `corpus`, or `equiv`. The default `--style spaced` output is identical to `TransformEngine::normalize_with` in the Rust facade for the same packages, profile, and config. Choose `--style compact` for concise output such as `x_i^2`. Style also applies to `--json` and `--report`, and is separate from `--config`; `tokenize` always uses spaced output. `--report` adds the transform report to each result and requires `--json`.
+`--profile` is required: one of `authoring`, `faithful`, `corpus`, or `equiv`. The default `--style spaced` output is identical to `TransformEngine::normalize_with` in the Rust facade for the same packages, profile, and config. The command runs the same pipeline as the serve protocol's [`normalize`](#normalize), so output, errors, and reports agree for the same configuration. Choose `--style compact` for concise output such as `x_i^2`. Style also applies to `--json` and `--report`, and is separate from `--config`; `tokenize` always uses spaced output. `--report` adds the transform report to each result and requires `--json`.
 
 ```console
 $ printf '%s\n' 'a \over b' '\frac{a' '\dv{f}{x}' | texform normalize --profile corpus --lines 2>/dev/null

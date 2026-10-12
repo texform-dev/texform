@@ -65,7 +65,7 @@ Arrows point from a crate to the crates it depends on. Everything below `texform
 | `texform-argspec` | An xparse-style argument-specification parser used to describe command signatures. |
 | `texform-interface` | Shared types with no dependencies on other TeXForm crates, most importantly `SyntaxNode`, the lossless parse snapshot. |
 | `texform-python`, `texform-wasm` | Language bindings that expose the shared facade model to Python and WebAssembly. |
-| `texform-cli` | The `texform` command-line tool: normalization, parsing, tokenization, knowledge queries, argspec validation, and the `serve` normalizer protocol for other processes. It shares the bindings' DTOs and config overlays through the facade. |
+| `texform-cli` | The `texform` command-line tool: normalization, parsing, tokenization, knowledge queries, argspec validation, and the `serve` normalizer protocol for other processes. It shares the bindings' DTOs and config overlays through the facade. Its `normalize` command and the `serve` protocol run one shared pipeline built from public facade stages. |
 | `texform-regression` | Corpus regression and data-product tooling for parser regression, transform-contract checking, and counter-map generation. Internal tooling, not part of the public API. |
 
 The facade deliberately does **not** re-export the internal `Ast`, `Node`, or arena types. Users get a single editable tree type — `Document` — and never touch the panic-contract arena underneath it. Hidden research and test entries may still be callable on the facade; they are omitted from the public rustdoc and carry no compatibility promise.
