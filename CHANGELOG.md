@@ -3,24 +3,29 @@
 All notable changes to TeXForm are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
-## [0.10.0] - 2026-10-13
+
+## [0.10.0] - 2026-10-14
+
+This release replaces the serializer's seven option axes with two output styles: `spaced`, the previous default, and a new `compact` style for human-readable LaTeX. With `physics`, named functions such as `\sin` and `\exp` now parse the argument that physics.sty prints as an auto-sized fence, and three Faithful rules make that fence explicit. Normalization also no longer removes a group or a delimiter size that kept a preceding command from reading the next token as an argument on reparse. The serializer change is breaking; see **Changed** for migration notes.
+
+### Changed
+
+- **Breaking:** `SerializeOptions` now holds a single `style: Style`, either `Style::Spaced` (default) or `Style::Compact`. `CommandSpacing`, `MathGroupInnerSpacing`, `AdjacentCharSpacing`, `ScriptSpacing`, `ScriptOrder`, `InfixGrouping`, and `EnvironmentNameSpacing` are removed, and Python `to_latex` and JavaScript `toLatex` accept only the `style` key and reject the removed ones. Spaced output is byte-for-byte identical to the previous default and stays byte-stable across releases. Replace axis settings with `SerializeOptions { style: Style::Compact }`, `to_latex(style="compact")`, or `toLatex({ style: "compact" })`; combinations that compacted only some axes, `sup_first` script order, and always-explicit infix operands have no replacement.
+- With `physics`, the 26 `\trigbraces` names (`\sin` … `\coth`, `\asin` … `\acot`, `\log`, `\ln`) take `o d()`, and `\exp`, `\det`, `\Pr`, `\tr`, and `\Tr` take one paired `d<(,)><[,]><{,}>` slot, because physics.sty prints that argument as an auto-sized fence. A delimiter separated from the command by a group is now literal, and FlattenGroups keeps that group, as in `{\cos}(x)` or `\cos{}(x)`. An unclosed parenthesis such as `\sin(x` is a parse error with `physics`, as in LaTeX; across the regression datasets, 144 more formulas fail to parse with `physics` loaded.
 
 ### Added
 
-- **Breaking:** Replace serialize options with output styles
-- Record the auto-sized argument of physics named functions
-- Keep compact script braces around argument-taking commands
-- Check every adjacency a group splice creates
-- Add 3 rules for named-fn-expand group
-- Add helpers for sibling delimiter fences
+- Compact output keeps only lexically required spaces and omits braces around a script that is a single character, a single prime, `~`, or a known command without argument slots, adding a readability space before a following ASCII letter or digit (`\frac{a}{b}+x_i^2`, `x^2 3`). Scripts holding a command with argument slots, an unknown command, or a declarative switch keep their braces, as in `x^{\sin}[2]` with `physics` or `x^{\rm}a`. Compact output preserves the parsed structure and is text-idempotent; its layout may improve across releases.
+- `texform normalize --style spaced|compact` applies to text, `--json`, and `--report` output, and the `serve` `configure` request accepts an optional `style` and echoes it in `resolved`. `tokenize` always uses spaced output.
+- Faithful rules expand physics named functions for renderers without physics. `physics/named-fn-paren-expand` rewrites `\sin(x)` and `\sin[n](x)`, and the same forms of the other `\trigbraces` names that have base commands, to `\sin\left(x\right)` and `\sin^{n}\left(x\right)`; `\sin[n]` without parentheses is unchanged. `physics/physics-operator-fence-expand` fences the argument of `\exp`, `\det`, and `\Pr`. `physics/named-fn-to-operatorname` rewrites physics-only names such as `\asin`, `\csch`, `\tr`, `\erf`, and `\Trace` to `\operatorname`, with the same expansion where the name takes an argument. The explicit fence is an inner atom, so it can add up to 1/6 em on each side; the rules declare `Reading` fidelity.
 
 ### Fixed
 
-- Keep groups a preceding command could capture as an argument
-- Report strict argument failures at their source
-- Keep lexical separators after delimiters and before sibling brackets
-- Keep dropped delimiter sizes from exposing arguments
-- Rename physics long operator names only in bare form
+- FlattenGroups keeps a group when splicing it would let a known command read the following token as an omitted trailing optional, star, group, or delimited argument. With `physics`, `\sin{[2]}x`, `{\sin}[2]x`, and `\sin{}[2]x` no longer become `\sin[2]x`, and `{\qty}(a)` no longer becomes `\qty(a)`; `\text{a{\\}*b}` no longer becomes `\text{a\\*b}`. The protection applies in every profile, and reports count it as `guard_hits.argument_capture` (`argumentCapture` in JavaScript).
+- Equiv rules that drop a fixed delimiter size no longer expose the delimiter to the preceding command: `a\\\big[x\big]` becomes `a\\{}[x]` instead of `a\\[x]`, which reparsed `x` as the line-break dimension, and with `physics` `\ln\Bigr[x\Bigr]` no longer becomes `\ln[x]`.
+- The physics authoring aliases `sine-to-sin`, `cosine-to-cos`, `naturallogarithm-to-ln`, `probability-to-pr`, `trace-to-tr`, and `trace-capital-to-Tr` rename only a command not followed by `(`, `[`, or a brace group. `\trace(\rho)` and `\Probability(\frac{x}{y})` no longer gain an auto-sized fence, and `\sine(x)` no longer fails the conformance check in `authoring` or stops later rules in `faithful`.
+- With `abort_on_error`, a failure inside a command argument is reported at its source: `a+\frac{1}`, `a+\hspace{x}`, and `a+\text{$x}` no longer point at `a`, and `array` and `align` are no longer reported as unknown or as not allowed in text mode. An unclosed inline `$` is reported at its opener in strict and non-strict parsing. Which inputs fail is unchanged.
+- Trees built with `from_syntax` keep a space after a control-word delimiter such as `\langle`, or an error snippet ending in a control word, before an ASCII letter, and after a math-mode control sequence before a sibling `[` or `*`. Serialized output of parsed input is unchanged.
 
 ## [0.9.1] - 2026-10-09
 
