@@ -1,6 +1,8 @@
 # texform-cli
 
-Command-line interface for [TeXForm](../../README.md), installed as the `texform` binary. It exposes the public `texform` facade to shell users and to external tools that call TeXForm across a process boundary.
+Command-line interface for [TeXForm](https://texform.dev), installed as the `texform` binary. It exposes the public `texform` facade to shell users and to external tools that call TeXForm across a process boundary.
+
+[Website](https://texform.dev) · [Command-line guide](https://texform.dev/docs/command-line) · [Playground](https://play.texform.dev) · [Changelog](https://texform.dev/docs/changelog)
 
 ## Installation
 

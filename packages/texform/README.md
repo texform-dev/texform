@@ -1,6 +1,10 @@
 # texform
 
-JavaScript and TypeScript bindings for [TeXForm](../../README.md), a LaTeX formula parser, editor, and normalizer built on a structured command knowledge base. Powered by WebAssembly, with TypeScript types included.
+> **The LaTeX math toolkit**
+
+JavaScript and TypeScript bindings for [TeXForm](https://texform.dev), which parses, edits, and normalizes LaTeX math using a knowledge base of command and environment specifications. Powered by WebAssembly, with TypeScript types included.
+
+[Website](https://texform.dev) · [Documentation](https://texform.dev/docs) · [JavaScript API reference](https://texform.dev/api/js) · [Playground](https://play.texform.dev) · [Changelog](https://texform.dev/docs/changelog)
 
 ```bash
 npm install texform
@@ -24,44 +28,20 @@ if (parsed.document) {
 }
 ```
 
-Profiles select the normalization target: `"authoring"`, `"faithful"`, `"corpus"`, and `"equiv"`.
-
-## Shared knowledge
-
-`KnowledgeBase` is immutable. Package selection, custom `items`, and `removeCommands` / `removeEnvironments` / `removeDelimiterControls` belong to its constructor. Parser and engine options accept `knowledgeBase`; they no longer accept those knowledge options directly. Lookups and sorted `commands(mode)`, `environments(mode)`, `characters(mode)`, `delimiters()`, and `packages()` are methods on `KnowledgeBase`.
-
-```ts
-import { KnowledgeBase, Parser, TransformEngine, Document } from "texform";
-
-const knowledgeBase = new KnowledgeBase({ packages: ["base", "ams"] });
-const parser = new Parser({ knowledgeBase });
-const engine = new TransformEngine({ profile: "corpus", knowledgeBase });
-const document = parser.parse("x").document;
-const variant = document.clone();
-engine.transform(variant);
-console.assert(variant.knowledgeBase().isSame(knowledgeBase));
-console.assert(document.root().isSameNode(document.root()));
-const restored = Document.fromSyntax(document.toSyntax(), { knowledgeBase });
-engine.transform(restored);
-```
-
-All parsers, engines, and documents with omitted `knowledgeBase` share the default instance. Separately constructed knowledge bases have different identities even with the same options. Transform accepts complete documents sharing its knowledge-base instance, including constructed, restored, and cloned documents. `node.document()` returns a handle to its owning document; cloning a document gives its nodes a new identity while retaining the knowledge base. `new Document({ knowledgeBase, mode: "text" })` creates an empty text-mode document.
+Profiles select the normalization target: `"authoring"`, `"faithful"`, `"corpus"`, and `"equiv"`. See [Transforms](https://texform.dev/docs/transforms) for what each profile changes.
 
 ## JavaScript-specific notes
 
-- `normalize` returns a string. `transform` updates the document and returns `undefined`.
-- `normalizeWithReport` returns `{ normalized, report }`. `transformWithReport` returns the report object. Both accept the same camelCase overlays as the plain methods. Output text and errors follow the ordinary transform contract. Report fields, phase divisions, and counters are diagnostic and are not a stable compatibility promise.
-- The default `texform` import resolves to `texform/node` in Node.js and `texform/bundler` in browser-oriented bundlers. Use `texform/web` for explicit initialization, lazy loading, or Web Workers.
-- The bundler entry initializes WebAssembly at module load time and requires top-level `await` support. See [loading WebAssembly](#loading-webassembly) for bundler configuration.
-- All names follow JavaScript conventions: methods and fields are camelCase (`toLatex`, `validateArgspec` returns `argCount`), and missing values are `null`.
-- Parse, transform, normalize, and serialize take camelCase overlay objects. `null` / `undefined` / omitted means not set. Unknown keys, snake_case keys, arrays in object positions, and wrong scalar types throw `TexformConfigError` with a field path. Serializer options accept `style: "spaced" | "compact"`; former spacing and script-order keys are rejected.
-- `parser.defaultParseConfig()`, `engine.defaultParseConfig()`, and `engine.defaultTransformConfig()` return the complete defaults actually in force.
+- The JavaScript API mirrors the Rust facade one-to-one, with JavaScript naming: methods and fields are camelCase (`toLatex`, `validateArgspec` returns `argCount`), and missing values are `null`.
+- `normalize` returns a string; `transform` updates the document and returns `undefined`.
+- Parse, transform, normalize, and serialize take camelCase overlay objects. Unknown keys, snake_case keys, and wrong types throw `TexformConfigError` with a field path. Serializer options accept `style: "spaced" | "compact"`.
+- Pass the same `KnowledgeBase` to each parser, engine, or document that should interoperate; omitting it uses a shared default instance.
 - Parse and edit errors throw structured exceptions (`TexformParseError` and friends); no Rust panic ever crosses the boundary.
 - TypeScript declarations are bundled — no separate `@types` package.
 
 ## Loading WebAssembly
 
-Use `texform/node` in build scripts and Node.js applications, `texform/bundler` for automatic initialization, or `texform/web` when initialization should wait until the API is needed:
+The default `texform` import resolves to `texform/node` in Node.js and `texform/bundler` in browser-oriented bundlers. The bundler entry initializes WebAssembly at module load time and requires top-level `await` support. Use `texform/web` when initialization should wait until the API is needed, for lazy loading or Web Workers:
 
 ```ts
 import { init, Parser } from "texform/web";
@@ -71,9 +51,7 @@ const parser = new Parser();
 const parsed = parser.parse("x^2");
 ```
 
-Importing `texform/web` does not instantiate WebAssembly. API calls before initialization throw `TexformError` with an instruction to await `init()`. Concurrent and repeated calls share one Promise; a failed attempt allows a later retry. The same entry works in Web Workers without browser globals. Error classes can be used before initialization.
-
-Both browser entries locate the `.wasm` asset using the generated glue's standard `new URL(..., import.meta.url)`. Vite, webpack 5, and Parcel 2 support this asset form. With Vite, exclude the package from dependency prebundling so that the glue retains its asset URL:
+Both browser entries locate the `.wasm` asset with the standard `new URL(..., import.meta.url)` form, which Vite, webpack 5, and Parcel 2 support. With Vite, exclude the package from dependency prebundling so that the glue retains its asset URL:
 
 ```ts
 import { defineConfig } from "vite";
@@ -83,56 +61,15 @@ export default defineConfig({
 });
 ```
 
-Rollup and esbuild require an asset plugin, or you can supply the source explicitly with `await init({ wasm })`. The source accepts a `WebAssembly.Module`, `BufferSource`, `Response`, `Promise<Response>` (such as `fetch(...)`), `URL`, or string URL. If omitted, initialization uses the generated glue's default asset location.
+Rollup and esbuild require an asset plugin, or you can supply the source explicitly with `await init({ wasm })`. See [JavaScript and WebAssembly](https://texform.dev/docs/javascript-and-wasm) for entry points, bundler setup, and handle lifetimes.
 
 ## Learn more
 
-The JavaScript API mirrors the Rust facade one-to-one. For the full picture — the editable document tree, transform profiles, and the architecture — see the [repository README](../../README.md).
-
-## Constructing documents
-
-Constructors check the document's knowledge base before changing the tree. Arguments use live `Node` handles, source strings, booleans for star slots, or `null` for absent slots. Supply every argument slot, or only required slots to omit optional and star slots. Paired arguments accept `{ value, open, close }`; delimiters are strings such as `"("`, `"\\rangle"`, and `"."` (invisible).
-
-```js
-const doc = new Document();
-const sqrt = doc.createCommand("sqrt", [null, "x"]);
-const scripted = doc.createScripted(sqrt, "i", "2");
-const group = doc.createDelimitedGroup("(", ")", [scripted]);
-doc.appendChild(doc.root(), group);
-console.log(doc.toLatex());
-```
-
-`createGroup`, `createDelimitedGroup`, and `createInlineMath` accept arrays of nodes or source strings; a string is parsed and all its nodes are spliced into the list, so one string may yield several children. `createEnvironment` accepts a body node, source string, array of nodes or source strings, or `null` for an empty body. Other constructors include `createPrime`, `createInfix`, and `createDeclarative`. A final `{ mode: "math" | "text" }` option selects the context of a detached subtree. It defaults to text for `createInlineMath`; math for `createDelimitedGroup`, `createScripted`, `createPrime`, and `createInfix`; the group's own mode for `createGroup`; and the document's root mode otherwise. `parseFragment(source, options)` returns a detached implicit group using the same knowledge base.
-
-Invalid shapes throw `TexformConformanceError`, a `TexformEditError` subclass with `path` and `rule`. Invalid source arguments throw `TexformParseError` with diagnostics. `Document.fromSyntax` validates error-free trees against its knowledge base; trees containing error nodes remain read-only. Failed operations leave the document unchanged. `toLatex` and `serialize` check only structure, not conformance to a knowledge base.
-
-## Columnar export
-
-`document.toColumnar()` flattens the tree into columns for bulk structural analysis with Arrow or DataFrame tools. It carries information comparable to `document.toSyntax()`: `toSyntax()` returns a nested snapshot, while `toColumnar()` returns columnar data.
-
-`document.toColumnar()` returns `{ nodes, args }`, each containing one ordinary array per column. Nodes use preorder; the argument table includes absent optional slots and scalar values. Table field names remain snake_case across Python and JavaScript, and node `kind` uses the capitalized syntax names such as `"Root"` and `"Command"`.
-
-```js
-const tables = new Parser().parse(String.raw`\sqrt{x}`).document.toColumnar();
-console.log(tables.nodes.parent, tables.args.value_kind);
-```
-
-`parent`, `slot_index`, and `content` use `-1` when no index applies; other missing fields are `null`. Node `mode` describes its context; `open` and `close` retain actual paired-argument boundaries. Row indices belong to this snapshot, detached subtrees are excluded, and documents containing errors remain exportable.
-
-## Editing and addressing
-
-`node.path()` returns its current rooted path, or `null` for detached nodes. `document.nodeAt(path)` resolves a path and throws if it is missing. `node.slot()` describes its parent slot using a snake_case `kind` and a nullable `index`; roots and detached nodes return `null`. Paths can change after edits, so save them before modifying the tree.
-
-```js
-const original = parser.parse("x_i").document;
-const base = original.root().children[0].scriptBase();
-const variant = original.clone();
-variant.setSuperscript(variant.nodeAt(base.path()), "2");
-```
-
-`setSubscript` and `setSuperscript` accept a node or source string and return the resulting wrapper. Omit the value, or pass `undefined` or `null`, to clear a script; clearing the last script returns the collapsed base. Passing an existing script base edits its parent wrapper. `cloneNode(node)` copies a subtree within a document; `importNode(node)` copies from the node's owning document and checks the destination knowledge base. Both return detached nodes.
-
-Use `setArgDelimiters` for a Paired argument's boundaries, `setDelimiters` for a delimited group, and `setPrimeCount` for a positive prime count. `setArg` preserves existing Paired boundaries when given an ordinary value. `node.argKind(index)` exposes the argument form (also available as `node.arg(index).form`), and `node.isKnown()` returns a boolean for commands and environments or `null` otherwise.
+- [Quick start](https://texform.dev/docs/quick-start) — profiles, the document tree, and parse results in ten minutes
+- [Edit a document](https://texform.dev/docs/edit-a-document) — construct, edit, and locate nodes in the document tree
+- [Analyze formula structure at scale](https://texform.dev/docs/analyze-structure) — export documents as columnar tables
+- [Use TeXForm with MathJax or KaTeX](https://texform.dev/docs/use-with-a-renderer) — normalize formulas so a vanilla renderer can display them
+- [JavaScript API reference](https://texform.dev/api/js) — every class, method, and error
 
 ## License
 

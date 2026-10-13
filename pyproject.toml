@@ -4,12 +4,13 @@ build-backend = "maturin"
 
 [project]
 name = "texform"
-description = "Python bindings for the TeXForm LaTeX parser"
+description = "Parse, edit, and normalize LaTeX math: Python bindings for TeXForm"
 readme = "python/texform/README.md"
 requires-python = ">=3.10"
 dependencies = ["typing-extensions>=4.12"]
 dynamic = ["version"]
 license = { text = "Apache-2.0" }
+keywords = ["latex", "math", "parser", "formula", "normalization"]
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
@@ -19,8 +20,17 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Mathematics",
     "Topic :: Text Processing :: Markup :: LaTeX",
+    "Typing :: Typed",
 ]
+
+[project.urls]
+Homepage = "https://texform.dev"
+Documentation = "https://texform.dev/docs"
+Repository = "https://github.com/texform-dev/texform"
+Changelog = "https://texform.dev/docs/changelog"
+Issues = "https://github.com/texform-dev/texform/issues"
 
 [tool.maturin]
 manifest-path = "crates/texform-python/Cargo.toml"

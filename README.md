@@ -2,53 +2,28 @@
 
 # TeXForm
 
-**The missing foundation for LaTeX formula processing.**
+**The LaTeX math toolkit**
 
-TeXForm parses, edits, and transforms LaTeX math, built on a structured knowledge base of 600+ command and environment specifications across 7 LaTeX packages, validated against MathJax, KaTeX, and XeTeX. One Rust core, available in Rust, Python, and JavaScript.
+TeXForm parses, edits, and normalizes LaTeX math using a knowledge base of 600+ command and environment specifications across 8 LaTeX packages, validated against MathJax, KaTeX, and XeTeX. One Rust core backs packages for Python, JavaScript, and Rust, plus a command-line tool.
 
 [![crates.io](https://img.shields.io/crates/v/texform.svg)](https://crates.io/crates/texform)
 [![PyPI](https://img.shields.io/pypi/v/texform.svg)](https://pypi.org/project/texform/)
 [![npm](https://img.shields.io/npm/v/texform.svg)](https://www.npmjs.com/package/texform)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-[Playground](https://play.texform.dev) · [Architecture](ARCHITECTURE.md) · [Changelog](CHANGELOG.md)
+[Website](https://texform.dev) · [Documentation](https://texform.dev/docs) · [Playground](https://play.texform.dev) · [LaTeX reference](https://texform.dev/latex) · [Changelog](CHANGELOG.md)
 
 </div>
 
 ## Why TeXForm
 
-Programs that process LaTeX formulas — cleaning OCR training data, comparing formulas for equivalence, preparing pretraining corpora, building math editors — keep reinventing the same fragile layer: regular expressions and one-off heuristics that guess what `\frac`, `\over`, or `\quantity` mean. The hard part was never the string manipulation. It is knowing the argument structure of every command well enough to work on formulas as syntax trees instead of text.
+Programs that process LaTeX formulas — cleaning OCR and math-recognition output, preparing training corpora, comparing and deduplicating formulas, building math editors — keep reinventing the same fragile layer: regular expressions and one-off heuristics that guess what `\frac`, `\over`, or `\quantity` mean. The hard part is not the string manipulation. It is knowing the argument structure of every command well enough to work on formulas as trees instead of text.
 
-TeXForm is that missing layer. It parses formulas against a real command knowledge base, gives you an editable document tree, and normalizes formulas into canonical forms tuned for specific downstream uses.
+TeXForm provides that layer:
 
-The serializer defaults to byte-stable `spaced` output. Select `Style::Compact` through `SerializeOptions { style: Style::Compact }` for concise output such as `\frac{a}{b}+x_i^2`. Python uses `doc.to_latex(style="compact")`, JavaScript uses `doc.toLatex({ style: "compact" })`, and the CLI accepts `normalize --style compact`. Compact output preserves parsed structure and text idempotency; its layout may improve across releases.
-
-## What TeXForm gives you
-
-<table>
-<tr>
-<th align="center"><a href="ARCHITECTURE.md#knowledge-and-argument-specifications">Knowledge-driven parser</a></th>
-<th align="center"><a href="ARCHITECTURE.md#editing-model">Editable document tree</a></th>
-<th align="center"><a href="crates/texform-transform/README.md">Profile-based transform engine</a></th>
-</tr>
-<tr>
-<td valign="top">
-
-Formulas parse into real syntax trees, driven by xparse-style argument specifications for every command in `base`, `ams`, `physics`, `braket`, `bboldx`, `boldsymbol`, `textmacros`, and `color`. Unknown commands and unparseable fragments survive as explicit nodes — under your control, never a crash.
-
-</td>
-<td valign="top">
-
-Parsing produces a `Document` — a DOM-style tree you can query, mutate, and serialize back to LaTeX. Edits are validated and return structured errors; no panic ever reaches the caller. The serializer guarantees text idempotency.
-
-</td>
-<td valign="top">
-
-Normalization has no single correct answer, so TeXForm never imposes one true form. You pick a `Profile`, and a curated rule pipeline produces the canonical form for that use case — from polished authoring output to aggressive corpus normalization.
-
-</td>
-</tr>
-</table>
+- **Parse against a knowledge base.** Formulas parse into syntax trees driven by xparse-style argument specifications for the commands and environments in `base`, `ams`, `physics`, `braket`, `bboldx`, `boldsymbol`, `textmacros`, and `color`. Unknown commands and unparseable fragments stay in the tree as explicit nodes with diagnostics.
+- **Edit a document tree.** A parsed `Document` is a DOM-style tree you can query, edit, and serialize back to LaTeX. Edits are validated against the knowledge base and fail with structured errors, and serialization is text-idempotent.
+- **Normalize with a profile.** Normalization has no single correct answer, so you pick a `Profile` for your downstream use, and a curated set of rewrite rules produces the canonical form for it. Every rule declares the forms it eliminates, and the engine checks that contract after every run.
 
 ## Normalization at a glance
 
@@ -72,23 +47,7 @@ The same input, normalized under different profiles (real engine output):
 
 Every profile modernizes legacy syntax like `\over`. `Authoring` keeps the author's shorthand; `Corpus` expands it into universal forms that render on any vanilla MathJax or KaTeX deployment with no extra packages — including right here on GitHub, where inputs like `\dv` and `\ket` would not render at all.
 
-`Equiv` adds rules that may discard visually salient notation choices. For example, it rewrites centered `\cfrac` forms to `\frac`, while `Corpus` retains continued-fraction styling. Use `Equiv` output as an intermediate for comparison, deduplication, or fingerprints; it is not intended as a training label for the original image.
-
-## What's underneath
-
-Behind a profile, normalization runs as a multi-phase pipeline, not a find-and-replace pass:
-
-- **Rewrite** applies a curated rule set in a fixed-point loop — modernizing legacy syntax, canonicalizing aliases, and expanding semantic macros, depending on the levels the profile selects.
-- **LowerAttributes** canonicalizes font and style markup, so `{\bf x}` and `\mathbf{x}` converge to a single form with declarative scope tracked correctly.
-- **FlattenGroups** strips redundant braces behind semantic and spacing guards, so flattening never changes script binding, environment cell boundaries, or atom spacing unless you opt in.
-- **FinalizeAst** canonicalizes the tree representation by merging adjacent prime nodes and normalizing text sequences. It runs before FlattenGroups and again after flattening to handle newly adjacent nodes.
-
-The execution order is LowerAttributes → Rewrite → LowerAttributes → FinalizeAst → FlattenGroups → FinalizeAst. Per-run options can disable phases; the second FinalizeAst pass runs only when FlattenGroups is enabled. Eliminated-form contracts are checked after the full pipeline.
-
-Two assets carry most of the weight, and neither existed as a reusable artifact before:
-
-- **The argspec knowledge base.** Machine-readable, xparse-style argument signatures for every supported command and environment — validated by rendering against MathJax, KaTeX, and XeTeX rather than transcribed from documentation.
-- **The curated rewrite rule set.** Every rule declares its `RuleLevel`, its worst-case `RuleFidelity`, and the forms it eliminates. The engine enforces that eliminated-form contract after every run, and corpus regression re-checks it against real-world datasets.
+`Equiv` adds rules that may discard visually salient notation choices, such as rewriting centered `\cfrac` forms to `\frac`. Use its output for comparison, deduplication, or fingerprints, not as a training label for the original image. See [Transforms](https://texform.dev/docs/transforms) for what each profile changes and the [rule reference](https://texform.dev/rules) for every rewrite rule.
 
 ## Quick start
 
@@ -148,26 +107,7 @@ engine.transform(&mut document)?;
 assert_eq!(document.to_latex()?, r"\frac { a } { b }");
 ```
 
-> **Note:** the `texform` crate is the only public, stability-guaranteed Rust entry point; the `texform-*` crates it depends on are internal and may change in any release. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the crate layout and the public API guarantees.
-
-The Python and JavaScript bindings expose the same parser, document, and engine from the single Rust core. See the [PyPI package notes](python/texform/README.md) and the [npm package notes](packages/texform/README.md) for language-specific details.
-
-### Shared knowledge bases
-
-Default parsers, engines, and documents share one immutable knowledge base. For custom packages or definitions, build a `KnowledgeBase` once and pass that same instance to each consumer; independently constructed instances are distinct even when their contents match. Package selection and record queries belong to the knowledge base.
-
-```rust
-use texform::{KnowledgeBase, Parser, Profile, TransformEngine};
-
-let kb = KnowledgeBase::builder().packages(&["base", "ams"]).build()?;
-let parser = Parser::builder().knowledge_base(kb.clone()).build();
-let engine = TransformEngine::builder()
-    .knowledge_base(kb)
-    .profile(Profile::Corpus)
-    .build()?;
-let (mut document, _) = parser.parse(r"a \over b").try_into_document()?;
-engine.transform(&mut document)?;
-```
+The `texform` crate is the only public, stability-guaranteed Rust entry point; the `texform-*` crates it depends on are internal and may change in any release.
 
 ### Command line
 
@@ -182,21 +122,25 @@ $ texform normalize --profile corpus 'a \over b'
 
 The `texform` binary also parses, tokenizes, and queries the knowledge base, and `texform serve` offers normalization to other programs over a JSON-RPC protocol. See the [CLI guide](crates/texform-cli/README.md).
 
-## Links
+Output uses the byte-stable `spaced` style by default. For concise output such as `\frac{a}{b}+x_i^2`, select the `compact` style; see [Configure output style](https://texform.dev/docs/configure-output-style).
 
+## Documentation
+
+The documentation lives at [texform.dev](https://texform.dev):
+
+- [Get started](https://texform.dev/docs/installation) — installation, quick start, JavaScript and WebAssembly setup, and the command line
+- [Guides](https://texform.dev/docs/normalize-a-corpus) — normalizing a corpus, cleaning OCR output, comparing formulas, editing documents, and more
+- [Concepts](https://texform.dev/docs/what-is-texform) — parsing, transforms, serialization, and how TeXForm compares with other tools
+- [API reference](https://texform.dev/api) — Python, JavaScript, and Rust ([docs.rs](https://docs.rs/texform))
+- [LaTeX reference](https://texform.dev/latex) — every supported command and environment, with its argument structure and renderer support
+- [Rule reference](https://texform.dev/rules) — every rewrite rule with its level, fidelity, and examples
 - [Playground](https://play.texform.dev) — try TeXForm in the browser
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — crate layout, pipeline, tree representations, API guarantees
+
+For contributors, this repository documents the internals:
+
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — crate layout, pipeline, tree representations, and API guarantees
 - [`TESTING.md`](TESTING.md) — how TeXForm is tested, from contract tests to corpus regression
-- [`texform-cli`](crates/texform-cli/README.md) — command-line usage and the `serve` normalizer protocol
 - [`CHANGELOG.md`](CHANGELOG.md) — release history
-
-## Constructing documents
-
-Documents share an immutable `KnowledgeBase`. Constructors accept `Arg` values: detached nodes, slot source strings, star Booleans, `Absent`, or `Arg::paired(value, open, close)?`. A signature can receive all slots or only its required slots. For example, `doc.create_command("sqrt", ["x".into()])?` fills its mandatory slot and leaves the optional slot empty. Use `doc.in_mode(ContentMode::Text)` for text-context construction and `doc.parse_fragment(source, mode)` for a detached source fragment.
-
-Use `set_subscript` and `set_superscript` to edit script slots, including when the target is an existing scripted base. Clearing the final script returns the original base. `set_arg` fills or clears optional slots and preserves Paired boundaries; `set_arg_delimiters`, `set_delimiters`, and `set_prime_count` update those properties independently. `clone_node` deep-copies within a document, and `import_node` validates foreign subtrees against the receiving knowledge base. For independent variants, clone the document and resolve a recorded `node.path()` with `variant.node_at(path)`; paths refer to the current tree and can change after sibling edits.
-
-A source string in a children list (groups, inline math, delimited groups, environment bodies) is parsed and its nodes are spliced into the list. Invalid shapes fail atomically with a structured `ConformanceError`; invalid source fragments retain parser diagnostics. Complete syntax snapshots are checked on import, while snapshots containing Error nodes remain structurally checked, read-only documents. `to_columnar()` exports a `ColumnarTree` with node and argument tables for bulk structural analysis with Arrow or DataFrames; `to_syntax()` exports a nested snapshot of the same tree. `serialize` and `to_latex` check only structure, not conformance to a knowledge base. See [the architecture reference](ARCHITECTURE.md) for local constraints and serialization limits.
 
 ## License
 

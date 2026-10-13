@@ -1,10 +1,12 @@
 # texform
 
-> **The missing foundation for LaTeX formula processing.**
+> **The LaTeX math toolkit**
 
-TeXForm parses, edits, and transforms LaTeX math, built on a structured knowledge base of 600+ command and environment specifications across 7 LaTeX packages, validated against MathJax, KaTeX, and XeTeX.
+TeXForm parses, edits, and normalizes LaTeX math using a knowledge base of 600+ command and environment specifications across 8 LaTeX packages, validated against MathJax, KaTeX, and XeTeX.
 
 This crate is the public TeXForm facade — the only crate with a stability guarantee. It exposes the full API surface: a parse-only `Parser`, an editable `Document` tree, a profile-based `TransformEngine`, deterministic serialization, and `validate_argspec`.
+
+[Website](https://texform.dev) · [Documentation](https://texform.dev/docs) · [API reference](https://docs.rs/texform) · [Playground](https://play.texform.dev) · [Changelog](https://texform.dev/docs/changelog)
 
 ## Quick start
 
@@ -26,43 +28,18 @@ engine.transform(&mut document)?;
 assert_eq!(document.to_latex()?, r"\frac { a } { b }");
 ```
 
-Profiles select the normalization target: `Authoring` (polished author-facing output), `Faithful` (render-faithful universal forms), `Corpus` (complete canonical training labels), and `Equiv` (an aggressive intermediate for equivalence comparison). `Equiv` adds rules such as rewriting centered `\cfrac` forms to `\frac`, discarding continued-fraction styling that `Corpus` retains. Its output is intended for comparison, deduplication, or fingerprints rather than training labels for the original images.
+Profiles select the normalization target: `Authoring` (polished author-facing output), `Faithful` (render-faithful universal forms), `Corpus` (complete canonical training labels), and `Equiv` (an aggressive intermediate for equivalence comparison). `Equiv` may discard visually salient notation such as continued-fraction styling, so use its output for comparison, deduplication, or fingerprints rather than as training labels. See [Transforms](https://texform.dev/docs/transforms) for what each profile changes.
 
-### Shared knowledge bases
+## Learn more
 
-Default parsers, engines, and documents share one immutable knowledge base. For custom packages or definitions, build a `KnowledgeBase` once and pass that same instance to each consumer; independently constructed instances are distinct even when their contents match. Package selection and record queries belong to the knowledge base.
-
-```rust
-use texform::{KnowledgeBase, Parser, Profile, TransformEngine};
-
-let kb = KnowledgeBase::builder().packages(&["base", "ams"]).build()?;
-let parser = Parser::builder().knowledge_base(kb.clone()).build();
-let engine = TransformEngine::builder()
-    .knowledge_base(kb)
-    .profile(Profile::Corpus)
-    .build()?;
-let (mut document, _) = parser.parse(r"a \over b").try_into_document()?;
-engine.transform(&mut document)?;
-```
+- [Quick start](https://texform.dev/docs/quick-start) — profiles, the document tree, and parse results in ten minutes
+- [Guides](https://texform.dev/docs/normalize-a-corpus) — normalizing a corpus, editing documents, injecting custom commands, and more
+- [LaTeX reference](https://texform.dev/latex) and [rule reference](https://texform.dev/rules) — what the parser understands and what each rewrite rule does
+- [`texform-cli`](https://crates.io/crates/texform-cli) — the `texform` command-line tool
 
 ## Stability
 
-`texform` follows semantic versioning and is the only public entry point. The `texform-*` crates it depends on are internal implementation details — they are published only because crates.io requires it, and their APIs may change in any release. Do not depend on them directly.
-
-## Links
-
-- [Repository README](../../README.md) — full README, examples, and contribution guide
-- [API documentation](https://docs.rs/texform)
-- [Architecture overview](../../ARCHITECTURE.md)
-- [Playground](https://play.texform.dev) — try TeXForm in the browser
-
-## Constructing documents
-
-Documents share an immutable `KnowledgeBase`. Constructors accept `Arg` values: detached nodes, slot source strings, star Booleans, `Absent`, or `Arg::paired(value, open, close)?`. A signature can receive all slots or only its required slots. For example, `doc.create_command("sqrt", ["x".into()])?` fills its mandatory slot and leaves the optional slot empty. Use `doc.in_mode(ContentMode::Text)` for text-context construction and `doc.parse_fragment(source, mode)` for a detached source fragment.
-
-Use `set_subscript` and `set_superscript` to edit script slots, including when the target is an existing scripted base. Clearing the final script returns the original base. `set_arg` fills or clears optional slots and preserves Paired boundaries; `set_arg_delimiters`, `set_delimiters`, and `set_prime_count` update those properties independently. `clone_node` deep-copies within a document, and `import_node` validates foreign subtrees against the receiving knowledge base. For independent variants, clone the document and resolve a recorded `node.path()` with `variant.node_at(path)`; paths refer to the current tree and can change after sibling edits.
-
-A source string in a children list (groups, inline math, delimited groups, environment bodies) is parsed and its nodes are spliced into the list. Invalid shapes fail atomically with a structured `ConformanceError`; invalid source fragments retain parser diagnostics. Complete syntax snapshots are checked on import, while snapshots containing Error nodes remain structurally checked, read-only documents. `to_columnar()` exports a `ColumnarTree` with node and argument tables for bulk structural analysis with Arrow or DataFrames; `to_syntax()` exports a nested snapshot of the same tree. `serialize` and `to_latex` check only structure, not conformance to a knowledge base. See [the architecture reference](../../ARCHITECTURE.md) for local constraints and serialization limits.
+`texform` follows semantic versioning and is the only public entry point. The `texform-*` crates it depends on are internal implementation details — they are published only because crates.io requires it, and their APIs may change in any release. Do not depend on them directly. See [Stability and versioning](https://texform.dev/docs/stability-and-versioning).
 
 ## License
 
