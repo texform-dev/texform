@@ -3,6 +3,24 @@
 All notable changes to TeXForm are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
+## [0.10.0] - 2026-10-13
+
+### Added
+
+- **Breaking:** Replace serialize options with output styles
+- Record the auto-sized argument of physics named functions
+- Keep compact script braces around argument-taking commands
+- Check every adjacency a group splice creates
+- Add 3 rules for named-fn-expand group
+- Add helpers for sibling delimiter fences
+
+### Fixed
+
+- Keep groups a preceding command could capture as an argument
+- Report strict argument failures at their source
+- Keep lexical separators after delimiters and before sibling brackets
+- Keep dropped delimiter sizes from exposing arguments
+- Rename physics long operator names only in bare form
 
 ## [0.9.1] - 2026-10-09
 
