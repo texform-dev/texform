@@ -1,8 +1,6 @@
 //! `texform info`: knowledge-base entry for a command, character, or
 //! environment.
 
-use std::process::ExitCode;
-
 use serde::Serialize;
 use texform::ContentMode;
 use texform::bindings::{
@@ -11,7 +9,7 @@ use texform::bindings::{
 };
 
 use super::argspec::describe_slots;
-use crate::output::{FAILURE, eprint_line, json_line, print_line, usage_error};
+use crate::output::{FAILURE, SUCCESS, eprint_line, json_line, print_line, usage_error};
 use crate::packages;
 
 #[derive(clap::Args)]
@@ -70,7 +68,7 @@ impl Entries {
     }
 }
 
-pub fn run(args: Args, packages: &[String]) -> ExitCode {
+pub fn run(args: Args, packages: &[String]) -> u8 {
     let parser = match packages::parser(packages) {
         Ok(parser) => parser,
         Err(error) => return usage_error(error),
@@ -122,16 +120,12 @@ pub fn run(args: Args, packages: &[String]) -> ExitCode {
             "error: no {what} `{}` in {mode} mode",
             args.name
         ));
-        return ExitCode::from(FAILURE);
+        return FAILURE;
     };
     if let Err(error) = print_line(text) {
         return usage_error(format_args!("cannot write stdout: {error}"));
     }
-    if found {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::from(FAILURE)
-    }
+    if found { SUCCESS } else { FAILURE }
 }
 
 /// One block of aligned fields per record, separated by blank lines.

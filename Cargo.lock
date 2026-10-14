@@ -1383,6 +1383,7 @@ dependencies = [
  "serde",
  "serde_json",
  "texform",
+ "texform-cli",
 ]
 
 [[package]]

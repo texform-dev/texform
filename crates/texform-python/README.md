@@ -17,6 +17,10 @@ Release wheels are built with `maturin build --release`; packaging metadata live
 
 For uv projects that depend on this checkout as a local path dependency, `uv run` and `uv sync` automatically rebuild the extension when its Rust sources, Cargo manifests, or knowledge resources change. The root `tool.uv.cache-keys` configuration tracks these build inputs; extend it when adding native dependencies or build resources. Automatic rebuilding requires uv environment synchronization, so `uv run --no-sync` and direct Python invocations bypass it.
 
+## Command-line entry point
+
+The `texform` console script and `python -m texform` call `_run_cli` in `python/texform/__main__.py`, which runs `texform_cli::run` with the GIL released. The Python wrapper restores the default SIGINT handler first: Python's handler only sets a flag that the native tool never checks, so Ctrl-C would otherwise not stop a blocking `texform serve`. Command-line behavior and its tests live in `texform-cli`.
+
 ## API changes and validation
 
 `KnowledgeBase` is frozen and compares and hashes by shared instance identity. Parser, engine, and document constructors accept it; knowledge queries belong to it. Document copies share knowledge and allocate new node identities. Python node equality and hashing identify an owning document and node, including stale handles.

@@ -7,10 +7,13 @@ Command-line interface for [TeXForm](https://texform.dev), installed as the `tex
 ## Installation
 
 ```bash
-cargo install texform-cli
+uv tool install texform    # or: pipx install texform
+cargo install texform-cli  # native binary, built from source
 ```
 
-To build from a source checkout, run `cargo install --path crates/texform-cli` from the repository root. Either way the installed binary is named `texform`.
+The PyPI package links this crate into its Python extension and exposes the same tool as the `texform` command, with prebuilt wheels for common platforms; `pip install texform` installs it into the current environment, and `uvx texform` runs it without installing. Each invocation then pays for Python startup, about 10 ms; throughput on large inputs is unchanged.
+
+To build from a source checkout, run `cargo install --path crates/texform-cli` from the repository root. Either way the installed command is named `texform`.
 
 ## Build identity
 

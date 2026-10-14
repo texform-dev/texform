@@ -1,10 +1,8 @@
 //! `texform packages`: list the built-in knowledge packages.
 
-use std::process::ExitCode;
-
 use texform::bindings::list_packages_to_dto;
 
-use crate::output::{json_line, print_line, usage_error};
+use crate::output::{SUCCESS, json_line, print_line, usage_error};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -13,7 +11,7 @@ pub struct Args {
     json: bool,
 }
 
-pub fn run(args: Args) -> ExitCode {
+pub fn run(args: Args) -> u8 {
     let packages = list_packages_to_dto();
     let text = if args.json {
         json_line(&packages)
@@ -37,7 +35,7 @@ pub fn run(args: Args) -> ExitCode {
             .join("\n")
     };
     match print_line(text) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(()) => SUCCESS,
         Err(error) => usage_error(format_args!("cannot write stdout: {error}")),
     }
 }

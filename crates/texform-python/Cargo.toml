@@ -16,3 +16,4 @@ pythonize.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 texform.workspace = true
+texform-cli = { path = "../texform-cli" }

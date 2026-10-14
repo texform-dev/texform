@@ -25,6 +25,9 @@ classifiers = [
     "Typing :: Typed",
 ]
 
+[project.scripts]
+texform = "texform.__main__:main"
+
 [project.urls]
 Homepage = "https://texform.dev"
 Documentation = "https://texform.dev/docs"
@@ -74,6 +77,7 @@ cache-keys = [
     { file = "crates/texform-knowledge-macros/src/**/*.rs" },
     { file = "crates/texform-transform/src/**/*.rs" },
     { file = "crates/texform-python/src/**/*.rs" },
+    { file = "crates/texform-cli/src/**/*.rs" },
     { file = "crates/texform-knowledge/codegen/**/*.rs" },
     { file = "crates/texform-knowledge/resources/**/*.yaml" },
     { file = "python/texform/*.py" },

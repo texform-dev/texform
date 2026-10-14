@@ -8,17 +8,18 @@ pub mod parse;
 pub mod tokenize;
 
 use std::ops::ControlFlow;
-use std::process::ExitCode;
 
 use crate::input::FormulaInput;
-use crate::output::{Failure, Format, Printer, Success, catch_processing_panic, usage_error};
+use crate::output::{
+    Failure, Format, Printer, SUCCESS, Success, catch_processing_panic, usage_error,
+};
 
 /// Continue after formula failures, but stop reading when stdout closes.
 fn run_formulas(
     input: &FormulaInput,
     format: Format,
     mut process: impl FnMut(&str) -> Result<Success, Failure>,
-) -> ExitCode {
+) -> u8 {
     let mut printer = Printer::new(format, input.per_line());
     let mut write_error = None;
     let read = input.for_each(|formula| {
@@ -36,7 +37,7 @@ fn run_formulas(
     });
     if let Some(error) = write_error {
         if error.kind() == std::io::ErrorKind::BrokenPipe {
-            return ExitCode::SUCCESS;
+            return SUCCESS;
         }
         return usage_error(format_args!("cannot write stdout: {error}"));
     }

@@ -1,13 +1,11 @@
 //! `texform argspec`: argument-specification tools.
 
-use std::process::ExitCode;
-
 use texform::{
     ArgSpecFormInfo, ArgSpecKindInfo, DelimiterTokenInfo, ParsedArgSpecSlot,
     RuntimeContentModeInfo, validate_argspec,
 };
 
-use crate::output::{FAILURE, eprint_line, json_line, print_line, usage_error};
+use crate::output::{FAILURE, SUCCESS, eprint_line, json_line, print_line, usage_error};
 
 #[derive(clap::Subcommand)]
 pub enum Command {
@@ -26,13 +24,13 @@ pub struct ValidateArgs {
     json: bool,
 }
 
-pub fn run(command: Command) -> ExitCode {
+pub fn run(command: Command) -> u8 {
     match command {
         Command::Validate(args) => validate(args),
     }
 }
 
-fn validate(args: ValidateArgs) -> ExitCode {
+fn validate(args: ValidateArgs) -> u8 {
     let result = validate_argspec(&args.spec);
     let text = if args.json {
         json_line(&result)
@@ -48,16 +46,12 @@ fn validate(args: ValidateArgs) -> ExitCode {
         let error = result.error.as_deref().unwrap_or("unknown error");
         // The facade message already says `invalid argspec`.
         eprint_line(format_args!("error: {error}"));
-        return ExitCode::from(FAILURE);
+        return FAILURE;
     };
     if let Err(error) = print_line(text) {
         return usage_error(format_args!("cannot write stdout: {error}"));
     }
-    if result.valid {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::from(FAILURE)
-    }
+    if result.valid { SUCCESS } else { FAILURE }
 }
 
 /// One indented line per slot, each preceded by a newline.

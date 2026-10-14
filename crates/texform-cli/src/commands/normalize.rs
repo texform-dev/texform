@@ -1,7 +1,5 @@
 //! `texform normalize`: normalize formulas with a transform profile.
 
-use std::process::ExitCode;
-
 use texform::bindings::NormalizeConfigInput;
 
 use super::run_formulas;
@@ -35,7 +33,7 @@ pub struct Args {
     json: bool,
 }
 
-pub fn run(args: Args, packages: &[String]) -> ExitCode {
+pub fn run(args: Args, packages: &[String]) -> u8 {
     let overrides = match read_config::<NormalizeConfigInput>(args.config.as_deref()) {
         Ok(overrides) => overrides,
         Err(message) => return usage_error(message),

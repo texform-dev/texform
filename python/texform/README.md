@@ -30,6 +30,17 @@ if parsed["document"] is not None:
 
 Profiles select the normalization target: `"authoring"`, `"faithful"`, `"corpus"`, and `"equiv"`. See [Transforms](https://texform.dev/docs/transforms) for what each profile changes.
 
+## Command line
+
+The package also installs the `texform` command-line tool, which is also available as `python -m texform`. To run it without installing, use `uvx texform`:
+
+```console
+$ uvx texform normalize --profile corpus 'a \over b'
+\frac { a } { b }
+```
+
+See the [command-line guide](https://texform.dev/docs/command-line) for all commands.
+
 ## Python-specific notes
 
 - The Python API mirrors the Rust facade one-to-one, with Python naming: methods and dict keys are snake_case (`to_latex`, `validate_argspec` returns `arg_count`).

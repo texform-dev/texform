@@ -9,18 +9,17 @@ mod rpc;
 mod server;
 
 use std::io::{self, BufRead, Write};
-use std::process::ExitCode;
 
 use serde_json::Value;
 
 use self::rpc::{Request, Response, RpcError};
 use self::server::Server;
-use crate::output::catch_processing_panic;
+use crate::output::{FAILURE, SUCCESS, catch_processing_panic};
 
 /// Serve requests from stdin until end of file.
 ///
 /// `default_packages` applies to `configure` requests that omit `packages`.
-pub fn run(default_packages: Vec<String>) -> ExitCode {
+pub fn run(default_packages: Vec<String>) -> u8 {
     let mut server = Server::new(default_packages);
     let mut input = io::stdin().lock();
     let mut output = io::stdout().lock();
@@ -28,11 +27,11 @@ pub fn run(default_packages: Vec<String>) -> ExitCode {
     loop {
         line.clear();
         match input.read_until(b'\n', &mut line) {
-            Ok(0) => return ExitCode::SUCCESS,
+            Ok(0) => return SUCCESS,
             Ok(_) => {}
             Err(error) => {
                 eprintln!("texform serve: cannot read stdin: {error}");
-                return ExitCode::FAILURE;
+                return FAILURE;
             }
         }
         let Some(response) = handle_line(&mut server, &line) else {
@@ -40,7 +39,7 @@ pub fn run(default_packages: Vec<String>) -> ExitCode {
         };
         if let Err(error) = write_response(&mut output, &response) {
             eprintln!("texform serve: cannot write stdout: {error}");
-            return ExitCode::FAILURE;
+            return FAILURE;
         }
     }
 }

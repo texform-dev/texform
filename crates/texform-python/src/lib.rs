@@ -1445,6 +1445,15 @@ fn count_targets(
     Ok(pythonize(py, &counts)?.unbind())
 }
 
+/// Run the command-line tool with `argv`, whose first item is the program
+/// name, and return its exit status. Backs the `texform` console script.
+#[pyfunction]
+fn _run_cli(py: Python<'_>, argv: Vec<std::ffi::OsString>) -> u8 {
+    // The tool owns stdin and stdout for its whole run and never touches
+    // Python objects, so other Python threads may proceed meanwhile.
+    py.detach(|| texform_cli::run(argv))
+}
+
 /// Native extension module loaded as `texform._native`.
 /// Symbols are re-exported from the Python package's `__init__.py`.
 #[pymodule]
@@ -1455,6 +1464,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(validate_argspec, m)?)?;
     m.add_function(wrap_pyfunction!(list_packages, m)?)?;
     m.add_function(wrap_pyfunction!(list_rules, m)?)?;
+    m.add_function(wrap_pyfunction!(_run_cli, m)?)?;
     m.add_class::<PyParseConfig>()?;
     m.add_class::<PyLowerAttributesConfig>()?;
     m.add_class::<PyRewriteConfig>()?;

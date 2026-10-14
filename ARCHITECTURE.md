@@ -28,6 +28,7 @@ graph TD
     end
 
     py --> facade
+    py --> cli
     wasm --> facade
     cli --> facade
     facade --> transform
@@ -53,7 +54,7 @@ graph TD
     regression --> interface
 ```
 
-Arrows point from a crate to the crates it depends on. Everything below `texform` is internal; the facade is the only general-purpose Rust crate external code should depend on. The binding crates are published language surfaces, but they may still depend on internal helper crates for host-language glue such as generated TypeScript shapes and option conversion. `texform-cli` is a front end like the bindings but depends on the facade alone; as a separate crate, it keeps command-line dependencies out of the library's dependency graph.
+Arrows point from a crate to the crates it depends on. Everything below `texform` is internal; the facade is the only general-purpose Rust crate external code should depend on. The binding crates are published language surfaces, but they may still depend on internal helper crates for host-language glue such as generated TypeScript shapes and option conversion. `texform-cli` is a front end like the bindings but depends on the facade alone; as a separate crate, it keeps command-line dependencies out of the library's dependency graph. `texform-python` links it so that the PyPI package also installs the `texform` command.
 
 | Crate | Responsibility |
 |-------|----------------|
@@ -64,7 +65,7 @@ Arrows point from a crate to the crates it depends on. Everything below `texform
 | `texform-knowledge-macros` | Procedural macros used by the knowledge base, including compile-time argument-specification parsing for generated records. |
 | `texform-argspec` | An xparse-style argument-specification parser used to describe command signatures. |
 | `texform-interface` | Shared types with no dependencies on other TeXForm crates, most importantly `SyntaxNode`, the lossless parse snapshot. |
-| `texform-python`, `texform-wasm` | Language bindings that expose the shared facade model to Python and WebAssembly. |
+| `texform-python`, `texform-wasm` | Language bindings that expose the shared facade model to Python and WebAssembly. The Python extension also embeds the command-line tool behind the package's `texform` command. |
 | `texform-cli` | The `texform` command-line tool: normalization, parsing, tokenization, knowledge queries, argspec validation, and the `serve` normalizer protocol for other processes. It shares the bindings' DTOs and config overlays through the facade. Its `normalize` command and the `serve` protocol run one shared pipeline built from public facade stages. |
 | `texform-regression` | Corpus regression and data-product tooling for parser regression, transform-contract checking, and counter-map generation. Internal tooling, not part of the public API. |
 

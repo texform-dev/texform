@@ -112,8 +112,10 @@ The `texform` crate is the only public, stability-guaranteed Rust entry point; t
 ### Command line
 
 ```bash
-cargo install texform-cli
+uv tool install texform    # or: pipx install texform
 ```
+
+The command ships with the Python package: `pip install texform` also installs it into the current environment, and `uvx texform` runs it without installing. With a Rust toolchain, `cargo install texform-cli` builds the same tool as a native binary.
 
 ```console
 $ texform normalize --profile corpus 'a \over b'

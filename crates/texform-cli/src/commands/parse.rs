@@ -1,7 +1,5 @@
 //! `texform parse`: parse formulas without normalizing them.
 
-use std::process::ExitCode;
-
 use serde::Serialize;
 use texform::bindings::{ParseConfigInput, normalize_error_to_parts};
 use texform::{ParseDiagnostic, SyntaxNode};
@@ -35,7 +33,7 @@ struct Parsed {
     diagnostics: Vec<ParseDiagnostic>,
 }
 
-pub fn run(args: Args, packages: &[String]) -> ExitCode {
+pub fn run(args: Args, packages: &[String]) -> u8 {
     let overrides = match read_config::<ParseConfigInput>(args.config.as_deref()) {
         Ok(overrides) => overrides,
         Err(message) => return usage_error(message),

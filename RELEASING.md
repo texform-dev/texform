@@ -2,7 +2,7 @@
 
 TeXForm ships one lockstep version to crates.io, PyPI, and npm from a single source of truth: `workspace.package.version` in `Cargo.toml`. Every crate inherits it through `version.workspace = true`, maturin reads it for the Python package, and `packages/texform/package.json` is synchronized to it for npm.
 
-The command-line tool ships as the `texform-cli` crate, which installs the `texform` binary with `cargo install texform-cli`. It is published to crates.io at the same lockstep version in the same `release-plz` run as the facade and the internal crates. Like them, it gets no tag or GitHub Release of its own, and its commits are folded into the root `CHANGELOG.md`.
+The command-line tool ships as the `texform-cli` crate, which installs the `texform` binary with `cargo install texform-cli`. The Python extension links the same crate, so every PyPI wheel also installs a `texform` command; no separate build or registry is involved. It is published to crates.io at the same lockstep version in the same `release-plz` run as the facade and the internal crates. Like them, it gets no tag or GitHub Release of its own, and its commits are folded into the root `CHANGELOG.md`.
 
 Releases are driven by a **release PR** that `release-plz` maintains automatically. Merging that PR is the publish button.
 

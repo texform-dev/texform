@@ -1,7 +1,5 @@
 //! `texform tokenize`: split the serialization into typed tokens.
 
-use std::process::ExitCode;
-
 use texform::bindings::{
     NormalizeConfigInput, ParseConfigInput, SerializationTokenDto, tokenized_latex_to_dto,
 };
@@ -75,7 +73,7 @@ impl Pipeline {
     }
 }
 
-pub fn run(args: Args, packages: &[String]) -> ExitCode {
+pub fn run(args: Args, packages: &[String]) -> u8 {
     let pipeline = match Pipeline::new(&args, packages) {
         Ok(pipeline) => pipeline,
         Err(message) => return usage_error(message),

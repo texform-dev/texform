@@ -5,7 +5,6 @@ use std::fmt::Display;
 use std::io::{self, IsTerminal, Write};
 use std::ops::Range;
 use std::panic::{self, AssertUnwindSafe};
-use std::process::ExitCode;
 
 use ariadne::{Config, IndexType, Label, Report, ReportKind, Source};
 use serde::Serialize;
@@ -14,6 +13,8 @@ use texform::{ParseDiagnostic, Span, SyntaxNode};
 
 use crate::input::{Formula, Origin};
 
+/// Exit status when everything succeeded.
+pub const SUCCESS: u8 = 0;
 /// Exit status when at least one formula or query failed.
 pub const FAILURE: u8 = 1;
 /// Exit status for usage, configuration, and I/O errors: the request could
@@ -21,9 +22,9 @@ pub const FAILURE: u8 = 1;
 pub const USAGE: u8 = 2;
 
 /// Report a usage, configuration, or I/O error and return its exit status.
-pub fn usage_error(message: impl Display) -> ExitCode {
+pub fn usage_error(message: impl Display) -> u8 {
     eprint_line(format_args!("error: {message}"));
-    ExitCode::from(USAGE)
+    USAGE
 }
 
 /// Write one line to stderr. stderr is best effort: there is nowhere left to
@@ -240,12 +241,8 @@ impl Printer {
     }
 
     /// Exit status for the formulas emitted so far.
-    pub fn exit_code(&self) -> ExitCode {
-        if self.failed {
-            ExitCode::from(FAILURE)
-        } else {
-            ExitCode::SUCCESS
-        }
+    pub fn exit_code(&self) -> u8 {
+        if self.failed { FAILURE } else { SUCCESS }
     }
 }
 
