@@ -29,6 +29,8 @@ Read the relevant guide before changing an area; unrelated guides need not be lo
 
 Use Cargo for Rust, Bun for JavaScript/TypeScript, and uv with maturin for Python. Significant parser changes require before/after corpus regression. Transform changes require the full `transform_contract` check before merging; hooks do not run it. Follow the commands and failure handling in the guides above.
 
+The workspace uses Rust edition 2024, so compile with current stable Rust, the channel CI installs. `cargo test` links CPython and needs the `python3.12-dev` linker file `libpython3.12.so`, which the runtime library package does not provide. JavaScript checks use Bun 1.4.2 (`packageManager` in `package.json`) and `wasm-pack` 0.15.0. Files under `regression/data/` are Git LFS; when one is still a pointer, materialize it with `GIT_LFS_SKIP_SMUDGE=0 git lfs pull` before corpus checks, as described in the [regression guide](regression/README.md). That pull can leave `git status` showing those Parquet files as modified while `git diff` is empty and the LFS object id is unchanged; do not commit them.
+
 Keep binding implementations, wrappers, and public type declarations in sync. Do not hand-edit `CHANGELOG.md` or add an `Unreleased` section during normal development; release maintenance follows `RELEASING.md`.
 
 ## Commit Messages
