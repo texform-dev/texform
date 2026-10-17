@@ -48,8 +48,11 @@ impl ContentBoundary {
         false
     }
 
+    /// Returns true when written bare between the delimiters, `tokens` would
+    /// not read back as the whole argument: either a token closes it early, or
+    /// an unpaired opening delimiter swallows the real closing one.
     pub(crate) fn needs_protection(mut self, tokens: &[Token]) -> bool {
-        tokens.iter().any(|token| self.ends_at(token))
+        tokens.iter().any(|token| self.ends_at(token)) || self.nested > 0
     }
 }
 

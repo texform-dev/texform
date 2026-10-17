@@ -1476,3 +1476,54 @@ fn delimited_content_protection_matches_each_collection_rule() {
         );
     }
 }
+
+#[test]
+fn delimited_content_protection_covers_unpaired_opening_delimiters() {
+    let has_explicit_group = |doc: &SyntaxNode| format!("{doc:?}").contains("Explicit");
+    // (spec, source, serialized, whether the braces remain a content group)
+    for (spec, source, expected, keeps_group) in [
+        // Bare, the unpaired opener would swallow the closing delimiter.
+        ("r()", r"\probe({a(b})", r"\probe ( { a ( b } )", false),
+        ("r[]", r"\probe[{a[b}]", r"\probe [ { a [ b } ]", false),
+        ("r<[,]><(,)>", r"\probe({(})", r"\probe ( { ( } )", false),
+        ("r()", r"\probe({((b)})", r"\probe ( { ( ( b ) } )", false),
+        // Balanced or brace-hidden openers do not need the protective layer.
+        ("r()", r"\probe({a(b)c})", r"\probe ( { a ( b ) c } )", true),
+        ("r()", r"\probe({{a(b}})", r"\probe ( { { a ( b } } )", true),
+        // Without a distinct opening delimiter nothing can stay unpaired.
+        ("r||", r"\probe|{a}|", r"\probe | { a } |", true),
+        ("o", r"\probe[{a[b}]", r"\probe [ { a [ b } ]", true),
+    ] {
+        let items = [command_item(
+            "probe",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            spec,
+        )];
+        let parsed = parse_with_items(&items, source, true);
+        assert!(
+            parsed.diagnostics.is_empty(),
+            "{source}: {:?}",
+            parsed.diagnostics
+        );
+        let doc = parsed.document().unwrap();
+        assert_eq!(
+            has_explicit_group(&doc.to_syntax()),
+            keeps_group,
+            "{spec}: {source}"
+        );
+        let latex = doc.to_latex().unwrap();
+        assert_eq!(latex, expected, "{spec}: {source}");
+        let reparsed = parse_with_items(&items, &latex, true);
+        assert!(
+            reparsed.diagnostics.is_empty(),
+            "{source}: {:?}",
+            reparsed.diagnostics
+        );
+        assert_eq!(
+            reparsed.document().unwrap().to_syntax(),
+            doc.to_syntax(),
+            "{source}"
+        );
+    }
+}

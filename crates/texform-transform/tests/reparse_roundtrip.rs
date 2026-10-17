@@ -360,3 +360,34 @@ fn companion_fixes_keep_parser_shaped_trees() {
         check(&p, &engines, source).unwrap_or_else(|error| panic!("{error}"));
     }
 }
+
+#[test]
+fn physics_fences_protect_unpaired_opening_delimiters_after_transforms() {
+    let mut packages = PACKAGES.to_vec();
+    packages.push("physics");
+    let p = ParseContext::from_packages(&packages);
+    let engines = engines(&p);
+    // Dropping `\big` and flattening its brace group leaves a bare opener
+    // that would otherwise consume the fence's closing delimiter.
+    let equiv =
+        TransformContext::from_build_config(BuildConfig::profile(Profile::Equiv), &p).unwrap();
+    let options = Style::Compact.into();
+    for (source, expected) in [
+        (r"\qty(a{\big(}b)", r"\qty({a(b})"),
+        (r"\qty[a{\big[}b]", r"\qty[{a[b}]"),
+    ] {
+        let mut ast = parse(&p, source).unwrap();
+        equiv.run(&mut ast, &p).unwrap();
+        assert_eq!(serialize_with(&ast, &options), expected, "{source}");
+    }
+    for source in [
+        r"\qty(a{\big(}b)",
+        r"\qty[a{\big[}b]",
+        r"\qty({a(b})",
+        r"\qty[{a[b}]",
+        r"\qty(a{\big(}b{\big)}c)",
+        r"\qty|a{\big|}b|",
+    ] {
+        check(&p, &engines, source).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
