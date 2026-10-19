@@ -21,6 +21,9 @@ pub(crate) mod ams {
             pub(crate) mod vartriangleleft_to_lhd;
             pub(crate) mod vartriangleright_to_rhd;
         }
+        pub(crate) mod named_function {
+            pub(crate) mod operatorname_to_named_function;
+        }
         pub(crate) mod spacing_alias {
             pub(crate) mod nobreakspace_to_tilde;
         }
@@ -88,9 +91,6 @@ pub(crate) mod base {
         pub(crate) mod linebreak_alias {
             pub(crate) mod break_to_linebreak;
             pub(crate) mod newline_to_linebreak;
-        }
-        pub(crate) mod named_function {
-            pub(crate) mod operatorname_to_named_function;
         }
         pub(crate) mod not_remap {
             pub(crate) mod helpers;
@@ -324,6 +324,7 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &ams::authoring::character_alias::unlhd_to_trianglelefteq::UNLHD_TO_TRIANGLELEFTEQ,
     &ams::authoring::character_alias::vartriangleleft_to_lhd::VARTRIANGLELEFT_TO_LHD,
     &ams::authoring::character_alias::vartriangleright_to_rhd::VARTRIANGLERIGHT_TO_RHD,
+    &ams::authoring::named_function::operatorname_to_named_function::OPERATORNAME_TO_NAMED_FUNCTION,
     &ams::authoring::spacing_alias::nobreakspace_to_tilde::NOBREAKSPACE_TO_TILDE,
     &ams::corpus::fenced_matrix_env::Bmatrix_env_to_brace_matrix::BMATRIX_ENV_TO_BRACE_MATRIX,
     &ams::corpus::fenced_matrix_env::Vmatrix_env_to_Vert_matrix::VMATRIX_ENV_TO_VERT_MATRIX,
@@ -355,7 +356,6 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::authoring::character_alias::prime_to_prime_node::PRIME_TO_PRIME_NODE,
     &base::authoring::linebreak_alias::break_to_linebreak::BREAK_TO_LINEBREAK,
     &base::authoring::linebreak_alias::newline_to_linebreak::NEWLINE_TO_LINEBREAK,
-    &base::authoring::named_function::operatorname_to_named_function::OPERATORNAME_TO_NAMED_FUNCTION,
     &base::authoring::not_remap::not_equals_to_neq::NOT_EQUALS_TO_NEQ,
     &base::authoring::not_remap::not_exists_to_nexists::NOT_EXISTS_TO_NEXISTS,
     &base::authoring::not_remap::not_in_to_notin::NOT_IN_TO_NOTIN,

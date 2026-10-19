@@ -6,7 +6,7 @@
 //!   - cmd:operatorname
 //! consumes:
 //!   eliminates: null
-//!   touches: [cmd:operatorname, cmd:limits]
+//!   touches: cmd:operatorname
 //! produces:
 //!   - cmd:arccos
 //!   - cmd:arcsin
@@ -54,15 +54,15 @@ use crate::rewrite::{cmd_targets, define_rule};
 
 define_rule! {
     pub static OPERATORNAME_TO_NAMED_FUNCTION: OperatornameToNamedFunctionRule {
-        key: Base / "operatorname-to-named-function",
+        key: Ams / "operatorname-to-named-function",
         level: Authoring,
         summary: "Rewrite plain operatorname arguments to equivalent base named-function or named-operator commands.",
         fidelity: Render,
-        enabled_by_packages: [Base, Ams],
+        enabled_by_packages: [Ams],
         triggers: cmd_targets![&ams::cmd::OPERATORNAME],
         consumes: RuleConsumes {
             eliminates: &[],
-            touches: cmd_targets![&ams::cmd::OPERATORNAME, &base::cmd::LIMITS],
+            touches: cmd_targets![&ams::cmd::OPERATORNAME],
         },
         produces: RuleProduces {
             targets: cmd_targets![&base::cmd::ARCCOS, &base::cmd::ARCSIN, &base::cmd::ARCTAN, &base::cmd::ARG, &base::cmd::COS, &base::cmd::COSH, &base::cmd::COT, &base::cmd::COTH, &base::cmd::CSC, &base::cmd::DEG, &base::cmd::DIM, &base::cmd::EXP, &base::cmd::HOM, &base::cmd::KER, &base::cmd::LG, &base::cmd::LN, &base::cmd::LOG, &base::cmd::SEC, &base::cmd::SIN, &base::cmd::SINH, &base::cmd::TAN, &base::cmd::TANH, &base::cmd::DET, &base::cmd::GCD, &base::cmd::INF, &base::cmd::LIM, &base::cmd::MAX, &base::cmd::MIN, &base::cmd::PR, &base::cmd::SUP],
@@ -118,6 +118,7 @@ define_rule! {
             {
                 return Ok(RuleEffect::Skipped);
             }
+            // A following limits modifier is only an eligibility probe and stays unchanged.
             if !starred
                 && cx
                 .ast
