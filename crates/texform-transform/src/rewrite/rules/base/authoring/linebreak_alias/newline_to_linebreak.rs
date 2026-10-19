@@ -7,7 +7,7 @@
 //! consumes:
 //!   eliminates: cmd:newline
 //!   touches: null
-//! produces: null
+//! produces: cmd:\
 //! rewrite_patterns:
 //!   - {from: \newline, to: \\}
 //! ```
@@ -15,7 +15,7 @@
 use texform_knowledge::builtin::base;
 
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};
-use crate::rewrite::helpers::linebreak_command_node;
+use crate::rewrite::helpers::replace_with_linebreak;
 use crate::rewrite::{cmd_targets, define_rule};
 
 define_rule! {
@@ -31,7 +31,7 @@ define_rule! {
             touches: &[],
         },
         produces: RuleProduces {
-            targets: &[],
+            targets: cmd_targets![&base::cmd::_BACKSLASH],
         },
         apply(rule, cx, node_id) {
             let Some(command) = cx.match_command(node_id, &base::cmd::NEWLINE) else {
@@ -39,7 +39,7 @@ define_rule! {
             };
             cx.for_rule(Self::KEY).expect_no_args(command.args, "\\newline")?;
 
-            cx.ast.replace_node(node_id, linebreak_command_node());
+            replace_with_linebreak(cx.ast, node_id);
             Ok(RuleEffect::Applied)
         }
     }
@@ -85,6 +85,25 @@ mod tests {
         let children = ast.children(ast.root());
         assert_eq!(children.len(), 1);
         assert_linebreak_command(ast.node(children[0]));
+    }
+
+    #[test]
+    fn scripts_follow_linebreak_on_an_empty_base() {
+        let parse_ctx = ParseContext::from_packages(&["base"]);
+        let mut ast = crate::parse_to_ast_for_test(
+            &parse_ctx,
+            r"\newline_1^2",
+            &texform_core::parse::ParseConfig::STRICT,
+        );
+        run_one_rule_for_test(&mut ast, &parse_ctx, &NEWLINE_TO_LINEBREAK, RuleLevel::Authoring)
+            .expect("linebreak transform should succeed");
+        let children = ast.children(ast.root());
+        assert_eq!(children.len(), 2);
+        assert_linebreak_command(ast.node(children[0]));
+        let Node::Scripted { base, .. } = ast.node(children[1]) else {
+            panic!("expected scripts after the linebreak");
+        };
+        assert!(matches!(ast.node(*base), Node::Group { children, .. } if children.is_empty()));
     }
 
     fn assert_linebreak_command(node: &Node) {

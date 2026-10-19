@@ -100,6 +100,21 @@ pub fn linebreak_command_node() -> Node {
     prefix_command_node(&base::cmd::_BACKSLASH, vec![star_slot(false), None])
 }
 
+/// Replaces an alias with a linebreak, leaving scripts on an empty base.
+pub fn replace_with_linebreak(ast: &mut Ast, node_id: NodeId) {
+    if ast.slot(node_id) == Some(Slot::ScriptBase) {
+        let linebreak = ast.new_node(linebreak_command_node());
+        let empty = ast.new_node(Node::Group {
+            children: Vec::new(),
+            kind: GroupKind::Implicit,
+            mode: ContentMode::Math,
+        });
+        ast.replace_with_math_sequence_preserving_scripts(node_id, vec![linebreak], empty, vec![]);
+    } else {
+        ast.replace_node(node_id, linebreak_command_node());
+    }
+}
+
 /// Removes a node from a sibling sequence or replaces it with an empty group matching a single-child slot's content mode.
 pub fn remove_node_preserving_slot(ast: &mut Ast, node_id: NodeId) {
     if matches!(ast.slot(node_id), Some(Slot::GroupChild(_))) {

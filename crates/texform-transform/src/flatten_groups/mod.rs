@@ -653,6 +653,7 @@ fn is_atomic_base(ast: &Ast, node: NodeId) -> bool {
         Node::Char(_) | Node::Prime { .. } => true,
         Node::Command { name, args, .. } => {
             args.iter().all(Option::is_none)
+                && !matches!(name.as_str(), "\\" | "cr" | "newline")
                 && !subtree_has_scripted(ast, node)
                 && !is_script_placement_sensitive_command(name)
         }

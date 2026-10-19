@@ -334,6 +334,13 @@ fn companion_fixes_keep_parser_shaped_trees() {
         r"\Bigl\{",
         r"\newline",
         r"\break",
+        r"\break'",
+        r"\break_1^2",
+        r"\frac{\break_1}{x}",
+        r"\newline'",
+        r"{\cr}_1",
+        r"{\newline}_1",
+        r"{\\}_1",
         // Prime runs merged with an explicit superscript.
         "f'^{2}",
         "x''^2",
@@ -401,6 +408,35 @@ fn ordered_derivatives_preserve_scripted_variable_bases() {
             let source = format!(r"\{command}[2]{{f}}{{{variable}}}");
             assert!(parse(&p, &source).is_some(), "{source}");
             check(&p, &engines, &source).unwrap_or_else(|error| panic!("{error}"));
+        }
+    }
+}
+
+#[test]
+fn linebreak_scripts_reparse_to_the_transformed_tree_without_another_transform() {
+    let p = ParseContext::from_packages(PACKAGES);
+    for (profile, engine) in PROFILES.into_iter().zip(engines(&p)) {
+        for source in [
+            r"\break'",
+            r"\break_1^2",
+            r"\frac{\break_1}{x}",
+            r"\newline'",
+            r"{\cr}_1",
+            r"{\newline}_1",
+            r"{\\}_1",
+            r"\begin{matrix}{\cr}_1\end{matrix}",
+        ] {
+            let mut ast = parse(&p, source).expect("source should parse");
+            engine.run(&mut ast, &p).expect("transform should succeed");
+            for style in [Style::Spaced, Style::Compact] {
+                let output = serialize_with(&ast, &style.into());
+                let reparsed = parse(&p, &output).expect("output should reparse");
+                assert_eq!(
+                    canonical(ast.to_syntax_root(), false),
+                    canonical(reparsed.to_syntax_root(), false),
+                    "{profile:?} {style:?}: {source} => {output}",
+                );
+            }
         }
     }
 }

@@ -759,3 +759,15 @@ fn known_commands_and_nonadjacent_groups_keep_the_existing_flattening_behavior()
     assert_eq!(outcome.text, r"\cos a b + c");
     assert_eq!(outcome.report.guard_hits.unknown_command_arguments, 0);
 }
+
+#[test]
+fn row_separator_script_bases_keep_their_groups() {
+    for source in [r"{\cr}_1", r"{\newline}_1", r"{\\}_1"] {
+        let outcome = run_flatten_groups(source);
+        let scripted = outcome.ast.children(outcome.ast.root())[0];
+        let Node::Scripted { base, .. } = outcome.ast.node(scripted) else {
+            panic!("expected a scripted group");
+        };
+        assert!(matches!(outcome.ast.node(*base), Node::Group { .. }));
+    }
+}
