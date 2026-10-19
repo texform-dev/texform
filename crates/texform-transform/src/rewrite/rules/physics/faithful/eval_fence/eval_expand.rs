@@ -72,8 +72,9 @@ fn expand_eval(
 
     cx.for_rule(rule).expect_arg_len(&args, 2, &subject)?;
     let starred = cx.for_rule(rule).star_arg_value(&args[0], &subject)?;
-    let Some((body, left)) = eval_body(rule, cx, &args[1], &subject)? else {
-        return Ok(RuleEffect::Skipped);
+    let (body, left) = match eval_body(rule, cx, &args[1], &subject)? {
+        Some((body, left)) => (Some(body), left),
+        None => (None, Delimiter::None),
     };
 
     replace_with_eval_fence(cx, node_id, starred, body, left, Delimiter::Char('|'));
@@ -164,4 +165,35 @@ mod tests {
         ]
     }
     // END: Generated examples
+
+    transform_examples! {
+        rule: EVAL_EXPAND,
+        level: Faithful,
+        examples: [
+            {
+                label: absent_body,
+                packages: ["base", "physics"],
+                input: r"\eval x",
+                expected: r"\left.\vphantom{\int}\right|x",
+            },
+            {
+                label: absent_body_at_end,
+                packages: ["base", "physics"],
+                input: r"\eval",
+                expected: r"\left.\vphantom{\int}\right|",
+            },
+            {
+                label: absent_body_star,
+                packages: ["base", "physics"],
+                input: r"\eval*x",
+                expected: r"\left.\vphantom{\int}\right|x",
+            },
+            {
+                label: absent_body_with_scripts,
+                packages: ["base", "physics"],
+                input: r"\eval_0^1 x",
+                expected: r"\left.\vphantom{\int}\right|_0^1 x",
+            },
+        ]
+    }
 }

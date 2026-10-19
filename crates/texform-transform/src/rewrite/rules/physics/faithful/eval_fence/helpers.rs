@@ -8,15 +8,17 @@ pub(super) fn replace_with_eval_fence(
     cx: &mut RuleContext<'_>,
     node_id: NodeId,
     starred: bool,
-    body: NodeId,
+    body: Option<NodeId>,
     left: Delimiter,
     right: Delimiter,
 ) {
     let mut children = Vec::new();
-    if starred {
-        children.push(smash_body(cx, body));
-    } else {
-        cx.ast.append_cloned_math_content(&mut children, body);
+    if let Some(body) = body {
+        if starred {
+            children.push(smash_body(cx, body));
+        } else {
+            cx.ast.append_cloned_math_content(&mut children, body);
+        }
     }
     children.push(vphantom_int(cx));
 
