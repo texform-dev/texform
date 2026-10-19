@@ -100,19 +100,29 @@ pub fn linebreak_command_node() -> Node {
     prefix_command_node(&base::cmd::_BACKSLASH, vec![star_slot(false), None])
 }
 
-/// Removes a node from a sibling sequence or replaces it with an empty math group in a single-child slot.
+/// Removes a node from a sibling sequence or replaces it with an empty group matching a single-child slot's content mode.
 pub fn remove_node_preserving_slot(ast: &mut Ast, node_id: NodeId) {
     if matches!(ast.slot(node_id), Some(Slot::GroupChild(_))) {
         ast.remove_node(node_id);
         return;
     }
 
+    let mode = match ast.parent(node_id) {
+        Some(crate::ast::ParentLink {
+            parent,
+            slot: Slot::Argument(index),
+        }) => match ast.arg_slots(parent)[index].as_ref().map(|arg| &arg.value) {
+            Some(ArgumentValue::TextContent(_)) => ContentMode::Text,
+            _ => ContentMode::Math,
+        },
+        _ => ContentMode::Math,
+    };
     ast.replace_node_drop_detached_children(
         node_id,
         Node::Group {
             children: Vec::new(),
             kind: GroupKind::Implicit,
-            mode: ContentMode::Math,
+            mode,
         },
     );
 }

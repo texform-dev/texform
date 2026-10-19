@@ -14,6 +14,7 @@
 
 use texform_knowledge::builtin::base;
 
+use super::helpers::drop_layout_hint;
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::rewrite::{cmd_targets, define_rule};
 
@@ -38,7 +39,7 @@ define_rule! {
             };
             cx.for_rule(Self::KEY).expect_no_args(command.args, "\\goodbreak")?;
 
-            cx.ast.remove_node(node_id);
+            drop_layout_hint(cx.ast, node_id);
             Ok(RuleEffect::Applied)
         }
     }
@@ -69,4 +70,13 @@ mod tests {
         ]
     }
     // END: Generated examples
+
+    transform_examples! {
+        rule: GOODBREAK_DROP,
+        level: Corpus,
+        examples: [
+            { label: goodbreak_as_superscript_base, packages: ["base"], input: r"\goodbreak^2", expected: r"{}^2" },
+            { label: goodbreak_as_subscript_base, packages: ["base"], input: r"\goodbreak_x", expected: r"{}_x" },
+        ]
+    }
 }

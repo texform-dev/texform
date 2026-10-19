@@ -83,4 +83,39 @@ mod tests {
         },
         ]
     }
+
+    #[test]
+    fn empty_text_arguments_serialize_without_visible_spaces() {
+        use crate::ast::Node;
+        use crate::parse::{ParseConfig, ParseContext};
+        use crate::serialize::{SerializeOptions, Style, serialize_with};
+        use crate::{BuildConfig, Profile, TransformContext};
+
+        let parse_ctx = ParseContext::from_packages(&["base", "ams", "textmacros"]);
+        let engine =
+            TransformContext::from_build_config(BuildConfig::profile(Profile::Corpus), &parse_ctx)
+                .unwrap();
+        for (input, spaced, compact) in [
+            (r"\text\mathstrut", r"\text {}", r"\text{}"),
+            (r"\text{\mathstrut}", r"\text {}", r"\text{}"),
+            (r"\text{}", r"\text {}", r"\text{}"),
+            (r"\tag \mathstrut[", r"\tag {} [", r"\tag{}["),
+        ] {
+            let mut ast = crate::parse_to_ast_for_test(&parse_ctx, input, &ParseConfig::STRICT);
+            engine.run(&mut ast, &parse_ctx).unwrap();
+            ast.assert_invariants();
+            for (style, expected) in [(Style::Spaced, spaced), (Style::Compact, compact)] {
+                let output = serialize_with(&ast, &SerializeOptions { style });
+                assert_eq!(output, expected, "{input}");
+                let reparsed =
+                    crate::parse_to_ast_for_test(&parse_ctx, &output, &ParseConfig::STRICT);
+                assert!(
+                    reparsed
+                        .find_all(reparsed.root(), |node| matches!(node, Node::Text(_)))
+                        .is_empty(),
+                    "{input}"
+                );
+            }
+        }
+    }
 }
