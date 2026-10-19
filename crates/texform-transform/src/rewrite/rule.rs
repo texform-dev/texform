@@ -196,8 +196,8 @@ pub struct RuleConsumes {
 
 /// Declares the new forms that a rule may introduce into the AST.
 ///
-/// The engine uses this to verify that every produced form is either in the
-/// acceptable command set or is consumed by another rule, ensuring convergence.
+/// The engine uses these targets for dependency ordering, runtime-mutation
+/// exclusion, and availability checks against the active parse context.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RuleProduces {
     /// Commands, environments, or characters that may appear in the AST after the rule fires.
@@ -208,8 +208,9 @@ pub struct RuleProduces {
 /// and dependency contract.
 ///
 /// The rewrite phase uses `triggers` and `consumes` to decide when to attempt a
-/// rule, `produces` to verify convergence, and `fidelity` for the rule's
-/// equivalence contract.
+/// rule. Together with `consumes`, `produces` controls dependency ordering and
+/// runtime-mutation exclusion; produced targets must be available in the parse
+/// context. `fidelity` declares the rule's equivalence contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RuleMeta {
     /// Unique identifier for this rule.
