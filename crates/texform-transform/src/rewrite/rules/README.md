@@ -155,7 +155,7 @@ produces: RuleProduces {
 },
 ```
 
-If the same command, environment, or character name exists in multiple packages, choose the first builtin record by texform package import order. `enabled_by_packages` declares which input packages make the rule loadable; it does not constrain which package supplies a produced target.
+If the same command, environment, or character name exists in multiple packages, use the record that supplies the produced definition throughout the rule's enabled domain when it is known; otherwise choose the first builtin record by texform package import order. For example, physics-only rules producing `sin` use `physics::cmd::SIN`. `enabled_by_packages` declares which input packages make the rule loadable; it does not constrain which package supplies a produced target.
 
 Package-specific split decisions are based on structural signatures:
 

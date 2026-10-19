@@ -12,6 +12,9 @@
 //!   - {label: bare, from: \Probability, to: \Pr}
 //! ```
 //!
+//! The produced command uses the physics record, which overrides the base
+//! definition whenever this rule is enabled.
+//!
 //! In LaTeX physics.sty, `\Probability` is the original `\Pr` saved with
 //! `\let`, a plain operator that grabs nothing, while the redefined `\Pr` grabs
 //! a following `{...}`, `[...]`, or `(...)` argument as an auto-sized fence.
@@ -19,7 +22,7 @@
 //! or a brace group; scripts on the command keep it bare. The other branches
 //! are left to `physics/named-fn-to-operatorname`.
 
-use texform_knowledge::builtin::{base, physics};
+use texform_knowledge::builtin::physics;
 
 use super::helpers::rename_bare_named_function;
 use crate::rewrite::rule::{RuleConsumes, RuleProduces};
@@ -38,7 +41,7 @@ define_rule! {
             touches: cmd_targets![&physics::cmd::PROBABILITY],
         },
         produces: RuleProduces {
-            targets: cmd_targets![&base::cmd::PR],
+            targets: cmd_targets![&physics::cmd::PR],
         },
         apply(_rule, cx, node_id) {
             rename_bare_named_function(
@@ -46,7 +49,7 @@ define_rule! {
                 Self::KEY,
                 node_id,
                 &physics::cmd::PROBABILITY,
-                &base::cmd::PR,
+                &physics::cmd::PR,
             )
         }
     }

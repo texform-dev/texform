@@ -12,6 +12,9 @@
 //!   - {label: bare, from: \cosine, to: \cos}
 //! ```
 //!
+//! The produced command uses the physics record, which overrides the base
+//! definition whenever this rule is enabled.
+//!
 //! In LaTeX physics.sty, `\cosine` is the original `\cos` saved with `\let`, a
 //! plain operator that grabs nothing, while the redefined `\cos` grabs a
 //! following `[...]` power and `(...)` argument. The rule renames only a bare
@@ -19,7 +22,7 @@
 //! command keep it bare. The other branches are left to
 //! `physics/named-fn-to-operatorname`.
 
-use texform_knowledge::builtin::{base, physics};
+use texform_knowledge::builtin::physics;
 
 use super::helpers::rename_bare_named_function;
 use crate::rewrite::rule::{RuleConsumes, RuleProduces};
@@ -38,7 +41,7 @@ define_rule! {
             touches: cmd_targets![&physics::cmd::COSINE],
         },
         produces: RuleProduces {
-            targets: cmd_targets![&base::cmd::COS],
+            targets: cmd_targets![&physics::cmd::COS],
         },
         apply(_rule, cx, node_id) {
             rename_bare_named_function(
@@ -46,7 +49,7 @@ define_rule! {
                 Self::KEY,
                 node_id,
                 &physics::cmd::COSINE,
-                &base::cmd::COS,
+                &physics::cmd::COS,
             )
         }
     }

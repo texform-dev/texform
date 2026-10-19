@@ -12,6 +12,9 @@
 //!   - {label: bare, from: \sine, to: \sin}
 //! ```
 //!
+//! The produced command uses the physics record, which overrides the base
+//! definition whenever this rule is enabled.
+//!
 //! In LaTeX physics.sty, `\sine` is the original `\sin` saved with `\let`, a
 //! plain operator that grabs nothing, while the redefined `\sin` grabs a
 //! following `[...]` power and `(...)` argument. The rule renames only a bare
@@ -19,7 +22,7 @@
 //! command keep it bare. The other branches are left to
 //! `physics/named-fn-to-operatorname`.
 
-use texform_knowledge::builtin::{base, physics};
+use texform_knowledge::builtin::physics;
 
 use super::helpers::rename_bare_named_function;
 use crate::rewrite::rule::{RuleConsumes, RuleProduces};
@@ -38,7 +41,7 @@ define_rule! {
             touches: cmd_targets![&physics::cmd::SINE],
         },
         produces: RuleProduces {
-            targets: cmd_targets![&base::cmd::SIN],
+            targets: cmd_targets![&physics::cmd::SIN],
         },
         apply(_rule, cx, node_id) {
             rename_bare_named_function(
@@ -46,7 +49,7 @@ define_rule! {
                 Self::KEY,
                 node_id,
                 &physics::cmd::SINE,
-                &base::cmd::SIN,
+                &physics::cmd::SIN,
             )
         }
     }
