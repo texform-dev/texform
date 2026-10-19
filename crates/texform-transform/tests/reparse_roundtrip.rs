@@ -391,3 +391,16 @@ fn physics_fences_protect_unpaired_opening_delimiters_after_transforms() {
         check(&p, &engines, source).unwrap_or_else(|error| panic!("{error}"));
     }
 }
+
+#[test]
+fn ordered_derivatives_preserve_scripted_variable_bases() {
+    let p = ParseContext::from_packages(&["base", "physics"]);
+    let engines = engines(&p);
+    for command in ["dv", "pdv", "fdv"] {
+        for variable in ["x^2", "x_0", "x'", "x_0^2", "{x^2}"] {
+            let source = format!(r"\{command}[2]{{f}}{{{variable}}}");
+            assert!(parse(&p, &source).is_some(), "{source}");
+            check(&p, &engines, &source).unwrap_or_else(|error| panic!("{error}"));
+        }
+    }
+}

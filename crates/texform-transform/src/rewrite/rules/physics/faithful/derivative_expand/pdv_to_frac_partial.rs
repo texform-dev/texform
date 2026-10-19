@@ -192,4 +192,17 @@ mod tests {
         },
         ]
     }
+    transform_examples! {
+        rule: PDV_TO_FRAC_PARTIAL,
+        level: Faithful,
+        examples: [
+        {
+            label: ordered_scripted_variable,
+            packages: ["base", "physics"],
+            input: r"\pdv[2]{f}{x^2}",
+            expected: r"\frac{\partial^{2} f}{\partial {x^2}^{2}}",
+        },
+        ]
+    }
+
 }

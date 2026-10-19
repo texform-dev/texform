@@ -155,4 +155,17 @@ mod tests {
         },
         ]
     }
+    transform_examples! {
+        rule: FDV_TO_FRAC_DELTA,
+        level: Faithful,
+        examples: [
+        {
+            label: ordered_scripted_variable,
+            packages: ["base", "physics"],
+            input: r"\fdv[2]{f}{x^2}",
+            expected: r"\frac{\delta^{2} f}{\delta {x^2}^{2}}",
+        },
+        ]
+    }
+
 }

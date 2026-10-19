@@ -152,4 +152,17 @@ mod tests {
         },
         ]
     }
+    transform_examples! {
+        rule: DV_TO_FRAC_D,
+        level: Faithful,
+        examples: [
+        {
+            label: ordered_scripted_variable,
+            packages: ["base", "physics"],
+            input: r"\dv[2]{f}{x^2}",
+            expected: r"\frac{\mathrm{d}^{2} f}{\mathrm{d} {x^2}^{2}}",
+        },
+        ]
+    }
+
 }

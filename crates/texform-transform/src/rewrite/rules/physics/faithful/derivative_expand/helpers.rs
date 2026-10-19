@@ -33,7 +33,7 @@ pub(super) fn derivative_denominator(
     let variable = match order {
         Some(order) => {
             let order = cx.ast.clone_subtree(order);
-            cx.ast.superscript(variable, order)
+            ordered_base(cx, variable, order)
         }
         None => variable,
     };
@@ -103,7 +103,7 @@ fn ordered_differential_symbol(
         Some(order) => {
             let symbol = symbol(cx);
             let order = cx.ast.clone_subtree(order);
-            cx.ast.superscript(symbol, order)
+            ordered_base(cx, symbol, order)
         }
         None => symbol(cx),
     }
@@ -114,4 +114,14 @@ fn character_symbol(
     record: &'static BuiltinCharacterRecord,
 ) -> NodeId {
     cx.ast.new_node(bare_command_node(record.name))
+}
+
+fn ordered_base(cx: &mut RuleContext<'_>, base: NodeId, order: NodeId) -> NodeId {
+    // Keep an existing script inside the new power's base instead of stacking scripts.
+    let base = if matches!(cx.ast.node(base), Node::Scripted { .. }) {
+        cx.ast.implicit_math_group(vec![base])
+    } else {
+        base
+    };
+    cx.ast.superscript(base, order)
 }
