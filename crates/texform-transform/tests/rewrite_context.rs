@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ParseContext, ParseContextBuilder,
 };
@@ -217,6 +219,63 @@ fn rule_metadata_targets_do_not_repeat_kind_name_variants() {
         );
         assert_unique_target_keys(rule.meta().consumes.touches, rule.meta().key, "touches");
         assert_unique_target_keys(rule.meta().produces.targets, rule.meta().key, "produces");
+    }
+}
+
+#[test]
+fn every_package_subset_has_unique_eliminate_owners() {
+    // Equiv includes every rule level; subsets without base are valid knowledge bases.
+    for mask in 0..(1usize << MANAGED_PACKAGE_IMPORT_ORDER.len()) {
+        let packages = MANAGED_PACKAGE_IMPORT_ORDER
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| mask & (1 << index) != 0)
+            .map(|(_, package)| package.as_str())
+            .collect::<Vec<_>>();
+        let parse_ctx = ParseContextBuilder::default()
+            .packages(&packages)
+            .build()
+            .unwrap_or_else(|error| panic!("packages {packages:?}: {error}"));
+        let context =
+            TransformContext::from_build_config(BuildConfig::profile(Profile::Equiv), &parse_ctx)
+                .unwrap_or_else(|error| panic!("packages {packages:?}: {error}"));
+
+        let mut owners = HashMap::new();
+        for rule in context.rewrite_plan().rules() {
+            let meta = rule.meta();
+            for target in meta.consumes.eliminates {
+                let target = target.key();
+                if let Some(previous) = owners.insert(target, meta.key) {
+                    panic!(
+                        "packages {packages:?}: {} `{}` has eliminate owners {previous} and {}",
+                        target.kind_label(),
+                        target.name,
+                        meta.key
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn rule_metadata_eliminates_and_produces_are_disjoint() {
+    for rule in all_rules() {
+        let meta = rule.meta();
+        for eliminated in meta.consumes.eliminates {
+            let target = eliminated.key();
+            assert!(
+                !meta
+                    .produces
+                    .targets
+                    .iter()
+                    .any(|produced| produced.key() == target),
+                "rule {} both eliminates and produces {} `{}`",
+                meta.key,
+                target.kind_label(),
+                target.name
+            );
+        }
     }
 }
 

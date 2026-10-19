@@ -74,7 +74,7 @@ These macros are intentionally local to `texform-transform`; they are ergonomics
 | Dependency ordering | `produces`, `C` | Add `A → B` when `produces(A) ∩ C(B)` is non-empty, then reject cycles |
 | Output contract | `eliminates` | After the full pipeline, reject output in which an eliminated target remains |
 
-`Plan::build` validates non-empty triggers, `triggers ⊆ C`, the fidelity floor, package and produced-target availability, and an acyclic dependency graph. It does not infer `enabled_by_packages` or enforce a unique eliminate owner; those are repository authoring and registry-validation concerns.
+`Plan::build` validates non-empty triggers, `triggers ⊆ C`, the fidelity floor, package and produced-target availability, and an acyclic dependency graph. It does not infer `enabled_by_packages` or enforce a unique eliminate owner. Registry tests in `tests/rewrite_context.rs` validate package inference, unique eliminate ownership across every managed-package subset at Equiv level, and disjoint `eliminates` and `produces` sets for every registered rule.
 
 Domain guards such as whitelists, neighbor-class checks, and package-owner predicates stay in the rule body and tests when `apply` validates them at runtime. They are not metadata merely because the implementation inspects them.
 
