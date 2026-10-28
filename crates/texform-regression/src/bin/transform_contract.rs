@@ -1,7 +1,7 @@
 use clap::Parser;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use texform_regression::{config, transform_contract};
+use texform_regression::{config, round_trip_report, transform_contract};
 
 #[derive(Parser)]
 #[command(
@@ -12,6 +12,12 @@ struct Args {
     /// Also audit output trees from Authoring, Faithful, Corpus, and Equiv.
     #[arg(long)]
     check_conformance: bool,
+
+    /// Also measure transformed-tree round trips across three package sets,
+    /// four profiles, and two styles. Writes round_trip_report.json; never
+    /// changes the exit status or verdict.
+    #[arg(long)]
+    round_trip_report: bool,
 
     /// Dataset configuration YAML. Defaults to the texform repo regression/datasets.yaml.
     #[arg(long)]
@@ -55,9 +61,9 @@ fn run(args: Args) -> Result<ExitCode, String> {
         .unwrap_or_else(|| config::default_results_root(&datasets_yaml).join("transform_contract"));
 
     let outcome = transform_contract::run(transform_contract::RunConfig {
-        datasets_yaml,
-        results_root,
-        datasets: args.datasets,
+        datasets_yaml: datasets_yaml.clone(),
+        results_root: results_root.clone(),
+        datasets: args.datasets.clone(),
         limit: args.limit,
         dry_run: args.dry_run,
         skip_commit_results: args.skip_commit_results,
@@ -75,6 +81,18 @@ fn run(args: Args) -> Result<ExitCode, String> {
             outcome.summary.violations,
             outcome.summary.violating_formulas_pct,
         );
+    }
+
+    if args.round_trip_report {
+        round_trip_report::run(&round_trip_report::ReportConfig {
+            datasets_yaml,
+            results_root,
+            datasets: args.datasets,
+            limit: args.limit,
+            dry_run: args.dry_run,
+            skip_commit_results: args.skip_commit_results,
+        })
+        .map_err(|error| format!("round-trip report: {error}"))?;
     }
 
     if outcome.summary.transform_errors > 0 {
