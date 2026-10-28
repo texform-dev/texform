@@ -260,6 +260,7 @@ fn lower_attributes_report_counts_declarative_and_prefix_forms_for_same_attribut
     let mut recorder = texform_transform::report::ReportRecorder::collecting();
     texform_transform::lower_attributes::run(
         &mut ast,
+        &parse_ctx,
         &LowerAttributesConfig::ENABLED,
         &mut recorder,
     );
@@ -286,6 +287,7 @@ fn lower_attributes_report_counts_empty_prefix_body_as_redundant() {
     let mut recorder = texform_transform::report::ReportRecorder::collecting();
     texform_transform::lower_attributes::run(
         &mut ast,
+        &parse_ctx,
         &LowerAttributesConfig::ENABLED,
         &mut recorder,
     );
@@ -776,10 +778,12 @@ fn disabling_lower_attributes_leaves_declaratives_unnormalized() {
 /// Run LowerAttributes twice over `syntax` and return the first serialization.
 fn lower_twice(syntax: &SyntaxNode) -> (Ast, String) {
     let mut ast = Ast::from_syntax_root(syntax);
+    let parse_ctx = ParseContext::from_packages(SCOPE_PACKAGES);
     let mut recorder = texform_transform::report::ReportRecorder::disabled();
     let mut run_once = |ast: &mut Ast| {
         texform_transform::lower_attributes::run(
             ast,
+            &parse_ctx,
             &LowerAttributesConfig::ENABLED,
             &mut recorder,
         );
@@ -1003,4 +1007,55 @@ fn math_font_prefix_keeps_sibling_size_outside_the_wrapper() {
             assert_prefix_scopes(ast, "mathrm", 'y', 'x');
         },
     );
+}
+
+/// An attribute command that would vanish stays when removing it would let a
+/// neighbor read the next node, so the phase needs no boundary separation.
+#[test]
+fn vanishing_attribute_commands_stay_between_capturing_neighbors() {
+    for (packages, source, expected) in [
+        (
+            &["base", "ams", "physics"][..],
+            r"\Im\mathbf{}{x}",
+            r"\Im \mathbf { } { x }",
+        ),
+        (
+            &["base", "ams", "physics"][..],
+            r"\rm a\div\rm{b}",
+            r"\mathrm { a \div \rm { b } }",
+        ),
+        (
+            &["base", "textmacros"][..],
+            r"\text{\AA\textbf{} and}",
+            r"\text {\AA\textbf{} and}",
+        ),
+        (
+            &["base", "ams"][..],
+            r"\begin{gathered}\mathbf{}[x]\end{gathered}",
+            r"\begin {gathered} \mathbf { } [ x ] \end {gathered}",
+        ),
+        // Without a capture, both still vanish.
+        (&["base", "ams"][..], r"\Im\mathbf{}{x}", r"\Im { x }"),
+        (
+            &["base", "ams", "physics"][..],
+            r"\rm a\Im\rm b",
+            r"\mathrm { a \Im b }",
+        ),
+    ] {
+        let parse_ctx = ParseContext::from_packages(packages);
+        let context = TransformContext::from_build_config(
+            BuildConfig::profile(Profile::Authoring),
+            &parse_ctx,
+        )
+        .unwrap();
+        let mut ast = parse_to_ast(&parse_ctx, source);
+        let separated = context
+            .run_counting_separations(&mut ast, &parse_ctx, context.default_config())
+            .unwrap();
+        assert_eq!(
+            (separated, serialize(&ast).as_str()),
+            (0, expected),
+            "{source}"
+        );
+    }
 }

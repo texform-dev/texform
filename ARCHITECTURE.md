@@ -216,7 +216,9 @@ Normalization requires a complete tree: `TransformEngine::transform` and `normal
 
 Unknown commands and environments do not block normalization, but output for such input carries no accuracy guarantee because the knowledge base has no signature for them; see [unknown commands and environments](crates/texform-transform/README.md#unknown-commands-and-environments).
 
-When Rewrite is enabled, declared eliminated forms are checked after all enabled mutation phases. This final validation is read-only; a remaining eliminated form is a transform error. The [rule authoring guide](crates/texform-transform/src/rewrite/rules/README.md#metadata-and-the-rewrite-contract) defines the metadata contract.
+The transform output contract is the transformed-tree round trip: the normalized text reparses to the transformed tree, in both output styles, up to representation-only differences. Text idempotency follows from it together with the transform's fixed point. Deleting or replacing nodes can leave neighbors that a reparse would bind differently, such as a command reading a following `[2]` as an omitted optional argument; after convergence, when any phase changed the tree, a boundary separation step adds an empty group or a wrapping group at each such position. It is not a phase or a configuration option. The guarantee covers parsed and transformed trees, not trees built or edited through the document API. See [output contract and boundary separation](crates/texform-transform/README.md#output-contract-and-boundary-separation).
+
+When Rewrite is enabled, declared eliminated forms are checked after boundary separation. This final validation is read-only; a remaining eliminated form is a transform error. The [rule authoring guide](crates/texform-transform/src/rewrite/rules/README.md#metadata-and-the-rewrite-contract) defines the metadata contract.
 
 ## Knowledge and Argument Specifications
 

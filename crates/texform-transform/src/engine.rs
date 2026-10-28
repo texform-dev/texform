@@ -4,7 +4,9 @@
 //! A phase is skipped when it has already processed the current AST version.
 //! Any mutation invalidates the other phases. After at most eight rounds the
 //! engine either reaches their common fixed point or returns NotConverged.
-//! Eliminated-form validation runs once afterward and is read-only.
+//! When any phase changed the tree, boundary separation then runs once so the
+//! output text reparses to the transformed tree. Eliminated-form validation
+//! runs last and is read-only.
 
 use crate::ast::Ast;
 use crate::config::TransformConfig;
@@ -13,8 +15,9 @@ use crate::error::TransformError;
 use crate::flatten_groups::FlattenGroupsGuardsOverlay;
 use crate::parse::ParseContext;
 use crate::report::ReportRecorder;
-use crate::{finalize_ast, flatten_groups, lower_attributes, rewrite};
+use crate::{argument_capture, finalize_ast, flatten_groups, lower_attributes, rewrite};
 
+/// Runs the pipeline and returns how many boundary hazards separation removed.
 pub(crate) fn execute(
     tctx: &TransformContext,
     ast: &mut Ast,
@@ -22,7 +25,48 @@ pub(crate) fn execute(
     cfg: &TransformConfig,
     flatten_groups_overlay: Option<&FlattenGroupsGuardsOverlay>,
     recorder: &mut ReportRecorder,
+) -> Result<usize, TransformError> {
+    execute_with(
+        tctx,
+        ast,
+        parse_ctx,
+        cfg,
+        flatten_groups_overlay,
+        recorder,
+        true,
+    )
+}
+
+/// Runs the pipeline without boundary separation, so that tests can show
+/// what the round-trip checks see when it is missing.
+#[cfg(test)]
+pub(crate) fn execute_without_separation(
+    tctx: &TransformContext,
+    ast: &mut Ast,
+    parse_ctx: &ParseContext,
 ) -> Result<(), TransformError> {
+    let mut recorder = ReportRecorder::disabled();
+    execute_with(
+        tctx,
+        ast,
+        parse_ctx,
+        tctx.default_config(),
+        None,
+        &mut recorder,
+        false,
+    )
+    .map(drop)
+}
+
+fn execute_with(
+    tctx: &TransformContext,
+    ast: &mut Ast,
+    parse_ctx: &ParseContext,
+    cfg: &TransformConfig,
+    flatten_groups_overlay: Option<&FlattenGroupsGuardsOverlay>,
+    recorder: &mut ReportRecorder,
+    separate: bool,
+) -> Result<usize, TransformError> {
     const MAX_ROUNDS: usize = 8;
     recorder.record_unknown_names(ast);
     let enabled = [
@@ -56,7 +100,7 @@ pub(crate) fn execute(
                 continue;
             }
             let changed = match phase {
-                0 => lower_attributes::run(ast, &cfg.lower_attributes, recorder),
+                0 => lower_attributes::run(ast, parse_ctx, &cfg.lower_attributes, recorder),
                 1 => rewrite::run(
                     ast,
                     parse_ctx,
@@ -76,6 +120,14 @@ pub(crate) fn execute(
         }
     }
 
+    // A parsed tree has no boundary hazards, so an unchanged tree needs no
+    // separation. Separators contain no target names.
+    let separated = if separate && version > 0 {
+        argument_capture::separate_boundaries(ast, |mode| parse_ctx.catalog(mode)).len()
+    } else {
+        0
+    };
+
     if cfg.rewrite.enabled
         && let Some(violation) = rewrite::collect_eliminated_violations(
             ast,
@@ -93,11 +145,11 @@ pub(crate) fn execute(
         ));
     }
 
-    Ok(())
+    Ok(separated)
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use texform_knowledge::builtin::{base, physics};
 
     use super::*;
@@ -164,8 +216,8 @@ mod tests {
         ast.assert_invariants();
     }
 
-    struct WrapSingleton;
-    static WRAP_SINGLETON: WrapSingleton = WrapSingleton;
+    pub(crate) struct WrapSingleton;
+    pub(crate) static WRAP_SINGLETON: WrapSingleton = WrapSingleton;
     impl RewriteRule for WrapSingleton {
         fn meta(&self) -> &'static RuleMeta {
             static META: RuleMeta = RuleMeta {

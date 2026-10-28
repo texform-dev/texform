@@ -687,9 +687,12 @@ impl Document {
 
     /// Serialize the tree to LaTeX text in the selected style.
     ///
-    /// Parsed and normalized output retains the existing text-idempotency
-    /// contract. Arbitrarily constructed or edited trees need not serialize
-    /// to a parse/serialize fixed point. Error nodes preserve their snippet.
+    /// For a parsed document, and for one normalized by a transform engine,
+    /// the output text reparses to this tree, up to representation-only
+    /// differences such as an argument's own braces; reserializing the
+    /// reparsed tree therefore reproduces the text. Arbitrarily constructed
+    /// or edited trees need not reparse to themselves or serialize to a
+    /// parse/serialize fixed point. Error nodes preserve their snippet.
     ///
     /// # Errors
     ///

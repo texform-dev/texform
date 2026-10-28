@@ -678,17 +678,12 @@ fn groups_whose_splice_lets_a_command_read_an_omitted_argument_stay_in_every_str
                 r"\sin{{[2]}}x",
                 r"\sin { [ 2 ] } x",
             ),
-            // `\\` keeps an omitted `[dim]` slot after an absent star.
-            (&["base", "ams"], r"a\\{[x]}b", r"a \\ { [ x ] } b"),
-            (&["base", "ams"], r"a\\{*}b", r"a \\ { * } b"),
-            (&["base", "ams"], r"a\\*{[x]}b", r"a \\* { [ x ] } b"),
             // Splicing also joins the group's last child to the next sibling.
             (
                 &["base", "ams", "physics"],
                 r"{\sin}[2]x",
                 r"{ \sin } [ 2 ] x",
             ),
-            (&["base", "ams"], r"a{\\}*b", r"a { \\ } * b"),
             (
                 &["base", "ams", "textmacros"],
                 r"\text{a{\\}*b}",
@@ -741,6 +736,12 @@ fn groups_that_no_slot_could_capture_still_flatten() {
         (&["base", "ams", "physics"], r"{\sin}x", r"\sin x"),
         // `\sqrt` read its mandatory argument, after which nothing is open.
         (&["base", "ams"], r"\sqrt{x}{[n]}", r"\sqrt { x } [ n ]"),
+        // `\\` rejects a space before its `*` and `[dim]`, and in math mode
+        // the serializer always writes one there.
+        (&["base", "ams"], r"a\\{[x]}b", r"a \\ [ x ] b"),
+        (&["base", "ams"], r"a\\{*}b", r"a \\ * b"),
+        (&["base", "ams"], r"a\\*{[x]}b", r"a \\* [ x ] b"),
+        (&["base", "ams"], r"a{\\}*b", r"a \\ * b"),
     ] {
         let outcome = run_flatten_groups_with_packages(
             packages,

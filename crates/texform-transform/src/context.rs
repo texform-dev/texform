@@ -38,6 +38,22 @@ impl TransformContext {
         config: &TransformConfig,
     ) -> Result<(), TransformError> {
         let mut recorder = ReportRecorder::disabled();
+        engine::execute(self, ast, parse_ctx, config, None, &mut recorder).map(drop)
+    }
+
+    /// Run with `config` and return how many boundary hazards the final
+    /// boundary separation step removed.
+    ///
+    /// Unstable: round-trip and attribution tests use this count to tell
+    /// which steps relied on separation.
+    #[doc(hidden)]
+    pub fn run_counting_separations(
+        &self,
+        ast: &mut Ast,
+        parse_ctx: &ParseContext,
+        config: &TransformConfig,
+    ) -> Result<usize, TransformError> {
+        let mut recorder = ReportRecorder::disabled();
         engine::execute(self, ast, parse_ctx, config, None, &mut recorder)
     }
 

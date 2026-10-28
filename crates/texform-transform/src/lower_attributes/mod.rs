@@ -23,7 +23,9 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::argument_capture::{environment_captures_in, sequence_boundary_hazard};
 use crate::ast::{ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, Slot};
+use crate::parse::ParseContext;
 use crate::report::ReportRecorder;
 use crate::rewrite::helpers::mandatory_content_slot;
 use texform_knowledge::builtin::base;
@@ -336,7 +338,12 @@ impl LowerAttributesConfig {
 
 /// Conservatively reports whether attribute-related content was processed.
 /// Unrelated trees return `false`; regenerating canonical prefixes may return `true`.
-pub fn run(ast: &mut Ast, _config: &LowerAttributesConfig, recorder: &mut ReportRecorder) -> bool {
+pub fn run(
+    ast: &mut Ast,
+    parse_ctx: &ParseContext,
+    _config: &LowerAttributesConfig,
+    recorder: &mut ReportRecorder,
+) -> bool {
     let mut irrelevant = HashSet::new();
     if !mark_relevant_subtrees(ast, ast.root(), &mut irrelevant) {
         return false;
@@ -348,6 +355,7 @@ pub fn run(ast: &mut Ast, _config: &LowerAttributesConfig, recorder: &mut Report
         ContentMode::Math,
         &mut Pass {
             irrelevant,
+            parse_ctx,
             recorder,
         },
     );
@@ -357,6 +365,7 @@ pub fn run(ast: &mut Ast, _config: &LowerAttributesConfig, recorder: &mut Report
 struct Pass<'a> {
     // Newly emitted nodes are absent and must be visited when recollected.
     irrelevant: HashSet<NodeId>,
+    parse_ctx: &'a ParseContext,
     recorder: &'a mut ReportRecorder,
 }
 
@@ -553,8 +562,12 @@ fn process_container(
     // Environment bodies may be alignments. The root is not a cell, so a
     // top-level `\\` keeps the running state.
     let cells = mode == ContentMode::Math && is_brace_group(ast, container);
+    let env = ast
+        .parent(container)
+        .filter(|link| link.slot == Slot::EnvBody)
+        .and_then(|_| ast.parent_id(container));
     let detached = ast.detach_children_range(container, 0..len);
-    let collected = collect_detached_children(ast, detached, inherited, mode, cells, recorder);
+    let collected = collect_detached_children(ast, detached, inherited, mode, cells, env, recorder);
     record_trailing_empty_segment(
         &collected.pairs,
         collected.final_state,
@@ -570,21 +583,37 @@ fn process_container(
 /// Collect a detached child list starting from `inherited`.
 ///
 /// With `cells`, every alignment separator in the list restores `inherited`,
-/// closing declarative scopes opened in the preceding cell.
+/// closing declarative scopes opened in the preceding cell. `env` is the
+/// environment whose body the list is, if any.
 fn collect_detached_children(
     ast: &mut Ast,
     children: Vec<NodeId>,
     inherited: AttributeState,
     mode: ContentMode,
     cells: bool,
+    env: Option<NodeId>,
     recorder: &mut Pass<'_>,
 ) -> CollectResult {
     let mut pairs = Vec::new();
     let mut state = inherited;
 
-    for child in children {
+    for (index, &child) in children.iter().enumerate() {
         if cells && is_alignment_separator(ast, child) {
             state = inherited;
+            pairs.push(Pair { state, node: child });
+            continue;
+        }
+        if vanishes(ast, child, state, mode)
+            && removal_creates_hazard(
+                ast,
+                state,
+                mode,
+                pairs.last(),
+                &children[index + 1..],
+                env,
+                recorder,
+            )
+        {
             pairs.push(Pair { state, node: child });
             continue;
         }
@@ -595,6 +624,65 @@ fn collect_detached_children(
         pairs,
         final_state: state,
     }
+}
+
+/// Whether `child` would vanish without a trace: a redundant declarative or
+/// a prefix with an empty body.
+///
+/// Such a node stays when removing it would create a boundary hazard, as in
+/// the `physics` `\Im\mathbf{}{x}`: without the empty `\mathbf{}`, `\Im`
+/// would read `{x}` as its argument. Keeping it preserves the rendering, which
+/// this phase promises; boundary separation would turn the command into an
+/// ordinary subformula instead.
+fn vanishes(ast: &Ast, child: NodeId, state: AttributeState, mode: ContentMode) -> bool {
+    if let Some(entry) = lookup_declarative_at(ast, child, mode) {
+        state.get(entry.set.attr) == Some(entry.set.value)
+    } else {
+        (lookup_prefix_at(ast, child, mode).is_some()
+            || lookup_prefix_for_content_mode(ast, child, mode).is_some())
+            && mandatory_content_child(ast, child).is_some_and(|body| is_empty_body(ast, body))
+    }
+}
+
+/// Whether removing a vanishing node between `last` and `after` would create
+/// a boundary hazard. At the start of an environment body, the environment
+/// is the reader. A neighbor with another state is emitted in another segment
+/// and its wrapper separates the two.
+fn removal_creates_hazard(
+    ast: &Ast,
+    state: AttributeState,
+    mode: ContentMode,
+    last: Option<&Pair>,
+    after: &[NodeId],
+    env: Option<NodeId>,
+    recorder: &Pass<'_>,
+) -> bool {
+    let parse_ctx = recorder.parse_ctx;
+    let catalog = |mode| parse_ctx.catalog(mode);
+    let Some(last) = last else {
+        return env
+            .is_some_and(|env| environment_captures_in(ast, catalog, mode, env, after.iter()));
+    };
+    if last.state != state {
+        return false;
+    }
+    sequence_boundary_hazard(
+        ast,
+        catalog,
+        mode,
+        std::iter::once(&last.node),
+        after.iter(),
+    )
+}
+
+/// Whether a prefix body holds nothing but nested empty brace groups.
+fn is_empty_body(ast: &Ast, body: NodeId) -> bool {
+    is_brace_group(ast, body)
+        && match ast.children(body) {
+            [] => true,
+            [child] => is_empty_body(ast, *child),
+            _ => false,
+        }
 }
 
 fn collect_detached_child(
@@ -716,7 +804,7 @@ fn collect_prefix_body(
             let detached = ast.detach_children_range(body, 0..len);
             detach_body_from_prefix(ast, body, mode);
             let collected =
-                collect_detached_children(ast, detached, body_state, mode, false, recorder);
+                collect_detached_children(ast, detached, body_state, mode, false, None, recorder);
             record_trailing_empty_segment(
                 &collected.pairs,
                 collected.final_state,
@@ -734,8 +822,9 @@ fn collect_prefix_body(
                 if absorbed {
                     // Rebuilding can move a declarative inside an overriding prefix.
                     // Recollect that local result now, as the next invocation would.
-                    let recollected =
-                        collect_detached_children(ast, nodes, body_state, mode, false, recorder);
+                    let recollected = collect_detached_children(
+                        ast, nodes, body_state, mode, false, None, recorder,
+                    );
                     if !pairs_require_local_declarative(&recollected.pairs, body_state, mode) {
                         ast.remove_detached(body);
                         return recollected.pairs;
@@ -784,7 +873,7 @@ fn collect_brace_group(
 
     let len = ast.children(group).len();
     let detached = ast.detach_children_range(group, 0..len);
-    let inner = collect_detached_children(ast, detached, inherited, mode, cells, recorder);
+    let inner = collect_detached_children(ast, detached, inherited, mode, cells, None, recorder);
     record_trailing_empty_segment(&inner.pairs, inner.final_state, inherited, mode, recorder);
 
     // Keep the original braces when any carried effect still needs a declarative.
@@ -1336,6 +1425,7 @@ mod tests {
             let mut full = fast.clone();
             run(
                 &mut fast,
+                &parser,
                 &LowerAttributesConfig::ENABLED,
                 &mut ReportRecorder::disabled(),
             );
@@ -1347,6 +1437,7 @@ mod tests {
                 ContentMode::Math,
                 &mut Pass {
                     irrelevant: HashSet::new(),
+                    parse_ctx: &parser,
                     recorder: &mut ReportRecorder::disabled(),
                 },
             );

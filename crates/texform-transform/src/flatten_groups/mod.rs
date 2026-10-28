@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Deserializer};
 
-use crate::argument_capture::boundary_captures;
+use crate::argument_capture::{environment_captures, sequence_boundary_hazard};
 use crate::ast::{ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, ParentLink, Slot};
 use crate::parse::ParseContext;
 use crate::report::ReportRecorder;
@@ -483,11 +483,12 @@ fn is_possible_unknown_argument(ast: &Ast, link: ParentLink) -> bool {
     false
 }
 
-/// Whether removing this group's braces would let a known command read a token
-/// across one of the new adjacencies as an omitted trailing optional,
-/// delimited, or star argument. A reparse would then attach that token to the
-/// command, as in `\sin{[2]}x`, `{\sin}[2]x`, or `\sin{}[2]x` →
-/// `\sin[2]x` when `\sin` takes `o`.
+/// Whether removing this group's braces would create a boundary hazard
+/// across one of the new adjacencies: a known command or environment reading
+/// a token as an omitted trailing optional, delimited, or star argument, as in
+/// `\sin{[2]}x`, `{\sin}[2]x`, or `\sin{}[2]x` → `\sin[2]x` when `\sin`
+/// takes `o`, or a text-mode control word dropping the space that starts the
+/// following text, as in `\ldots{} and` → `\ldots and`.
 ///
 /// Splicing creates up to two adjacencies: the preceding sibling meets the
 /// group's first child, and the group's last child meets the following
@@ -522,24 +523,44 @@ fn is_possible_argument_capture(
     let siblings = ast.children(parent);
     let (before, after) = (&siblings[..index], &siblings[index + 1..]);
     let children = ast.children(node);
-    let lookup = |name: &str, mode| parse_ctx.lookup_command(name, mode);
+    let catalog = |mode| parse_ctx.catalog(mode);
+    let opens_body = index == 0
+        && ast
+            .parent(parent)
+            .is_some_and(|body| body.slot == Slot::EnvBody);
+    let env_captures = |after: &mut dyn Iterator<Item = &NodeId>| {
+        opens_body
+            && environment_captures(
+                ast,
+                catalog,
+                ast.parent_id(parent).expect("body has a parent"),
+                after,
+            )
+    };
     if script_base {
         return !children.is_empty()
-            && boundary_captures(ast, lookup, mode, before.iter().rev(), children.iter());
+            && (sequence_boundary_hazard(
+                ast,
+                catalog,
+                mode,
+                before.iter().rev(),
+                children.iter(),
+            ) || env_captures(&mut children.iter()));
     }
-    boundary_captures(
+    sequence_boundary_hazard(
         ast,
-        lookup,
+        catalog,
         mode,
         before.iter().rev(),
         children.iter().chain(after),
-    ) || boundary_captures(
-        ast,
-        lookup,
-        mode,
-        children.iter().rev().chain(before.iter().rev()),
-        after.iter(),
-    )
+    ) || env_captures(&mut children.iter().chain(after))
+        || sequence_boundary_hazard(
+            ast,
+            catalog,
+            mode,
+            children.iter().rev().chain(before.iter().rev()),
+            after.iter(),
+        )
 }
 
 fn is_unknown_command(ast: &Ast, node: NodeId) -> bool {

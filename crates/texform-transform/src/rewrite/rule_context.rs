@@ -303,11 +303,52 @@ impl<'a> RuleContext<'a> {
         let (math_catalog, text_catalog) = (self.math_catalog, self.text_catalog);
         crate::argument_capture::separate_from_preceding_command(
             self.ast,
-            |name, mode| match mode {
-                ContentMode::Math => math_catalog.lookup_command(name),
-                ContentMode::Text => text_catalog.lookup_command(name),
+            |mode| match mode {
+                ContentMode::Math => math_catalog,
+                ContentMode::Text => text_catalog,
             },
             node_id,
+        )
+    }
+
+    /// Whether removing `node_id` would leave a boundary hazard at its
+    /// position: a reparse would change what its neighbors bind to, as when
+    /// the `physics` `\ln` reads a following `[2]` once a separator between
+    /// them is gone.
+    ///
+    /// The engine removes such hazards after the transform, at a rendering
+    /// cost charged to the step that created them. Render rules use this to
+    /// leave a hazardous context unchanged instead.
+    pub fn removal_creates_boundary_hazard(&mut self, node_id: NodeId) -> bool {
+        let (math_catalog, text_catalog) = (self.math_catalog, self.text_catalog);
+        crate::argument_capture::splice_creates_hazard(
+            self.ast,
+            |mode| match mode {
+                ContentMode::Math => math_catalog,
+                ContentMode::Text => text_catalog,
+            },
+            node_id,
+            None,
+        )
+    }
+
+    /// Whether replacing `node_id` with the detached node `replacement` would
+    /// leave a boundary hazard on either side of it. See
+    /// [`Self::removal_creates_boundary_hazard`].
+    pub fn replacement_creates_boundary_hazard(
+        &mut self,
+        node_id: NodeId,
+        replacement: NodeId,
+    ) -> bool {
+        let (math_catalog, text_catalog) = (self.math_catalog, self.text_catalog);
+        crate::argument_capture::splice_creates_hazard(
+            self.ast,
+            |mode| match mode {
+                ContentMode::Math => math_catalog,
+                ContentMode::Text => text_catalog,
+            },
+            node_id,
+            Some(replacement),
         )
     }
 

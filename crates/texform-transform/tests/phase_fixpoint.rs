@@ -43,7 +43,7 @@ fn phase(
     match index {
         0 => {
             cfg.lower_attributes.enabled
-                && lower_attributes::run(ast, &cfg.lower_attributes, &mut r)
+                && lower_attributes::run(ast, p, &cfg.lower_attributes, &mut r)
         }
         1 => {
             cfg.rewrite.enabled

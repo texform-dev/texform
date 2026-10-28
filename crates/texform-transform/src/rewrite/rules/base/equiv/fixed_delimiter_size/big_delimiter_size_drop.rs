@@ -131,10 +131,12 @@ mod tests {
             expected: r"a\lbrace b",
         },
         {
-            label: keeps_delimiter_from_being_read_as_an_optional_argument,
+            // `\\` rejects a leading space before `[`, and the serializer
+            // always writes one there, so no separator is needed.
+            label: leaves_a_row_break_bracket_to_the_serializer,
             packages: ["base"],
             input: r"a\\\big[x\big]b",
-            expected: r"a\\{}[x]b",
+            expected: r"a\\ [x]b",
         },
         {
             label: keeps_delimiter_from_being_read_as_a_physics_argument,

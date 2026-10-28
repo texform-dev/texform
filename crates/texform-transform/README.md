@@ -72,7 +72,27 @@ The engine repeats the deterministic order **LowerAttributes → Rewrite → Low
 - **FinalizeAst** merges adjacent Prime nodes and normalizes text sequences.
 - **FlattenGroups** removes redundant groups under the configured guards. Promoted slot contents are reconsidered in their new slot, so nested groups stabilize in one invocation.
 
-Any phase mutation makes all other phases eligible again, including earlier ones. For example, flattening can expose adjacent attributes or a rewrite match; finalizing can create another singleton group to flatten. The engine allows at most eight rounds, then returns `TransformError::NotConverged` rather than silently returning an unstable tree. This is an internal budget, not a runtime option. When Rewrite is enabled, eliminated-form validation runs once after convergence and does not mutate the AST.
+Any phase mutation makes all other phases eligible again, including earlier ones. For example, flattening can expose adjacent attributes or a rewrite match; finalizing can create another singleton group to flatten. The engine allows at most eight rounds, then returns `TransformError::NotConverged` rather than silently returning an unstable tree. This is an internal budget, not a runtime option.
+
+After convergence, if any phase changed the AST, **boundary separation** runs once. It is not a phase, has no configuration, and does not take part in convergence. When Rewrite is enabled, eliminated-form validation then runs once and does not mutate the AST.
+
+### Output contract and boundary separation
+
+The transform output contract is the transformed-tree round trip: for every transformed tree `t` and both output styles, the output text reparses to `t`, up to representation-only differences such as an argument slot's own braces. Text idempotency follows from it together with transform stability. It covers trees produced by parsing and transforming; trees built or edited through the document API carry no such guarantee.
+
+Deleting, replacing, or inserting nodes can create a **boundary hazard**: an adjacency that the parser never produces and that reparsing would change. Boundary separation finds and removes three kinds anywhere in the tree:
+
+| Hazard | Example | Separated output |
+| --- | --- | --- |
+| Command capture: a known command reads a following sibling as an omitted trailing optional, star, delimited, or brace-group argument | `physics` `\ln\badbreak[2]x` in `Corpus` | `\ln { } [ 2 ] x` |
+| Environment capture: an environment reads the first token of its body as an omitted trailing optional argument | `\begin{aligned}\big[a]\end{aligned}` in `Equiv` | `\begin {aligned} { } [ a ] \end {aligned}` |
+| Text-mode space swallowing: a control word drops the space that starts the following text | `\text{\ldots\quad{} and}` in `Equiv` | `\text {\ldots{} and}` |
+
+The separator is an empty group after the command, or at the start of the environment body. When the command would read that group too, the command is wrapped in a group instead, as in `{ \grad } { } ^ { \prime 2 }`; when a preceding command would read the wrapped group, the group grows left over it, as in `{ \curl \div } [ a ]`. The group stops before a declarative command so that its scope is not cut. Separators are ordinary tree nodes, so the serializer prints them as they are, and FlattenGroups never removes them (see [`FlattenGroupsConfig`](#flattengroupsconfig)).
+
+The division of work with the serializer is: problems that only need whitespace in the text or an argument's own braces belong to the serializer; problems that need an extra node in the tree belong to boundary separation. For example, `\\` rejects a space before its optional `[...]`, and in math mode the serializer always writes a space between a control sequence and a following `[` or `*`, so `\\ [ x ]` needs no separator.
+
+In math mode a separator is an empty ordinary atom, and a wrapping group turns the command into an ordinary subformula, so separation can change the spacing at that position, or whether a following binary operator such as `*` is read as binary. That cost belongs to the rule or phase that created the hazard (see [`RuleFidelity`](#rulefidelity)). Separation runs once at the end, so a tree with a separator is not guaranteed to be a fixed point of another transform; the round-trip report counts such cases as `retransform` failures.
 
 The scheduler relies on three phase contracts:
 
@@ -130,6 +150,8 @@ Classify a rule by asking which profile first accepts its output, then declare t
 
 `fidelity` is a metadata contract only. `texform-transform` runs no rendering comparison; how a downstream validator interprets a fidelity level when comparing rendered output is defined by that consumer, not in this crate.
 
+Fidelity evidence compares the rendering of the input text with the rendering of the output text, which relies on the output contract: the output text must mean the output tree (see [Output contract and boundary separation](#output-contract-and-boundary-separation)). Where a rewrite creates a boundary hazard, its actual effect on the text is the rewrite plus separation, so the spacing or atom-class change from the separator counts toward that rule's worst case. `Reading` and `Math` rules usually absorb it. `Render` rules must not rely on separation: they leave a hazardous context unchanged, using `RuleContext::removal_creates_boundary_hazard` or `RuleContext::replacement_creates_boundary_hazard`, or declare a lower fidelity. LowerAttributes, FinalizeAst, and FlattenGroups have no `RuleFidelity`, but the same rule applies to them where their phase contract promises unchanged rendering, such as FlattenGroups under `STRICT`.
+
 `fidelity` must not fall below the rule's level floor:
 
 | Level | Min fidelity |
@@ -164,7 +186,7 @@ These actions are the default behavior. Each preserve predicate belongs to one o
 - **Semantic / structural guards** — disabling them changes script binding, environment cell boundaries, declarative scope, or infix scope. Both parsed semantics and rendered output change. A public config keeps these on whenever the phase runs.
 - **Spacing guards** — disabling them only affects atom-spacing and unary/binary classification context. Parsed semantics are unchanged; rendered output may differ by a thin space. They follow `preserve_rendered_spacing`.
 
-Two structural protections are always on while the phase runs and are not `FlattenGroupsGuards` fields. Brace groups after an unknown command are kept (see [Unknown commands and environments](#unknown-commands-and-environments)). A group is also kept when splicing it would place a token directly after a command whose argument signature still has an omitted trailing optional or delimited slot accepting that token. Splicing joins the preceding sibling to the group's first child and the group's last child to the following sibling; an empty group joins its two neighbors. With `physics`, `\sin` takes an optional `[...]`, so `\sin{[2]}x`, `{\sin}[2]x`, and `\sin{}[2]x` all keep their braces instead of becoming `\sin[2]x`, which a reparse would read as an argument. A command carrying scripts has stopped reading arguments and is not protected, and the check uses only delimiters the signature records. These hits are counted as `argument_capture`.
+Two structural protections are always on while the phase runs and are not `FlattenGroupsGuards` fields. Brace groups after an unknown command are kept (see [Unknown commands and environments](#unknown-commands-and-environments)). A group is also kept when splicing it would create a boundary hazard (see [Output contract and boundary separation](#output-contract-and-boundary-separation)): a token directly after a command whose argument signature still has an omitted trailing optional or delimited slot accepting that token, a token at the start of an environment body that the environment would read the same way, or, in text mode, text starting with a space directly after a control word. Splicing joins the preceding sibling to the group's first child and the group's last child to the following sibling; an empty group joins its two neighbors. With `physics`, `\sin` takes an optional `[...]`, so `\sin{[2]}x`, `{\sin}[2]x`, and `\sin{}[2]x` all keep their braces instead of becoming `\sin[2]x`, which a reparse would read as an argument; likewise `\text{\ldots{} and}` keeps its empty group. A command carrying scripts has stopped reading arguments and is not protected, and the check uses only delimiters the signature records. It also counts the space that the serializer writes in math mode between a control sequence and a following `[` or `*`, so `a\\{[x]}b` may still become `a \\ [ x ] b`, since `\\` rejects a space before its optional argument. This protection also keeps every separator that boundary separation inserts. These hits are counted as `argument_capture`.
 
 Fine-grained per-guard control is not a public API. It lives on the internal `FlattenGroupsGuards` type.
 
@@ -203,7 +225,7 @@ Guard hit counters use the names below. They still count the first matching situ
 | Guard or sub-count | `guard_hits` field |
 | --- | --- |
 | Unknown-command protection (always on) | `unknown_command_arguments` |
-| Argument-capture protection (always on) | `argument_capture` |
+| Boundary protection (always on): argument capture and text-mode control-word spacing | `argument_capture` |
 | `declarative_scope` | `declarative_scope` |
 | `script_base` | `script_base` |
 | `env_body` | `env_body` |
@@ -229,7 +251,7 @@ Bindings use a transport DTO with the same four-phase hierarchy. Rules are sorte
 
 `lower_attributes/codegen.rs` loads `data.yaml` into build-time tables in `OUT_DIR`. The phase recognizes declarative commands (for example `\bf`, `\large`, `\sf`) and registered prefix wrappers (for example `\mathbf{...}`, `\textbf{...}`) from that map. It does not hard-code a protected command list.
 
-Attributes are tracked as an `AttributeSet`. Prefix-backed values become wrappers; declarative-only values remain inside the existing local group or prefix argument, while siblings resume the state from before that scope. The phase records only declarations that remain outside emitted wrappers, preserves explicit style across implicit math boundaries, and never synthesizes default style or size commands.
+Attributes are tracked as an `AttributeSet`. Prefix-backed values become wrappers; declarative-only values remain inside the existing local group or prefix argument, while siblings resume the state from before that scope. The phase records only declarations that remain outside emitted wrappers, preserves explicit style across implicit math boundaries, and never synthesizes default style or size commands. A redundant declarative or a prefix with an empty body normally vanishes, but stays when removing it would create a boundary hazard, as in the `physics` `\Im\mathbf{}{x}`, where `\Im` would otherwise read `{x}`; this keeps the phase from relying on boundary separation.
 
 The engine may run this phase before and after Rewrite, or in later rounds after another phase changes the AST. All invocations share one `enabled` switch and one cumulative report. Before rebuilding, the phase marks subtrees containing registered attribute markers or boundary whitespace that may need splitting, then skips unrelated subtrees. Newly emitted nodes remain eligible for local recollection. A scoped prefix whose effect is fully overridden is recollected locally after rebuilding its body, so a single invocation reaches the same fixed point as repeated lowering.
 
@@ -251,7 +273,7 @@ A single recursive traversal (`visit` → `try_unwrap` in `src/flatten_groups/mo
 
 1. Collects subtree-wide flags (`has_declarative`, `has_infix`, `has_delimited`) on the way down.
 2. Tracks the `in_env_body` context flag through `Slot::EnvBody` edges.
-3. On the way back up, calls `try_unwrap` to check whether the current group should be flattened. The always-on unknown-command and argument-capture protections run first. Each `FlattenGroupsGuards` predicate (`declarative_scope`, `script_base`, `env_body`, `infix_scope`, `command_contact`, `empty_group`, `lone_atom_spacing_char`, `leading_atom_spacing_char`, `delimited_pair`) short-circuits with an early return that increments the matching `guard_hits` counter; the first matching guard wins. `command_like_includes_scripted_base` only refines the `command_contact` classification, and a hit through that refinement also increments `command_contact_via_scripted_base`.
+3. On the way back up, calls `try_unwrap` to check whether the current group should be flattened. The always-on unknown-command and boundary protections run first. Each `FlattenGroupsGuards` predicate (`declarative_scope`, `script_base`, `env_body`, `infix_scope`, `command_contact`, `empty_group`, `lone_atom_spacing_char`, `leading_atom_spacing_char`, `delimited_pair`) short-circuits with an early return that increments the matching `guard_hits` counter; the first matching guard wins. `command_like_includes_scripted_base` only refines the `command_contact` classification, and a hit through that refinement also increments `command_contact_via_scripted_base`.
 4. If no guard fires and the group's content mode matches its parent's context mode, the group is unwrapped via either `unwrap_group_child` (multi-child splice) or `redirect_single_child_slot` (single-child slot replacement).
 
 Argument-slot redirects bypass all preservation guards, retaining only the content-mode check. Other slots keep their existing guards. After a slot redirect, the promoted child is checked again in its new slot with the same subtree flags. The `slot_can_unwrap` helper restricts redirect-style unwrapping to single-child groups in `Argument`, `Script*`, and `Infix*` slots; `EnvBody` slots are never unwrapped.
@@ -262,7 +284,7 @@ Build errors reject invalid rewrite plans; run errors report rule failures, exha
 
 ## Tests
 
-Keep individual rule cases inline and phase/interaction tests under `tests/`. Run `cargo test -p texform-transform` for the subsystem. Follow [TESTING.md](../../TESTING.md) for facade coverage and the required full corpus contract check.
+Keep individual rule cases inline and phase/interaction tests under `tests/`. Run `cargo test -p texform-transform` for the subsystem; it includes the fast round-trip tests in `tests/reparse_roundtrip.rs`. Follow [TESTING.md](../../TESTING.md) for facade coverage and the required full corpus contract check.
 
 ## See also
 
