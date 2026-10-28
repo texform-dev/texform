@@ -68,7 +68,7 @@ The full check required before merging transform changes:
 cargo run --release -p texform-regression --bin transform_contract -- --dry-run
 ```
 
-`--dry-run` writes no summary or detail files. If it fails, rerun the affected dataset without `--dry-run`, using a separate result root to preserve tracked summaries:
+`--dry-run` writes no summary or detail files. If it fails, rerun the affected dataset without `--dry-run` to write failure details, for example under a separate result root:
 
 ```bash
 cargo run --release -p texform-regression --bin transform_contract -- --dataset lf80m-benchmarks --results-root .tmp/transform-diagnostics
@@ -96,11 +96,11 @@ Paths below are relative to this directory and describe default result roots. `-
 | --- | --- |
 | `results/parser_regression/summary.json` | Tracked parser summary, with per-dataset entries |
 | `results/parser_regression/commits/<hash>[-dirty]/<slug>/` | Ignored per-dataset summaries and `errors.jsonl` |
-| `results/transform_contract/summary.json` | Tracked counts, exceptions, and verdict |
+| `results/transform_contract/summary.json` | Ignored counts, exceptions, and verdict of the last run |
 | `results/transform_contract/commits/<hash>[-dirty]/` | Ignored `violations.jsonl` and `errors.jsonl` |
 | `results/counter_map/` | Counter-map data products |
 
-The commit hash belongs to this texform repository even when invoked elsewhere with `--manifest-path`. Tracked summaries omit volatile timings and formula-level details. Plain transform runs write the tracked summary; use a separate result root for diagnosis and review any intentional summary refresh.
+The commit hash belongs to this texform repository even when invoked elsewhere with `--manifest-path`. The tracked parser summary omits volatile timings and formula-level details. Transform contract results are not tracked, because they can be recomputed from the datasets; state the counts that matter in the change description.
 
 ## Whole-Tree Conformance Audits
 
