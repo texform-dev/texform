@@ -1224,6 +1224,23 @@ fn lookup_declarative_at(
     lookup_declarative(mode, name)
 }
 
+/// Names of the math-mode declaratives this phase consumes, such as `Large`.
+pub(crate) fn declarative_names() -> impl Iterator<Item = &'static str> {
+    generated::DECLARATIVES
+        .iter()
+        .filter(|entry| entry.allowed_mode == ContentMode::Math)
+        .map(|entry| entry.name)
+}
+
+/// Names of the math-mode prefix wrappers this phase consumes, such as
+/// `mathbf`.
+pub(crate) fn prefix_names() -> impl Iterator<Item = &'static str> {
+    generated::PREFIXES
+        .iter()
+        .filter(|entry| entry.allowed_mode == ContentMode::Math)
+        .map(|entry| entry.name)
+}
+
 fn lookup_declarative(mode: ContentMode, name: &str) -> Option<&'static DeclarativeEntry> {
     generated::DECLARATIVES
         .iter()

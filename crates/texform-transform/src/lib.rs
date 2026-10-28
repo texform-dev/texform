@@ -16,6 +16,8 @@ pub mod flatten_groups;
 pub mod lower_attributes;
 pub mod report;
 pub mod rewrite;
+#[doc(hidden)]
+pub mod round_trip;
 
 pub use config::{BuildConfig, Profile, RewriteConfig, TransformConfig};
 pub use context::TransformContext;
