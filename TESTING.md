@@ -42,7 +42,7 @@ Additional checks depend on the change:
 | Change | Required validation |
 | --- | --- |
 | Significant parser behavior | Run corpus regression before and after; compare parser error rates and investigate changes |
-| Transform rules, metadata (`triggers`, `consumes`, `produces`, level or fidelity), profiles/build config, phase or rewrite scheduling, shared helpers, or contract exceptions | Run the full `transform_contract` across configured datasets before merging; a focused probe is sufficient only during development |
+| Transform rules, metadata (`triggers`, `consumes`, `produces`, level or fidelity), profiles/build config, phase or rewrite scheduling, shared helpers, or contract exceptions | Run the full `transform_contract` across configured datasets before merging; a focused probe is sufficient only during development. Also run the [round-trip report](regression/README.md#round-trip-report) and state its changes |
 | Python API, conversion, or packaging | Follow [Python development](crates/texform-python/README.md), including embedded tests and extension smoke check |
 | WASM API, shared DTOs, npm wrapper, or TypeScript declarations | Follow [WASM development](crates/texform-wasm/README.md), including rebuild, type check, and Node smoke test |
 | Documentation only | Check local links, command accuracy, and `git diff --check`; executable suites are needed only if behavior is also changed |
@@ -51,19 +51,38 @@ Corpus failures need investigation before baseline or allow-list changes. A tran
 
 ## Structural Round Trips
 
-`crates/texform-transform/tests/reparse_roundtrip.rs` checks parser and transform structure as well as output strings. To audit a prepared UTF-8 corpus containing one formula per line (or a `.jsonl` file containing one JSON string per line to preserve embedded newlines), run:
+The transform output contract is the transformed-tree round trip: the output text reparses to the transformed tree, in both output styles, up to representation-only differences such as an argument slot's own braces. It rests on two properties. Parsing and serialization round-trip every tree the parser can produce, and the transform produces only such trees. The transform's own fixed point then gives text idempotency as a corollary. Text idempotency alone is a weaker check: once the parser and serializer agree, reserializing a reparsed output reproduces the text even when the reparse built a different tree.
+
+The shared checks in `texform_transform::round_trip` compare canonical trees directly:
+
+| Check | Property |
+| --- | --- |
+| `parser_round_trip` | Parsing and serialization round-trip the parsed input, and the text is stable |
+| `reparse` | The output text reparses to the transformed tree |
+| `reparse_error` | The output text parses without errors (every such failure is also a `reparse` failure) |
+| `retransform` | Transforming the transformed tree again leaves it unchanged |
+| `reparse_retransform` | Transforming the reparsed output gives the transformed tree and the same text |
+
+Inputs whose parse is incomplete are skipped. Two parts use these checks:
+
+- **Fast round-trip tests** (`cargo test -p texform-transform --test reparse_roundtrip`) run generated and handwritten inputs, boundary examples, and a stratified subset of the adversarial boundary set under the `default`, `physics`, and `mixed` package sets, all four profiles, and both styles. They belong to `cargo test`: any failure is a test failure, and so is an unexpected transform error. The attribution test in the same file runs each `Render` rule alone, LowerAttributes where it preserves rendering, and FlattenGroups under `STRICT` on the adversarial inputs, and fails when boundary separation was needed. A unit test in `argument_capture.rs` checks on the same adversarial subset that every separator is needed: without it, or with an empty group in place of a wrapping group, the output reparses differently.
+- **The round-trip report** (`transform_contract --round-trip-report`) runs the same checks on every configured dataset and the full adversarial set, and counts failures and skipped inputs per cell. It is an observation, not a merge condition. Transform changes should run it and state the per-cell changes, including transform failures, in the change description; rising counts need investigation, but the report never fails a check. See [Round-Trip Report](regression/README.md#round-trip-report).
+
+Known failures outside the scope of a change go in the `PENDING` list in `reparse_roundtrip.rs`. Each entry names one input, package set, profile, style, and check, with an English reason, and the fast tests skip only that combination. The ignored `pending_entries_still_fail` test fails when an entry has been fixed, so that the main tests take it over; run it after a fix and remove the entries it names. The list only shrinks; a new entry needs a stated reason why the failure is outside the change.
+
+To count failures on a prepared UTF-8 corpus containing one formula per line (or a `.jsonl` file containing one JSON string per line to preserve embedded newlines), run:
 
 ```bash
-TEXFORM_ROUNDTRIP_CORPUS=/path/to/formulas.txt cargo test --release -p texform-transform --test reparse_roundtrip -- --ignored --nocapture
+TEXFORM_ROUNDTRIP_CORPUS=/path/to/formulas.txt cargo test --release -p texform-transform --test reparse_roundtrip -- --ignored --nocapture corpus_round_trip_counts
 ```
 
-The audit explicitly loads a fixed six-package selection, so it does not depend on the library defaults.
+Like the report, this prints counts and does not fail on them. It uses the same three fixed package sets, so it does not depend on the library defaults.
 
 ## Hooks and CI
 
 [Pre-commit hooks](.pre-commit-config.yaml) run Rust formatting, clippy, and parser regression refresh for Rust changes. Refresh may update tracked parser summaries; review those changes. Hooks do not run the unit-test suite or `transform_contract`.
 
-[CI](.github/workflows/ci.yml) runs the Rust checks above, verifies the parser probe dataset against its tracked baseline, builds and imports a Python wheel, and rebuilds WASM for TypeScript and Node checks. The Python wheel smoke check verifies installation and parser construction, not the full Python API. The full transform corpus check remains manual.
+[CI](.github/workflows/ci.yml) runs the Rust checks above, verifies the parser probe dataset against its tracked baseline, builds and imports a Python wheel, and rebuilds WASM for TypeScript and Node checks. The Python wheel smoke check verifies installation and parser construction, not the full Python API. The fast round-trip tests run as part of the workspace tests. The full transform corpus check and the round-trip report remain manual.
 
 ## Coverage
 
