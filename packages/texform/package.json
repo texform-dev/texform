@@ -1,6 +1,6 @@
 {
   "name": "texform",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Parse, edit, and normalize LaTeX math: JavaScript and TypeScript bindings for TeXForm, powered by WebAssembly",
   "keywords": [
     "latex",

@@ -4,6 +4,26 @@ All notable changes to TeXForm are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
 
+## [0.10.1] - 2026-10-28
+
+This release lets the PyPI package install the `texform` command-line tool, and fixes transform failures and output that did not reparse, mostly with `physics`. One rule key changes; see **Changed**.
+
+### Changed
+
+- The rule key `base/operatorname-to-named-function` becomes `ams/operatorname-to-named-function`, because the rule only applies when `ams` provides `\operatorname`. Configurations that enable or disable the old key must use the new one; the old key is not kept as an alias. Output is unchanged.
+
+### Added
+
+- The PyPI package installs the `texform` command, also available as `python -m texform`, so the command-line tool no longer needs a Rust toolchain. Install it with `uv tool install texform`, or run it once with `uvx texform`. It runs the same code as `cargo install texform-cli`, with the same commands, output, and exit statuses; each invocation adds about 10 ms of Python startup, and `--lines` and `serve` throughput is unchanged.
+
+### Fixed
+
+- With `physics`, `\eval`, `\eval*`, and `\evaluated` without a following `(`, `[`, or brace group no longer fail with a rewrite contract violation. As in MathJax, they expand to `\left.\vphantom{\int}\right|`, so `\eval x` becomes `\left.\vphantom{\int}\right| x`.
+- With `physics`, an ordered derivative whose variable already has a superscript no longer produces a double superscript that fails to reparse: `\dv[2]{f}{x^2}` now gives `\mathrm{d}{x^{2}}^{2}` in the denominator. `\pdv` and `\fdv` are fixed the same way.
+- A delimited argument whose content ends with an unpaired copy of its opening delimiter is kept in a protective brace group, and the parser strips that group again. Under Equiv with `physics`, `\qty(a{\big(}b)` now becomes `\qty({a(b})` instead of `\qty(a(b)`, which failed to parse.
+- Rewriting a scripted `\break` or `\newline` attaches its scripts to an empty base, so `\break'` becomes `\\{}'`, and FlattenGroups keeps the group in `{\cr}_1`. Both outputs previously changed when parsed again.
+- Dropping `\goodbreak` used as a script base no longer panics in Corpus and lower profiles: `\goodbreak^2` becomes `{}^{2}`.
+
 ## [0.10.0] - 2026-10-14
 
 This release replaces the serializer's seven option axes with two output styles: `spaced`, the previous default, and a new `compact` style for human-readable LaTeX. With `physics`, named functions such as `\sin` and `\exp` now parse the argument that physics.sty prints as an auto-sized fence, and three Faithful rules make that fence explicit. Normalization also no longer removes a group or a delimiter size that kept a preceding command from reading the next token as an argument on reparse. The serializer change is breaking; see **Changed** for migration notes.
