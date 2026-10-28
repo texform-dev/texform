@@ -78,6 +78,17 @@ These macros are intentionally local to `texform-transform`; they are ergonomics
 
 Domain guards such as whitelists, neighbor-class checks, and package-owner predicates stay in the rule body and tests when `apply` validates them at runtime. They are not metadata merely because the implementation inspects them.
 
+### Boundary hazards
+
+Deleting or replacing a node can leave neighbors that a reparse would bind differently, such as the `physics` `\ln` reading a following `[2]` once a separator between them is gone. The engine removes these boundary hazards once after the transform (see [Output contract and boundary separation](../../../README.md#output-contract-and-boundary-separation)). Rules follow this contract:
+
+- `Reading` and `Math` rules need not handle boundary hazards. The rendering cost of the separator counts toward the rule's own worst case.
+- `Render` rules must not rely on separation. In a hazardous context they leave the input unchanged, checking with `cx.removal_creates_boundary_hazard(node)` or `cx.replacement_creates_boundary_hazard(node, replacement)`, or they declare a lower fidelity. The round-trip attribution test runs each `Render` rule alone and fails when separation was needed.
+- Rules read arguments only from argument slots. A rule must not merge an adjacent sibling into a command's arguments: during Rewrite a sibling may have become adjacent only because an invisible node between them was just deleted.
+- Choosing an output form from the siblings is allowed, for example avoiding a short command name that would read a following parenthesis. The form may then depend on rule order, but the meaning does not.
+
+Rules must still keep the AST valid, for example with `remove_node_preserving_slot` for nodes outside a sibling sequence.
+
 ### `eliminates` vs `touches`
 
 - **`eliminates`**: targets the enabled rewrite pipeline **promises** to remove from successful output in the rule's declared domain. These targets alone feed `collect_eliminated_violations`. If a valid input branch intentionally returns `Skipped` and may preserve the same target, use a touches-only conditional rule instead. A transform error aborts the pipeline and is not a residual-target contract case.

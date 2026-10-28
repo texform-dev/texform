@@ -1,4 +1,10 @@
-//! Canonicalize the math binary operator \ast to the pixel-identical literal asterisk form.
+//! Canonicalize the math binary operator \ast to the literal asterisk form.
+//!
+//! The two forms render identically, except where the asterisk follows a
+//! command with an omitted star argument, as in the `physics` `\smqty\ast`.
+//! There a reparse would read the asterisk as that argument, so boundary
+//! separation keeps them apart with a group, which can change the spacing
+//! around the asterisk. The rule therefore declares `Reading`.
 //!
 //! ```yaml
 //! proposal: ast-to-asterisk
@@ -22,8 +28,8 @@ define_rule! {
     pub static AST_TO_ASTERISK: AstToAsteriskRule {
         key: Base / "ast-to-asterisk",
         level: Authoring,
-        summary: "Canonicalize the math binary operator \\ast to the pixel-identical literal asterisk form.",
-        fidelity: Render,
+        summary: "Canonicalize the math binary operator \\ast to the literal asterisk form.",
+        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::AST],
         consumes: RuleConsumes {

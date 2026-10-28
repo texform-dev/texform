@@ -296,21 +296,6 @@ impl<'a> RuleContext<'a> {
             .or_else(|| self.lookup_env(name, ContentMode::Text))
     }
 
-    /// Separates `node_id` from a preceding command that a reparse would let
-    /// read it as an omitted trailing argument, with an empty group or by
-    /// wrapping the command. Returns whether it changed the tree.
-    pub fn separate_from_preceding_command(&mut self, node_id: NodeId) -> bool {
-        let (math_catalog, text_catalog) = (self.math_catalog, self.text_catalog);
-        crate::argument_capture::separate_from_preceding_command(
-            self.ast,
-            |mode| match mode {
-                ContentMode::Math => math_catalog,
-                ContentMode::Text => text_catalog,
-            },
-            node_id,
-        )
-    }
-
     /// Whether removing `node_id` would leave a boundary hazard at its
     /// position: a reparse would change what its neighbors bind to, as when
     /// the `physics` `\ln` reads a following `[2]` once a separator between

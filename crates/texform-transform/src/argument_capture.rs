@@ -347,68 +347,6 @@ fn separate_after<'r>(
     Some(group)
 }
 
-/// Separates `node` from a preceding command that would read it as an
-/// omitted trailing argument. Returns whether it changed the tree.
-///
-/// Use this after a rewrite places `node` where a separator used to be. An
-/// empty group goes before `node`, as in `\\{}[x]`, unless the command would
-/// read that group too; then the command itself is wrapped, as in
-/// `{\exp}(x)`. FlattenGroups keeps either group.
-pub(crate) fn separate_from_preceding_command<'r>(
-    ast: &mut Ast,
-    catalog: impl Fn(ContentMode) -> &'r Catalog + Copy,
-    node: NodeId,
-) -> bool {
-    let Some(Slot::GroupChild(index)) = ast.slot(node) else {
-        return false;
-    };
-    let Some(parent) = ast.parent_id(node) else {
-        return false;
-    };
-    let Some(mode) = sequence_mode(ast, parent) else {
-        return false;
-    };
-    let siblings = ast.children(parent);
-    let (before, after) = siblings.split_at(index);
-    if !boundary_captures(ast, catalog, mode, before.iter().rev(), after.iter()) {
-        return false;
-    }
-
-    let Some(command) = before
-        .iter()
-        .rev()
-        .copied()
-        .find(|&sibling| !is_whitespace_text(ast, sibling))
-    else {
-        return false;
-    };
-    let Some(Slot::GroupChild(command_index)) = ast.slot(command) else {
-        return false;
-    };
-
-    let separator = empty_group(ast, mode);
-    let siblings = ast.children(parent);
-    if !boundary_captures(
-        ast,
-        catalog,
-        mode,
-        siblings[..index].iter().rev(),
-        std::iter::once(&separator),
-    ) {
-        ast.insert_child(parent, index, separator);
-        return true;
-    }
-    ast.remove_detached(separator);
-    let command = ast.detach_children_range(parent, command_index..command_index + 1);
-    let group = ast.new_node(Node::Group {
-        children: command,
-        kind: GroupKind::Explicit,
-        mode,
-    });
-    ast.insert_child(parent, command_index, group);
-    true
-}
-
 /// Whether arguments after the last supplied slot in `args` could take the
 /// first non-space token of `after`.
 ///
@@ -662,7 +600,7 @@ mod tests {
             (
                 PHYSICS,
                 Profile::Equiv,
-                r"\curl\div\quad[a]",
+                r"\curl\div\big[a]",
                 r"{ \curl \div } [ a ]",
             ),
             (
@@ -670,6 +608,12 @@ mod tests {
                 Profile::Equiv,
                 r"\grad\Large'^2",
                 r"{ \grad } { } ^ { \prime 2 }",
+            ),
+            (
+                PHYSICS,
+                Profile::Equiv,
+                r"\ln\big[2\big]x",
+                r"\ln { } [ 2 ] x",
             ),
             (
                 DEFAULT,
@@ -819,7 +763,7 @@ mod tests {
     fn wrapped_command_grows_left_over_capturing_commands_only() {
         let parse_ctx = ParseContext::from_packages(PHYSICS);
         let equiv = engine(&parse_ctx, Profile::Equiv);
-        let mut ast = parse(&parse_ctx, r"\curl\grad\div\quad[a]");
+        let mut ast = parse(&parse_ctx, r"\curl\grad\div\big[a]");
         equiv.run(&mut ast, &parse_ctx).unwrap();
         assert_eq!(serialize(&ast), r"{ \curl \grad \div } [ a ]");
         assert_eq!(ast.children(ast.root()).len(), 4);
@@ -830,7 +774,7 @@ mod tests {
             lower_attributes: LowerAttributesConfig::DISABLED,
             ..*equiv.default_config()
         };
-        let mut ast = parse(&parse_ctx, r"\rm\curl\div\quad[a]");
+        let mut ast = parse(&parse_ctx, r"\rm\curl\div\big[a]");
         equiv.run_with(&mut ast, &parse_ctx, &lowering_off).unwrap();
         assert_eq!(serialize(&ast), r"\rm { \curl \div } [ a ]");
         let reparsed = round_trip::parse(&parse_ctx, &serialize(&ast)).unwrap();
