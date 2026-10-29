@@ -42,12 +42,12 @@ Additional checks depend on the change:
 | Change | Required validation |
 | --- | --- |
 | Significant parser behavior | Run corpus regression before and after; compare parser error rates and investigate changes |
-| Transform rules, metadata (`triggers`, `consumes`, `produces`, level or fidelity), profiles/build config, phase or rewrite scheduling, shared helpers, or contract exceptions | Run the full `transform_contract` across configured datasets before merging; a focused probe is sufficient only during development. Also run the [round-trip report](regression/README.md#round-trip-report) and state its changes |
+| Transform rules, metadata (`triggers`, `consumes`, `produces`, level or fidelity), profiles/build config, phase or rewrite scheduling, shared helpers, or contract exceptions | Run the full `transform_contract` with the [round-trip check](regression/README.md#round-trip-check) across configured datasets before merging; a focused probe is sufficient only during development |
 | Python API, conversion, or packaging | Follow [Python development](crates/texform-python/README.md), including embedded tests and extension smoke check |
 | WASM API, shared DTOs, npm wrapper, or TypeScript declarations | Follow [WASM development](crates/texform-wasm/README.md), including rebuild, type check, and Node smoke test |
 | Documentation only | Check local links, command accuracy, and `git diff --check`; executable suites are needed only if behavior is also changed |
 
-Corpus failures need investigation before baseline or allow-list changes. A transform execution error or an unlisted eliminated-form violation fails the transform gate. Do not add broad or unexplained exceptions. Ensure the intended datasets actually ran; a successful process exit alone does not establish full corpus coverage. See the [regression guide](regression/README.md) for diagnostic reruns.
+Corpus failures need investigation before baseline or allow-list changes. A transform execution error, an unlisted eliminated-form violation, or a round-trip failure fails the transform gate. Do not add broad or unexplained exceptions. Ensure the intended datasets actually ran; a successful process exit alone does not establish full corpus coverage. See the [regression guide](regression/README.md) for diagnostic reruns.
 
 ## Structural Round Trips
 
@@ -66,13 +66,13 @@ The shared checks in `texform_transform::round_trip` compare canonical trees dir
 Inputs whose parse is incomplete are skipped. Two parts use these checks:
 
 - **Fast round-trip tests** (`cargo test -p texform-transform --test reparse_roundtrip`) run generated and handwritten inputs, boundary examples, and a stratified subset of the adversarial boundary set under the `default`, `physics`, and `mixed` package sets, all four profiles, and both styles. They belong to `cargo test`: any failure is a test failure, and so is an unexpected transform error. The attribution test in the same file runs each `Render` rule alone, LowerAttributes where it preserves rendering, and FlattenGroups under `STRICT` on the adversarial inputs, and fails when boundary separation was needed. A unit test in `argument_capture.rs` checks on the same adversarial subset that every separator is needed: without it, or with an empty group in place of a wrapping group, the output reparses differently.
-- **The round-trip report** (`transform_contract --round-trip-report`) runs the same checks on every configured dataset and the full adversarial set, and counts failures and skipped inputs per cell. It is an observation, not a merge condition. Transform changes should run it and state the per-cell changes, including transform failures, in the change description; rising counts need investigation, but the report never fails a check. See [Round-Trip Report](regression/README.md#round-trip-report).
+- **The round-trip check** (`transform_contract --round-trip`) runs the same checks on every configured dataset and the full adversarial set. It is part of the full transform check before merging, and any failure, including a transform failure, fails it. See [Round-Trip Check](regression/README.md#round-trip-check).
 
 ## Hooks and CI
 
 [Pre-commit hooks](.pre-commit-config.yaml) run Rust formatting, clippy, and parser regression refresh for Rust changes. Refresh may update tracked parser summaries; review those changes. Hooks do not run the unit-test suite or `transform_contract`.
 
-[CI](.github/workflows/ci.yml) runs the Rust checks above, verifies the parser probe dataset against its tracked baseline, builds and imports a Python wheel, and rebuilds WASM for TypeScript and Node checks. The Python wheel smoke check verifies installation and parser construction, not the full Python API. The fast round-trip tests run as part of the workspace tests. The full transform corpus check and the round-trip report remain manual.
+[CI](.github/workflows/ci.yml) runs the Rust checks above, verifies the parser probe dataset against its tracked baseline, builds and imports a Python wheel, and rebuilds WASM for TypeScript and Node checks. The Python wheel smoke check verifies installation and parser construction, not the full Python API. The fast round-trip tests run as part of the workspace tests. The full transform corpus check, including the round-trip check, remains manual.
 
 ## Coverage
 

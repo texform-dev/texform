@@ -62,10 +62,10 @@ A development probe:
 cargo run --release -p texform-regression --bin transform_contract -- --dataset lf80m-benchmarks --dry-run
 ```
 
-The full check required before merging transform changes:
+The full check required before merging transform changes, which also runs the [round-trip check](#round-trip-check):
 
 ```bash
-cargo run --release -p texform-regression --bin transform_contract -- --dry-run
+cargo run --release -p texform-regression --bin transform_contract -- --round-trip --dry-run
 ```
 
 `--dry-run` writes no summary or detail files. If it fails, rerun the affected dataset without `--dry-run` to write failure details, for example under a separate result root:
@@ -78,29 +78,17 @@ Inspect that run's `commits/<hash>[-dirty]/violations.jsonl` and `errors.jsonl`;
 
 `contract_exceptions.yaml` matches dataset, formula ID, 1-based occurrence within the same formula/target/node tuple, target kind/name, and optional node name. Each exception needs an English reason. Triage the actual violation before changing this allow-list; do not add broad exceptions to make a check pass.
 
-## Round-Trip Report
+## Round-Trip Check
 
-`--round-trip-report` adds a measurement of the transformed-tree round trip (see [Structural Round Trips](../TESTING.md#structural-round-trips)). It runs the round-trip checks on every configured dataset and on a generated `adversarial-boundary` dataset, under three fixed package sets (`default`, `physics`, and `mixed`, the defaults plus `physics`), four profiles, and two output styles. The adversarial inputs are derived from the knowledge base and the rewrite plans and use the formula as their ID. The report is an observation, not a merge condition: the Corpus eliminated-form check runs as usual, and the exit status, verdict, and `summary.json` depend on that check alone.
+`--round-trip` adds the transformed-tree round-trip check (see [Structural Round Trips](../TESTING.md#structural-round-trips)). It runs the round-trip checks on every configured dataset and on a generated `adversarial-boundary` dataset, under three fixed package sets (`default`, `physics`, and `mixed`, the defaults plus `physics`), four profiles, and two output styles. The adversarial inputs are derived from the knowledge base and the rewrite plans and use the formula as their ID. Inputs whose parse is incomplete are skipped. Every check must pass: any failure, including a transform failure, fails the run like an unlisted eliminated-form violation. The full run takes about five minutes on a 32-core machine.
 
-The full report, which takes about ten minutes on a 32-core machine:
-
-```bash
-cargo run --release -p texform-regression --bin transform_contract -- --round-trip-report
-```
-
-A development probe, which prints counts and samples without writing files:
+A development probe:
 
 ```bash
-cargo run --release -p texform-regression --bin transform_contract -- --round-trip-report --dataset lf80m-benchmarks --limit 5000 --dry-run
+cargo run --release -p texform-regression --bin transform_contract -- --round-trip --dataset lf80m-benchmarks --limit 5000 --dry-run
 ```
 
-A run writes the ignored `results/transform_contract/round_trip_report.json`. For each dataset, package set, profile, and style it records the checked inputs (`checked`), inputs skipped because the parse is incomplete or the transform failed (`skipped`), and failures per check (`failures`, keyed by the check names `reparse`, `reparse_error`, `retransform`, and `reparse_retransform`). The `parser_round_trip` check does not depend on the profile and is counted per dataset, package set, and style. Totals across datasets follow. Its provenance has a config hash over the inputs only: dataset selection, `--limit`, the package sets, and the adversarial generator version. Transform code and configuration are excluded, because the report measures their effect.
-
-Every failure, including each transform failure, is written to the ignored `commits/<hash>[-dirty]/round_trip_failures.jsonl` with the dataset, formula ID, formula, package set, profile, style, check, output text, and, for `reparse`, the first differing node path and the node names on both sides. Aggregate it ad hoc, for example by the first differing node.
-
-Each run first reads the report that the previous run left in the same result root. With the same config hash, it prints every changed cell as before → after with the difference, names the commit of the earlier report, and prints up to three samples for cells whose counts rose. With a different hash, such as after `--limit` or `--dataset`, or without an earlier report, it prints this run's counts only. To compare with another commit, run the report there first with `--results-root <directory>`, then run it on your change with the same `--results-root`. The adversarial inputs change with rules and knowledge records, so compare its checked counts and details as well as its failure counts.
-
-Transform changes should run the full report and state the per-cell changes, including transform failures, in the change description. Rising counts need investigation, but the report itself never fails a check.
+A run prints the number of complete and incomplete inputs per dataset and the failure count per dataset, package set, profile, style, and check, with `-` for a profile or style the check does not depend on. Without `--dry-run`, every failure is written to the ignored `commits/<hash>[-dirty]/round_trip_failures.jsonl` with the dataset, formula ID, formula, package set, profile, style, check, output text, and, for `reparse`, the first differing node path and the node names on both sides.
 
 ## Counter Maps
 
@@ -122,7 +110,6 @@ Paths below are relative to this directory and describe default result roots. `-
 | `results/parser_regression/commits/<hash>[-dirty]/<slug>/` | Ignored per-dataset summaries and `errors.jsonl` |
 | `results/transform_contract/summary.json` | Ignored counts, exceptions, and verdict of the last run |
 | `results/transform_contract/commits/<hash>[-dirty]/` | Ignored `violations.jsonl` and `errors.jsonl` |
-| `results/transform_contract/round_trip_report.json` | Ignored round-trip counts of the last run per dataset, package set, profile, and style |
 | `results/transform_contract/commits/<hash>[-dirty]/round_trip_failures.jsonl` | Ignored round-trip failure details |
 | `results/counter_map/` | Counter-map data products |
 

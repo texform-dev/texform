@@ -92,7 +92,7 @@ The separator is an empty group after the command, or at the start of the enviro
 
 The division of work with the serializer is: problems that only need whitespace in the text or an argument's own braces belong to the serializer; problems that need an extra node in the tree belong to boundary separation. For example, `\\` rejects a space before its optional `[...]`, and in math mode the serializer always writes a space between a control sequence and a following `[` or `*`, so `\\ [ x ]` needs no separator.
 
-In math mode a separator is an empty ordinary atom, and a wrapping group turns the command into an ordinary subformula, so separation can change the spacing at that position, or whether a following binary operator such as `*` is read as binary. That cost belongs to the rule or phase that created the hazard (see [`RuleFidelity`](#rulefidelity)). Separation runs once at the end, so a tree with a separator is not guaranteed to be a fixed point of another transform; the round-trip report counts such cases as `retransform` failures.
+In math mode a separator is an empty ordinary atom, and a wrapping group turns the command into an ordinary subformula, so separation can change the spacing at that position, or whether a following binary operator such as `*` is read as binary. That cost belongs to the rule or phase that created the hazard (see [`RuleFidelity`](#rulefidelity)). Separation runs once at the end, so a tree with a separator is not guaranteed to be a fixed point of another transform; the round-trip checks report such cases as `retransform` failures.
 
 The scheduler relies on three phase contracts:
 

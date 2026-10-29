@@ -1,5 +1,5 @@
 //! Transformed-tree round-trip checks shared by the fast round-trip tests and
-//! the corpus round-trip report.
+//! the corpus round-trip check.
 //!
 //! The transform output contract is that the output text reparses to the
 //! transformed tree: for every transformed tree `t` and both output styles,
@@ -92,8 +92,7 @@ pub fn style_name(style: Style) -> &'static str {
 }
 
 /// One round-trip check; [`Check::label`] gives its name in reports.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Check {
     /// Parsing and serialization round-trip the parsed input.
     ParserRoundTrip,

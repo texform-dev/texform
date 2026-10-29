@@ -1,7 +1,7 @@
 use clap::Parser;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use texform_regression::{config, round_trip_report, transform_contract};
+use texform_regression::{config, round_trip, transform_contract};
 
 #[derive(Parser)]
 #[command(
@@ -13,11 +13,10 @@ struct Args {
     #[arg(long)]
     check_conformance: bool,
 
-    /// Also measure transformed-tree round trips across three package sets,
-    /// four profiles, and two styles. Writes round_trip_report.json; never
-    /// changes the exit status or verdict.
+    /// Also check transformed-tree round trips across three package sets,
+    /// four profiles, and two styles. Any failure fails the run.
     #[arg(long)]
-    round_trip_report: bool,
+    round_trip: bool,
 
     /// Dataset configuration YAML. Defaults to the texform repo regression/datasets.yaml.
     #[arg(long)]
@@ -83,8 +82,8 @@ fn run(args: Args) -> Result<ExitCode, String> {
         );
     }
 
-    if args.round_trip_report {
-        round_trip_report::run(&round_trip_report::ReportConfig {
+    let round_trip_failures = if args.round_trip {
+        round_trip::run(&round_trip::RoundTripConfig {
             datasets_yaml,
             results_root,
             datasets: args.datasets,
@@ -92,8 +91,10 @@ fn run(args: Args) -> Result<ExitCode, String> {
             dry_run: args.dry_run,
             skip_commit_results: args.skip_commit_results,
         })
-        .map_err(|error| format!("round-trip report: {error}"))?;
-    }
+        .map_err(|error| format!("round trip: {error}"))?
+    } else {
+        0
+    };
 
     if outcome.summary.transform_errors > 0 {
         eprintln!(
@@ -107,9 +108,16 @@ fn run(args: Args) -> Result<ExitCode, String> {
             outcome.unallowed_violations
         );
     }
+    if round_trip_failures > 0 {
+        eprintln!(
+            "Transform contract failed: {round_trip_failures} round-trip failure(s); see {}",
+            round_trip::FAILURES_FILE
+        );
+    }
     if contract_failed(
         outcome.summary.transform_errors,
         outcome.unallowed_violations,
+        round_trip_failures,
     ) {
         return Ok(ExitCode::FAILURE);
     }
@@ -117,8 +125,12 @@ fn run(args: Args) -> Result<ExitCode, String> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn contract_failed(transform_errors: usize, unallowed_violations: usize) -> bool {
-    transform_errors > 0 || unallowed_violations > 0
+fn contract_failed(
+    transform_errors: usize,
+    unallowed_violations: usize,
+    round_trip_failures: usize,
+) -> bool {
+    transform_errors > 0 || unallowed_violations > 0 || round_trip_failures > 0
 }
 
 #[cfg(test)]
@@ -126,9 +138,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn transform_errors_or_unallowed_violations_fail_the_cli() {
-        assert!(contract_failed(1, 0));
-        assert!(contract_failed(0, 1));
-        assert!(!contract_failed(0, 0));
+    fn transform_errors_violations_or_round_trip_failures_fail_the_cli() {
+        assert!(contract_failed(1, 0, 0));
+        assert!(contract_failed(0, 1, 0));
+        assert!(contract_failed(0, 0, 1));
+        assert!(!contract_failed(0, 0, 0));
     }
 }

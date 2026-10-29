@@ -3,7 +3,7 @@ pub mod conformance;
 pub mod data;
 pub mod dump;
 pub mod output;
-pub mod round_trip_report;
+pub mod round_trip;
 pub mod runner;
 pub mod stats;
 pub mod transform_contract;
