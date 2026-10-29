@@ -144,79 +144,6 @@ where
         || swallows_leading_space(ast, mode, before, after)
 }
 
-/// Whether replacing `node` with `replacement`, or removing it when
-/// `replacement` is `None`, would leave a boundary hazard at its position.
-///
-/// `replacement` must be a detached node. A script base counts as the first
-/// token of its scripted parent; removing it leaves an empty base group.
-pub(crate) fn splice_creates_hazard<'r>(
-    ast: &mut Ast,
-    catalog: impl Fn(ContentMode) -> &'r Catalog + Copy,
-    node: NodeId,
-    replacement: Option<NodeId>,
-) -> bool {
-    if ast.slot(node) != Some(Slot::ScriptBase) {
-        return splice_hazard(ast, catalog, node, replacement, true);
-    }
-    let Some(scripted) = ast.parent_id(node) else {
-        return false;
-    };
-    // The scripts keep the new base from reading anything after it.
-    match replacement {
-        Some(base) => splice_hazard(ast, catalog, scripted, Some(base), false),
-        None => {
-            let probe = empty_group(ast, ContentMode::Math);
-            let hazard = splice_hazard(ast, catalog, scripted, Some(probe), false);
-            ast.remove_detached(probe);
-            hazard
-        }
-    }
-}
-
-/// Whether the node at `anchor`'s sequence position, replaced by `first`,
-/// meets a hazard on its left, or on its right when `check_trailing` is set.
-fn splice_hazard<'r>(
-    ast: &Ast,
-    catalog: impl Fn(ContentMode) -> &'r Catalog + Copy,
-    anchor: NodeId,
-    first: Option<NodeId>,
-    check_trailing: bool,
-) -> bool {
-    let Some(Slot::GroupChild(index)) = ast.slot(anchor) else {
-        return false;
-    };
-    let Some(parent) = ast.parent_id(anchor) else {
-        return false;
-    };
-    let Some(mode) = sequence_mode(ast, parent) else {
-        return false;
-    };
-    let siblings = ast.children(parent);
-    let (before, after) = (&siblings[..index], &siblings[index + 1..]);
-    let middle = first.as_slice();
-    let leading = sequence_boundary_hazard(
-        ast,
-        catalog,
-        mode,
-        before.iter().rev(),
-        middle.iter().chain(after),
-    ) || (index == 0
-        && ast
-            .parent(parent)
-            .is_some_and(|link| link.slot == Slot::EnvBody)
-        && environment_captures(
-            ast,
-            catalog,
-            ast.parent_id(parent).expect("body has a parent"),
-            middle.iter().chain(after),
-        ));
-    let trailing = check_trailing
-        && first.is_some_and(|first| {
-            sequence_boundary_hazard(ast, catalog, mode, std::iter::once(&first), after.iter())
-        });
-    leading || trailing
-}
-
 /// Removes every boundary hazard from the tree and returns the separators it
 /// inserted: empty groups, or groups wrapping the capturing commands.
 ///
@@ -967,53 +894,10 @@ mod tests {
         }
     }
 
-    /// Render rules use the rule-side predicate to leave hazardous contexts
-    /// unchanged; it agrees with what separation would do.
-    #[test]
-    fn rule_side_predicate_matches_separation() {
-        let parse_ctx = ParseContext::from_packages(PHYSICS);
-        for (source, hazard) in [
-            (r"\ln\badbreak[2]x", true),
-            (r"\ln\badbreak x", false),
-            (r"x\badbreak[2]", false),
-            (r"\curl\div\badbreak[a]", true),
-        ] {
-            let mut ast = parse(&parse_ctx, source);
-            let target = ast
-                .find(
-                    ast.root(),
-                    |node| matches!(node, Node::Command { name, .. } if name == "badbreak"),
-                )
-                .unwrap();
-            let mut cx =
-                RuleContext::new(&mut ast, parse_ctx.math_catalog(), parse_ctx.text_catalog());
-            assert_eq!(
-                cx.removal_creates_boundary_hazard(target),
-                hazard,
-                "{source}"
-            );
-            ast.remove_node(target);
-            let separated = separate_boundaries(&mut ast, |mode| parse_ctx.catalog(mode));
-            assert_eq!(!separated.is_empty(), hazard, "{source}");
-        }
-
-        let mut ast = parse(&parse_ctx, r"\smqty\ast");
-        let target = ast.children(ast.root())[1];
-        let replacement = ast.new_node(Node::Char('*'));
-        let mut cx = RuleContext::new(&mut ast, parse_ctx.math_catalog(), parse_ctx.text_catalog());
-        assert!(cx.replacement_creates_boundary_hazard(target, replacement));
-        let replacement = ast.new_node(Node::Char('+'));
-        let mut cx = RuleContext::new(&mut ast, parse_ctx.math_catalog(), parse_ctx.text_catalog());
-        assert!(!cx.replacement_creates_boundary_hazard(target, replacement));
-    }
-
-    /// A Render rule that drops `\badbreak`, optionally guarded by the
-    /// rule-side predicate.
-    struct DropBadbreak {
-        guarded: bool,
-    }
-    static GUARDED: DropBadbreak = DropBadbreak { guarded: true };
-    static UNGUARDED: DropBadbreak = DropBadbreak { guarded: false };
+    /// A Render rule that drops `\badbreak` even where that exposes a
+    /// boundary hazard.
+    struct DropBadbreak;
+    static DROP_BADBREAK: DropBadbreak = DropBadbreak;
 
     impl RewriteRule for DropBadbreak {
         fn meta(&self) -> &'static RuleMeta {
@@ -1024,7 +908,7 @@ mod tests {
                 },
                 enabled_by_packages: &[PackageName::Base],
                 level: RuleLevel::Authoring,
-                summary: "Drop badbreak unless that exposes a boundary hazard.",
+                summary: "Drop badbreak.",
                 fidelity: RuleFidelity::Render,
                 triggers: &[RuleTarget::Command(&base::cmd::BADBREAK)],
                 consumes: RuleConsumes {
@@ -1041,9 +925,7 @@ mod tests {
             cx: &mut RuleContext<'_>,
             node: NodeId,
         ) -> Result<RuleEffect, crate::rewrite::RuleError> {
-            if cx.match_command(node, &base::cmd::BADBREAK).is_none()
-                || (self.guarded && cx.removal_creates_boundary_hazard(node))
-            {
+            if cx.match_command(node, &base::cmd::BADBREAK).is_none() {
                 return Ok(RuleEffect::Skipped);
             }
             cx.ast.remove_node(node);
@@ -1060,20 +942,16 @@ mod tests {
             finalize_ast: FinalizeAstConfig::DISABLED,
             flatten_groups: FlattenGroupsConfig::DISABLED,
         };
-        for (rule, expected) in [
-            (&GUARDED, (0, r"\ln \badbreak [ 2 ] x")),
-            (&UNGUARDED, (1, r"\ln { } [ 2 ] x")),
-        ] {
-            let context = TransformContext::from_rewrite_plan_for_tests(
-                rewrite_only,
-                Plan::from_rules_for_tests(vec![rule]),
-            );
-            let mut ast = parse(&parse_ctx, r"\ln\badbreak[2]x");
-            let separated = context
-                .run_counting_separations(&mut ast, &parse_ctx, &rewrite_only)
-                .unwrap();
-            assert_eq!((separated, serialize(&ast).as_str()), expected);
-        }
+        let context = TransformContext::from_rewrite_plan_for_tests(
+            rewrite_only,
+            Plan::from_rules_for_tests(vec![&DROP_BADBREAK]),
+        );
+        let mut ast = parse(&parse_ctx, r"\ln\badbreak[2]x");
+        let separated = context
+            .run_counting_separations(&mut ast, &parse_ctx, &rewrite_only)
+            .unwrap();
+        assert_eq!(separated, 1);
+        assert_eq!(serialize(&ast), r"\ln { } [ 2 ] x");
     }
 
     /// Without separation, the reparse check catches the capture while the

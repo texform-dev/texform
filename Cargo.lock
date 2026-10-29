@@ -1411,7 +1411,6 @@ name = "texform-transform"
 version = "0.10.1"
 dependencies = [
  "serde",
- "serde_json",
  "serde_yaml",
  "texform-core",
  "texform-interface",

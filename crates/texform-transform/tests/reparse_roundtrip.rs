@@ -2,8 +2,7 @@
 //! input here, under three package sets, four profiles, and both output
 //! styles. See `texform_transform::round_trip` for the checks.
 //!
-//! Any failure that is not listed in [`PENDING`], including an unexpected
-//! transform error, fails the test. The attribution test checks that steps
+//! Any failure, including an unexpected transform error, fails the test. The attribution test checks that steps
 //! promising identical rendering never rely on boundary separation.
 #[path = "support/phase_cases.rs"]
 mod phase_cases;
@@ -15,7 +14,7 @@ use texform_core::{
     serialize::{Style, serialize, serialize_with},
 };
 use texform_transform::round_trip::{
-    self, Check, Outcome, PACKAGE_SETS, PROFILES, STYLES, adversarial, parse,
+    self, Outcome, PACKAGE_SETS, PROFILES, STYLES, adversarial, parse,
 };
 use texform_transform::{
     BuildConfig, FinalizeAstConfig, FlattenGroupsConfig, LowerAttributesConfig, Profile,
@@ -46,50 +45,8 @@ fn lanes() -> Vec<Lane> {
     PACKAGE_SETS.iter().map(|(name, _)| lane(name)).collect()
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Item {
-    Check(Check),
-    TransformFailure,
-    Attribution,
-}
-
-/// A known failure outside the scope of the change that introduced it.
-///
-/// Each entry names one input, package set, profile, style, and check, so
-/// that every other combination of the same input is still checked. The
-/// list only shrinks: `pending_entries_still_fail` fails once an entry is
-/// fixed, so that the main tests take it over.
-struct Pending {
-    input: &'static str,
-    packages: &'static str,
-    /// `None` for `ParserRoundTrip`, which does not depend on the profile.
-    profile: Option<Profile>,
-    /// `None` for `Retransform`, transform failures, and attribution.
-    style: Option<Style>,
-    item: Item,
-    reason: &'static str,
-}
-
-const PENDING: &[Pending] = &[];
-
-fn pending(
-    input: &str,
-    packages: &str,
-    profile: Option<Profile>,
-    style: Option<Style>,
-    item: Item,
-) -> bool {
-    PENDING.iter().any(|entry| {
-        entry.input == input
-            && entry.packages == packages
-            && entry.profile == profile
-            && entry.style == style
-            && entry.item == item
-    })
-}
-
-/// Every failure of `source` under `lane`, as `(item, profile, style, message)`.
-fn all_failures(lane: &Lane, source: &str) -> Vec<(Item, Option<Profile>, Option<Style>, String)> {
+/// Every failure of `source` under `lane`, formatted for a test message.
+fn failures(lane: &Lane, source: &str) -> Vec<String> {
     let p = &lane.parse_ctx;
     let Some(original) = parse(p, source) else {
         return Vec::new();
@@ -97,12 +54,7 @@ fn all_failures(lane: &Lane, source: &str) -> Vec<(Item, Option<Profile>, Option
     let mut failures = Vec::new();
     for style in STYLES {
         if let Some(failure) = round_trip::check_parser(p, &original, style) {
-            failures.push((
-                Item::Check(Check::ParserRoundTrip),
-                None,
-                Some(style),
-                failure.to_string(),
-            ));
+            failures.push(format!("[{} parser] {source}: {failure}", lane.name));
         }
     }
     for (profile, engine) in PROFILES.into_iter().zip(&lane.engines) {
@@ -110,45 +62,29 @@ fn all_failures(lane: &Lane, source: &str) -> Vec<(Item, Option<Profile>, Option
             round_trip::check_transform(p, engine, &original)
         }))
         .unwrap_or_else(|_| Outcome::TransformFailed("panic".into()));
+        let prefix = format!(
+            "[{} {}] {source}",
+            lane.name,
+            round_trip::profile_name(profile)
+        );
         match outcome {
-            Outcome::TransformFailed(error) => failures.push((
-                Item::TransformFailure,
-                Some(profile),
-                None,
-                format!("transform failure: {error}"),
-            )),
-            Outcome::Checked(checked) => failures.extend(checked.into_iter().map(|failure| {
-                (
-                    Item::Check(failure.check),
-                    Some(profile),
-                    failure.style,
-                    failure.to_string(),
-                )
-            })),
+            Outcome::TransformFailed(error) => {
+                failures.push(format!("{prefix}: transform failure: {error}"))
+            }
+            Outcome::Checked(checked) => failures.extend(
+                checked
+                    .into_iter()
+                    .map(|failure| format!("{prefix}: {failure}")),
+            ),
         }
     }
     failures
 }
 
-/// Failures of `source` that are not pending, formatted for a test message.
-fn unlisted_failures(lane: &Lane, source: &str) -> Vec<String> {
-    all_failures(lane, source)
-        .into_iter()
-        .filter(|(item, profile, style, _)| !pending(source, lane.name, *profile, *style, *item))
-        .map(|(_, profile, _, message)| {
-            format!(
-                "[{} {}] {source}: {message}",
-                lane.name,
-                profile.map_or("parser", round_trip::profile_name)
-            )
-        })
-        .collect()
-}
-
 fn assert_round_trips<'a>(lane: &Lane, inputs: impl IntoIterator<Item = &'a str>) {
     let failures: Vec<String> = inputs
         .into_iter()
-        .flat_map(|source| unlisted_failures(lane, source))
+        .flat_map(|source| failures(lane, source))
         .collect();
     assert!(
         failures.is_empty(),
@@ -433,7 +369,7 @@ fn render_steps_do_not_rely_on_boundary_separation() {
         let mut check = |label: String,
                          engine: &TransformContext,
                          config: &TransformConfig,
-                         profile,
+                         profile: Profile,
                          source: &str| {
             let Some(mut ast) = parse(p, source) else {
                 return;
@@ -447,9 +383,11 @@ fn render_steps_do_not_rely_on_boundary_separation() {
                 Ok(Ok(count)) => format!("relies on {count} separation(s)"),
                 Err(_) => "panicked".to_string(),
             };
-            if !pending(source, lane.name, Some(profile), None, Item::Attribution) {
-                failures.push(format!("[{} {label}] {source}: {problem}", lane.name));
-            }
+            failures.push(format!(
+                "[{} {} {label}] {source}: {problem}",
+                lane.name,
+                round_trip::profile_name(profile)
+            ));
         };
 
         // Each Render rule, alone, on the inputs whose separator it handles.
@@ -544,106 +482,4 @@ fn render_steps_do_not_rely_on_boundary_separation() {
         failures.len(),
         failures.join("\n")
     );
-}
-
-#[test]
-#[ignore = "run to find fixed entries in PENDING"]
-fn pending_entries_still_fail() {
-    let lanes = lanes();
-    let mut fixed = Vec::new();
-    for entry in PENDING {
-        assert!(
-            !entry.reason.trim().is_empty(),
-            "{}: empty reason",
-            entry.input
-        );
-        let lane = lanes
-            .iter()
-            .find(|lane| lane.name == entry.packages)
-            .expect("pending entry names a package set");
-        let still_fails =
-            match entry.item {
-                Item::Attribution => attribution_fails(lane, entry),
-                item => all_failures(lane, entry.input).into_iter().any(
-                    |(failed, profile, style, _)| {
-                        failed == item && profile == entry.profile && style == entry.style
-                    },
-                ),
-            };
-        if !still_fails {
-            fixed.push(format!(
-                "{} {:?} {:?} {:?}: {}",
-                entry.packages, entry.profile, entry.style, entry.item, entry.input
-            ));
-        }
-    }
-    assert!(
-        fixed.is_empty(),
-        "fixed entries to remove from PENDING:\n{}",
-        fixed.join("\n")
-    );
-}
-
-/// Whether the full profile pipeline separates a hazard in `entry.input`;
-/// attribution entries record steps that still rely on separation there.
-fn attribution_fails(lane: &Lane, entry: &Pending) -> bool {
-    let profile = entry.profile.expect("attribution entries name a profile");
-    let engine =
-        TransformContext::from_build_config(BuildConfig::profile(profile), &lane.parse_ctx)
-            .unwrap();
-    let Some(mut ast) = parse(&lane.parse_ctx, entry.input) else {
-        return false;
-    };
-    matches!(
-        engine.run_counting_separations(&mut ast, &lane.parse_ctx, engine.default_config()),
-        Ok(count) if count > 0
-    )
-}
-
-/// Counts failures on a prepared UTF-8 corpus, one formula per line or one
-/// JSON string per line for `.jsonl`. Like the round-trip report, this is a
-/// measurement: it prints counts and never fails on them.
-#[test]
-#[ignore = "set TEXFORM_ROUNDTRIP_CORPUS to a complete single-line corpus file"]
-fn corpus_round_trip_counts() {
-    use std::io::BufRead;
-    let path = std::env::var("TEXFORM_ROUNDTRIP_CORPUS").expect("corpus path required");
-    let lanes = lanes();
-    let lines: Vec<String> = std::io::BufReader::new(std::fs::File::open(&path).unwrap())
-        .lines()
-        .map(|line| {
-            let line = line.unwrap();
-            if path.ends_with(".jsonl") {
-                serde_json::from_str::<String>(&line).unwrap()
-            } else {
-                line
-            }
-        })
-        .collect();
-    assert!(!lines.is_empty());
-    for lane in &lanes {
-        let mut incomplete = 0;
-        let mut counts = std::collections::BTreeMap::<String, usize>::new();
-        for source in &lines {
-            if parse(&lane.parse_ctx, source).is_none() {
-                incomplete += 1;
-                continue;
-            }
-            for (item, profile, style, message) in all_failures(lane, source) {
-                let key = format!(
-                    "{} {} {:?}",
-                    profile.map_or("parser", round_trip::profile_name),
-                    style.map_or("-", round_trip::style_name),
-                    item
-                );
-                *counts.entry(key).or_default() += 1;
-                eprintln!("[{}] {source}: {message}", lane.name);
-            }
-        }
-        println!(
-            "{}: {} inputs, {incomplete} incomplete, failures {counts:?}",
-            lane.name,
-            lines.len()
-        );
-    }
 }

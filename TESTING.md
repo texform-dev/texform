@@ -68,16 +68,6 @@ Inputs whose parse is incomplete are skipped. Two parts use these checks:
 - **Fast round-trip tests** (`cargo test -p texform-transform --test reparse_roundtrip`) run generated and handwritten inputs, boundary examples, and a stratified subset of the adversarial boundary set under the `default`, `physics`, and `mixed` package sets, all four profiles, and both styles. They belong to `cargo test`: any failure is a test failure, and so is an unexpected transform error. The attribution test in the same file runs each `Render` rule alone, LowerAttributes where it preserves rendering, and FlattenGroups under `STRICT` on the adversarial inputs, and fails when boundary separation was needed. A unit test in `argument_capture.rs` checks on the same adversarial subset that every separator is needed: without it, or with an empty group in place of a wrapping group, the output reparses differently.
 - **The round-trip report** (`transform_contract --round-trip-report`) runs the same checks on every configured dataset and the full adversarial set, and counts failures and skipped inputs per cell. It is an observation, not a merge condition. Transform changes should run it and state the per-cell changes, including transform failures, in the change description; rising counts need investigation, but the report never fails a check. See [Round-Trip Report](regression/README.md#round-trip-report).
 
-Known failures outside the scope of a change go in the `PENDING` list in `reparse_roundtrip.rs`. Each entry names one input, package set, profile, style, and check, with an English reason, and the fast tests skip only that combination. The ignored `pending_entries_still_fail` test fails when an entry has been fixed, so that the main tests take it over; run it after a fix and remove the entries it names. The list only shrinks; a new entry needs a stated reason why the failure is outside the change.
-
-To count failures on a prepared UTF-8 corpus containing one formula per line (or a `.jsonl` file containing one JSON string per line to preserve embedded newlines), run:
-
-```bash
-TEXFORM_ROUNDTRIP_CORPUS=/path/to/formulas.txt cargo test --release -p texform-transform --test reparse_roundtrip -- --ignored --nocapture corpus_round_trip_counts
-```
-
-Like the report, this prints counts and does not fail on them. It uses the same three fixed package sets, so it does not depend on the library defaults.
-
 ## Hooks and CI
 
 [Pre-commit hooks](.pre-commit-config.yaml) run Rust formatting, clippy, and parser regression refresh for Rust changes. Refresh may update tracked parser summaries; review those changes. Hooks do not run the unit-test suite or `transform_contract`.

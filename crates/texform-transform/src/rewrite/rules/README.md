@@ -83,7 +83,7 @@ Domain guards such as whitelists, neighbor-class checks, and package-owner predi
 Deleting or replacing a node can leave neighbors that a reparse would bind differently, such as the `physics` `\ln` reading a following `[2]` once a separator between them is gone. The engine removes these boundary hazards once after the transform (see [Output contract and boundary separation](../../../README.md#output-contract-and-boundary-separation)). Rules follow this contract:
 
 - `Reading` and `Math` rules need not handle boundary hazards. The rendering cost of the separator counts toward the rule's own worst case.
-- `Render` rules must not rely on separation. In a hazardous context they leave the input unchanged, checking with `cx.removal_creates_boundary_hazard(node)` or `cx.replacement_creates_boundary_hazard(node, replacement)`, or they declare a lower fidelity. The round-trip attribution test runs each `Render` rule alone and fails when separation was needed.
+- `Render` rules must not rely on separation. A rule whose output would be separated in some context declares a lower fidelity instead. The round-trip attribution test runs each `Render` rule alone and fails when separation was needed.
 - Rules read arguments only from argument slots. A rule must not merge an adjacent sibling into a command's arguments: during Rewrite a sibling may have become adjacent only because an invisible node between them was just deleted.
 - Choosing an output form from the siblings is allowed, for example avoiding a short command name that would read a following parenthesis. The form may then depend on rule order, but the meaning does not.
 
