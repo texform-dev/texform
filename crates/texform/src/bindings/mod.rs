@@ -225,6 +225,7 @@ pub struct FlattenGroupsGuardCountsDto {
     pub empty_group: usize,
     pub lone_atom_spacing_char: usize,
     pub leading_atom_spacing_char: usize,
+    pub trailing_atom_spacing_char: usize,
     pub delimited_pair: usize,
 }
 
@@ -604,6 +605,7 @@ fn flatten_groups_report_to_dto(report: &FlattenGroupsReport) -> FlattenGroupsRe
             empty_group: report.guard_hits.empty_group,
             lone_atom_spacing_char: report.guard_hits.lone_atom_spacing_char,
             leading_atom_spacing_char: report.guard_hits.leading_atom_spacing_char,
+            trailing_atom_spacing_char: report.guard_hits.trailing_atom_spacing_char,
             delimited_pair: report.guard_hits.delimited_pair,
         },
     }
@@ -818,6 +820,7 @@ mod tests {
             empty_group: 12,
             lone_atom_spacing_char: 13,
             leading_atom_spacing_char: 14,
+            trailing_atom_spacing_char: 16,
             delimited_pair: 15,
         };
 
@@ -837,6 +840,7 @@ mod tests {
         assert_eq!(dto.guard_hits.empty_group, 12);
         assert_eq!(dto.guard_hits.lone_atom_spacing_char, 13);
         assert_eq!(dto.guard_hits.leading_atom_spacing_char, 14);
+        assert_eq!(dto.guard_hits.trailing_atom_spacing_char, 16);
         assert_eq!(dto.guard_hits.delimited_pair, 15);
     }
 

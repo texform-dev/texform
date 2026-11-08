@@ -325,6 +325,22 @@ fn reports_actual_preserve_guard_blockers() {
 }
 
 #[test]
+fn strict_keeps_groups_ending_in_spacing_atoms() {
+    // Inside the Ord group a trailing Rel, Bin, or Punct gets no spacing toward
+    // the following atom; splicing would add it.
+    let src = r"{a \in} b + {a+}b + {a,}b + {a b}c";
+    let outcome = run_flatten_groups(src);
+    assert_eq!(outcome.text, r"{ a \in } b + { a + } b + { a , } b + a b c");
+    // With nothing after the group, the trailing atom has no following space either way.
+    assert_eq!(run_flatten_groups(r"x = {a,}").text, r"x = a ,");
+    assert_eq!(outcome.report.guard_hits.command_contact, 1);
+    assert_eq!(outcome.report.guard_hits.trailing_atom_spacing_char, 2);
+
+    let outcome = run_flatten_groups_with_config(src, FlattenGroupsConfig::STRUCTURAL_ONLY);
+    assert_eq!(outcome.text, r"a \in b + a + b + a , b + a b c");
+}
+
+#[test]
 fn reports_scripted_command_like_subflag_hits() {
     let outcome = run_flatten_groups(r"\sum_i{(x_i)}");
 

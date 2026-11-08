@@ -394,6 +394,7 @@ class FlattenGroupsGuardCounts(TypedDict):
         empty_group: Empty-group protection.
         lone_atom_spacing_char: Single spacing-character protection.
         leading_atom_spacing_char: Leading spacing-character protection.
+        trailing_atom_spacing_char: Trailing spacing-character protection.
         delimited_pair: Delimited-pair protection.
     """
 
@@ -408,6 +409,7 @@ class FlattenGroupsGuardCounts(TypedDict):
     empty_group: int
     lone_atom_spacing_char: int
     leading_atom_spacing_char: int
+    trailing_atom_spacing_char: int
     delimited_pair: int
 
 

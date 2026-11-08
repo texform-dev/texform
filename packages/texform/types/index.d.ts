@@ -1625,6 +1625,8 @@ export interface FlattenGroupsGuardCounts {
   loneAtomSpacingChar: number;
   /** Leading spacing-character protection. */
   leadingAtomSpacingChar: number;
+  /** Trailing spacing-character protection. */
+  trailingAtomSpacingChar: number;
   /** Delimited-pair protection. */
   delimitedPair: number;
 }

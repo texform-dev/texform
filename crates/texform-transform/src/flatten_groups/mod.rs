@@ -68,8 +68,9 @@ pub struct FlattenGroupsGuards {
     /// Keep a `GroupChild` whose subtree contains an `\over`-style infix, so
     /// flattening would change the infix scope.
     pub infix_scope: bool,
-    /// Keep a `GroupChild` when its preceding sibling or first child is
-    /// command-like (`group_child_touches_command` / `CommandContact`).
+    /// Keep a `GroupChild` when its preceding sibling, first child, or last
+    /// child is command-like (`group_child_touches_command` / `CommandContact`).
+    /// The last child counts only when an atom follows the group.
     pub command_contact: bool,
     /// Refines [`Self::command_contact`]: also treat a `Scripted` node as
     /// command-like when that classification walks through its base. Has no
@@ -83,6 +84,10 @@ pub struct FlattenGroupsGuards {
     /// Keep a multi-child `GroupChild` whose first child is a math atom-spacing
     /// character.
     pub leading_atom_spacing_char: bool,
+    /// Keep a multi-child `GroupChild` whose last child is a math atom-spacing
+    /// character, when an atom follows the group (a next sibling or the
+    /// closing `\right`).
+    pub trailing_atom_spacing_char: bool,
     /// Keep a `GroupChild` whose subtree contains a `\left...\right` delimited pair.
     pub delimited_pair: bool,
 }
@@ -104,6 +109,7 @@ impl FlattenGroupsGuards {
             empty_group: config.preserve_rendered_spacing,
             lone_atom_spacing_char: config.preserve_rendered_spacing,
             leading_atom_spacing_char: config.preserve_rendered_spacing,
+            trailing_atom_spacing_char: config.preserve_rendered_spacing,
             delimited_pair: config.preserve_rendered_spacing,
         }
     }
@@ -137,6 +143,9 @@ impl FlattenGroupsGuards {
         if let Some(value) = overlay.leading_atom_spacing_char {
             self.leading_atom_spacing_char = value;
         }
+        if let Some(value) = overlay.trailing_atom_spacing_char {
+            self.trailing_atom_spacing_char = value;
+        }
         if let Some(value) = overlay.delimited_pair {
             self.delimited_pair = value;
         }
@@ -169,6 +178,8 @@ pub struct FlattenGroupsGuardsOverlay {
     pub lone_atom_spacing_char: Option<bool>,
     #[serde(deserialize_with = "require_present_bool")]
     pub leading_atom_spacing_char: Option<bool>,
+    #[serde(deserialize_with = "require_present_bool")]
+    pub trailing_atom_spacing_char: Option<bool>,
     #[serde(deserialize_with = "require_present_bool")]
     pub delimited_pair: Option<bool>,
 }
@@ -233,8 +244,8 @@ pub struct FlattenGroupsGuardCounts {
     /// Group kept because its subtree holds an `\over`-style infix, so
     /// flattening would change the infix scope.
     pub infix_scope: usize,
-    /// Group kept because its preceding sibling or first child is command-like,
-    /// where flattening would change atom spacing.
+    /// Group kept because its preceding sibling, first child, or last child is
+    /// command-like, where flattening would change atom spacing.
     pub command_contact: usize,
     /// Adjacency check above matched only after recursing through a `Scripted`
     /// base; counted in addition to `command_contact`.
@@ -247,6 +258,9 @@ pub struct FlattenGroupsGuardCounts {
     /// Multi-child group kept because its first child is a math atom-spacing
     /// character.
     pub leading_atom_spacing_char: usize,
+    /// Multi-child group kept because its last child is a math atom-spacing
+    /// character and an atom follows the group.
+    pub trailing_atom_spacing_char: usize,
     /// Group kept because its subtree holds a `\left...\right` delimited pair.
     pub delimited_pair: usize,
 }
@@ -398,6 +412,10 @@ fn try_unwrap(
     let first_is_atom = children
         .first()
         .is_some_and(|child| is_atom_spacing_char(ast, *child));
+    let last_is_atom = children
+        .last()
+        .is_some_and(|child| is_atom_spacing_char(ast, *child))
+        && matches!(link.slot, Slot::GroupChild(index) if is_followed_by_atom(ast, link.parent, index));
     if matches!(link.slot, Slot::GroupChild(_)) {
         if guards.empty_group && child_count == 0 {
             recorder.flatten_groups(|report| report.guard_hits.empty_group += 1);
@@ -409,6 +427,10 @@ fn try_unwrap(
         }
         if guards.leading_atom_spacing_char && child_count > 1 && first_is_atom {
             recorder.flatten_groups(|report| report.guard_hits.leading_atom_spacing_char += 1);
+            return false;
+        }
+        if guards.trailing_atom_spacing_char && child_count > 1 && last_is_atom {
+            recorder.flatten_groups(|report| report.guard_hits.trailing_atom_spacing_char += 1);
             return false;
         }
     }
@@ -611,13 +633,34 @@ fn group_child_touches_command(
     let previous = index
         .checked_sub(1)
         .and_then(|previous| ast.children(parent).get(previous).copied());
-    let first_child = ast.children(node).first().copied();
+    // The group is one Ord atom. A command at either end of its content may be
+    // a Bin or Rel that gets no spacing toward the outside (an edge Bin even
+    // becomes Ord), and splicing would expose it to the neighboring atoms.
+    let children = ast.children(node);
+    let last_child = children
+        .last()
+        .copied()
+        .filter(|_| is_followed_by_atom(ast, parent, index));
+    [previous, children.first().copied(), last_child]
+        .into_iter()
+        .map(|node| command_contact_for_node(ast, node, include_scripted))
+        .fold(CommandContact::default(), CommandContact::merge)
+}
 
-    command_contact_for_node(ast, previous, include_scripted).merge(command_contact_for_node(
-        ast,
-        first_child,
-        include_scripted,
-    ))
+/// Whether an atom follows the group child at `index` in the same math list.
+///
+/// A trailing edge only matters when something follows it: the next sibling,
+/// or the closing delimiter of a `\left...\right` group. At the end of any
+/// other list, the last atom gets no following spacing either way.
+fn is_followed_by_atom(ast: &Ast, parent: NodeId, index: usize) -> bool {
+    index + 1 < ast.children(parent).len()
+        || matches!(
+            ast.node(parent),
+            Node::Group {
+                kind: GroupKind::Delimited { .. },
+                ..
+            }
+        )
 }
 
 impl CommandContact {

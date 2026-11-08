@@ -3406,6 +3406,7 @@ assert set(flatten["guard_hits"]) == {
     "empty_group",
     "lone_atom_spacing_char",
     "leading_atom_spacing_char",
+    "trailing_atom_spacing_char",
     "delimited_pair",
 }
 attributes = report["lower_attributes"]["attributes"]

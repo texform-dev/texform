@@ -699,6 +699,7 @@ assert.deepEqual(
     "leadingAtomSpacingChar",
     "loneAtomSpacingChar",
     "scriptBase",
+    "trailingAtomSpacingChar",
     "unknownCommandArguments",
   ],
 );

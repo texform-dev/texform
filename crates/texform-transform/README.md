@@ -179,10 +179,11 @@ Fine-grained per-guard control is not a public API. It lives on the internal `Fl
 | `script_base` | Semantic | `{ab}^2` | Groups occupying a `ScriptBase` slot, to avoid changing which atom subscripts or superscripts attach to. |
 | `env_body` | Semantic | `\begin{matrix} {a} & b \end{matrix}` | Groups inside an environment body, except a lone `Prime` in a superscript slot, to preserve cell boundaries and intra-cell spacing. |
 | `infix_scope` | Semantic | `{a \over b}` | `GroupChild`s whose subtree contains an `\over`-style infix, to preserve the infix scope. |
-| `command_contact` | Spacing | `\cos{A}`, `{\int}` | `GroupChild`s whose preceding sibling or first child is command-like. |
+| `command_contact` | Spacing | `\cos{A}`, `{\int}`, `{a \in} b` | `GroupChild`s whose preceding sibling, first child, or last child is command-like. The last child counts only when an atom follows the group: a next sibling, or the closing `\right` of the enclosing `\left…\right` group. |
 | `empty_group` | Spacing | `{}` | Empty `GroupChild`s, to preserve spacing / kerning effects. |
 | `lone_atom_spacing_char` | Spacing | `{+}`, `{,}`, `{*}_N`, `{·}m` | Singleton groups containing only one math atom-spacing character. |
 | `leading_atom_spacing_char` | Spacing | `{+x}`, `{,y}` | Multi-child `GroupChild`s whose first child is a math atom-spacing character. |
+| `trailing_atom_spacing_char` | Spacing | `{x+} y`, `{a,} b` | Multi-child `GroupChild`s whose last child is a math atom-spacing character, when an atom follows the group as for `command_contact`. Inside the group a trailing Bin becomes Ord and a trailing Rel or Punct gets no following space; splicing would restore both. |
 | `delimited_pair` | Spacing | `{\left( a \right)}` | `GroupChild`s whose subtree contains a `\left…\right` delimited group. |
 
 Atom-spacing characters: `= < > + - , : ; . / * ! ? | ·`.
@@ -210,6 +211,7 @@ Guard hit counters use the names below. They still count the first matching situ
 | `empty_group` | `empty_group` |
 | `lone_atom_spacing_char` | `lone_atom_spacing_char` |
 | `leading_atom_spacing_char` | `leading_atom_spacing_char` |
+| `trailing_atom_spacing_char` | `trailing_atom_spacing_char` |
 | `delimited_pair` | `delimited_pair` |
 
 ## Reports
@@ -248,7 +250,7 @@ A single recursive traversal (`visit` → `try_unwrap` in `src/flatten_groups/mo
 
 1. Collects subtree-wide flags (`has_declarative`, `has_infix`, `has_delimited`) on the way down.
 2. Tracks the `in_env_body` context flag through `Slot::EnvBody` edges.
-3. On the way back up, calls `try_unwrap` to check whether the current group should be flattened. The always-on unknown-command and boundary protections run first. Each `FlattenGroupsGuards` predicate (`declarative_scope`, `script_base`, `env_body`, `infix_scope`, `command_contact`, `empty_group`, `lone_atom_spacing_char`, `leading_atom_spacing_char`, `delimited_pair`) short-circuits with an early return that increments the matching `guard_hits` counter; the first matching guard wins. `command_like_includes_scripted_base` only refines the `command_contact` classification, and a hit through that refinement also increments `command_contact_via_scripted_base`.
+3. On the way back up, calls `try_unwrap` to check whether the current group should be flattened. The always-on unknown-command and boundary protections run first. Each `FlattenGroupsGuards` predicate (`declarative_scope`, `script_base`, `env_body`, `infix_scope`, `command_contact`, `empty_group`, `lone_atom_spacing_char`, `leading_atom_spacing_char`, `trailing_atom_spacing_char`, `delimited_pair`) short-circuits with an early return that increments the matching `guard_hits` counter; the first matching guard wins. `command_like_includes_scripted_base` only refines the `command_contact` classification, and a hit through that refinement also increments `command_contact_via_scripted_base`.
 4. If no guard fires and the group's content mode matches its parent's context mode, the group is unwrapped via either `unwrap_group_child` (multi-child splice) or `redirect_single_child_slot` (single-child slot replacement).
 
 Argument-slot redirects bypass all preservation guards, retaining only the content-mode check. Other slots keep their existing guards. After a slot redirect, the promoted child is checked again in its new slot with the same subtree flags. The `slot_can_unwrap` helper restricts redirect-style unwrapping to single-child groups in `Argument`, `Script*`, and `Infix*` slots; `EnvBody` slots are never unwrapped.
