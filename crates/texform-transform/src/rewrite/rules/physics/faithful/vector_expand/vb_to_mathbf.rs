@@ -28,7 +28,6 @@ define_rule! {
         key: Physics / "vb-to-mathbf",
         level: Faithful,
         summary: "Canonicalize vb to an explicit mathbf wrapper.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::VB],
         consumes: RuleConsumes {

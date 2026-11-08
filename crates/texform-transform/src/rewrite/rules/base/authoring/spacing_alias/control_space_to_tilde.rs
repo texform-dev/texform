@@ -23,7 +23,6 @@ define_rule! {
         key: Base / "control-space-to-tilde",
         level: Authoring,
         summary: "Rewrite math-mode control space to the canonical active space token.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::_CONTROL_SPACE],
         consumes: RuleConsumes {

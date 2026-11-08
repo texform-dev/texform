@@ -29,7 +29,6 @@ define_rule! {
         key: Physics / "matrixel-expand",
         level: Faithful,
         summary: "Expand matrix elements to explicit angle-bracket and bar fences.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::MATRIXEL],
         consumes: RuleConsumes {

@@ -23,7 +23,6 @@ define_rule! {
         key: Base / "break-to-linebreak",
         level: Authoring,
         summary: "Collapse break to the explicit linebreak command.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::BREAK],
         consumes: RuleConsumes {

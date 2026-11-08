@@ -30,7 +30,6 @@ define_rule! {
         key: Base / "small-spacer-merge-to-enspace",
         level: Authoring,
         summary: "Merge exact half-em small-spacer chunks into enspace in one pass.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::_COMMA, &base::cmd::_COLON, &base::cmd::_SEMICOLON],
         consumes: RuleConsumes {

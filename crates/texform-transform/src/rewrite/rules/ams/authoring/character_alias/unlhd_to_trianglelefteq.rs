@@ -24,7 +24,6 @@ define_rule! {
         key: Ams / "unlhd-to-trianglelefteq",
         level: Authoring,
         summary: "Collapse unlhd to the descriptive trianglelefteq character.",
-        fidelity: Render,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::UNLHD],
         consumes: RuleConsumes {

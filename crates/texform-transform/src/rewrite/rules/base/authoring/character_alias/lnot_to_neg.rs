@@ -24,7 +24,6 @@ define_rule! {
         key: Base / "lnot-to-neg",
         level: Authoring,
         summary: "Collapse lnot to the standard neg character.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::LNOT],
         consumes: RuleConsumes {

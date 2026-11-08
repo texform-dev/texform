@@ -25,7 +25,6 @@ define_rule! {
         key: Base / "brack-to-genfrac",
         level: Authoring,
         summary: "Rewrite infix brack to an explicit genfrac with bracket delimiters.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::BRACK],
         consumes: RuleConsumes {

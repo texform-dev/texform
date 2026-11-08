@@ -28,7 +28,6 @@ define_rule! {
         key: Base / "eqalign-to-aligned-env",
         level: Authoring,
         summary: "Rewrite eqalign to the standard aligned environment.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::EQALIGN],
         consumes: RuleConsumes {

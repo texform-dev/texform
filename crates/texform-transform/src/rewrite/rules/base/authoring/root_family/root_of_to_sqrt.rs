@@ -26,7 +26,6 @@ define_rule! {
         key: Base / "root-of-to-sqrt",
         level: Authoring,
         summary: "Rewrite legacy root-of syntax to bracketed sqrt notation.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::ROOT],
         consumes: RuleConsumes {

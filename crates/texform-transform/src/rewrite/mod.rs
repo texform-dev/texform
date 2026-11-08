@@ -23,8 +23,8 @@ pub use level_set::RuleLevelSet;
 pub use plan::{Plan, PlanBuildError, RuleAvailabilityFailure};
 pub use registry::all_rules;
 pub use rule::{
-    PackageName, RewriteRule, RuleConsumes, RuleEffect, RuleFidelity, RuleKey, RuleLevel, RuleMeta,
-    RuleProduces, RuleTarget, RuleTargetKey, RuleTargetKind,
+    PackageName, RewriteRule, RuleConsumes, RuleEffect, RuleKey, RuleLevel, RuleMeta, RuleProduces,
+    RuleTarget, RuleTargetKey, RuleTargetKind,
 };
 pub use rule_context::{CommandView, DeclarativeView, EnvironmentView, InfixView, RuleContext};
 

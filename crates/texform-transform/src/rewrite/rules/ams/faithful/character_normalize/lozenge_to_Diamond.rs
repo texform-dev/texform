@@ -24,7 +24,6 @@ define_rule! {
         key: Ams / "lozenge-to-Diamond",
         level: Faithful,
         summary: "Normalize lozenge to Diamond for corpus form.",
-        fidelity: Render,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::LOZENGE],
         consumes: RuleConsumes {

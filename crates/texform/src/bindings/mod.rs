@@ -385,7 +385,6 @@ pub fn list_packages_to_dto() -> Vec<PackageInfoDto> {
 pub struct RuleInfoDto {
     pub key: String,
     pub level: &'static str,
-    pub fidelity: &'static str,
     pub summary: String,
     pub enabled_by_packages: Vec<String>,
 }
@@ -396,7 +395,6 @@ pub fn list_rules_to_dto() -> Vec<RuleInfoDto> {
         .map(|info| RuleInfoDto {
             key: info.key.to_string(),
             level: info.level.as_str(),
-            fidelity: info.fidelity.as_str(),
             summary: info.summary,
             enabled_by_packages: info.enabled_by_packages,
         })

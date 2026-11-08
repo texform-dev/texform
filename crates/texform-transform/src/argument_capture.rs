@@ -433,8 +433,8 @@ mod tests {
     use crate::parse::{ParseConfig, ParseContext};
     use crate::rewrite::rule_context::RuleContext;
     use crate::rewrite::{
-        PackageName, Plan, RewriteRule, RuleConsumes, RuleEffect, RuleFidelity, RuleKey, RuleLevel,
-        RuleMeta, RuleProduces, RuleTarget,
+        PackageName, Plan, RewriteRule, RuleConsumes, RuleEffect, RuleKey, RuleLevel, RuleMeta,
+        RuleProduces, RuleTarget,
     };
     use crate::round_trip::{self, Check, Outcome};
     use crate::serialize::serialize;
@@ -894,7 +894,7 @@ mod tests {
         }
     }
 
-    /// A Render rule that drops `\badbreak` even where that exposes a
+    /// A test rule that drops `\badbreak` even where that exposes a
     /// boundary hazard.
     struct DropBadbreak;
     static DROP_BADBREAK: DropBadbreak = DropBadbreak;
@@ -909,7 +909,6 @@ mod tests {
                 enabled_by_packages: &[PackageName::Base],
                 level: RuleLevel::Authoring,
                 summary: "Drop badbreak.",
-                fidelity: RuleFidelity::Render,
                 triggers: &[RuleTarget::Command(&base::cmd::BADBREAK)],
                 consumes: RuleConsumes {
                     eliminates: &[],

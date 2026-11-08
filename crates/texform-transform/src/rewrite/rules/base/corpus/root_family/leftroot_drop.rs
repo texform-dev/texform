@@ -23,7 +23,6 @@ define_rule! {
         key: Base / "leftroot-drop",
         level: Corpus,
         summary: "Drop the leftroot index-position hint in cleanup-oriented normalization.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::LEFTROOT],
         consumes: RuleConsumes {

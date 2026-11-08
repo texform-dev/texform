@@ -29,7 +29,6 @@ define_rule! {
         key: Physics / "va-to-vec-mathbf",
         level: Faithful,
         summary: "Canonicalize va to an explicit vec-wrapped mathbf form.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::VA],
         consumes: RuleConsumes {

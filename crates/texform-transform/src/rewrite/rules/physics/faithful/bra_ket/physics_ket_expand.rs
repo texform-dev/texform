@@ -27,7 +27,6 @@ define_rule! {
         key: Physics / "physics-ket-expand",
         level: Faithful,
         summary: "Expand ket to an explicit bar and angle-bracket fence form.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::KET],
         consumes: RuleConsumes {

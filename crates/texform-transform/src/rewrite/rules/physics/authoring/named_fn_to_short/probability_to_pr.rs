@@ -33,7 +33,6 @@ define_rule! {
         key: Physics / "probability-to-pr",
         level: Authoring,
         summary: "Collapse a bare Probability helper to the standard Pr operator.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::PROBABILITY],
         consumes: RuleConsumes {

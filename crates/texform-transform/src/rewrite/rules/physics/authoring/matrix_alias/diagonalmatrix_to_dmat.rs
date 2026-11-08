@@ -22,7 +22,6 @@ alias_rule! {
         key: Physics / "diagonalmatrix-to-dmat",
         level: Authoring,
         summary: "Collapse diagonalmatrix to the shorter dmat helper.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::DMAT,
         aliases: [&physics::cmd::DIAGONALMATRIX],

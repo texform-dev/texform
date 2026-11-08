@@ -23,7 +23,6 @@ define_rule! {
         key: Ams / "nobreakspace-to-tilde",
         level: Authoring,
         summary: "Collapse nobreakspace to the canonical nonbreaking space token.",
-        fidelity: Render,
         enabled_by_packages: [Ams],
         triggers: cmd_targets![&ams::cmd::NOBREAKSPACE],
         consumes: RuleConsumes {

@@ -4,14 +4,12 @@
 //! [`RuleMeta`] descriptor that the engine uses for scheduling, dependency
 //! analysis, and convergence checking.
 //!
-//! Rules are organized along three axes:
+//! Rules are organized along two axes:
 //!
 //! - **Package** ([`PackageName`]) — the owning package namespace (base, ams,
 //!   physics).
 //! - **Rule level** ([`RuleLevel`]) — the first transform
 //!   profile that accepts the rule output as a suitable product.
-//! - **Fidelity** ([`RuleFidelity`]) — the rule's worst-case equivalence
-//!   guarantee over its declared input domain.
 
 pub use texform_knowledge::builtin::PackageName;
 use texform_knowledge::specs::{
@@ -46,45 +44,6 @@ impl RuleLevel {
             RuleLevel::Faithful => "faithful",
             RuleLevel::Corpus => "corpus",
             RuleLevel::Equiv => "equiv",
-        }
-    }
-
-    /// Lowest fidelity a rule at this level may declare.
-    ///
-    /// `level` and `fidelity` answer different questions. `level` determines
-    /// when profiles accept the rewrite output; `fidelity` is the render
-    /// guarantee used for contract validation. Do not infer one from the
-    /// other: a rule may provide a stronger guarantee than its level requires.
-    pub const fn min_fidelity(self) -> RuleFidelity {
-        match self {
-            RuleLevel::Authoring | RuleLevel::Faithful | RuleLevel::Corpus => RuleFidelity::Reading,
-            RuleLevel::Equiv => RuleFidelity::Math,
-        }
-    }
-}
-
-/// Which equivalence relation a rewrite guarantees over its declared domain.
-///
-/// Ordered least-to-most faithful. The value is the rule's worst-case
-/// guarantee over its declared input domain. It drives contract validation,
-/// but it does not choose the image comparison algorithm.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum RuleFidelity {
-    /// Mathematical meaning is preserved, but rendering may change.
-    Math,
-    /// Notation content, reading order, and structural roles are preserved.
-    Reading,
-    /// Rendering is equivalent under the reference renderer.
-    Render,
-}
-
-impl RuleFidelity {
-    /// Lower-case name of the guarantee.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            RuleFidelity::Math => "math",
-            RuleFidelity::Reading => "reading",
-            RuleFidelity::Render => "render",
         }
     }
 }
@@ -210,7 +169,7 @@ pub struct RuleProduces {
 /// The rewrite phase uses `triggers` and `consumes` to decide when to attempt a
 /// rule. Together with `consumes`, `produces` controls dependency ordering and
 /// runtime-mutation exclusion; produced targets must be available in the parse
-/// context. `fidelity` declares the rule's equivalence contract.
+/// context.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RuleMeta {
     /// Unique identifier for this rule.
@@ -221,8 +180,6 @@ pub struct RuleMeta {
     pub level: RuleLevel,
     /// One-line human-readable description of what the rule does.
     pub summary: &'static str,
-    /// Worst-case equivalence guarantee over the rule's declared input domain.
-    pub fidelity: RuleFidelity,
     /// Commands, environments, or characters that decide where the engine attempts this rule.
     ///
     /// Triggers must be non-empty. They only affect scheduling and do not

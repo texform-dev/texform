@@ -35,8 +35,8 @@ pub use report::{TransformReport, TransformWarning};
 pub use rewrite::{
     ContractViolation, PackageName, Plan as RewritePlan, PlanBuildError, RewriteError,
     RewriteReport, RewriteRule, RewriteRuleStat, RuleAvailabilityFailure, RuleConsumes, RuleEffect,
-    RuleError, RuleFidelity, RuleKey, RuleLevel, RuleLevelSet, RuleMeta, RuleProduces, RuleTarget,
-    RuleTargetKey, RuleTargetKind, collect_eliminated_violations,
+    RuleError, RuleKey, RuleLevel, RuleLevelSet, RuleMeta, RuleProduces, RuleTarget, RuleTargetKey,
+    RuleTargetKind, collect_eliminated_violations,
 };
 
 #[cfg(test)]

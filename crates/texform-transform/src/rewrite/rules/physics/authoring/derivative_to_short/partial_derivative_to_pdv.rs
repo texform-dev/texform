@@ -31,7 +31,6 @@ alias_rule! {
         key: Physics / "partial-derivative-to-pdv",
         level: Authoring,
         summary: "Collapse long partial derivative names to the pdv command.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::PDV,
         aliases: [

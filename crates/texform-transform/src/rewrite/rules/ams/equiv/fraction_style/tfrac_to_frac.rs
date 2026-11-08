@@ -24,7 +24,6 @@ alias_rule! {
         key: Ams / "tfrac-to-frac",
         level: Equiv,
         summary: "Rewrite the AMS text-style fraction command to frac.",
-        fidelity: Reading,
         enabled_by_packages: [Ams],
         canonical: &base::cmd::FRAC,
         aliases: [

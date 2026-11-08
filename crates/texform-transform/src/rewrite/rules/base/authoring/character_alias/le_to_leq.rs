@@ -24,7 +24,6 @@ define_rule! {
         key: Base / "le-to-leq",
         level: Authoring,
         summary: "Collapse le to the explicit leq relation character.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::LE],
         consumes: RuleConsumes {

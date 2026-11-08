@@ -28,7 +28,6 @@ define_rule! {
         key: Ams / "vmatrix-env-to-vert-matrix",
         level: Corpus,
         summary: "Rewrite the fenced vmatrix environment to explicit vertical bars around a core matrix environment.",
-        fidelity: Render,
         enabled_by_packages: [Ams],
         triggers: env_targets![&ams::env::VMATRIX],
         consumes: RuleConsumes {

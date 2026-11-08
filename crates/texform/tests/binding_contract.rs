@@ -227,7 +227,6 @@ fn list_rules_reports_metadata_for_disableable_keys() {
         .expect("base/over-to-frac should be listed");
 
     assert_eq!(over.level, texform::RuleLevel::Authoring);
-    assert_eq!(over.fidelity, texform::RuleFidelity::Render);
     assert_eq!(over.enabled_by_packages, ["base"]);
     assert!(!over.summary.is_empty());
     for rule in &rules {

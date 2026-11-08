@@ -24,7 +24,6 @@ define_rule! {
         key: Base / "land-to-wedge",
         level: Faithful,
         summary: "Normalize land to wedge for corpus form.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::LAND],
         consumes: RuleConsumes {

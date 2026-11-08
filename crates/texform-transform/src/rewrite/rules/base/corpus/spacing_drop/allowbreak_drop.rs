@@ -23,7 +23,6 @@ define_rule! {
         key: Base / "allowbreak-drop",
         level: Corpus,
         summary: "Drop allowbreak as a pure linebreak hint during cleanup-oriented normalization.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::ALLOWBREAK],
         consumes: RuleConsumes {

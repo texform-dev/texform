@@ -24,7 +24,6 @@ alias_rule! {
         key: Base / "hfil-to-hfill",
         level: Authoring,
         summary: "Collapse hfil to the canonical hfill command under MathJax spacing semantics.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         canonical: &base::cmd::HFILL,
         aliases: [&base::cmd::HFIL],

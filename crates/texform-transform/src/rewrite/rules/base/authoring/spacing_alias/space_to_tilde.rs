@@ -23,7 +23,6 @@ define_rule! {
         key: Base / "space-to-tilde",
         level: Authoring,
         summary: "Collapse space to the explicit nonbreaking space token.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::SPACE],
         consumes: RuleConsumes {

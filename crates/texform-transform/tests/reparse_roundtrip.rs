@@ -18,7 +18,7 @@ use texform_transform::round_trip::{
 };
 use texform_transform::{
     BuildConfig, FinalizeAstConfig, FlattenGroupsConfig, LowerAttributesConfig, Profile,
-    RewriteConfig, RuleFidelity, TransformConfig, TransformContext,
+    RewriteConfig, TransformConfig, TransformContext,
 };
 
 struct Lane {
@@ -350,12 +350,12 @@ fn adversarial_boundary_subset_round_trips() {
     }
 }
 
-/// Steps that promise identical rendering must not rely on boundary
-/// separation: a Render rule run alone or followed by LowerAttributes,
-/// LowerAttributes, and FlattenGroups in strict mode must leave no hazard for
-/// the separation step to remove.
+/// Phases that promise unchanged rendering must not rely on boundary
+/// separation: LowerAttributes where it preserves rendering and FlattenGroups
+/// in strict mode must leave no hazard for the separation step to remove,
+/// because a separator can change the spacing at its position.
 #[test]
-fn render_steps_do_not_rely_on_boundary_separation() {
+fn rendering_preserving_phases_do_not_rely_on_boundary_separation() {
     let mut failures = Vec::new();
     for lane in lanes() {
         let p = &lane.parse_ctx;
@@ -389,46 +389,6 @@ fn render_steps_do_not_rely_on_boundary_separation() {
                 round_trip::profile_name(profile)
             ));
         };
-
-        // Each Render rule, alone, on the inputs whose separator it handles.
-        for profile in PROFILES {
-            let engine =
-                TransformContext::from_build_config(BuildConfig::profile(profile), p).unwrap();
-            for rule in engine.rewrite_plan().rules() {
-                let meta = rule.meta();
-                if meta.fidelity != RuleFidelity::Render {
-                    continue;
-                }
-                let key = meta.key.to_string();
-                let Ok(single) = TransformContext::from_build_config(
-                    BuildConfig::profile(profile).only_rule_for_tests(meta.key),
-                    p,
-                ) else {
-                    continue;
-                };
-                let config = only(
-                    LowerAttributesConfig::DISABLED,
-                    RewriteConfig::DEFAULT,
-                    FlattenGroupsConfig::DISABLED,
-                );
-                // Where LowerAttributes also preserves rendering, the rule's
-                // output must survive it, as `\vb{}` becoming an empty
-                // `\mathbf{}` that LowerAttributes would remove.
-                let with_lower = only(
-                    LowerAttributesConfig::ENABLED,
-                    RewriteConfig::DEFAULT,
-                    FlattenGroupsConfig::DISABLED,
-                );
-                let preserves = matches!(profile, Profile::Authoring | Profile::Faithful);
-                for input in inputs.iter().filter(|input| input.sources.contains(&key)) {
-                    check(key.clone(), &single, &config, profile, &input.source);
-                    if preserves {
-                        let label = format!("{key} + lower-attributes");
-                        check(label, &single, &with_lower, profile, &input.source);
-                    }
-                }
-            }
-        }
 
         // LowerAttributes where it preserves rendering, and strict FlattenGroups.
         let lower = |input: &&adversarial::Input| {

@@ -23,7 +23,6 @@ define_rule! {
         key: Physics / "bmqty-to-mqty",
         level: Faithful,
         summary: "Expand bmqty to the core mqty builder with bracket fence syntax.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::BMQTY],
         consumes: RuleConsumes {

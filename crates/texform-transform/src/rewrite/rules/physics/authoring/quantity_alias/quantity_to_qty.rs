@@ -24,7 +24,6 @@ alias_rule! {
         key: Physics / "quantity-to-qty",
         level: Authoring,
         summary: "Collapse quantity to the shorter qty helper.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::QTY,
         aliases: [&physics::cmd::QUANTITY],

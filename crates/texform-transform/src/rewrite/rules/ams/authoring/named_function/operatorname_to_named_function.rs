@@ -57,7 +57,6 @@ define_rule! {
         key: Ams / "operatorname-to-named-function",
         level: Authoring,
         summary: "Rewrite plain operatorname arguments to equivalent base named-function or named-operator commands.",
-        fidelity: Render,
         enabled_by_packages: [Ams],
         triggers: cmd_targets![&ams::cmd::OPERATORNAME],
         consumes: RuleConsumes {

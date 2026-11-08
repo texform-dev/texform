@@ -28,7 +28,6 @@ define_rule! {
         key: Base / "mkern-to-mspace",
         level: Faithful,
         summary: "Collapse mkern to the explicit mspace command.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::MKERN],
         consumes: RuleConsumes {

@@ -24,7 +24,6 @@ define_rule! {
         key: Base / "negthinspace-to-neg-comma-space",
         level: Authoring,
         summary: "Collapse negthinspace to the explicit negative thin math space command.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::NEGTHINSPACE],
         consumes: RuleConsumes {

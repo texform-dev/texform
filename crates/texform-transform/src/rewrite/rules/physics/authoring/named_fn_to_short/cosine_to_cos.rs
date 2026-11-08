@@ -33,7 +33,6 @@ define_rule! {
         key: Physics / "cosine-to-cos",
         level: Authoring,
         summary: "Collapse a bare cosine helper to the standard cos operator.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::COSINE],
         consumes: RuleConsumes {

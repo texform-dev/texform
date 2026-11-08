@@ -24,7 +24,6 @@ define_rule! {
         key: Base / "thinspace-to-comma-space",
         level: Authoring,
         summary: "Collapse thinspace to the explicit thin math space command.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::THINSPACE],
         consumes: RuleConsumes {

@@ -97,7 +97,7 @@ pub use knowledge::{
 };
 pub use parse_result::{ParseError, ParseResult};
 pub use parser::{Parser, ParserBuilder};
-pub use rules::{RuleFidelity, RuleInfo, RuleLevel, list_rules};
+pub use rules::{RuleInfo, RuleLevel, list_rules};
 pub use serialize::{
     SerializationToken, SerializationTokenKind, SerializeError, SerializeOptions, Style,
     TokenizedLatex,

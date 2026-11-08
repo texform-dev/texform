@@ -24,7 +24,6 @@ alias_rule! {
         key: Base / "hfilll-to-hfill",
         level: Authoring,
         summary: "Collapse hfilll to the canonical hfill command.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         canonical: &base::cmd::HFILL,
         aliases: [&base::cmd::HFILLL],

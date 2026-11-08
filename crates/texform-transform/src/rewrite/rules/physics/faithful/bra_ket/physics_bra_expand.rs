@@ -27,7 +27,6 @@ define_rule! {
         key: Physics / "physics-bra-expand",
         level: Faithful,
         summary: "Expand bra to an explicit angle-bracket and bar fence form.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::BRA],
         consumes: RuleConsumes {

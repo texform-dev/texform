@@ -23,7 +23,6 @@ define_rule! {
         key: Base / "strut-drop",
         level: Corpus,
         summary: "Drop the fixed empty strut node in cleanup-oriented normalization.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::STRUT],
         consumes: RuleConsumes {

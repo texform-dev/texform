@@ -23,7 +23,6 @@ define_rule! {
         key: Base / "badbreak-drop",
         level: Corpus,
         summary: "Drop badbreak as a pure linebreak hint during cleanup-oriented normalization.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::BADBREAK],
         consumes: RuleConsumes {

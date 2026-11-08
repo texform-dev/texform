@@ -33,7 +33,6 @@ define_rule! {
         key: Physics / "bqty-to-bracket-fence",
         level: Faithful,
         summary: "Rewrite bqty to explicit bracket fences.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::BQTY],
         consumes: RuleConsumes {

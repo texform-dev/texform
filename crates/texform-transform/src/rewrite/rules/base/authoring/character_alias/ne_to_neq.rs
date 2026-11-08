@@ -24,7 +24,6 @@ define_rule! {
         key: Base / "ne-to-neq",
         level: Authoring,
         summary: "Collapse ne to the explicit neq relation character.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::NE],
         consumes: RuleConsumes {

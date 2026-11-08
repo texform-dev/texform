@@ -53,7 +53,6 @@ define_rule! {
         key: Physics / "physics-operator-fence-expand",
         level: Faithful,
         summary: "Expand the physics auto-sized argument of exp, det, and Pr into an explicit fence.",
-        fidelity: Reading,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::EXP, &physics::cmd::DET, &physics::cmd::PR],
         consumes: RuleConsumes {

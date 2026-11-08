@@ -37,7 +37,6 @@ define_rule! {
         key: Physics / "eval-expand",
         level: Faithful,
         summary: "Expand eval notation to the explicit fence-and-bar form.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::EVAL],
         consumes: RuleConsumes {

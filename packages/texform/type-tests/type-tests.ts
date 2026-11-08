@@ -184,14 +184,15 @@ void [currentPath, currentSlot, knownNode, argumentForm];
 
 const ruleInfo = listRules()[0];
 const ruleLevel: import("../types/index.js").RuleLevel | undefined = ruleInfo?.level;
-const ruleFidelity: import("../types/index.js").RuleFidelity | undefined = ruleInfo?.fidelity;
 new EngineClass({
   profile: "corpus",
   disableRules: listRules().map((rule) => rule.key),
 });
 // @ts-expect-error Rule info fields are camelCase in JavaScript.
 ruleInfo?.enabled_by_packages;
-void [ruleLevel, ruleFidelity];
+// @ts-expect-error — removed rule metadata
+ruleInfo?.fidelity;
+void ruleLevel;
 
 // @ts-expect-error — removed serializer option
 doc.toLatex({ scriptOrder: "sup_first" });

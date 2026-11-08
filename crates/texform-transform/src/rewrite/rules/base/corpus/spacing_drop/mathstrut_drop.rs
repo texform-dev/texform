@@ -23,7 +23,6 @@ define_rule! {
         key: Base / "mathstrut-drop",
         level: Corpus,
         summary: "Drop the invisible mathstrut layout helper in cleanup-oriented normalization.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::MATHSTRUT],
         consumes: RuleConsumes {

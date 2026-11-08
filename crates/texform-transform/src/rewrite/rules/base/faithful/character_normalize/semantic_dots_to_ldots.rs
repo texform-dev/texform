@@ -26,7 +26,6 @@ define_rule! {
         key: Base / "semantic-dots-to-ldots",
         level: Faithful,
         summary: "Normalize semantic baseline ellipsis aliases to ldots for corpus form.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::DOTSC, &base::chars::DOTSO],
         consumes: RuleConsumes {

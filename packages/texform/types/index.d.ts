@@ -2195,15 +2195,6 @@ export interface PackageInfo {
 export function listPackages(): PackageInfo[];
 
 /**
- * A rewrite rule's worst-case equivalence guarantee over its declared input
- * domain, ordered least to most faithful: `math` (mathematical meaning is
- * preserved, rendering may change), `reading` (notation content, reading order,
- * and structural roles are preserved), `render` (rendering is equivalent under
- * the reference renderer).
- */
-export type RuleFidelity = "math" | "reading" | "render";
-
-/**
  * Summary of one built-in rewrite rule, returned by {@link listRules}.
  */
 export interface RuleInfo {
@@ -2211,8 +2202,6 @@ export interface RuleInfo {
   key: string;
   /** The first profile that accepts the rule's output. */
   level: RuleLevel;
-  /** Worst-case equivalence guarantee of the rule. */
-  fidelity: RuleFidelity;
   /** One-line description of what the rule does. */
   summary: string;
   /** Packages that make the rule loadable when any one of them is enabled. */
@@ -2233,7 +2222,7 @@ export interface RuleInfo {
  * import { listRules } from 'texform';
  *
  * listRules().find((rule) => rule.key === 'base/over-to-frac');
- * // { key: 'base/over-to-frac', level: 'authoring', fidelity: 'render', summary: '...', enabledByPackages: ['base'] }
+ * // { key: 'base/over-to-frac', level: 'authoring', summary: '...', enabledByPackages: ['base'] }
  * ```
  */
 export function listRules(): RuleInfo[];

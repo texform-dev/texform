@@ -25,7 +25,6 @@ define_rule! {
         key: Ams / "cfrac-to-frac",
         level: Equiv,
         summary: "Drop continued-fraction styling from centered AMS cfrac forms.",
-        fidelity: Math,
         enabled_by_packages: [Ams],
         triggers: cmd_targets![&ams::cmd::CFRAC],
         consumes: RuleConsumes {

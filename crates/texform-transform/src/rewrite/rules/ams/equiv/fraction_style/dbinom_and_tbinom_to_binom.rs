@@ -23,7 +23,6 @@ alias_rule! {
         key: Ams / "dbinom-and-tbinom-to-binom",
         level: Equiv,
         summary: "Rewrite AMS display-style and text-style binomial commands to binom.",
-        fidelity: Reading,
         enabled_by_packages: [Ams],
         canonical: &ams::cmd::BINOM,
         aliases: [

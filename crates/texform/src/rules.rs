@@ -1,6 +1,6 @@
 //! Built-in rewrite rule metadata.
 
-pub use texform_transform::{RuleFidelity, RuleLevel};
+pub use texform_transform::RuleLevel;
 
 use crate::RuleKey;
 
@@ -11,8 +11,6 @@ pub struct RuleInfo {
     pub key: RuleKey,
     /// The first transform profile that accepts the rule's output.
     pub level: RuleLevel,
-    /// Worst-case equivalence guarantee over the rule's declared input domain.
-    pub fidelity: RuleFidelity,
     /// One-line description of what the rule does.
     pub summary: String,
     /// Package names that make the rule loadable when any one of them is enabled.
@@ -34,7 +32,6 @@ pub fn list_rules() -> Vec<RuleInfo> {
             RuleInfo {
                 key: meta.key,
                 level: meta.level,
-                fidelity: meta.fidelity,
                 summary: meta.summary.to_string(),
                 enabled_by_packages: meta
                     .enabled_by_packages

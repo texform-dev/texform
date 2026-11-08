@@ -28,7 +28,6 @@ define_rule! {
         key: Base / "limits-drop",
         level: Equiv,
         summary: "Drop explicit limits from an audited operator while preserving attached scripts.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::LIMITS],
         consumes: RuleConsumes {

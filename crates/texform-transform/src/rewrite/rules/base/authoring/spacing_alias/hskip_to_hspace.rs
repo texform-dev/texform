@@ -29,7 +29,6 @@ define_rule! {
         key: Base / "hskip-to-hspace",
         level: Authoring,
         summary: "Collapse hskip to the explicit hspace command.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::HSKIP],
         consumes: RuleConsumes {

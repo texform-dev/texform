@@ -33,7 +33,6 @@ define_rule! {
         key: Physics / "naturallogarithm-to-ln",
         level: Authoring,
         summary: "Collapse a bare natural logarithm helper to the standard ln operator.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::NATURALLOGARITHM],
         consumes: RuleConsumes {

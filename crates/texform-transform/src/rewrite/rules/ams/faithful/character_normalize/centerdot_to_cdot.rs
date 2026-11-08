@@ -25,7 +25,6 @@ define_rule! {
         key: Ams / "centerdot-to-cdot",
         level: Faithful,
         summary: "Normalize AMS centerdot to the base cdot character for corpus form.",
-        fidelity: Render,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::CENTERDOT],
         consumes: RuleConsumes {

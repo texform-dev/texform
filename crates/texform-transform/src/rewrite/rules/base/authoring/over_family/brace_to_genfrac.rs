@@ -25,7 +25,6 @@ define_rule! {
         key: Base / "brace-to-genfrac",
         level: Authoring,
         summary: "Rewrite infix brace to an explicit genfrac with brace delimiters.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::BRACE],
         consumes: RuleConsumes {

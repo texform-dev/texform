@@ -33,7 +33,6 @@ define_rule! {
         key: Physics / "sine-to-sin",
         level: Authoring,
         summary: "Collapse a bare sine helper to the standard sin operator.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::SINE],
         consumes: RuleConsumes {

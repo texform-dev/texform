@@ -186,12 +186,6 @@ fn validate_rule_metadata(rule: &'static dyn RewriteRule) -> Result<(), PlanBuil
             message: "triggers must be non-empty",
         });
     }
-    if meta.fidelity < meta.level.min_fidelity() {
-        return Err(PlanBuildError::InvalidRuleMetadata {
-            rule: meta.key,
-            message: "fidelity must not be below the rule level floor",
-        });
-    }
 
     let consumes = meta
         .consumes
@@ -410,69 +404,4 @@ fn visit_cycle(
     stack.pop();
     state[index] = 2;
     None
-}
-
-#[cfg(test)]
-mod tests {
-    use texform_knowledge::builtin::base;
-
-    use super::*;
-    use crate::ast::NodeId;
-    use crate::rewrite::rule::{
-        RuleConsumes, RuleEffect, RuleFidelity, RuleLevel, RuleMeta, RuleProduces,
-    };
-    use crate::rewrite::rule_context::RuleContext;
-    use crate::rewrite::{RuleError, cmd_targets};
-
-    #[test]
-    fn metadata_validation_rejects_fidelity_below_level_floor() {
-        let err = validate_rule_metadata(&MATH_AUTHORING_RULE)
-            .expect_err("authoring rules must not declare math fidelity");
-
-        assert_eq!(
-            err,
-            PlanBuildError::InvalidRuleMetadata {
-                rule: MathAuthoringRule::KEY,
-                message: "fidelity must not be below the rule level floor",
-            }
-        );
-    }
-
-    struct MathAuthoringRule;
-
-    static MATH_AUTHORING_RULE: MathAuthoringRule = MathAuthoringRule;
-
-    impl MathAuthoringRule {
-        const KEY: RuleKey = RuleKey {
-            package: PackageName::Base,
-            name: "math-authoring-test",
-        };
-    }
-
-    impl RewriteRule for MathAuthoringRule {
-        fn meta(&self) -> &'static RuleMeta {
-            static META: RuleMeta = RuleMeta {
-                key: MathAuthoringRule::KEY,
-                enabled_by_packages: &[PackageName::Base],
-                level: RuleLevel::Authoring,
-                summary: "Test-only invalid metadata.",
-                fidelity: RuleFidelity::Math,
-                triggers: cmd_targets![&base::cmd::BREAK],
-                consumes: RuleConsumes {
-                    eliminates: cmd_targets![&base::cmd::BREAK],
-                    touches: &[],
-                },
-                produces: RuleProduces { targets: &[] },
-            };
-            &META
-        }
-
-        fn apply(
-            &self,
-            _cx: &mut RuleContext<'_>,
-            _node_id: NodeId,
-        ) -> Result<RuleEffect, RuleError> {
-            Ok(RuleEffect::Skipped)
-        }
-    }
 }

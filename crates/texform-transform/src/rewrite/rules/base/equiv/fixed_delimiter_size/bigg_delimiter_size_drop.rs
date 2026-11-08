@@ -29,7 +29,6 @@ define_rule! {
         key: Base / "bigg-delimiter-size-drop",
         level: Equiv,
         summary: "Drop the fixed delimiter size imposed by \\bigg.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::BIGG],
         consumes: RuleConsumes {

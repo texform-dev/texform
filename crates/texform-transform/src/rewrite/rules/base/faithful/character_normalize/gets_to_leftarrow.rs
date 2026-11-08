@@ -24,7 +24,6 @@ define_rule! {
         key: Base / "gets-to-leftarrow",
         level: Faithful,
         summary: "Normalize gets to leftarrow for corpus form.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::GETS],
         consumes: RuleConsumes {

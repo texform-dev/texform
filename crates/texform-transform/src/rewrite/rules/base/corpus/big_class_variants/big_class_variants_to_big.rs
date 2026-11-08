@@ -25,7 +25,6 @@ alias_rule! {
         key: Base / "big-class-variants-to-big",
         level: Corpus,
         summary: "Collapse \\bigl, \\bigr, \\bigm to \\big.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         canonical: &base::cmd::BIG,
         aliases: [

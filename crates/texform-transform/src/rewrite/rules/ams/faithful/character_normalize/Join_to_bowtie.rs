@@ -25,7 +25,6 @@ define_rule! {
         key: Ams / "Join-to-bowtie",
         level: Faithful,
         summary: "Normalize Join to bowtie for corpus form.",
-        fidelity: Render,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::JOIN],
         consumes: RuleConsumes {

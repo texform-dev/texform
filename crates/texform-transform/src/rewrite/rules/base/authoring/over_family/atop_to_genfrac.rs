@@ -25,7 +25,6 @@ define_rule! {
         key: Base / "atop-to-genfrac",
         level: Authoring,
         summary: "Rewrite infix atop to an explicit no-rule genfrac form.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::ATOP],
         consumes: RuleConsumes {

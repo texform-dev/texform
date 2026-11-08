@@ -1,6 +1,6 @@
 # Transform Rules
 
-This guide owns rewrite-rule layout, metadata, and authoring conventions. Read the [transform reference](../../../README.md) for phase behavior, profile definitions, and fidelity.
+This guide owns rewrite-rule layout, metadata, and authoring conventions. Read the [transform reference](../../../README.md) for phase behavior and profile definitions.
 
 ## Attribute Markers
 
@@ -74,7 +74,7 @@ These macros are intentionally local to `texform-transform`; they are ergonomics
 | Dependency ordering | `produces`, `C` | Add `A → B` when `produces(A) ∩ C(B)` is non-empty, then reject cycles |
 | Output contract | `eliminates` | After the full pipeline, reject output in which an eliminated target remains |
 
-`Plan::build` validates non-empty triggers, `triggers ⊆ C`, the fidelity floor, package and produced-target availability, and an acyclic dependency graph. It does not infer `enabled_by_packages` or enforce a unique eliminate owner. Registry tests in `tests/rewrite_context.rs` validate package inference, unique eliminate ownership across every managed-package subset at Equiv level, and disjoint `eliminates` and `produces` sets for every registered rule.
+`Plan::build` validates non-empty triggers, `triggers ⊆ C`, package and produced-target availability, and an acyclic dependency graph. It does not infer `enabled_by_packages` or enforce a unique eliminate owner. Registry tests in `tests/rewrite_context.rs` validate package inference, unique eliminate ownership across every managed-package subset at Equiv level, and disjoint `eliminates` and `produces` sets for every registered rule.
 
 Domain guards such as whitelists, neighbor-class checks, and package-owner predicates stay in the rule body and tests when `apply` validates them at runtime. They are not metadata merely because the implementation inspects them.
 
@@ -82,8 +82,7 @@ Domain guards such as whitelists, neighbor-class checks, and package-owner predi
 
 Deleting or replacing a node can leave neighbors that a reparse would bind differently, such as the `physics` `\ln` reading a following `[2]` once a separator between them is gone. The engine removes these boundary hazards once after the transform (see [Output contract and boundary separation](../../../README.md#output-contract-and-boundary-separation)). Rules follow this contract:
 
-- `Reading` and `Math` rules need not handle boundary hazards. The rendering cost of the separator counts toward the rule's own worst case.
-- `Render` rules must not rely on separation. A rule whose output would be separated in some context declares a lower fidelity instead. The round-trip attribution test runs each `Render` rule alone and fails when separation was needed.
+- Rules need not handle boundary hazards themselves. Where separation is needed, the separator can change the rendered spacing or atom class at that position, and that change is part of the rule's rendering effect.
 - Rules read arguments only from argument slots. A rule must not merge an adjacent sibling into a command's arguments: during Rewrite a sibling may have become adjacent only because an invisible node between them was just deleted.
 - Choosing an output form from the siblings is allowed, for example avoiding a short command name that would read a following parenthesis. The form may then depend on rule order, but the meaning does not.
 
@@ -187,7 +186,6 @@ define_rule! {
         key: Base / "over-to-frac",
         level: Authoring,
         summary: "Rewrite infix \\over into prefix \\frac",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::OVER],
         consumes: RuleConsumes {
@@ -214,11 +212,9 @@ The inline form exposes `Self::KEY`, and rule bodies should bind a scoped contex
 
 When IDE navigation matters more than keeping the body inline, use the `apply_fn: path` variant and move the rewrite code into a normal function.
 
-## Choosing `level` and `fidelity`
+## Choosing `level`
 
-Classify a rule by asking which profile first accepts its output as a suitable product, then declare the strongest fidelity guaranteed over its declared domain. `fidelity` does not determine `level`: a rule may provide a stronger guarantee than its level requires.
-
-See [RuleFidelity](../../../README.md#rulefidelity) for the fidelity ladder, per-level floors, and documenting worst-case behavior. Keep these definitions in the transform reference rather than duplicating them per rule.
+Classify a rule by asking which profile first accepts its output as a suitable product. See [RuleLevel](../../../README.md#rulelevel) for the level definitions; keep them in the transform reference rather than duplicating them per rule.
 
 ## alias_rule!
 
@@ -230,7 +226,6 @@ alias_rule! {
         key: Physics / "derivative-to-dv",
         level: Authoring,
         summary: "Collapse derivative to the compact dv command.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::DV,
         aliases: [&physics::cmd::DERIVATIVE],

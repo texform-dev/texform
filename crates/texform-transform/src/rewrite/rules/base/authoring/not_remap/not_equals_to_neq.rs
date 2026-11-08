@@ -24,7 +24,6 @@ define_rule! {
         key: Base / "not-equals-to-neq",
         level: Authoring,
         summary: "Rewrite \\not followed by an equals sign to the canonical \\neq character.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::NOT],
         consumes: RuleConsumes {

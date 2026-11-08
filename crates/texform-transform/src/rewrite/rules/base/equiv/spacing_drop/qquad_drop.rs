@@ -24,7 +24,6 @@ define_rule! {
         key: Base / "qquad-drop",
         level: Equiv,
         summary: "Drop qquad in math mode and collapse each text-mode qquad run to one ordinary space.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::QQUAD],
         consumes: RuleConsumes {

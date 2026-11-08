@@ -23,7 +23,6 @@ define_rule! {
         key: Base / "double-quad-to-qquad",
         level: Authoring,
         summary: "Merge two adjacent quads into one qquad for authoring normalization.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::QUAD],
         consumes: RuleConsumes {

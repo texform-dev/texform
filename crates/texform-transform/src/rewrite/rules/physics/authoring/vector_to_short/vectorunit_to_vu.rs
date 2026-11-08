@@ -22,7 +22,6 @@ alias_rule! {
         key: Physics / "vectorunit-to-vu",
         level: Authoring,
         summary: "Collapse vectorunit to the short vu helper.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::VU,
         aliases: [&physics::cmd::VECTORUNIT],

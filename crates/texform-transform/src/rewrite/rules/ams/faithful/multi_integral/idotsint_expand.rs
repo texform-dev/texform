@@ -32,7 +32,6 @@ define_rule! {
         key: Ams / "idotsint-expand",
         level: Faithful,
         summary: "Expand idotsint to explicit repeated integral surfaces.",
-        fidelity: Render,
         enabled_by_packages: [Ams],
         triggers: cmd_targets![&ams::cmd::IDOTSINT],
         consumes: RuleConsumes {

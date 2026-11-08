@@ -24,7 +24,6 @@ define_rule! {
         key: Base / "lor-to-vee",
         level: Faithful,
         summary: "Normalize lor to vee for corpus form.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: char_targets![&base::chars::LOR],
         consumes: RuleConsumes {

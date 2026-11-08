@@ -21,7 +21,6 @@ alias_rule! {
         key: Base / "widetilde-to-tilde",
         level: Equiv,
         summary: "Drop stretchiness from \\widetilde by rewriting it to \\tilde.",
-        fidelity: Math,
         enabled_by_packages: [Base],
         canonical: &base::cmd::TILDE,
         aliases: [

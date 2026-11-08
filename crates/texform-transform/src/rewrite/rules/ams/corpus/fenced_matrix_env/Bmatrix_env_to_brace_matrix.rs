@@ -28,7 +28,6 @@ define_rule! {
         key: Ams / "Bmatrix-env-to-brace-matrix",
         level: Corpus,
         summary: "Rewrite the fenced Bmatrix environment to explicit braces around a core matrix environment.",
-        fidelity: Render,
         enabled_by_packages: [Ams],
         triggers: env_targets![&ams::env::BMATRIX_2],
         consumes: RuleConsumes {

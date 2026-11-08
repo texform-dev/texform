@@ -114,21 +114,6 @@ fn transform_contract_does_not_globally_eliminate_cr_line_breaks() {
 }
 
 #[test]
-fn builtin_rule_fidelity_meets_level_floor() {
-    for rule in texform_transform::rewrite::all_rules() {
-        let meta = rule.meta();
-        assert!(
-            meta.fidelity >= meta.level.min_fidelity(),
-            "{} declares {:?} fidelity below {:?} floor ({:?})",
-            meta.key,
-            meta.fidelity,
-            meta.level,
-            meta.level.min_fidelity()
-        );
-    }
-}
-
-#[test]
 fn fixed_delimiter_size_rules_are_enabled_only_by_the_equiv_profile() {
     let parse_ctx = ParseContext::from_packages(&["base"]);
     let corpus =

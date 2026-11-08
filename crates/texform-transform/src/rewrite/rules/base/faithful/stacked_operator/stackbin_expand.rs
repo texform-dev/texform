@@ -26,7 +26,6 @@ define_rule! {
         key: Base / "stackbin-expand",
         level: Faithful,
         summary: "Expand stackbin to an explicit binary-level stacked operator form.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::STACKBIN],
         consumes: RuleConsumes {

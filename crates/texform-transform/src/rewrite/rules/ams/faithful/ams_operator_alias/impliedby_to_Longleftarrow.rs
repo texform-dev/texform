@@ -26,7 +26,6 @@ define_rule! {
         key: Ams / "impliedby-to-Longleftarrow",
         level: Faithful,
         summary: "Collapse impliedby to the explicit AMS long-left-arrow spelling with source-backed spacing.",
-        fidelity: Render,
         enabled_by_packages: [Ams],
         triggers: cmd_targets![&ams::cmd::IMPLIEDBY],
         consumes: RuleConsumes {

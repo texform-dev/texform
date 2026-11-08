@@ -118,7 +118,6 @@ define_rule! {
         key: Physics / "named-fn-to-operatorname",
         level: Faithful,
         summary: "Rewrite physics-only named functions to operatorname and expand their auto-sized arguments.",
-        fidelity: Reading,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::ASIN, &physics::cmd::ACOS, &physics::cmd::ATAN, &physics::cmd::CSCH, &physics::cmd::ARCCSC, &physics::cmd::ACSC, &physics::cmd::SECH, &physics::cmd::ARCSEC, &physics::cmd::ASEC, &physics::cmd::ARCCOT, &physics::cmd::ACOT, &physics::cmd::TR, &physics::cmd::TR_2, &physics::cmd::ERF, &physics::cmd::TRACE, &physics::cmd::TRACE_2, &physics::cmd::SINE, &physics::cmd::COSINE, &physics::cmd::NATURALLOGARITHM, &physics::cmd::PROBABILITY],
         consumes: RuleConsumes {

@@ -25,7 +25,6 @@ define_rule! {
         key: Physics / "rank-to-operatorname-rank",
         level: Faithful,
         summary: "Rewrite rank to an explicit operatorname form instead of a package-local alias.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::RANK],
         consumes: RuleConsumes {

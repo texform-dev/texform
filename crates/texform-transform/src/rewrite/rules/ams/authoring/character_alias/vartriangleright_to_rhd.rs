@@ -24,7 +24,6 @@ define_rule! {
         key: Ams / "vartriangleright-to-rhd",
         level: Authoring,
         summary: "Collapse vartriangleright to the more common rhd character.",
-        fidelity: Render,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::VARTRIANGLERIGHT],
         consumes: RuleConsumes {

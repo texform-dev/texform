@@ -24,7 +24,6 @@ define_rule! {
         key: Physics / "dotproduct-to-vdot",
         level: Authoring,
         summary: "Collapse dotproduct to the shorter vdot character alias.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: char_targets![&physics::chars::DOTPRODUCT],
         consumes: RuleConsumes {

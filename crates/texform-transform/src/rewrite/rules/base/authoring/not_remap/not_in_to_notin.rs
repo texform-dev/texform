@@ -25,7 +25,6 @@ define_rule! {
         key: Base / "not-in-to-notin",
         level: Authoring,
         summary: "Rewrite \\not\\in to the canonical \\notin character.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::NOT],
         consumes: RuleConsumes {

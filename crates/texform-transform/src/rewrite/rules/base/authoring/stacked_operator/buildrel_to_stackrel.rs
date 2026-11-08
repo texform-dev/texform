@@ -25,7 +25,6 @@ define_rule! {
         key: Base / "buildrel-to-stackrel",
         level: Authoring,
         summary: "Rewrite plain TeX buildrel syntax to stackrel.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::BUILDREL],
         consumes: RuleConsumes {

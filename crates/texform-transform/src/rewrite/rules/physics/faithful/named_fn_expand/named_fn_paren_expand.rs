@@ -76,7 +76,6 @@ define_rule! {
         key: Physics / "named-fn-paren-expand",
         level: Faithful,
         summary: "Expand physics power and auto-sized parenthesis arguments of standard named functions.",
-        fidelity: Reading,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::SIN, &physics::cmd::SINH, &physics::cmd::ARCSIN, &physics::cmd::COS, &physics::cmd::COSH, &physics::cmd::ARCCOS, &physics::cmd::TAN, &physics::cmd::TANH, &physics::cmd::ARCTAN, &physics::cmd::CSC, &physics::cmd::SEC, &physics::cmd::COT, &physics::cmd::COTH, &physics::cmd::LOG, &physics::cmd::LN],
         consumes: RuleConsumes {

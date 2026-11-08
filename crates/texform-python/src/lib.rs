@@ -3229,7 +3229,7 @@ rules = texform.list_rules()
 keys = [rule["key"] for rule in rules]
 assert keys == sorted(keys) and len(set(keys)) == len(keys)
 over = next(rule for rule in rules if rule["key"] == "base/over-to-frac")
-assert over["level"] == "authoring" and over["fidelity"] == "render"
+assert over["level"] == "authoring"
 assert over["enabled_by_packages"] == ["base"]
 texform.TransformEngine("corpus", disable_rules=keys)
 "#,

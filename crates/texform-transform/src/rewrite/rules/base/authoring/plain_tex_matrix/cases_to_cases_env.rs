@@ -28,7 +28,6 @@ define_rule! {
         key: Base / "cases-to-cases-env",
         level: Authoring,
         summary: "Rewrite plain-TeX cases to the standard cases environment with row breaks.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::CASES],
         consumes: RuleConsumes {

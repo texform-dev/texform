@@ -6,11 +6,6 @@ TransformProfile = Literal["authoring", "faithful", "corpus", "equiv"]
 """Normalization profile name: ``"authoring"``, ``"faithful"``, ``"corpus"``, or ``"equiv"``."""
 RuleLevel = Literal["authoring", "faithful", "corpus", "equiv"]
 """The first profile that accepts a rewrite rule's output as a suitable product."""
-RuleFidelity = Literal["math", "reading", "render"]
-"""A rewrite rule's worst-case equivalence guarantee, least to most faithful:
-``"math"`` (meaning preserved, rendering may change), ``"reading"`` (notation
-content, reading order, and structural roles preserved), or ``"render"``
-(rendering equivalent under the reference renderer)."""
 RuntimeContentMode = Literal["math", "text"]
 """Runtime content mode reported by the tree API: ``"math"`` or ``"text"``."""
 ParseDiagnosticKind = Literal[
@@ -255,7 +250,6 @@ class RuleInfo(TypedDict):
         key: The stable rule key, such as ``"base/over-to-frac"``, accepted by
             the ``disable_rules`` argument of ``TransformEngine``.
         level: The first profile that accepts the rule's output.
-        fidelity: The rule's worst-case equivalence guarantee.
         summary: A one-line description of what the rule does.
         enabled_by_packages: Packages that make the rule loadable when any one
             of them is enabled.
@@ -263,7 +257,6 @@ class RuleInfo(TypedDict):
 
     key: str
     level: RuleLevel
-    fidelity: RuleFidelity
     summary: str
     enabled_by_packages: list[str]
 
@@ -2891,11 +2884,11 @@ def list_rules() -> list[RuleInfo]:
 
     Returns:
         A list of ``RuleInfo`` dicts, each ``{"key": str, "level": str,
-        "fidelity": str, "summary": str, "enabled_by_packages": list[str]}``.
+        "summary": str, "enabled_by_packages": list[str]}``.
 
     Examples:
         [rule for rule in texform.list_rules() if rule["key"] == "base/over-to-frac"]
-        # [{'key': 'base/over-to-frac', 'level': 'authoring', 'fidelity': 'render', ...}]
+        # [{'key': 'base/over-to-frac', 'level': 'authoring', 'summary': ..., ...}]
 
     See Also:
         RuleInfo, TransformEngine

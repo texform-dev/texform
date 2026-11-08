@@ -32,7 +32,6 @@ define_rule! {
         key: Physics / "commutator-expand",
         level: Faithful,
         summary: "Expand commutators to explicit square-bracket fences.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::COMM],
         consumes: RuleConsumes {

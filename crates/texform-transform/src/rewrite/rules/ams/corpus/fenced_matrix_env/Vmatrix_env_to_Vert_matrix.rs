@@ -28,7 +28,6 @@ define_rule! {
         key: Ams / "Vmatrix-env-to-Vert-matrix",
         level: Corpus,
         summary: "Rewrite the fenced Vmatrix environment to explicit double bars around a core matrix environment.",
-        fidelity: Render,
         enabled_by_packages: [Ams],
         triggers: env_targets![&ams::env::VMATRIX_2],
         consumes: RuleConsumes {

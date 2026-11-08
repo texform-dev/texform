@@ -436,7 +436,6 @@ assert.equal(new Set(listedRuleKeys).size, listedRuleKeys.length, "listRules key
 assert.deepEqual(rules.find((rule) => rule.key === "base/over-to-frac"), {
   key: "base/over-to-frac",
   level: "authoring",
-  fidelity: "render",
   summary: "Rewrite infix over to an explicit frac command.",
   enabledByPackages: ["base"],
 });

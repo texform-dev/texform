@@ -26,7 +26,6 @@ define_rule! {
         key: Base / "stackrel-expand",
         level: Faithful,
         summary: "Expand stackrel to an explicit relation-level stacked operator form.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::STACKREL],
         consumes: RuleConsumes {

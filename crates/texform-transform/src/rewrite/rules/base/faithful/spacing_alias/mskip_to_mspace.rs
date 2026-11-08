@@ -28,7 +28,6 @@ define_rule! {
         key: Base / "mskip-to-mspace",
         level: Faithful,
         summary: "Collapse mskip to the explicit mspace command.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::MSKIP],
         consumes: RuleConsumes {

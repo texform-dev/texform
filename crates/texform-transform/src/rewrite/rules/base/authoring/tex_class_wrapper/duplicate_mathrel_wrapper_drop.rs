@@ -24,7 +24,6 @@ define_rule! {
         key: Base / "duplicate-mathrel-wrapper-drop",
         level: Authoring,
         summary: "Drop one directly nested duplicate mathrel wrapper.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::MATHREL],
         consumes: RuleConsumes {

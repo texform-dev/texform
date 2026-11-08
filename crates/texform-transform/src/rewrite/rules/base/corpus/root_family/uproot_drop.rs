@@ -23,7 +23,6 @@ define_rule! {
         key: Base / "uproot-drop",
         level: Corpus,
         summary: "Drop the uproot index-position hint in cleanup-oriented normalization.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::UPROOT],
         consumes: RuleConsumes {

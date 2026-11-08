@@ -29,7 +29,6 @@ alias_rule! {
         key: Physics / "functional-derivative-to-fdv",
         level: Authoring,
         summary: "Collapse long functional derivative names to the fdv command.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::FDV,
         aliases: [

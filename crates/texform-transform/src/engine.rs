@@ -158,8 +158,8 @@ pub(crate) mod tests {
     use crate::parse::{ParseConfig, ParseContext};
     use crate::rewrite::rule_context::RuleContext;
     use crate::rewrite::{
-        PackageName, Plan as RewritePlan, RewriteRule, RuleConsumes, RuleEffect, RuleFidelity,
-        RuleKey, RuleLevel, RuleMeta, RuleProduces, RuleTarget,
+        PackageName, Plan as RewritePlan, RewriteRule, RuleConsumes, RuleEffect, RuleKey,
+        RuleLevel, RuleMeta, RuleProduces, RuleTarget,
     };
     use crate::serialize::serialize;
 
@@ -228,7 +228,6 @@ pub(crate) mod tests {
                 enabled_by_packages: &[PackageName::Base],
                 level: RuleLevel::Authoring,
                 summary: "Recreate a singleton group removed by LowerAttributes.",
-                fidelity: RuleFidelity::Render,
                 triggers: &[RuleTarget::Command(&base::cmd::MATHBF)],
                 consumes: RuleConsumes {
                     eliminates: &[],
@@ -289,7 +288,6 @@ pub(crate) mod tests {
                 enabled_by_packages: &[PackageName::Physics],
                 level: RuleLevel::Faithful,
                 summary: "Create a bold prefix that the post LowerAttributes pass removes.",
-                fidelity: RuleFidelity::Render,
                 triggers: &[RuleTarget::Command(&physics::cmd::VB)],
                 consumes: RuleConsumes {
                     eliminates: &[RuleTarget::Command(&base::cmd::MATHBF)],

@@ -28,7 +28,6 @@ define_rule! {
         key: Base / "pmatrix-to-pmatrix-env",
         level: Authoring,
         summary: "Rewrite plain-TeX pmatrix to the standard pmatrix environment with row breaks.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::PMATRIX],
         consumes: RuleConsumes {

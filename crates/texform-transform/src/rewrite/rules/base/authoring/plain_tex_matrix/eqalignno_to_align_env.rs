@@ -43,7 +43,6 @@ define_rule! {
         key: Base / "eqalignno-to-align-env",
         level: Authoring,
         summary: "Rewrite eqalignno to the standard align* environment.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::EQALIGNNO],
         consumes: RuleConsumes {

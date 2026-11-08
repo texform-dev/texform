@@ -2,7 +2,7 @@
 
 Internal implementation crate for [texform](https://crates.io/crates/texform). Do not depend on this crate directly — its API has no stability guarantees and may change in any release. Use the `texform` facade crate instead.
 
-A phase-oriented AST rewrite pipeline. This guide owns phase behavior, profile selection, and fidelity definitions. For rule metadata and authoring, use the [rule guide](src/rewrite/rules/README.md).
+A phase-oriented AST rewrite pipeline. This guide owns phase behavior and profile selection. For rule metadata and authoring, use the [rule guide](src/rewrite/rules/README.md).
 
 The crate runs four phase implementations in a fixed order, with LowerAttributes and FinalizeAst each invoked twice in the default pipeline. Callers choose a build-time `Profile` / `BuildConfig` to compile a rewrite plan, then use per-run `TransformConfig` values to gate phases and set runtime limits.
 
@@ -92,7 +92,7 @@ The separator is an empty group after the command, or at the start of the enviro
 
 The division of work with the serializer is: problems that only need whitespace in the text or an argument's own braces belong to the serializer; problems that need an extra node in the tree belong to boundary separation. For example, `\\` rejects a space before its optional `[...]`, and in math mode the serializer always writes a space between a control sequence and a following `[` or `*`, so `\\ [ x ]` needs no separator.
 
-In math mode a separator is an empty ordinary atom, and a wrapping group turns the command into an ordinary subformula, so separation can change the spacing at that position, or whether a following binary operator such as `*` is read as binary. That cost belongs to the rule or phase that created the hazard (see [`RuleFidelity`](#rulefidelity)). Separation runs once at the end, so a tree with a separator is not guaranteed to be a fixed point of another transform; the round-trip checks report such cases as `retransform` failures.
+In math mode a separator is an empty ordinary atom, and a wrapping group turns the command into an ordinary subformula, so separation can change the spacing at that position, or whether a following binary operator such as `*` is read as binary. That cost is part of the rendering effect of the rule or phase that created the hazard. LowerAttributes where it preserves rendering and FlattenGroups under `STRICT` promise unchanged rendering, so they must not rely on separation; the round-trip attribution test runs them on the adversarial boundary inputs and fails when separation was needed. Rule metadata does not record rendering effects, so a rule's reliance on separation is not checked here. Separation runs once at the end, so a tree with a separator is not guaranteed to be a fixed point of another transform; the round-trip checks report such cases as `retransform` failures.
 
 The scheduler relies on three phase contracts:
 
@@ -125,7 +125,7 @@ Each profile selects cumulative build-time rule levels and supplies a default ru
 
 #### `RuleLevel`
 
-Every rule belongs to exactly one ordered level. A rule's level is the first profile that accepts the rule output as a suitable product; it is not inferred from render fidelity.
+Every rule belongs to exactly one ordered level. A rule's level is the first profile that accepts the rule output as a suitable product.
 
 | Level      | Intent |
 |------------|--------|
@@ -134,34 +134,9 @@ Every rule belongs to exactly one ordered level. A rule's level is the first pro
 | `Corpus` | Complete, stable canonical forms that remain valid training labels for the original formulas; only training-irrelevant presentation variants and specialized vocabulary may collapse. |
 | `Equiv` | Output is only suitable as an equivalence-checking, deduplication, or fingerprint intermediate, not as a corpus label; it may discard visually salient presentation choices. |
 
-Classify a rule by asking which profile first accepts its output, then declare the rule's fidelity independently. `fidelity` may rule out profiles whose floor it cannot meet, but a high-fidelity rule is not automatically a lower level.
+Classify a rule by asking which profile first accepts its output. A Corpus output must remain a credible complete label for the original formula. If a rewrite materially removes size, stretch, placement, visual hierarchy, or a notation distinction useful for training, classify it as `Equiv` even when notation identity, reading order, and structural roles remain intact.
 
-`Reading` fidelity is necessary but not sufficient for `Corpus`. A Corpus output must remain a credible complete label for the original formula. If a rewrite materially removes size, stretch, placement, visual hierarchy, or a notation distinction useful for training, classify it as `Equiv` even when notation identity, reading order, and structural roles remain intact. `Equiv` is a use-level rather than an alias for `Math` fidelity, so `Equiv`/`Reading` is a valid and informative combination.
-
-#### `RuleFidelity`
-
-`fidelity` is the worst-case equivalence guarantee over the rule's declared input domain. It is ordered from least to most faithful: `Math < Reading < Render`.
-
-| Fidelity | Guarantee |
-| --- | --- |
-| `Render` | Rendering is equivalent under the reference renderer. |
-| `Reading` | Notation content, reading order, and structural roles are preserved; layout may change. |
-| `Math` | Mathematical meaning is preserved over the declared domain; notation and rendering may change. |
-
-`fidelity` is a metadata contract only. `texform-transform` runs no rendering comparison; how a downstream validator interprets a fidelity level when comparing rendered output is defined by that consumer, not in this crate.
-
-Fidelity evidence compares the rendering of the input text with the rendering of the output text, which relies on the output contract: the output text must mean the output tree (see [Output contract and boundary separation](#output-contract-and-boundary-separation)). Where a rewrite creates a boundary hazard, its actual effect on the text is the rewrite plus separation, so the spacing or atom-class change from the separator counts toward that rule's worst case. `Reading` and `Math` rules usually absorb it. `Render` rules must not rely on separation: a rule whose output would be separated in some context declares a lower fidelity, and the round-trip attribution test fails when a `Render` rule needs separation. LowerAttributes, FinalizeAst, and FlattenGroups have no `RuleFidelity`, but the same rule applies to them where their phase contract promises unchanged rendering, such as FlattenGroups under `STRICT`.
-
-`fidelity` must not fall below the rule's level floor:
-
-| Level | Min fidelity |
-| --- | --- |
-| `Authoring` | `Reading` |
-| `Faithful` | `Reading` |
-| `Corpus` | `Reading` |
-| `Equiv` | `Math` |
-
-Do not add a second metadata field for ordinary behavior. If a rule has an important gap between its worst case and usual samples, document that gap in the rule's top-level comment.
+If a rule's behavior on some inputs differs notably from its usual effect, document that in the rule's top-level comment.
 
 ### `FlattenGroupsConfig`
 

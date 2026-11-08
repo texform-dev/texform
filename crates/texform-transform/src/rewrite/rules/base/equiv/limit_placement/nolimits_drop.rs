@@ -28,7 +28,6 @@ define_rule! {
         key: Base / "nolimits-drop",
         level: Equiv,
         summary: "Drop explicit nolimits from an audited operator while preserving attached scripts.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::NOLIMITS],
         consumes: RuleConsumes {

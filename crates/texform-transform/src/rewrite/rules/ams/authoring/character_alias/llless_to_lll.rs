@@ -24,7 +24,6 @@ define_rule! {
         key: Ams / "llless-to-lll",
         level: Authoring,
         summary: "Collapse llless to the shorter lll character.",
-        fidelity: Render,
         enabled_by_packages: [Ams],
         triggers: char_targets![&ams::chars::LLLESS],
         consumes: RuleConsumes {

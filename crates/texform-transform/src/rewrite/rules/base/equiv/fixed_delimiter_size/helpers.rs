@@ -14,7 +14,8 @@ use crate::rewrite::rule_context::RuleContext;
 /// ordinary or closing atom the thin space before it disappears, and against
 /// any other neighbor, including the following opening delimiter, the spacing
 /// is the same. A command carrying scripts is never wrapped, so its limits
-/// keep their place. This stays within the `Reading` fidelity of these rules.
+/// keep their place. These rules already change the rendered delimiter size,
+/// so the spacing change is acceptable here.
 pub(super) fn drop_fixed_delimiter_size(
     cx: &mut RuleContext<'_>,
     node_id: NodeId,

@@ -21,7 +21,6 @@ alias_rule! {
         key: Physics / "matrixdeterminant-to-mdet",
         level: Authoring,
         summary: "Collapse matrixdeterminant to the shorter mdet determinant helper.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         canonical: &physics::cmd::MDET,
         aliases: [&physics::cmd::MATRIXDETERMINANT],

@@ -21,7 +21,6 @@ alias_rule! {
         key: Base / "gt-space-to-colon-space",
         level: Authoring,
         summary: "Collapse \\> to the canonical medium math space command \\:",
-        fidelity: Render,
         enabled_by_packages: [Base],
         canonical: &base::cmd::_COLON,
         aliases: [&base::cmd::_GREATER_THAN],

@@ -33,7 +33,6 @@ define_rule! {
         key: Physics / "abs-to-vert-fence",
         level: Faithful,
         summary: "Rewrite abs to explicit vertical bar fences.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::ABS],
         consumes: RuleConsumes {

@@ -24,7 +24,6 @@ define_rule! {
         key: Base / "enspace-drop",
         level: Equiv,
         summary: "Drop enspace in math mode and collapse each text-mode enspace run to one ordinary space.",
-        fidelity: Reading,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::ENSPACE],
         consumes: RuleConsumes {

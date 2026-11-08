@@ -30,7 +30,6 @@ define_rule! {
         key: Physics / "trace-capital-to-Tr",
         level: Authoring,
         summary: "Collapse a bare Trace with no following argument group to the local Tr anchor.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::TRACE_2],
         consumes: RuleConsumes {

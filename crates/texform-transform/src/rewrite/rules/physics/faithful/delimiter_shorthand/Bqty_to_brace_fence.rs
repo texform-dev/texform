@@ -33,7 +33,6 @@ define_rule! {
         key: Physics / "Bqty-to-brace-fence",
         level: Faithful,
         summary: "Rewrite Bqty to explicit brace fences.",
-        fidelity: Render,
         enabled_by_packages: [Physics],
         triggers: cmd_targets![&physics::cmd::BQTY_2],
         consumes: RuleConsumes {

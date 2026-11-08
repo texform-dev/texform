@@ -26,7 +26,6 @@ define_rule! {
         key: Base / "not-exists-to-nexists",
         level: Authoring,
         summary: "Rewrite \\not\\exists to the canonical AMS \\nexists character when the target is available.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::NOT],
         consumes: RuleConsumes {

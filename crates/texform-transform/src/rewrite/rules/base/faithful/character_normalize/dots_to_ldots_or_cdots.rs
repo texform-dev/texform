@@ -87,7 +87,6 @@ define_rule! {
         key: Base / "dots-to-ldots-or-cdots",
         level: Faithful,
         summary: "Resolve plain \\dots to an explicit ellipsis only when the following math atom class determines MathJax's choice.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::DOTS],
         consumes: RuleConsumes {

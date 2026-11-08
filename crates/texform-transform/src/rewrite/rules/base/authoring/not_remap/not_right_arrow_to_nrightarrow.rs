@@ -27,7 +27,6 @@ define_rule! {
         key: Base / "not-right-arrow-to-nrightarrow",
         level: Authoring,
         summary: "Rewrite not followed by a U+2192 right arrow to the canonical AMS nrightarrow character.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::NOT],
         consumes: RuleConsumes {

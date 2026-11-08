@@ -24,7 +24,6 @@ define_rule! {
         key: Base / "double-enspace-to-quad",
         level: Authoring,
         summary: "Rewrite two adjacent enspaces to one exact-width quad.",
-        fidelity: Render,
         enabled_by_packages: [Base],
         triggers: cmd_targets![&base::cmd::ENSPACE],
         consumes: RuleConsumes {

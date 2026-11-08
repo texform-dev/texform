@@ -21,7 +21,6 @@ alias_rule! {
         key: Base / "widehat-to-hat",
         level: Equiv,
         summary: "Drop stretchiness from \\widehat by rewriting it to \\hat.",
-        fidelity: Math,
         enabled_by_packages: [Base],
         canonical: &base::cmd::HAT,
         aliases: [

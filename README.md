@@ -135,7 +135,7 @@ The documentation lives at [texform.dev](https://texform.dev):
 - [Concepts](https://texform.dev/docs/what-is-texform) — parsing, transforms, serialization, and how TeXForm compares with other tools
 - [API reference](https://texform.dev/api) — Python, JavaScript, and Rust ([docs.rs](https://docs.rs/texform))
 - [LaTeX reference](https://texform.dev/latex) — every supported command and environment, with its argument structure and renderer support
-- [Rule reference](https://texform.dev/rules) — every rewrite rule with its level, fidelity, and examples
+- [Rule reference](https://texform.dev/rules) — every rewrite rule with its level, render effect, and examples
 - [Playground](https://play.texform.dev) — try TeXForm in the browser
 
 For contributors, this repository documents the internals:
