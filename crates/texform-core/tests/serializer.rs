@@ -803,6 +803,25 @@ fn test_serialize_mandatory_delimiter_emits_bare_token() {
 }
 
 #[test]
+fn genfrac_without_delimiters_uses_empty_braces() {
+    // `.` would make MathJax treat the fraction as delimited; `{}{}` renders as `\atop`.
+    for src in [r"\genfrac..{0pt}{}{a}{b}", r"\genfrac{}{}{0pt}{}{a}{b}"] {
+        let ast = parse_to_ast(src);
+        assert_eq!(serialize(&ast), r"\genfrac {} {} {0pt} {} { a } { b }");
+        let compact = serialize_with(
+            &ast,
+            &SerializeOptions {
+                style: Style::Compact,
+            },
+        );
+        assert_eq!(compact, r"\genfrac{}{}{0pt}{}{a}{b}");
+    }
+    // A single missing side keeps `.`: pdfTeX's amsmath rejects `\genfrac({}`.
+    let one_sided = parse_to_ast(r"\genfrac({}{0pt}{}{a}{b}");
+    assert_eq!(serialize(&one_sided), r"\genfrac ( . {0pt} {} { a } { b }");
+}
+
+#[test]
 fn test_serialize_group_and_optional_delimiter_keep_wrappers() {
     let mut ast = Ast::new();
     let root = ast.root();

@@ -737,9 +737,44 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             self.options,
         );
 
-        for slot in args {
-            self.visit_argument_slot(slot, mode);
+        let empty_genfrac_delimiters = is_genfrac_without_delimiters(name, args);
+        for (index, slot) in args.iter().enumerate() {
+            if empty_genfrac_delimiters && index < 2 {
+                self.emit_empty_brace_argument(slot, mode);
+            } else {
+                self.visit_argument_slot(slot, mode);
+            }
         }
+    }
+
+    /// Emit a mandatory slot as `{}`.
+    ///
+    /// Only `\genfrac` delimiter slots use this. Both `{}` and `.` parse to
+    /// `Delimiter::None`, but they render differently: MathJax and the XeTeX
+    /// branch of amsmath treat `.` as a delimiter, dropping the null
+    /// delimiter space around the fraction, while `{}{}` renders exactly as
+    /// `\atop`/`\above`/`\over`.
+    fn emit_empty_brace_argument(&mut self, slot: &Option<Argument>, mode: ContentMode) {
+        let opening_boundary = match slot {
+            Some(arg) if arg.no_leading_space => BoundaryPolicy::SuppressOptionalSpace,
+            _ => BoundaryPolicy::Auto,
+        };
+        self.writer.emit_with_boundary(
+            mode,
+            AtomKind::Brace,
+            SerializationTokenKind::Delimiter,
+            "{",
+            opening_boundary,
+            self.options,
+        );
+        self.writer.emit_with_boundary(
+            mode,
+            AtomKind::Brace,
+            SerializationTokenKind::Delimiter,
+            "}",
+            BoundaryPolicy::SuppressOptionalSpace,
+            self.options,
+        );
     }
 
     /// Emit an infix command in its original syntactic form.
@@ -1706,6 +1741,26 @@ fn serialized_char(ch: char) -> String {
     } else {
         ch.to_string()
     }
+}
+
+/// Whether a `\genfrac` command has no delimiter on either side.
+///
+/// Only the two-sided case is written as `{}{}`. With a single delimiter,
+/// pdfTeX's amsmath requires `.` for the missing side (`\genfrac({}` raises
+/// "Missing delimiter"), and MathJax renders `.` and `{}` identically there.
+fn is_genfrac_without_delimiters(name: &str, args: &[Option<Argument>]) -> bool {
+    name == "genfrac"
+        && args.len() >= 2
+        && args[..2].iter().all(|slot| {
+            matches!(
+                slot,
+                Some(Argument {
+                    kind: ArgumentKind::Mandatory,
+                    value: ArgumentValue::Delimiter(Delimiter::None),
+                    ..
+                })
+            )
+        })
 }
 
 #[cfg(test)]
