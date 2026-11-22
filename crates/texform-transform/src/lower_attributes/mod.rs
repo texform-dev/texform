@@ -21,7 +21,10 @@
 //! group: `\rm a & b` affects only `a`. Separators inside a nested brace group
 //! and at the top level keep the running state.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::argument_capture::{environment_captures_in, sequence_boundary_hazard};
 use crate::ast::{ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, Slot};
@@ -250,6 +253,34 @@ struct CollectResult {
     final_state: AttributeState,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AxisList {
+    axes: [Attr; 4],
+    len: usize,
+}
+
+impl AxisList {
+    const fn new() -> Self {
+        Self {
+            axes: [Attr::MathFont; 4],
+            len: 0,
+        }
+    }
+
+    fn push(&mut self, attr: Attr) {
+        self.axes[self.len] = attr;
+        self.len += 1;
+    }
+
+    fn as_slice(&self) -> &[Attr] {
+        &self.axes[..self.len]
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
 impl AttributeState {
     fn get(self, attr: Attr) -> Option<AttrValue> {
         match attr {
@@ -274,12 +305,22 @@ impl AttributeState {
         true
     }
 
-    fn diff_axes(self, inherited: Self, mode: ContentMode) -> Vec<Attr> {
-        Self::axis_order(mode)
-            .iter()
-            .copied()
-            .filter(|attr| self.get(*attr) != inherited.get(*attr))
-            .collect()
+    fn merge_from(&mut self, other: Self, mode: ContentMode) {
+        for &attr in Self::axis_order(mode) {
+            if let Some(value) = other.get(attr) {
+                *self.slot_mut(attr) = Some(value);
+            }
+        }
+    }
+
+    fn diff_axes(self, inherited: Self, mode: ContentMode) -> AxisList {
+        let mut list = AxisList::new();
+        for &attr in Self::axis_order(mode) {
+            if self.get(attr) != inherited.get(attr) {
+                list.push(attr);
+            }
+        }
+        list
     }
 
     fn with_mode_reset(mut self, mode: ContentMode) -> Self {
@@ -336,64 +377,133 @@ impl LowerAttributesConfig {
     pub const DEFAULTS: Self = Self::ENABLED;
 }
 
-/// Conservatively reports whether attribute-related content was processed.
-/// Unrelated trees return `false`; regenerating canonical prefixes may return `true`.
+/// Reports whether the AST was modified during attribute lowering.
+///
+/// Unrelated trees return `false`; subtrees containing attributes that go
+/// through rebuild may conservatively return `true` when regenerating an
+/// equivalent shape.
 pub fn run(
     ast: &mut Ast,
     parse_ctx: &ParseContext,
     _config: &LowerAttributesConfig,
     recorder: &mut ReportRecorder,
 ) -> bool {
-    let mut irrelevant = HashSet::new();
-    if !mark_relevant_subtrees(ast, ast.root(), &mut irrelevant) {
+    let tables = lookup_tables();
+    let root = ast.root();
+    let root_mode = ast.node(root).content_mode().unwrap_or(ContentMode::Math);
+    let mut relevant = FxHashSet::default();
+    if !mark_relevant_subtrees(ast, root, root_mode, tables, &mut relevant) {
         return false;
     }
-    canonicalize_subtree(
-        ast,
-        ast.root(),
-        AttributeState::default(),
-        ContentMode::Math,
-        &mut Pass {
-            irrelevant,
-            parse_ctx,
-            recorder,
-        },
-    );
-    true
+    let mut pass = Pass {
+        relevant: Some(relevant),
+        parse_ctx,
+        recorder,
+        edges_buf: Vec::new(),
+        changed: false,
+    };
+    canonicalize_subtree(ast, root, AttributeState::default(), root_mode, &mut pass);
+    pass.changed
 }
 
 struct Pass<'a> {
-    // Newly emitted nodes are absent and must be visited when recollected.
-    irrelevant: HashSet<NodeId>,
+    // `Some(set)` skips subtrees outside `set`; `None` visits every node (tests).
+    relevant: Option<FxHashSet<NodeId>>,
     parse_ctx: &'a ParseContext,
     recorder: &'a mut ReportRecorder,
+    edges_buf: Vec<(NodeId, Slot)>,
+    changed: bool,
 }
 
 impl Pass<'_> {
+    #[inline]
+    fn is_relevant(&self, node: NodeId) -> bool {
+        self.relevant
+            .as_ref()
+            .is_none_or(|relevant| relevant.contains(&node))
+    }
+
+    #[inline]
+    fn mark_changed(&mut self) {
+        self.changed = true;
+    }
+
     fn lower_attributes(&mut self, record: impl FnOnce(&mut LowerAttributesReport)) {
         self.recorder.lower_attributes(record);
     }
 }
 
-fn mark_relevant_subtrees(ast: &Ast, node: NodeId, irrelevant: &mut HashSet<NodeId>) -> bool {
-    let mut relevant = match ast.node(node) {
+#[inline]
+fn text_has_boundary_whitespace(text: &str) -> bool {
+    let trimmed = text.trim();
+    !trimmed.is_empty() && trimmed.len() != text.len()
+}
+
+#[inline]
+fn has_boundary_whitespace(ast: &Ast, node: NodeId) -> bool {
+    matches!(ast.node(node), Node::Text(text) if text_has_boundary_whitespace(text))
+}
+
+fn is_node_relevant(node: &Node, mode: ContentMode, tables: &LookupTables) -> bool {
+    match node {
         Node::Declarative { name, args } => {
             args.is_empty()
-                && generated::DECLARATIVES
-                    .iter()
-                    .any(|entry| entry.name == name)
+                && tables
+                    .declaratives
+                    .get(name.as_str())
+                    .is_some_and(|slot| slot.get(mode).is_some())
         }
-        Node::Command { name, .. } => generated::PREFIXES.iter().any(|entry| entry.name == name),
-        Node::Text(text) => !text.trim().is_empty() && text.trim().len() != text.len(),
+        Node::Command { name, .. } => tables.prefixes.contains_key(name.as_str()),
+        Node::Text(text) => mode == ContentMode::Math && text_has_boundary_whitespace(text),
         _ => false,
-    };
-    for (child, _) in ast.edges(node) {
-        relevant |= mark_relevant_subtrees(ast, child, irrelevant);
     }
-    if !relevant {
-        irrelevant.insert(node);
+}
+
+fn content_slot_mode(ast: &Ast, parent: NodeId, slot: Slot) -> Option<ContentMode> {
+    match slot {
+        Slot::GroupChild(_) => ast.node(parent).content_mode(),
+        Slot::Argument(index) => ast.arg_slots(parent)[index]
+            .as_ref()
+            .and_then(|arg| arg.value.content())
+            .map(|(_, mode)| mode),
+        Slot::ScriptBase | Slot::ScriptSub | Slot::ScriptSup | Slot::EnvBody => {
+            Some(ContentMode::Math)
+        }
+        // `InfixLeft` / `InfixRight` are skipped by `canonicalize_content_slots`.
+        Slot::InfixLeft | Slot::InfixRight => None,
     }
-    relevant
+}
+
+fn mark_relevant_subtrees(
+    ast: &Ast,
+    node: NodeId,
+    mode: ContentMode,
+    tables: &LookupTables,
+    relevant: &mut FxHashSet<NodeId>,
+) -> bool {
+    let mut is_rel = is_node_relevant(ast.node(node), mode, tables);
+    ast.for_each_edge(node, |child, slot| {
+        if let Some(child_mode) = content_slot_mode(ast, node, slot)
+            && mark_relevant_subtrees(ast, child, child_mode, tables, relevant)
+        {
+            is_rel = true;
+        }
+    });
+    if is_rel {
+        relevant.insert(node);
+    }
+    is_rel
+}
+
+/// Whether `node` can be rewritten, unwrapped, or split at its own container/slot
+/// level in `mode`. Nodes for which this is `false` only need subtree recursion.
+fn is_direct_attribute_node(ast: &Ast, node: NodeId, mode: ContentMode) -> bool {
+    lookup_declarative_at(ast, node, mode).is_some()
+        || (lookup_prefix_at(ast, node, mode).is_some()
+            && mandatory_content_child(ast, node).is_some())
+        || lookup_prefix_for_content_mode(ast, node, mode).is_some()
+        || (mode == ContentMode::Math && has_boundary_whitespace(ast, node))
+        || (is_brace_group(ast, node) && has_direct_declarative_marker(ast, node, mode))
 }
 
 // ---------------------------------------------------------------------------
@@ -407,7 +517,7 @@ fn canonicalize_subtree(
     mode: ContentMode,
     recorder: &mut Pass<'_>,
 ) {
-    if recorder.irrelevant.contains(&node_id) {
+    if !recorder.is_relevant(node_id) {
         return;
     }
     let container_mode = match ast.node(node_id) {
@@ -429,72 +539,84 @@ fn canonicalize_content_slots(
     parent_mode: ContentMode,
     recorder: &mut Pass<'_>,
 ) {
-    let edges = ast.edges(parent);
-    for (child, slot) in edges {
-        if recorder.irrelevant.contains(&child) {
-            continue;
-        }
+    let base = recorder.edges_buf.len();
+    ast.push_edges(parent, &mut recorder.edges_buf);
+    let end = recorder.edges_buf.len();
+    for i in base..end {
+        let (child, slot) = recorder.edges_buf[i];
         let Some(child_mode) = content_slot_mode(ast, parent, slot) else {
             continue;
         };
-        let child_inherited = inherited_for_content_slot(inherited, parent_mode, child_mode, slot);
         if matches!(slot, Slot::EnvBody) {
-            canonicalize_subtree(ast, child, child_inherited, child_mode, recorder);
-            continue;
-        }
-        let placeholder = empty_implicit_group(ast, child_mode);
-        ast.replace_content_child(child, placeholder);
-
-        // A math argument such as the body of `\pmatrix` or `\substack` may be an
-        // alignment, so its own separators close declarative scopes.
-        let cells = matches!(slot, Slot::Argument(_))
-            && child_mode == ContentMode::Math
-            && is_brace_group(ast, child);
-        let collected = if cells {
-            let pairs =
-                collect_brace_group(ast, child, child_inherited, child_mode, true, recorder);
-            CollectResult {
-                pairs,
-                final_state: child_inherited,
+            if recorder.is_relevant(child) {
+                let child_inherited =
+                    inherited_for_content_slot(inherited, parent_mode, child_mode, slot);
+                canonicalize_subtree(ast, child, child_inherited, child_mode, recorder);
             }
         } else {
-            collect_single_detached_node(ast, child, child_inherited, child_mode, recorder)
-        };
-        let rebuilt = segment_and_emit(
-            ast,
-            collected.pairs,
-            child_inherited,
-            child_mode,
-            cells,
-            recorder,
-        );
-        let replacement = single_content_replacement(ast, rebuilt, child_mode);
-        ast.replace_content_child(placeholder, replacement);
-        ast.remove_detached(placeholder);
-    }
-}
-
-fn content_slot_mode(ast: &Ast, parent: NodeId, slot: Slot) -> Option<ContentMode> {
-    match slot {
-        Slot::Argument(index) => argument_content_mode(ast, parent, index),
-        Slot::EnvBody | Slot::ScriptBase | Slot::ScriptSub | Slot::ScriptSup => {
-            Some(ContentMode::Math)
+            canonicalize_content_slot(
+                ast,
+                child,
+                slot,
+                inherited,
+                parent_mode,
+                child_mode,
+                recorder,
+            );
         }
-        _ => None,
     }
+    recorder.edges_buf.truncate(base);
 }
 
-fn argument_content_mode(ast: &Ast, parent: NodeId, index: usize) -> Option<ContentMode> {
-    ast.arg_slots(parent)
-        .get(index)
-        .and_then(Option::as_ref)
-        .and_then(|argument| match argument.value {
-            ArgumentValue::MathContent(_) | ArgumentValue::OperatorNameContent(_) => {
-                Some(ContentMode::Math)
-            }
-            ArgumentValue::TextContent(_) => Some(ContentMode::Text),
-            _ => None,
-        })
+fn canonicalize_content_slot(
+    ast: &mut Ast,
+    child: NodeId,
+    slot: Slot,
+    inherited: AttributeState,
+    parent_mode: ContentMode,
+    child_mode: ContentMode,
+    recorder: &mut Pass<'_>,
+) {
+    if !recorder.is_relevant(child) {
+        return;
+    }
+    let child_inherited = inherited_for_content_slot(inherited, parent_mode, child_mode, slot);
+    if !is_direct_attribute_node(ast, child, child_mode) {
+        canonicalize_subtree(ast, child, child_inherited, child_mode, recorder);
+        return;
+    }
+    // A math argument such as the body of `\pmatrix` or `\substack` may be an
+    // alignment, so its own separators close declarative scopes.
+    let cells = matches!(slot, Slot::Argument(_))
+        && child_mode == ContentMode::Math
+        && is_brace_group(ast, child);
+
+    let placeholder = empty_implicit_group(ast, child_mode);
+    ast.replace_content_child(child, placeholder);
+
+    let collected = if cells {
+        let pairs = collect_brace_group(ast, child, child_inherited, child_mode, true, recorder);
+        CollectResult {
+            pairs,
+            final_state: child_inherited,
+        }
+    } else {
+        collect_single_detached_node(ast, child, child_inherited, child_mode, recorder)
+    };
+    let rebuilt = segment_and_emit(
+        ast,
+        collected.pairs,
+        child_inherited,
+        child_mode,
+        cells,
+        recorder,
+    );
+    let replacement = single_content_replacement(ast, rebuilt, child_mode, recorder);
+    if replacement != child {
+        recorder.mark_changed();
+    }
+    ast.replace_content_child(placeholder, replacement);
+    ast.remove_detached(placeholder);
 }
 
 fn inherited_for_child_mode(
@@ -531,11 +653,17 @@ fn slot_cannot_prove_math_style(slot: Slot) -> bool {
     !matches!(slot, Slot::ScriptBase | Slot::GroupChild(_))
 }
 
-fn single_content_replacement(ast: &mut Ast, mut nodes: Vec<NodeId>, mode: ContentMode) -> NodeId {
+fn single_content_replacement(
+    ast: &mut Ast,
+    mut nodes: Vec<NodeId>,
+    mode: ContentMode,
+    recorder: &mut Pass<'_>,
+) -> NodeId {
     if nodes.len() == 1 {
         return nodes.pop().expect("single content node should exist");
     }
 
+    recorder.mark_changed();
     ast.new_node(Node::Group {
         children: nodes,
         kind: GroupKind::Implicit,
@@ -559,15 +687,29 @@ fn process_container(
         return;
     }
 
+    if !ast
+        .children(container)
+        .iter()
+        .any(|&child| is_direct_attribute_node(ast, child, mode))
+    {
+        for index in 0..len {
+            let child = ast.children(container)[index];
+            canonicalize_subtree(ast, child, inherited, mode, recorder);
+        }
+        return;
+    }
+
     // Environment bodies may be alignments. The root is not a cell, so a
     // top-level `\\` keeps the running state.
     let cells = mode == ContentMode::Math && is_brace_group(ast, container);
+
     let env = ast
         .parent(container)
         .filter(|link| link.slot == Slot::EnvBody)
         .and_then(|_| ast.parent_id(container));
     let detached = ast.detach_children_range(container, 0..len);
-    let collected = collect_detached_children(ast, detached, inherited, mode, cells, env, recorder);
+    let collected =
+        collect_detached_children(ast, &detached, inherited, mode, cells, env, recorder);
     record_trailing_empty_segment(
         &collected.pairs,
         collected.final_state,
@@ -576,6 +718,9 @@ fn process_container(
         recorder,
     );
     let rebuilt = segment_and_emit(ast, collected.pairs, inherited, mode, cells, recorder);
+    if rebuilt != detached {
+        recorder.mark_changed();
+    }
     let removed = ast.replace_children(container, rebuilt);
     debug_assert!(removed.is_empty());
 }
@@ -587,14 +732,14 @@ fn process_container(
 /// environment whose body the list is, if any.
 fn collect_detached_children(
     ast: &mut Ast,
-    children: Vec<NodeId>,
+    children: &[NodeId],
     inherited: AttributeState,
     mode: ContentMode,
     cells: bool,
     env: Option<NodeId>,
     recorder: &mut Pass<'_>,
 ) -> CollectResult {
-    let mut pairs = Vec::new();
+    let mut pairs = Vec::with_capacity(children.len());
     let mut state = inherited;
 
     for (index, &child) in children.iter().enumerate() {
@@ -693,7 +838,7 @@ fn collect_detached_child(
     recorder: &mut Pass<'_>,
     pairs: &mut Vec<Pair>,
 ) {
-    if recorder.irrelevant.contains(&child) {
+    if !recorder.is_relevant(child) {
         pairs.push(Pair {
             state: *state,
             node: child,
@@ -758,6 +903,7 @@ fn consume_declarative(
     entry: &'static DeclarativeEntry,
     recorder: &mut Pass<'_>,
 ) {
+    recorder.mark_changed();
     recorder.lower_attributes(|report| report.record_consumed_declarative(entry.set));
     if !state.set(entry.set) {
         recorder.lower_attributes(|report| report.record_redundant_declarative(entry.set));
@@ -773,6 +919,7 @@ fn collect_prefix_body(
     mode: ContentMode,
     recorder: &mut Pass<'_>,
 ) -> Vec<Pair> {
+    recorder.mark_changed();
     recorder.lower_attributes(|report| report.record_consumed_prefix(entry.set));
     let mut body_state = previous;
     body_state.set(entry.set);
@@ -804,7 +951,7 @@ fn collect_prefix_body(
             let detached = ast.detach_children_range(body, 0..len);
             detach_body_from_prefix(ast, body, mode);
             let collected =
-                collect_detached_children(ast, detached, body_state, mode, false, None, recorder);
+                collect_detached_children(ast, &detached, body_state, mode, false, None, recorder);
             record_trailing_empty_segment(
                 &collected.pairs,
                 collected.final_state,
@@ -821,9 +968,15 @@ fn collect_prefix_body(
                     segment_and_emit(ast, collected.pairs, body_state, mode, false, recorder);
                 if absorbed {
                     // Rebuilding can move a declarative inside an overriding prefix.
-                    // Recollect that local result now, as the next invocation would.
+                    // Mark newly emitted nodes so recollection visits them.
+                    if let Some(relevant) = &mut recorder.relevant {
+                        let tables = lookup_tables();
+                        for &node in &nodes {
+                            mark_relevant_subtrees(ast, node, mode, tables, relevant);
+                        }
+                    }
                     let recollected = collect_detached_children(
-                        ast, nodes, body_state, mode, false, None, recorder,
+                        ast, &nodes, body_state, mode, false, None, recorder,
                     );
                     if !pairs_require_local_declarative(&recollected.pairs, body_state, mode) {
                         ast.remove_detached(body);
@@ -873,7 +1026,7 @@ fn collect_brace_group(
 
     let len = ast.children(group).len();
     let detached = ast.detach_children_range(group, 0..len);
-    let inner = collect_detached_children(ast, detached, inherited, mode, cells, None, recorder);
+    let inner = collect_detached_children(ast, &detached, inherited, mode, cells, None, recorder);
     record_trailing_empty_segment(&inner.pairs, inner.final_state, inherited, mode, recorder);
 
     // Keep the original braces when any carried effect still needs a declarative.
@@ -881,6 +1034,9 @@ fn collect_brace_group(
     // which is the state from before this group.
     if pairs_require_local_declarative(&inner.pairs, inherited, mode) {
         let nodes = segment_and_emit(ast, inner.pairs, inherited, mode, cells, recorder);
+        if nodes != detached {
+            recorder.mark_changed();
+        }
         let removed = ast.replace_children(group, nodes);
         debug_assert!(removed.is_empty());
         return vec![Pair {
@@ -890,11 +1046,15 @@ fn collect_brace_group(
     }
 
     if !inner.pairs.is_empty() && inner.pairs.iter().any(|pair| pair.state != inherited) {
+        recorder.mark_changed();
         ast.remove_detached(group);
         return inner.pairs;
     }
 
-    let nodes = inner.pairs.into_iter().map(|pair| pair.node).collect();
+    let nodes: Vec<NodeId> = inner.pairs.into_iter().map(|pair| pair.node).collect();
+    if nodes != detached {
+        recorder.mark_changed();
+    }
     let removed = ast.replace_children(group, nodes);
     debug_assert!(removed.is_empty());
     vec![Pair {
@@ -910,7 +1070,7 @@ fn collect_single_detached_node(
     mode: ContentMode,
     recorder: &mut Pass<'_>,
 ) -> CollectResult {
-    let mut pairs = Vec::new();
+    let mut pairs = Vec::with_capacity(1);
     let mut state = inherited;
     collect_detached_child(ast, node, &mut state, mode, recorder, &mut pairs);
     record_trailing_empty_segment(&pairs, state, inherited, mode, recorder);
@@ -1003,11 +1163,15 @@ fn state_requires_local_declarative(
     baseline: AttributeState,
     mode: ContentMode,
 ) -> bool {
-    state.diff_axes(baseline, mode).into_iter().any(|attr| {
-        state
-            .get(attr)
-            .is_some_and(|value| attribute_needs_local_declarative(attr, value, mode))
-    })
+    state
+        .diff_axes(baseline, mode)
+        .as_slice()
+        .iter()
+        .any(|&attr| {
+            state
+                .get(attr)
+                .is_some_and(|value| attribute_needs_local_declarative(attr, value, mode))
+        })
 }
 
 /// True when the canonical target for this value has no prefix wrapper.
@@ -1045,7 +1209,7 @@ fn segment_and_emit(
     cells: bool,
     recorder: &mut Pass<'_>,
 ) -> Vec<NodeId> {
-    let mut rebuilt = Vec::new();
+    let mut rebuilt = Vec::with_capacity(pairs.len());
     // `ambient` is the state actually in effect after the declarations emitted
     // so far. Only a declarative that stays outside later prefix wrappers
     // remains active for the next sibling. The next segment is diffed against
@@ -1070,6 +1234,20 @@ fn segment_and_emit(
             continue;
         }
         let segment_state = first.state;
+        if segment_state.diff_axes(ambient, mode).is_empty() {
+            // No attribute wrapper or declarative is emitted for this run;
+            // push nodes directly (splitting boundary whitespace in math mode).
+            push_ambient_node(ast, first.node, mode, recorder, &mut rebuilt);
+            while let Some(next) = iter.peek() {
+                if next.state != segment_state || is_cell_separator(ast, next) {
+                    break;
+                }
+                let node = iter.next().expect("peeked segment pair should exist").node;
+                push_ambient_node(ast, node, mode, recorder, &mut rebuilt);
+            }
+            continue;
+        }
+
         let mut segment = vec![first.node];
 
         while let Some(next) = iter.peek() {
@@ -1081,12 +1259,24 @@ fn segment_and_emit(
 
         let wrapped = wrap_with_canonical(ast, segment, segment_state, ambient, mode, recorder);
         rebuilt.extend(wrapped.nodes);
-        for (attr, value) in wrapped.outer_declaratives {
-            ambient.set(AttributeSet::new(attr, value));
-        }
+        ambient.merge_from(wrapped.outer_declaratives, mode);
     }
 
     rebuilt
+}
+
+fn push_ambient_node(
+    ast: &mut Ast,
+    node: NodeId,
+    mode: ContentMode,
+    recorder: &mut Pass<'_>,
+    out: &mut Vec<NodeId>,
+) {
+    if mode == ContentMode::Math && has_boundary_whitespace(ast, node) {
+        push_split_text_boundary_whitespace(ast, node, recorder, out);
+    } else {
+        out.push(node);
+    }
 }
 
 fn is_plain_whitespace_node(ast: &Ast, node: NodeId) -> bool {
@@ -1100,11 +1290,16 @@ fn segment_is_plain_whitespace(ast: &Ast, nodes: &[NodeId]) -> bool {
             .all(|node| is_plain_whitespace_node(ast, *node))
 }
 
-fn split_text_boundary_whitespace(ast: &mut Ast, node: NodeId) -> Vec<NodeId> {
+fn push_split_text_boundary_whitespace(
+    ast: &mut Ast,
+    node: NodeId,
+    recorder: &mut Pass<'_>,
+    out: &mut Vec<NodeId>,
+) {
     let Node::Text(text) = ast.node(node) else {
-        return vec![node];
+        out.push(node);
+        return;
     };
-    let text = text.clone();
     let leading_len = text.len() - text.trim_start_matches(char::is_whitespace).len();
     let trailing_start = text.trim_end_matches(char::is_whitespace).len();
     let has_middle = leading_len < trailing_start;
@@ -1112,37 +1307,45 @@ fn split_text_boundary_whitespace(ast: &mut Ast, node: NodeId) -> Vec<NodeId> {
     let has_trailing = trailing_start < text.len();
 
     if !has_middle || (!has_leading && !has_trailing) {
-        return vec![node];
+        out.push(node);
+        return;
     }
 
-    let mut out = Vec::new();
-    if has_leading {
-        out.push(ast.new_node(Node::Text(text[..leading_len].to_string())));
+    let leading = has_leading.then(|| text[..leading_len].to_string());
+    let middle = text[leading_len..trailing_start].to_string();
+    let trailing = has_trailing.then(|| text[trailing_start..].to_string());
+
+    recorder.mark_changed();
+    if let Some(leading) = leading {
+        out.push(ast.new_node(Node::Text(leading)));
     }
-    if has_middle {
-        out.push(ast.new_node(Node::Text(text[leading_len..trailing_start].to_string())));
-    }
-    if has_trailing {
-        out.push(ast.new_node(Node::Text(text[trailing_start..].to_string())));
+    out.push(ast.new_node(Node::Text(middle)));
+    if let Some(trailing) = trailing {
+        out.push(ast.new_node(Node::Text(trailing)));
     }
     ast.remove_detached(node);
-    out
 }
 
-fn split_whitespace_boundaries(ast: &mut Ast, nodes: Vec<NodeId>) -> Vec<Vec<NodeId>> {
+fn split_whitespace_boundaries(
+    ast: &mut Ast,
+    nodes: Vec<NodeId>,
+    recorder: &mut Pass<'_>,
+) -> Vec<Vec<NodeId>> {
     let mut out = Vec::new();
     let mut current = Vec::new();
+    let mut split_buf = Vec::with_capacity(3);
 
     for node in nodes {
-        for node in split_text_boundary_whitespace(ast, node) {
-            if is_plain_whitespace_node(ast, node) {
+        split_buf.clear();
+        push_split_text_boundary_whitespace(ast, node, recorder, &mut split_buf);
+        for &part in &split_buf {
+            if is_plain_whitespace_node(ast, part) {
                 if !current.is_empty() {
-                    out.push(current);
-                    current = Vec::new();
+                    out.push(std::mem::take(&mut current));
                 }
-                out.push(vec![node]);
+                out.push(vec![part]);
             } else {
-                current.push(node);
+                current.push(part);
             }
         }
     }
@@ -1156,7 +1359,7 @@ fn split_whitespace_boundaries(ast: &mut Ast, nodes: Vec<NodeId>) -> Vec<Vec<Nod
 
 struct WrappedSegment {
     nodes: Vec<NodeId>,
-    outer_declaratives: Vec<(Attr, AttrValue)>,
+    outer_declaratives: AttributeState,
 }
 
 fn wrap_with_canonical(
@@ -1172,20 +1375,24 @@ fn wrap_with_canonical(
         "segment_and_emit must not call wrap_with_canonical with an empty segment"
     );
 
-    if matches!(mode, ContentMode::Text) {
+    if matches!(mode, ContentMode::Text)
+        || !children
+            .iter()
+            .any(|&id| is_plain_whitespace_node(ast, id) || has_boundary_whitespace(ast, id))
+    {
         return wrap_segment_with_canonical(ast, children, state, inherited, mode, recorder);
     }
 
-    let mut rebuilt = Vec::new();
-    let mut outer_declaratives = Vec::new();
-    for run in split_whitespace_boundaries(ast, children) {
+    let mut rebuilt = Vec::with_capacity(children.len());
+    let mut outer_declaratives = AttributeState::default();
+    for run in split_whitespace_boundaries(ast, children, recorder) {
         if segment_is_plain_whitespace(ast, &run) {
             rebuilt.extend(run);
             continue;
         }
         let wrapped = wrap_segment_with_canonical(ast, run, state, inherited, mode, recorder);
         rebuilt.extend(wrapped.nodes);
-        outer_declaratives.extend(wrapped.outer_declaratives);
+        outer_declaratives.merge_from(wrapped.outer_declaratives, mode);
     }
     WrappedSegment {
         nodes: rebuilt,
@@ -1205,8 +1412,8 @@ fn wrap_segment_with_canonical(
     mode: ContentMode,
     recorder: &mut Pass<'_>,
 ) -> WrappedSegment {
-    let mut outer_declaratives = Vec::new();
-    for attr in emit_axis_order(state, inherited, mode) {
+    let mut outer_declaratives = AttributeState::default();
+    for &attr in emit_axis_order(state, inherited, mode).as_slice() {
         let Some(value) = state.get(attr) else {
             continue;
         };
@@ -1230,21 +1437,26 @@ fn wrap_segment_with_canonical(
                 }
                 let len = ast.children(group).len();
                 if len > 1 {
-                    if let Some(Node::Group { kind, .. }) = ast.node_opt_mut(group) {
+                    if let Some(Node::Group { kind, .. }) = ast.node_opt_mut(group)
+                        && *kind != GroupKind::Implicit
+                    {
                         *kind = GroupKind::Implicit;
+                        recorder.mark_changed();
                     }
                     break;
                 }
+                recorder.mark_changed();
                 children = ast.detach_children_range(group, 0..len);
                 ast.remove_detached(group);
             }
             if children.is_empty() {
                 return WrappedSegment {
                     nodes: Vec::new(),
-                    outer_declaratives: Vec::new(),
+                    outer_declaratives: AttributeState::default(),
                 };
             }
-            outer_declaratives.clear();
+            outer_declaratives = AttributeState::default();
+            recorder.mark_changed();
             let group = if children.len() == 1 {
                 children.pop().expect("single content node should exist")
             } else {
@@ -1264,11 +1476,12 @@ fn wrap_segment_with_canonical(
             });
             children = vec![command];
         } else {
+            recorder.mark_changed();
             children.insert(0, new_declarative_node(ast, target.declarative));
             recorder.lower_attributes(|report| {
                 report.record_emitted_declarative(AttributeSet::new(attr, value));
             });
-            outer_declaratives.push((attr, value));
+            outer_declaratives.set(AttributeSet::new(attr, value));
         }
     }
 
@@ -1282,15 +1495,15 @@ fn emit_axis_order(
     state: AttributeState,
     inherited: AttributeState,
     mode: ContentMode,
-) -> Vec<Attr> {
+) -> AxisList {
     let mut axes = state.diff_axes(inherited, mode);
     // Size is emitted before a math font so the font prefix wraps it
     // (`\mathbf{\large x}`). Text size stays last, so it remains outside
     // series and family prefixes. The wrapper returns the declarations that
     // remain outside those prefixes, so callers update the ambient state from
     // the actual emitted structure.
-    if matches!(mode, ContentMode::Math) && axes == [Attr::MathFont, Attr::MathSize] {
-        axes.swap(0, 1);
+    if matches!(mode, ContentMode::Math) && axes.as_slice() == [Attr::MathFont, Attr::MathSize] {
+        axes.axes.swap(0, 1);
     }
     axes
 }
@@ -1298,6 +1511,80 @@ fn emit_axis_order(
 // ---------------------------------------------------------------------------
 // Lookups
 // ---------------------------------------------------------------------------
+
+struct ModeIndexedEntry<T: 'static> {
+    math: Option<&'static T>,
+    text: Option<&'static T>,
+}
+
+impl<T: 'static> Default for ModeIndexedEntry<T> {
+    fn default() -> Self {
+        Self {
+            math: None,
+            text: None,
+        }
+    }
+}
+
+impl<T: 'static> ModeIndexedEntry<T> {
+    fn get(&self, mode: ContentMode) -> Option<&'static T> {
+        match mode {
+            ContentMode::Math => self.math,
+            ContentMode::Text => self.text,
+        }
+    }
+
+    fn set(&mut self, mode: ContentMode, entry: &'static T) {
+        let slot = match mode {
+            ContentMode::Math => &mut self.math,
+            ContentMode::Text => &mut self.text,
+        };
+        debug_assert!(slot.is_none());
+        *slot = Some(entry);
+    }
+}
+
+struct LookupTables {
+    declaratives: FxHashMap<&'static str, ModeIndexedEntry<DeclarativeEntry>>,
+    prefixes: FxHashMap<&'static str, ModeIndexedEntry<PrefixEntry>>,
+    targets: FxHashMap<AttributeSet, &'static generated::AttributeTargetEntry>,
+}
+
+fn lookup_tables() -> &'static LookupTables {
+    static TABLES: OnceLock<LookupTables> = OnceLock::new();
+    TABLES.get_or_init(|| {
+        let mut declaratives: FxHashMap<&'static str, ModeIndexedEntry<DeclarativeEntry>> =
+            FxHashMap::default();
+        for entry in generated::DECLARATIVES {
+            declaratives
+                .entry(entry.name)
+                .or_default()
+                .set(entry.allowed_mode, entry);
+        }
+
+        let mut prefixes: FxHashMap<&'static str, ModeIndexedEntry<PrefixEntry>> =
+            FxHashMap::default();
+        for entry in generated::PREFIXES {
+            prefixes
+                .entry(entry.name)
+                .or_default()
+                .set(entry.allowed_mode, entry);
+        }
+
+        let mut targets: FxHashMap<AttributeSet, &'static generated::AttributeTargetEntry> =
+            FxHashMap::default();
+        for entry in generated::ATTRIBUTE_TARGETS {
+            let prev = targets.insert(AttributeSet::new(entry.attr, entry.value), entry);
+            debug_assert!(prev.is_none());
+        }
+
+        LookupTables {
+            declaratives,
+            prefixes,
+            targets,
+        }
+    })
+}
 
 fn lookup_declarative_at(
     ast: &Ast,
@@ -1331,18 +1618,20 @@ pub(crate) fn prefix_names() -> impl Iterator<Item = &'static str> {
 }
 
 fn lookup_declarative(mode: ContentMode, name: &str) -> Option<&'static DeclarativeEntry> {
-    generated::DECLARATIVES
-        .iter()
-        .find(|entry| entry.allowed_mode == mode && entry.name == name)
+    lookup_tables()
+        .declaratives
+        .get(name)
+        .and_then(|slot| slot.get(mode))
 }
 
 fn lookup_prefix_at(ast: &Ast, node_id: NodeId, mode: ContentMode) -> Option<&'static PrefixEntry> {
     let Node::Command { name, .. } = ast.node(node_id) else {
         return None;
     };
-    generated::PREFIXES
-        .iter()
-        .find(|entry| entry.allowed_mode == mode && entry.name == name)
+    lookup_tables()
+        .prefixes
+        .get(name.as_str())
+        .and_then(|slot| slot.get(mode))
 }
 
 fn lookup_prefix_for_content_mode(
@@ -1378,9 +1667,9 @@ fn mandatory_content_child_mode(ast: &Ast, node: NodeId) -> Option<ContentMode> 
 }
 
 fn lookup_target(attr: Attr, value: AttrValue, mode: ContentMode) -> Option<&'static ModeTarget> {
-    generated::ATTRIBUTE_TARGETS
-        .iter()
-        .find(|entry| entry.attr == attr && entry.value == value)
+    lookup_tables()
+        .targets
+        .get(&AttributeSet::new(attr, value))
         .and_then(|entry| match mode {
             ContentMode::Math => entry.math.as_ref(),
             ContentMode::Text => entry.text.as_ref(),
@@ -1423,25 +1712,70 @@ mod tests {
             };
             let mut fast = Ast::from_syntax_root(&document.to_syntax());
             let mut full = fast.clone();
-            run(
+            let before = fast.to_syntax_root();
+            let mut fast_recorder = ReportRecorder::collecting();
+            let changed = run(
                 &mut fast,
                 &parser,
                 &LowerAttributesConfig::ENABLED,
-                &mut ReportRecorder::disabled(),
+                &mut fast_recorder,
             );
             let root = full.root();
+            let mut full_recorder = ReportRecorder::collecting();
             canonicalize_subtree(
                 &mut full,
                 root,
                 AttributeState::default(),
                 ContentMode::Math,
                 &mut Pass {
-                    irrelevant: HashSet::new(),
+                    relevant: None,
                     parse_ctx: &parser,
-                    recorder: &mut ReportRecorder::disabled(),
+                    recorder: &mut full_recorder,
+                    edges_buf: Vec::new(),
+                    changed: false,
                 },
             );
-            assert_eq!(fast.to_syntax_root(), full.to_syntax_root(), "{source}");
+            let fast_after = fast.to_syntax_root();
+            assert_eq!(fast_after, full.to_syntax_root(), "{source}");
+            assert_eq!(
+                fast_recorder.into_report().lower_attributes,
+                full_recorder.into_report().lower_attributes,
+                "report mismatch for {source}"
+            );
+            assert!(
+                changed || before == fast_after,
+                "returned false despite mutating AST for {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn run_returns_false_on_unrelated_trees() {
+        use super::*;
+        let parser =
+            crate::parse::ParseContext::from_packages(&["base", "ams", "physics", "textmacros"]);
+        for source in [
+            r"x + y",
+            r"\frac{a}{b}",
+            r"x_i^2 + e^k",
+            r"\sum_{i=1}^n x_i",
+            r"\text{ and }",
+            r"\begin{array}{cc} a & b \end{array}",
+        ] {
+            let (document, _) = parser
+                .parse(source, &crate::parse::ParseConfig::default())
+                .try_into_document()
+                .unwrap_or_else(|_| panic!("should parse: {source}"));
+            let mut ast = Ast::from_syntax_root(&document.to_syntax());
+            let before = ast.to_syntax_root();
+            let changed = run(
+                &mut ast,
+                &parser,
+                &LowerAttributesConfig::ENABLED,
+                &mut ReportRecorder::disabled(),
+            );
+            assert!(!changed, "expected no change for unrelated {source}");
+            assert_eq!(ast.to_syntax_root(), before, "{source}");
         }
     }
 
@@ -1488,12 +1822,12 @@ mod tests {
         });
 
         assert_eq!(
-            state.diff_axes(inherited, ContentMode::Math),
-            vec![Attr::MathFont, Attr::MathStyle]
+            state.diff_axes(inherited, ContentMode::Math).as_slice(),
+            &[Attr::MathFont, Attr::MathStyle]
         );
         assert_eq!(
-            state.diff_axes(inherited, ContentMode::Text),
-            vec![Attr::TextShape, Attr::TextSeries, Attr::TextFamily]
+            state.diff_axes(inherited, ContentMode::Text).as_slice(),
+            &[Attr::TextShape, Attr::TextSeries, Attr::TextFamily]
         );
     }
 

@@ -53,26 +53,21 @@ impl ReportRecorder {
         let Some(report) = &mut self.report else {
             return;
         };
-        report.warnings = ast
-            .find_all(ast.root(), |node| {
-                matches!(
-                    node,
-                    Node::Command { known: false, .. } | Node::Environment { known: false, .. }
-                )
-            })
-            .into_iter()
-            .map(|id| match ast.node(id) {
-                Node::Command { name, .. } => {
-                    TransformWarning::UnknownCommand { name: name.clone() }
-                }
-                Node::Environment { name, .. } => {
-                    TransformWarning::UnknownEnvironment { name: name.clone() }
-                }
-                _ => unreachable!("find_all selects unknown commands and environments"),
-            })
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
+        let mut warnings = BTreeSet::new();
+        ast.visit_preorder(ast.root(), |id| match ast.node(id) {
+            Node::Command {
+                name, known: false, ..
+            } => {
+                warnings.insert(TransformWarning::UnknownCommand { name: name.clone() });
+            }
+            Node::Environment {
+                name, known: false, ..
+            } => {
+                warnings.insert(TransformWarning::UnknownEnvironment { name: name.clone() });
+            }
+            _ => {}
+        });
+        report.warnings = warnings.into_iter().collect();
     }
 
     /// Collector for a call that does not request a report.

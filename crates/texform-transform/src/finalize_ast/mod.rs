@@ -43,7 +43,14 @@ pub fn run(ast: &mut Ast, config: &FinalizeAstConfig, recorder: &mut ReportRecor
         return false;
     }
 
-    let changed = visit(ast, ast.root(), recorder);
+    // FinalizeAst only merges adjacent `Prime` nodes in math sequences and
+    // normalizes `Text` nodes. Skip the mutable walk when neither can fire.
+    if !needs_finalize(ast, ast.root()) {
+        return false;
+    }
+
+    let mut edges_buf = Vec::new();
+    let changed = visit(ast, ast.root(), recorder, &mut edges_buf);
     // Debug-only structural contract check. `assert_invariants` is an
     // O(n * branching) full-tree sweep, so running it on every transform made
     // long, wide formulas quadratic in release. The rewrite scheduler gates its
@@ -53,30 +60,67 @@ pub fn run(ast: &mut Ast, config: &FinalizeAstConfig, recorder: &mut ReportRecor
     changed
 }
 
-fn visit(ast: &mut Ast, node: NodeId, recorder: &mut ReportRecorder) -> bool {
+fn needs_finalize(ast: &Ast, root: NodeId) -> bool {
+    ast.try_visit_preorder(root, &mut |id| match ast.node(id) {
+        Node::Text(_) => std::ops::ControlFlow::Break(()),
+        Node::Root {
+            mode: ContentMode::Math,
+            children,
+        }
+        | Node::Group {
+            mode: ContentMode::Math,
+            children,
+            ..
+        } if has_adjacent_primes(ast, children) => std::ops::ControlFlow::Break(()),
+        _ => std::ops::ControlFlow::Continue(()),
+    })
+    .is_break()
+}
+
+fn has_adjacent_primes(ast: &Ast, children: &[NodeId]) -> bool {
+    let mut prev_prime = false;
+    for &child in children {
+        let is_prime = matches!(ast.node(child), Node::Prime { .. });
+        if prev_prime && is_prime {
+            return true;
+        }
+        prev_prime = is_prime;
+    }
+    false
+}
+
+fn visit(
+    ast: &mut Ast,
+    node: NodeId,
+    recorder: &mut ReportRecorder,
+    edges_buf: &mut Vec<(NodeId, Slot)>,
+) -> bool {
     let mut changed = false;
     if is_math_sequence_container(ast, node) {
         changed |= merge_adjacent_primes(ast, node, recorder);
     }
-    if is_text_sequence_container(ast, node) {
+    let skip_text_children = if is_text_sequence_container(ast, node) {
         changed |= normalize_text_sequences(ast, node, recorder);
-        for child in ast.children(node).to_vec() {
-            if ast.contains(child) && !matches!(ast.node(child), Node::Text(_)) {
-                changed |= visit(ast, child, recorder);
-            }
-        }
-        return changed;
-    }
+        true
+    } else {
+        false
+    };
 
     if matches!(ast.node(node), Node::Text(_)) && is_text_content_argument(ast, node) {
         return normalize_text_content_slot(ast, node, recorder);
     }
 
-    for (child, _) in ast.edges(node) {
-        if ast.contains(child) {
-            changed |= visit(ast, child, recorder);
+    let base = edges_buf.len();
+    ast.push_edges(node, edges_buf);
+    let end = edges_buf.len();
+    for i in base..end {
+        let (child, _) = edges_buf[i];
+        if ast.contains(child) && !(skip_text_children && matches!(ast.node(child), Node::Text(_)))
+        {
+            changed |= visit(ast, child, recorder, edges_buf);
         }
     }
+    edges_buf.truncate(base);
     changed
 }
 
@@ -130,6 +174,9 @@ fn is_text_content_argument(ast: &Ast, node: NodeId) -> bool {
 }
 
 fn merge_adjacent_primes(ast: &mut Ast, parent: NodeId, recorder: &mut ReportRecorder) -> bool {
+    if !has_adjacent_primes(ast, ast.children(parent)) {
+        return false;
+    }
     let children = ast.children(parent).to_vec();
     let mut next_children = Vec::with_capacity(children.len());
     let mut index = 0;
@@ -175,7 +222,43 @@ fn collect_prime_run(ast: &Ast, children: &[NodeId], start: usize) -> Option<(us
     (index > start + 1).then_some((count, index))
 }
 
+fn text_sequence_needs_normalization(ast: &Ast, children: &[NodeId]) -> bool {
+    let mut prev_text = false;
+    for &child in children {
+        if let Node::Text(text) = ast.node(child) {
+            if prev_text || !is_canonical_nonempty_text(text) {
+                return true;
+            }
+            prev_text = true;
+        } else {
+            prev_text = false;
+        }
+    }
+    false
+}
+
+fn is_canonical_nonempty_text(text: &str) -> bool {
+    if text.is_empty() {
+        return false;
+    }
+    let mut prev_space = false;
+    for ch in text.chars() {
+        if is_whitespace_char(ch) {
+            if ch != ' ' || prev_space {
+                return false;
+            }
+            prev_space = true;
+        } else {
+            prev_space = false;
+        }
+    }
+    true
+}
+
 fn normalize_text_sequences(ast: &mut Ast, parent: NodeId, recorder: &mut ReportRecorder) -> bool {
+    if !text_sequence_needs_normalization(ast, ast.children(parent)) {
+        return false;
+    }
     let children = ast.children(parent).to_vec();
     let mut next_children = Vec::with_capacity(children.len());
     let mut index = 0;
@@ -246,6 +329,7 @@ fn collect_text_run(ast: &Ast, children: &[NodeId], start: usize) -> Option<(usi
 
 fn normalize_text_content_slot(ast: &mut Ast, node: NodeId, recorder: &mut ReportRecorder) -> bool {
     let text = match ast.node(node) {
+        Node::Text(text) if is_canonical_nonempty_text(text) => return false,
         Node::Text(text) => text.clone(),
         _ => return false,
     };

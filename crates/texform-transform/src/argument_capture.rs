@@ -159,9 +159,15 @@ pub(crate) fn separate_boundaries<'r>(
     catalog: impl Fn(ContentMode) -> &'r Catalog + Copy,
 ) -> Vec<NodeId> {
     let mut separated = Vec::new();
-    for env in ast.find_all(ast.root(), |node| matches!(node, Node::Environment { .. })) {
+    let mut envs = Vec::new();
+    ast.visit_preorder(ast.root(), |id| {
+        if matches!(ast.node(id), Node::Environment { .. }) {
+            envs.push(id);
+        }
+    });
+    for env in envs {
         let Node::Environment { body, .. } = ast.node(env) else {
-            unreachable!("find_all returned an environment");
+            unreachable!("preorder scan collected only environments");
         };
         let body = *body;
         if environment_captures(ast, catalog, env, ast.children(body).iter()) {
@@ -171,9 +177,26 @@ pub(crate) fn separate_boundaries<'r>(
             separated.push(separator);
         }
     }
-    for sequence in ast.find_all(ast.root(), |node| {
-        matches!(node, Node::Root { .. } | Node::Group { .. })
-    }) {
+    let mut sequences = Vec::new();
+    ast.visit_preorder(ast.root(), |id| {
+        let children = match ast.node(id) {
+            Node::Root { children, .. } | Node::Group { children, .. } => children,
+            _ => return,
+        };
+        // A boundary hazard requires a command or declarative followed by at
+        // least one sibling in the same sequence.
+        if children.len() >= 2
+            && children[..children.len() - 1].iter().any(|&child| {
+                matches!(
+                    ast.node(child),
+                    Node::Command { .. } | Node::Declarative { .. }
+                )
+            })
+        {
+            sequences.push(id);
+        }
+    });
+    for sequence in sequences {
         separate_sequence(ast, catalog, sequence, &mut separated);
     }
     separated

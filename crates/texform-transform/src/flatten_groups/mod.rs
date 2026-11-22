@@ -275,7 +275,42 @@ pub fn run(
     guards: &FlattenGroupsGuards,
     recorder: &mut ReportRecorder,
 ) -> bool {
-    visit(ast, ast.root(), false, parse_ctx, guards, recorder).changed
+    // Only explicit and implicit brace groups can ever be unwrapped or record
+    // guard hits. Skip the full walk when the tree has none.
+    if !has_any_brace_group(ast, ast.root()) {
+        return false;
+    }
+
+    let mut edges_buf = Vec::new();
+    visit(
+        ast,
+        ast.root(),
+        false,
+        parse_ctx,
+        guards,
+        recorder,
+        &mut edges_buf,
+    )
+    .changed
+}
+
+fn has_any_brace_group(ast: &Ast, node: NodeId) -> bool {
+    if matches!(
+        ast.node(node),
+        Node::Group {
+            kind: GroupKind::Explicit | GroupKind::Implicit,
+            ..
+        }
+    ) {
+        return true;
+    }
+    let mut found = false;
+    ast.for_each_child(node, |child| {
+        if !found && has_any_brace_group(ast, child) {
+            found = true;
+        }
+    });
+    found
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -286,6 +321,16 @@ struct SubtreeFlags {
     has_delimited: bool,
 }
 
+impl SubtreeFlags {
+    #[inline]
+    fn merge(&mut self, other: Self) {
+        self.changed |= other.changed;
+        self.has_declarative |= other.has_declarative;
+        self.has_infix |= other.has_infix;
+        self.has_delimited |= other.has_delimited;
+    }
+}
+
 fn visit(
     ast: &mut Ast,
     node: NodeId,
@@ -293,38 +338,55 @@ fn visit(
     parse_ctx: &ParseContext,
     guards: &FlattenGroupsGuards,
     recorder: &mut ReportRecorder,
+    edges_buf: &mut Vec<(NodeId, Slot)>,
 ) -> SubtreeFlags {
-    let edges = ast.edges(node);
-    let mut flags = SubtreeFlags {
-        changed: false,
-        has_declarative: matches!(ast.node(node), Node::Declarative { .. }),
-        has_infix: matches!(ast.node(node), Node::Infix { .. }),
-        has_delimited: matches!(
-            ast.node(node),
-            Node::Group {
-                kind: GroupKind::Delimited { .. },
-                ..
-            }
-        ),
+    let mut flags = SubtreeFlags::default();
+    let is_brace_group = match ast.node(node) {
+        Node::Group {
+            kind: GroupKind::Explicit | GroupKind::Implicit,
+            ..
+        } => true,
+        Node::Group {
+            kind: GroupKind::Delimited { .. },
+            ..
+        } => {
+            flags.has_delimited = true;
+            false
+        }
+        Node::Declarative { .. } => {
+            flags.has_declarative = true;
+            false
+        }
+        Node::Infix { .. } => {
+            flags.has_infix = true;
+            false
+        }
+        _ => false,
     };
-    for (child, slot) in edges {
+
+    // Snapshot edges into the shared stack buffer because flattening a child
+    // group can splice `node`'s child list in place.
+    let base = edges_buf.len();
+    ast.push_edges(node, edges_buf);
+    let end = edges_buf.len();
+    for i in base..end {
+        let (child, slot) = edges_buf[i];
         if ast.contains(child) {
-            let child_flags = visit(
+            let child_in_env_body = in_env_body || matches!(slot, Slot::EnvBody);
+            flags.merge(visit(
                 ast,
                 child,
-                in_env_body || slot == Slot::EnvBody,
+                child_in_env_body,
                 parse_ctx,
                 guards,
                 recorder,
-            );
-            flags.changed |= child_flags.changed;
-            flags.has_declarative |= child_flags.has_declarative;
-            flags.has_infix |= child_flags.has_infix;
-            flags.has_delimited |= child_flags.has_delimited;
+                edges_buf,
+            ));
         }
     }
+    edges_buf.truncate(base);
 
-    if ast.contains(node) {
+    if is_brace_group && ast.contains(node) {
         flags.changed |= try_unwrap(ast, node, flags, in_env_body, parse_ctx, guards, recorder);
     }
 
@@ -340,17 +402,14 @@ fn try_unwrap(
     guards: &FlattenGroupsGuards,
     recorder: &mut ReportRecorder,
 ) -> bool {
-    let (kind, mode, child_count) = match ast.node(node) {
+    let (mode, child_count) = match ast.node(node) {
         Node::Group {
-            kind,
+            kind: GroupKind::Explicit | GroupKind::Implicit,
             mode,
             children,
-        } => (kind.clone(), *mode, children.len()),
+        } => (*mode, children.len()),
         _ => return false,
     };
-    if !matches!(kind, GroupKind::Explicit | GroupKind::Implicit) {
-        return false;
-    }
     let Some(link) = ast.parent(node) else {
         return false;
     };
@@ -782,9 +841,13 @@ fn subtree_has_scripted(ast: &Ast, node: NodeId) -> bool {
     if matches!(ast.node(node), Node::Scripted { .. }) {
         return true;
     }
-    ast.edges(node)
-        .into_iter()
-        .any(|(child, _)| subtree_has_scripted(ast, child))
+    let mut found = false;
+    ast.for_each_child(node, |child| {
+        if !found && subtree_has_scripted(ast, child) {
+            found = true;
+        }
+    });
+    found
 }
 
 fn context_mode(ast: &Ast, link: ParentLink) -> Option<ContentMode> {
