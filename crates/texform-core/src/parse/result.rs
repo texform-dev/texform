@@ -9,6 +9,9 @@ use crate::document::Document;
 /// Each variant labels why a diagnostic was emitted, letting callers branch on
 /// the cause without parsing the human-readable message. The kebab-case form
 /// produced by [`ParseDiagnosticKind::as_str`] is the stable wire value.
+// Intentionally exhaustive (no `#[non_exhaustive]`): exported as a closed union
+// in Python (`Literal[...]`) and TypeScript, so adding `#[non_exhaustive]` would
+// break Rust exhaustiveness without making host bindings open.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 #[serde(rename_all = "kebab-case")]
@@ -23,6 +26,9 @@ pub enum ParseDiagnosticKind {
     /// An unescaped `%` started a comment that swallowed the rest of an
     /// argument, leaving it unclosed.
     CommentTruncatedArgument,
+    /// A second superscript, subscript, or conflicting prime was attached to the
+    /// same base without grouping braces.
+    DuplicateScript,
     /// An environment was used in a content mode it is not allowed in.
     EnvironmentModeError,
     /// An `\end{...}` name did not match the opening `\begin{...}`.
@@ -34,16 +40,22 @@ pub enum ParseDiagnosticKind {
     LeftRightDelimiter,
     /// Group nesting exceeded the configured maximum depth.
     MaxGroupDepthExceeded,
-    /// A low-level expected-vs-found mismatch with no more specific category.
-    RawExpectedFound,
+    /// Global parser recursion depth exceeded the internal safety limit.
+    MaxRecursionDepthExceeded,
+    /// A superscript (`^`) or subscript (`_`) lacked a following operand.
+    MissingScriptOperand,
     /// Sub/superscript syntax appeared in text mode, where it is not allowed.
     TextScriptError,
     /// An environment was opened but its closing `\end{...}` was missing.
     UnclosedEnvironment,
+    /// An explicit `{ ... }` group reached end of input without a closing `}`.
+    UnclosedGroup,
     /// An inline math segment (`$ ... $`) was opened but never closed.
     UnclosedInlineMath,
     /// A math-shift `$` appeared where it is not expected inside a math formula.
     UnexpectedMathShift,
+    /// A token or end of input did not match what the grammar expected.
+    UnexpectedToken,
     /// A command name is not present in the knowledge base, under a config that
     /// rejects unknown names.
     UnknownCommand,
@@ -59,16 +71,20 @@ impl ParseDiagnosticKind {
             ParseDiagnosticKind::ArgumentValidation => "argument-validation",
             ParseDiagnosticKind::CommandModeError => "command-mode-error",
             ParseDiagnosticKind::CommentTruncatedArgument => "comment-truncated-argument",
+            ParseDiagnosticKind::DuplicateScript => "duplicate-script",
             ParseDiagnosticKind::EnvironmentModeError => "environment-mode-error",
             ParseDiagnosticKind::EnvironmentNameMismatch => "environment-name-mismatch",
             ParseDiagnosticKind::InvalidCharacter => "invalid-character",
             ParseDiagnosticKind::LeftRightDelimiter => "left-right-delimiter",
             ParseDiagnosticKind::MaxGroupDepthExceeded => "max-group-depth-exceeded",
-            ParseDiagnosticKind::RawExpectedFound => "raw-expected-found",
+            ParseDiagnosticKind::MaxRecursionDepthExceeded => "max-recursion-depth-exceeded",
+            ParseDiagnosticKind::MissingScriptOperand => "missing-script-operand",
             ParseDiagnosticKind::TextScriptError => "text-script-error",
             ParseDiagnosticKind::UnclosedEnvironment => "unclosed-environment",
+            ParseDiagnosticKind::UnclosedGroup => "unclosed-group",
             ParseDiagnosticKind::UnclosedInlineMath => "unclosed-inline-math",
             ParseDiagnosticKind::UnexpectedMathShift => "unexpected-math-shift",
+            ParseDiagnosticKind::UnexpectedToken => "unexpected-token",
             ParseDiagnosticKind::UnknownCommand => "unknown-command",
             ParseDiagnosticKind::UnknownEnvironment => "unknown-environment",
         }
@@ -187,8 +203,8 @@ impl ParseResult {
 #[cfg_attr(feature = "tsify", derive(tsify_next::Tsify))]
 #[non_exhaustive]
 pub struct ParseDiagnostic {
-    /// Stable machine-readable diagnostic kind, when available
-    pub kind: Option<ParseDiagnosticKind>,
+    /// Stable machine-readable diagnostic kind
+    pub kind: ParseDiagnosticKind,
     /// Human-readable error description
     pub message: String,
     /// Source location of the error
@@ -203,6 +219,7 @@ pub struct ParseDiagnostic {
 
 impl ParseDiagnostic {
     pub fn new(
+        kind: ParseDiagnosticKind,
         message: impl Into<String>,
         span: Span,
         expected: Vec<String>,
@@ -210,7 +227,7 @@ impl ParseDiagnostic {
         contexts: Vec<ParseDiagnosticContext>,
     ) -> Self {
         Self {
-            kind: None,
+            kind,
             message: message.into(),
             span,
             expected,

@@ -50,7 +50,7 @@ fn build_diagnostic(
     found: Option<String>,
 ) -> ParseDiagnostic {
     ParseDiagnostic {
-        kind: Some(kind),
+        kind,
         message,
         span,
         expected,
@@ -246,11 +246,11 @@ pub(crate) fn max_group_depth_exceeded(max_depth: usize, span: Span) -> ParseDia
     )
 }
 
-/// Construct a [`ParseDiagnosticKind::MaxGroupDepthExceeded`] diagnostic for
-/// global parser recursion-depth overflow.
+/// Construct a [`ParseDiagnosticKind::MaxRecursionDepthExceeded`] diagnostic
+/// for global parser recursion-depth overflow.
 pub(crate) fn max_recursion_depth_exceeded(max_depth: usize, span: Span) -> ParseDiagnostic {
     build_diagnostic(
-        ParseDiagnosticKind::MaxGroupDepthExceeded,
+        ParseDiagnosticKind::MaxRecursionDepthExceeded,
         format!("max recursion depth ({max_depth}) exceeded"),
         span,
         Vec::new(),
@@ -258,21 +258,20 @@ pub(crate) fn max_recursion_depth_exceeded(max_depth: usize, span: Span) -> Pars
     )
 }
 
-/// Construct an uncategorized (`kind: None`) custom parser diagnostic (e.g.
-/// double subscript / double exponent errors).
-pub(crate) fn custom_error(message: impl Into<String>, span: Span) -> ParseDiagnostic {
-    ParseDiagnostic {
-        kind: None,
-        message: message.into(),
+/// Construct a [`ParseDiagnosticKind::DuplicateScript`] diagnostic for a double
+/// superscript, double subscript, or conflicting prime.
+pub(crate) fn duplicate_script(message: impl Into<String>, span: Span) -> ParseDiagnostic {
+    build_diagnostic(
+        ParseDiagnosticKind::DuplicateScript,
+        message.into(),
         span,
-        expected: Vec::new(),
-        found: None,
-        contexts: Vec::new(),
-    }
+        Vec::new(),
+        None,
+    )
 }
 
-/// Construct a generic [`ParseDiagnosticKind::RawExpectedFound`] diagnostic.
-pub(crate) fn raw_expected_found(
+/// Construct a generic [`ParseDiagnosticKind::UnexpectedToken`] diagnostic.
+pub(crate) fn unexpected_token(
     span: Span,
     expected: &[&str],
     found: Option<Token<'_>>,
@@ -292,7 +291,7 @@ pub(crate) fn raw_expected_found(
         }
     };
     build_diagnostic(
-        ParseDiagnosticKind::RawExpectedFound,
+        ParseDiagnosticKind::UnexpectedToken,
         message,
         span,
         expected_vec,
@@ -300,7 +299,7 @@ pub(crate) fn raw_expected_found(
     )
 }
 
-/// Construct a [`ParseDiagnosticKind::RawExpectedFound`] diagnostic for a
+/// Construct a [`ParseDiagnosticKind::MissingScriptOperand`] diagnostic for a
 /// superscript (`^`) or subscript (`_`) missing its operand.
 pub(crate) fn missing_script_content(
     is_superscript: bool,
@@ -313,7 +312,7 @@ pub(crate) fn missing_script_content(
         ("Missing subscript content", "subscript content")
     };
     build_diagnostic(
-        ParseDiagnosticKind::RawExpectedFound,
+        ParseDiagnosticKind::MissingScriptOperand,
         message.to_string(),
         span,
         vec![expected.to_string()],
@@ -321,11 +320,11 @@ pub(crate) fn missing_script_content(
     )
 }
 
-/// Construct a [`ParseDiagnosticKind::RawExpectedFound`] diagnostic for an
+/// Construct a [`ParseDiagnosticKind::UnclosedGroup`] diagnostic for an
 /// unclosed `{ ... }` group at EOF.
 pub(crate) fn unclosed_group(span: Span) -> ParseDiagnostic {
     build_diagnostic(
-        ParseDiagnosticKind::RawExpectedFound,
+        ParseDiagnosticKind::UnclosedGroup,
         "Unclosed { ... } group".to_string(),
         span,
         vec!["'}'".to_string()],
@@ -336,18 +335,27 @@ pub(crate) fn unclosed_group(span: Span) -> ParseDiagnostic {
 /// Priority levels for sorting diagnostics (1 = highest).
 pub(crate) fn diagnostic_priority(diagnostic: &ParseDiagnostic) -> u8 {
     match diagnostic.kind {
-        Some(
-            ParseDiagnosticKind::InvalidCharacter
-            | ParseDiagnosticKind::UnknownCommand
-            | ParseDiagnosticKind::UnknownEnvironment
-            | ParseDiagnosticKind::CommentTruncatedArgument
-            | ParseDiagnosticKind::UnexpectedMathShift
-            | ParseDiagnosticKind::LeftRightDelimiter
-            | ParseDiagnosticKind::AmbiguousInfix,
-        ) => 1,
-        Some(ParseDiagnosticKind::RawExpectedFound) if diagnostic.found.is_none() => 3,
-        Some(ParseDiagnosticKind::RawExpectedFound) => 4,
-        Some(_) | None => 2,
+        ParseDiagnosticKind::InvalidCharacter
+        | ParseDiagnosticKind::UnknownCommand
+        | ParseDiagnosticKind::UnknownEnvironment
+        | ParseDiagnosticKind::CommentTruncatedArgument
+        | ParseDiagnosticKind::UnexpectedMathShift
+        | ParseDiagnosticKind::LeftRightDelimiter
+        | ParseDiagnosticKind::AmbiguousInfix => 1,
+        ParseDiagnosticKind::UnexpectedToken if diagnostic.found.is_none() => 3,
+        ParseDiagnosticKind::UnexpectedToken => 4,
+        ParseDiagnosticKind::ArgumentValidation
+        | ParseDiagnosticKind::CommandModeError
+        | ParseDiagnosticKind::DuplicateScript
+        | ParseDiagnosticKind::EnvironmentModeError
+        | ParseDiagnosticKind::EnvironmentNameMismatch
+        | ParseDiagnosticKind::MaxGroupDepthExceeded
+        | ParseDiagnosticKind::MaxRecursionDepthExceeded
+        | ParseDiagnosticKind::MissingScriptOperand
+        | ParseDiagnosticKind::TextScriptError
+        | ParseDiagnosticKind::UnclosedEnvironment
+        | ParseDiagnosticKind::UnclosedGroup
+        | ParseDiagnosticKind::UnclosedInlineMath => 2,
     }
 }
 
@@ -409,8 +417,8 @@ mod tests {
 
     #[test]
     fn finish_diagnostics_deduplicates_and_stably_sorts_by_priority() {
-        let raw_found = raw_expected_found(Span::new(5, 6), &["end of input"], Some(Token::RBrace));
-        let raw_eof = raw_expected_found(Span::point(10), &["'}'"], None);
+        let raw_found = unexpected_token(Span::new(5, 6), &["end of input"], Some(Token::RBrace));
+        let raw_eof = unexpected_token(Span::point(10), &["'}'"], None);
         let mode_err = command_mode_error("frac", ContentMode::Text, Span::new(1, 6));
         let unknown_a = unknown_command("foo", Span::new(0, 4));
         let unknown_a_dup = unknown_command("foo", Span::new(0, 4));

@@ -105,17 +105,14 @@ mod tests {
             ContentMode::Math,
         );
         assert!(out.is_none());
-        assert_eq!(diags[0].kind, Some(ParseDiagnosticKind::AmbiguousInfix));
+        assert_eq!(diags[0].kind, ParseDiagnosticKind::AmbiguousInfix);
         assert_eq!(diags[0].message, r"Ambiguous use of \over");
 
         // Unexpected math shift with currency hint.
         let (out, diags) =
             parse_root_raw(ctx, r"x + $100", &ParseConfig::STRICT, ContentMode::Math);
         assert!(out.is_none());
-        assert_eq!(
-            diags[0].kind,
-            Some(ParseDiagnosticKind::UnexpectedMathShift)
-        );
+        assert_eq!(diags[0].kind, ParseDiagnosticKind::UnexpectedMathShift);
         assert_eq!(
             diags[0].message,
             "Unexpected $ inside a math formula; it looks like a currency marker"
@@ -124,13 +121,13 @@ mod tests {
         // Text script error.
         let (out, diags) = parse_root_raw(ctx, r"a^b", &ParseConfig::STRICT, ContentMode::Text);
         assert!(out.is_none());
-        assert_eq!(diags[0].kind, Some(ParseDiagnosticKind::TextScriptError));
+        assert_eq!(diags[0].kind, ParseDiagnosticKind::TextScriptError);
 
         // Missing script content in-place recovery under LENIENT.
         let (out, diags) =
             parse_root_raw(ctx, r"{x^} + y", &ParseConfig::LENIENT, ContentMode::Math);
         assert!(out.is_some());
-        assert_eq!(diags[0].kind, Some(ParseDiagnosticKind::RawExpectedFound));
+        assert_eq!(diags[0].kind, ParseDiagnosticKind::MissingScriptOperand);
         assert_eq!(diags[0].message, "Missing superscript content");
         assert_eq!(diags[0].found.as_deref(), Some("}"));
 
@@ -144,7 +141,7 @@ mod tests {
             parse_root_raw(ctx, r"\mycmd{x} + y", &reject_recover, ContentMode::Math);
         let (root, _) = out.expect("should recover unknown command head");
         assert_eq!(diags.len(), 1);
-        assert_eq!(diags[0].kind, Some(ParseDiagnosticKind::UnknownCommand));
+        assert_eq!(diags[0].kind, ParseDiagnosticKind::UnknownCommand);
         assert!(matches!(root, SyntaxNode::Root { ref children, .. } if children.len() == 4));
 
         // Max group depth exceeded produces an in-place Error even under abort_on_error=true.
@@ -155,16 +152,13 @@ mod tests {
         };
         let (out, diags) = parse_root_raw(ctx, "{{x}}", &depth_cfg, ContentMode::Math);
         assert!(out.is_some());
-        assert_eq!(
-            diags[0].kind,
-            Some(ParseDiagnosticKind::MaxGroupDepthExceeded)
-        );
+        assert_eq!(diags[0].kind, ParseDiagnosticKind::MaxGroupDepthExceeded);
 
         // Unclosed inline math points at opening `$`.
         let (out, diags) =
             parse_root_raw(ctx, r"$a$ b $c", &ParseConfig::STRICT, ContentMode::Text);
         assert!(out.is_none());
-        assert_eq!(diags[0].kind, Some(ParseDiagnosticKind::UnclosedInlineMath));
+        assert_eq!(diags[0].kind, ParseDiagnosticKind::UnclosedInlineMath);
         assert_eq!(
             diags[0].message,
             "Unclosed inline math: missing closing '$'"
@@ -177,10 +171,7 @@ mod tests {
         for cfg in [ParseConfig::STRICT, ParseConfig::LENIENT] {
             let (_, diags) = parse_root_raw(ctx, r"\begin{matrix} {a", &cfg, ContentMode::Math);
             assert_eq!(diags.len(), 1, "{cfg:?}: {diags:?}");
-            assert_eq!(
-                diags[0].kind,
-                Some(ParseDiagnosticKind::UnclosedEnvironment)
-            );
+            assert_eq!(diags[0].kind, ParseDiagnosticKind::UnclosedEnvironment);
             assert_eq!(
                 diags[0].message,
                 r"Environment matrix missing closing \end{matrix}"
@@ -198,10 +189,7 @@ mod tests {
         );
         assert!(out.is_some(), "outer matrix should close cleanly");
         assert_eq!(diags.len(), 1);
-        assert_eq!(
-            diags[0].kind,
-            Some(ParseDiagnosticKind::EnvironmentNameMismatch)
-        );
+        assert_eq!(diags[0].kind, ParseDiagnosticKind::EnvironmentNameMismatch);
         assert_eq!(
             diags[0].message,
             r"Environment name mismatch: expected \end{align}, found \end{matrix}"
@@ -216,11 +204,8 @@ mod tests {
         );
         assert!(out.is_none());
         assert_eq!(diags.len(), 2, "{diags:?}");
-        assert_eq!(
-            diags[0].kind,
-            Some(ParseDiagnosticKind::EnvironmentNameMismatch)
-        );
-        assert_eq!(diags[1].kind, Some(ParseDiagnosticKind::RawExpectedFound));
+        assert_eq!(diags[0].kind, ParseDiagnosticKind::EnvironmentNameMismatch);
+        assert_eq!(diags[1].kind, ParseDiagnosticKind::UnexpectedToken);
         assert_eq!(diags[1].message, "found '}' expected end of input");
 
         // Invalid `\left` delimiter propagates with `left-delimited group` context.
@@ -231,7 +216,7 @@ mod tests {
             ContentMode::Math,
         );
         assert!(out.is_none());
-        assert_eq!(diags[0].kind, Some(ParseDiagnosticKind::LeftRightDelimiter));
+        assert_eq!(diags[0].kind, ParseDiagnosticKind::LeftRightDelimiter);
         assert_eq!(diags[0].message, r"invalid \left delimiter");
         assert!(
             diags[0]
@@ -245,10 +230,7 @@ mod tests {
         let src = r"\begin{matrix}a\end{matrix}";
         for cfg in [ParseConfig::STRICT, ParseConfig::LENIENT] {
             let (_, diags) = parse_root_raw(ctx, src, &cfg, ContentMode::Text);
-            assert_eq!(
-                diags[0].kind,
-                Some(ParseDiagnosticKind::EnvironmentModeError)
-            );
+            assert_eq!(diags[0].kind, ParseDiagnosticKind::EnvironmentModeError);
             assert_eq!(
                 &src[diags[0].span.start..diags[0].span.end],
                 r"\begin{matrix}"
@@ -265,8 +247,8 @@ mod tests {
             ..Default::default()
         };
 
-        // Duplicate scripts preserve the uncategorized (`None`) diagnostic
-        // message and exact offending script span.
+        // Duplicate scripts emit `DuplicateScript` with the exact offending
+        // script span.
         for (src, expected_msg, expected_slice) in [
             (r"x^2^3", "Double exponent: use braces to clarify", "^3"),
             (
@@ -294,7 +276,8 @@ mod tests {
                 let res = crate::parse::parse_with_context_mode(ctx, src, cfg, ContentMode::Math);
                 assert!(!res.diagnostics.is_empty(), "{src:?}");
                 assert_eq!(
-                    res.diagnostics[0].kind, None,
+                    res.diagnostics[0].kind,
+                    ParseDiagnosticKind::DuplicateScript,
                     "{src:?}: {:?}",
                     res.diagnostics
                 );
@@ -359,8 +342,8 @@ mod tests {
                 assert!(
                     res.diagnostics
                         .iter()
-                        .any(|d| d.kind == Some(ParseDiagnosticKind::MaxGroupDepthExceeded)),
-                    "expected MaxGroupDepthExceeded diagnostic, got: {:?}",
+                        .any(|d| d.kind == ParseDiagnosticKind::MaxRecursionDepthExceeded),
+                    "expected MaxRecursionDepthExceeded diagnostic, got: {:?}",
                     res.diagnostics
                 );
             }

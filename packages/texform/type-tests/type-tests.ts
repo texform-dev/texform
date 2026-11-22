@@ -39,7 +39,10 @@ engine.normalize(src, overrides);
 engine.transform(doc, overrides);
 
 const parseOverrides: ParseConfig = { rejectUnknown: true };
-parser.parse(src, parseOverrides);
+const parseOutput = parser.parse(src, parseOverrides);
+const diagKind: import("../types/index.d.ts").ParseDiagnosticKind | undefined =
+  parseOutput.diagnostics[0]?.kind;
+void diagKind;
 
 const serializeOptions = {
   style: "compact" as const,

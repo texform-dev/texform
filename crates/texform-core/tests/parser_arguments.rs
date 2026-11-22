@@ -1053,8 +1053,8 @@ fn nonstrict_text_content_direct_error_survives_trailing_generic() {
             .map(|d| d.kind)
             .collect::<Vec<_>>(),
         vec![
-            Some(texform_core::parse::ParseDiagnosticKind::TextScriptError),
-            Some(texform_core::parse::ParseDiagnosticKind::UnclosedInlineMath),
+            texform_core::parse::ParseDiagnosticKind::TextScriptError,
+            texform_core::parse::ParseDiagnosticKind::UnclosedInlineMath,
         ]
     );
     assert_first_diagnostic_span_eq(&output, src, "^");

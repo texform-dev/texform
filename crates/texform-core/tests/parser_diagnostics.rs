@@ -169,8 +169,8 @@ fn nonstrict_direct_error_survives_trailing_outer_generic() {
     assert_eq!(
         diagnostic_kinds(&output),
         vec![
-            Some(ParseDiagnosticKind::TextScriptError),
-            Some(ParseDiagnosticKind::UnclosedInlineMath),
+            ParseDiagnosticKind::TextScriptError,
+            ParseDiagnosticKind::UnclosedInlineMath,
         ]
     );
     assert_eq!(
@@ -200,8 +200,8 @@ fn nonstrict_command_direct_error_survives_trailing_outer_generic() {
     assert_eq!(
         diagnostic_kinds(&output),
         vec![
-            Some(ParseDiagnosticKind::CommandModeError),
-            Some(ParseDiagnosticKind::UnclosedInlineMath),
+            ParseDiagnosticKind::CommandModeError,
+            ParseDiagnosticKind::UnclosedInlineMath,
         ]
     );
     assert_eq!(
@@ -297,7 +297,7 @@ fn recover_false_keeps_nonstrict_unknowns_without_partial_recovery() {
     );
     assert_eq!(
         diagnostic_kinds(&output),
-        [Some(ParseDiagnosticKind::RawExpectedFound)]
+        [ParseDiagnosticKind::UnclosedGroup]
     );
     let span = &output.diagnostics[0].span;
     assert_eq!((span.start, span.end), (13, 13));
@@ -342,7 +342,7 @@ fn max_group_depth_exceeded_reports_public_kind() {
         output
             .diagnostics
             .iter()
-            .any(|diagnostic| diagnostic.kind == Some(ParseDiagnosticKind::MaxGroupDepthExceeded)),
+            .any(|diagnostic| diagnostic.kind == ParseDiagnosticKind::MaxGroupDepthExceeded),
         "expected max depth diagnostic, got {:?}",
         output.diagnostics
     );
@@ -798,7 +798,7 @@ mod parser_diagnostic_regressions {
             .unwrap_or_else(|| panic!("expected diagnostic, got output: {:?}", output.document()));
         assert_eq!(
             diagnostic.kind,
-            Some(ParseDiagnosticKind::CommentTruncatedArgument)
+            ParseDiagnosticKind::CommentTruncatedArgument
         );
         assert_eq!(
             diagnostic.message,
@@ -822,7 +822,7 @@ mod parser_diagnostic_regressions {
         let diagnostic = output
             .diagnostics
             .iter()
-            .find(|diagnostic| diagnostic.kind == Some(ParseDiagnosticKind::UnexpectedMathShift))
+            .find(|diagnostic| diagnostic.kind == ParseDiagnosticKind::UnexpectedMathShift)
             .unwrap_or_else(|| panic!("diagnostics: {:?}", output.diagnostics));
         assert_eq!(
             diagnostic.message,
@@ -853,7 +853,7 @@ mod parser_diagnostic_regressions {
         let diagnostic = output
             .diagnostics
             .iter()
-            .find(|diagnostic| diagnostic.kind == Some(ParseDiagnosticKind::AmbiguousInfix))
+            .find(|diagnostic| diagnostic.kind == ParseDiagnosticKind::AmbiguousInfix)
             .unwrap_or_else(|| panic!("diagnostics: {:?}", output.diagnostics));
         assert_eq!(diagnostic.message, r"Ambiguous use of \over");
     }
@@ -867,7 +867,7 @@ mod parser_diagnostic_regressions {
             .iter()
             .find(|diagnostic| diagnostic.message == "Ambiguous use of \\over")
             .unwrap_or_else(|| panic!("diagnostics: {:?}", output.diagnostics));
-        assert_eq!(diagnostic.kind, Some(ParseDiagnosticKind::AmbiguousInfix));
+        assert_eq!(diagnostic.kind, ParseDiagnosticKind::AmbiguousInfix);
     }
 
     #[test]
@@ -966,7 +966,7 @@ fn assert_explicit_group_chars(node: &SyntaxNode, chars: &[char]) {
     }
 }
 
-fn diagnostic_kinds(output: &ParseResult) -> Vec<Option<ParseDiagnosticKind>> {
+fn diagnostic_kinds(output: &ParseResult) -> Vec<ParseDiagnosticKind> {
     output.diagnostics.iter().map(|d| d.kind).collect()
 }
 
@@ -981,7 +981,7 @@ fn unknown_command_alone_is_recovered_under_reject() {
     assert!(output.document().unwrap().errors().next().is_some());
     assert_eq!(
         diagnostic_kinds(&output),
-        vec![Some(ParseDiagnosticKind::UnknownCommand)]
+        vec![ParseDiagnosticKind::UnknownCommand]
     );
     assert_eq!(output.diagnostics[0].span.start, 0);
     assert_eq!(output.diagnostics[0].span.end, 6);
@@ -1004,7 +1004,7 @@ fn unknown_command_before_balanced_group_keeps_the_group() {
     assert_eq!(output.diagnostics.len(), 1, "{:?}", output.diagnostics);
     assert_eq!(
         output.diagnostics[0].kind,
-        Some(ParseDiagnosticKind::UnknownCommand)
+        ParseDiagnosticKind::UnknownCommand
     );
     assert_eq!(output.diagnostics[0].span.start, 0);
     assert_eq!(output.diagnostics[0].span.end, 6);
@@ -1022,7 +1022,7 @@ fn unknown_command_before_group_keeps_following_siblings() {
     assert_eq!(children[3], SyntaxNode::Char('y'));
     assert_eq!(
         diagnostic_kinds(&output),
-        vec![Some(ParseDiagnosticKind::UnknownCommand)]
+        vec![ParseDiagnosticKind::UnknownCommand]
     );
 }
 
@@ -1066,7 +1066,7 @@ fn unknown_command_inside_outer_group_recovers_locally() {
     }
     assert_eq!(
         diagnostic_kinds(&output),
-        vec![Some(ParseDiagnosticKind::UnknownCommand)]
+        vec![ParseDiagnosticKind::UnknownCommand]
     );
 }
 
@@ -1082,13 +1082,13 @@ fn adjacent_unknown_commands_before_group_keep_both_diagnostics() {
     assert_eq!(output.diagnostics.len(), 2, "{:?}", output.diagnostics);
     assert_eq!(
         output.diagnostics[0].kind,
-        Some(ParseDiagnosticKind::UnknownCommand)
+        ParseDiagnosticKind::UnknownCommand
     );
     assert_eq!(output.diagnostics[0].span.start, 0);
     assert_eq!(output.diagnostics[0].span.end, 6);
     assert_eq!(
         output.diagnostics[1].kind,
-        Some(ParseDiagnosticKind::UnknownCommand)
+        ParseDiagnosticKind::UnknownCommand
     );
     assert_eq!(output.diagnostics[1].span.start, 6);
     assert_eq!(output.diagnostics[1].span.end, 12);
@@ -1115,7 +1115,7 @@ fn unknown_command_group_spans_use_utf8_bytes() {
     assert_eq!(&src[6..10], "{é}");
     assert_eq!(
         output.diagnostics[0].kind,
-        Some(ParseDiagnosticKind::UnknownCommand)
+        ParseDiagnosticKind::UnknownCommand
     );
     assert_eq!(output.diagnostics[0].span.start, 0);
     assert_eq!(output.diagnostics[0].span.end, 6);
@@ -1152,7 +1152,7 @@ fn unknown_command_inside_sqrt_argument_recovers_locally() {
     assert_eq!(output.diagnostics.len(), 1, "{:?}", output.diagnostics);
     assert_eq!(
         output.diagnostics[0].kind,
-        Some(ParseDiagnosticKind::UnknownCommand)
+        ParseDiagnosticKind::UnknownCommand
     );
     assert!(output.document().unwrap().has_errors());
 }
@@ -1216,7 +1216,7 @@ fn assert_abort_unknown_command_only(src: &str) {
         output
             .diagnostics
             .iter()
-            .all(|d| d.kind == Some(ParseDiagnosticKind::UnknownCommand)),
+            .all(|d| d.kind == ParseDiagnosticKind::UnknownCommand),
         "{src}: {:?}",
         output.diagnostics
     );
@@ -1254,7 +1254,7 @@ fn unclosed_frac_does_not_report_environment_name_mismatch() {
             output
                 .diagnostics
                 .iter()
-                .any(|d| d.kind == Some(ParseDiagnosticKind::ArgumentValidation)
+                .any(|d| d.kind == ParseDiagnosticKind::ArgumentValidation
                     && d.message.contains("unclosed brace argument")),
             "{config:?}: {:?}",
             output.diagnostics
@@ -1263,7 +1263,7 @@ fn unclosed_frac_does_not_report_environment_name_mismatch() {
             output
                 .diagnostics
                 .iter()
-                .all(|d| d.kind != Some(ParseDiagnosticKind::EnvironmentNameMismatch)),
+                .all(|d| d.kind != ParseDiagnosticKind::EnvironmentNameMismatch),
             "{config:?}: {:?}",
             output.diagnostics
         );
@@ -1278,10 +1278,12 @@ fn environment_name_mismatch_still_reported_for_begin_end() {
         assert!(output.document().is_some(), "{config:?}");
         assert!(output.document().unwrap().has_errors());
         assert!(
-            output.diagnostics.iter().any(|d| d.kind
-                == Some(ParseDiagnosticKind::EnvironmentNameMismatch)
-                && d.message.contains("expected \\end{matrix}")
-                && d.message.contains("found \\end{pmatrix}")),
+            output
+                .diagnostics
+                .iter()
+                .any(|d| d.kind == ParseDiagnosticKind::EnvironmentNameMismatch
+                    && d.message.contains("expected \\end{matrix}")
+                    && d.message.contains("found \\end{pmatrix}")),
             "{config:?}: {:?}",
             output.diagnostics
         );
@@ -1310,7 +1312,7 @@ fn assert_missing_script(
         .unwrap_or_else(|| panic!("{src}: {:?}", output.diagnostics));
     assert_eq!(
         diagnostic.kind,
-        Some(ParseDiagnosticKind::RawExpectedFound),
+        ParseDiagnosticKind::MissingScriptOperand,
         "{src}: {diagnostic:?}"
     );
     assert!(
@@ -1321,7 +1323,7 @@ fn assert_missing_script(
 }
 
 #[test]
-fn missing_script_content_reports_raw_expected_found() {
+fn missing_script_content_reports_missing_script_operand() {
     for config in [reject_recover_config(), ParseConfig::LENIENT] {
         assert_missing_script("x^", &config, "Missing superscript content", true, None);
         assert_missing_script("x_", &config, "Missing subscript content", true, None);
@@ -1368,7 +1370,7 @@ fn text_mode_script_stays_text_script_error() {
     assert_eq!(output.diagnostics.len(), 1, "{:?}", output.diagnostics);
     assert_eq!(
         output.diagnostics[0].kind,
-        Some(ParseDiagnosticKind::TextScriptError)
+        ParseDiagnosticKind::TextScriptError
     );
     assert_eq!(
         output.diagnostics[0].message,
@@ -1414,7 +1416,7 @@ fn invalid_character_reports_source_bytes_without_a_document() {
         assert!(output.document().is_none(), "{src:?}");
         assert_eq!(output.diagnostics.len(), 1, "{src:?}");
         let diagnostic = &output.diagnostics[0];
-        assert_eq!(diagnostic.kind, Some(ParseDiagnosticKind::InvalidCharacter));
+        assert_eq!(diagnostic.kind, ParseDiagnosticKind::InvalidCharacter);
         assert_eq!(diagnostic.span.start, offset);
         assert_eq!(diagnostic.span.end, offset + 1);
         assert_eq!(diagnostic.found.as_deref(), Some(character));
@@ -1435,7 +1437,7 @@ fn only_unsupported_control_characters_are_invalid() {
         } else {
             assert_eq!(
                 diagnostic_kinds(&output),
-                [Some(ParseDiagnosticKind::InvalidCharacter)],
+                [ParseDiagnosticKind::InvalidCharacter],
                 "{src:?}"
             );
         }
@@ -1466,7 +1468,6 @@ fn malformed_input_never_reports_parser_branch_failures() {
             assert!(!output.diagnostics.is_empty(), "{src}");
             for diagnostic in &output.diagnostics {
                 assert_ne!(diagnostic.message, "not a command", "{src}");
-                assert!(diagnostic.kind.is_some(), "{src}: {diagnostic:?}");
             }
         }
     }
@@ -1477,6 +1478,7 @@ fn unclosed_explicit_group_reports_closing_brace_at_end_of_input() {
     let src = "{é";
     let output = parse_shared(src, &ParseConfig::STRICT);
     let diagnostic = &output.diagnostics[0];
+    assert_eq!(diagnostic.kind, ParseDiagnosticKind::UnclosedGroup);
     assert!(
         diagnostic.expected.iter().any(|e| e == "'}'"),
         "{diagnostic:?}"
@@ -1504,7 +1506,7 @@ fn missing_environment_end_reports_unclosed_environment() {
             let diagnostic = output
                 .diagnostics
                 .iter()
-                .find(|d| d.kind == Some(ParseDiagnosticKind::UnclosedEnvironment))
+                .find(|d| d.kind == ParseDiagnosticKind::UnclosedEnvironment)
                 .unwrap_or_else(|| panic!("{src}: {:?}", output.diagnostics));
             let name = if src.contains("align") {
                 "align"
@@ -1567,7 +1569,7 @@ fn unclosed_environment_at_eof_reports_unclosed_environment_kind() {
         let output = parse_shared(r"\begin{matrix} {a", &config);
         assert_eq!(
             diagnostic_kinds(&output),
-            vec![Some(ParseDiagnosticKind::UnclosedEnvironment)],
+            vec![ParseDiagnosticKind::UnclosedEnvironment],
             "abort_on_error={}: {:?}",
             config.abort_on_error,
             output.diagnostics
@@ -1588,7 +1590,7 @@ fn environment_in_wrong_mode_reports_mode_error_kind_in_both_modes() {
         let output = parse_shared(r"\text{\begin{matrix}a\end{matrix}}", &config);
         assert_eq!(
             diagnostic_kinds(&output),
-            vec![Some(ParseDiagnosticKind::EnvironmentModeError)],
+            vec![ParseDiagnosticKind::EnvironmentModeError],
             "abort_on_error={}: {:?}",
             config.abort_on_error,
             output.diagnostics
@@ -1601,7 +1603,7 @@ fn environment_in_wrong_mode_reports_mode_error_kind_in_both_modes() {
 }
 
 #[test]
-fn strict_custom_errors_keep_inner_source_span() {
+fn strict_semantic_errors_keep_inner_source_span() {
     // Strict parsing propagates the inner failure out of item and argument
     // parsers; it must not take the span of the enclosing item list.
     for src in [
@@ -1624,7 +1626,7 @@ fn strict_custom_errors_keep_inner_source_span() {
         assert_eq!(spans, [r"\bad"], "{src}: {:?}", output.diagnostics);
         assert_eq!(
             diagnostic_kinds(&output),
-            vec![Some(ParseDiagnosticKind::UnknownCommand)],
+            vec![ParseDiagnosticKind::UnknownCommand],
             "{src}"
         );
     }
@@ -1669,7 +1671,7 @@ fn strict_expected_found_errors_keep_inner_source_span() {
         (
             r"a+\frac{\right)}{2}",
             r"\right",
-            ParseDiagnosticKind::RawExpectedFound,
+            ParseDiagnosticKind::UnexpectedToken,
         ),
         (
             r"a+\text{a$x}",
@@ -1685,7 +1687,7 @@ fn strict_expected_found_errors_keep_inner_source_span() {
         let output = parse_shared(src, &ParseConfig::STRICT);
         assert_eq!(
             diagnostic_kinds(&output),
-            vec![Some(kind)],
+            vec![kind],
             "{src}: {:?}",
             output.diagnostics
         );
@@ -1749,7 +1751,7 @@ fn unclosed_inline_math_points_at_its_own_opener() {
             let diagnostic = &output.diagnostics[0];
             assert_eq!(
                 diagnostic.kind,
-                Some(ParseDiagnosticKind::UnclosedInlineMath),
+                ParseDiagnosticKind::UnclosedInlineMath,
                 "{src}: {:?}",
                 output.diagnostics
             );

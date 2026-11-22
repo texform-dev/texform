@@ -358,7 +358,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                         }
                         Some(SupState::Explicit(_)) | Some(SupState::Mixed(_)) => {
                             return self.fail_err(
-                                diagnostics::custom_error(
+                                diagnostics::duplicate_script(
                                     "Double exponent: use braces to clarify",
                                     script_span,
                                 ),
@@ -374,7 +374,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                     let tracked = ParsedNode { span, ..tracked };
                     if subscript.is_some() {
                         return self.fail_err(
-                            diagnostics::custom_error(
+                            diagnostics::duplicate_script(
                                 "Double subscripts: use braces to clarify",
                                 span,
                             ),
@@ -407,7 +407,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                         | Some(SupState::Explicit(_))
                         | Some(SupState::Mixed(_)) => {
                             return self.fail_err(
-                                diagnostics::custom_error(
+                                diagnostics::duplicate_script(
                                     "Prime causes double exponent: use braces to clarify",
                                     prime_span,
                                 ),

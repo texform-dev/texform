@@ -1052,7 +1052,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                     let diag = if mode == ContentMode::Math && found == Some(Token::MathShift) {
                         diagnostics::unexpected_math_shift(p.src, err_span)
                     } else {
-                        diagnostics::raw_expected_found(err_span, &["end of input"], found)
+                        diagnostics::unexpected_token(err_span, &["end of input"], found)
                     };
                     let err_message = diag.message.clone();
                     p.emit_diag(diag);

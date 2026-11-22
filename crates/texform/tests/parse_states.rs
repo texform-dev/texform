@@ -47,6 +47,7 @@ fn editable_tree_with_diagnostics_is_returned_with_diagnostics() {
     let output = ParseResult::__from_parts_for_tests(
         Some(Document::new()),
         vec![ParseDiagnostic::new(
+            texform::ParseDiagnosticKind::UnexpectedToken,
             "diagnostic-only warning",
             Span { start: 0, end: 0 },
             Vec::new(),
@@ -124,7 +125,7 @@ fn nested_command_mode_diagnostics_identify_the_rejected_command() {
                 assert_eq!(diagnostics.len(), 1, "{source}: {diagnostics:?}");
                 assert_eq!(
                     diagnostics[0].kind,
-                    Some(texform::ParseDiagnosticKind::CommandModeError)
+                    texform::ParseDiagnosticKind::CommandModeError
                 );
                 let start = source.rfind(r"\frac").expect("inner command");
                 assert_eq!(
@@ -164,7 +165,7 @@ fn environment_mode_diagnostics_keep_header_spans() {
                 assert_eq!(diagnostics.len(), 1, "{source}: {diagnostics:?}");
                 assert_eq!(
                     diagnostics[0].kind,
-                    Some(texform::ParseDiagnosticKind::EnvironmentModeError)
+                    texform::ParseDiagnosticKind::EnvironmentModeError
                 );
                 let header = r"\begin{matrix}";
                 let start = source.find(header).expect("environment header");
@@ -201,7 +202,7 @@ fn text_script_diagnostics_keep_unicode_byte_offsets() {
             assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
             assert_eq!(
                 diagnostics[0].kind,
-                Some(texform::ParseDiagnosticKind::TextScriptError)
+                texform::ParseDiagnosticKind::TextScriptError
             );
             let start = source.find('^').expect("script marker");
             assert_eq!(
@@ -236,7 +237,7 @@ fn recovered_unknown_command_before_group_is_read_only_and_not_transformable() {
     assert!(output.has_errors());
     assert_eq!(
         output.diagnostics()[0].kind,
-        Some(texform::ParseDiagnosticKind::UnknownCommand)
+        texform::ParseDiagnosticKind::UnknownCommand
     );
 
     let (Some(mut document), _) = output.into_parts() else {

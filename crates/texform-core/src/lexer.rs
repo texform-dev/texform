@@ -179,7 +179,7 @@ pub(crate) fn lex_source(src: &str) -> Result<TokenStream<'_>, ParseDiagnostic> 
             Err(()) => {
                 let slice = &src[range.start..range.end];
                 return Err(ParseDiagnostic {
-                    kind: Some(ParseDiagnosticKind::InvalidCharacter),
+                    kind: ParseDiagnosticKind::InvalidCharacter,
                     message: format!(
                         "Invalid character {:?} at byte offset {}..{}",
                         slice, range.start, range.end
@@ -281,7 +281,7 @@ mod tests {
             assert!(parse_result.document.is_none());
             assert_eq!(parse_result.diagnostics.len(), 1);
             assert_eq!(lex_diag, parse_result.diagnostics[0], "{src:?}");
-            assert_eq!(lex_diag.kind, Some(ParseDiagnosticKind::InvalidCharacter));
+            assert_eq!(lex_diag.kind, ParseDiagnosticKind::InvalidCharacter);
             assert!(lex_diag.expected.is_empty());
             assert!(lex_diag.contexts.is_empty());
         }

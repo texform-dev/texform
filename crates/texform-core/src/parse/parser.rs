@@ -369,9 +369,9 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
 
     /// Guard recursive parser entry points against [`MAX_RECURSION_DEPTH`].
     ///
-    /// On overflow, emits [`ParseDiagnosticKind::MaxGroupDepthExceeded`] with
-    /// `"max recursion depth ({MAX_RECURSION_DEPTH}) exceeded"` and returns
-    /// `Err(ParseAbort { hint: RecoveryHint::Fatal })`.
+    /// On overflow, emits [`ParseDiagnosticKind::MaxRecursionDepthExceeded`]
+    /// with `"max recursion depth ({MAX_RECURSION_DEPTH}) exceeded"` and
+    /// returns `Err(ParseAbort { hint: RecoveryHint::Fatal })`.
     pub(crate) fn with_recursion<R>(
         &mut self,
         f: impl FnOnce(&mut Self) -> PResult<R>,
@@ -471,8 +471,8 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         Err(self.fail(diag, hint))
     }
 
-    /// Consume `expected_tok` and return its byte span, or emit a
-    /// [`ParseDiagnosticKind::RawExpectedFound`] diagnostic labelled `label`.
+    /// Consume `expected_tok` and return its byte span, or emit an
+    /// [`ParseDiagnosticKind::UnexpectedToken`] diagnostic labelled `label`.
     pub(crate) fn expect(
         &mut self,
         expected_tok: Token<'static>,
@@ -487,7 +487,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         }
     }
 
-    /// Emit a [`ParseDiagnosticKind::RawExpectedFound`] diagnostic and return
+    /// Emit an [`ParseDiagnosticKind::UnexpectedToken`] diagnostic and return
     /// a [`ParseAbort`] with [`RecoveryHint::Skip`].
     pub(crate) fn emit_expected(
         &mut self,
@@ -496,7 +496,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         found: Option<Token<'_>>,
     ) -> ParseAbort {
         self.fail(
-            diagnostics::raw_expected_found(span, expected, found),
+            diagnostics::unexpected_token(span, expected, found),
             RecoveryHint::Skip,
         )
     }
@@ -690,7 +690,7 @@ mod tests {
         assert_eq!(parser.diagnostics().len(), 1);
         assert_eq!(
             parser.diagnostics()[0].kind,
-            Some(ParseDiagnosticKind::MaxGroupDepthExceeded)
+            ParseDiagnosticKind::MaxRecursionDepthExceeded
         );
         assert_eq!(
             parser.diagnostics()[0].message,
@@ -715,7 +715,7 @@ mod tests {
         assert_eq!(parser.diagnostics().len(), 1);
         assert_eq!(
             parser.diagnostics()[0].kind,
-            Some(ParseDiagnosticKind::UnclosedEnvironment)
+            ParseDiagnosticKind::UnclosedEnvironment
         );
         assert_eq!(
             parser.diagnostics()[0].message,
@@ -737,7 +737,7 @@ mod tests {
         assert_eq!(comment_parser.diagnostics().len(), 1);
         assert_eq!(
             comment_parser.diagnostics()[0].kind,
-            Some(ParseDiagnosticKind::CommentTruncatedArgument)
+            ParseDiagnosticKind::CommentTruncatedArgument
         );
     }
 }

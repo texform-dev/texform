@@ -288,10 +288,8 @@ fn render_diagnostics(
         let span = range(&diagnostic.span);
         let mut report = Report::build(kind, (name, span.clone()))
             .with_config(config)
+            .with_code(diagnostic.kind.as_str())
             .with_message(&diagnostic.message);
-        if let Some(code) = diagnostic.kind {
-            report = report.with_code(code.as_str());
-        }
         let label = match &diagnostic.found {
             Some(found) => format!("found {found}"),
             None => "here".to_owned(),

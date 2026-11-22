@@ -4,7 +4,7 @@ pub(crate) mod parser;
 
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
-    ParseConfig, ParseContextBuilder, ParseDiagnostic, ParseResult,
+    ParseConfig, ParseContextBuilder, ParseDiagnostic, ParseDiagnosticKind, ParseResult,
 };
 use texform_interface::syntax_node::{Argument, ArgumentValue, ContentMode, SyntaxNode};
 
@@ -108,6 +108,7 @@ fn invalid_input_output(message: String) -> ParseResult {
     ParseResult {
         document: None,
         diagnostics: vec![ParseDiagnostic::new(
+            ParseDiagnosticKind::UnexpectedToken,
             message,
             texform_core::parse::Span { start: 0, end: 0 },
             Vec::new(),

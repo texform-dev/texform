@@ -369,7 +369,7 @@ Error responses carry a JSON-RPC error object `{"code","message","data"?}`. Ther
   - `parse`: the formula did not parse into a complete tree.
   - `transform`: a normalization step failed.
   - `internal`: an internal error, including a panic inside the server. The server stays usable after a panic.
-- `data.diagnostics` lists parse diagnostics for `parse` failures and is empty otherwise. Each diagnostic has `kind` (a stable kebab-case identifier or `null`), `message`, `span` (`start` and `end` byte offsets into `latex`), `expected`, `found`, and `contexts`.
+- `data.diagnostics` lists parse diagnostics for `parse` failures and is empty otherwise. Each diagnostic has `kind` (a stable kebab-case identifier), `message`, `span` (`start` and `end` byte offsets into `latex`), `expected`, `found`, and `contexts`.
 - The server applies no timeouts. A client that needs one should kill and restart the process.
 
 ### Timing

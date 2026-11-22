@@ -1426,6 +1426,7 @@ mod tests {
                     ok: false,
                     diagnostic_count: 2,
                     diagnostics: vec![ParseDiagnostic::new(
+                        texform_core::parse::ParseDiagnosticKind::UnexpectedToken,
                         "invalid token",
                         Span { start: 0, end: 1 },
                         vec!["group".to_string()],

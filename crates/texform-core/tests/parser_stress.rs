@@ -61,7 +61,7 @@ fn stress_deeply_nested_braces_1000_levels() {
             output
                 .diagnostics
                 .iter()
-                .any(|d| d.kind == Some(ParseDiagnosticKind::MaxGroupDepthExceeded)),
+                .any(|d| d.kind == ParseDiagnosticKind::MaxGroupDepthExceeded),
             "expected MaxGroupDepthExceeded (abort_on_error={}): {:?}",
             config.abort_on_error,
             output.diagnostics
@@ -92,8 +92,8 @@ fn stress_deeply_nested_frac_and_left_right_1000_levels() {
                 output
                     .diagnostics
                     .iter()
-                    .any(|d| d.kind == Some(ParseDiagnosticKind::MaxGroupDepthExceeded)),
-                "expected MaxGroupDepthExceeded (abort_on_error={}): {:?}",
+                    .any(|d| d.kind == ParseDiagnosticKind::MaxRecursionDepthExceeded),
+                "expected MaxRecursionDepthExceeded (abort_on_error={}): {:?}",
                 config.abort_on_error,
                 output.diagnostics
             );
@@ -161,7 +161,7 @@ fn stress_pathological_truncated_and_malformed_inputs() {
                 && !output
                     .diagnostics
                     .iter()
-                    .any(|d| d.kind == Some(ParseDiagnosticKind::MaxGroupDepthExceeded))
+                    .any(|d| d.kind == ParseDiagnosticKind::MaxGroupDepthExceeded)
             {
                 assert!(
                     output.document().is_none(),

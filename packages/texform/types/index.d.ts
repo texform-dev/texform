@@ -56,8 +56,7 @@ export interface ParseConfig {
 }
 
 /**
- * The category of a {@link ParseDiagnostic}, or `null` when the parser emits a
- * diagnostic without a specific category.
+ * The category of a {@link ParseDiagnostic}.
  *
  * Each variant names a distinct recoverable or rejected parse condition, such
  * as an unknown command, an argument-validation failure, or an unclosed inline
@@ -68,16 +67,20 @@ export type ParseDiagnosticKind =
   | "argument-validation"
   | "command-mode-error"
   | "comment-truncated-argument"
+  | "duplicate-script"
   | "environment-mode-error"
   | "environment-name-mismatch"
   | "invalid-character"
   | "left-right-delimiter"
   | "max-group-depth-exceeded"
-  | "raw-expected-found"
+  | "max-recursion-depth-exceeded"
+  | "missing-script-operand"
   | "text-script-error"
   | "unclosed-environment"
+  | "unclosed-group"
   | "unclosed-inline-math"
   | "unexpected-math-shift"
+  | "unexpected-token"
   | "unknown-command"
   | "unknown-environment";
 
@@ -136,8 +139,8 @@ export interface ParseDiagnosticContext {
  * @see {@link ParseResult}
  */
 export interface ParseDiagnostic {
-  /** The diagnostic category, or `null` when uncategorized. */
-  kind: ParseDiagnosticKind | null;
+  /** The diagnostic category. */
+  kind: ParseDiagnosticKind;
   /** Human-readable description of the problem. */
   message: string;
   /** Source span the diagnostic points at. */

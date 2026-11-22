@@ -10,6 +10,7 @@ TeXForm is a LaTeX formula parser, serializer, and transform engine. See [README
 - Return errors for invalid user input. Reserve panics for violated internal invariants; use `unwrap()` or `expect()` in library code only when the invariant is proven.
 - Prefer concrete implementations and existing helpers. Add abstractions for established needs, and profile before optimizing.
 - Comments should explain constraints, invariants, or trade-offs rather than restating code.
+- Do not add `#[non_exhaustive]` to enums exported as closed cross-language unions or caller-constructed structs; follow the `#[non_exhaustive]` boundary in [ARCHITECTURE.md](ARCHITECTURE.md#language-bindings).
 
 ## Read by Task
 
