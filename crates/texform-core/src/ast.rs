@@ -533,7 +533,7 @@ impl Ast {
             .any(|node| matches!(node, Node::Error { .. }))
     }
 
-    #[cfg(test)]
+    #[inline]
     pub(crate) fn node_count(&self) -> usize {
         self.nodes.len()
     }

@@ -51,8 +51,17 @@ impl<'a> ContentBoundary<'a> {
     /// Returns true when written bare between the delimiters, `tokens` would
     /// not read back as the whole argument: either a token closes it early, or
     /// an unpaired opening delimiter swallows the real closing one.
-    pub(crate) fn needs_protection(mut self, tokens: &[Token<'a>]) -> bool {
-        tokens.iter().any(|token| self.ends_at(token)) || self.nested > 0
+    pub(crate) fn needs_protection(self, tokens: &[Token<'a>]) -> bool {
+        self.needs_protection_iter(tokens.iter().copied())
+    }
+
+    /// Streaming variant of [`Self::needs_protection`] that avoids collecting
+    /// tokens into a buffer and stops as soon as a closing token is seen.
+    pub(crate) fn needs_protection_iter(
+        mut self,
+        tokens: impl IntoIterator<Item = Token<'a>>,
+    ) -> bool {
+        tokens.into_iter().any(|token| self.ends_at(&token)) || self.nested > 0
     }
 }
 
