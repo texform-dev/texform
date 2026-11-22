@@ -16,25 +16,24 @@
 
 use logos::Logos;
 
+use crate::parse::{ParseDiagnostic, ParseDiagnosticKind, Span};
+
 /// Token types for LaTeX lexical analysis.
 ///
 /// This lexer recognizes LaTeX tokens based on character categories (catcode).
 /// It provides a simplified view where special characters and control sequences
 /// are identified, while preserving enough information for parsing.
-#[derive(Logos, Debug, PartialEq, Clone)]
-pub enum Token {
+#[derive(Logos, Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Token<'src> {
     // --- Control Sequences ---
     /// Control sequence: \command
     /// - catcode 0 (Escape): backslash triggers control sequence scanning
     /// - Matches: \<letters> (control word) or \<single-char> (control symbol)
     /// - Returns the command name without the backslash
-    #[regex(r"\\(?:[a-zA-Z]+|[^\r\n])", |lex| {
-        let slice = lex.slice();
-        slice[1..].to_string()
-    })]
-    #[regex(r"\\(?:\r\n|\r|\n)", |_| " ".to_string())]
-    #[token("\\", |_| " ".to_string())]
-    ControlSeq(String),
+    #[regex(r"\\(?:[a-zA-Z]+|[^\r\n])", |lex| &lex.slice()[1..])]
+    #[regex(r"\\(?:\r\n|\r|\n)", |_| " ")]
+    #[token("\\", |_| " ")]
+    ControlSeq(&'src str),
 
     /// Active character: ~
     /// - catcode 13: Active Character
@@ -160,7 +159,43 @@ pub fn is_whitespace_char(c: char) -> bool {
     matches!(c, ' ' | '\t' | '\n' | '\r' | '\u{000C}' | '\u{00A0}')
 }
 
-impl std::fmt::Display for Token {
+/// Parallel token and span buffers produced by lexical analysis (SoA layout).
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct TokenStream<'src> {
+    pub tokens: Vec<Token<'src>>,
+    pub spans: Vec<Span>,
+}
+
+/// Lex the whole source, reporting the first untokenizable character.
+pub(crate) fn lex_source(src: &str) -> Result<TokenStream<'_>, ParseDiagnostic> {
+    let mut tokens = Vec::new();
+    let mut spans = Vec::new();
+    for (token, range) in Token::lexer(src).spanned() {
+        match token {
+            Ok(tok) => {
+                tokens.push(tok);
+                spans.push(Span::new(range.start, range.end));
+            }
+            Err(()) => {
+                let slice = &src[range.start..range.end];
+                return Err(ParseDiagnostic {
+                    kind: Some(ParseDiagnosticKind::InvalidCharacter),
+                    message: format!(
+                        "Invalid character {:?} at byte offset {}..{}",
+                        slice, range.start, range.end
+                    ),
+                    span: Span::new(range.start, range.end),
+                    expected: Vec::new(),
+                    found: Some(slice.to_owned()),
+                    contexts: Vec::new(),
+                });
+            }
+        }
+    }
+    Ok(TokenStream { tokens, spans })
+}
+
+impl std::fmt::Display for Token<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Token::ControlSeq(name) => write!(f, "\\{name}"),
@@ -184,6 +219,71 @@ impl std::fmt::Display for Token {
             Token::Whitespaces => write!(f, " "),
             Token::Comment => write!(f, "%"),
             Token::Char(c) => write!(f, "{c}"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parse::{ParseConfig, ParseContext};
+
+    #[test]
+    fn lex_source_collects_tokens_and_byte_spans() {
+        let stream = lex_source(r"\alpha + é''\\").expect("valid input should lex");
+        assert_eq!(
+            stream.tokens,
+            vec![
+                Token::ControlSeq("alpha"),
+                Token::Whitespaces,
+                Token::Char('+'),
+                Token::Whitespaces,
+                Token::Char('é'),
+                Token::Prime(2),
+                Token::ControlSeq("\\"),
+            ]
+        );
+        assert_eq!(
+            stream.spans,
+            vec![
+                Span::new(0, 6),
+                Span::new(6, 7),
+                Span::new(7, 8),
+                Span::new(8, 9),
+                Span::new(9, 11),
+                Span::new(11, 13),
+                Span::new(13, 15),
+            ]
+        );
+    }
+
+    #[test]
+    fn lex_source_skips_comments_and_preserves_subsequent_spans() {
+        let src = "a% ignore\r\nb % tail";
+        let stream = lex_source(src).expect("comments should be skipped");
+        assert_eq!(
+            stream.tokens,
+            vec![Token::Char('a'), Token::Char('b'), Token::Whitespaces]
+        );
+        assert_eq!(
+            stream.spans,
+            vec![Span::new(0, 1), Span::new(11, 12), Span::new(12, 13)]
+        );
+    }
+
+    #[test]
+    fn lex_source_invalid_character_matches_parse_diagnostic() {
+        let ctx = ParseContext::shared();
+        let config = ParseConfig::default();
+        for src in ["é\u{0}x", "\\begin{matrix}\u{1b}\\left x", "x\x7Fy"] {
+            let lex_diag = lex_source(src).expect_err("invalid character should fail");
+            let parse_result = ctx.parse(src, &config);
+            assert!(parse_result.document.is_none());
+            assert_eq!(parse_result.diagnostics.len(), 1);
+            assert_eq!(lex_diag, parse_result.diagnostics[0], "{src:?}");
+            assert_eq!(lex_diag.kind, Some(ParseDiagnosticKind::InvalidCharacter));
+            assert!(lex_diag.expected.is_empty());
+            assert!(lex_diag.contexts.is_empty());
         }
     }
 }

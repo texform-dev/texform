@@ -77,7 +77,7 @@ A formula flows through parsing into an editable document, with separate operati
 
 ```text
 LaTeX source
-  │  Parser (chumsky-based, consults the knowledge base for command signatures)
+  │  Parser (recursive-descent, consults the knowledge base for command signatures)
   ▼
 SyntaxNode                  immutable, lossless parse snapshot (may contain Error nodes)
   │  Document::from_syntax  (the parser-driven path also carries source spans across)

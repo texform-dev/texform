@@ -24,7 +24,6 @@ keywords = ["latex", "math", "parser", "formula", "normalization"]
 categories = ["parser-implementations", "text-processing", "mathematics"]
 
 [workspace.dependencies]
-chumsky = "0.11.1"
 logos = "0.15.1"
 serde = { version = "1.0.216", features = ["derive"] }
 serde_yaml = "0.9.34"

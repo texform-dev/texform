@@ -4,11 +4,11 @@ use texform_core::lexer::Token;
 #[test]
 fn test_command_sequences() {
     let mut lex = Token::lexer(r"\alpha \frac \$ ~");
-    assert_eq!(lex.next(), Some(Ok(Token::ControlSeq("alpha".to_string()))));
+    assert_eq!(lex.next(), Some(Ok(Token::ControlSeq("alpha"))));
     assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
-    assert_eq!(lex.next(), Some(Ok(Token::ControlSeq("frac".to_string()))));
+    assert_eq!(lex.next(), Some(Ok(Token::ControlSeq("frac"))));
     assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
-    assert_eq!(lex.next(), Some(Ok(Token::ControlSeq("$".to_string()))));
+    assert_eq!(lex.next(), Some(Ok(Token::ControlSeq("$"))));
     assert_eq!(lex.next(), Some(Ok(Token::Whitespaces)));
     assert_eq!(lex.next(), Some(Ok(Token::ActiveChar)));
 }
@@ -41,7 +41,7 @@ fn test_whitespace_and_comments() {
 #[test]
 fn test_brackets() {
     let mut lex = Token::lexer(r"\frac[1]{2}");
-    assert_eq!(lex.next(), Some(Ok(Token::ControlSeq("frac".to_string()))));
+    assert_eq!(lex.next(), Some(Ok(Token::ControlSeq("frac"))));
     assert_eq!(lex.next(), Some(Ok(Token::LBracket)));
     assert_eq!(lex.next(), Some(Ok(Token::Char('1'))));
     assert_eq!(lex.next(), Some(Ok(Token::RBracket)));
@@ -53,10 +53,7 @@ fn test_brackets() {
 #[test]
 fn test_star_token() {
     let mut lex = Token::lexer(r"\section*{Title}");
-    assert_eq!(
-        lex.next(),
-        Some(Ok(Token::ControlSeq("section".to_string())))
-    );
+    assert_eq!(lex.next(), Some(Ok(Token::ControlSeq("section"))));
     assert_eq!(lex.next(), Some(Ok(Token::Star)));
     assert_eq!(lex.next(), Some(Ok(Token::LBrace)));
     assert_eq!(lex.next(), Some(Ok(Token::Char('T'))));
@@ -210,18 +207,15 @@ fn isolated_backslash_at_end_of_line_is_a_control_space() {
     for source in ["\\", "\\\n", "\\\r\n", "\\\r", "\\ "] {
         assert_eq!(
             Token::lexer(source).next(),
-            Some(Ok(Token::ControlSeq(" ".into()))),
+            Some(Ok(Token::ControlSeq(" "))),
             "{source:?}"
         );
     }
     assert_eq!(
         Token::lexer(r"\\").next(),
-        Some(Ok(Token::ControlSeq("\\".into())))
+        Some(Ok(Token::ControlSeq("\\")))
     );
-    assert_eq!(
-        Token::lexer(r"\x").next(),
-        Some(Ok(Token::ControlSeq("x".into())))
-    );
+    assert_eq!(Token::lexer(r"\x").next(), Some(Ok(Token::ControlSeq("x"))));
 }
 
 #[test]
@@ -229,7 +223,7 @@ fn control_space_consumes_its_line_ending() {
     for source in ["\\\nx", "\\\r\nx", "\\\rx"] {
         assert_eq!(
             Token::lexer(source).collect::<Result<Vec<_>, _>>().unwrap(),
-            vec![Token::ControlSeq(" ".into()), Token::Char('x')]
+            vec![Token::ControlSeq(" "), Token::Char('x')]
         );
     }
 }

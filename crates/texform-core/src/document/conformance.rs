@@ -593,7 +593,7 @@ fn check_argument(
             "argument delimiter is not in the knowledge base",
         );
     }
-    crate::parse::grammar::validate_scalar_argument(kb, argument, spec)
+    crate::parse::validate_scalar_argument(kb, argument, spec)
         .map_err(|message| ConformanceError::new(Rule::InvalidArgumentValue, message))
 }
 

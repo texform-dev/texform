@@ -2,15 +2,15 @@
 
 use crate::lexer::Token;
 
-pub(crate) struct ContentBoundary {
-    open: Option<Token>,
-    close: Token,
+pub(crate) struct ContentBoundary<'a> {
+    open: Option<Token<'a>>,
+    close: Token<'a>,
     braces: usize,
     nested: usize,
 }
 
-impl ContentBoundary {
-    pub(crate) fn new(open: Option<Token>, close: Token) -> Self {
+impl<'a> ContentBoundary<'a> {
+    pub(crate) fn new(open: Option<Token<'a>>, close: Token<'a>) -> Self {
         Self {
             open,
             close,
@@ -20,7 +20,7 @@ impl ContentBoundary {
     }
 
     /// Returns true only for a token that would end the surrounding argument.
-    pub(crate) fn ends_at(&mut self, token: &Token) -> bool {
+    pub(crate) fn ends_at(&mut self, token: &Token<'a>) -> bool {
         if self.open != Some(Token::LBrace) {
             match token {
                 Token::LBrace => {
@@ -51,13 +51,13 @@ impl ContentBoundary {
     /// Returns true when written bare between the delimiters, `tokens` would
     /// not read back as the whole argument: either a token closes it early, or
     /// an unpaired opening delimiter swallows the real closing one.
-    pub(crate) fn needs_protection(mut self, tokens: &[Token]) -> bool {
+    pub(crate) fn needs_protection(mut self, tokens: &[Token<'a>]) -> bool {
         tokens.iter().any(|token| self.ends_at(token)) || self.nested > 0
     }
 }
 
 /// Identify exactly one enclosing brace group, ignoring surrounding whitespace.
-pub(crate) fn enclosing_braces(tokens: &[Token]) -> Option<std::ops::Range<usize>> {
+pub(crate) fn enclosing_braces(tokens: &[Token<'_>]) -> Option<std::ops::Range<usize>> {
     let start = tokens.iter().position(|t| *t != Token::Whitespaces)?;
     let end = tokens.iter().rposition(|t| *t != Token::Whitespaces)?;
     if tokens[start] != Token::LBrace || tokens[end] != Token::RBrace {

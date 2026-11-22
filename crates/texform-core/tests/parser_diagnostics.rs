@@ -690,7 +690,6 @@ fn environment_mismatch_rewrite_does_not_capture_later_generic_errors() {
 
 mod parser_diagnostic_regressions {
     use super::support::parser::*;
-    use chumsky::error::RichReason;
     use texform_core::parse::{
         AllowedMode, CommandKind, ContextItem, ParseConfig, ParseContext, ParseDiagnosticKind,
     };
@@ -832,23 +831,17 @@ mod parser_diagnostic_regressions {
 
     #[test]
     fn test_ambiguous_over_reports_diagnostic() {
-        let errors = texform_core::parse::grammar::parse(r"a \over b + 1 \over c", true)
-            .expect_err("ambiguous repeated top-level infix should fail");
-        let messages: Vec<_> = errors
-            .iter()
-            .map(|error| match error.reason() {
-                RichReason::Custom(message) => message.clone(),
-                RichReason::ExpectedFound { .. } => format!("{error}"),
-            })
-            .collect();
-
+        let output = super::parse_shared(r"a \over b + 1 \over c", &ParseConfig::STRICT);
         assert!(
-            messages
-                .iter()
-                .any(|message| message.ends_with("Ambiguous use of \\over")),
-            "{:?}",
-            messages
+            output.document().is_none(),
+            "ambiguous repeated top-level infix should fail"
         );
+        let diagnostic = output
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.kind == Some(ParseDiagnosticKind::AmbiguousInfix))
+            .unwrap_or_else(|| panic!("diagnostics: {:?}", output.diagnostics));
+        assert_eq!(diagnostic.message, r"Ambiguous use of \over");
     }
 
     #[test]

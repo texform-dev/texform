@@ -8,7 +8,6 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
-chumsky.workspace = true
 logos.workspace = true
 serde.workspace = true
 slotmap.workspace = true

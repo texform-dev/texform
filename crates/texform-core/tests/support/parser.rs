@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 use texform_core::ast::Ast;
 use texform_core::parse::{
     AllowedMode, CommandItem, CommandKind, ContextItem, DelimiterControlItem, EnvironmentItem,
-    ParseConfig, ParseContext, ParseContextBuilder,
+    ParseConfig, ParseContext, ParseContextBuilder, Span,
 };
 use texform_interface::syntax_node::{Argument, ArgumentValue, ContentMode, SyntaxNode};
 use texform_knowledge::specs::load_package_specs_from_str;
@@ -13,10 +13,7 @@ pub(crate) fn serialize_node(node: &SyntaxNode) -> String {
     texform_core::serialize::serialize(&ast)
 }
 
-pub(crate) fn parse(
-    src: &str,
-    reject_unknown: bool,
-) -> Result<(SyntaxNode, chumsky::span::SimpleSpan), Vec<String>> {
+pub(crate) fn parse(src: &str, reject_unknown: bool) -> Result<(SyntaxNode, Span), Vec<String>> {
     let config = if reject_unknown {
         ParseConfig::STRICT
     } else {
@@ -32,10 +29,7 @@ pub(crate) fn parse(
             .root()
             .span()
             .expect("parsed document root should have a span");
-        Ok((
-            result.to_syntax(),
-            chumsky::span::SimpleSpan::from(root_span.start..root_span.end),
-        ))
+        Ok((result.to_syntax(), root_span))
     } else {
         Err(output
             .diagnostics

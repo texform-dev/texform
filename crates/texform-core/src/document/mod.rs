@@ -36,7 +36,7 @@ use crate::ast::{
     Argument, ArgumentKind, ArgumentSlot, ArgumentValue, Ast, ContentMode, Delimiter, GroupKind,
     Node, NodeId as RawNodeId, ParentLink, Slot,
 };
-use crate::parse::grammar::SpanTree;
+use crate::parse::tree::SpanTree;
 use crate::parse::{KnowledgeBase, ParseDiagnostic, Span};
 use crate::serialize::{
     SerializeError, SerializeOptions, TokenizedLatex, serialize, serialize_tokenized,
@@ -619,7 +619,7 @@ impl Document {
 
     fn collect_node_spans(&self, id: RawNodeId, path: &str, out: &mut Vec<(String, Span)>) {
         if let Some(span) = self.spans.get(id) {
-            out.push((path.to_string(), span.clone()));
+            out.push((path.to_string(), *span));
         }
         for (child, slot) in self.ast.edges(id) {
             self.collect_node_spans(child, &format!("{path}.{}", NodeSlot::from(slot)), out);
@@ -639,13 +639,7 @@ impl Document {
         span_tree: &SpanTree,
         out: &mut SecondaryMap<RawNodeId, Span>,
     ) {
-        out.insert(
-            id,
-            Span {
-                start: span_tree.span.start,
-                end: span_tree.span.end,
-            },
-        );
+        out.insert(id, span_tree.span);
 
         match (syntax, ast.node(id)) {
             (
@@ -1080,7 +1074,7 @@ impl<'a> NodeRef<'a> {
 
     /// Parse-time byte span, if known.
     pub fn span(&self) -> Option<Span> {
-        self.doc.spans.get(self.raw).cloned()
+        self.doc.spans.get(self.raw).copied()
     }
 
     fn node(&self) -> &'a Node {

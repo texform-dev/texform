@@ -629,11 +629,10 @@ mod behavior {
 
     #[test]
     fn span_mapping_aligns_paths_to_node_ids() {
-        use chumsky::prelude::*;
         use texform_interface::syntax_node::{ContentMode as M, SyntaxNode};
 
         let leaf = |start: usize, end: usize| SpanTree {
-            span: SimpleSpan::new((), start..end),
+            span: Span::new(start, end),
             kids: Vec::new(),
         };
 
@@ -642,7 +641,7 @@ mod behavior {
             children: vec![SyntaxNode::Char('a'), SyntaxNode::Char('b')],
         };
         let span_tree = SpanTree {
-            span: SimpleSpan::new((), 0..2),
+            span: Span::new(0, 2),
             kids: vec![leaf(0, 1), leaf(1, 2)],
         };
 
@@ -650,9 +649,9 @@ mod behavior {
         let mut kids = doc.root().children();
         let a = kids.next().unwrap();
         let b = kids.next().unwrap();
-        assert_eq!(a.span(), Some(Span { start: 0, end: 1 }));
-        assert_eq!(b.span(), Some(Span { start: 1, end: 2 }));
-        assert_eq!(doc.root().span(), Some(Span { start: 0, end: 2 }));
+        assert_eq!(a.span(), Some(Span::new(0, 1)));
+        assert_eq!(b.span(), Some(Span::new(1, 2)));
+        assert_eq!(doc.root().span(), Some(Span::new(0, 2)));
     }
 
     #[test]
