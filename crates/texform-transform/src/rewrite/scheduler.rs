@@ -1,6 +1,6 @@
 //! Fixed-point scheduler for the rewrite phase.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use crate::ast::{Ast, NodeId, NodeKind};
 use crate::knowledge::{lookup_command_node_name, lookup_environment_node_name};
@@ -8,7 +8,7 @@ use crate::parse::{ContentMode, ParseContext};
 use crate::report::ReportRecorder;
 use crate::rewrite::RewriteError;
 use crate::rewrite::plan::Plan;
-use crate::rewrite::rule::{RuleEffect, RuleMeta, RuleTarget, RuleTargetKey, RuleTargetKind};
+use crate::rewrite::rule::{RuleEffect, RuleMeta, RuleTarget};
 use crate::rewrite::rule_context::RuleContext;
 
 pub(super) fn drive_fixed_point(
@@ -31,20 +31,31 @@ pub(super) fn drive_fixed_point(
     // node. Indices stay in ascending rule order, preserving the fixed-point
     // loop's "first matching rule in plan order wins" semantics.
     let rules_by_name = &plan.rules_by_name;
+    let mut candidate_nodes: Vec<NodeId> = Vec::new();
 
     for iteration in 0..max_iterations {
         let mut changed = false;
-        let snapshot = preorder_snapshot(ast);
+        candidate_nodes.clear();
+        ast.visit_preorder(ast.root(), |id| {
+            if node_target_name(ast, id).is_some_and(|name| rules_by_name.contains_key(name)) {
+                candidate_nodes.push(id);
+            }
+        });
+
+        if candidate_nodes.is_empty() {
+            recorder.record_rewrite_iterations(iteration + 1);
+            return Ok(iteration > 0);
+        }
 
         {
             let mut cx = RuleContext::new(ast, parse_ctx.math_catalog(), parse_ctx.text_catalog());
-            for node_id in snapshot {
+            for &node_id in &candidate_nodes {
                 if !cx.ast.contains(node_id) {
                     continue;
                 }
 
-                // A nameless node (char, group, ...) can never match a rule, and
-                // a named node only needs to consider rules indexed under it.
+                // Re-check the target name because an earlier rule in this
+                // iteration may have replaced `node_id` in place.
                 let Some(name) = node_target_name(cx.ast, node_id) else {
                     continue;
                 };
@@ -91,17 +102,13 @@ pub(super) fn drive_fixed_point(
     unreachable!("loop body returns or errors on every iteration");
 }
 
-fn preorder_snapshot(ast: &Ast) -> Vec<NodeId> {
-    ast.find_all(ast.root(), |_| true)
-}
-
 /// Map each trigger name to the indices of the rules that trigger on it, in
 /// ascending rule order. A rule appears under each distinct name it triggers
 /// on; repeated triggers with the same name are collapsed.
 pub(super) fn index_rules_by_trigger_name(
     rules: &[&'static dyn crate::rewrite::rule::RewriteRule],
-) -> HashMap<&'static str, Vec<usize>> {
-    let mut by_name: HashMap<&'static str, Vec<usize>> = HashMap::new();
+) -> FxHashMap<&'static str, Vec<usize>> {
+    let mut by_name: FxHashMap<&'static str, Vec<usize>> = FxHashMap::default();
     for (index, rule) in rules.iter().enumerate() {
         for target in rule.meta().triggers {
             let bucket = by_name.entry(target.name()).or_default();
@@ -148,24 +155,4 @@ fn target_matches(target: RuleTarget, node_id: NodeId, cx: &RuleContext<'_>) -> 
                         || cx.lookup_character(name, ContentMode::Text).is_some())
             }),
     }
-}
-
-pub(super) fn target_present(
-    ast: &Ast,
-    node_id: NodeId,
-    target: RuleTargetKey,
-    parse_ctx: &ParseContext,
-) -> bool {
-    match target.kind {
-        RuleTargetKind::Command => lookup_command_node_name(ast.node(node_id))
-            .is_some_and(|name| name == target.name && parse_ctx.knows_command_name(name)),
-        RuleTargetKind::Environment => lookup_environment_node_name(ast.node(node_id))
-            .is_some_and(|name| name == target.name && parse_ctx.knows_env_name(name)),
-        RuleTargetKind::Character => lookup_command_node_name(ast.node(node_id))
-            .is_some_and(|name| name == target.name && parse_ctx.knows_character_name(name)),
-    }
-}
-
-pub(super) fn node_name_for_target(ast: &Ast, node_id: NodeId) -> Option<String> {
-    node_target_name(ast, node_id).map(ToString::to_string)
 }

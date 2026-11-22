@@ -129,13 +129,11 @@ fn execute_with(
     };
 
     if cfg.rewrite.enabled
-        && let Some(violation) = rewrite::collect_eliminated_violations(
+        && let Some(violation) = rewrite::find_first_eliminated_violation(
             ast,
             parse_ctx,
-            tctx.rewrite_plan().eliminated_forms(),
+            tctx.rewrite_plan().eliminated_by_name(),
         )
-        .into_iter()
-        .next()
     {
         return Err(TransformError::Rewrite(
             rewrite::RewriteError::ContractViolation {

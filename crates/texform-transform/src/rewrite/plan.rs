@@ -1,6 +1,8 @@
 //! Compiled rewrite plan: filtered rules and eliminated forms.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
+
+use rustc_hash::FxHashMap;
 
 use crate::config::BuildConfig;
 use crate::parse::{MutationSummary, ParseContext};
@@ -13,7 +15,8 @@ use crate::rewrite::rule::{
 pub struct Plan {
     rules: Vec<&'static dyn RewriteRule>,
     eliminated_forms: Vec<RuleTargetKey>,
-    pub(super) rules_by_name: HashMap<&'static str, Vec<usize>>,
+    pub(super) rules_by_name: FxHashMap<&'static str, Vec<usize>>,
+    pub(super) eliminated_by_name: FxHashMap<&'static str, Vec<RuleTargetKey>>,
 }
 
 impl Plan {
@@ -21,10 +24,12 @@ impl Plan {
         let enabled = filter_rules(registry::all_rules(), config, parse_ctx)?;
         let ordered = topological_sort(enabled.as_slice())?;
         let eliminated_forms = derive_eliminated_forms(ordered.as_slice());
+        let eliminated_by_name = super::contract::index_eliminated_by_name(&eliminated_forms);
         Ok(Self {
             rules_by_name: super::scheduler::index_rules_by_trigger_name(&ordered),
             rules: ordered,
             eliminated_forms,
+            eliminated_by_name,
         })
     }
 
@@ -36,13 +41,19 @@ impl Plan {
         self.eliminated_forms.as_slice()
     }
 
+    pub(crate) fn eliminated_by_name(&self) -> &FxHashMap<&'static str, Vec<RuleTargetKey>> {
+        &self.eliminated_by_name
+    }
+
     #[cfg(test)]
     pub(crate) fn from_rules_for_tests(rules: Vec<&'static dyn RewriteRule>) -> Self {
         let eliminated_forms = derive_eliminated_forms(rules.as_slice());
+        let eliminated_by_name = super::contract::index_eliminated_by_name(&eliminated_forms);
         Self {
             rules_by_name: super::scheduler::index_rules_by_trigger_name(&rules),
             rules,
             eliminated_forms,
+            eliminated_by_name,
         }
     }
 }

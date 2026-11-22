@@ -18,6 +18,7 @@ pub(crate) use macros::transform_examples;
 #[allow(unused_imports)]
 pub(crate) use macros::{alias_rule, char_targets, cmd_targets, define_rule, env_targets};
 
+pub(crate) use contract::find_first_eliminated_violation;
 pub use contract::{ContractViolation, collect_eliminated_violations};
 pub use level_set::RuleLevelSet;
 pub use plan::{Plan, PlanBuildError, RuleAvailabilityFailure};

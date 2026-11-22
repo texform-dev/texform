@@ -8,6 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
+rustc-hash.workspace = true
 serde.workspace = true
 texform-core.workspace = true
 texform-interface.workspace = true

@@ -9,6 +9,7 @@ homepage.workspace = true
 
 [dependencies]
 logos.workspace = true
+rustc-hash.workspace = true
 serde.workspace = true
 slotmap.workspace = true
 tsify-next = { workspace = true, optional = true }

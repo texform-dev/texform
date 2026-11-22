@@ -482,9 +482,12 @@ impl Ast {
             mode: *mode,
         });
 
-        for (child, slot) in Self::node_edges(nodes.get(root).expect("Converted node must exist")) {
-            parent.insert(child, ParentLink { parent: root, slot });
-        }
+        Self::for_each_node_edge(
+            nodes.get(root).expect("Converted node must exist"),
+            |child, slot| {
+                parent.insert(child, ParentLink { parent: root, slot });
+            },
+        );
 
         let ast = Ast {
             nodes,
@@ -533,6 +536,7 @@ impl Ast {
             .any(|node| matches!(node, Node::Error { .. }))
     }
 
+    /// Return the number of nodes currently stored in the arena.
     #[inline]
     pub(crate) fn node_count(&self) -> usize {
         self.nodes.len()
@@ -655,6 +659,73 @@ impl Ast {
         Self::node_edges(self.node(id))
     }
 
+    /// Visit every direct tree edge of `id` as `(child, slot)` pairs in
+    /// direct traversal order without allocating.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `id` is invalid.
+    #[inline]
+    pub fn for_each_edge(&self, id: NodeId, f: impl FnMut(NodeId, Slot)) {
+        Self::for_each_node_edge(self.node(id), f);
+    }
+
+    /// Append every direct tree edge of `id` as `(child, slot)` pairs into `out`
+    /// in direct traversal order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `id` is invalid.
+    #[inline]
+    pub fn push_edges(&self, id: NodeId, out: &mut Vec<(NodeId, Slot)>) {
+        self.for_each_edge(id, |child, slot| out.push((child, slot)));
+    }
+
+    /// Visit every direct child of `id` in direct traversal order without
+    /// allocating.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `id` is invalid.
+    #[inline]
+    pub fn for_each_child(&self, id: NodeId, mut f: impl FnMut(NodeId)) {
+        self.for_each_edge(id, |child, _| f(child));
+    }
+
+    /// Visit every node reachable from `start` in depth-first preorder without
+    /// per-node allocations.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `start` is invalid.
+    #[inline]
+    pub fn visit_preorder(&self, start: NodeId, mut f: impl FnMut(NodeId)) {
+        self.visit_preorder_impl(start, &mut f);
+    }
+
+    /// Visit nodes reachable from `start` in depth-first preorder without
+    /// per-node allocations, stopping early on [`std::ops::ControlFlow::Break`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `start` is invalid.
+    pub fn try_visit_preorder<B>(
+        &self,
+        start: NodeId,
+        f: &mut impl FnMut(NodeId) -> std::ops::ControlFlow<B>,
+    ) -> std::ops::ControlFlow<B> {
+        f(start)?;
+        match Self::try_for_each_node_edge(self.node(start), |child, _| {
+            match self.try_visit_preorder(child, f) {
+                std::ops::ControlFlow::Continue(()) => None,
+                std::ops::ControlFlow::Break(value) => Some(value),
+            }
+        }) {
+            Some(value) => std::ops::ControlFlow::Break(value),
+            None => std::ops::ControlFlow::Continue(()),
+        }
+    }
+
     /// Deep-copy the subtree rooted at `id` and return the copied detached root.
     ///
     /// The cloned tree preserves node shape and scalar argument values, but every
@@ -750,7 +821,11 @@ impl Ast {
         F: Fn(&Node) -> bool,
     {
         let mut result = Vec::new();
-        self.find_all_impl(start, &predicate, &mut result);
+        self.visit_preorder(start, |id| {
+            if predicate(self.node(id)) {
+                result.push(id);
+            }
+        });
         result
     }
 
@@ -1544,10 +1619,13 @@ impl Ast {
         }
     }
 
+    fn visit_preorder_impl(&self, id: NodeId, f: &mut impl FnMut(NodeId)) {
+        f(id);
+        self.for_each_child(id, |child| self.visit_preorder_impl(child, f));
+    }
+
     fn collect_postorder(&self, id: NodeId, out: &mut Vec<NodeId>) {
-        for (child, _) in self.edges(id) {
-            self.collect_postorder(child, out);
-        }
+        self.for_each_child(id, |child| self.collect_postorder(child, out));
         out.push(id);
     }
 
@@ -1580,9 +1658,10 @@ impl Ast {
             return true;
         }
 
-        self.edges(root)
-            .into_iter()
-            .any(|(child, _)| self.subtree_contains(child, target))
+        Self::try_for_each_node_edge(self.node(root), |child, _| {
+            self.subtree_contains(child, target).then_some(())
+        })
+        .is_some()
     }
 
     fn find_impl(&self, start: NodeId, predicate: &dyn Fn(&Node) -> bool) -> Option<NodeId> {
@@ -1590,28 +1669,9 @@ impl Ast {
             return Some(start);
         }
 
-        for (child, _) in self.edges(start) {
-            if let Some(found) = self.find_impl(child, predicate) {
-                return Some(found);
-            }
-        }
-
-        None
-    }
-
-    fn find_all_impl(
-        &self,
-        start: NodeId,
-        predicate: &dyn Fn(&Node) -> bool,
-        out: &mut Vec<NodeId>,
-    ) {
-        if predicate(self.node(start)) {
-            out.push(start);
-        }
-
-        for (child, _) in self.edges(start) {
-            self.find_all_impl(child, predicate, out);
-        }
+        Self::try_for_each_node_edge(self.node(start), |child, _| {
+            self.find_impl(child, predicate)
+        })
     }
 
     fn to_syntax_node(&self, id: NodeId) -> SyntaxNode {
@@ -1768,54 +1828,79 @@ impl Ast {
 
     fn assert_unique_direct_children(node: &Node) {
         let mut seen = HashSet::new();
-        for (child, _) in Self::node_edges(node) {
+        Self::for_each_node_edge(node, |child, _| {
             assert!(
                 seen.insert(child),
                 "Node cannot reference the same child twice"
             );
-        }
+        });
     }
 
     pub(crate) fn node_edges(node: &Node) -> Vec<(NodeId, Slot)> {
         let mut edges = Vec::new();
+        Self::for_each_node_edge(node, |child, slot| edges.push((child, slot)));
+        edges
+    }
 
-        // This function is the single source of truth for direct traversal
-        // order. Public `edges()` and internal mutation helpers both rely on it
-        // so read and write paths stay aligned.
+    #[inline]
+    fn for_each_node_edge(node: &Node, mut f: impl FnMut(NodeId, Slot)) {
+        let _ = Self::try_for_each_node_edge::<std::convert::Infallible>(node, |child, slot| {
+            f(child, slot);
+            None
+        });
+    }
+
+    // This function is the single source of truth for direct traversal
+    // order. Public `edges()`, `for_each_edge()`, and internal mutation helpers
+    // all rely on it so read and write paths stay aligned.
+    #[inline]
+    fn try_for_each_node_edge<R>(
+        node: &Node,
+        mut f: impl FnMut(NodeId, Slot) -> Option<R>,
+    ) -> Option<R> {
         match node {
             Node::Root { children, .. } | Node::Group { children, .. } => {
-                for (index, child) in children.iter().copied().enumerate() {
-                    edges.push((child, Slot::GroupChild(index)));
+                for (index, &child) in children.iter().enumerate() {
+                    if let Some(res) = f(child, Slot::GroupChild(index)) {
+                        return Some(res);
+                    }
                 }
             }
-            Node::Command { args, .. } => {
-                Self::push_argument_edges(args, &mut edges);
+            Node::Command { args, .. } | Node::Declarative { args, .. } => {
+                return Self::try_for_each_argument_edge(args, &mut f);
             }
             Node::Infix {
                 args, left, right, ..
             } => {
-                edges.push((*left, Slot::InfixLeft));
-                Self::push_argument_edges(args, &mut edges);
-                edges.push((*right, Slot::InfixRight));
-            }
-            Node::Declarative { args, .. } => {
-                Self::push_argument_edges(args, &mut edges);
+                if let Some(res) = f(*left, Slot::InfixLeft) {
+                    return Some(res);
+                }
+                if let Some(res) = Self::try_for_each_argument_edge(args, &mut f) {
+                    return Some(res);
+                }
+                return f(*right, Slot::InfixRight);
             }
             Node::Environment { args, body, .. } => {
-                Self::push_argument_edges(args, &mut edges);
-                edges.push((*body, Slot::EnvBody));
+                if let Some(res) = Self::try_for_each_argument_edge(args, &mut f) {
+                    return Some(res);
+                }
+                return f(*body, Slot::EnvBody);
             }
             Node::Scripted {
                 base,
                 subscript,
                 superscript,
             } => {
-                edges.push((*base, Slot::ScriptBase));
-                if let Some(subscript) = subscript {
-                    edges.push((*subscript, Slot::ScriptSub));
+                if let Some(res) = f(*base, Slot::ScriptBase) {
+                    return Some(res);
+                }
+                if let Some(subscript) = subscript
+                    && let Some(res) = f(*subscript, Slot::ScriptSub)
+                {
+                    return Some(res);
                 }
                 if let Some(superscript) = superscript {
-                    edges.push((*superscript, Slot::ScriptSup));
+                    return f(*superscript, Slot::ScriptSup);
                 }
             }
             Node::Prime { .. }
@@ -1826,10 +1911,14 @@ impl Ast {
             | Node::Error { .. } => {}
         }
 
-        edges
+        None
     }
 
-    fn push_argument_edges(args: &[ArgumentSlot], edges: &mut Vec<(NodeId, Slot)>) {
+    #[inline]
+    fn try_for_each_argument_edge<R>(
+        args: &[ArgumentSlot],
+        f: &mut impl FnMut(NodeId, Slot) -> Option<R>,
+    ) -> Option<R> {
         for (index, slot) in args.iter().enumerate() {
             let Some(argument) = slot else {
                 continue;
@@ -1840,11 +1929,14 @@ impl Ast {
                 ArgumentValue::MathContent(child)
                 | ArgumentValue::TextContent(child)
                 | ArgumentValue::OperatorNameContent(child) => {
-                    edges.push((*child, Slot::Argument(index)));
+                    if let Some(res) = f(*child, Slot::Argument(index)) {
+                        return Some(res);
+                    }
                 }
                 _ => {}
             }
         }
+        None
     }
 
     fn convert_syntax_node(
@@ -1943,16 +2035,18 @@ impl Ast {
         };
 
         let id = nodes.insert(converted_node);
-        let edges = Self::node_edges(nodes.get(id).expect("Converted node must exist"));
-        for (child, slot) in edges {
-            if matches!(slot, Slot::EnvBody) {
-                assert!(
-                    matches!(nodes.get(child), Some(Node::Group { .. })),
-                    "Environment body must convert to a Group node"
-                );
-            }
-            parent.insert(child, ParentLink { parent: id, slot });
-        }
+        Self::for_each_node_edge(
+            nodes.get(id).expect("Converted node must exist"),
+            |child, slot| {
+                if matches!(slot, Slot::EnvBody) {
+                    assert!(
+                        matches!(nodes.get(child), Some(Node::Group { .. })),
+                        "Environment body must convert to a Group node"
+                    );
+                }
+                parent.insert(child, ParentLink { parent: id, slot });
+            },
+        );
 
         id
     }

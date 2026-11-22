@@ -25,6 +25,7 @@ categories = ["parser-implementations", "text-processing", "mathematics"]
 
 [workspace.dependencies]
 logos = "0.15.1"
+rustc-hash = "2"
 serde = { version = "1.0.216", features = ["derive"] }
 serde_yaml = "0.9.34"
 slotmap = "1.0.7"

@@ -28,7 +28,7 @@
 pub use crate::parse::{KnowledgeBase, KnowledgeBaseBuildError, KnowledgeBaseBuilder};
 
 use crate::ast::Node;
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 use texform_argspec::parse_arg_specs;
 use texform_interface::syntax_node::ContentMode;
 use texform_knowledge::builtin::{BuiltinPackage, PackageName};
@@ -101,16 +101,17 @@ impl std::error::Error for PackageLoadError {}
 #[derive(Debug, Clone)]
 pub struct Catalog {
     commands: Vec<ActiveCommandRecord>,
-    command_idx_by_name: HashMap<&'static str, usize>,
+    command_idx_by_name: FxHashMap<&'static str, usize>,
     characters: Vec<ActiveCharacterRecord>,
-    character_idx_by_name: HashMap<String, usize>,
+    character_idx_by_name: FxHashMap<String, usize>,
     delimiters: Vec<ActiveDelimiterRecord>,
-    delimiter_idx_by_key: HashMap<(String, bool), usize>,
+    control_delimiter_idx_by_name: FxHashMap<&'static str, usize>,
+    char_delimiter_idx_by_name: FxHashMap<&'static str, usize>,
     character_command_views: Vec<ActiveCommandRecord>,
-    active_command_idx_by_name: HashMap<String, ActiveCommandSource>,
-    suppressed_command_names: HashSet<String>,
+    active_command_idx_by_name: FxHashMap<String, ActiveCommandSource>,
+    suppressed_command_names: FxHashSet<String>,
     envs: Vec<ActiveEnvironmentRecord>,
-    env_idx_by_name: HashMap<&'static str, usize>,
+    env_idx_by_name: FxHashMap<&'static str, usize>,
 }
 
 /// Tracks whether the parser-facing active command for a name points to
@@ -125,16 +126,17 @@ impl Catalog {
     fn new() -> Self {
         Self {
             commands: Vec::new(),
-            command_idx_by_name: HashMap::new(),
+            command_idx_by_name: FxHashMap::default(),
             characters: Vec::new(),
-            character_idx_by_name: HashMap::new(),
+            character_idx_by_name: FxHashMap::default(),
             delimiters: Vec::new(),
-            delimiter_idx_by_key: HashMap::new(),
+            control_delimiter_idx_by_name: FxHashMap::default(),
+            char_delimiter_idx_by_name: FxHashMap::default(),
             character_command_views: Vec::new(),
-            active_command_idx_by_name: HashMap::new(),
-            suppressed_command_names: HashSet::new(),
+            active_command_idx_by_name: FxHashMap::default(),
+            suppressed_command_names: FxHashSet::default(),
             envs: Vec::new(),
-            env_idx_by_name: HashMap::new(),
+            env_idx_by_name: FxHashMap::default(),
         }
     }
 
@@ -168,7 +170,8 @@ impl Catalog {
     }
 
     pub fn lookup_command(&self, name: &str) -> Option<&ActiveCommandRecord> {
-        if self.suppressed_command_names.contains(name) {
+        if !self.suppressed_command_names.is_empty() && self.suppressed_command_names.contains(name)
+        {
             return None;
         }
 
@@ -207,8 +210,13 @@ impl Catalog {
         name: &str,
         is_control_sequence: bool,
     ) -> Option<&ActiveDelimiterRecord> {
-        self.delimiter_idx_by_key
-            .get(&(name.to_string(), is_control_sequence))
+        let idx_by_name = if is_control_sequence {
+            &self.control_delimiter_idx_by_name
+        } else {
+            &self.char_delimiter_idx_by_name
+        };
+        idx_by_name
+            .get(name)
             .copied()
             .map(|idx| &self.delimiters[idx])
     }
@@ -255,8 +263,9 @@ impl Catalog {
 
     pub fn delimiters(&self) -> Vec<&ActiveDelimiterRecord> {
         let mut records: Vec<_> = self
-            .delimiter_idx_by_key
+            .control_delimiter_idx_by_name
             .values()
+            .chain(self.char_delimiter_idx_by_name.values())
             .map(|&index| &self.delimiters[index])
             .collect();
         records.sort_by_key(|record| (record.name, record.is_control_sequence));
@@ -345,9 +354,12 @@ impl Catalog {
     }
 
     fn remove_delimiter_by_key(&mut self, name: &str, is_control_sequence: bool) -> bool {
-        self.delimiter_idx_by_key
-            .remove(&(name.to_string(), is_control_sequence))
-            .is_some()
+        let idx_by_name = if is_control_sequence {
+            &mut self.control_delimiter_idx_by_name
+        } else {
+            &mut self.char_delimiter_idx_by_name
+        };
+        idx_by_name.remove(name).is_some()
     }
 
     fn set_active_command_source(&mut self, name: impl Into<String>, source: ActiveCommandSource) {
@@ -385,9 +397,15 @@ impl Catalog {
 
     fn upsert_delimiter_meta(&mut self, meta: ActiveDelimiterRecord) -> usize {
         let idx = self.delimiters.len();
-        let key = (meta.name.to_string(), meta.is_control_sequence);
+        let name = meta.name;
+        let is_control_sequence = meta.is_control_sequence;
         self.delimiters.push(meta);
-        self.delimiter_idx_by_key.insert(key, idx);
+        let idx_by_name = if is_control_sequence {
+            &mut self.control_delimiter_idx_by_name
+        } else {
+            &mut self.char_delimiter_idx_by_name
+        };
+        idx_by_name.insert(name, idx);
         idx
     }
 
