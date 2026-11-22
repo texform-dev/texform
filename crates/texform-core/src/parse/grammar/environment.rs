@@ -8,7 +8,7 @@ use texform_interface::syntax_node::{ContentMode, GroupKind, SyntaxNode};
 use crate::lexer::Token;
 use crate::parse::diagnostics;
 use crate::parse::parser::{OpenEnv, PResult, ParseAbort, RecoveryHint, TokenParser};
-use crate::parse::result::{ParseDiagnosticKind, Span};
+use crate::parse::result::Span;
 use crate::parse::tree::{self, ParsedNode};
 
 use super::command::downgrade_inner_arg_abort;
@@ -31,28 +31,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
     /// allocates only when a comment splits the name in the source.
     fn parse_env_name(&mut self) -> PResult<(Cow<'src, str>, Span)> {
         let open_span = self.expect(Token::LBrace, "'{'")?;
-        let name_tok_start = self.cursor.pos();
-        let mut first_byte = 0usize;
-        let mut prev_end = 0usize;
-        let mut contiguous = true;
-
-        while let Some(tok) = self.cursor.peek() {
-            match tok {
-                Token::Char(_) | Token::Star => {
-                    let (_, span) = self.cursor.bump().expect("peek ensured Char or Star");
-                    if self.cursor.pos() == name_tok_start + 1 {
-                        first_byte = span.start;
-                    } else if span.start != prev_end {
-                        contiguous = false;
-                    }
-                    prev_end = span.end;
-                }
-                _ => break,
-            }
-        }
-
-        let name_tok_end = self.cursor.pos();
-        if name_tok_end == name_tok_start {
+        let Some(env_name) = self.cursor.eat_env_name(self.src) else {
             let err_span = self.cursor.peek_span();
             let found = self.cursor.peek();
             return Err(self.emit_unclosed_at_eof_or_expected(
@@ -61,38 +40,25 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                 found,
                 None,
             ));
-        }
-
-        let close_span = if self.cursor.peek() == Some(Token::RBrace) {
-            self.cursor.bump().expect("peek ensured RBrace").1
-        } else {
+        };
+        let Some(close_span) = self.cursor.eat(Token::RBrace) else {
             let err_span = self.cursor.peek_span();
             let found = self.cursor.peek();
             return Err(self.emit_unclosed_at_eof_or_expected(err_span, &["'}'"], found, None));
-        };
-
-        let env_name = if contiguous {
-            Cow::Borrowed(&self.src[first_byte..prev_end])
-        } else {
-            let mut owned = String::with_capacity(name_tok_end - name_tok_start);
-            for tok in &self.cursor.tokens_slice()[name_tok_start..name_tok_end] {
-                match tok {
-                    Token::Char(c) => owned.push(*c),
-                    Token::Star => owned.push('*'),
-                    _ => unreachable!("env name loop only consumes Char and Star"),
-                }
-            }
-            Cow::Owned(owned)
         };
 
         Ok((env_name, Span::new(open_span.start, close_span.end)))
     }
 
     /// Parse a full `\begin{name}[args]...body...\end{name}` environment.
-    pub(super) fn parse_environment(&mut self, current_mode: ContentMode) -> PResult<ParsedNode> {
+    pub(super) fn parse_environment(
+        &mut self,
+        current_mode: ContentMode,
+        begin_span: Span,
+    ) -> PResult<ParsedNode> {
         self.with_recursion(|p| {
             let env_start_pos = p.cursor.pos();
-            let (_, begin_span) = p.cursor.bump().expect("peek ensured \\begin");
+            p.cursor.bump(); // consume `\begin`
             p.cursor.skip_ws();
 
             let (name, name_span) = p.parse_env_name()?;
@@ -105,15 +71,8 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                     let cmd_args = if args_spec.is_empty() {
                         Vec::new()
                     } else {
-                        match p.parse_argument_slots(
-                            args_spec,
-                            current_mode,
-                            "environment argument",
-                            false,
-                        ) {
-                            Ok(args) => args,
-                            Err(abort) => return Err(downgrade_inner_arg_abort(p, abort)),
-                        }
+                        p.parse_argument_slots(args_spec, "environment argument", false)
+                            .map_err(downgrade_inner_arg_abort)?
                     };
                     (cmd_args, true, body_mode)
                 } else if p
@@ -130,22 +89,15 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                     } else {
                         name_span
                     };
-                    let contexts = p.snapshot_contexts(err_span.end);
-                    return Err(p.emit_and_abort(
-                        diagnostics::environment_mode_error(
-                            name.as_ref(),
-                            current_mode,
-                            err_span,
-                            contexts,
-                        ),
+                    return p.fail_err(
+                        diagnostics::environment_mode_error(name.as_ref(), current_mode, err_span),
                         RecoveryHint::Skip,
-                    ));
+                    );
                 } else if p.config.reject_unknown {
-                    let contexts = p.snapshot_contexts(header_span.end);
-                    return Err(p.emit_and_abort(
-                        diagnostics::unknown_environment(name.as_ref(), header_span, contexts),
+                    return p.fail_err(
+                        diagnostics::unknown_environment(name.as_ref(), header_span),
                         RecoveryHint::Propagate,
-                    ));
+                    );
                 } else {
                     (Vec::new(), false, current_mode)
                 };
@@ -153,14 +105,9 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
             let body_start_pos = p.cursor.pos();
             let body_start_byte = p.cursor.byte_pos();
             let row_break_skips = known && row_break_skips_spaces_in_environment(name.as_ref());
-            let open_env = OpenEnv {
-                name: name.clone(),
-                begin_span,
-                name_span,
-                body_mode,
-            };
+            let open_env = OpenEnv::new(name.clone(), begin_span, name_span, body_mode);
 
-            let body = p.with_env(open_env, row_break_skips, |p| {
+            let (body, eof_reported) = p.with_env(open_env, row_break_skips, |p| {
                 p.with_context("environment body", body_start_byte, |p| {
                     let children = match body_mode {
                         ContentMode::Math => p.parse_math_content()?,
@@ -168,14 +115,18 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                     };
                     let body_span = p.cursor.span_of_range(body_start_pos..p.cursor.pos());
                     let (nodes, span_kids) = tree::decompose_children(children);
-                    Ok(ParsedNode::with_kids(
-                        SyntaxNode::Group {
-                            mode: body_mode,
-                            kind: GroupKind::Implicit,
-                            children: nodes,
-                        },
-                        body_span,
-                        span_kids,
+                    let eof_reported = p.active_env_eof_reported();
+                    Ok((
+                        ParsedNode::with_kids(
+                            SyntaxNode::Group {
+                                mode: body_mode,
+                                kind: GroupKind::Implicit,
+                                children: nodes,
+                            },
+                            body_span,
+                            span_kids,
+                        ),
+                        eof_reported,
                     ))
                 })
             })?;
@@ -183,7 +134,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
             // Match `\end{found}`. At this point `with_env` has popped the
             // current environment, so `p.active_envs()` holds strictly outer
             // open environments.
-            p.parse_environment_closing(name.as_ref())?;
+            p.parse_environment_closing(name.as_ref(), eof_reported)?;
 
             let span = p.cursor.span_of_range(env_start_pos..p.cursor.pos());
             let (args, mut span_kids) = tree::decompose_args(cmd_args);
@@ -208,7 +159,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
     /// unclosed diagnostic. Split out of [`Self::parse_environment`] so deeply
     /// nested environments keep compact stack frames while parsing their body.
     #[inline(never)]
-    fn parse_environment_closing(&mut self, name: &str) -> PResult<()> {
+    fn parse_environment_closing(&mut self, name: &str, eof_reported: bool) -> PResult<()> {
         match self.cursor.peek() {
             Some(Token::ControlSeq("end")) => {
                 if let Some((end_pos, found_name, end_span)) =
@@ -227,31 +178,31 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                             // so it is not left dangling.
                             self.cursor.set_pos(end_pos);
                         }
-                        let contexts = self.snapshot_contexts(end_span.end);
-                        Err(self.emit_and_abort(
+                        self.fail_err(
                             diagnostics::environment_name_mismatch(
                                 name,
                                 found_name.as_ref(),
                                 end_span,
-                                contexts,
                             ),
                             RecoveryHint::Skip,
-                        ))
+                        )
                     }
                 } else {
                     // Incomplete `\end` header (e.g. `\end` or `\end{matrix`):
                     // span covers the entire partial header through EOF or
                     // the first unexpected token.
                     let start_pos = self.cursor.pos();
-                    let (_, end_head_span) = self.cursor.bump().expect("peek ensured \\end");
+                    let end_head_span = self.cursor.peek_span();
+                    self.cursor.bump();
                     let mut end_byte = end_head_span.end;
                     let after_head = self.cursor.pos();
                     self.cursor.skip_ws();
-                    if self.cursor.peek() == Some(Token::LBrace) {
-                        let (_, brace_span) = self.cursor.bump().expect("peek ensured LBrace");
+                    if let Some(brace_span) = self.cursor.eat(Token::LBrace) {
                         end_byte = brace_span.end;
-                        while let Some(Token::Char(_) | Token::Star) = self.cursor.peek() {
-                            let (_, tok_span) = self.cursor.bump().unwrap();
+                        while let Some((_, tok_span)) = self
+                            .cursor
+                            .eat_if(|t| matches!(t, Token::Char(_) | Token::Star))
+                        {
                             end_byte = tok_span.end;
                         }
                     } else {
@@ -264,40 +215,33 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                         .get(partial_span.start..partial_span.end)
                         .map(str::to_owned)
                         .or_else(|| Some("\\end".to_string()));
-                    let contexts = self.snapshot_contexts(partial_span.end);
-                    Err(self.emit_and_abort(
-                        diagnostics::unclosed_environment(name, partial_span, found, contexts),
+                    self.fail_err(
+                        diagnostics::unclosed_environment(name, partial_span, found),
                         RecoveryHint::Skip,
-                    ))
+                    )
                 }
             }
             None => {
-                let span = self.cursor.peek_span();
-                let expected_end = format!("\\end{{{name}}}");
-                let already_reported = self.diagnostics().iter().rev().any(|diag| {
-                    diag.kind == Some(ParseDiagnosticKind::UnclosedEnvironment)
-                        && diag.span == span
-                        && diag.expected.first().map(String::as_str) == Some(expected_end.as_str())
-                });
-                if already_reported {
+                if eof_reported {
                     return Err(ParseAbort {
                         hint: RecoveryHint::Skip,
                     });
                 }
-                let contexts = self.snapshot_contexts(span.end);
-                Err(self.emit_and_abort(
-                    diagnostics::unclosed_environment(name, span, None, contexts),
-                    RecoveryHint::Skip,
-                ))
+                let span = self.cursor.peek_span();
+                let diag_idx = self.diagnostics().len();
+                self.emit_diag(diagnostics::unclosed_environment(name, span, None));
+                self.mark_active_envs_eof_reported(name, diag_idx);
+                Err(ParseAbort {
+                    hint: RecoveryHint::Skip,
+                })
             }
             Some(other) => {
                 let span = self.cursor.peek_span();
                 let found = Some(diagnostics::format_token_label(other));
-                let contexts = self.snapshot_contexts(span.end);
-                Err(self.emit_and_abort(
-                    diagnostics::unclosed_environment(name, span, found, contexts),
+                self.fail_err(
+                    diagnostics::unclosed_environment(name, span, found),
                     RecoveryHint::Skip,
-                ))
+                )
             }
         }
     }

@@ -6,7 +6,9 @@
 use texform_interface::syntax_node::{ContentMode, SyntaxNode};
 
 use crate::lexer::Token;
-use crate::parse::parser::{Checkpoint, MathStop, PResult, ParseAbort, RecoveryHint, TokenParser};
+use crate::parse::parser::{
+    Checkpoint, MathStop, PResult, ParseAbort, RecoveryHint, TokenParser, is_math_hard_stop,
+};
 use crate::parse::tree::ParsedNode;
 
 /// Returns `true` when `token` belongs to the Sync-Set for `mode` and
@@ -14,12 +16,7 @@ use crate::parse::tree::ParsedNode;
 #[inline]
 pub(crate) fn is_sync_token(token: Token<'_>, mode: ContentMode, math_stop: MathStop) -> bool {
     match mode {
-        ContentMode::Math => match token {
-            Token::RBrace | Token::MathShift => true,
-            Token::ControlSeq("right" | "end") => true,
-            Token::ControlSeq(")") => math_stop == MathStop::ControlParen,
-            _ => false,
-        },
+        ContentMode::Math => is_math_hard_stop(Some(token), math_stop),
         ContentMode::Text => matches!(
             token,
             Token::RBrace | Token::MathShift | Token::ControlSeq("end")
@@ -51,7 +48,7 @@ impl TokenParser<'_, '_, '_> {
             .unwrap_or_else(|| "parse error".to_string());
 
         match hint {
-            RecoveryHint::Propagate => Err(ParseAbort { hint }),
+            RecoveryHint::Propagate | RecoveryHint::Fatal => Err(ParseAbort { hint }),
 
             RecoveryHint::MissingScriptContent => {
                 // Keep the already-consumed base and script marker in place and
@@ -263,11 +260,7 @@ mod tests {
         let mut p = parser_for(&stream, src, &ctx, &config);
 
         let cp = p.checkpoint();
-        p.emit(diagnostics::unknown_command(
-            "mycmd",
-            Span::new(0, 6),
-            Vec::new(),
-        ));
+        p.emit_diag(diagnostics::unknown_command("mycmd", Span::new(0, 6)));
         let err = p
             .recover_item(cp, RecoveryHint::UnknownCommandHead, ContentMode::Math)
             .unwrap_err();
@@ -284,15 +277,19 @@ mod tests {
         let mut p = parser_for(&stream, src, &ctx, &config);
 
         let cp = p.checkpoint();
-        p.emit(diagnostics::left_right_delimiter(
+        p.emit_diag(diagnostics::left_right_delimiter(
             "invalid \\left delimiter",
             Span::new(5, 9),
-            Vec::new(),
         ));
         let err = p
             .recover_item(cp, RecoveryHint::Propagate, ContentMode::Math)
             .unwrap_err();
         assert_eq!(err.hint, RecoveryHint::Propagate);
+
+        let fatal_err = p
+            .recover_item(cp, RecoveryHint::Fatal, ContentMode::Math)
+            .unwrap_err();
+        assert_eq!(fatal_err.hint, RecoveryHint::Fatal);
     }
 
     #[test]
@@ -308,11 +305,7 @@ mod tests {
         let mut p = parser_for(&stream, src, &ctx, &config);
 
         let cp = p.checkpoint();
-        p.emit(diagnostics::unknown_command(
-            "mycmd",
-            Span::new(0, 6),
-            Vec::new(),
-        ));
+        p.emit_diag(diagnostics::unknown_command("mycmd", Span::new(0, 6)));
         let node = p
             .recover_item(cp, RecoveryHint::UnknownCommandHead, ContentMode::Math)
             .unwrap();
@@ -336,11 +329,10 @@ mod tests {
         let mut p = parser_for(&stream, src, &ctx, &config);
 
         let cp = p.checkpoint();
-        p.emit(diagnostics::command_mode_error(
+        p.emit_diag(diagnostics::command_mode_error(
             "frac",
             ContentMode::Text,
             Span::new(0, 5),
-            Vec::new(),
         ));
         let node = p
             .recover_item(cp, RecoveryHint::CommandModeError, ContentMode::Text)
@@ -369,11 +361,10 @@ mod tests {
         let cp = p.checkpoint();
         p.cursor.bump(); // 'x'
         p.cursor.bump(); // '^'
-        p.emit(diagnostics::missing_script_content(
+        p.emit_diag(diagnostics::missing_script_content(
             true,
             Span::new(3, 4),
             Some(Token::RBrace),
-            Vec::new(),
         ));
 
         let node = p
@@ -400,19 +391,18 @@ mod tests {
         let config = ParseConfig::LENIENT;
         let mut p = parser_for(&stream_outer, src_outer, &ctx, &config);
 
-        let outer_env = OpenEnv {
-            name: Cow::Borrowed("matrix"),
-            begin_span: Span::new(0, 0),
-            name_span: Span::new(0, 0),
-            body_mode: ContentMode::Math,
-        };
+        let outer_env = OpenEnv::new(
+            Cow::Borrowed("matrix"),
+            Span::new(0, 0),
+            Span::new(0, 0),
+            ContentMode::Math,
+        );
         let node = p.with_env(outer_env, false, |p| {
             let cp = p.checkpoint();
-            p.emit(diagnostics::environment_name_mismatch(
+            p.emit_diag(diagnostics::environment_name_mismatch(
                 "align",
                 "matrix",
                 Span::new(16, 28),
-                Vec::new(),
             ));
             p.recover_item(cp, RecoveryHint::Skip, ContentMode::Math)
                 .unwrap()
@@ -435,11 +425,10 @@ mod tests {
         let stream_mismatch = lex_source(src_mismatch).unwrap();
         let mut p2 = parser_for(&stream_mismatch, src_mismatch, &ctx, &config);
         let cp = p2.checkpoint();
-        p2.emit(diagnostics::environment_name_mismatch(
+        p2.emit_diag(diagnostics::environment_name_mismatch(
             "matrix",
             "align",
             Span::new(17, 28),
-            Vec::new(),
         ));
         let node2 = p2
             .recover_item(cp, RecoveryHint::Skip, ContentMode::Math)
@@ -466,11 +455,7 @@ mod tests {
 
         let node = p.with_math_stop(MathStop::ControlParen, |p| {
             let cp = p.checkpoint();
-            p.emit(diagnostics::unknown_command(
-                "bad",
-                Span::new(0, 1),
-                Vec::new(),
-            ));
+            p.emit_diag(diagnostics::unknown_command("bad", Span::new(0, 1)));
             p.recover_item(cp, RecoveryHint::Skip, ContentMode::Math)
                 .unwrap()
         });

@@ -5,6 +5,7 @@
 //! parses content arguments via zero-copy sub-windows on the same
 //! [`TokenParser`].
 
+use std::borrow::Cow;
 use std::ops::Range;
 
 use texform_interface::syntax_node::{
@@ -70,7 +71,6 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
     pub(super) fn parse_argument_slots(
         &mut self,
         args: &'static [ArgSpec],
-        _parent_mode: ContentMode,
         context_label: &'static str,
         allow_row_break_opt_space: bool,
     ) -> PResult<Vec<TrackedArgSlot>> {
@@ -117,12 +117,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         match &spec.form {
             ArgForm::Standard => self.parse_standard_argument(spec, context_label, arg_start_byte),
             ArgForm::Star => {
-                let present = if self.cursor.peek() == Some(Token::Star) {
-                    self.cursor.bump();
-                    true
-                } else {
-                    false
-                };
+                let present = self.cursor.eat(Token::Star).is_some();
                 Ok(TrackedArgSlot::untracked(Some(Argument::from_value(
                     ArgumentKind::Star,
                     ArgumentValue::Boolean(present),
@@ -265,198 +260,56 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
             ValueKind::Content { .. } | ValueKind::OperatorName => {
                 unreachable!("content kinds handled by parse_standard_content_argument")
             }
-            ValueKind::Delimiter => {
-                if spec.required {
-                    let value = self.with_context(context_label, arg_start_byte, |p| {
-                        p.parse_maybe_braced_scalar(
-                            spec.nullable,
-                            Delimiter::None,
-                            |p| {
-                                scalar::parse_delimiter_cursor(p.ctx, &mut p.cursor).ok_or_else(
-                                    || scalar::ScalarError {
-                                        message: "invalid delimiter argument",
-                                        span: p.cursor.peek_span(),
-                                    },
-                                )
-                            },
-                            "delimiter",
-                        )
-                    })?;
-                    Ok(TrackedArgSlot::untracked(Some(Argument::from_value(
-                        ArgumentKind::Mandatory,
-                        ArgumentValue::Delimiter(value),
-                    ))))
-                } else {
-                    let value = self.try_parse_optional_bracketed_scalar(
-                        spec.nullable,
-                        Delimiter::None,
-                        |p| scalar::parse_delimiter_cursor(p.ctx, &mut p.cursor),
-                    );
-                    Ok(TrackedArgSlot::untracked(value.map(|v| {
-                        Argument::from_value(ArgumentKind::Optional, ArgumentValue::Delimiter(v))
-                    })))
-                }
-            }
-            ValueKind::Dimension => {
-                if spec.required {
-                    let value = self.with_context(context_label, arg_start_byte, |p| {
-                        p.parse_maybe_braced_scalar(
-                            spec.nullable,
-                            String::new(),
-                            |p| scalar::parse_dimension_cursor(&mut p.cursor),
-                            "dimension",
-                        )
-                    })?;
-                    Ok(TrackedArgSlot::untracked(Some(Argument::from_value(
-                        ArgumentKind::Mandatory,
-                        ArgumentValue::Dimension(value),
-                    ))))
-                } else {
-                    let value = self.try_parse_optional_bracketed_scalar(
-                        spec.nullable,
-                        String::new(),
-                        |p| scalar::parse_dimension_cursor(&mut p.cursor).ok(),
-                    );
-                    Ok(TrackedArgSlot::untracked(value.map(|v| {
-                        Argument::from_value(ArgumentKind::Optional, ArgumentValue::Dimension(v))
-                    })))
-                }
-            }
-            ValueKind::Integer => {
-                if spec.required {
-                    let value = self.with_context(context_label, arg_start_byte, |p| {
-                        p.parse_maybe_braced_scalar(
-                            spec.nullable,
-                            String::new(),
-                            |p| scalar::parse_integer_cursor(&mut p.cursor),
-                            "integer",
-                        )
-                    })?;
-                    Ok(TrackedArgSlot::untracked(Some(Argument::from_value(
-                        ArgumentKind::Mandatory,
-                        ArgumentValue::Integer(value),
-                    ))))
-                } else {
-                    let value = self.try_parse_optional_bracketed_scalar(
-                        spec.nullable,
-                        String::new(),
-                        |p| scalar::parse_integer_cursor(&mut p.cursor).ok(),
-                    );
-                    Ok(TrackedArgSlot::untracked(value.map(|v| {
-                        Argument::from_value(ArgumentKind::Optional, ArgumentValue::Integer(v))
-                    })))
-                }
-            }
-            ValueKind::KeyVal => {
-                if spec.required {
-                    let range = self.with_context(context_label, arg_start_byte, |p| {
-                        if p.cursor.peek() != Some(Token::LBrace) {
-                            let span = p.cursor.peek_span();
-                            let contexts = p.snapshot_contexts(span.end);
-                            return Err(p.emit_and_abort(
-                                diagnostics::argument_validation(
-                                    "expected keyval argument",
-                                    span,
-                                    contexts,
-                                ),
-                                RecoveryHint::Skip,
-                            ));
+            ValueKind::Delimiter => self.parse_inline_or_bracketed_scalar(
+                spec,
+                context_label,
+                arg_start_byte,
+                Delimiter::None,
+                "delimiter",
+                |p| {
+                    scalar::parse_delimiter_cursor(p.ctx, &mut p.cursor).ok_or_else(|| {
+                        scalar::ScalarError {
+                            message: "invalid delimiter argument",
+                            span: p.cursor.peek_span(),
                         }
-                        p.scan_braced_arg(true)
-                    })?;
-                    let surface = range.full_span();
-                    let value = self.with_context_span(context_label, surface, |p| {
-                        let slice = &p.cursor.tokens_slice()[range.inner];
-                        scalar::parse_keyval_slice(slice, spec.nullable).map_err(|msg| {
-                            let contexts = p.snapshot_contexts(surface.end);
-                            p.emit_and_abort(
-                                diagnostics::argument_validation(msg, surface, contexts),
-                                RecoveryHint::Skip,
-                            )
-                        })
-                    })?;
-                    Ok(TrackedArgSlot::untracked(Some(Argument::from_value(
-                        ArgumentKind::Mandatory,
-                        ArgumentValue::KeyVal(value),
-                    ))))
-                } else if self.cursor.peek() != Some(Token::LBracket) {
-                    Ok(TrackedArgSlot::untracked(None))
-                } else {
-                    let range = self.with_context(context_label, arg_start_byte, |p| {
-                        p.scan_bracketed_arg(false)
-                    })?;
-                    let surface = range.full_span();
-                    let value = self.with_context_span(context_label, surface, |p| {
-                        let slice = &p.cursor.tokens_slice()[range.inner];
-                        scalar::parse_keyval_slice(slice, spec.nullable).map_err(|msg| {
-                            let contexts = p.snapshot_contexts(surface.end);
-                            p.emit_and_abort(
-                                diagnostics::argument_validation(msg, surface, contexts),
-                                RecoveryHint::Skip,
-                            )
-                        })
-                    })?;
-                    Ok(TrackedArgSlot::untracked(Some(Argument::from_value(
-                        ArgumentKind::Optional,
-                        ArgumentValue::KeyVal(value),
-                    ))))
-                }
-            }
-            ValueKind::Column => {
-                if spec.required {
-                    let range = self.with_context(context_label, arg_start_byte, |p| {
-                        if p.cursor.peek() != Some(Token::LBrace) {
-                            let span = p.cursor.peek_span();
-                            let contexts = p.snapshot_contexts(span.end);
-                            return Err(p.emit_and_abort(
-                                diagnostics::argument_validation(
-                                    "expected column argument",
-                                    span,
-                                    contexts,
-                                ),
-                                RecoveryHint::Skip,
-                            ));
-                        }
-                        p.scan_braced_arg(true)
-                    })?;
-                    let surface = range.full_span();
-                    let value = self.with_context_span(context_label, surface, |p| {
-                        let slice = &p.cursor.tokens_slice()[range.inner];
-                        scalar::parse_column_slice(slice).map_err(|msg| {
-                            let contexts = p.snapshot_contexts(surface.end);
-                            p.emit_and_abort(
-                                diagnostics::argument_validation(msg, surface, contexts),
-                                RecoveryHint::Skip,
-                            )
-                        })
-                    })?;
-                    Ok(TrackedArgSlot::untracked(Some(Argument::from_value(
-                        ArgumentKind::Mandatory,
-                        ArgumentValue::Column(value),
-                    ))))
-                } else if self.cursor.peek() != Some(Token::LBracket) {
-                    Ok(TrackedArgSlot::untracked(None))
-                } else {
-                    let range = self.with_context(context_label, arg_start_byte, |p| {
-                        p.scan_bracketed_arg(false)
-                    })?;
-                    let surface = range.full_span();
-                    let value = self.with_context_span(context_label, surface, |p| {
-                        let slice = &p.cursor.tokens_slice()[range.inner];
-                        scalar::parse_column_slice(slice).map_err(|msg| {
-                            let contexts = p.snapshot_contexts(surface.end);
-                            p.emit_and_abort(
-                                diagnostics::argument_validation(msg, surface, contexts),
-                                RecoveryHint::Skip,
-                            )
-                        })
-                    })?;
-                    Ok(TrackedArgSlot::untracked(Some(Argument::from_value(
-                        ArgumentKind::Optional,
-                        ArgumentValue::Column(value),
-                    ))))
-                }
-            }
+                    })
+                },
+                ArgumentValue::Delimiter,
+            ),
+            ValueKind::Dimension => self.parse_inline_or_bracketed_scalar(
+                spec,
+                context_label,
+                arg_start_byte,
+                String::new(),
+                "dimension",
+                |p| scalar::parse_dimension_cursor(&mut p.cursor),
+                ArgumentValue::Dimension,
+            ),
+            ValueKind::Integer => self.parse_inline_or_bracketed_scalar(
+                spec,
+                context_label,
+                arg_start_byte,
+                String::new(),
+                "integer",
+                |p| scalar::parse_integer_cursor(&mut p.cursor),
+                ArgumentValue::Integer,
+            ),
+            ValueKind::KeyVal => self.parse_braced_or_bracketed_scalar(
+                spec,
+                context_label,
+                arg_start_byte,
+                "expected keyval argument",
+                |slice| scalar::parse_keyval_slice(slice, spec.nullable),
+                ArgumentValue::KeyVal,
+            ),
+            ValueKind::Column => self.parse_braced_or_bracketed_scalar(
+                spec,
+                context_label,
+                arg_start_byte,
+                "expected column argument",
+                scalar::parse_column_slice,
+                ArgumentValue::Column,
+            ),
             ValueKind::CSName => {
                 if spec.required {
                     if self.cursor.peek() == Some(Token::LBrace) {
@@ -466,42 +319,29 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                                 &DelimiterToken::Char('}'),
                             )
                         })?;
-                        let surface = range.full_span();
-                        let value = self.with_context_span(context_label, surface, |p| {
-                            let slice = &p.cursor.tokens_slice()[range.inner];
-                            scalar::parse_cs_name_slice(slice, spec.nullable, false).map_err(
-                                |msg| {
-                                    let contexts = p.snapshot_contexts(surface.end);
-                                    p.emit_and_abort(
-                                        diagnostics::argument_validation(msg, surface, contexts),
-                                        RecoveryHint::Skip,
-                                    )
-                                },
-                            )
-                        })?;
-                        Ok(TrackedArgSlot::untracked(Some(Argument::from_value(
+                        self.parse_delimited_range_scalar(
+                            range,
                             ArgumentKind::Mandatory,
-                            ArgumentValue::CSName(value),
-                        ))))
+                            context_label,
+                            |slice| scalar::parse_cs_name_slice(slice, spec.nullable, false),
+                            ArgumentValue::CSName,
+                        )
                     } else {
                         let value = self.with_context(context_label, arg_start_byte, |p| {
                             let Some((tok, span)) = p.cursor.bump() else {
                                 let span = p.cursor.peek_span();
-                                let contexts = p.snapshot_contexts(span.end);
-                                return Err(p.emit_and_abort(
+                                return p.fail_err(
                                     diagnostics::argument_validation(
                                         "missing required CSName argument",
                                         span,
-                                        contexts,
                                     ),
                                     RecoveryHint::Skip,
-                                ));
+                                );
                             };
                             scalar::parse_cs_name_slice(std::slice::from_ref(&tok), false, false)
                                 .map_err(|msg| {
-                                    let contexts = p.snapshot_contexts(span.end);
-                                    p.emit_and_abort(
-                                        diagnostics::argument_validation(msg, span, contexts),
+                                    p.fail(
+                                        diagnostics::argument_validation(msg, span),
                                         RecoveryHint::Skip,
                                     )
                                 })
@@ -517,36 +357,102 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                     let range = self.with_context(context_label, arg_start_byte, |p| {
                         p.scan_bracketed_arg(false)
                     })?;
-                    let surface = range.full_span();
-                    let value = self.with_context_span(context_label, surface, |p| {
-                        let slice = &p.cursor.tokens_slice()[range.inner];
-                        scalar::parse_cs_name_slice(slice, spec.nullable, true).map_err(|msg| {
-                            let contexts = p.snapshot_contexts(surface.end);
-                            p.emit_and_abort(
-                                diagnostics::argument_validation(msg, surface, contexts),
-                                RecoveryHint::Skip,
-                            )
-                        })
-                    })?;
-                    Ok(TrackedArgSlot::untracked(Some(Argument::from_value(
+                    self.parse_delimited_range_scalar(
+                        range,
                         ArgumentKind::Optional,
-                        ArgumentValue::CSName(value),
-                    ))))
+                        context_label,
+                        |slice| scalar::parse_cs_name_slice(slice, spec.nullable, true),
+                        ArgumentValue::CSName,
+                    )
                 }
             }
-            ValueKind::Star => self.with_context(context_label, arg_start_byte, |p| {
-                let span = p.cursor.peek_span();
-                let contexts = p.snapshot_contexts(span.end);
-                Err(p.emit_and_abort(
-                    diagnostics::argument_validation(
-                        "invalid spec: star kind requires star form",
-                        span,
-                        contexts,
-                    ),
-                    RecoveryHint::Skip,
-                ))
-            }),
+            ValueKind::Star => unreachable!("ValueKind::Star is only valid with ArgForm::Star"),
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn parse_inline_or_bracketed_scalar<T>(
+        &mut self,
+        spec: &'static ArgSpec,
+        context_label: &'static str,
+        arg_start_byte: usize,
+        empty_value: T,
+        expected_label: &'static str,
+        parse_inner: impl Fn(&mut Self) -> Result<T, scalar::ScalarError>,
+        wrap: fn(T) -> ArgumentValue,
+    ) -> PResult<TrackedArgSlot> {
+        if spec.required {
+            let value = self.with_context(context_label, arg_start_byte, |p| {
+                p.parse_maybe_braced_scalar(spec.nullable, empty_value, parse_inner, expected_label)
+            })?;
+            Ok(TrackedArgSlot::untracked(Some(Argument::from_value(
+                ArgumentKind::Mandatory,
+                wrap(value),
+            ))))
+        } else {
+            let value = self.try_parse_optional_bracketed_scalar(spec.nullable, empty_value, |p| {
+                parse_inner(p).ok()
+            });
+            Ok(TrackedArgSlot::untracked(value.map(|v| {
+                Argument::from_value(ArgumentKind::Optional, wrap(v))
+            })))
+        }
+    }
+
+    fn parse_braced_or_bracketed_scalar<T, E: Into<String>>(
+        &mut self,
+        spec: &'static ArgSpec,
+        context_label: &'static str,
+        arg_start_byte: usize,
+        missing_required_msg: &'static str,
+        parse_slice: impl FnOnce(&[Token<'_>]) -> Result<T, E>,
+        wrap: fn(T) -> ArgumentValue,
+    ) -> PResult<TrackedArgSlot> {
+        let (range, arg_kind) = if spec.required {
+            let range = self.with_context(context_label, arg_start_byte, |p| {
+                if p.cursor.peek() != Some(Token::LBrace) {
+                    let span = p.cursor.peek_span();
+                    return p.fail_err(
+                        diagnostics::argument_validation(missing_required_msg, span),
+                        RecoveryHint::Skip,
+                    );
+                }
+                p.scan_braced_arg(true)
+            })?;
+            (range, ArgumentKind::Mandatory)
+        } else if self.cursor.peek() != Some(Token::LBracket) {
+            return Ok(TrackedArgSlot::untracked(None));
+        } else {
+            let range = self.with_context(context_label, arg_start_byte, |p| {
+                p.scan_bracketed_arg(false)
+            })?;
+            (range, ArgumentKind::Optional)
+        };
+        self.parse_delimited_range_scalar(range, arg_kind, context_label, parse_slice, wrap)
+    }
+
+    fn parse_delimited_range_scalar<T, E: Into<String>>(
+        &mut self,
+        range: DelimitedRange,
+        arg_kind: ArgumentKind,
+        context_label: &'static str,
+        parse_slice: impl FnOnce(&[Token<'_>]) -> Result<T, E>,
+        wrap: fn(T) -> ArgumentValue,
+    ) -> PResult<TrackedArgSlot> {
+        let surface = range.full_span();
+        let value = self.with_context_span(context_label, surface, |p| {
+            let slice = &p.cursor.tokens_slice()[range.inner];
+            parse_slice(slice).map_err(|msg| {
+                p.fail(
+                    diagnostics::argument_validation(msg, surface),
+                    RecoveryHint::Skip,
+                )
+            })
+        })?;
+        Ok(TrackedArgSlot::untracked(Some(Argument::from_value(
+            arg_kind,
+            wrap(value),
+        ))))
     }
 
     fn parse_group_argument(
@@ -559,15 +465,13 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
             if spec.required {
                 return self.with_context(context_label, arg_start_byte, |p| {
                     let span = p.cursor.peek_span();
-                    let contexts = p.snapshot_contexts(span.end);
-                    Err(p.emit_and_abort(
+                    p.fail_err(
                         diagnostics::argument_validation(
                             "missing required braced group argument",
                             span,
-                            contexts,
                         ),
                         RecoveryHint::Skip,
-                    ))
+                    )
                 });
             }
             return Ok(TrackedArgSlot::untracked(None));
@@ -680,15 +584,13 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
             if spec.required {
                 return self.with_context(context_label, arg_start_byte, |p| {
                     let span = p.cursor.peek_span();
-                    let contexts = p.snapshot_contexts(span.end);
-                    Err(p.emit_and_abort(
+                    p.fail_err(
                         diagnostics::argument_validation(
                             "missing required delimited argument",
                             span,
-                            contexts,
                         ),
                         RecoveryHint::Skip,
-                    ))
+                    )
                 });
             }
             return Ok(TrackedArgSlot::untracked(None));
@@ -756,15 +658,10 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
             if spec.required {
                 return self.with_context(context_label, arg_start_byte, |p| {
                     let span = p.cursor.peek_span();
-                    let contexts = p.snapshot_contexts(span.end);
-                    Err(p.emit_and_abort(
-                        diagnostics::argument_validation(
-                            "missing required paired argument",
-                            span,
-                            contexts,
-                        ),
+                    p.fail_err(
+                        diagnostics::argument_validation("missing required paired argument", span),
                         RecoveryHint::Skip,
-                    ))
+                    )
                 });
             }
             return Ok(TrackedArgSlot::untracked(None));
@@ -881,27 +778,19 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         let open_tok = scalar::delimiter_token(open);
         let close_tok = scalar::delimiter_token(close);
 
-        match self.cursor.peek() {
-            None => {
-                let span = self.cursor.peek_span();
-                let contexts = self.snapshot_contexts(span.end);
-                return Err(self.emit_and_abort(
-                    diagnostics::argument_validation("expected delimited argument", span, contexts),
-                    RecoveryHint::Skip,
-                ));
-            }
-            Some(tok) if tok != open_tok => {
-                let span = self.cursor.peek_span();
-                let contexts = self.snapshot_contexts(span.end);
-                return Err(self.emit_and_abort(
-                    diagnostics::argument_validation("missing opening delimiter", span, contexts),
-                    RecoveryHint::Skip,
-                ));
-            }
-            Some(_) => {}
-        }
+        let Some(open_span) = self.cursor.eat(open_tok) else {
+            let span = self.cursor.peek_span();
+            let msg = if self.cursor.is_at_end() {
+                "expected delimited argument"
+            } else {
+                "missing opening delimiter"
+            };
+            return self.fail_err(
+                diagnostics::argument_validation(msg, span),
+                RecoveryHint::Skip,
+            );
+        };
 
-        let (_, open_span) = self.cursor.bump().expect("peek ensured open delimiter");
         let inner_start = self.cursor.pos();
         let mut boundary = ContentBoundary::new(Some(open_tok), close_tok);
 
@@ -935,22 +824,17 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         loop {
             let Some(token) = self.cursor.peek() else {
                 let span = Span::new(start_byte, self.cursor.eoi_pos());
-                let contexts = self.snapshot_contexts(span.end);
-                return Err(self.emit_and_abort(
-                    diagnostics::argument_validation(
-                        "missing terminator for argument",
-                        span,
-                        contexts,
-                    ),
+                return self.fail_err(
+                    diagnostics::argument_validation("missing terminator for argument", span),
                     RecoveryHint::Skip,
-                ));
+                );
             };
 
-            if braces == 0 && token == close_tok {
-                let inner_end = self.cursor.pos();
-                let (_, close_span) = self.cursor.bump().expect("peek ensured close delimiter");
+            if braces == 0
+                && let Some(close_span) = self.cursor.eat(close_tok)
+            {
                 return Ok((
-                    inner_start..inner_end,
+                    inner_start..self.cursor.pos() - 1,
                     Span::new(start_byte, close_span.end),
                     start_byte,
                 ));
@@ -960,15 +844,13 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                 Token::LBrace => braces += 1,
                 Token::RBrace if braces == 0 => {
                     let span = Span::new(start_byte, self.cursor.byte_pos());
-                    let contexts = self.snapshot_contexts(span.end);
-                    return Err(self.emit_and_abort(
+                    return self.fail_err(
                         diagnostics::argument_validation(
                             "missing terminator before closing group",
                             span,
-                            contexts,
                         ),
                         RecoveryHint::Skip,
-                    ));
+                    );
                 }
                 Token::RBrace => braces -= 1,
                 _ => {}
@@ -992,15 +874,13 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                 .get(start..)
                 .is_some_and(diagnostics::has_unescaped_percent)
         {
-            let contexts = self.snapshot_contexts(span.end);
-            return self.emit_and_abort(
-                diagnostics::comment_truncated_argument(span, contexts),
+            return self.fail(
+                diagnostics::comment_truncated_argument(span),
                 RecoveryHint::Skip,
             );
         }
-        let contexts = self.snapshot_contexts(span.end);
-        self.emit_and_abort(
-            diagnostics::argument_validation(message, span, contexts),
+        self.fail(
+            diagnostics::argument_validation(message, span),
             RecoveryHint::Skip,
         )
     }
@@ -1019,26 +899,19 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         parse_inner: impl Fn(&mut Self) -> Result<T, scalar::ScalarError>,
         expected_label: &'static str,
     ) -> PResult<T> {
-        if self.cursor.peek() == Some(Token::LBrace) {
-            let (_, open_span) = self.cursor.bump().expect("peek ensured LBrace");
+        if let Some(open_span) = self.cursor.eat(Token::LBrace) {
             self.cursor.skip_ws();
-            if nullable && self.cursor.peek() == Some(Token::RBrace) {
-                self.cursor.bump();
+            if nullable && self.cursor.eat(Token::RBrace).is_some() {
                 return Ok(empty_value);
             }
-            let value = match parse_inner(self) {
-                Ok(v) => v,
-                Err(err) => {
-                    let contexts = self.snapshot_contexts(err.span.end);
-                    return Err(self.emit_and_abort(
-                        diagnostics::argument_validation(err.message, err.span, contexts),
-                        RecoveryHint::Skip,
-                    ));
-                }
-            };
+            let value = parse_inner(self).map_err(|err| {
+                self.fail(
+                    diagnostics::argument_validation(err.message, err.span),
+                    RecoveryHint::Skip,
+                )
+            })?;
             self.cursor.skip_ws();
-            if self.cursor.peek() == Some(Token::RBrace) {
-                self.cursor.bump();
+            if self.cursor.eat(Token::RBrace).is_some() {
                 Ok(value)
             } else {
                 let err_span = self.cursor.peek_span();
@@ -1048,23 +921,20 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                         hint: RecoveryHint::Skip,
                     });
                 }
-                let contexts = self.snapshot_contexts(err_span.end);
-                Err(self.emit_and_abort(
+                self.fail_err(
                     diagnostics::argument_validation_expected(
                         format!("expected '}}' closing {expected_label} argument"),
                         err_span,
                         &["'}'"],
                         found,
-                        contexts,
                     ),
                     RecoveryHint::Skip,
-                ))
+                )
             }
         } else {
             parse_inner(self).map_err(|err| {
-                let contexts = self.snapshot_contexts(err.span.end);
-                self.emit_and_abort(
-                    diagnostics::argument_validation(err.message, err.span, contexts),
+                self.fail(
+                    diagnostics::argument_validation(err.message, err.span),
                     RecoveryHint::Skip,
                 )
             })
@@ -1081,11 +951,8 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         empty_value: T,
         parse_inner: impl Fn(&mut Self) -> Option<T>,
     ) -> Option<T> {
-        if self.cursor.peek() != Some(Token::LBracket) {
-            return None;
-        }
         let cp = self.checkpoint();
-        self.cursor.bump(); // consume '['
+        self.cursor.eat(Token::LBracket)?;
         self.cursor.skip_ws();
 
         let value = if let Some(val) = parse_inner(self) {
@@ -1098,8 +965,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         };
 
         self.cursor.skip_ws();
-        if self.cursor.peek() == Some(Token::RBracket) {
-            self.cursor.bump();
+        if self.cursor.eat(Token::RBracket).is_some() {
             Some(value)
         } else {
             self.rewind(cp);
@@ -1121,82 +987,44 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         self.with_context_span(context_label, surface_span, |p| {
             let tokens = &p.cursor.tokens_slice()[inner.clone()];
             let spans = &p.cursor.spans_slice()[inner];
-            match kind {
+            let parsed: Result<ArgumentValue, Cow<'static, str>> = match kind {
                 ValueKind::Content { .. } | ValueKind::OperatorName => {
                     unreachable!("content arguments are parsed by parse_content_subwindow")
                 }
                 ValueKind::CSName => scalar::parse_cs_name_slice(tokens, nullable, true)
                     .map(ArgumentValue::CSName)
-                    .map_err(|msg| {
-                        let contexts = p.snapshot_contexts(surface_span.end);
-                        p.emit_and_abort(
-                            diagnostics::argument_validation(msg, surface_span, contexts),
-                            RecoveryHint::Skip,
-                        )
-                    }),
+                    .map_err(Cow::Borrowed),
                 ValueKind::Dimension => {
                     scalar::parse_dimension_slice(tokens, spans, fallback_eoi, nullable)
                         .map(ArgumentValue::Dimension)
-                        .map_err(|msg| {
-                            let contexts = p.snapshot_contexts(surface_span.end);
-                            p.emit_and_abort(
-                                diagnostics::argument_validation(msg, surface_span, contexts),
-                                RecoveryHint::Skip,
-                            )
-                        })
+                        .map_err(Cow::Borrowed)
                 }
                 ValueKind::Integer => {
                     scalar::parse_integer_slice(tokens, spans, fallback_eoi, nullable)
                         .map(ArgumentValue::Integer)
-                        .map_err(|msg| {
-                            let contexts = p.snapshot_contexts(surface_span.end);
-                            p.emit_and_abort(
-                                diagnostics::argument_validation(msg, surface_span, contexts),
-                                RecoveryHint::Skip,
-                            )
-                        })
+                        .map_err(Cow::Borrowed)
                 }
                 ValueKind::KeyVal => scalar::parse_keyval_slice(tokens, nullable)
                     .map(ArgumentValue::KeyVal)
-                    .map_err(|msg| {
-                        let contexts = p.snapshot_contexts(surface_span.end);
-                        p.emit_and_abort(
-                            diagnostics::argument_validation(msg, surface_span, contexts),
-                            RecoveryHint::Skip,
-                        )
-                    }),
+                    .map_err(Cow::Borrowed),
                 ValueKind::Column => scalar::parse_column_slice(tokens)
                     .map(ArgumentValue::Column)
-                    .map_err(|msg| {
-                        let contexts = p.snapshot_contexts(surface_span.end);
-                        p.emit_and_abort(
-                            diagnostics::argument_validation(msg, surface_span, contexts),
-                            RecoveryHint::Skip,
-                        )
-                    }),
+                    .map_err(Cow::Owned),
                 ValueKind::Delimiter => {
                     scalar::parse_delimiter_slice(p.ctx, tokens, spans, fallback_eoi, nullable)
                         .map(ArgumentValue::Delimiter)
-                        .map_err(|msg| {
-                            let contexts = p.snapshot_contexts(surface_span.end);
-                            p.emit_and_abort(
-                                diagnostics::argument_validation(msg, surface_span, contexts),
-                                RecoveryHint::Skip,
-                            )
-                        })
+                        .map_err(Cow::Borrowed)
                 }
                 ValueKind::Star => {
-                    let contexts = p.snapshot_contexts(surface_span.end);
-                    Err(p.emit_and_abort(
-                        diagnostics::argument_validation(
-                            "invalid spec: star kind is not supported by delimited/paired forms",
-                            surface_span,
-                            contexts,
-                        ),
-                        RecoveryHint::Skip,
-                    ))
+                    unreachable!("ValueKind::Star is only valid with ArgForm::Star")
                 }
-            }
+            };
+            parsed.map_err(|msg| {
+                p.fail(
+                    diagnostics::argument_validation(msg, surface_span),
+                    RecoveryHint::Skip,
+                )
+            })
         })
     }
 
@@ -1243,19 +1071,16 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                     let found = p.cursor.peek();
                     let err_span = p.cursor.peek_span();
                     let diag = if mode == ContentMode::Math && found == Some(Token::MathShift) {
-                        let contexts = p.snapshot_contexts(err_span.end);
-                        diagnostics::unexpected_math_shift(p.src, err_span, contexts)
+                        diagnostics::unexpected_math_shift(p.src, err_span)
                     } else {
-                        let contexts = p.snapshot_contexts(err_span.end);
                         diagnostics::raw_expected_found(
                             err_span,
                             &["something else", "end of input"],
                             found,
-                            contexts,
                         )
                     };
                     let err_message = diag.message.clone();
-                    p.emit(diag);
+                    p.emit_diag(diag);
 
                     if p.config.abort_on_error || p.config.reject_unknown {
                         return Err(ParseAbort {

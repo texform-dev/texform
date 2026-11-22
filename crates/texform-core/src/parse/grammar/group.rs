@@ -27,9 +27,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                 ContentMode::Text => p.parse_text_content()?,
             };
 
-            if p.cursor.peek() == Some(Token::RBrace) {
-                p.cursor.bump();
-            } else {
+            if p.cursor.eat(Token::RBrace).is_none() {
                 let err_span = p.cursor.peek_span();
                 let found = p.cursor.peek();
                 if found.is_none() {
@@ -38,18 +36,13 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                             hint: RecoveryHint::Skip,
                         });
                     }
-                    let contexts = p.snapshot_contexts(err_span.end);
-                    return Err(p.emit_and_abort(
-                        diagnostics::unclosed_group(err_span, contexts),
-                        RecoveryHint::Skip,
-                    ));
+                    return p.fail_err(diagnostics::unclosed_group(err_span), RecoveryHint::Skip);
                 }
                 if mode == ContentMode::Math && found == Some(Token::MathShift) {
-                    let contexts = p.snapshot_contexts(err_span.end);
-                    return Err(p.emit_and_abort(
-                        diagnostics::unexpected_math_shift(p.src, err_span, contexts),
+                    return p.fail_err(
+                        diagnostics::unexpected_math_shift(p.src, err_span),
                         RecoveryHint::Skip,
-                    ));
+                    );
                 }
                 return Err(p.emit_expected(err_span, &["'}'"], found));
             }
@@ -70,11 +63,9 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
             let span = self
                 .cursor
                 .span_of_range(group_start_pos..self.cursor.pos());
-            let contexts = self.snapshot_contexts(span.end);
-            let diag =
-                diagnostics::max_group_depth_exceeded(self.config.max_group_depth, span, contexts);
+            let diag = diagnostics::max_group_depth_exceeded(self.config.max_group_depth, span);
             let message = diag.message.clone();
-            self.emit(diag);
+            self.emit_diag(diag);
             let snippet = self.slice_snippet(span);
             return Ok(ParsedNode::leaf(
                 SyntaxNode::Error { message, snippet },
@@ -136,33 +127,24 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                     Some(delim) => delim,
                     None => {
                         let err_span = p.cursor.peek_span();
-                        let contexts = p.snapshot_contexts(err_span.end);
-                        return Err(p.emit_and_abort(
-                            diagnostics::left_right_delimiter(
-                                "invalid \\left delimiter",
-                                err_span,
-                                contexts,
-                            ),
+                        return p.fail_err(
+                            diagnostics::left_right_delimiter("invalid \\left delimiter", err_span),
                             RecoveryHint::Propagate,
-                        ));
+                        );
                     }
                 };
 
                 let children = p.parse_math_content()?;
 
-                if p.cursor.peek() == Some(Token::ControlSeq("right")) {
-                    p.cursor.bump();
-                } else {
+                if p.cursor.eat(Token::ControlSeq("right")).is_none() {
                     let span = p.cursor.span_of_range(group_start_pos..p.cursor.pos());
-                    let contexts = p.snapshot_contexts(span.end);
-                    return Err(p.emit_and_abort(
+                    return p.fail_err(
                         diagnostics::left_right_delimiter(
                             "missing \\right for \\left-delimited group",
                             span,
-                            contexts,
                         ),
                         RecoveryHint::Propagate,
-                    ));
+                    );
                 }
 
                 p.cursor.skip_ws();
@@ -170,15 +152,13 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                     Some(delim) => delim,
                     None => {
                         let err_span = p.cursor.peek_span();
-                        let contexts = p.snapshot_contexts(err_span.end);
-                        return Err(p.emit_and_abort(
+                        return p.fail_err(
                             diagnostics::left_right_delimiter(
                                 "invalid \\right delimiter",
                                 err_span,
-                                contexts,
                             ),
                             RecoveryHint::Propagate,
-                        ));
+                        );
                     }
                 };
 
@@ -205,15 +185,13 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
 
             let children = p.parse_math_content()?;
 
-            if p.cursor.peek() == Some(Token::MathShift) {
-                p.cursor.bump();
-            } else if p.cursor.is_at_end() {
-                let contexts = p.snapshot_contexts(opener_span.end);
-                return Err(p.emit_and_abort(
-                    diagnostics::unclosed_inline_math(opener_span, contexts),
-                    RecoveryHint::Skip,
-                ));
-            } else {
+            if p.cursor.eat(Token::MathShift).is_none() {
+                if p.cursor.is_at_end() {
+                    return p.fail_err(
+                        diagnostics::unclosed_inline_math(opener_span),
+                        RecoveryHint::Skip,
+                    );
+                }
                 let err_span = p.cursor.peek_span();
                 let found = p.cursor.peek();
                 return Err(p.emit_expected(err_span, &["'$'"], found));
@@ -241,9 +219,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
 
             let children = p.with_math_stop(MathStop::ControlParen, |p| p.parse_math_content())?;
 
-            if p.cursor.peek() == Some(Token::ControlSeq(")")) {
-                p.cursor.bump();
-            } else {
+            if p.cursor.eat(Token::ControlSeq(")")).is_none() {
                 let err_span = p.cursor.peek_span();
                 let found = p.cursor.peek();
                 return Err(p.emit_unclosed_at_eof_or_expected(err_span, &["\\)"], found, None));

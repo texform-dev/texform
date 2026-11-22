@@ -42,11 +42,10 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
             let found = self.cursor.peek();
             let span = self.cursor.peek_span();
             if mode == ContentMode::Math && found == Some(Token::MathShift) {
-                let contexts = self.snapshot_contexts(span.end);
-                return Err(self.emit_and_abort(
-                    diagnostics::unexpected_math_shift(self.src, span, contexts),
+                return self.fail_err(
+                    diagnostics::unexpected_math_shift(self.src, span),
                     RecoveryHint::Skip,
-                ));
+                );
             }
             return Err(self.emit_expected(span, &["something else", "end of input"], found));
         }

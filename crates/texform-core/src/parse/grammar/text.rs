@@ -3,6 +3,7 @@
 use texform_interface::syntax_node::{ContentMode, SyntaxNode};
 
 use crate::lexer::Token;
+use crate::parse::cursor::token_as_literal_char;
 use crate::parse::diagnostics;
 use crate::parse::parser::{PResult, RecoveryHint, TokenParser};
 use crate::parse::tree::ParsedNode;
@@ -52,6 +53,15 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
 
     /// Parse a single text-mode item.
     pub(super) fn parse_text_item(&mut self) -> PResult<ParsedNode> {
+        if let Some((_, span)) = self
+            .cursor
+            .eat_if(|tok| matches!(tok, Token::Superscript | Token::Subscript))
+        {
+            return self.fail_err(diagnostics::text_script_error(span), RecoveryHint::Skip);
+        }
+        if let Some(span) = self.cursor.eat(Token::ActiveChar) {
+            return Ok(ParsedNode::leaf(SyntaxNode::ActiveSpace, span));
+        }
         match self.cursor.peek() {
             Some(
                 Token::Char(_)
@@ -62,7 +72,8 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                 | Token::Prime(_),
             ) => Ok(self.parse_text_chunk()),
             Some(Token::ControlSeq(name)) => {
-                let item = self.parse_text_control_seq(name)?;
+                let head_span = self.cursor.peek_span();
+                let item = self.parse_text_control_seq(name, head_span)?;
                 // Whitespace terminating an argument-free pure-alphabetic control
                 // word is lexical, not text content.
                 if matches!(
@@ -76,18 +87,6 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
             }
             Some(Token::MathShift) => self.parse_inline_math_dollar(),
             Some(Token::LBrace) => self.parse_braced_group(ContentMode::Text),
-            Some(Token::Superscript | Token::Subscript) => {
-                let (_, span) = self.cursor.bump().expect("peek ensured script marker");
-                let contexts = self.snapshot_contexts(span.end);
-                Err(self.emit_and_abort(
-                    diagnostics::text_script_error(span, contexts),
-                    RecoveryHint::Skip,
-                ))
-            }
-            Some(Token::ActiveChar) => {
-                let (_, span) = self.cursor.bump().expect("peek ensured ActiveChar");
-                Ok(ParsedNode::leaf(SyntaxNode::ActiveSpace, span))
-            }
             other => {
                 let span = self.cursor.peek_span();
                 Err(self.emit_expected(span, &["text item"], other))
@@ -103,42 +102,28 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         let mut last_was_space = false;
 
         while let Some(tok) = self.cursor.peek() {
-            match tok {
-                Token::Char(c) => {
-                    self.cursor.bump();
-                    buf.push(c);
-                    last_was_space = false;
-                }
-                Token::Whitespaces => {
-                    self.cursor.bump();
-                    if !last_was_space {
-                        buf.push(' ');
-                        last_was_space = true;
+            if let Some(ch) = token_as_literal_char(tok) {
+                self.cursor.bump();
+                buf.push(ch);
+                last_was_space = false;
+            } else {
+                match tok {
+                    Token::Whitespaces => {
+                        self.cursor.bump();
+                        if !last_was_space {
+                            buf.push(' ');
+                            last_was_space = true;
+                        }
                     }
-                }
-                Token::Star => {
-                    self.cursor.bump();
-                    buf.push('*');
-                    last_was_space = false;
-                }
-                Token::LBracket => {
-                    self.cursor.bump();
-                    buf.push('[');
-                    last_was_space = false;
-                }
-                Token::RBracket => {
-                    self.cursor.bump();
-                    buf.push(']');
-                    last_was_space = false;
-                }
-                Token::Prime(n) => {
-                    self.cursor.bump();
-                    for _ in 0..n {
-                        buf.push('\'');
+                    Token::Prime(n) => {
+                        self.cursor.bump();
+                        for _ in 0..n {
+                            buf.push('\'');
+                        }
+                        last_was_space = false;
                     }
-                    last_was_space = false;
+                    _ => break,
                 }
-                _ => break,
             }
         }
 
@@ -153,32 +138,19 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
     /// time instead of being coalesced into a running word.
     pub(super) fn parse_text_argument_item(&mut self) -> PResult<ParsedNode> {
         self.cursor.skip_ws();
-        match self.cursor.peek() {
-            Some(Token::Char(c)) => {
-                let (_, span) = self.cursor.bump().expect("peek ensured Char");
-                Ok(ParsedNode::leaf(SyntaxNode::Text(c.to_string()), span))
-            }
-            Some(Token::Star) => {
-                let (_, span) = self.cursor.bump().expect("peek ensured Star");
-                Ok(ParsedNode::leaf(SyntaxNode::Text("*".to_string()), span))
-            }
-            Some(Token::LBracket) => {
-                let (_, span) = self.cursor.bump().expect("peek ensured LBracket");
-                Ok(ParsedNode::leaf(SyntaxNode::Text("[".to_string()), span))
-            }
-            Some(Token::RBracket) => {
-                let (_, span) = self.cursor.bump().expect("peek ensured RBracket");
-                Ok(ParsedNode::leaf(SyntaxNode::Text("]".to_string()), span))
-            }
-            Some(Token::Prime(n)) => {
-                let (_, span) = self.cursor.bump().expect("peek ensured Prime");
-                Ok(ParsedNode::leaf(SyntaxNode::Text("'".repeat(n)), span))
-            }
-            Some(Token::ControlSeq("end")) => {
-                let span = self.cursor.peek_span();
-                Err(self.emit_expected(span, &["text item"], Some(Token::ControlSeq("end"))))
-            }
-            _ => self.parse_text_item(),
+        if let Some((ch, span)) = self.cursor.eat_map(token_as_literal_char) {
+            return Ok(ParsedNode::leaf(SyntaxNode::Text(ch.to_string()), span));
         }
+        if let Some((n, span)) = self.cursor.eat_map(|tok| match tok {
+            Token::Prime(n) => Some(n),
+            _ => None,
+        }) {
+            return Ok(ParsedNode::leaf(SyntaxNode::Text("'".repeat(n)), span));
+        }
+        if self.cursor.peek() == Some(Token::ControlSeq("end")) {
+            let span = self.cursor.peek_span();
+            return Err(self.emit_expected(span, &["text item"], Some(Token::ControlSeq("end"))));
+        }
+        self.parse_text_item()
     }
 }

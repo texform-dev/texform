@@ -4,8 +4,9 @@ use texform_interface::syntax_node::{ContentMode, GroupKind, SyntaxNode};
 
 use crate::knowledge::CommandKind;
 use crate::lexer::Token;
+use crate::parse::cursor::token_as_literal_char;
 use crate::parse::diagnostics;
-use crate::parse::parser::{MathStop, PResult, RecoveryHint, TokenParser};
+use crate::parse::parser::{MathStop, PResult, RecoveryHint, TokenParser, is_math_hard_stop};
 use crate::parse::result::Span;
 use crate::parse::tree::{self, ParsedNode};
 
@@ -24,18 +25,11 @@ enum SupState {
 /// atoms and therefore are not operand boundaries.
 #[inline]
 fn is_script_operand_boundary(token: Option<Token<'_>>) -> bool {
-    match token {
-        None
-        | Some(
-            Token::RBrace
-            | Token::MathShift
-            | Token::Superscript
-            | Token::Subscript
-            | Token::Prime(_),
-        ) => true,
-        Some(Token::ControlSeq("right" | "end")) => true,
-        Some(_) => false,
-    }
+    is_math_hard_stop(token, MathStop::Default)
+        || matches!(
+            token,
+            Some(Token::Superscript | Token::Subscript | Token::Prime(_))
+        )
 }
 
 /// Returns `true` when `node` ends an alignment cell (`&`, `\\`, `\cr`,
@@ -104,22 +98,10 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                 .is_some_and(|meta| meta.kind == CommandKind::Infix)
     }
 
-    /// Returns `true` if `token` is a hard closing boundary for math content
-    /// (excluding infix commands).
-    #[inline]
-    fn is_math_hard_stop(&self, token: Option<Token<'_>>) -> bool {
-        match token {
-            None | Some(Token::RBrace | Token::MathShift) => true,
-            Some(Token::ControlSeq("right" | "end")) => true,
-            Some(Token::ControlSeq(")")) => self.math_stop() == MathStop::ControlParen,
-            Some(_) => false,
-        }
-    }
-
     /// Single source of truth for math content loop stop boundaries.
     #[inline]
     pub(super) fn is_math_stop(&self, token: Option<Token<'_>>) -> bool {
-        if self.is_math_hard_stop(token) {
+        if is_math_hard_stop(token, self.math_stop()) {
             return true;
         }
         matches!(token, Some(Token::ControlSeq(name)) if self.is_infix_command(name))
@@ -178,15 +160,8 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         let cmd_args = if args_spec.is_empty() {
             Vec::new()
         } else {
-            match self.parse_argument_slots(
-                args_spec,
-                ContentMode::Math,
-                "infix command argument",
-                false,
-            ) {
-                Ok(args) => args,
-                Err(abort) => return Err(super::command::downgrade_inner_arg_abort(self, abort)),
-            }
+            self.parse_argument_slots(args_spec, "infix command argument", false)
+                .map_err(super::command::downgrade_inner_arg_abort)?
         };
 
         let mut right_items = Vec::new();
@@ -194,7 +169,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
             let before_ws = self.cursor.pos();
             self.cursor.skip_ws();
 
-            if self.is_math_hard_stop(self.cursor.peek()) {
+            if is_math_hard_stop(self.cursor.peek(), self.math_stop()) {
                 self.cursor.set_pos(before_ws);
                 break;
             }
@@ -203,11 +178,10 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                 && self.is_infix_command(second_name)
             {
                 let err_span = self.cursor.peek_span();
-                let contexts = self.snapshot_contexts(err_span.end);
-                return Err(self.emit_and_abort(
-                    diagnostics::ambiguous_infix(second_name, err_span, contexts),
+                return self.fail_err(
+                    diagnostics::ambiguous_infix(second_name, err_span),
                     RecoveryHint::Skip,
-                ));
+                );
             }
 
             let cp = self.checkpoint();
@@ -346,15 +320,13 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                         }
                         Some(SupState::Explicit(_)) | Some(SupState::Mixed(_)) => {
                             let err_span = self.cursor.span_of_range(marker_pos..self.cursor.pos());
-                            let contexts = self.snapshot_contexts(err_span.end);
-                            return Err(self.emit_and_abort(
+                            return self.fail_err(
                                 diagnostics::custom_error(
                                     "Double exponent: use braces to clarify",
                                     err_span,
-                                    contexts,
                                 ),
                                 RecoveryHint::Skip,
-                            ));
+                            );
                         }
                     }
                 }
@@ -364,15 +336,13 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                     let span = self.cursor.span_of_range(marker_pos..self.cursor.pos());
                     let tracked = ParsedNode { span, ..tracked };
                     if subscript.is_some() {
-                        let contexts = self.snapshot_contexts(span.end);
-                        return Err(self.emit_and_abort(
+                        return self.fail_err(
                             diagnostics::custom_error(
                                 "Double subscripts: use braces to clarify",
                                 span,
-                                contexts,
                             ),
                             RecoveryHint::Skip,
-                        ));
+                        );
                     }
                     subscript = Some(tracked);
                 }
@@ -393,15 +363,13 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                         Some(SupState::Prime(_))
                         | Some(SupState::Explicit(_))
                         | Some(SupState::Mixed(_)) => {
-                            let contexts = self.snapshot_contexts(prime_span.end);
-                            return Err(self.emit_and_abort(
+                            return self.fail_err(
                                 diagnostics::custom_error(
                                     "Prime causes double exponent: use braces to clarify",
                                     prime_span,
-                                    contexts,
                                 ),
                                 RecoveryHint::Skip,
-                            ));
+                            );
                         }
                     }
                 }
@@ -428,11 +396,10 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         let next = self.cursor.peek();
         if is_script_operand_boundary(next) {
             let err_span = self.cursor.peek_span();
-            let contexts = self.snapshot_contexts(err_span.end);
-            return Err(self.emit_and_abort(
-                diagnostics::missing_script_content(is_superscript, err_span, next, contexts),
+            return self.fail_err(
+                diagnostics::missing_script_content(is_superscript, err_span, next),
                 RecoveryHint::MissingScriptContent,
-            ));
+            );
         }
         self.parse_math_atom()
     }
@@ -442,40 +409,27 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
     /// Hot-path ordinary math characters are dispatched first in a single
     /// `match` with no lookahead backtracking or hash lookups.
     pub(super) fn parse_math_atom(&mut self) -> PResult<ParsedNode> {
+        if let Some((ch, span)) = self.cursor.eat_map(token_as_literal_char) {
+            return Ok(ParsedNode::leaf(SyntaxNode::Char(ch), span));
+        }
+        if let Some(span) = self.cursor.eat(Token::Alignment) {
+            return Ok(ParsedNode::leaf(SyntaxNode::AlignmentTab, span));
+        }
+        if let Some(span) = self.cursor.eat(Token::ActiveChar) {
+            return Ok(ParsedNode::leaf(SyntaxNode::ActiveSpace, span));
+        }
         match self.cursor.peek() {
-            Some(Token::Char(c)) => {
-                let (_, span) = self.cursor.bump().expect("peek ensured Char");
-                Ok(ParsedNode::leaf(SyntaxNode::Char(c), span))
-            }
-            Some(Token::Star) => {
-                let (_, span) = self.cursor.bump().expect("peek ensured Star");
-                Ok(ParsedNode::leaf(SyntaxNode::Char('*'), span))
-            }
-            Some(Token::LBracket) => {
-                let (_, span) = self.cursor.bump().expect("peek ensured LBracket");
-                Ok(ParsedNode::leaf(SyntaxNode::Char('['), span))
-            }
-            Some(Token::RBracket) => {
-                let (_, span) = self.cursor.bump().expect("peek ensured RBracket");
-                Ok(ParsedNode::leaf(SyntaxNode::Char(']'), span))
-            }
-            Some(Token::Alignment) => {
-                let (_, span) = self.cursor.bump().expect("peek ensured Alignment");
-                Ok(ParsedNode::leaf(SyntaxNode::AlignmentTab, span))
-            }
             Some(Token::LBrace) => self.parse_braced_group(ContentMode::Math),
-            Some(Token::ActiveChar) => {
-                let (_, span) = self.cursor.bump().expect("peek ensured ActiveChar");
-                Ok(ParsedNode::leaf(SyntaxNode::ActiveSpace, span))
+            Some(Token::ControlSeq(name)) => {
+                let head_span = self.cursor.peek_span();
+                self.parse_math_control_seq(name, head_span)
             }
-            Some(Token::ControlSeq(name)) => self.parse_math_control_seq(name),
             Some(Token::MathShift) => {
                 let span = self.cursor.peek_span();
-                let contexts = self.snapshot_contexts(span.end);
-                Err(self.emit_and_abort(
-                    diagnostics::unexpected_math_shift(self.src, span, contexts),
+                self.fail_err(
+                    diagnostics::unexpected_math_shift(self.src, span),
                     RecoveryHint::Skip,
-                ))
+                )
             }
             other => {
                 let span = self.cursor.peek_span();
@@ -492,6 +446,14 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
     /// empty-base superscript.
     pub(super) fn parse_math_atom_argument(&mut self) -> PResult<ParsedNode> {
         self.cursor.skip_ws();
+        if let Some((count, span)) = self.cursor.eat_map(|tok| match tok {
+            Token::Prime(count) => Some(count),
+            _ => None,
+        }) {
+            let prime = ParsedNode::leaf(SyntaxNode::Prime { count }, span);
+            let base = empty_script_base(span.start);
+            return Ok(fold_scripted(base, None, Some(prime), span));
+        }
         match self.cursor.peek() {
             Some(Token::ControlSeq("right" | "end")) => {
                 let span = self.cursor.peek_span();
@@ -504,12 +466,6 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                 Err(self.emit_expected(span, &["math atom"], found))
             }
             Some(Token::Superscript | Token::Subscript) => self.parse_math_item(),
-            Some(Token::Prime(count)) => {
-                let (_, span) = self.cursor.bump().expect("peek ensured Prime");
-                let prime = ParsedNode::leaf(SyntaxNode::Prime { count }, span);
-                let base = empty_script_base(span.start);
-                Ok(fold_scripted(base, None, Some(prime), span))
-            }
             _ => self.parse_math_atom(),
         }
     }

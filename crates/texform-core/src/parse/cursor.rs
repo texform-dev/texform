@@ -6,6 +6,19 @@ use std::ops::Range;
 use crate::lexer::{Token, TokenStream};
 use crate::parse::result::Span;
 
+/// Map ordinary character-like tokens (`Char`, `Star`, `LBracket`, `RBracket`)
+/// to their literal character value.
+#[inline]
+pub(crate) fn token_as_literal_char(token: Token<'_>) -> Option<char> {
+    match token {
+        Token::Char(c) => Some(c),
+        Token::Star => Some('*'),
+        Token::LBracket => Some('['),
+        Token::RBracket => Some(']'),
+        _ => None,
+    }
+}
+
 /// Result of scanning a balanced `{...}` or `[...]` delimiter pair.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct DelimitedRange {
@@ -186,6 +199,48 @@ impl<'tok, 'src> Cursor<'tok, 'src> {
         Some((token, span))
     }
 
+    /// Consume the next token if it equals `expected`, returning its byte span.
+    #[inline]
+    pub(crate) fn eat(&mut self, expected: Token<'_>) -> Option<Span> {
+        if self.peek() == Some(expected) {
+            let span = self.spans[self.pos];
+            self.pos += 1;
+            Some(span)
+        } else {
+            None
+        }
+    }
+
+    /// Consume the next token if `predicate` returns `true`, returning the
+    /// token together with its byte span.
+    #[inline]
+    pub(crate) fn eat_if(
+        &mut self,
+        predicate: impl FnOnce(Token<'src>) -> bool,
+    ) -> Option<(Token<'src>, Span)> {
+        let token = *self.tokens.get(self.pos)?;
+        if !predicate(token) {
+            return None;
+        }
+        let span = self.spans[self.pos];
+        self.pos += 1;
+        Some((token, span))
+    }
+
+    /// Consume the next token if `f` maps it to `Some(value)`, returning
+    /// `(value, span)`.
+    #[inline]
+    pub(crate) fn eat_map<T>(
+        &mut self,
+        f: impl FnOnce(Token<'src>) -> Option<T>,
+    ) -> Option<(T, Span)> {
+        let token = *self.tokens.get(self.pos)?;
+        let value = f(token)?;
+        let span = self.spans[self.pos];
+        self.pos += 1;
+        Some((value, span))
+    }
+
     /// Advance past any consecutive [`Token::Whitespaces`] tokens.
     ///
     /// Returns `true` if at least one whitespace token was skipped.
@@ -272,10 +327,9 @@ impl<'tok, 'src> Cursor<'tok, 'src> {
         &mut self,
         allow_nested: bool,
     ) -> Result<DelimitedRange, BalancedScanError> {
-        if self.peek() != Some(Token::LBrace) {
+        let Some(open_span) = self.eat(Token::LBrace) else {
             return Err(BalancedScanError::MissingOpen);
-        }
-        let (_, open_span) = self.bump().expect("peek ensured LBrace");
+        };
         let inner_start = self.pos;
         let mut depth = 0usize;
 
@@ -313,10 +367,9 @@ impl<'tok, 'src> Cursor<'tok, 'src> {
         &mut self,
         match_brackets: bool,
     ) -> Result<DelimitedRange, BalancedScanError> {
-        if self.peek() != Some(Token::LBracket) {
+        let Some(open_span) = self.eat(Token::LBracket) else {
             return Err(BalancedScanError::MissingOpen);
-        }
-        let (_, open_span) = self.bump().expect("peek ensured LBracket");
+        };
         let inner_start = self.pos;
         let mut brace_depth = 0usize;
         let mut bracket_depth = 0usize;
@@ -355,6 +408,67 @@ impl<'tok, 'src> Cursor<'tok, 'src> {
         Err(BalancedScanError::Unclosed { open_span })
     }
 
+    /// Scan one or more consecutive `Char` / `Star` tokens starting at
+    /// `start_idx` as an environment name.
+    ///
+    /// Borrows `name` directly from `src` when the tokens are contiguous;
+    /// allocates only when a comment split the name in the source.
+    fn scan_env_name_at(
+        &self,
+        src: &'src str,
+        start_idx: usize,
+    ) -> Option<(usize, Cow<'src, str>)> {
+        let mut idx = start_idx;
+        let mut first_byte = 0usize;
+        let mut prev_end = 0usize;
+        let mut contiguous = true;
+
+        while let Some(token) = self.tokens.get(idx) {
+            match token {
+                Token::Char(_) | Token::Star => {
+                    let span = self.spans[idx];
+                    if idx == start_idx {
+                        first_byte = span.start;
+                    } else if span.start != prev_end {
+                        contiguous = false;
+                    }
+                    prev_end = span.end;
+                    idx += 1;
+                }
+                _ => break,
+            }
+        }
+
+        if idx == start_idx {
+            return None;
+        }
+
+        let env_name = if contiguous {
+            Cow::Borrowed(&src[first_byte..prev_end])
+        } else {
+            let mut owned = String::with_capacity(idx - start_idx);
+            for tok in &self.tokens[start_idx..idx] {
+                match tok {
+                    Token::Char(c) => owned.push(*c),
+                    Token::Star => owned.push('*'),
+                    _ => unreachable!("env name loop only accepts Char and Star"),
+                }
+            }
+            Cow::Owned(owned)
+        };
+
+        Some((idx, env_name))
+    }
+
+    /// Consume one or more consecutive `Char` / `Star` tokens at the current
+    /// position as an environment name, returning `None` without advancing if
+    /// no valid name token is present.
+    pub(crate) fn eat_env_name(&mut self, src: &'src str) -> Option<Cow<'src, str>> {
+        let (end_idx, name) = self.scan_env_name_at(src, self.pos)?;
+        self.pos = end_idx;
+        Some(name)
+    }
+
     /// Inspect a `\begin{name}` or `\end{name}` marker at the current position
     /// without advancing the cursor.
     ///
@@ -385,47 +499,12 @@ impl<'tok, 'src> Cursor<'tok, 'src> {
         }
         idx += 1;
 
-        let name_tok_start = idx;
-        let mut first_byte = 0usize;
-        let mut prev_end = 0usize;
-        let mut contiguous = true;
-
-        while let Some(token) = self.tokens.get(idx) {
-            match token {
-                Token::Char(_) | Token::Star => {
-                    let span = self.spans[idx];
-                    if idx == name_tok_start {
-                        first_byte = span.start;
-                    } else if span.start != prev_end {
-                        contiguous = false;
-                    }
-                    prev_end = span.end;
-                    idx += 1;
-                }
-                Token::RBrace => break,
-                _ => return None,
-            }
-        }
-
-        if idx == name_tok_start || self.tokens.get(idx) != Some(&Token::RBrace) {
+        let (end_name_idx, env_name) = self.scan_env_name_at(src, idx)?;
+        if self.tokens.get(end_name_idx) != Some(&Token::RBrace) {
             return None;
         }
-        let close_end = self.spans[idx].end;
-        let env_name = if contiguous {
-            Cow::Borrowed(&src[first_byte..prev_end])
-        } else {
-            let mut owned = String::with_capacity(idx - name_tok_start);
-            for tok in &self.tokens[name_tok_start..idx] {
-                match tok {
-                    Token::Char(c) => owned.push(*c),
-                    Token::Star => owned.push('*'),
-                    _ => unreachable!("env name loop only accepts Char and Star"),
-                }
-            }
-            Cow::Owned(owned)
-        };
-
-        Some((idx + 1, env_name, Span::new(head_start, close_end)))
+        let close_end = self.spans[end_name_idx].end;
+        Some((end_name_idx + 1, env_name, Span::new(head_start, close_end)))
     }
 }
 

@@ -4,7 +4,7 @@
 use texform_interface::syntax_node::ContentMode;
 
 use crate::lexer::Token;
-use crate::parse::result::{ParseDiagnostic, ParseDiagnosticContext, ParseDiagnosticKind, Span};
+use crate::parse::result::{ParseDiagnostic, ParseDiagnosticKind, Span};
 
 /// Format a lexed token for the structured `found` field and generic messages.
 #[inline]
@@ -48,7 +48,6 @@ fn build_diagnostic(
     span: Span,
     expected: Vec<String>,
     found: Option<String>,
-    contexts: Vec<ParseDiagnosticContext>,
 ) -> ParseDiagnostic {
     ParseDiagnostic {
         kind: Some(kind),
@@ -56,73 +55,51 @@ fn build_diagnostic(
         span,
         expected,
         found,
-        contexts,
+        contexts: Vec::new(),
     }
 }
 
 /// Construct an [`ParseDiagnosticKind::UnknownCommand`] diagnostic.
-pub(crate) fn unknown_command(
-    name: &str,
-    span: Span,
-    contexts: Vec<ParseDiagnosticContext>,
-) -> ParseDiagnostic {
+pub(crate) fn unknown_command(name: &str, span: Span) -> ParseDiagnostic {
     build_diagnostic(
         ParseDiagnosticKind::UnknownCommand,
         format!("Unknown command: \\{name}"),
         span,
         Vec::new(),
         None,
-        contexts,
     )
 }
 
 /// Construct a [`ParseDiagnosticKind::CommandModeError`] diagnostic.
-pub(crate) fn command_mode_error(
-    name: &str,
-    mode: ContentMode,
-    span: Span,
-    contexts: Vec<ParseDiagnosticContext>,
-) -> ParseDiagnostic {
+pub(crate) fn command_mode_error(name: &str, mode: ContentMode, span: Span) -> ParseDiagnostic {
     build_diagnostic(
         ParseDiagnosticKind::CommandModeError,
         format!("Command \\{name} is not allowed in {mode} mode"),
         span,
         Vec::new(),
         None,
-        contexts,
     )
 }
 
 /// Construct an [`ParseDiagnosticKind::UnknownEnvironment`] diagnostic.
-pub(crate) fn unknown_environment(
-    name: &str,
-    span: Span,
-    contexts: Vec<ParseDiagnosticContext>,
-) -> ParseDiagnostic {
+pub(crate) fn unknown_environment(name: &str, span: Span) -> ParseDiagnostic {
     build_diagnostic(
         ParseDiagnosticKind::UnknownEnvironment,
         format!("Unknown environment: {name}"),
         span,
         Vec::new(),
         None,
-        contexts,
     )
 }
 
 /// Construct an [`ParseDiagnosticKind::EnvironmentModeError`] diagnostic.
-pub(crate) fn environment_mode_error(
-    name: &str,
-    mode: ContentMode,
-    span: Span,
-    contexts: Vec<ParseDiagnosticContext>,
-) -> ParseDiagnostic {
+pub(crate) fn environment_mode_error(name: &str, mode: ContentMode, span: Span) -> ParseDiagnostic {
     build_diagnostic(
         ParseDiagnosticKind::EnvironmentModeError,
         format!("Environment {name} is not allowed in {mode} mode"),
         span,
         Vec::new(),
         None,
-        contexts,
     )
 }
 
@@ -131,7 +108,6 @@ pub(crate) fn environment_name_mismatch(
     expected: &str,
     found: &str,
     span: Span,
-    contexts: Vec<ParseDiagnosticContext>,
 ) -> ParseDiagnostic {
     build_diagnostic(
         ParseDiagnosticKind::EnvironmentNameMismatch,
@@ -139,7 +115,6 @@ pub(crate) fn environment_name_mismatch(
         span,
         vec![format!("\\end{{{expected}}}")],
         Some(format!("\\end{{{found}}}")),
-        contexts,
     )
 }
 
@@ -148,7 +123,6 @@ pub(crate) fn unclosed_environment(
     expected: &str,
     span: Span,
     found: Option<String>,
-    contexts: Vec<ParseDiagnosticContext>,
 ) -> ParseDiagnostic {
     build_diagnostic(
         ParseDiagnosticKind::UnclosedEnvironment,
@@ -156,49 +130,35 @@ pub(crate) fn unclosed_environment(
         span,
         vec![format!("\\end{{{expected}}}")],
         found,
-        contexts,
     )
 }
 
 /// Construct a [`ParseDiagnosticKind::LeftRightDelimiter`] diagnostic.
-pub(crate) fn left_right_delimiter(
-    message: impl Into<String>,
-    span: Span,
-    contexts: Vec<ParseDiagnosticContext>,
-) -> ParseDiagnostic {
+pub(crate) fn left_right_delimiter(message: impl Into<String>, span: Span) -> ParseDiagnostic {
     build_diagnostic(
         ParseDiagnosticKind::LeftRightDelimiter,
         message.into(),
         span,
         Vec::new(),
         None,
-        contexts,
     )
 }
 
 /// Construct an [`ParseDiagnosticKind::UnclosedInlineMath`] diagnostic pointed
 /// at its opening `$`.
-pub(crate) fn unclosed_inline_math(
-    opener_span: Span,
-    contexts: Vec<ParseDiagnosticContext>,
-) -> ParseDiagnostic {
+pub(crate) fn unclosed_inline_math(opener_span: Span) -> ParseDiagnostic {
     build_diagnostic(
         ParseDiagnosticKind::UnclosedInlineMath,
         "found '$' expected something else, or end of input".to_string(),
         opener_span,
         vec!["something else".to_string(), "end of input".to_string()],
         Some("$".to_string()),
-        contexts,
     )
 }
 
 /// Construct an [`ParseDiagnosticKind::UnexpectedMathShift`] diagnostic,
 /// adding a currency hint when `$` is immediately followed by an ASCII digit.
-pub(crate) fn unexpected_math_shift(
-    src: &str,
-    span: Span,
-    contexts: Vec<ParseDiagnosticContext>,
-) -> ParseDiagnostic {
+pub(crate) fn unexpected_math_shift(src: &str, span: Span) -> ParseDiagnostic {
     let message = if followed_by_ascii_digit(src, span.end) {
         "Unexpected $ inside a math formula; it looks like a currency marker"
     } else {
@@ -210,54 +170,39 @@ pub(crate) fn unexpected_math_shift(
         span,
         Vec::new(),
         Some("$".to_string()),
-        contexts,
     )
 }
 
 /// Construct a [`ParseDiagnosticKind::TextScriptError`] diagnostic.
-pub(crate) fn text_script_error(
-    span: Span,
-    contexts: Vec<ParseDiagnosticContext>,
-) -> ParseDiagnostic {
+pub(crate) fn text_script_error(span: Span) -> ParseDiagnostic {
     build_diagnostic(
         ParseDiagnosticKind::TextScriptError,
         "Scripted syntax is not allowed in Text mode".to_string(),
         span,
         Vec::new(),
         None,
-        contexts,
     )
 }
 
 /// Construct an [`ParseDiagnosticKind::AmbiguousInfix`] diagnostic.
-pub(crate) fn ambiguous_infix(
-    name: &str,
-    span: Span,
-    contexts: Vec<ParseDiagnosticContext>,
-) -> ParseDiagnostic {
+pub(crate) fn ambiguous_infix(name: &str, span: Span) -> ParseDiagnostic {
     build_diagnostic(
         ParseDiagnosticKind::AmbiguousInfix,
         format!("Ambiguous use of \\{name}"),
         span,
         Vec::new(),
         None,
-        contexts,
     )
 }
 
 /// Construct an [`ParseDiagnosticKind::ArgumentValidation`] diagnostic.
-pub(crate) fn argument_validation(
-    message: impl Into<String>,
-    span: Span,
-    contexts: Vec<ParseDiagnosticContext>,
-) -> ParseDiagnostic {
+pub(crate) fn argument_validation(message: impl Into<String>, span: Span) -> ParseDiagnostic {
     build_diagnostic(
         ParseDiagnosticKind::ArgumentValidation,
         message.into(),
         span,
         Vec::new(),
         None,
-        contexts,
     )
 }
 
@@ -268,7 +213,6 @@ pub(crate) fn argument_validation_expected(
     span: Span,
     expected: &[&str],
     found: Option<Token<'_>>,
-    contexts: Vec<ParseDiagnosticContext>,
 ) -> ParseDiagnostic {
     build_diagnostic(
         ParseDiagnosticKind::ArgumentValidation,
@@ -276,73 +220,54 @@ pub(crate) fn argument_validation_expected(
         span,
         expected.iter().map(|label| (*label).to_string()).collect(),
         found.map(format_token_label),
-        contexts,
     )
 }
 
 /// Construct a [`ParseDiagnosticKind::CommentTruncatedArgument`] diagnostic.
-pub(crate) fn comment_truncated_argument(
-    span: Span,
-    contexts: Vec<ParseDiagnosticContext>,
-) -> ParseDiagnostic {
+pub(crate) fn comment_truncated_argument(span: Span) -> ParseDiagnostic {
     build_diagnostic(
         ParseDiagnosticKind::CommentTruncatedArgument,
         "Unescaped % starts a comment inside this argument".to_string(),
         span,
         Vec::new(),
         None,
-        contexts,
     )
 }
 
 /// Construct a [`ParseDiagnosticKind::MaxGroupDepthExceeded`] diagnostic for
 /// explicit `{...}` group nesting.
-pub(crate) fn max_group_depth_exceeded(
-    max_depth: usize,
-    span: Span,
-    contexts: Vec<ParseDiagnosticContext>,
-) -> ParseDiagnostic {
+pub(crate) fn max_group_depth_exceeded(max_depth: usize, span: Span) -> ParseDiagnostic {
     build_diagnostic(
         ParseDiagnosticKind::MaxGroupDepthExceeded,
         format!("max group depth ({max_depth}) exceeded"),
         span,
         Vec::new(),
         None,
-        contexts,
     )
 }
 
 /// Construct a [`ParseDiagnosticKind::MaxGroupDepthExceeded`] diagnostic for
 /// global parser recursion-depth overflow.
-pub(crate) fn max_recursion_depth_exceeded(
-    max_depth: usize,
-    span: Span,
-    contexts: Vec<ParseDiagnosticContext>,
-) -> ParseDiagnostic {
+pub(crate) fn max_recursion_depth_exceeded(max_depth: usize, span: Span) -> ParseDiagnostic {
     build_diagnostic(
         ParseDiagnosticKind::MaxGroupDepthExceeded,
         format!("max recursion depth ({max_depth}) exceeded"),
         span,
         Vec::new(),
         None,
-        contexts,
     )
 }
 
 /// Construct an uncategorized (`kind: None`) custom parser diagnostic (e.g.
 /// double subscript / double exponent errors).
-pub(crate) fn custom_error(
-    message: impl Into<String>,
-    span: Span,
-    contexts: Vec<ParseDiagnosticContext>,
-) -> ParseDiagnostic {
+pub(crate) fn custom_error(message: impl Into<String>, span: Span) -> ParseDiagnostic {
     ParseDiagnostic {
         kind: None,
         message: message.into(),
         span,
         expected: Vec::new(),
         found: None,
-        contexts,
+        contexts: Vec::new(),
     }
 }
 
@@ -351,7 +276,6 @@ pub(crate) fn raw_expected_found(
     span: Span,
     expected: &[&str],
     found: Option<Token<'_>>,
-    contexts: Vec<ParseDiagnosticContext>,
 ) -> ParseDiagnostic {
     let found_label = found.map(format_token_label);
     let expected_vec: Vec<String> = expected.iter().map(|label| (*label).to_string()).collect();
@@ -373,7 +297,6 @@ pub(crate) fn raw_expected_found(
         span,
         expected_vec,
         found_label,
-        contexts,
     )
 }
 
@@ -383,7 +306,6 @@ pub(crate) fn missing_script_content(
     is_superscript: bool,
     span: Span,
     found: Option<Token<'_>>,
-    contexts: Vec<ParseDiagnosticContext>,
 ) -> ParseDiagnostic {
     let (message, expected) = if is_superscript {
         ("Missing superscript content", "superscript content")
@@ -396,20 +318,18 @@ pub(crate) fn missing_script_content(
         span,
         vec![expected.to_string()],
         found.map(format_token_label),
-        contexts,
     )
 }
 
 /// Construct a [`ParseDiagnosticKind::RawExpectedFound`] diagnostic for an
 /// unclosed `{ ... }` group at EOF.
-pub(crate) fn unclosed_group(span: Span, contexts: Vec<ParseDiagnosticContext>) -> ParseDiagnostic {
+pub(crate) fn unclosed_group(span: Span) -> ParseDiagnostic {
     build_diagnostic(
         ParseDiagnosticKind::RawExpectedFound,
         "Unclosed { ... } group".to_string(),
         span,
         vec!["'}'".to_string()],
         None,
-        contexts,
     )
 }
 
@@ -458,6 +378,7 @@ pub(crate) fn finish_diagnostics(diags: Vec<ParseDiagnostic>) -> Vec<ParseDiagno
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parse::result::ParseDiagnosticContext;
 
     #[test]
     fn site_helpers_detect_percent_and_currency_digits() {
@@ -474,14 +395,14 @@ mod tests {
 
     #[test]
     fn unexpected_math_shift_attaches_currency_hint_only_before_digits() {
-        let currency = unexpected_math_shift("$100", Span::new(0, 1), Vec::new());
+        let currency = unexpected_math_shift("$100", Span::new(0, 1));
         assert_eq!(
             currency.message,
             "Unexpected $ inside a math formula; it looks like a currency marker"
         );
         assert_eq!(currency.found.as_deref(), Some("$"));
 
-        let plain = unexpected_math_shift("$x", Span::new(0, 1), Vec::new());
+        let plain = unexpected_math_shift("$x", Span::new(0, 1));
         assert_eq!(plain.message, "Unexpected $ inside a math formula");
         assert_eq!(plain.found.as_deref(), Some("$"));
     }
@@ -492,21 +413,17 @@ mod tests {
             Span::new(5, 6),
             &["something else", "end of input"],
             Some(Token::RBrace),
-            Vec::new(),
         );
-        let raw_eof = raw_expected_found(Span::point(10), &["'}'"], None, Vec::new());
-        let mode_err = command_mode_error("frac", ContentMode::Text, Span::new(1, 6), Vec::new());
-        let unknown_a = unknown_command("foo", Span::new(0, 4), Vec::new());
-        let unknown_a_dup = unknown_command("foo", Span::new(0, 4), Vec::new());
-        let unknown_b = unknown_command("bar", Span::new(7, 11), Vec::new());
-        let unknown_a_different_ctx = unknown_command(
-            "foo",
-            Span::new(0, 4),
-            vec![ParseDiagnosticContext {
-                label: "command argument".to_string(),
-                span: Span::new(0, 5),
-            }],
-        );
+        let raw_eof = raw_expected_found(Span::point(10), &["'}'"], None);
+        let mode_err = command_mode_error("frac", ContentMode::Text, Span::new(1, 6));
+        let unknown_a = unknown_command("foo", Span::new(0, 4));
+        let unknown_a_dup = unknown_command("foo", Span::new(0, 4));
+        let unknown_b = unknown_command("bar", Span::new(7, 11));
+        let mut unknown_a_different_ctx = unknown_command("foo", Span::new(0, 4));
+        unknown_a_different_ctx.contexts = vec![ParseDiagnosticContext {
+            label: "command argument".to_string(),
+            span: Span::new(0, 5),
+        }];
 
         assert_eq!(diagnostic_priority(&unknown_a), 1);
         assert_eq!(diagnostic_priority(&mode_err), 2);

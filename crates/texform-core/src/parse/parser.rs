@@ -41,9 +41,12 @@ pub(crate) enum RecoveryHint {
     /// Generic Sync-Set skip.
     Skip,
     /// Propagate directly to the enclosing construct without item-level token
-    /// skipping (used for `\left` errors, `\begin` header errors, and
-    /// recursion-depth overflow).
+    /// skipping (used for `\left` delimiter/closing errors and unknown `\begin`
+    /// headers). Downgraded to [`Self::Skip`] at argument-slot boundaries.
     Propagate,
+    /// Unrecoverable global parser failure (recursion-depth overflow);
+    /// propagates past all item recovery and argument-slot downgrading.
+    Fatal,
     /// Unknown command head: consume only the control sequence token.
     UnknownCommandHead,
     /// Command used in the wrong mode: also consume trailing `[...]` / `{...}`
@@ -61,6 +64,27 @@ pub(crate) struct OpenEnv<'src> {
     pub begin_span: Span,
     pub name_span: Span,
     pub body_mode: ContentMode,
+    /// Diagnostic index where an EOF `UnclosedEnvironment` was already emitted
+    /// for this environment; cleared symmetrically on [`TokenParser::rewind`].
+    eof_reported_at: Option<usize>,
+}
+
+impl<'src> OpenEnv<'src> {
+    #[inline]
+    pub(crate) fn new(
+        name: Cow<'src, str>,
+        begin_span: Span,
+        name_span: Span,
+        body_mode: ContentMode,
+    ) -> Self {
+        Self {
+            name,
+            begin_span,
+            name_span,
+            body_mode,
+            eof_reported_at: None,
+        }
+    }
 }
 
 /// Extra stop token for math content loops.
@@ -70,6 +94,20 @@ pub(crate) enum MathStop {
     Default,
     /// Inside `\(...\)`: `\)` also ends math content.
     ControlParen,
+}
+
+/// Returns `true` when `token` is a hard closing boundary for math content
+/// (excluding infix commands).
+///
+/// Single source of truth shared by math content loops, script operand
+/// boundaries, and Sync-Set recovery.
+#[inline]
+pub(crate) fn is_math_hard_stop(token: Option<Token<'_>>, math_stop: MathStop) -> bool {
+    match token {
+        None | Some(Token::RBrace | Token::MathShift | Token::ControlSeq("right" | "end")) => true,
+        Some(Token::ControlSeq(")")) => math_stop == MathStop::ControlParen,
+        Some(_) => false,
+    }
 }
 
 /// Saved parser position and diagnostic watermark for speculative lookahead or
@@ -174,6 +212,27 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
     #[inline]
     pub(crate) fn active_envs(&self) -> &[OpenEnv<'src>] {
         &self.env_stack[self.env_stack_base..]
+    }
+
+    /// Returns `true` if the innermost active environment already had an EOF
+    /// `UnclosedEnvironment` diagnostic emitted during its body.
+    #[inline]
+    pub(crate) fn active_env_eof_reported(&self) -> bool {
+        self.active_envs()
+            .last()
+            .is_some_and(|env| env.eof_reported_at.is_some())
+    }
+
+    /// Record that an EOF `UnclosedEnvironment` for `name` was emitted at
+    /// `diag_idx` on all matching active environments in the current sub-window.
+    #[inline]
+    pub(crate) fn mark_active_envs_eof_reported(&mut self, name: &str, diag_idx: usize) {
+        let base = self.env_stack_base;
+        for env in &mut self.env_stack[base..] {
+            if env.name.as_ref() == name {
+                env.eof_reported_at.get_or_insert(diag_idx);
+            }
+        }
     }
 
     /// Borrow all diagnostics emitted so far.
@@ -318,18 +377,17 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
     ///
     /// On overflow, emits [`ParseDiagnosticKind::MaxGroupDepthExceeded`] with
     /// `"max recursion depth ({MAX_RECURSION_DEPTH}) exceeded"` and returns
-    /// `Err(ParseAbort { hint: RecoveryHint::Propagate })`.
+    /// `Err(ParseAbort { hint: RecoveryHint::Fatal })`.
     pub(crate) fn with_recursion<R>(
         &mut self,
         f: impl FnOnce(&mut Self) -> PResult<R>,
     ) -> PResult<R> {
         if self.recursion_depth >= MAX_RECURSION_DEPTH {
             let span = self.cursor.peek_span();
-            let contexts = self.snapshot_contexts(span.end);
-            return Err(self.emit_and_abort(
-                diagnostics::max_recursion_depth_exceeded(MAX_RECURSION_DEPTH, span, contexts),
-                RecoveryHint::Propagate,
-            ));
+            return self.fail_err(
+                diagnostics::max_recursion_depth_exceeded(MAX_RECURSION_DEPTH, span),
+                RecoveryHint::Fatal,
+            );
         }
         self.recursion_depth += 1;
         let result = f(self);
@@ -368,12 +426,17 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         }
         self.cursor.set_pos(cp.pos);
         self.diagnostics.truncate(cp.diag_len);
+        for env in &mut self.env_stack {
+            if env.eof_reported_at.is_some_and(|idx| idx >= cp.diag_len) {
+                env.eof_reported_at = None;
+            }
+        }
     }
 
     /// Snapshot active diagnostic contexts (innermost-first). Open contexts
     /// extend through `error_end`; fixed-span contexts preserve their
     /// pre-scanned span.
-    pub(crate) fn snapshot_contexts(&self, error_end: usize) -> Vec<ParseDiagnosticContext> {
+    fn snapshot_contexts(&self, error_end: usize) -> Vec<ParseDiagnosticContext> {
         self.context_stack
             .iter()
             .rev()
@@ -389,22 +452,29 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
             .collect()
     }
 
-    /// Append a diagnostic without deduplicating so `diagnostics[cp.diag_len]`
+    /// Populate `diag.contexts` from the live context stack (if empty) and
+    /// append `diag` without deduplicating so `diagnostics[cp.diag_len]`
     /// remains a stable watermark during item recovery.
     #[inline]
-    pub(crate) fn emit(&mut self, diagnostic: ParseDiagnostic) {
-        self.diagnostics.push(diagnostic);
+    pub(crate) fn emit_diag(&mut self, mut diag: ParseDiagnostic) {
+        if diag.contexts.is_empty() {
+            diag.contexts = self.snapshot_contexts(diag.span.end);
+        }
+        self.diagnostics.push(diag);
     }
 
-    /// Emit `diagnostic` and return a [`ParseAbort`] carrying `hint`.
+    /// Emit `diag` with live context snapshots and return a [`ParseAbort`]
+    /// carrying `hint`.
     #[inline]
-    pub(crate) fn emit_and_abort(
-        &mut self,
-        diagnostic: ParseDiagnostic,
-        hint: RecoveryHint,
-    ) -> ParseAbort {
-        self.emit(diagnostic);
+    pub(crate) fn fail(&mut self, diag: ParseDiagnostic, hint: RecoveryHint) -> ParseAbort {
+        self.emit_diag(diag);
         ParseAbort { hint }
+    }
+
+    /// Convenience wrapper around [`Self::fail`] returning `Err(ParseAbort)`.
+    #[inline]
+    pub(crate) fn fail_err<T>(&mut self, diag: ParseDiagnostic, hint: RecoveryHint) -> PResult<T> {
+        Err(self.fail(diag, hint))
     }
 
     /// Consume `expected_tok` and return its byte span, or emit a
@@ -414,8 +484,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         expected_tok: Token<'static>,
         label: &'static str,
     ) -> PResult<Span> {
-        if self.cursor.peek() == Some(expected_tok) {
-            let (_, span) = self.cursor.bump().expect("peek ensured expected token");
+        if let Some(span) = self.cursor.eat(expected_tok) {
             Ok(span)
         } else {
             let span = self.cursor.peek_span();
@@ -432,9 +501,10 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         expected: &[&str],
         found: Option<Token<'_>>,
     ) -> ParseAbort {
-        let contexts = self.snapshot_contexts(span.end);
-        let diagnostic = diagnostics::raw_expected_found(span, expected, found, contexts);
-        self.emit_and_abort(diagnostic, RecoveryHint::Skip)
+        self.fail(
+            diagnostics::raw_expected_found(span, expected, found),
+            RecoveryHint::Skip,
+        )
     }
 
     /// Handle EOF unclosed-construct upgrades per §5.2:
@@ -460,16 +530,14 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                 .get(start..)
                 .is_some_and(diagnostics::has_unescaped_percent)
         {
-            let contexts = self.snapshot_contexts(span.end);
-            self.emit(diagnostics::comment_truncated_argument(span, contexts));
+            self.emit_diag(diagnostics::comment_truncated_argument(span));
             return true;
         }
         if let Some(top_env) = self.active_envs().last() {
             let env_name = top_env.name.as_ref().to_owned();
-            let contexts = self.snapshot_contexts(span.end);
-            self.emit(diagnostics::unclosed_environment(
-                &env_name, span, None, contexts,
-            ));
+            let diag_idx = self.diagnostics.len();
+            self.emit_diag(diagnostics::unclosed_environment(&env_name, span, None));
+            self.mark_active_envs_eof_reported(&env_name, diag_idx);
             return true;
         }
         false
@@ -500,12 +568,12 @@ mod tests {
     use crate::parse::ParseDiagnosticKind;
 
     fn make_env(name: &'static str) -> OpenEnv<'static> {
-        OpenEnv {
-            name: Cow::Borrowed(name),
-            begin_span: Span::new(0, 6),
-            name_span: Span::new(6, 6 + name.len() + 2),
-            body_mode: ContentMode::Math,
-        }
+        OpenEnv::new(
+            Cow::Borrowed(name),
+            Span::new(0, 6),
+            Span::new(6, 6 + name.len() + 2),
+            ContentMode::Math,
+        )
     }
 
     #[test]
@@ -580,22 +648,14 @@ mod tests {
         let config = ParseConfig::LENIENT;
         let mut parser = TokenParser::new(cursor, src, &ctx, &config);
 
-        parser.emit(diagnostics::unknown_command(
-            "keep",
-            Span::new(0, 1),
-            Vec::new(),
-        ));
+        parser.emit_diag(diagnostics::unknown_command("keep", Span::new(0, 1)));
         let cp = parser.checkpoint();
         assert_eq!(cp.pos, 0);
         assert_eq!(cp.diag_len, 1);
 
         parser.cursor.bump();
         parser.cursor.bump();
-        parser.emit(diagnostics::unknown_command(
-            "drop",
-            Span::new(2, 3),
-            Vec::new(),
-        ));
+        parser.emit_diag(diagnostics::unknown_command("drop", Span::new(2, 3)));
         assert_eq!(parser.cursor.pos(), 2);
         assert_eq!(parser.diagnostics().len(), 2);
 
@@ -629,9 +689,9 @@ mod tests {
         assert_eq!(parser.recursion_depth(), 0);
         assert!(parser.diagnostics().is_empty());
 
-        // One level deeper trips the guard and propagates.
+        // One level deeper trips the guard with a fatal abort.
         let abort = recurse(&mut parser, MAX_RECURSION_DEPTH).unwrap_err();
-        assert_eq!(abort.hint, RecoveryHint::Propagate);
+        assert_eq!(abort.hint, RecoveryHint::Fatal);
         assert_eq!(parser.recursion_depth(), 0);
         assert_eq!(parser.diagnostics().len(), 1);
         assert_eq!(
