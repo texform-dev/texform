@@ -993,16 +993,14 @@ fn text_content_generic_only_error_keeps_expected_found_diagnostic() {
     );
     assert_eq!(
         collect_messages(&output),
-        vec!["found '$' expected something else, or end of input"]
+        vec!["Unclosed inline math: missing closing '$'"]
     );
     assert!(
         !output.diagnostics[0].expected.is_empty(),
         "expected/found details should stay available"
     );
-    assert_eq!(
-        output.diagnostics[0].expected,
-        ["something else", "end of input"]
-    );
+    assert_eq!(output.diagnostics[0].expected, ["'$'"]);
+    assert_eq!(output.diagnostics[0].found, None);
 }
 
 #[test]
@@ -1043,7 +1041,21 @@ fn nonstrict_text_content_direct_error_survives_trailing_generic() {
 
     assert_eq!(
         collect_messages(&output),
-        vec!["Scripted syntax is not allowed in Text mode"]
+        vec![
+            "Scripted syntax is not allowed in Text mode",
+            "Unclosed inline math: missing closing '$'",
+        ]
+    );
+    assert_eq!(
+        output
+            .diagnostics
+            .iter()
+            .map(|d| d.kind)
+            .collect::<Vec<_>>(),
+        vec![
+            Some(texform_core::parse::ParseDiagnosticKind::TextScriptError),
+            Some(texform_core::parse::ParseDiagnosticKind::UnclosedInlineMath),
+        ]
     );
     assert_first_diagnostic_span_eq(&output, src, "^");
 

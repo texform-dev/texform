@@ -64,43 +64,35 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
             let (name, name_span) = p.parse_env_name()?;
             let header_span = Span::new(begin_span.start, name_span.end);
 
-            let (cmd_args, known, body_mode) =
-                if let Some(meta) = p.ctx.lookup_env(name.as_ref(), current_mode) {
-                    let args_spec = meta.argspec.args;
-                    let body_mode = meta.body_mode;
-                    let cmd_args = if args_spec.is_empty() {
-                        Vec::new()
-                    } else {
-                        p.parse_argument_slots(args_spec, "environment argument", false)
-                            .map_err(downgrade_inner_arg_abort)?
-                    };
-                    (cmd_args, true, body_mode)
-                } else if p
-                    .ctx
-                    .lookup_env(name.as_ref(), other_mode(current_mode))
-                    .is_some()
-                {
-                    // Strict parsing pins `EnvironmentModeError` to the full `\begin{name}`
-                    // header (matching `parser_diagnostics::strict_expected_found_errors_*`),
-                    // while lenient recovery keeps the nested `{name}` span (matching the
-                    // facade contract in `parse_states::recovered_environment_mode_*`).
-                    let err_span = if p.config.abort_on_error {
-                        header_span
-                    } else {
-                        name_span
-                    };
-                    return p.fail_err(
-                        diagnostics::environment_mode_error(name.as_ref(), current_mode, err_span),
-                        RecoveryHint::Skip,
-                    );
-                } else if p.config.reject_unknown {
-                    return p.fail_err(
-                        diagnostics::unknown_environment(name.as_ref(), header_span),
-                        RecoveryHint::Propagate,
-                    );
+            let (cmd_args, known, body_mode) = if let Some(meta) =
+                p.ctx.lookup_env(name.as_ref(), current_mode)
+            {
+                let args_spec = meta.argspec.args;
+                let body_mode = meta.body_mode;
+                let cmd_args = if args_spec.is_empty() {
+                    Vec::new()
                 } else {
-                    (Vec::new(), false, current_mode)
+                    p.parse_argument_slots(args_spec, "environment argument", false)
+                        .map_err(downgrade_inner_arg_abort)?
                 };
+                (cmd_args, true, body_mode)
+            } else if p
+                .ctx
+                .lookup_env(name.as_ref(), other_mode(current_mode))
+                .is_some()
+            {
+                return p.fail_err(
+                    diagnostics::environment_mode_error(name.as_ref(), current_mode, header_span),
+                    RecoveryHint::Skip,
+                );
+            } else if p.config.reject_unknown {
+                return p.fail_err(
+                    diagnostics::unknown_environment(name.as_ref(), header_span),
+                    RecoveryHint::Propagate,
+                );
+            } else {
+                (Vec::new(), false, current_mode)
+            };
 
             let body_start_pos = p.cursor.pos();
             let body_start_byte = p.cursor.byte_pos();

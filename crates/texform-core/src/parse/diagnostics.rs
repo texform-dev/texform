@@ -149,10 +149,10 @@ pub(crate) fn left_right_delimiter(message: impl Into<String>, span: Span) -> Pa
 pub(crate) fn unclosed_inline_math(opener_span: Span) -> ParseDiagnostic {
     build_diagnostic(
         ParseDiagnosticKind::UnclosedInlineMath,
-        "found '$' expected something else, or end of input".to_string(),
+        "Unclosed inline math: missing closing '$'".to_string(),
         opener_span,
-        vec!["something else".to_string(), "end of input".to_string()],
-        Some("$".to_string()),
+        vec!["'$'".to_string()],
+        None,
     )
 }
 
@@ -409,11 +409,7 @@ mod tests {
 
     #[test]
     fn finish_diagnostics_deduplicates_and_stably_sorts_by_priority() {
-        let raw_found = raw_expected_found(
-            Span::new(5, 6),
-            &["something else", "end of input"],
-            Some(Token::RBrace),
-        );
+        let raw_found = raw_expected_found(Span::new(5, 6), &["end of input"], Some(Token::RBrace));
         let raw_eof = raw_expected_found(Span::point(10), &["'}'"], None);
         let mode_err = command_mode_error("frac", ContentMode::Text, Span::new(1, 6));
         let unknown_a = unknown_command("foo", Span::new(0, 4));

@@ -47,7 +47,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                     RecoveryHint::Skip,
                 );
             }
-            return Err(self.emit_expected(span, &["something else", "end of input"], found));
+            return Err(self.emit_expected(span, &["end of input"], found));
         }
 
         let span = self.cursor.span_of_range(start_pos..self.cursor.pos());
@@ -165,6 +165,12 @@ mod tests {
             parse_root_raw(ctx, r"$a$ b $c", &ParseConfig::STRICT, ContentMode::Text);
         assert!(out.is_none());
         assert_eq!(diags[0].kind, Some(ParseDiagnosticKind::UnclosedInlineMath));
+        assert_eq!(
+            diags[0].message,
+            "Unclosed inline math: missing closing '$'"
+        );
+        assert_eq!(diags[0].expected, vec!["'$'"]);
+        assert_eq!(diags[0].found, None);
         assert_eq!(diags[0].span, crate::parse::Span::new(6, 7));
 
         // Unclosed brace inside environment upgrades to UnclosedEnvironment at EOF.
@@ -215,10 +221,7 @@ mod tests {
             Some(ParseDiagnosticKind::EnvironmentNameMismatch)
         );
         assert_eq!(diags[1].kind, Some(ParseDiagnosticKind::RawExpectedFound));
-        assert_eq!(
-            diags[1].message,
-            "found '}' expected something else, or end of input"
-        );
+        assert_eq!(diags[1].message, "found '}' expected end of input");
 
         // Invalid `\left` delimiter propagates with `left-delimited group` context.
         let (out, diags) = parse_root_raw(
@@ -237,27 +240,20 @@ mod tests {
                 .any(|c| c.label == "left-delimited group")
         );
 
-        // Environment mode error reports full `\begin{matrix}` header span under STRICT
-        // and nested `{matrix}` name span under LENIENT.
+        // Environment mode error always reports the full `\begin{matrix}` header
+        // span regardless of `abort_on_error`.
         let src = r"\begin{matrix}a\end{matrix}";
-        let (_, strict_diags) = parse_root_raw(ctx, src, &ParseConfig::STRICT, ContentMode::Text);
-        assert_eq!(
-            strict_diags[0].kind,
-            Some(ParseDiagnosticKind::EnvironmentModeError)
-        );
-        assert_eq!(
-            &src[strict_diags[0].span.start..strict_diags[0].span.end],
-            r"\begin{matrix}"
-        );
-        let (_, lenient_diags) = parse_root_raw(ctx, src, &ParseConfig::LENIENT, ContentMode::Text);
-        assert_eq!(
-            lenient_diags[0].kind,
-            Some(ParseDiagnosticKind::EnvironmentModeError)
-        );
-        assert_eq!(
-            &src[lenient_diags[0].span.start..lenient_diags[0].span.end],
-            "{matrix}"
-        );
+        for cfg in [ParseConfig::STRICT, ParseConfig::LENIENT] {
+            let (_, diags) = parse_root_raw(ctx, src, &cfg, ContentMode::Text);
+            assert_eq!(
+                diags[0].kind,
+                Some(ParseDiagnosticKind::EnvironmentModeError)
+            );
+            assert_eq!(
+                &src[diags[0].span.start..diags[0].span.end],
+                r"\begin{matrix}"
+            );
+        }
     }
 
     #[test]

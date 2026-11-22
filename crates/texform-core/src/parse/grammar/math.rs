@@ -498,15 +498,41 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
             return Ok(fold_scripted(base, None, Some(prime), span));
         }
         match self.cursor.peek() {
-            Some(Token::ControlSeq("right" | "end")) => {
+            None => {
                 let span = self.cursor.peek_span();
-                let found = self.cursor.peek();
-                Err(self.emit_expected(span, &["math atom"], found))
+                self.fail_err(
+                    diagnostics::argument_validation_expected(
+                        "missing required argument",
+                        span,
+                        &["math atom"],
+                        None,
+                    ),
+                    RecoveryHint::Skip,
+                )
             }
-            Some(Token::ControlSeq(name)) if self.is_infix_command(name) => {
+            found @ Some(Token::RBrace | Token::Parameter | Token::ControlSeq("right" | "end")) => {
                 let span = self.cursor.peek_span();
-                let found = self.cursor.peek();
-                Err(self.emit_expected(span, &["math atom"], found))
+                self.fail_err(
+                    diagnostics::argument_validation_expected(
+                        "expected math atom for argument",
+                        span,
+                        &["math atom"],
+                        found,
+                    ),
+                    RecoveryHint::Skip,
+                )
+            }
+            found @ Some(Token::ControlSeq(name)) if self.is_infix_command(name) => {
+                let span = self.cursor.peek_span();
+                self.fail_err(
+                    diagnostics::argument_validation_expected(
+                        "expected math atom for argument",
+                        span,
+                        &["math atom"],
+                        found,
+                    ),
+                    RecoveryHint::Skip,
+                )
             }
             Some(Token::Superscript | Token::Subscript) => self.parse_math_item(),
             _ => self.parse_math_atom(),

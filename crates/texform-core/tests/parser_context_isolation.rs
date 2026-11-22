@@ -134,7 +134,7 @@ fn disallowed_environment_does_not_rewrite_unrelated_generic_error() {
         messages,
         vec![
             "Environment textenv is not allowed in math mode",
-            "found '}' expected something else, or end of input",
+            "found '}' expected end of input",
         ]
     );
 }

@@ -241,12 +241,6 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         &self.diagnostics
     }
 
-    /// Mutably borrow diagnostics emitted so far for localized post-adjustment.
-    #[inline]
-    pub(crate) fn diagnostics_mut(&mut self) -> &mut Vec<ParseDiagnostic> {
-        &mut self.diagnostics
-    }
-
     /// Consume the parser and return its raw emitted diagnostics.
     #[inline]
     pub(crate) fn into_diagnostics(self) -> Vec<ParseDiagnostic> {

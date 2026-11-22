@@ -18,7 +18,7 @@ use crate::lexer::Token;
 use crate::parse::cursor::{BalancedScanError, DelimitedRange};
 use crate::parse::diagnostics;
 use crate::parse::parser::{PResult, ParseAbort, RecoveryHint, TokenParser};
-use crate::parse::result::{ParseDiagnosticKind, Span};
+use crate::parse::result::Span;
 use crate::parse::tree::{self, ParsedNode, TrackedArgSlot};
 
 use super::scalar;
@@ -187,27 +187,9 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                 // Charge a recursion step here so unbraced nesting (`\frac 1 \frac 1 ...`)
                 // shares the same recursion budget as braced nesting (`\frac{1}{...}`).
                 let parsed = self.with_recursion(|p| {
-                    p.with_context(context_label, arg_start_byte, |p| {
-                        let before_pos = p.cursor.pos();
-                        let diag_start = p.diagnostics().len();
-                        let res = match mode {
-                            ContentMode::Math => p.parse_math_atom_argument(),
-                            ContentMode::Text => p.parse_text_argument_item(),
-                        };
-                        match res {
-                            Ok(node) => Ok(node),
-                            Err(abort) => {
-                                // When failure occurs at the argument entry
-                                // before consuming any token, report
-                                // `ArgumentValidation` at that span.
-                                if p.cursor.pos() == before_pos
-                                    && p.diagnostics().len() > diag_start
-                                {
-                                    p.promote_entry_arg_validation(diag_start);
-                                }
-                                Err(abort)
-                            }
-                        }
+                    p.with_context(context_label, arg_start_byte, |p| match mode {
+                        ContentMode::Math => p.parse_math_atom_argument(),
+                        ContentMode::Text => p.parse_text_argument_item(),
                     })
                 })?;
                 let (node, span_tree) = parsed.into_span_tree();
@@ -1056,11 +1038,8 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         }
 
         let sub = self.cursor.sub_window(inner, fallback_eoi);
-        let sub_eoi = sub.eoi_pos();
 
         self.with_context_span(context_label, surface_span, |p| {
-            let diag_start = p.diagnostics().len();
-
             p.with_sub_cursor(sub, |p| {
                 let items = match mode {
                     ContentMode::Math => p.parse_math_content()?,
@@ -1073,16 +1052,12 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                     let diag = if mode == ContentMode::Math && found == Some(Token::MathShift) {
                         diagnostics::unexpected_math_shift(p.src, err_span)
                     } else {
-                        diagnostics::raw_expected_found(
-                            err_span,
-                            &["something else", "end of input"],
-                            found,
-                        )
+                        diagnostics::raw_expected_found(err_span, &["end of input"], found)
                     };
                     let err_message = diag.message.clone();
                     p.emit_diag(diag);
 
-                    if p.config.abort_on_error || p.config.reject_unknown {
+                    if p.config.abort_on_error {
                         return Err(ParseAbort {
                             hint: RecoveryHint::Skip,
                         });
@@ -1092,7 +1067,6 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                     // enclosing command shell by folding the sub-window into an
                     // Error node when no inner items succeeded, or attaching a
                     // trailing Error node.
-                    p.suppress_trailing_subwindow_noise(diag_start, sub_eoi);
                     if items.is_empty() {
                         let span = if full_inner_span.start < full_inner_span.end {
                             full_inner_span
@@ -1121,12 +1095,6 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                     return Ok(tree::fold_argument(mode, all_items, full_inner_span));
                 }
 
-                // If lenient text recovery saw an unclosed trailing `$` right at
-                // the sub-window tail *after* an earlier semantic error (such as
-                // `\text{\frac{a}{b}$}` or `\text{\underline{a^2}$}`), drop that
-                // trailing noise diagnostic.
-                p.suppress_trailing_subwindow_noise(diag_start, sub_eoi);
-
                 // Cover all tokens consumed by the sub-window (including math
                 // padding whitespace) or a point span at `fallback_eoi` when
                 // empty.
@@ -1134,61 +1102,5 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                 Ok(tree::fold_argument(mode, items, content_span))
             })
         })
-    }
-
-    /// Upgrade an entry-position failure inside an unbraced mandatory argument
-    /// to [`ParseDiagnosticKind::ArgumentValidation`] for cases such as
-    /// `a+\frac{1}`, `a+\frac 1 }`, and `a+\frac 1 \bad`.
-    fn promote_entry_arg_validation(&mut self, diag_start: usize) {
-        if let Some(diag) = self.diagnostics_mut().get_mut(diag_start)
-            && matches!(
-                diag.kind,
-                Some(ParseDiagnosticKind::RawExpectedFound | ParseDiagnosticKind::UnknownCommand)
-            )
-        {
-            diag.kind = Some(ParseDiagnosticKind::ArgumentValidation);
-        }
-    }
-
-    /// Drop trailing sub-window tail noise (such as a lone `$` right at the end
-    /// of `\text{\frac{a}{b}$}` or `\text{\underline{a^2}$}`) when an earlier
-    /// semantic diagnostic already explained the failure inside the same
-    /// sub-window.
-    fn suppress_trailing_subwindow_noise(&mut self, diag_start: usize, sub_eoi: usize) {
-        let diags = self.diagnostics_mut();
-        if diags.len() <= diag_start + 1 {
-            return;
-        }
-        let first_direct_start = diags[diag_start..]
-            .iter()
-            .filter(|d| {
-                !matches!(
-                    d.kind,
-                    Some(
-                        ParseDiagnosticKind::RawExpectedFound
-                            | ParseDiagnosticKind::UnclosedInlineMath
-                    ) | None
-                )
-            })
-            .map(|d| d.span.start)
-            .min();
-        let Some(first_direct_start) = first_direct_start else {
-            return;
-        };
-        let mut idx = diag_start;
-        while idx < diags.len() {
-            let is_trailing_noise = matches!(
-                diags[idx].kind,
-                Some(
-                    ParseDiagnosticKind::RawExpectedFound | ParseDiagnosticKind::UnclosedInlineMath
-                )
-            ) && diags[idx].span.end == sub_eoi
-                && diags[idx].span.start > first_direct_start;
-            if is_trailing_noise {
-                diags.remove(idx);
-            } else {
-                idx += 1;
-            }
-        }
     }
 }

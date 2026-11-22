@@ -147,10 +147,27 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         }) {
             return Ok(ParsedNode::leaf(SyntaxNode::Text("'".repeat(n)), span));
         }
-        if self.cursor.peek() == Some(Token::ControlSeq("end")) {
-            let span = self.cursor.peek_span();
-            return Err(self.emit_expected(span, &["text item"], Some(Token::ControlSeq("end"))));
+        match self.cursor.peek() {
+            Some(
+                Token::Superscript
+                | Token::Subscript
+                | Token::ActiveChar
+                | Token::LBrace
+                | Token::MathShift,
+            ) => self.parse_text_item(),
+            Some(Token::ControlSeq(name)) if name != "end" => self.parse_text_item(),
+            found => {
+                let span = self.cursor.peek_span();
+                let message = if found.is_none() {
+                    "missing required argument"
+                } else {
+                    "expected text item for argument"
+                };
+                self.fail_err(
+                    diagnostics::argument_validation_expected(message, span, &["text item"], found),
+                    RecoveryHint::Skip,
+                )
+            }
         }
-        self.parse_text_item()
     }
 }

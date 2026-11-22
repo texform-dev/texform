@@ -167,8 +167,18 @@ fn nonstrict_direct_error_survives_trailing_outer_generic() {
     );
 
     assert_eq!(
+        diagnostic_kinds(&output),
+        vec![
+            Some(ParseDiagnosticKind::TextScriptError),
+            Some(ParseDiagnosticKind::UnclosedInlineMath),
+        ]
+    );
+    assert_eq!(
         collect_messages(&output),
-        vec!["Scripted syntax is not allowed in Text mode"]
+        vec![
+            "Scripted syntax is not allowed in Text mode",
+            "Unclosed inline math: missing closing '$'",
+        ]
     );
     assert!(output.document().is_some(), "should keep a partial result");
 
@@ -188,8 +198,18 @@ fn nonstrict_command_direct_error_survives_trailing_outer_generic() {
     );
 
     assert_eq!(
+        diagnostic_kinds(&output),
+        vec![
+            Some(ParseDiagnosticKind::CommandModeError),
+            Some(ParseDiagnosticKind::UnclosedInlineMath),
+        ]
+    );
+    assert_eq!(
         collect_messages(&output),
-        vec![r"Command \frac is not allowed in text mode"]
+        vec![
+            r"Command \frac is not allowed in text mode",
+            "Unclosed inline math: missing closing '$'",
+        ]
     );
     assert!(output.document().is_some(), "should keep a partial result");
 
@@ -226,7 +246,7 @@ fn generic_only_content_error_is_not_filtered_out() {
 
     assert_eq!(
         collect_messages(&output),
-        vec!["found '$' expected something else, or end of input"]
+        vec!["Unclosed inline math: missing closing '$'"]
     );
     assert!(
         output.document().is_some(),
@@ -257,10 +277,7 @@ fn generic_only_content_error_is_not_filtered_out() {
     };
     match text_content {
         SyntaxNode::Error { message, .. } => {
-            assert_eq!(
-                message,
-                "found '$' expected something else, or end of input"
-            );
+            assert_eq!(message, "Unclosed inline math: missing closing '$'");
         }
         other => panic!("expected recovered Error node, got {:?}", other),
     }
@@ -676,15 +693,12 @@ fn environment_mismatch_rewrite_does_not_capture_later_generic_errors() {
     assert_eq!(&src[mismatch.span.start..mismatch.span.end], r"\end{align}");
 
     let trailing_brace = &output.diagnostics[1];
-    assert_eq!(
-        trailing_brace.message,
-        "found '}' expected something else, or end of input"
-    );
+    assert_eq!(trailing_brace.message, "found '}' expected end of input");
     assert_eq!(
         &src[trailing_brace.span.start..trailing_brace.span.end],
         "}"
     );
-    assert_eq!(trailing_brace.expected, ["something else", "end of input"]);
+    assert_eq!(trailing_brace.expected, ["end of input"]);
     assert_eq!(trailing_brace.found.as_deref(), Some("}"));
 }
 
@@ -1624,9 +1638,28 @@ fn strict_expected_found_errors_keep_inner_source_span() {
         (r"a+\frac{1}", "", ParseDiagnosticKind::ArgumentValidation),
         (r"a+\frac 1 }", "}", ParseDiagnosticKind::ArgumentValidation),
         (
+            r"a+\frac 1 \over 2",
+            r"\over",
+            ParseDiagnosticKind::ArgumentValidation,
+        ),
+        (
+            r"a+\frac 1 $",
+            "$",
+            ParseDiagnosticKind::UnexpectedMathShift,
+        ),
+        (
             r"a+\frac 1 \bad",
             r"\bad",
-            ParseDiagnosticKind::ArgumentValidation,
+            ParseDiagnosticKind::UnknownCommand,
+        ),
+        (r"a+\text", "", ParseDiagnosticKind::ArgumentValidation),
+        (r"a+\text }", "}", ParseDiagnosticKind::ArgumentValidation),
+        (r"a+\text &", "&", ParseDiagnosticKind::ArgumentValidation),
+        (r"a+\text ^", "^", ParseDiagnosticKind::TextScriptError),
+        (
+            r"a+\text \bad",
+            r"\bad",
+            ParseDiagnosticKind::UnknownCommand,
         ),
         (
             r"a+\hspace{x}",
@@ -1670,6 +1703,38 @@ fn strict_expected_found_errors_keep_inner_source_span() {
 }
 
 #[test]
+fn content_subwindow_recovery_depends_only_on_abort_on_error() {
+    let abort_permissive = ParseConfig {
+        reject_unknown: false,
+        abort_on_error: true,
+        ..Default::default()
+    };
+
+    for src in [r"\frac{a$}{b}", r"\frac{\right)}{2}", r"\text{$x}"] {
+        for cfg in [ParseConfig::LENIENT, reject_recover_config()] {
+            let output = parse_shared(src, &cfg);
+            assert!(
+                output.document().is_some(),
+                "{src} ({cfg:?}) should recover the enclosing command shell"
+            );
+            assert!(
+                output.document().unwrap().has_errors(),
+                "{src} ({cfg:?}) should retain an Error node"
+            );
+            assert!(!output.diagnostics.is_empty(), "{src} ({cfg:?})");
+        }
+        for cfg in [ParseConfig::STRICT, abort_permissive.clone()] {
+            let output = parse_shared(src, &cfg);
+            assert!(
+                output.document().is_none(),
+                "{src} ({cfg:?}) should abort without a partial document"
+            );
+            assert!(!output.diagnostics.is_empty(), "{src} ({cfg:?})");
+        }
+    }
+}
+
+#[test]
 fn unclosed_inline_math_points_at_its_own_opener() {
     // Closed inner formulas, including those nested in `\text`, must not be
     // mistaken for the unclosed opener.
@@ -1688,6 +1753,18 @@ fn unclosed_inline_math_points_at_its_own_opener() {
                 "{src}: {:?}",
                 output.diagnostics
             );
+            assert_eq!(
+                diagnostic.message, "Unclosed inline math: missing closing '$'",
+                "{src}: {:?}",
+                output.diagnostics
+            );
+            assert_eq!(
+                diagnostic.expected,
+                vec!["'$'"],
+                "{src}: {:?}",
+                output.diagnostics
+            );
+            assert_eq!(diagnostic.found, None, "{src}: {:?}", output.diagnostics);
             assert_eq!(
                 (diagnostic.span.start, diagnostic.span.end),
                 (opener, opener + 1),

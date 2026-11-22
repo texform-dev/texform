@@ -143,7 +143,7 @@ fn nested_command_mode_diagnostics_identify_the_rejected_command() {
 }
 
 #[test]
-fn recovered_environment_mode_diagnostics_keep_nested_name_spans() {
+fn environment_mode_diagnostics_keep_header_spans() {
     let parser = Parser::builder().build();
     for source in [
         r"\text{\begin{matrix}a\end{matrix}}",
@@ -151,29 +151,33 @@ fn recovered_environment_mode_diagnostics_keep_nested_name_spans() {
         r"α+\frac{\text{β\begin{matrix}a\end{matrix}γ}}{c}+z",
     ] {
         for reject_unknown in [false, true] {
-            let output = parser.parse_with(
-                source,
-                &ParseConfig {
-                    reject_unknown,
-                    ..ParseConfig::LENIENT
-                },
-            );
-            let diagnostics = output.diagnostics();
-            assert_eq!(diagnostics.len(), 1, "{source}: {diagnostics:?}");
-            assert_eq!(
-                diagnostics[0].kind,
-                Some(texform::ParseDiagnosticKind::EnvironmentModeError)
-            );
-            let start = source.find("{matrix}").expect("environment name");
-            assert_eq!(
-                diagnostics[0].span,
-                Span {
-                    start,
-                    end: start + 8
+            for abort_on_error in [false, true] {
+                let output = parser.parse_with(
+                    source,
+                    &ParseConfig {
+                        reject_unknown,
+                        abort_on_error,
+                        ..ParseConfig::default()
+                    },
+                );
+                let diagnostics = output.diagnostics();
+                assert_eq!(diagnostics.len(), 1, "{source}: {diagnostics:?}");
+                assert_eq!(
+                    diagnostics[0].kind,
+                    Some(texform::ParseDiagnosticKind::EnvironmentModeError)
+                );
+                let header = r"\begin{matrix}";
+                let start = source.find(header).expect("environment header");
+                assert_eq!(
+                    diagnostics[0].span,
+                    Span {
+                        start,
+                        end: start + header.len()
+                    }
+                );
+                if !abort_on_error && source.ends_with("+z") {
+                    assert_final_z(&output);
                 }
-            );
-            if source.ends_with("+z") {
-                assert_final_z(&output);
             }
         }
     }
