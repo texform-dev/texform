@@ -1,5 +1,7 @@
 //! Math-mode content loop, infix tails, scripts/primes, and math atom dispatch.
 
+use std::ops::Range;
+
 use texform_interface::syntax_node::{ContentMode, GroupKind, SyntaxNode};
 
 use crate::knowledge::CommandKind;
@@ -8,7 +10,7 @@ use crate::parse::cursor::token_as_literal_char;
 use crate::parse::diagnostics;
 use crate::parse::parser::{MathStop, PResult, RecoveryHint, TokenParser, is_math_hard_stop};
 use crate::parse::result::Span;
-use crate::parse::tree::{self, ParsedNode};
+use crate::parse::tree::{self, ParsedNode, SpanTree};
 
 /// Tracks how a math item's superscript was built to detect double-exponent errors.
 ///
@@ -16,7 +18,10 @@ use crate::parse::tree::{self, ParsedNode};
 /// whereas a second explicit caret or a prime run after an explicit caret or
 /// intervening subscript (`f'_a'`) is a double-exponent error.
 enum SupState {
-    Prime(ParsedNode),
+    Prime {
+        node: ParsedNode,
+        token_range: Range<usize>,
+    },
     Explicit(ParsedNode),
     Mixed(ParsedNode),
 }
@@ -286,44 +291,76 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
             match marker_tok {
                 Token::Superscript => {
                     self.cursor.bump();
-                    let tracked = self.parse_script_operand(true)?;
-                    let span = self.cursor.span_of_range(marker_pos..self.cursor.pos());
-                    let tracked = ParsedNode { span, ..tracked };
+                    let operand = self.parse_script_operand(true)?;
+                    let script_span = self.cursor.span_of_range(marker_pos..self.cursor.pos());
                     match sup_state.take() {
-                        None => sup_state = Some(SupState::Explicit(tracked)),
-                        Some(SupState::Prime(existing)) => {
-                            let merged_span = Span::new(existing.span.start, tracked.span.end);
+                        None => {
+                            sup_state = Some(SupState::Explicit(ParsedNode {
+                                span: script_span,
+                                ..operand
+                            }));
+                        }
+                        Some(SupState::Prime {
+                            node: existing,
+                            token_range,
+                        }) => {
+                            let merged_span = Span::new(existing.span.start, script_span.end);
                             let SyntaxNode::Prime { count } = existing.node else {
                                 unreachable!("prime script state must contain a prime run");
                             };
+                            // Mixed superscripts serialize with explicit `\prime` commands
+                            // (e.g. `f'^2` -> `f ^ { \prime 2 }`, see `ARCHITECTURE.md`).
+                            // Emit individual `Command("prime")` nodes instead of `Prime` so
+                            // parsing the printed braced form preserves the same content tree.
                             let prime_known = self
                                 .ctx
                                 .lookup_command("prime", ContentMode::Math)
                                 .is_some();
-                            let mut children: Vec<_> = (0..count)
-                                .map(|_| SyntaxNode::Command {
-                                    name: "prime".to_owned(),
-                                    args: Vec::new(),
-                                    known: prime_known,
-                                })
-                                .collect();
-                            children.push(tracked.node);
-                            let merged = ParsedNode::leaf(
+                            let mut children = Vec::with_capacity(count + 1);
+                            let mut span_kids = Vec::with_capacity(count + 1);
+                            let tokens = self.cursor.tokens_slice();
+                            let spans = self.cursor.spans_slice();
+                            for (&tok, &tok_span) in
+                                tokens[token_range.clone()].iter().zip(&spans[token_range])
+                            {
+                                if matches!(tok, Token::Prime(_)) {
+                                    for (rel_offset, ch) in
+                                        self.src[tok_span.start..tok_span.end].char_indices()
+                                    {
+                                        let start = tok_span.start + rel_offset;
+                                        let end = start + ch.len_utf8();
+                                        children.push(SyntaxNode::Command {
+                                            name: "prime".to_owned(),
+                                            args: Vec::new(),
+                                            known: prime_known,
+                                        });
+                                        span_kids.push(SpanTree {
+                                            span: Span::new(start, end),
+                                            kids: Vec::new(),
+                                        });
+                                    }
+                                }
+                            }
+                            debug_assert_eq!(children.len(), count);
+                            let (operand_node, operand_tree) = operand.into_span_tree();
+                            children.push(operand_node);
+                            span_kids.push(operand_tree);
+                            let merged = ParsedNode::with_kids(
                                 SyntaxNode::Group {
                                     mode: ContentMode::Math,
                                     kind: GroupKind::Implicit,
                                     children,
                                 },
                                 merged_span,
+                                span_kids,
                             );
                             sup_state = Some(SupState::Mixed(merged));
                         }
                         Some(SupState::Explicit(_)) | Some(SupState::Mixed(_)) => {
-                            let err_span = self.cursor.span_of_range(marker_pos..self.cursor.pos());
                             return self.fail_err(
                                 diagnostics::custom_error(
                                     "Double exponent: use braces to clarify",
-                                    err_span,
+                                    script_span,
                                 ),
                                 RecoveryHint::Skip,
                             );
@@ -356,11 +393,17 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                         self.cursor.bump();
                         count += next_count;
                     }
-                    let prime_span = self.cursor.span_of_range(marker_pos..self.cursor.pos());
+                    let token_range = marker_pos..self.cursor.pos();
+                    let prime_span = self.cursor.span_of_range(token_range.clone());
                     let tracked = ParsedNode::leaf(SyntaxNode::Prime { count }, prime_span);
                     match sup_state.take() {
-                        None => sup_state = Some(SupState::Prime(tracked)),
-                        Some(SupState::Prime(_))
+                        None => {
+                            sup_state = Some(SupState::Prime {
+                                node: tracked,
+                                token_range,
+                            });
+                        }
+                        Some(SupState::Prime { .. })
                         | Some(SupState::Explicit(_))
                         | Some(SupState::Mixed(_)) => {
                             return self.fail_err(
@@ -378,7 +421,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         }
 
         let superscript = sup_state.map(|state| match state {
-            SupState::Prime(node) | SupState::Explicit(node) | SupState::Mixed(node) => node,
+            SupState::Prime { node, .. } | SupState::Explicit(node) | SupState::Mixed(node) => node,
         });
 
         if subscript.is_none() && superscript.is_none() {

@@ -263,3 +263,159 @@ fn nested_argument_content_spans_compose_source_mappings() {
     assert_p_plus_q_argument(content_arg(sqrt, 1), src, "p  %c\n+  q");
     assert_source_text(content_arg(frac, 1), src, "x");
 }
+
+fn assert_node_spans(src: &str, expected: &[(&str, usize, usize, &str)]) {
+    let document = parse_ok(src);
+    let actual: Vec<(String, Span)> = document.node_spans();
+    let expected_spans: Vec<(String, Span)> = expected
+        .iter()
+        .map(|&(path, start, end, slice)| {
+            assert_eq!(
+                &src[start..end],
+                slice,
+                "test expectation mismatch for {src:?} at {path}"
+            );
+            (path.to_string(), Span { start, end })
+        })
+        .collect();
+    assert_eq!(actual, expected_spans, "node_spans mismatch for {src:?}");
+}
+
+#[test]
+fn mixed_prime_and_superscript_expose_exact_child_spans() {
+    assert_node_spans(
+        "f'^{xy}",
+        &[
+            ("root", 0, 7, "f'^{xy}"),
+            ("root.child.0", 0, 7, "f'^{xy}"),
+            ("root.child.0.base", 0, 1, "f"),
+            ("root.child.0.sup", 1, 7, "'^{xy}"),
+            ("root.child.0.sup.child.0", 1, 2, "'"),
+            ("root.child.0.sup.child.1", 3, 7, "{xy}"),
+            ("root.child.0.sup.child.1.child.0", 4, 5, "x"),
+            ("root.child.0.sup.child.1.child.1", 5, 6, "y"),
+        ],
+    );
+
+    assert_node_spans(
+        "f''^2",
+        &[
+            ("root", 0, 5, "f''^2"),
+            ("root.child.0", 0, 5, "f''^2"),
+            ("root.child.0.base", 0, 1, "f"),
+            ("root.child.0.sup", 1, 5, "''^2"),
+            ("root.child.0.sup.child.0", 1, 2, "'"),
+            ("root.child.0.sup.child.1", 2, 3, "'"),
+            ("root.child.0.sup.child.2", 4, 5, "2"),
+        ],
+    );
+
+    // Unicode right single quotation mark (U+2019, 3 UTF-8 bytes) mixed with an explicit superscript.
+    assert_node_spans(
+        "f\u{2019}^{xy}",
+        &[
+            ("root", 0, 9, "f\u{2019}^{xy}"),
+            ("root.child.0", 0, 9, "f\u{2019}^{xy}"),
+            ("root.child.0.base", 0, 1, "f"),
+            ("root.child.0.sup", 1, 9, "\u{2019}^{xy}"),
+            ("root.child.0.sup.child.0", 1, 4, "\u{2019}"),
+            ("root.child.0.sup.child.1", 5, 9, "{xy}"),
+            ("root.child.0.sup.child.1.child.0", 6, 7, "x"),
+            ("root.child.0.sup.child.1.child.1", 7, 8, "y"),
+        ],
+    );
+
+    // Comments containing quotes between prime tokens must not pollute prime spans.
+    let commented = "f' % don't\n\u{2019}^2";
+    assert_node_spans(
+        commented,
+        &[
+            ("root", 0, commented.len(), commented),
+            ("root.child.0", 0, commented.len(), commented),
+            ("root.child.0.base", 0, 1, "f"),
+            (
+                "root.child.0.sup",
+                1,
+                commented.len(),
+                "' % don't\n\u{2019}^2",
+            ),
+            ("root.child.0.sup.child.0", 1, 2, "'"),
+            ("root.child.0.sup.child.1", 11, 14, "\u{2019}"),
+            ("root.child.0.sup.child.2", 15, 16, "2"),
+        ],
+    );
+
+    // Intervening subscript between prime and explicit superscript preserves all child spans.
+    assert_node_spans(
+        "f'_i^{xy}",
+        &[
+            ("root", 0, 9, "f'_i^{xy}"),
+            ("root.child.0", 0, 9, "f'_i^{xy}"),
+            ("root.child.0.base", 0, 1, "f"),
+            ("root.child.0.sub", 2, 4, "_i"),
+            ("root.child.0.sup", 1, 9, "'_i^{xy}"),
+            ("root.child.0.sup.child.0", 1, 2, "'"),
+            ("root.child.0.sup.child.1", 5, 9, "{xy}"),
+            ("root.child.0.sup.child.1.child.0", 6, 7, "x"),
+            ("root.child.0.sup.child.1.child.1", 7, 8, "y"),
+        ],
+    );
+
+    // Plain explicit braced superscript for direct comparison with `f'^{xy}`.
+    assert_node_spans(
+        "f^{xy}",
+        &[
+            ("root", 0, 6, "f^{xy}"),
+            ("root.child.0", 0, 6, "f^{xy}"),
+            ("root.child.0.base", 0, 1, "f"),
+            ("root.child.0.sup", 1, 6, "^{xy}"),
+            ("root.child.0.sup.child.0", 3, 4, "x"),
+            ("root.child.0.sup.child.1", 4, 5, "y"),
+        ],
+    );
+
+    // Leading prime inside an explicit braced superscript group (`f^{'xy}`).
+    assert_node_spans(
+        "f^{'xy}",
+        &[
+            ("root", 0, 7, "f^{'xy}"),
+            ("root.child.0", 0, 7, "f^{'xy}"),
+            ("root.child.0.base", 0, 1, "f"),
+            ("root.child.0.sup", 1, 7, "^{'xy}"),
+            ("root.child.0.sup.child.0", 3, 4, "'"),
+            ("root.child.0.sup.child.0.base", 3, 3, ""),
+            ("root.child.0.sup.child.0.sup", 3, 4, "'"),
+            ("root.child.0.sup.child.1", 4, 5, "x"),
+            ("root.child.0.sup.child.2", 5, 6, "y"),
+        ],
+    );
+
+    // Trailing primes after a mixed or explicit superscript remain double-exponent errors.
+    let recovered = ParseContext::shared().parse("f'^2'", &ParseConfig::LENIENT);
+    assert!(
+        recovered
+            .diagnostics
+            .iter()
+            .any(|d| d.message == "Prime causes double exponent: use braces to clarify")
+    );
+    let doc = recovered
+        .document()
+        .expect("lenient parse should recover f'^2'");
+    assert!(doc.has_errors());
+    assert_eq!(
+        doc.node_spans(),
+        vec![
+            ("root".to_string(), Span::new(0, 5)),
+            ("root.child.0".to_string(), Span::new(0, 5)),
+        ]
+    );
+
+    let rejected = ParseContext::shared().parse("f^{xy}'", &ParseConfig::LENIENT);
+    assert!(
+        rejected
+            .diagnostics
+            .iter()
+            .any(|d| d.message == "Prime causes double exponent: use braces to clarify")
+    );
+    assert!(rejected.try_into_document().is_err());
+}

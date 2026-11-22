@@ -631,7 +631,6 @@ impl Document {
     /// structure, so each node reads its span directly and recurses into the
     /// child subtrees in the order documented on [`SpanTree`] — no path strings
     /// and no hashing.
-    #[allow(dead_code)]
     fn assign_spans(
         ast: &Ast,
         syntax: &SyntaxNode,
@@ -656,12 +655,18 @@ impl Document {
                 },
                 Node::Group { children, .. },
             ) => {
-                for (index, (syntax_child, ast_child)) in
-                    syntax_children.iter().zip(children.iter()).enumerate()
+                debug_assert_eq!(syntax_children.len(), children.len());
+                debug_assert_eq!(
+                    span_tree.kids.len(),
+                    children.len(),
+                    "SpanTree child count mismatch for container node"
+                );
+                for ((syntax_child, ast_child), kid) in syntax_children
+                    .iter()
+                    .zip(children.iter())
+                    .zip(span_tree.kids.iter())
                 {
-                    if let Some(kid) = span_tree.kids.get(index) {
-                        Self::assign_spans(ast, syntax_child, *ast_child, kid, out);
-                    }
+                    Self::assign_spans(ast, syntax_child, *ast_child, kid, out);
                 }
             }
             (
@@ -685,6 +690,11 @@ impl Document {
                     &mut cursor,
                     out,
                 );
+                debug_assert_eq!(
+                    cursor,
+                    span_tree.kids.len(),
+                    "SpanTree child count mismatch for command/declarative node"
+                );
             }
             (
                 SyntaxNode::Infix {
@@ -701,6 +711,10 @@ impl Document {
                 },
             ) => {
                 let mut cursor = 0;
+                debug_assert!(
+                    cursor < span_tree.kids.len(),
+                    "SpanTree missing left child for infix node"
+                );
                 if let Some(kid) = span_tree.kids.get(cursor) {
                     Self::assign_spans(ast, syntax_left, *left, kid, out);
                     cursor += 1;
@@ -713,9 +727,19 @@ impl Document {
                     &mut cursor,
                     out,
                 );
+                debug_assert!(
+                    cursor < span_tree.kids.len(),
+                    "SpanTree missing right child for infix node"
+                );
                 if let Some(kid) = span_tree.kids.get(cursor) {
                     Self::assign_spans(ast, syntax_right, *right, kid, out);
+                    cursor += 1;
                 }
+                debug_assert_eq!(
+                    cursor,
+                    span_tree.kids.len(),
+                    "SpanTree child count mismatch for infix node"
+                );
             }
             (
                 SyntaxNode::Environment {
@@ -738,9 +762,19 @@ impl Document {
                     &mut cursor,
                     out,
                 );
+                debug_assert!(
+                    cursor < span_tree.kids.len(),
+                    "SpanTree missing body child for environment node"
+                );
                 if let Some(kid) = span_tree.kids.get(cursor) {
                     Self::assign_spans(ast, syntax_body, *body, kid, out);
+                    cursor += 1;
                 }
+                debug_assert_eq!(
+                    cursor,
+                    span_tree.kids.len(),
+                    "SpanTree child count mismatch for environment node"
+                );
             }
             (
                 SyntaxNode::Scripted {
@@ -754,6 +788,13 @@ impl Document {
                     superscript,
                 },
             ) => {
+                let expected_kids =
+                    1 + usize::from(subscript.is_some()) + usize::from(superscript.is_some());
+                debug_assert_eq!(
+                    span_tree.kids.len(),
+                    expected_kids,
+                    "SpanTree child count mismatch for scripted node"
+                );
                 let mut cursor = 0;
                 if let Some(kid) = span_tree.kids.get(cursor) {
                     Self::assign_spans(ast, syntax_base, *base, kid, out);
@@ -769,9 +810,28 @@ impl Document {
                     && let Some(kid) = span_tree.kids.get(cursor)
                 {
                     Self::assign_spans(ast, syntax, *ast_id, kid, out);
+                    cursor += 1;
                 }
+                debug_assert_eq!(cursor, span_tree.kids.len());
             }
-            _ => {}
+            (SyntaxNode::Char(_), Node::Char(_))
+            | (SyntaxNode::Text(_), Node::Text(_))
+            | (SyntaxNode::Prime { .. }, Node::Prime { .. })
+            | (SyntaxNode::ActiveSpace, Node::ActiveSpace)
+            | (SyntaxNode::AlignmentTab, Node::AlignmentTab)
+            | (SyntaxNode::Error { .. }, Node::Error { .. }) => {
+                debug_assert_eq!(
+                    span_tree.kids.len(),
+                    0,
+                    "SpanTree leaf node must not have children"
+                );
+            }
+            _ => {
+                debug_assert!(
+                    false,
+                    "SyntaxNode and Ast Node diverged during assign_spans"
+                );
+            }
         }
     }
 
@@ -786,6 +846,7 @@ impl Document {
         cursor: &mut usize,
         out: &mut SecondaryMap<RawNodeId, Span>,
     ) {
+        debug_assert_eq!(syntax_args.len(), ast_args.len());
         for (syntax_slot, ast_slot) in syntax_args.iter().zip(ast_args.iter()) {
             let (Some(syntax_arg), Some(ast_arg)) = (syntax_slot, ast_slot) else {
                 continue;
@@ -798,10 +859,17 @@ impl Document {
                 | ArgumentValue::TextContent(ast_id)
                 | ArgumentValue::OperatorNameContent(ast_id),
             ) = (&syntax_arg.value, &ast_arg.value)
-                && let Some(kid) = kids.get(*cursor)
             {
-                Self::assign_spans(ast, syntax_node, *ast_id, kid, out);
-                *cursor += 1;
+                debug_assert!(
+                    *cursor < kids.len(),
+                    "SpanTree missing child for content argument slot (cursor={}, kids={})",
+                    *cursor,
+                    kids.len()
+                );
+                if let Some(kid) = kids.get(*cursor) {
+                    Self::assign_spans(ast, syntax_node, *ast_id, kid, out);
+                    *cursor += 1;
+                }
             }
         }
     }
