@@ -1179,11 +1179,11 @@ commands:
     allowed_mode: math
   - name: stackbin
     kind: prefix
-    argspec: m m
+    argspec: o m m
     allowed_mode: math
   - name: stackrel
     kind: prefix
-    argspec: m m
+    argspec: o m m
     allowed_mode: math
   - name: strut
     kind: prefix

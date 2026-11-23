@@ -54,6 +54,7 @@ define_rule! {
                 prefix_command_node(
                     &base::cmd::STACKREL,
                     vec![
+                        None,
                         mandatory_content_slot(above, ContentMode::Math),
                         mandatory_content_slot(operator, ContentMode::Math),
                     ],
@@ -137,5 +138,31 @@ mod tests {
             expected: r"K\stackrel{f}{\longrightarrow} K\stackrel{g}{\longrightarrow} K",
         },
         ]
+    }
+
+    #[test]
+    fn buildrel_chains_into_stackrel_expand_under_faithful_and_corpus() {
+        let parse_ctx = crate::parse::ParseContext::from_packages(&["base"]);
+        let parse_config = crate::parse::ParseConfig::STRICT;
+        let expected_ast = crate::parse_to_ast_for_test(
+            &parse_ctx,
+            r"\mathrel{\mathop{=}\limits^{a}}",
+            &parse_config,
+        );
+        let expected = crate::serialize::serialize(&expected_ast);
+
+        for profile in [crate::Profile::Faithful, crate::Profile::Corpus] {
+            let transform_ctx = crate::TransformContext::from_build_config(
+                crate::BuildConfig::profile(profile),
+                &parse_ctx,
+            )
+            .expect("transform context should build");
+            let mut ast =
+                crate::parse_to_ast_for_test(&parse_ctx, r"\buildrel a \over =", &parse_config);
+            transform_ctx
+                .run(&mut ast, &parse_ctx)
+                .expect("transform should succeed");
+            assert_eq!(crate::serialize::serialize(&ast), expected);
+        }
     }
 }
