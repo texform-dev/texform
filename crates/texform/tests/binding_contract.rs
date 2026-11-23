@@ -119,11 +119,40 @@ fn tokenized_latex_dto_uses_snake_case_byte_offsets_and_closed_values() {
     );
     assert!(value["tokens"][0].get("start_byte").is_some());
     assert!(value["tokens"][0].get("startByte").is_none());
+    assert!(value["tokens"][0].get("node_path").is_some());
+    assert!(value["tokens"][0].get("nodePath").is_none());
+    assert!(value["tokens"][0].get("slot").is_some());
+    assert_eq!(value["tokens"][0]["slot"], serde_json::Value::Null);
+    assert_eq!(
+        value["tokens"][1]["slot"],
+        serde_json::json!({ "kind": "arg", "index": 0 })
+    );
     assert!(value["tokens"].as_array().unwrap().iter().all(|token| {
+        let slot_valid = token["slot"].is_null()
+            || (matches!(
+                token["slot"]["kind"].as_str(),
+                Some(
+                    "child"
+                        | "arg"
+                        | "script_base"
+                        | "subscript"
+                        | "superscript"
+                        | "infix_left"
+                        | "infix_right"
+                        | "env_body"
+                )
+            ) && (token["slot"]["index"].is_null() || token["slot"]["index"].is_u64()));
         matches!(
             token["kind"].as_str(),
             Some("control_sequence" | "character" | "delimiter" | "text" | "raw" | "error")
-        ) && matches!(token["mode"].as_str(), Some("math" | "text"))
+        ) && matches!(
+            token["role"].as_str(),
+            Some("head" | "open" | "close" | "name" | "operator" | "delimiter" | "value" | "leaf")
+        ) && token["node_path"]
+            .as_str()
+            .is_some_and(|path| document.node_at(path).is_ok())
+            && slot_valid
+            && matches!(token["mode"].as_str(), Some("math" | "text"))
     }));
     let unicode = value["tokens"]
         .as_array()

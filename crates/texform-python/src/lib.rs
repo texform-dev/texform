@@ -1555,6 +1555,144 @@ mod tests {
                 .unwrap();
             assert!(first.get_item("start_byte").unwrap().is_some());
             assert_eq!(
+                first
+                    .get_item("role")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                "head"
+            );
+            assert!(first.get_item("slot").unwrap().unwrap().is_none());
+            let first_path = first
+                .get_item("node_path")
+                .unwrap()
+                .unwrap()
+                .extract::<String>()
+                .unwrap();
+            assert_eq!(first_path, "root.child.0");
+            assert_eq!(
+                document
+                    .call_method1("node_at", (first_path,))
+                    .unwrap()
+                    .call_method0("kind")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                "Command"
+            );
+            let open_brace = tokens
+                .get_item(1)
+                .unwrap()
+                .cast_into::<pyo3::types::PyDict>()
+                .unwrap();
+            let open_slot = open_brace
+                .get_item("slot")
+                .unwrap()
+                .unwrap()
+                .cast_into::<pyo3::types::PyDict>()
+                .unwrap();
+            assert_eq!(
+                open_slot
+                    .get_item("kind")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                "arg"
+            );
+            assert_eq!(
+                open_slot
+                    .get_item("index")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<usize>()
+                    .unwrap(),
+                0
+            );
+            let arg0_node = document
+                .call_method1("node_at", ("root.child.0.arg.0.content",))
+                .unwrap();
+            let arg0_slot = arg0_node.call_method0("slot").unwrap();
+            assert!(open_slot.as_any().eq(&arg0_slot).unwrap());
+
+            for item in tokens.iter() {
+                let token = item.cast_into::<pyo3::types::PyDict>().unwrap();
+                let path = token
+                    .get_item("node_path")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap();
+                assert!(document.call_method1("node_at", (path,)).is_ok());
+            }
+
+            // Verify real argspec slot attribution across sqrt, genfrac, and scripts.
+            let check_slot =
+                |src: &str, token_text: &str, expected_kind: &str, expected_idx: Option<usize>| {
+                    let res = parser.call_method1("parse", (src,)).unwrap();
+                    let doc = res
+                        .cast::<pyo3::types::PyDict>()
+                        .unwrap()
+                        .get_item("document")
+                        .unwrap()
+                        .unwrap();
+                    let tok_dict = doc
+                        .call_method0("to_tokenized_latex")
+                        .unwrap()
+                        .cast_into::<pyo3::types::PyDict>()
+                        .unwrap();
+                    let tok_list = tok_dict
+                        .get_item("tokens")
+                        .unwrap()
+                        .unwrap()
+                        .cast_into::<pyo3::types::PyList>()
+                        .unwrap();
+                    let found = tok_list
+                        .iter()
+                        .find_map(|item| {
+                            let d = item.cast_into::<pyo3::types::PyDict>().unwrap();
+                            let text = d
+                                .get_item("text")
+                                .unwrap()
+                                .unwrap()
+                                .extract::<String>()
+                                .unwrap();
+                            (text == token_text).then_some(d)
+                        })
+                        .unwrap_or_else(|| panic!("token `{token_text}` not found in `{src}`"));
+                    let slot = found
+                        .get_item("slot")
+                        .unwrap()
+                        .unwrap()
+                        .cast_into::<pyo3::types::PyDict>()
+                        .unwrap();
+                    assert_eq!(
+                        slot.get_item("kind")
+                            .unwrap()
+                            .unwrap()
+                            .extract::<String>()
+                            .unwrap(),
+                        expected_kind,
+                        "slot.kind mismatch for `{token_text}` in `{src}`"
+                    );
+                    assert_eq!(
+                        slot.get_item("index")
+                            .unwrap()
+                            .unwrap()
+                            .extract::<Option<usize>>()
+                            .unwrap(),
+                        expected_idx,
+                        "slot.index mismatch for `{token_text}` in `{src}`"
+                    );
+                };
+            check_slot(r"\sqrt{x}", "{", "arg", Some(1));
+            check_slot(r"\genfrac(]{0pt}{1}{a}{b}", "0pt", "arg", Some(2));
+            check_slot(r"x_{ab}^{c}", "_", "subscript", None);
+            check_slot(r"x_{ab}^{c}", "{", "subscript", None);
+            check_slot(r"x_{ab}^{c}", "}", "subscript", None);
+            check_slot(r"x_{ab}^{c}", "^", "superscript", None);
+            assert_eq!(
                 document
                     .call_method0("root")
                     .unwrap()

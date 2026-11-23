@@ -24,7 +24,7 @@ pub struct Args {
     #[arg(long, value_name = "JSON|@FILE")]
     config: Option<String>,
 
-    /// Print a JSON array of tokens, with text, kind, mode, and byte offsets
+    /// Print a JSON array of tokens, with text, kind, role, node path, slot, mode, and byte offsets
     #[arg(long)]
     json: bool,
 }

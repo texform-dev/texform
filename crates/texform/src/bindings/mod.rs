@@ -37,6 +37,9 @@ pub struct SerializationTokenDto {
     pub start_byte: usize,
     pub end_byte: usize,
     pub kind: &'static str,
+    pub role: &'static str,
+    pub node_path: String,
+    pub slot: Option<NodeSlotDto>,
     pub mode: &'static str,
 }
 
@@ -58,6 +61,9 @@ pub fn tokenized_latex_to_dto(result: TokenizedLatex) -> TokenizedLatexDto {
                     SerializationTokenKind::Raw => "raw",
                     SerializationTokenKind::Error => "error",
                 },
+                role: token.role.as_str(),
+                node_path: token.node_path,
+                slot: token.slot.map(NodeSlotDto::from),
                 mode: token.mode.as_str(),
             })
             .collect(),

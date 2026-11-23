@@ -407,7 +407,18 @@ export type SerializationTokenKind =
   | "raw"
   | "error";
 
-/** One non-empty serialization fragment. */
+/** Syntactic roles emitted by tokenized serialization. */
+export type SerializationTokenRole =
+  | "head"
+  | "open"
+  | "close"
+  | "name"
+  | "operator"
+  | "delimiter"
+  | "value"
+  | "leaf";
+
+/** One non-empty serialization fragment with UTF-8 byte offsets and syntactic provenance. */
 export interface SerializationToken {
   /** Fragment text, decoded from bytes `[startByte, endByte)` of the UTF-8 encoding of `latex`. */
   text: string;
@@ -417,6 +428,12 @@ export interface SerializationToken {
   endByte: number;
   /** Semantic category of the fragment. */
   kind: SerializationTokenKind;
+  /** Syntactic role of the fragment within its emitting AST construct. */
+  role: SerializationTokenRole;
+  /** Root-relative path of the emitting AST node, always accepted by {@link Document.nodeAt}. */
+  nodePath: string;
+  /** Immediate slot on `nodePath` that this token belongs to, or `null` for node-owned tokens. Protective braces share the same `(nodePath, slot)` as the slot's outer delimiters, so consumers pairing delimiters should use a stack. */
+  slot: NodeSlot | null;
   /** Semantic math/text mode of the fragment, independent of spacing policy. */
   mode: "math" | "text";
 }

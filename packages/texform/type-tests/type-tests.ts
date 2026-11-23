@@ -48,7 +48,15 @@ const serializeOptions = {
   style: "compact" as const,
 };
 doc.toLatex(serializeOptions);
-doc.toTokenizedLatex({ style: "compact" });
+const tokenized = doc.toTokenizedLatex({ style: "compact" });
+const tokenRole: import("../types/index.d.ts").SerializationTokenRole | undefined =
+  tokenized.tokens[0]?.role;
+const tokenNodePath: string | undefined = tokenized.tokens[0]?.nodePath;
+const tokenSlot: import("../types/index.d.ts").NodeSlot | null | undefined =
+  tokenized.tokens[0]?.slot;
+// @ts-expect-error — nodePath is camelCase in JavaScript
+tokenized.tokens[0]?.node_path;
+void [tokenRole, tokenNodePath, tokenSlot];
 
 // @ts-expect-error — nested math.scripts is no longer a serialize option
 doc.toLatex({ math: { scripts: { order: "sup_first" } } });

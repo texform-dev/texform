@@ -99,8 +99,8 @@ pub use parse_result::{ParseError, ParseResult};
 pub use parser::{Parser, ParserBuilder};
 pub use rules::{RuleInfo, RuleLevel, list_rules};
 pub use serialize::{
-    SerializationToken, SerializationTokenKind, SerializeError, SerializeOptions, Style,
-    TokenizedLatex,
+    SerializationToken, SerializationTokenKind, SerializationTokenRole, SerializeError,
+    SerializeOptions, Style, TokenizedLatex,
 };
 pub use transform_engine::{TransformEngine, TransformEngineBuilder};
 

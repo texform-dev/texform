@@ -115,6 +115,17 @@ SerializationTokenKind = Literal[
     "control_sequence", "character", "delimiter", "text", "raw", "error"
 ]
 """Semantic category of one serialization fragment."""
+SerializationTokenRole = Literal[
+    "head",
+    "open",
+    "close",
+    "name",
+    "operator",
+    "delimiter",
+    "value",
+    "leaf",
+]
+"""Syntactic role of one serialization fragment within its emitting AST construct."""
 ArgSpecKindType = Literal[
     "content",
     "operatorname",
@@ -193,7 +204,7 @@ class NodeSpanEntry(TypedDict):
 
 
 class SerializationToken(TypedDict):
-    """One serialization fragment with UTF-8 byte offsets.
+    """One serialization fragment with UTF-8 byte offsets and syntactic provenance.
 
     ``start_byte`` / ``end_byte`` index the accompanying ``TokenizedLatex.latex``
     string and are UTF-8 byte offsets, not Python code-point indices. Spans do
@@ -205,6 +216,14 @@ class SerializationToken(TypedDict):
         start_byte: Inclusive UTF-8 byte offset into the serialized LaTeX string.
         end_byte: Exclusive UTF-8 byte offset into the serialized LaTeX string.
         kind: Semantic category of the fragment (control sequence, character, ...).
+        role: Syntactic role of the fragment within its emitting AST
+            construct.
+        node_path: Root-relative path of the emitting AST node, always accepted
+            by ``Document.node_at``.
+        slot: Immediate slot on ``node_path`` that this token belongs to, or
+            ``None`` for tokens emitted directly by the node itself. Protective
+            braces share the same ``(node_path, slot)`` as the slot's outer
+            delimiters, so consumers pairing delimiters should use a stack.
         mode: Semantic math/text mode of the fragment, independent of spacing
             policy.
     """
@@ -213,6 +232,9 @@ class SerializationToken(TypedDict):
     start_byte: int
     end_byte: int
     kind: SerializationTokenKind
+    role: SerializationTokenRole
+    node_path: str
+    slot: NodeSlot | None
     mode: RuntimeContentMode
 
 

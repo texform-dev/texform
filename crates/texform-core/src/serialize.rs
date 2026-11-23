@@ -41,6 +41,7 @@ use crate::ast::{
     Argument, ArgumentKind, ArgumentSlot, ArgumentValue, Ast, ContentMode, Delimiter, GroupKind,
     Node, NodeId,
 };
+use crate::document::NodeSlot;
 
 /// Serialize an AST to LaTeX using the default spaced style.
 pub fn serialize(ast: &Ast) -> String {
@@ -117,11 +118,16 @@ pub struct TokenizedLatex {
     pub tokens: Vec<SerializationToken>,
 }
 
-/// A non-empty serialization fragment and its UTF-8 byte span.
+/// A non-empty serialization fragment with its UTF-8 byte span and syntactic provenance.
 ///
 /// `span` indexes the returned [`TokenizedLatex::latex`] string and selects
 /// exactly `text`. Spans do not overlap. `mode` records the semantic math/text
-/// mode, independently of formatting whitespace policy.
+/// mode, independently of formatting whitespace policy. `role` identifies the
+/// syntactic role of the emitted fragment, `node_path` always resolves to the
+/// emitting AST node via [`crate::document::Document::node_at`], and `slot`
+/// identifies the parent-owned [`NodeSlot`] when the token belongs to a
+/// specific slot on `node_path` (or `None` when emitted directly by the node
+/// itself).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SerializationToken {
     /// Fragment text, exactly the slice `latex[span]`.
@@ -130,6 +136,12 @@ pub struct SerializationToken {
     pub span: Range<usize>,
     /// Semantic category of the fragment.
     pub kind: SerializationTokenKind,
+    /// Syntactic role of the fragment within the emitting AST construct.
+    pub role: SerializationTokenRole,
+    /// Root-relative path of the emitting AST node, always valid for `Document::node_at`.
+    pub node_path: String,
+    /// Immediate slot on `node_path` that this token belongs to, or `None` for node-owned tokens.
+    pub slot: Option<NodeSlot>,
     /// Semantic math/text mode, independent of spacing policy.
     pub mode: ContentMode,
 }
@@ -149,6 +161,56 @@ pub enum SerializationTokenKind {
     Raw,
     /// A recovered error snippet. Empty snippets emit no token.
     Error,
+}
+
+/// Syntactic roles for serialization fragments.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SerializationTokenRole {
+    /// Construct head control sequence (`\frac`, `\bf`, `\over`, `\begin`, `\end`).
+    ///
+    /// An environment node emits two `Head` tokens (`\begin` and `\end`), each
+    /// followed by its own `Open` / `Name` / `Close` group (`slot: None`),
+    /// whereas `\left` and `\right` emit `Open` and `Close`.
+    Head,
+    /// Opening boundary of any paired construct (`{`, `$`, `\left`, `[`, paired/delimited/protective/script/infix opener).
+    ///
+    /// Protective braces share the same `(node_path, slot)` as the slot's outer
+    /// delimiters (for example, `\sqrt[{a[b]}]{x}` emits both `[` and `{` as
+    /// `Open` on `arg.0`), so consumers pairing delimiters by `(node_path, slot)`
+    /// should use a stack.
+    Open,
+    /// Closing boundary paired with `Open` (`}`, `$`, `\right`, `]`, paired/delimited/until/protective/script/infix closer).
+    ///
+    /// Protective braces share the same `(node_path, slot)` as the slot's outer
+    /// delimiters, so consumers pairing delimiters by `(node_path, slot)` should
+    /// use a stack.
+    Close,
+    /// Environment name text inside `\begin{...}` or `\end{...}`.
+    Name,
+    /// Script operator (`_` or `^`).
+    Operator,
+    /// Delimiter value after `\left`/`\right` or in a delimiter argument slot (including `.`).
+    Delimiter,
+    /// Scalar argument value (dimension, column, keyval, csname, integer, or star `*`).
+    Value,
+    /// Leaf node itself (`Char`, `Text`, `Prime`, `ActiveSpace`, `AlignmentTab`, `Error`).
+    Leaf,
+}
+
+impl SerializationTokenRole {
+    /// Stable snake_case identifier used by language bindings and JSON output.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Head => "head",
+            Self::Open => "open",
+            Self::Close => "close",
+            Self::Name => "name",
+            Self::Operator => "operator",
+            Self::Delimiter => "delimiter",
+            Self::Value => "value",
+            Self::Leaf => "leaf",
+        }
+    }
 }
 
 /// Output style. Both styles are deterministic and text-idempotent.
@@ -261,11 +323,18 @@ trait Recorder {
     type Output;
     const ENABLED: bool;
 
+    fn path_checkpoint(&self) -> usize;
+    fn push_path_segment(&mut self, segment: &str);
+    fn push_path_indexed(&mut self, prefix: &str, index: usize, suffix: &str);
+    fn restore_path(&mut self, checkpoint: usize);
+
     fn record(
         &mut self,
         output: &str,
         span: Range<usize>,
         kind: SerializationTokenKind,
+        role: SerializationTokenRole,
+        slot: Option<NodeSlot>,
         mode: ContentMode,
     );
 
@@ -279,12 +348,28 @@ impl Recorder for NoopRecorder {
     type Output = String;
     const ENABLED: bool = false;
 
+    #[inline(always)]
+    fn path_checkpoint(&self) -> usize {
+        0
+    }
+
+    #[inline(always)]
+    fn push_path_segment(&mut self, _segment: &str) {}
+
+    #[inline(always)]
+    fn push_path_indexed(&mut self, _prefix: &str, _index: usize, _suffix: &str) {}
+
+    #[inline(always)]
+    fn restore_path(&mut self, _checkpoint: usize) {}
+
     #[inline]
     fn record(
         &mut self,
         _output: &str,
         _span: Range<usize>,
         _kind: SerializationTokenKind,
+        _role: SerializationTokenRole,
+        _slot: Option<NodeSlot>,
         _mode: ContentMode,
     ) {
     }
@@ -296,12 +381,16 @@ impl Recorder for NoopRecorder {
 
 struct TokenRecorder {
     tokens: Vec<SerializationToken>,
+    path: String,
 }
 
 impl TokenRecorder {
     fn with_capacity(capacity: usize) -> Self {
+        let mut path = String::with_capacity(64);
+        path.push_str("root");
         Self {
             tokens: Vec::with_capacity(capacity),
+            path,
         }
     }
 }
@@ -310,17 +399,44 @@ impl Recorder for TokenRecorder {
     type Output = TokenizedLatex;
     const ENABLED: bool = true;
 
+    #[inline]
+    fn path_checkpoint(&self) -> usize {
+        self.path.len()
+    }
+
+    #[inline]
+    fn push_path_segment(&mut self, segment: &str) {
+        self.path.push('.');
+        self.path.push_str(segment);
+    }
+
+    #[inline]
+    fn push_path_indexed(&mut self, prefix: &str, index: usize, suffix: &str) {
+        use std::fmt::Write as _;
+        let _ = write!(self.path, ".{prefix}.{index}{suffix}");
+    }
+
+    #[inline]
+    fn restore_path(&mut self, checkpoint: usize) {
+        self.path.truncate(checkpoint);
+    }
+
     fn record(
         &mut self,
         output: &str,
         span: Range<usize>,
         kind: SerializationTokenKind,
+        role: SerializationTokenRole,
+        slot: Option<NodeSlot>,
         mode: ContentMode,
     ) {
         self.tokens.push(SerializationToken {
             text: output[span.clone()].to_string(),
             span,
             kind,
+            role,
+            node_path: self.path.clone(),
+            slot,
             mode,
         });
     }
@@ -367,23 +483,35 @@ impl<R: Recorder> AtomWriter<R> {
     }
 
     #[inline(always)]
-    fn emit_control_seq(&mut self, mode: ContentMode, name: &str, options: &StyleSettings) {
+    fn emit_control_seq(
+        &mut self,
+        mode: ContentMode,
+        name: &str,
+        role: SerializationTokenRole,
+        slot: Option<NodeSlot>,
+        options: &StyleSettings,
+    ) {
         self.emit_backslash_prefixed(
             EmissionModes::same(mode),
             AtomKind::ControlSequence,
             SerializationTokenKind::ControlSequence,
+            role,
+            slot,
             name,
             BoundaryPolicy::Auto,
             options,
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     #[inline(always)]
     fn emit_backslash_prefixed(
         &mut self,
         modes: EmissionModes,
         spacing_kind: AtomKind,
         public_kind: SerializationTokenKind,
+        role: SerializationTokenRole,
+        slot: Option<NodeSlot>,
         suffix: &str,
         boundary: BoundaryPolicy,
         options: &StyleSettings,
@@ -397,30 +525,51 @@ impl<R: Recorder> AtomWriter<R> {
         self.output.push_str(suffix);
         let end = self.output.len();
         if R::ENABLED && start != end {
-            self.recorder
-                .record(&self.output, start..end, public_kind, modes.semantic);
+            self.recorder.record(
+                &self.output,
+                start..end,
+                public_kind,
+                role,
+                slot,
+                modes.semantic,
+            );
         }
         self.previous = Some(spacing_kind);
     }
 
+    #[allow(clippy::too_many_arguments)]
     #[inline(always)]
     fn emit(
         &mut self,
         mode: ContentMode,
         kind: AtomKind,
         public_kind: SerializationTokenKind,
+        role: SerializationTokenRole,
+        slot: Option<NodeSlot>,
         text: &str,
         options: &StyleSettings,
     ) {
-        self.emit_with_boundary(mode, kind, public_kind, text, BoundaryPolicy::Auto, options);
+        self.emit_with_boundary(
+            mode,
+            kind,
+            public_kind,
+            role,
+            slot,
+            text,
+            BoundaryPolicy::Auto,
+            options,
+        );
     }
 
+    #[allow(clippy::too_many_arguments)]
     #[inline(always)]
     fn emit_with_boundary(
         &mut self,
         mode: ContentMode,
         spacing_kind: AtomKind,
         public_kind: SerializationTokenKind,
+        role: SerializationTokenRole,
+        slot: Option<NodeSlot>,
         text: &str,
         boundary: BoundaryPolicy,
         options: &StyleSettings,
@@ -429,18 +578,23 @@ impl<R: Recorder> AtomWriter<R> {
             EmissionModes::same(mode),
             spacing_kind,
             public_kind,
+            role,
+            slot,
             text,
             boundary,
             options,
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     #[inline(always)]
     fn emit_with_semantic_mode(
         &mut self,
         modes: EmissionModes,
         spacing_kind: AtomKind,
         public_kind: SerializationTokenKind,
+        role: SerializationTokenRole,
+        slot: Option<NodeSlot>,
         text: &str,
         boundary: BoundaryPolicy,
         options: &StyleSettings,
@@ -458,8 +612,14 @@ impl<R: Recorder> AtomWriter<R> {
         self.output.push_str(text);
         let end = self.output.len();
         if R::ENABLED && start != end {
-            self.recorder
-                .record(&self.output, start..end, public_kind, modes.semantic);
+            self.recorder.record(
+                &self.output,
+                start..end,
+                public_kind,
+                role,
+                slot,
+                modes.semantic,
+            );
         }
         self.previous = Some(spacing_kind);
     }
@@ -470,6 +630,8 @@ impl<R: Recorder> AtomWriter<R> {
         mode: ContentMode,
         kind: AtomKind,
         public_kind: SerializationTokenKind,
+        role: SerializationTokenRole,
+        slot: Option<NodeSlot>,
         text: &str,
     ) {
         // Same empty-emission rule as `emit`: attached text that adds no bytes
@@ -483,7 +645,7 @@ impl<R: Recorder> AtomWriter<R> {
         let end = self.output.len();
         if R::ENABLED && start != end {
             self.recorder
-                .record(&self.output, start..end, public_kind, mode);
+                .record(&self.output, start..end, public_kind, role, slot, mode);
         }
         self.previous = Some(kind);
     }
@@ -494,12 +656,14 @@ impl<R: Recorder> AtomWriter<R> {
     /// Restoring `previous` keeps the current command-to-structure formatting.
     /// The lexical check still sees the trailing `*`, so the control word is
     /// already closed and a following letter is not given a terminator space.
-    fn emit_star_suffix(&mut self, mode: ContentMode) {
+    fn emit_star_suffix(&mut self, mode: ContentMode, slot: Option<NodeSlot>) {
         let previous = self.previous;
         self.emit_attached(
             mode,
             AtomKind::MathChar,
             SerializationTokenKind::Character,
+            SerializationTokenRole::Value,
+            slot,
             "*",
         );
         self.previous = previous;
@@ -697,6 +861,46 @@ impl<'a> Serializer<'a, NoopRecorder> {
 }
 
 impl<'a, R: Recorder> Serializer<'a, R> {
+    #[inline(always)]
+    fn push_child(&mut self, index: usize) -> usize {
+        let checkpoint = self.writer.recorder.path_checkpoint();
+        if R::ENABLED {
+            self.writer.recorder.push_path_indexed("child", index, "");
+        }
+        checkpoint
+    }
+
+    #[inline(always)]
+    fn push_slot(&mut self, slot: NodeSlot) -> usize {
+        let checkpoint = self.writer.recorder.path_checkpoint();
+        if R::ENABLED {
+            match slot {
+                NodeSlot::Child(index) => {
+                    self.writer.recorder.push_path_indexed("child", index, "");
+                }
+                NodeSlot::Arg(index) => {
+                    self.writer
+                        .recorder
+                        .push_path_indexed("arg", index, ".content");
+                }
+                NodeSlot::ScriptBase => self.writer.recorder.push_path_segment("base"),
+                NodeSlot::Subscript => self.writer.recorder.push_path_segment("sub"),
+                NodeSlot::Superscript => self.writer.recorder.push_path_segment("sup"),
+                NodeSlot::InfixLeft => self.writer.recorder.push_path_segment("left"),
+                NodeSlot::InfixRight => self.writer.recorder.push_path_segment("right"),
+                NodeSlot::EnvBody => self.writer.recorder.push_path_segment("body"),
+            }
+        }
+        checkpoint
+    }
+
+    #[inline(always)]
+    fn restore_path(&mut self, checkpoint: usize) {
+        if R::ENABLED {
+            self.writer.recorder.restore_path(checkpoint);
+        }
+    }
+
     /// Emit the formula content without root-level braces.
     ///
     /// The top-level API serializes "formula content", not "a group node".
@@ -708,8 +912,10 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             unreachable!("root must be a root node")
         };
 
-        for &child in children {
+        for (index, &child) in children.iter().enumerate() {
+            let checkpoint = self.push_child(index);
             self.visit(child, *mode);
+            self.restore_path(checkpoint);
         }
     }
 
@@ -743,6 +949,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 mode,
                 AtomKind::TextChunk,
                 SerializationTokenKind::Text,
+                SerializationTokenRole::Leaf,
+                None,
                 text,
                 self.options,
             ),
@@ -750,6 +958,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 mode,
                 AtomKind::ActiveChar,
                 SerializationTokenKind::Character,
+                SerializationTokenRole::Leaf,
+                None,
                 "~",
                 self.options,
             ),
@@ -758,6 +968,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 mode,
                 AtomKind::MathChar,
                 SerializationTokenKind::Character,
+                SerializationTokenRole::Leaf,
+                None,
                 "&",
                 self.options,
             ),
@@ -765,6 +977,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 mode,
                 AtomKind::RawFragment,
                 SerializationTokenKind::Error,
+                SerializationTokenRole::Leaf,
+                None,
                 snippet,
                 self.options,
             ),
@@ -785,35 +999,52 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                     ContentMode::Math,
                     AtomKind::ControlSequence,
                     SerializationTokenKind::ControlSequence,
+                    SerializationTokenRole::Open,
+                    None,
                     r"\left",
                     self.options,
                 );
-                self.emit_delimiter(left, ContentMode::Math);
-                for &child in children {
+                self.emit_delimiter(
+                    left,
+                    ContentMode::Math,
+                    SerializationTokenRole::Delimiter,
+                    None,
+                );
+                for (index, &child) in children.iter().enumerate() {
+                    let checkpoint = self.push_child(index);
                     self.visit(child, ContentMode::Math);
+                    self.restore_path(checkpoint);
                 }
                 self.writer.emit(
                     ContentMode::Math,
                     AtomKind::ControlSequence,
                     SerializationTokenKind::ControlSequence,
+                    SerializationTokenRole::Close,
+                    None,
                     r"\right",
                     self.options,
                 );
-                self.emit_delimiter(right, ContentMode::Math);
+                self.emit_delimiter(
+                    right,
+                    ContentMode::Math,
+                    SerializationTokenRole::Delimiter,
+                    None,
+                );
             }
             GroupKind::InlineMath => self.visit_inline_math(children),
         }
     }
 
     fn visit_command(&mut self, name: &str, args: &[Option<Argument>], mode: ContentMode) {
-        self.writer.emit_control_seq(mode, name, self.options);
+        self.writer
+            .emit_control_seq(mode, name, SerializationTokenRole::Head, None, self.options);
 
         let empty_genfrac_delimiters = is_genfrac_without_delimiters(name, args);
         for (index, slot) in args.iter().enumerate() {
             if empty_genfrac_delimiters && index < 2 {
-                self.emit_empty_brace_argument(slot, mode);
+                self.emit_empty_brace_argument(index, slot, mode);
             } else {
-                self.visit_argument_slot(slot, mode);
+                self.visit_argument_slot(index, slot, mode);
             }
         }
     }
@@ -825,15 +1056,23 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     /// branch of amsmath treat `.` as a delimiter, dropping the null
     /// delimiter space around the fraction, while `{}{}` renders exactly as
     /// `\atop`/`\above`/`\over`.
-    fn emit_empty_brace_argument(&mut self, slot: &Option<Argument>, mode: ContentMode) {
+    fn emit_empty_brace_argument(
+        &mut self,
+        arg_index: usize,
+        slot: &Option<Argument>,
+        mode: ContentMode,
+    ) {
         let opening_boundary = match slot {
             Some(arg) if arg.no_leading_space => BoundaryPolicy::SuppressOptionalSpace,
             _ => BoundaryPolicy::Auto,
         };
+        let node_slot = Some(NodeSlot::Arg(arg_index));
         self.writer.emit_with_boundary(
             mode,
             AtomKind::Brace,
             SerializationTokenKind::Delimiter,
+            SerializationTokenRole::Open,
+            node_slot,
             "{",
             opening_boundary,
             self.options,
@@ -842,6 +1081,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             mode,
             AtomKind::Brace,
             SerializationTokenKind::Delimiter,
+            SerializationTokenRole::Close,
+            node_slot,
             "}",
             BoundaryPolicy::SuppressOptionalSpace,
             self.options,
@@ -853,20 +1094,26 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     /// The serializer does not assume the infix has been desugared by a
     /// transform rule; an un-rewritten `\over` still round-trips correctly.
     fn visit_infix(&mut self, name: &str, args: &[ArgumentSlot], left: NodeId, right: NodeId) {
-        self.emit_infix_operand(left);
-        self.writer
-            .emit_control_seq(ContentMode::Math, name, self.options);
-        for slot in args {
-            self.visit_argument_slot(slot, ContentMode::Math);
+        self.emit_infix_operand(NodeSlot::InfixLeft, left);
+        self.writer.emit_control_seq(
+            ContentMode::Math,
+            name,
+            SerializationTokenRole::Head,
+            None,
+            self.options,
+        );
+        for (index, slot) in args.iter().enumerate() {
+            self.visit_argument_slot(index, slot, ContentMode::Math);
         }
-        self.emit_infix_operand(right);
+        self.emit_infix_operand(NodeSlot::InfixRight, right);
     }
 
     /// Emit a declarative command with its explicit arguments.
     fn visit_declarative(&mut self, name: &str, args: &[ArgumentSlot], mode: ContentMode) {
-        self.writer.emit_control_seq(mode, name, self.options);
-        for slot in args {
-            self.visit_argument_slot(slot, mode);
+        self.writer
+            .emit_control_seq(mode, name, SerializationTokenRole::Head, None, self.options);
+        for (index, slot) in args.iter().enumerate() {
+            self.visit_argument_slot(index, slot, mode);
         }
     }
 
@@ -878,18 +1125,21 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         mode: ContentMode,
     ) {
         self.emit_environment_head(mode, r"\begin", name);
-        for slot in args {
-            self.visit_argument_slot(slot, mode);
+        for (index, slot) in args.iter().enumerate() {
+            self.visit_argument_slot(index, slot, mode);
         }
 
+        let body_checkpoint = self.push_slot(NodeSlot::EnvBody);
         match self.ast.node(body) {
             Node::Group {
                 children,
                 mode: body_mode,
                 kind: GroupKind::Implicit,
             } => {
-                for &child in children {
+                for (index, &child) in children.iter().enumerate() {
+                    let child_checkpoint = self.push_child(index);
                     self.visit(child, *body_mode);
+                    self.restore_path(child_checkpoint);
                 }
             }
             Node::Group {
@@ -897,6 +1147,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             } => self.visit(body, *body_mode),
             other => unreachable!("environment body must remain a group, got {:?}", other),
         }
+        self.restore_path(body_checkpoint);
 
         self.emit_environment_head(mode, r"\end", name);
     }
@@ -907,6 +1158,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             outer_mode,
             AtomKind::ControlSequence,
             SerializationTokenKind::ControlSequence,
+            SerializationTokenRole::Head,
+            None,
             head,
             self.options,
         );
@@ -915,6 +1168,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             EmissionModes::new(ContentMode::Math, outer_mode),
             AtomKind::Brace,
             SerializationTokenKind::Delimiter,
+            SerializationTokenRole::Open,
+            None,
             "{",
             BoundaryPolicy::Auto,
             self.options,
@@ -923,6 +1178,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             outer_mode,
             AtomKind::RawFragment,
             SerializationTokenKind::Raw,
+            SerializationTokenRole::Name,
+            None,
             name,
             BoundaryPolicy::SuppressOptionalSpace,
             self.options,
@@ -931,6 +1188,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             outer_mode,
             AtomKind::Brace,
             SerializationTokenKind::Delimiter,
+            SerializationTokenRole::Close,
+            None,
             "}",
             BoundaryPolicy::SuppressOptionalSpace,
             self.options,
@@ -942,7 +1201,12 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     /// Content arguments (`MathContent` / `TextContent`) recurse into the
     /// serializer; scalar arguments are emitted as opaque fragments that
     /// bypass math-mode token spacing.
-    fn visit_argument_slot(&mut self, slot: &Option<Argument>, mode: ContentMode) {
+    fn visit_argument_slot(
+        &mut self,
+        arg_index: usize,
+        slot: &Option<Argument>,
+        mode: ContentMode,
+    ) {
         let Some(arg) = slot else {
             return;
         };
@@ -953,15 +1217,16 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         };
 
         match (&arg.kind, &arg.value) {
-            (ArgumentKind::Star, ArgumentValue::Boolean(true)) => {
-                self.writer.emit_star_suffix(mode)
-            }
+            (ArgumentKind::Star, ArgumentValue::Boolean(true)) => self
+                .writer
+                .emit_star_suffix(mode, Some(NodeSlot::Arg(arg_index))),
             (ArgumentKind::Star, ArgumentValue::Boolean(false)) => {}
             (ArgumentKind::Star, _) => {
                 unreachable!("star slots must carry boolean values")
             }
             (ArgumentKind::Mandatory | ArgumentKind::Group, ArgumentValue::MathContent(child)) => {
                 self.emit_argument_content(
+                    arg_index,
                     *child,
                     ContentMode::Math,
                     "{",
@@ -972,6 +1237,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             }
             (ArgumentKind::Mandatory | ArgumentKind::Group, ArgumentValue::TextContent(child)) => {
                 self.emit_argument_content(
+                    arg_index,
                     *child,
                     ContentMode::Text,
                     "{",
@@ -984,10 +1250,18 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 ArgumentKind::Mandatory | ArgumentKind::Group,
                 ArgumentValue::OperatorNameContent(child),
             ) => {
-                self.emit_operator_name_argument_content(*child, "{", "}", mode, opening_boundary);
+                self.emit_operator_name_argument_content(
+                    arg_index,
+                    *child,
+                    "{",
+                    "}",
+                    mode,
+                    opening_boundary,
+                );
             }
             (ArgumentKind::Optional, ArgumentValue::MathContent(child)) => {
                 self.emit_argument_content(
+                    arg_index,
                     *child,
                     ContentMode::Math,
                     "[",
@@ -998,6 +1272,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             }
             (ArgumentKind::Optional, ArgumentValue::TextContent(child)) => {
                 self.emit_argument_content(
+                    arg_index,
                     *child,
                     ContentMode::Text,
                     "[",
@@ -1007,28 +1282,42 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 );
             }
             (ArgumentKind::Optional, ArgumentValue::OperatorNameContent(child)) => {
-                self.emit_operator_name_argument_content(*child, "[", "]", mode, opening_boundary);
+                self.emit_operator_name_argument_content(
+                    arg_index,
+                    *child,
+                    "[",
+                    "]",
+                    mode,
+                    opening_boundary,
+                );
             }
             // A mandatory delimiter slot consumes a bare delimiter token in TeX
             // (`\middle\vert`, `\big(`, `\atopwithdelims()`). MathJax rejects a
             // braced delimiter for `\middle`, `\left`/`\right`, and the
             // `\...withdelims` family, so only the Group form (which required
             // braces in the source) keeps its braces.
-            (ArgumentKind::Mandatory, ArgumentValue::Delimiter(delimiter)) => {
-                self.emit_delimiter_with_boundary(delimiter, mode, mode, opening_boundary)
-            }
+            (ArgumentKind::Mandatory, ArgumentValue::Delimiter(delimiter)) => self
+                .emit_delimiter_with_boundary(
+                    delimiter,
+                    mode,
+                    mode,
+                    SerializationTokenRole::Delimiter,
+                    Some(NodeSlot::Arg(arg_index)),
+                    opening_boundary,
+                ),
             (ArgumentKind::Mandatory | ArgumentKind::Group, value) => {
-                self.emit_scalar_wrapped(value, "{", "}", mode, opening_boundary)
+                self.emit_scalar_wrapped(arg_index, value, "{", "}", mode, opening_boundary)
             }
             (ArgumentKind::Optional, value) => {
-                self.emit_scalar_wrapped(value, "[", "]", mode, opening_boundary)
+                self.emit_scalar_wrapped(arg_index, value, "[", "]", mode, opening_boundary)
             }
             (ArgumentKind::Until { close }, value) => {
-                self.emit_until_argument(close, value, mode, opening_boundary)
+                self.emit_until_argument(arg_index, close, value, mode, opening_boundary)
             }
             (ArgumentKind::Delimited { open, close }, ArgumentValue::MathContent(node))
             | (ArgumentKind::Paired { open, close }, ArgumentValue::MathContent(node)) => self
                 .emit_recorded_delimiters(
+                    arg_index,
                     open,
                     close,
                     *node,
@@ -1039,6 +1328,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             (ArgumentKind::Delimited { open, close }, ArgumentValue::TextContent(node))
             | (ArgumentKind::Paired { open, close }, ArgumentValue::TextContent(node)) => self
                 .emit_recorded_delimiters(
+                    arg_index,
                     open,
                     close,
                     *node,
@@ -1049,6 +1339,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             (ArgumentKind::Delimited { open, close }, ArgumentValue::OperatorNameContent(node))
             | (ArgumentKind::Paired { open, close }, ArgumentValue::OperatorNameContent(node)) => {
                 self.emit_operator_name_between_delimiters(
+                    arg_index,
                     open,
                     close,
                     *node,
@@ -1057,9 +1348,14 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 )
             }
             (ArgumentKind::Delimited { open, close }, value)
-            | (ArgumentKind::Paired { open, close }, value) => {
-                self.emit_scalar_between_delimiters(open, close, value, mode, opening_boundary)
-            }
+            | (ArgumentKind::Paired { open, close }, value) => self.emit_scalar_between_delimiters(
+                arg_index,
+                open,
+                close,
+                value,
+                mode,
+                opening_boundary,
+            ),
         }
     }
 
@@ -1102,8 +1398,10 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     /// `content_mode` is the mode the argument was parsed in (from the
     /// `MathContent` / `TextContent` variant), while `wrapper_mode` controls
     /// boundary spacing around the outer delimiters.
+    #[allow(clippy::too_many_arguments)]
     fn emit_argument_content(
         &mut self,
+        arg_index: usize,
         child: NodeId,
         content_mode: ContentMode,
         open: &str,
@@ -1111,6 +1409,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         wrapper_mode: ContentMode,
         opening_boundary: BoundaryPolicy,
     ) {
+        let slot = NodeSlot::Arg(arg_index);
         if open == "["
             && self.argument_needs_protection(
                 child,
@@ -1124,11 +1423,14 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 wrapper_mode,
                 AtomKind::Brace,
                 SerializationTokenKind::Delimiter,
+                SerializationTokenRole::Open,
+                Some(slot),
                 open,
                 opening_boundary,
                 self.options,
             );
             self.emit_wrapped_content(
+                slot,
                 child,
                 wrapper_mode,
                 content_mode,
@@ -1140,12 +1442,15 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 wrapper_mode,
                 AtomKind::Brace,
                 SerializationTokenKind::Delimiter,
+                SerializationTokenRole::Close,
+                Some(slot),
                 close,
                 self.options,
             );
             return;
         }
         self.emit_wrapped_content(
+            slot,
             child,
             wrapper_mode,
             content_mode,
@@ -1155,18 +1460,23 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn emit_operator_name_argument_content(
         &mut self,
+        arg_index: usize,
         child: NodeId,
         open: &str,
         close: &str,
         wrapper_mode: ContentMode,
         opening_boundary: BoundaryPolicy,
     ) {
+        let slot = NodeSlot::Arg(arg_index);
         self.writer.emit_with_boundary(
             wrapper_mode,
             AtomKind::Brace,
             SerializationTokenKind::Delimiter,
+            SerializationTokenRole::Open,
+            Some(slot),
             open,
             opening_boundary,
             self.options,
@@ -1181,6 +1491,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             );
         if protect {
             self.emit_operator_name_argument_content(
+                arg_index,
                 child,
                 "{",
                 "}",
@@ -1188,12 +1499,16 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 BoundaryPolicy::Auto,
             );
         } else {
+            let checkpoint = self.push_slot(slot);
             self.visit_operator_name_content_node(child);
+            self.restore_path(checkpoint);
         }
         self.writer.emit_with_boundary(
             wrapper_mode,
             AtomKind::Brace,
             SerializationTokenKind::Delimiter,
+            SerializationTokenRole::Close,
+            Some(slot),
             close,
             BoundaryPolicy::SuppressOptionalSpace,
             self.options,
@@ -1206,9 +1521,11 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         subscript: Option<NodeId>,
         superscript: Option<NodeId>,
     ) {
+        let base_checkpoint = self.push_slot(NodeSlot::ScriptBase);
         self.visit(base, ContentMode::Math);
+        self.restore_path(base_checkpoint);
         if let Some(node) = subscript {
-            self.emit_script("_", node);
+            self.emit_script("_", NodeSlot::Subscript, node);
         }
         if let Some(node) = superscript {
             self.emit_superscript(node);
@@ -1220,39 +1537,58 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             ContentMode::Text,
             AtomKind::Dollar,
             SerializationTokenKind::Delimiter,
+            SerializationTokenRole::Open,
+            None,
             "$",
             self.options,
         );
-        for &child in children {
+        for (index, &child) in children.iter().enumerate() {
+            let checkpoint = self.push_child(index);
             self.visit(child, ContentMode::Math);
+            self.restore_path(checkpoint);
         }
         self.writer.emit(
             ContentMode::Text,
             AtomKind::Dollar,
             SerializationTokenKind::Delimiter,
+            SerializationTokenRole::Close,
+            None,
             "$",
             self.options,
         );
     }
 
     /// Emit a script, omitting braces only for a single standalone token.
-    fn emit_script(&mut self, marker: &str, node: NodeId) {
+    fn emit_script(&mut self, marker: &str, slot: NodeSlot, node: NodeId) {
         self.writer.emit_with_boundary(
             ContentMode::Math,
             AtomKind::ScriptMark,
             SerializationTokenKind::Character,
+            SerializationTokenRole::Operator,
+            Some(slot),
             marker,
             BoundaryPolicy::Auto,
             self.options,
         );
         if self.options.bare_scripts
-            && let Some(token) = self.single_script_token(node)
+            && let Some((token, unwrapped_group)) = self.single_script_token(node)
         {
+            let slot_checkpoint = self.push_slot(slot);
+            let child_checkpoint = if unwrapped_group {
+                Some(self.push_child(0))
+            } else {
+                None
+            };
             self.visit(token, ContentMode::Math);
+            if let Some(cp) = child_checkpoint {
+                self.restore_path(cp);
+            }
+            self.restore_path(slot_checkpoint);
             self.writer.unbraced_script = true;
             return;
         }
         self.emit_wrapped_content(
+            slot,
             node,
             ContentMode::Math,
             ContentMode::Math,
@@ -1271,29 +1607,33 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     /// Unknown commands may be argument-taking macros outside the knowledge
     /// base, and a declarative switch would extend its scope past the script
     /// (`x^{\rm} a`), so both keep their braces.
-    fn single_script_token(&self, node: NodeId) -> Option<NodeId> {
-        let node = match self.ast.node(node) {
+    fn single_script_token(&self, node: NodeId) -> Option<(NodeId, bool)> {
+        let (node, unwrapped_group) = match self.ast.node(node) {
             Node::Group {
                 children,
                 kind: GroupKind::Explicit | GroupKind::Implicit,
                 ..
-            } if children.len() == 1 => children[0],
-            _ => node,
+            } if children.len() == 1 => (children[0], true),
+            _ => (node, false),
         };
         match self.ast.node(node) {
-            Node::Char(_) | Node::ActiveSpace | Node::Prime { count: 1 } => Some(node),
+            Node::Char(_) | Node::ActiveSpace | Node::Prime { count: 1 } => {
+                Some((node, unwrapped_group))
+            }
             Node::Command {
                 args, known: true, ..
-            } if args.is_empty() => Some(node),
+            } if args.is_empty() => Some((node, unwrapped_group)),
             _ => None,
         }
     }
 
     fn emit_superscript(&mut self, node: NodeId) {
         if let Node::Prime { count } = self.ast.node(node) {
+            let checkpoint = self.push_slot(NodeSlot::Superscript);
             self.emit_prime_marks(*count);
+            self.restore_path(checkpoint);
         } else {
-            self.emit_script("^", node);
+            self.emit_script("^", NodeSlot::Superscript, node);
         }
     }
 
@@ -1322,16 +1662,22 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             mode,
             kind,
             SerializationTokenKind::Delimiter,
+            SerializationTokenRole::Open,
+            None,
             open,
             self.options,
         );
-        for &child in children {
+        for (index, &child) in children.iter().enumerate() {
+            let checkpoint = self.push_child(index);
             self.visit(child, mode);
+            self.restore_path(checkpoint);
         }
         self.writer.emit(
             mode,
             kind,
             SerializationTokenKind::Delimiter,
+            SerializationTokenRole::Close,
+            None,
             close,
             self.options,
         );
@@ -1354,6 +1700,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             mode,
             kind,
             SerializationTokenKind::Delimiter,
+            SerializationTokenRole::Open,
+            None,
             open,
             self.options,
         );
@@ -1362,6 +1710,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             mode,
             kind,
             SerializationTokenKind::Delimiter,
+            SerializationTokenRole::Close,
+            None,
             close,
             BoundaryPolicy::SuppressOptionalSpace,
             self.options,
@@ -1373,8 +1723,10 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     /// When the child is itself a brace group, its children are inlined
     /// directly to avoid double-bracing (`{ { a } }` → `{ a }`). This is
     /// safe because the wrapper already provides the grouping delimiter.
+    #[allow(clippy::too_many_arguments)]
     fn emit_wrapped_content(
         &mut self,
+        slot: NodeSlot,
         child: NodeId,
         wrapper_mode: ContentMode,
         content_mode: ContentMode,
@@ -1386,11 +1738,14 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             wrapper_mode,
             AtomKind::Brace,
             SerializationTokenKind::Delimiter,
+            SerializationTokenRole::Open,
+            Some(slot),
             open,
             opening_boundary,
             self.options,
         );
 
+        let slot_checkpoint = self.push_slot(slot);
         match self.ast.node(child) {
             Node::Group {
                 children,
@@ -1401,6 +1756,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                     && matches!(*child_mode, ContentMode::Math)
                     && self.options.optional_space
                 {
+                    self.restore_path(slot_checkpoint);
                     // Same direct padding as `emit_padded_empty_group`: the space is
                     // the emitted ending, not a second lexical separator.
                     self.writer.output.push(' ');
@@ -1408,36 +1764,44 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                         wrapper_mode,
                         AtomKind::Brace,
                         SerializationTokenKind::Delimiter,
+                        SerializationTokenRole::Close,
+                        Some(slot),
                         close,
                         BoundaryPolicy::SuppressOptionalSpace,
                         self.options,
                     );
                     return;
                 }
-                for &grandchild in children {
+                for (index, &grandchild) in children.iter().enumerate() {
+                    let child_checkpoint = self.push_child(index);
                     self.visit(grandchild, *child_mode);
+                    self.restore_path(child_checkpoint);
                 }
             }
             _ => self.visit(child, content_mode),
         }
+        self.restore_path(slot_checkpoint);
 
         self.writer.emit_with_semantic_mode(
             EmissionModes::new(content_mode, wrapper_mode),
             AtomKind::Brace,
             SerializationTokenKind::Delimiter,
+            SerializationTokenRole::Close,
+            Some(slot),
             close,
             BoundaryPolicy::Auto,
             self.options,
         );
     }
 
-    fn emit_infix_operand(&mut self, node: NodeId) {
+    fn emit_infix_operand(&mut self, slot: NodeSlot, node: NodeId) {
         if self.is_empty_infix_operand(node) {
             return;
         }
 
         if self.infix_operand_requires_braces(node) {
             self.emit_wrapped_content(
+                slot,
                 node,
                 ContentMode::Math,
                 ContentMode::Math,
@@ -1446,7 +1810,9 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 BoundaryPolicy::Auto,
             );
         } else {
+            let checkpoint = self.push_slot(slot);
             self.emit_unwrapped_infix_operand(node);
+            self.restore_path(checkpoint);
         }
     }
 
@@ -1457,8 +1823,10 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 kind: GroupKind::Explicit | GroupKind::Implicit,
                 mode,
             } => {
-                for &child in children {
+                for (index, &child) in children.iter().enumerate() {
+                    let checkpoint = self.push_child(index);
                     self.visit(child, *mode);
+                    self.restore_path(checkpoint);
                 }
             }
             _ => self.visit(node, ContentMode::Math),
@@ -1501,25 +1869,36 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     /// (e.g. `1pt` must not become `1 p t`).
     fn emit_scalar_wrapped(
         &mut self,
+        arg_index: usize,
         value: &ArgumentValue,
         open: &str,
         close: &str,
         mode: ContentMode,
         opening_boundary: BoundaryPolicy,
     ) {
+        let slot = Some(NodeSlot::Arg(arg_index));
         self.writer.emit_with_boundary(
             mode,
             AtomKind::Brace,
             SerializationTokenKind::Delimiter,
+            SerializationTokenRole::Open,
+            slot,
             open,
             opening_boundary,
             self.options,
         );
-        self.emit_scalar_argument_value(value, mode, BoundaryPolicy::SuppressOptionalSpace);
+        self.emit_scalar_argument_value(
+            arg_index,
+            value,
+            mode,
+            BoundaryPolicy::SuppressOptionalSpace,
+        );
         self.writer.emit_with_boundary(
             mode,
             AtomKind::Brace,
             SerializationTokenKind::Delimiter,
+            SerializationTokenRole::Close,
+            slot,
             close,
             BoundaryPolicy::SuppressOptionalSpace,
             self.options,
@@ -1528,16 +1907,20 @@ impl<'a, R: Recorder> Serializer<'a, R> {
 
     fn emit_until_argument(
         &mut self,
+        arg_index: usize,
         close: &Delimiter,
         value: &ArgumentValue,
         mode: ContentMode,
         opening_boundary: BoundaryPolicy,
     ) {
+        let slot = NodeSlot::Arg(arg_index);
         if let Some((child, content_mode)) = value.content() {
             self.writer.emit_with_boundary(
                 mode,
                 AtomKind::Brace,
                 SerializationTokenKind::Delimiter,
+                SerializationTokenRole::Open,
+                Some(slot),
                 "{",
                 opening_boundary,
                 self.options,
@@ -1550,34 +1933,49 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 content_mode
             };
 
+            let slot_checkpoint = self.push_slot(slot);
             match self.ast.node(child) {
                 Node::Group {
                     children,
                     kind: GroupKind::Implicit,
                     ..
                 } => {
-                    for &child in children {
+                    for (index, &child) in children.iter().enumerate() {
+                        let child_checkpoint = self.push_child(index);
                         self.visit(child, content_mode);
+                        self.restore_path(child_checkpoint);
                     }
                 }
                 _ => self.visit(child, content_mode),
             }
+            self.restore_path(slot_checkpoint);
             self.writer.emit_with_semantic_mode(
                 EmissionModes::new(content_mode, mode),
                 AtomKind::Brace,
                 SerializationTokenKind::Delimiter,
+                SerializationTokenRole::Close,
+                Some(slot),
                 "}",
                 BoundaryPolicy::Auto,
                 self.options,
             );
         } else {
-            self.emit_scalar_wrapped(value, "{", "}", mode, opening_boundary);
+            self.emit_scalar_wrapped(arg_index, value, "{", "}", mode, opening_boundary);
         }
-        self.emit_delimiter_with_boundary(close, mode, mode, BoundaryPolicy::SuppressOptionalSpace);
+        self.emit_delimiter_with_boundary(
+            close,
+            mode,
+            mode,
+            SerializationTokenRole::Close,
+            Some(slot),
+            BoundaryPolicy::SuppressOptionalSpace,
+        );
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn emit_recorded_delimiters(
         &mut self,
+        arg_index: usize,
         open: &Delimiter,
         close: &Delimiter,
         node: NodeId,
@@ -1585,7 +1983,15 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         wrapper_mode: ContentMode,
         opening_boundary: BoundaryPolicy,
     ) {
-        self.emit_delimiter_with_boundary(open, content_mode, wrapper_mode, opening_boundary);
+        let slot = NodeSlot::Arg(arg_index);
+        self.emit_delimiter_with_boundary(
+            open,
+            content_mode,
+            wrapper_mode,
+            SerializationTokenRole::Open,
+            Some(slot),
+            opening_boundary,
+        );
         if self.argument_needs_protection(
             node,
             content_mode,
@@ -1594,6 +2000,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             false,
         ) {
             self.emit_wrapped_content(
+                slot,
                 node,
                 wrapper_mode,
                 content_mode,
@@ -1602,20 +2009,39 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 BoundaryPolicy::Auto,
             );
         } else {
+            let checkpoint = self.push_slot(slot);
             self.visit_argument_content_node(node, content_mode);
+            self.restore_path(checkpoint);
         }
-        self.emit_delimiter_with_boundary(close, content_mode, wrapper_mode, BoundaryPolicy::Auto);
+        self.emit_delimiter_with_boundary(
+            close,
+            content_mode,
+            wrapper_mode,
+            SerializationTokenRole::Close,
+            Some(slot),
+            BoundaryPolicy::Auto,
+        );
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn emit_operator_name_between_delimiters(
         &mut self,
+        arg_index: usize,
         open: &Delimiter,
         close: &Delimiter,
         node: NodeId,
         mode: ContentMode,
         opening_boundary: BoundaryPolicy,
     ) {
-        self.emit_delimiter_with_boundary(open, mode, mode, opening_boundary);
+        let slot = NodeSlot::Arg(arg_index);
+        self.emit_delimiter_with_boundary(
+            open,
+            mode,
+            mode,
+            SerializationTokenRole::Open,
+            Some(slot),
+            opening_boundary,
+        );
         if self.argument_needs_protection(
             node,
             ContentMode::Text,
@@ -1623,11 +2049,27 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             delimiter_token(close),
             true,
         ) {
-            self.emit_operator_name_argument_content(node, "{", "}", mode, BoundaryPolicy::Auto);
+            self.emit_operator_name_argument_content(
+                arg_index,
+                node,
+                "{",
+                "}",
+                mode,
+                BoundaryPolicy::Auto,
+            );
         } else {
+            let checkpoint = self.push_slot(slot);
             self.visit_operator_name_content_node(node);
+            self.restore_path(checkpoint);
         }
-        self.emit_delimiter_with_boundary(close, mode, mode, BoundaryPolicy::SuppressOptionalSpace);
+        self.emit_delimiter_with_boundary(
+            close,
+            mode,
+            mode,
+            SerializationTokenRole::Close,
+            Some(slot),
+            BoundaryPolicy::SuppressOptionalSpace,
+        );
     }
 
     fn visit_operator_name_content_node(&mut self, node: NodeId) {
@@ -1637,8 +2079,10 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 kind: GroupKind::Explicit | GroupKind::Implicit,
                 ..
             } => {
-                for &child in children {
+                for (index, &child) in children.iter().enumerate() {
+                    let checkpoint = self.push_child(index);
                     self.visit(child, ContentMode::Text);
+                    self.restore_path(checkpoint);
                 }
             }
             _ => self.visit(node, ContentMode::Text),
@@ -1647,29 +2091,42 @@ impl<'a, R: Recorder> Serializer<'a, R> {
 
     fn emit_scalar_between_delimiters(
         &mut self,
+        arg_index: usize,
         open: &Delimiter,
         close: &Delimiter,
         value: &ArgumentValue,
         mode: ContentMode,
         opening_boundary: BoundaryPolicy,
     ) {
-        self.emit_delimiter_with_boundary(open, mode, mode, opening_boundary);
-        self.emit_scalar_argument_value(value, mode, BoundaryPolicy::Auto);
-        self.emit_delimiter(close, mode);
+        let slot = Some(NodeSlot::Arg(arg_index));
+        self.emit_delimiter_with_boundary(
+            open,
+            mode,
+            mode,
+            SerializationTokenRole::Open,
+            slot,
+            opening_boundary,
+        );
+        self.emit_scalar_argument_value(arg_index, value, mode, BoundaryPolicy::Auto);
+        self.emit_delimiter(close, mode, SerializationTokenRole::Close, slot);
     }
 
     fn emit_scalar_argument_value(
         &mut self,
+        arg_index: usize,
         value: &ArgumentValue,
         mode: ContentMode,
         boundary: BoundaryPolicy,
     ) {
+        let slot = Some(NodeSlot::Arg(arg_index));
         match value {
             ArgumentValue::Delimiter(delimiter) => self.emit_delimiter_atom(
                 delimiter,
                 EmissionModes::same(mode),
                 AtomKind::RawFragment,
                 SerializationTokenKind::Raw,
+                SerializationTokenRole::Delimiter,
+                slot,
                 boundary,
             ),
             ArgumentValue::CSName(name)
@@ -1680,6 +2137,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 mode,
                 AtomKind::RawFragment,
                 SerializationTokenKind::Raw,
+                SerializationTokenRole::Value,
+                slot,
                 name,
                 boundary,
                 self.options,
@@ -1695,8 +2154,14 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         }
     }
 
-    fn emit_delimiter(&mut self, delimiter: &Delimiter, mode: ContentMode) {
-        self.emit_delimiter_with_boundary(delimiter, mode, mode, BoundaryPolicy::Auto);
+    fn emit_delimiter(
+        &mut self,
+        delimiter: &Delimiter,
+        mode: ContentMode,
+        role: SerializationTokenRole,
+        slot: Option<NodeSlot>,
+    ) {
+        self.emit_delimiter_with_boundary(delimiter, mode, mode, role, slot, BoundaryPolicy::Auto);
     }
 
     fn emit_delimiter_with_boundary(
@@ -1704,6 +2169,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         delimiter: &Delimiter,
         spacing_mode: ContentMode,
         semantic_mode: ContentMode,
+        role: SerializationTokenRole,
+        slot: Option<NodeSlot>,
         boundary: BoundaryPolicy,
     ) {
         self.emit_delimiter_atom(
@@ -1711,16 +2178,21 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             EmissionModes::new(spacing_mode, semantic_mode),
             AtomKind::DelimiterToken,
             SerializationTokenKind::Delimiter,
+            role,
+            slot,
             boundary,
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn emit_delimiter_atom(
         &mut self,
         delimiter: &Delimiter,
         modes: EmissionModes,
         spacing_kind: AtomKind,
         public_kind: SerializationTokenKind,
+        role: SerializationTokenRole,
+        slot: Option<NodeSlot>,
         boundary: BoundaryPolicy,
     ) {
         match delimiter {
@@ -1728,6 +2200,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 modes,
                 spacing_kind,
                 public_kind,
+                role,
+                slot,
                 ".",
                 boundary,
                 self.options,
@@ -1738,6 +2212,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                     modes,
                     spacing_kind,
                     public_kind,
+                    role,
+                    slot,
                     ch.encode_utf8(&mut buf),
                     boundary,
                     self.options,
@@ -1747,6 +2223,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 modes,
                 spacing_kind,
                 public_kind,
+                role,
+                slot,
                 name,
                 boundary,
                 self.options,
@@ -1763,8 +2241,10 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 kind: GroupKind::Explicit | GroupKind::Implicit,
                 mode: child_mode,
             } => {
-                for &child in children {
+                for (index, &child) in children.iter().enumerate() {
+                    let checkpoint = self.push_child(index);
                     self.visit(child, *child_mode);
+                    self.restore_path(checkpoint);
                 }
             }
             _ => self.visit(node, mode),
@@ -1798,6 +2278,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             mode,
             kind,
             SerializationTokenKind::Character,
+            SerializationTokenRole::Leaf,
+            None,
             text,
             self.options,
         );
@@ -1810,6 +2292,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 EmissionModes::new(mode, ContentMode::Math),
                 AtomKind::ControlSequence,
                 SerializationTokenKind::ControlSequence,
+                SerializationTokenRole::Leaf,
+                None,
                 r"\prime",
                 BoundaryPolicy::Auto,
                 self.options,
@@ -1836,6 +2320,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             ContentMode::Math,
             AtomKind::Prime,
             SerializationTokenKind::Character,
+            SerializationTokenRole::Leaf,
+            None,
             marks,
         );
     }
@@ -1944,10 +2430,12 @@ mod tests {
             ContentMode::Math,
             AtomKind::ControlSequence,
             SerializationTokenKind::ControlSequence,
+            SerializationTokenRole::Head,
+            None,
             r"\operatorname",
             &options,
         );
-        writer.emit_star_suffix(ContentMode::Math);
+        writer.emit_star_suffix(ContentMode::Math, Some(NodeSlot::Arg(0)));
 
         assert_eq!(writer.finish(), r"\operatorname*");
     }
@@ -1961,6 +2449,8 @@ mod tests {
             ContentMode::Math,
             AtomKind::ControlSequence,
             SerializationTokenKind::ControlSequence,
+            SerializationTokenRole::Head,
+            None,
             r"\alpha",
             &options,
         );
@@ -1968,6 +2458,8 @@ mod tests {
             ContentMode::Math,
             AtomKind::MathChar,
             SerializationTokenKind::Character,
+            SerializationTokenRole::Leaf,
+            None,
             "x",
             BoundaryPolicy::SuppressOptionalSpace,
             &options,
@@ -1985,6 +2477,8 @@ mod tests {
             ContentMode::Text,
             AtomKind::TextChunk,
             SerializationTokenKind::Text,
+            SerializationTokenRole::Leaf,
+            None,
             "abc",
             &options,
         );
@@ -1992,6 +2486,8 @@ mod tests {
             ContentMode::Text,
             AtomKind::TextChunk,
             SerializationTokenKind::Text,
+            SerializationTokenRole::Leaf,
+            None,
             " def",
             &options,
         );
@@ -2012,18 +2508,22 @@ mod tests {
 
     /// Write `(mode, kind, boundary, text)` atoms with default options.
     ///
-    /// Boundary decisions never read the public token kind, so it is pinned
-    /// here and the cases vary only mode, atom kind, boundary, and text.
+    /// Boundary decisions never read the public token kind, role, or slot, so
+    /// they are pinned here and the cases vary only mode, atom kind, boundary,
+    /// and text.
     fn write_atoms(atoms: &[(ContentMode, AtomKind, Option<BoundaryPolicy>, &str)]) -> String {
         let options = Style::Spaced.settings();
         let public = SerializationTokenKind::Character;
+        let role = SerializationTokenRole::Leaf;
         let mut writer = AtomWriter::new(NoopRecorder);
         for (mode, kind, boundary, text) in atoms {
             match boundary {
                 Some(boundary) => {
-                    writer.emit_with_boundary(*mode, *kind, public, text, *boundary, &options);
+                    writer.emit_with_boundary(
+                        *mode, *kind, public, role, None, text, *boundary, &options,
+                    );
                 }
-                None => writer.emit_attached(*mode, *kind, public, text),
+                None => writer.emit_attached(*mode, *kind, public, role, None, text),
             }
         }
         writer.finish()
@@ -2167,12 +2667,15 @@ mod tests {
         let options = Style::Spaced.settings();
         let mut writer = AtomWriter::new(NoopRecorder);
         let public = SerializationTokenKind::Character;
-        writer.emit(Math, ControlSequence, public, r"\\", &options);
-        writer.emit_star_suffix(Math);
+        let role = SerializationTokenRole::Leaf;
+        writer.emit(Math, ControlSequence, public, role, None, r"\\", &options);
+        writer.emit_star_suffix(Math, Some(NodeSlot::Arg(0)));
         writer.emit_with_boundary(
             Math,
             MathChar,
             public,
+            role,
+            None,
             "[",
             BoundaryPolicy::SuppressOptionalSpace,
             &options,

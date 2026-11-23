@@ -158,7 +158,7 @@ $ texform tokenize '\text{a b}'
 [control_seq("\\text"), delim("{"), text("a b", mode=text), delim("}")]
 ```
 
-`--json` directly emits an array of token objects, without an `ok` or `latex` wrapper. Each object preserves the bindings' `text`, `kind`, `mode`, `start_byte`, and `end_byte` fields. An empty formula produces `[]`. Under `--lines`, each successful input line produces one array on one output line; a failure produces the standard error object, keeping the correspondence with input lines.
+`--json` directly emits an array of token objects, without an `ok` or `latex` wrapper. Each object preserves the bindings' `text`, `start_byte`, `end_byte`, `kind`, `role`, `node_path`, `slot`, and `mode` fields. An empty formula produces `[]`. Under `--lines`, each successful input line produces one array on one output line; a failure produces the standard error object, keeping the correspondence with input lines.
 
 Offsets refer to the spaced serialization, or the normalized serialization when `--profile` is supplied, not to the input string. Spaces between tokens belong to that serialization; joining token texts with spaces is not a way to reconstruct it, particularly in text mode.
 
@@ -229,7 +229,7 @@ valid: 3 arguments
 | --- | --- |
 | `normalize` | `{"ok":true,"output":string,"report"?:object}` |
 | `parse` | `{"ok":true,"syntax":object,"diagnostics":[object]}` |
-| `tokenize` | `[{"text","start_byte","end_byte","kind","mode"}]` |
+| `tokenize` | `[{"text","start_byte","end_byte","kind","role","node_path","slot","mode"}]` |
 | Any formula command, on failure | `{"ok":false,"error":{"kind","message","diagnostics"},"syntax"?:object}` |
 | `info` | `{"command"?:object,"character"?:object,"environment"?:object}`, or `null` when nothing is found |
 | `packages` | `[{"name","commands","environments"}]` on one line |
@@ -238,14 +238,14 @@ valid: 3 arguments
 - `error.kind` is `parse` (the formula did not parse into a complete tree), `transform` (a normalization step failed), or `internal` (an internal error, including a panic inside TeXForm, which fails only that formula). `error.diagnostics` lists parse diagnostics for `parse` failures and is empty otherwise; each diagnostic has `kind`, `message`, `span` (`start` and `end` byte offsets into the formula), `expected`, `found`, and `contexts`. Failures carry `syntax` only from `parse`, and only when a partial document exists.
 - `syntax` is the serialized `SyntaxNode`, the tree format of `Document::to_syntax` in Rust, of `to_syntax()` in Python, and of `toSyntax()` in JavaScript.
 - `report` is the transform report of `normalize_with_report`. Its fields are diagnostic and carry no compatibility promise.
-- Each token is `{"text","start_byte","end_byte","kind","mode"}`. The offsets are UTF-8 byte offsets into the spaced serialization (after normalization when `--profile` is supplied); `kind` is `control_sequence`, `character`, `delimiter`, `text`, `raw`, or `error`, and `mode` is `math` or `text`.
+- Each token is `{"text","start_byte","end_byte","kind","role","node_path","slot","mode"}`. The offsets are UTF-8 byte offsets into the spaced serialization (after normalization when `--profile` is supplied); `kind` is `control_sequence`, `character`, `delimiter`, `text`, `raw`, or `error`, `role` is one of `head`, `open`, `close`, `name`, `operator`, `delimiter`, `value`, or `leaf`, `node_path` addresses the emitting AST node in `Document::node_at` format, `slot` is `null` or `{"kind","index"}` matching `Node.slot()` when the token belongs to a specific slot on `node_path`, and `mode` is `math` or `text`.
 - The `info` records are the results of `lookup_command`, `lookup_character`, and `lookup_env` in the bindings.
 
 ```console
 $ texform normalize --profile corpus --json '\frac{a'
 {"ok":false,"error":{"kind":"parse","message":"parse produced an incomplete document","diagnostics":[{"kind":"argument-validation","message":"unclosed brace argument","span":{"start":5,"end":7},"expected":[],"found":null,"contexts":[{"label":"command argument","span":{"start":5,"end":7}}]}]}}
 $ texform tokenize --json 'x^2'
-[{"text":"x","start_byte":0,"end_byte":1,"kind":"character","mode":"math"},{"text":"^","start_byte":2,"end_byte":3,"kind":"character","mode":"math"},{"text":"{","start_byte":4,"end_byte":5,"kind":"delimiter","mode":"math"},{"text":"2","start_byte":6,"end_byte":7,"kind":"character","mode":"math"},{"text":"}","start_byte":8,"end_byte":9,"kind":"delimiter","mode":"math"}]
+[{"text":"x","start_byte":0,"end_byte":1,"kind":"character","role":"leaf","node_path":"root.child.0.base","slot":null,"mode":"math"},{"text":"^","start_byte":2,"end_byte":3,"kind":"character","role":"operator","node_path":"root.child.0","slot":{"kind":"superscript","index":null},"mode":"math"},{"text":"{","start_byte":4,"end_byte":5,"kind":"delimiter","role":"open","node_path":"root.child.0","slot":{"kind":"superscript","index":null},"mode":"math"},{"text":"2","start_byte":6,"end_byte":7,"kind":"character","role":"leaf","node_path":"root.child.0.sup","slot":null,"mode":"math"},{"text":"}","start_byte":8,"end_byte":9,"kind":"delimiter","role":"close","node_path":"root.child.0","slot":{"kind":"superscript","index":null},"mode":"math"}]
 ```
 
 ## `texform serve`: normalizer protocol v1

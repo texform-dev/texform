@@ -1,8 +1,12 @@
 mod support;
 
+use std::collections::HashSet;
+
 use support::kb;
 use texform::{
-    ContentMode, Document, SerializationTokenKind, SerializeOptions, SyntaxNode, TokenizedLatex,
+    AllowedMode, CommandItem, CommandKind, ContentMode, Document, KnowledgeBase, NodeKind,
+    NodeSlot, ParseConfig, Parser, SerializationToken, SerializationTokenKind,
+    SerializationTokenRole, SerializeOptions, Style, SyntaxNode, TokenizedLatex,
 };
 
 fn assert_token_contract(result: &TokenizedLatex) {
@@ -189,5 +193,486 @@ fn bigl_non_ascii_token_spans_use_utf8_byte_offsets() {
             .tokens
             .iter()
             .any(|token| { token.text == "é" && token.kind == SerializationTokenKind::Character })
+    );
+}
+
+fn assert_node_path_and_role_consistency(doc: &Document, result: &TokenizedLatex, label: &str) {
+    assert_token_contract(result);
+    for token in &result.tokens {
+        let node = doc.node_at(&token.node_path).unwrap_or_else(|err| {
+            panic!(
+                "doc.node_at({:?}) failed for token {:?} in `{label}`: {err}",
+                token.node_path, token
+            )
+        });
+        let kind = node.kind();
+        match token.role {
+            SerializationTokenRole::Head => {
+                assert!(
+                    matches!(
+                        kind,
+                        NodeKind::Command
+                            | NodeKind::Declarative
+                            | NodeKind::Infix
+                            | NodeKind::Environment
+                    ),
+                    "{label}: {token:?} resolved to {kind:?}"
+                );
+                assert_eq!(token.slot, None, "{label}: {token:?}");
+            }
+            SerializationTokenRole::Open | SerializationTokenRole::Close => match token.slot {
+                None => assert!(
+                    matches!(kind, NodeKind::Group | NodeKind::Environment),
+                    "{label}: {token:?} resolved to {kind:?}"
+                ),
+                Some(NodeSlot::Arg(_)) => assert!(
+                    matches!(
+                        kind,
+                        NodeKind::Command
+                            | NodeKind::Infix
+                            | NodeKind::Declarative
+                            | NodeKind::Environment
+                    ),
+                    "{label}: {token:?} resolved to {kind:?}"
+                ),
+                Some(NodeSlot::Subscript | NodeSlot::Superscript) => {
+                    assert_eq!(kind, NodeKind::Scripted, "{label}: {token:?}")
+                }
+                Some(NodeSlot::InfixLeft | NodeSlot::InfixRight) => {
+                    assert_eq!(kind, NodeKind::Infix, "{label}: {token:?}")
+                }
+                other => panic!("{label}: unexpected slot {other:?} for {token:?}"),
+            },
+            SerializationTokenRole::Name => {
+                assert_eq!(kind, NodeKind::Environment, "{label}: {token:?}");
+                assert_eq!(token.slot, None, "{label}: {token:?}");
+            }
+            SerializationTokenRole::Operator => {
+                assert_eq!(kind, NodeKind::Scripted, "{label}: {token:?}");
+                assert!(
+                    matches!(
+                        token.slot,
+                        Some(NodeSlot::Subscript | NodeSlot::Superscript)
+                    ),
+                    "{label}: {token:?}"
+                );
+            }
+            SerializationTokenRole::Delimiter => match token.slot {
+                None => assert_eq!(kind, NodeKind::Group, "{label}: {token:?}"),
+                Some(NodeSlot::Arg(_)) => assert!(
+                    matches!(
+                        kind,
+                        NodeKind::Command
+                            | NodeKind::Infix
+                            | NodeKind::Declarative
+                            | NodeKind::Environment
+                    ),
+                    "{label}: {token:?} resolved to {kind:?}"
+                ),
+                other => panic!("{label}: unexpected slot {other:?} for {token:?}"),
+            },
+            SerializationTokenRole::Value => {
+                assert!(
+                    matches!(
+                        kind,
+                        NodeKind::Command
+                            | NodeKind::Infix
+                            | NodeKind::Declarative
+                            | NodeKind::Environment
+                    ),
+                    "{label}: {token:?} resolved to {kind:?}"
+                );
+                assert!(
+                    matches!(token.slot, Some(NodeSlot::Arg(_))),
+                    "{label}: {token:?}"
+                );
+            }
+            SerializationTokenRole::Leaf => {
+                assert!(
+                    matches!(
+                        kind,
+                        NodeKind::Char
+                            | NodeKind::Text
+                            | NodeKind::Prime
+                            | NodeKind::ActiveSpace
+                            | NodeKind::AlignmentTab
+                            | NodeKind::Error
+                    ),
+                    "{label}: {token:?} resolved to {kind:?}"
+                );
+                assert_eq!(token.slot, None, "{label}: {token:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn tokenized_provenance_covers_all_roles_and_valid_node_paths_in_both_styles() {
+    let kb_all = KnowledgeBase::builder()
+        .packages(&[
+            "base",
+            "ams",
+            "braket",
+            "textmacros",
+            "bboldx",
+            "boldsymbol",
+            "color",
+            "physics",
+        ])
+        .item(CommandItem::new(
+            "untilcmd",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            r"u{\stop}",
+        ))
+        .build()
+        .expect("custom knowledge base should build");
+    let parser = Parser::builder().knowledge_base(kb_all).build();
+
+    let formulas = [
+        r"\frac 1 2",
+        r"\frac{a+b}{c}",
+        r"\frac{}{}",
+        r"\genfrac{}{}{0pt}{}{a}{b}",
+        r"\genfrac(]{0pt}{1}{a}{b}",
+        r"\left( a + \middle\vert b \right]",
+        r"\left. a \right.",
+        r"\bigl( x \bigr)",
+        r"\begin{array}{cc} a & b \\ c & d \end{array}",
+        r"\begin{align*} x &= 1 \end{align*}",
+        r"\text{abc $x_a^b$ \% \{ }",
+        r"x_a^b",
+        r"x_{ab}^{cd}",
+        r"x_i^{\alpha} + x_{\mathbf{a}}^{2}",
+        r"{}_a^b",
+        r"f'' + f^{\prime 2} + \prime",
+        r"a \over b",
+        r"{a \over b} \over c",
+        r"{a} \over b",
+        r"a \abovewithdelims()1pt b",
+        r"{\bf x} + {\displaystyle \color{red} y}",
+        r"\sqrt{x} + \sqrt[3]{x} + \sqrt[{a[b]}]{x}",
+        r"\buildrel a \over =",
+        r"\operatorname*{arg\,max}",
+        r"\bra{x}\ket{y}\braket{a|b}",
+        r"\qty(a + b) + \dv*{f}{x}",
+        r"\untilcmd x + y \stop",
+        r"a~b + {c} + {}",
+    ];
+
+    let mut seen_roles: HashSet<&'static str> = HashSet::new();
+
+    for source in formulas {
+        let (doc, _) = parser
+            .parse(source)
+            .try_into_document()
+            .unwrap_or_else(|err| panic!("failed to parse `{source}`: {err}"));
+        for style in [Style::Spaced, Style::Compact] {
+            let options = SerializeOptions { style };
+            let result = doc.to_tokenized_latex_with(&options).unwrap();
+            assert_eq!(
+                result.latex,
+                doc.to_latex_with(&options).unwrap(),
+                "latex mismatch for `{source}` ({style:?})"
+            );
+            assert_node_path_and_role_consistency(&doc, &result, source);
+            for token in &result.tokens {
+                seen_roles.insert(token.role.as_str());
+            }
+        }
+    }
+
+    // Also test lenient partial documents with Error nodes.
+    let partial = parser.parse_with(
+        r"\frac{a",
+        &ParseConfig {
+            abort_on_error: false,
+            ..ParseConfig::default()
+        },
+    );
+    let partial_doc = partial.document().expect("partial document expected");
+    assert!(partial_doc.has_errors());
+    for style in [Style::Spaced, Style::Compact] {
+        let options = SerializeOptions { style };
+        let result = partial_doc.to_tokenized_latex_with(&options).unwrap();
+        assert_eq!(result.latex, partial_doc.to_latex_with(&options).unwrap());
+        assert_node_path_and_role_consistency(partial_doc, &result, r"\frac{a");
+        for token in &result.tokens {
+            seen_roles.insert(token.role.as_str());
+        }
+    }
+
+    // Also test an environment whose body is an Explicit group (not unwrapped).
+    let explicit_env_syntax = SyntaxNode::root(
+        ContentMode::Math,
+        vec![SyntaxNode::Environment {
+            name: "matrix".to_string(),
+            args: vec![],
+            body: Box::new(SyntaxNode::Group {
+                children: vec![SyntaxNode::Char('x')],
+                kind: texform::GroupKind::Explicit,
+                mode: ContentMode::Math,
+            }),
+            known: true,
+        }],
+    );
+    let explicit_env_doc = Document::from_syntax(&explicit_env_syntax).unwrap();
+    for style in [Style::Spaced, Style::Compact] {
+        let options = SerializeOptions { style };
+        let result = explicit_env_doc.to_tokenized_latex_with(&options).unwrap();
+        assert_eq!(
+            result.latex,
+            explicit_env_doc.to_latex_with(&options).unwrap()
+        );
+        assert_node_path_and_role_consistency(&explicit_env_doc, &result, "explicit env body");
+    }
+
+    // Verify all 8 SerializationTokenRole variants were exercised and have the expected string.
+    let all_roles = [
+        (SerializationTokenRole::Head, "head"),
+        (SerializationTokenRole::Open, "open"),
+        (SerializationTokenRole::Close, "close"),
+        (SerializationTokenRole::Name, "name"),
+        (SerializationTokenRole::Operator, "operator"),
+        (SerializationTokenRole::Delimiter, "delimiter"),
+        (SerializationTokenRole::Value, "value"),
+        (SerializationTokenRole::Leaf, "leaf"),
+    ];
+    for (role, expected_str) in all_roles {
+        assert_eq!(role.as_str(), expected_str);
+        assert!(
+            seen_roles.contains(expected_str),
+            "role `{expected_str}` was not covered by test formulas"
+        );
+    }
+}
+
+fn format_slot(slot: Option<NodeSlot>) -> String {
+    match slot {
+        None => "-".to_string(),
+        Some(NodeSlot::Child(i)) => format!("child.{i}"),
+        Some(NodeSlot::Arg(i)) => format!("arg.{i}"),
+        Some(other) => other.as_str().to_string(),
+    }
+}
+
+fn format_token_lines(tokens: &[SerializationToken]) -> String {
+    tokens
+        .iter()
+        .map(|t| {
+            format!(
+                "{} {} {} {}",
+                t.text,
+                t.role.as_str(),
+                t.node_path,
+                format_slot(t.slot)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn normalize_snapshot(expected: &str) -> String {
+    expected
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn tokenized_paths_and_slots_match_exact_expected_structure() {
+    let parser = Parser::builder().build();
+    let assert_full = |source: &str, style: Style, expected: &str| {
+        let (doc, _) = parser.parse(source).try_into_document().unwrap();
+        let tok = doc.to_tokenized_latex_with(&style.into()).unwrap();
+        assert_eq!(
+            format_token_lines(&tok.tokens),
+            normalize_snapshot(expected),
+            "token mismatch for `{source}` ({style:?})"
+        );
+        if style == Style::Compact {
+            assert_node_path_and_role_consistency(&doc, &tok, &format!("{source} compact"));
+        }
+    };
+    let assert_prefix = |source: &str, count: usize, expected: &str| {
+        let (doc, _) = parser.parse(source).try_into_document().unwrap();
+        let tok = doc.to_tokenized_latex().unwrap();
+        assert_eq!(
+            format_token_lines(&tok.tokens[..count]),
+            normalize_snapshot(expected),
+            "token prefix mismatch for `{source}`"
+        );
+    };
+
+    // 1. `\sqrt{x}`: omitted optional slot 0 means `{` / `}` belong to `Arg(1)`.
+    assert_full(
+        r"\sqrt{x}",
+        Style::Spaced,
+        r"
+        \sqrt  head   root.child.0                -
+        {      open   root.child.0                arg.1
+        x      leaf   root.child.0.arg.1.content  -
+        }      close  root.child.0                arg.1
+        ",
+    );
+
+    // 2. `\sqrt[3]{x}`: optional `[3]` on `Arg(0)`, mandatory `{x}` on `Arg(1)`.
+    assert_full(
+        r"\sqrt[3]{x}",
+        Style::Spaced,
+        r"
+        \sqrt  head   root.child.0                -
+        [      open   root.child.0                arg.0
+        3      leaf   root.child.0.arg.0.content  -
+        ]      close  root.child.0                arg.0
+        {      open   root.child.0                arg.1
+        x      leaf   root.child.0.arg.1.content  -
+        }      close  root.child.0                arg.1
+        ",
+    );
+
+    // 3. `\genfrac(]{0pt}{1}{a}{b}`: exact Arg(0)..Arg(5) attribution.
+    assert_full(
+        r"\genfrac(]{0pt}{1}{a}{b}",
+        Style::Spaced,
+        r"
+        \genfrac  head       root.child.0                -
+        (         delimiter  root.child.0                arg.0
+        ]         delimiter  root.child.0                arg.1
+        {         open       root.child.0                arg.2
+        0pt       value      root.child.0                arg.2
+        }         close      root.child.0                arg.2
+        {         open       root.child.0                arg.3
+        1         value      root.child.0                arg.3
+        }         close      root.child.0                arg.3
+        {         open       root.child.0                arg.4
+        a         leaf       root.child.0.arg.4.content  -
+        }         close      root.child.0                arg.4
+        {         open       root.child.0                arg.5
+        b         leaf       root.child.0.arg.5.content  -
+        }         close      root.child.0                arg.5
+        ",
+    );
+
+    // 4. `\genfrac{}{}{0pt}{}{a}{b}`: empty delimiter `{}` on Arg(0) and Arg(1).
+    assert_prefix(
+        r"\genfrac{}{}{0pt}{}{a}{b}",
+        5,
+        r"
+        \genfrac  head   root.child.0  -
+        {         open   root.child.0  arg.0
+        }         close  root.child.0  arg.0
+        {         open   root.child.0  arg.1
+        }         close  root.child.0  arg.1
+        ",
+    );
+
+    // 5. `x_{ab}^{c}`: Subscript and Superscript operators and braces.
+    assert_full(
+        r"x_{ab}^{c}",
+        Style::Spaced,
+        r"
+        x  leaf      root.child.0.base         -
+        _  operator  root.child.0              subscript
+        {  open      root.child.0              subscript
+        a  leaf      root.child.0.sub.child.0  -
+        b  leaf      root.child.0.sub.child.1  -
+        }  close     root.child.0              subscript
+        ^  operator  root.child.0              superscript
+        {  open      root.child.0              superscript
+        c  leaf      root.child.0.sup.child.0  -
+        }  close     root.child.0              superscript
+        ",
+    );
+
+    // 6. Prime shorthand `f''`: `''` is emitted from the Prime child at `.sup` with `slot: None`.
+    assert_full(
+        "f''",
+        Style::Spaced,
+        r"
+        f   leaf  root.child.0.base  -
+        ''  leaf  root.child.0.sup   -
+        ",
+    );
+
+    // 7. Braced infix operands `{a} \over {b}` -> `InfixLeft` / `InfixRight`.
+    assert_full(
+        r"{a} \over {b}",
+        Style::Spaced,
+        r"
+        {      open   root.child.0                infix_left
+        a      leaf   root.child.0.left.child.0   -
+        }      close  root.child.0                infix_left
+        \over  head   root.child.0                -
+        {      open   root.child.0                infix_right
+        b      leaf   root.child.0.right.child.0  -
+        }      close  root.child.0                infix_right
+        ",
+    );
+
+    // 8. Environment: `{array}` has `slot: None`; `array` argspec has optional alignment at Arg(0)
+    // and mandatory column spec `{cc}` at Arg(1).
+    assert_full(
+        r"\begin{array}{cc}a&b\end{array}",
+        Style::Spaced,
+        r"
+        \begin  head   root.child.0               -
+        {       open   root.child.0               -
+        array   name   root.child.0               -
+        }       close  root.child.0               -
+        {       open   root.child.0               arg.1
+        cc      value  root.child.0               arg.1
+        }       close  root.child.0               arg.1
+        a       leaf   root.child.0.body.child.0  -
+        &       leaf   root.child.0.body.child.1  -
+        b       leaf   root.child.0.body.child.2  -
+        \end    head   root.child.0               -
+        {       open   root.child.0               -
+        array   name   root.child.0               -
+        }       close  root.child.0               -
+        ",
+    );
+
+    // 9. `\buildrel a \over =`: `\over` terminator carries `Some(NodeSlot::Arg(0))`.
+    assert_full(
+        r"\buildrel a \over =",
+        Style::Spaced,
+        r"
+        \buildrel  head   root.child.0                -
+        {          open   root.child.0                arg.0
+        a          leaf   root.child.0.arg.0.content  -
+        }          close  root.child.0                arg.0
+        \over      close  root.child.0                arg.0
+        {          open   root.child.0                arg.1
+        =          leaf   root.child.0.arg.1.content  -
+        }          close  root.child.0                arg.1
+        ",
+    );
+
+    // 10. `\operatorname*{lim}`: star `*` carries `Value` and `Some(NodeSlot::Arg(0))`.
+    assert_prefix(
+        r"\operatorname*{lim}",
+        3,
+        r"
+        \operatorname  head   root.child.0  -
+        *              value  root.child.0  arg.0
+        {              open   root.child.0  arg.1
+        ",
+    );
+
+    // 11. Compact bare script unwrapping single-child implicit group vs direct char.
+    assert_full(
+        r"x_{i}^2",
+        Style::Compact,
+        r"
+        x  leaf      root.child.0.base         -
+        _  operator  root.child.0              subscript
+        i  leaf      root.child.0.sub.child.0  -
+        ^  operator  root.child.0              superscript
+        2  leaf      root.child.0.sup          -
+        ",
     );
 }

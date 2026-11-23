@@ -1943,3 +1943,124 @@ fn environment_header_spacing_does_not_change_text_token_modes() {
         );
     }
 }
+
+#[test]
+fn tokenized_roles_and_node_paths_cover_implicit_unwrapping_and_custom_argspecs() {
+    let ctx = texform_core::parse::ParseContextBuilder::empty()
+        .item(command_item(
+            "untilcmd",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            r"u{\stop}",
+        ))
+        .item(command_item(
+            "delimcmd",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "r()",
+        ))
+        .item(command_item(
+            "pairedcmd",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "r<(,)><[,]>",
+        ))
+        .item(command_item(
+            "optcmd",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "o m",
+        ))
+        .item(command_item(
+            "scalarpaired",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "r():L",
+        ))
+        .build()
+        .unwrap();
+
+    for source in [
+        r"\untilcmd a + b \stop",
+        r"\untilcmd {a} \stop",
+        r"\delimcmd(a+b)",
+        r"\delimcmd({a)b})",
+        r"\pairedcmd[x+y]",
+        r"\pairedcmd({x)y})",
+        r"\optcmd[{a]b}]{c}",
+        r"\scalarpaired(2pt)",
+    ] {
+        let (doc, _) = ctx
+            .parse(source, &texform_core::parse::ParseConfig::STRICT)
+            .try_into_document()
+            .unwrap_or_else(|err| panic!("failed to parse {source}: {err:?}"));
+        for style in [Style::Spaced, Style::Compact] {
+            let options = SerializeOptions { style };
+            let result = doc.to_tokenized_latex_with(&options).unwrap();
+            assert_eq!(result.latex, doc.to_latex_with(&options).unwrap());
+            assert_token_contract(&result);
+            for token in &result.tokens {
+                assert!(
+                    doc.node_at(&token.node_path).is_ok(),
+                    "invalid node_path `{}` for token {:?} in `{source}` ({style:?})",
+                    token.node_path,
+                    token
+                );
+            }
+        }
+    }
+
+    // Verify exact roles, paths, and slots for `\untilcmd a \stop` and `\delimcmd(x+y)`.
+    let assert_snapshot = |source: &str, expected: &str| {
+        let (doc, _) = ctx
+            .parse(source, &texform_core::parse::ParseConfig::STRICT)
+            .try_into_document()
+            .unwrap();
+        let tok = doc.to_tokenized_latex().unwrap();
+        let actual = tok
+            .tokens
+            .iter()
+            .map(|t| {
+                let slot = match t.slot {
+                    None => "-".to_string(),
+                    Some(texform_core::document::NodeSlot::Child(i)) => format!("child.{i}"),
+                    Some(texform_core::document::NodeSlot::Arg(i)) => format!("arg.{i}"),
+                    Some(other) => other.as_str().to_string(),
+                };
+                format!("{} {} {} {slot}", t.text, t.role.as_str(), t.node_path)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let normalized = expected
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(actual, normalized, "token mismatch for `{source}`");
+    };
+
+    assert_snapshot(
+        r"\untilcmd a \stop",
+        r"
+        \untilcmd  head   root.child.0                -
+        {          open   root.child.0                arg.0
+        a          leaf   root.child.0.arg.0.content  -
+        }          close  root.child.0                arg.0
+        \stop      close  root.child.0                arg.0
+        ",
+    );
+
+    assert_snapshot(
+        r"\delimcmd(x+y)",
+        r"
+        \delimcmd  head   root.child.0                        -
+        (          open   root.child.0                        arg.0
+        x          leaf   root.child.0.arg.0.content.child.0  -
+        +          leaf   root.child.0.arg.0.content.child.1  -
+        y          leaf   root.child.0.arg.0.content.child.2  -
+        )          close  root.child.0                        arg.0
+        ",
+    );
+}

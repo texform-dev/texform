@@ -29,6 +29,6 @@
 //! ```
 
 pub use texform_core::serialize::{
-    SerializationToken, SerializationTokenKind, SerializeError, SerializeOptions, Style,
-    TokenizedLatex,
+    SerializationToken, SerializationTokenKind, SerializationTokenRole, SerializeError,
+    SerializeOptions, Style, TokenizedLatex,
 };

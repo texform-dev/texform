@@ -140,25 +140,43 @@ if (defaultLatex === compactLatex) {
 }
 const unicodeDoc = parser.parse(String.raw`\text{\%𝒜}`).document;
 const unicodeTokenized = unicodeDoc.toTokenizedLatex();
+const textOpen = unicodeTokenized.tokens.find((token) => token.text === "{");
 const escaped = unicodeTokenized.tokens.find(
   (token) => token.text === String.raw`\%`,
 );
 const unicode = unicodeTokenized.tokens.find((token) => token.text === "𝒜");
 if (
   unicodeTokenized.latex !== unicodeDoc.toLatex() ||
-  escaped?.kind !== "character"
+  textOpen?.role !== "open" ||
+  textOpen?.slot?.kind !== "arg" ||
+  textOpen?.slot?.index !== 0 ||
+  escaped?.kind !== "character" ||
+  escaped?.role !== "leaf" ||
+  escaped?.slot !== null ||
+  typeof escaped?.nodePath !== "string" ||
+  !unicodeDoc.nodeAt(escaped.nodePath)
 ) {
   throw new Error(
-    "tokenized serialization should preserve LaTeX and escaped characters",
+    "tokenized serialization should preserve LaTeX, escaped characters, roles, slots, and node paths",
   );
 }
 if (
   !unicode ||
   "start_byte" in unicode ||
-  unicode.endByte - unicode.startByte !== 4
+  "node_path" in unicode ||
+  unicode.role !== "leaf" ||
+  unicode.slot !== null ||
+  unicode.endByte - unicode.startByte !== 4 ||
+  !unicodeDoc.nodeAt(unicode.nodePath)
 ) {
-  throw new Error("token spans should use camelCase UTF-8 byte offsets");
+  throw new Error("token spans and paths should use camelCase UTF-8 byte offsets");
 }
+const sqrtDoc = parser.parse(String.raw`\sqrt{x}`).document;
+const sqrtTokenized = sqrtDoc.toTokenizedLatex();
+const sqrtOpen = sqrtTokenized.tokens.find((token) => token.text === "{");
+assert.deepEqual(sqrtOpen?.slot, { kind: "arg", index: 1 });
+const sqrtArgNode = sqrtDoc.nodeAt("root.child.0.arg.1.content");
+assert.deepEqual(sqrtOpen?.slot, sqrtArgNode.slot());
 
 const ampersandDoc = parser.parse(String.raw`a \& b`).document;
 const staged = [
