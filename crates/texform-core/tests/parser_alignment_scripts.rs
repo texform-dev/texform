@@ -100,3 +100,54 @@ fn literal_ampersand_remains_a_valid_script_base() {
         matches!(&children[0], SyntaxNode::Scripted { base, .. } if **base == SyntaxNode::Char('&'))
     );
 }
+
+#[test]
+fn scripts_after_declaratives_use_an_empty_base() {
+    for (source, decl_name) in [
+        (r"\it _ l", "it"),
+        (r"\bf ^ 2", "bf"),
+        (r"\bf _ 1 + x", "bf"),
+        (r"\displaystyle ^ 2", "displaystyle"),
+        (r"\large _ 1 ^ 2", "large"),
+        (r"\it '", "it"),
+        (r"\it '' ^ 2", "it"),
+        (r"\color{red}_1", "color"),
+    ] {
+        let doc = parse(source);
+        let SyntaxNode::Root { children, .. } = doc.to_syntax() else {
+            unreachable!()
+        };
+        assert!(
+            matches!(&children[0], SyntaxNode::Declarative { name, .. } if name == decl_name),
+            "{source}: expected leading declarative \\{decl_name}, got {children:?}"
+        );
+        assert_empty_base_script(&children[1]);
+        let latex = doc.to_latex().unwrap();
+        assert_eq!(parse(&latex).to_latex().unwrap(), latex, "{source}");
+    }
+}
+
+#[test]
+fn declarative_in_unbraced_argument_stays_the_first_argument() {
+    let doc = parse(r"\frac \it x");
+    let SyntaxNode::Root { children, .. } = doc.to_syntax() else {
+        unreachable!()
+    };
+    let SyntaxNode::Command { name, args, .. } = &children[0] else {
+        panic!("expected \\frac command, got {:?}", children[0]);
+    };
+    assert_eq!(name, "frac");
+    assert_eq!(args.len(), 2);
+    assert!(matches!(
+        args[0].as_ref().map(|arg| &arg.value),
+        Some(texform_interface::syntax_node::ArgumentValue::MathContent(
+            SyntaxNode::Declarative { name, .. }
+        )) if name == "it"
+    ));
+    assert!(matches!(
+        args[1].as_ref().map(|arg| &arg.value),
+        Some(texform_interface::syntax_node::ArgumentValue::MathContent(
+            SyntaxNode::Char('x')
+        ))
+    ));
+}

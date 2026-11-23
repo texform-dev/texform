@@ -245,9 +245,10 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
             self.parse_math_atom()?
         };
 
-        // Alignment tabs and row breaks end a cell; following scripts start the
-        // next cell with an empty base instead of attaching to the separator.
-        if is_cell_separator(&base.node) {
+        // Alignment tabs, row breaks, and declarative commands do not produce
+        // a math atom; following scripts start with an empty base instead of
+        // attaching to them.
+        if is_cell_separator(&base.node) || matches!(base.node, SyntaxNode::Declarative { .. }) {
             return Ok(base);
         }
 

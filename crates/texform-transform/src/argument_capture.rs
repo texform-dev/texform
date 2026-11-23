@@ -556,7 +556,7 @@ mod tests {
             (
                 PHYSICS,
                 Profile::Equiv,
-                r"\grad\Large'^2",
+                r"\grad\enspace'^2",
                 r"{ \grad } { } ^ { \prime 2 }",
             ),
             (
