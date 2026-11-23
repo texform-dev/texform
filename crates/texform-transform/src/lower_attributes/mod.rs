@@ -12,9 +12,15 @@
 //! environment bodies can change style implicitly. This phase does not derive
 //! that style, so a recorded parent style is not proof that an explicit style
 //! declaration inside those slots is redundant. A script base stays in the
-//! surrounding style. FlattenGroups' declarative-scope guard keeps the groups
-//! retained here; a later pass normalizes inside them and does not add another
-//! wrapper.
+//! surrounding style; subscripts and superscripts inherit `math_font` but reset
+//! `math_style` and `math_size`. Environment bodies reset all attributes for
+//! their mode. Command arguments are fail-closed: only commands verified to
+//! inherit attributes identically in both MathJax 4 and XeTeX are whitelisted
+//! to propagate `math_font` (math mode) or text attributes (text mode); all
+//! other commands reset the child mode's attributes so inner wrappers are never
+//! dropped as redundant. FlattenGroups' declarative-scope guard keeps the
+//! groups retained here; a later pass normalizes inside them and does not add
+//! another wrapper.
 //!
 //! In a math argument or environment body, `&`, `\\`, `\newline`, and `\cr`
 //! end a declarative scope, because TeX typesets each alignment cell as its own
@@ -27,7 +33,7 @@ use std::sync::OnceLock;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::argument_capture::{environment_captures_in, sequence_boundary_hazard};
-use crate::ast::{ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, Slot};
+use crate::ast::{Argument, ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, Slot};
 use crate::parse::ParseContext;
 use crate::report::ReportRecorder;
 use crate::rewrite::helpers::mandatory_content_slot;
@@ -549,13 +555,20 @@ fn canonicalize_content_slots(
         };
         if matches!(slot, Slot::EnvBody) {
             if recorder.is_relevant(child) {
-                let child_inherited =
-                    inherited_for_content_slot(inherited, parent_mode, child_mode, slot);
+                let child_inherited = inherited_for_content_slot(
+                    ast,
+                    parent,
+                    inherited,
+                    parent_mode,
+                    child_mode,
+                    slot,
+                );
                 canonicalize_subtree(ast, child, child_inherited, child_mode, recorder);
             }
         } else {
             canonicalize_content_slot(
                 ast,
+                parent,
                 child,
                 slot,
                 inherited,
@@ -568,8 +581,10 @@ fn canonicalize_content_slots(
     recorder.edges_buf.truncate(base);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn canonicalize_content_slot(
     ast: &mut Ast,
+    parent: NodeId,
     child: NodeId,
     slot: Slot,
     inherited: AttributeState,
@@ -580,7 +595,8 @@ fn canonicalize_content_slot(
     if !recorder.is_relevant(child) {
         return;
     }
-    let child_inherited = inherited_for_content_slot(inherited, parent_mode, child_mode, slot);
+    let child_inherited =
+        inherited_for_content_slot(ast, parent, inherited, parent_mode, child_mode, slot);
     if !is_direct_attribute_node(ast, child, child_mode) {
         canonicalize_subtree(ast, child, child_inherited, child_mode, recorder);
         return;
@@ -633,24 +649,118 @@ fn inherited_for_child_mode(
 
 /// Attribute baseline for one nested content slot.
 ///
-/// Script bases use the surrounding style. Every other nested math slot can
-/// change style implicitly, and this phase has no style derivation, so the
-/// recorded parent style must not make an explicit declaration look redundant.
+/// Command arguments are fail-closed: only commands verified to inherit
+/// attributes identically in both MathJax 4 and XeTeX are whitelisted.
+/// Commands whose XeTeX implementation boxes or restarts math mode (such as
+/// `\sqrt[n]{a}` via amsmath's `\r@@t`, `\overbrace`, `\underbrace`, `\boxed`,
+/// `\smash`, `\phantom`) and all unknown or alignment commands reset attributes
+/// so inner wrappers are never dropped as redundant.
 fn inherited_for_content_slot(
+    ast: &Ast,
+    parent: NodeId,
     inherited: AttributeState,
     parent_mode: ContentMode,
     child_mode: ContentMode,
     slot: Slot,
 ) -> AttributeState {
     let mut state = inherited_for_child_mode(inherited, parent_mode, child_mode);
-    if child_mode == ContentMode::Math && slot_cannot_prove_math_style(slot) {
-        state.math_style = None;
+    match slot {
+        Slot::EnvBody | Slot::InfixLeft | Slot::InfixRight => state.with_mode_reset(child_mode),
+        Slot::ScriptBase | Slot::GroupChild(_) => state,
+        Slot::ScriptSub | Slot::ScriptSup => {
+            if child_mode == ContentMode::Math {
+                state.math_style = None;
+                state.math_size = None;
+            }
+            state
+        }
+        Slot::Argument(_) => {
+            if let Node::Command { name, args, .. } = ast.node(parent) {
+                match child_mode {
+                    ContentMode::Math if command_inherits_math_font(name, args) => {
+                        state.math_style = None;
+                        state.math_size = None;
+                        return state;
+                    }
+                    ContentMode::Text if command_inherits_text_attributes(name) => {
+                        return state;
+                    }
+                    _ => {}
+                }
+            }
+            state.with_mode_reset(child_mode)
+        }
     }
-    state
 }
 
-fn slot_cannot_prove_math_style(slot: Slot) -> bool {
-    !matches!(slot, Slot::ScriptBase | Slot::GroupChild(_))
+/// Dual-renderer-verified (MathJax 4 + XeTeX) math commands whose math
+/// arguments inherit `math_font` (while still resetting `math_style` and
+/// `math_size`).
+///
+/// Fail-closed by design: commands that box or restart math mode in XeTeX
+/// (e.g. `\sqrt[n]{a}` with an optional root index via amsmath's `\r@@t`,
+/// `\overbrace`, `\underbrace`, `\boxed`, `\smash`, `\phantom`), alignment
+/// commands, font-changing commands, and unknown commands are excluded.
+fn command_inherits_math_font(name: &str, args: &[Option<Argument>]) -> bool {
+    if name == "sqrt" {
+        // `\sqrt{a}` inherits `\fam` in both renderers, whereas `\sqrt[n]{a}`
+        // invokes amsmath's `\r@@t` (`\hbox{$\m@th ...$}`) in XeTeX, resetting
+        // `\fam` for both the root index and the radicand.
+        return args.first().is_none_or(Option::is_none);
+    }
+    matches!(
+        name,
+        // Fractions and binomials
+        "frac"
+            | "dfrac"
+            | "tfrac"
+            | "cfrac"
+            | "binom"
+            | "dbinom"
+            | "tbinom"
+            | "genfrac"
+            // Simple accents and line decorations
+            | "hat"
+            | "widehat"
+            | "bar"
+            | "overline"
+            | "tilde"
+            | "widetilde"
+            | "vec"
+            | "dot"
+            | "ddot"
+            | "dddot"
+            | "ddddot"
+            | "check"
+            | "acute"
+            | "grave"
+            | "breve"
+            | "mathring"
+            | "underline"
+            | "not"
+            // Stacked wrappers
+            | "overset"
+            | "underset"
+            | "stackrel"
+            | "stackbin"
+            // Math-class wrappers
+            | "mathrel"
+            | "mathop"
+            | "mathbin"
+            | "mathord"
+            | "mathopen"
+            | "mathclose"
+            | "mathpunct"
+            | "mathinner"
+            // Color prefix
+            | "textcolor"
+    )
+}
+
+/// Dual-renderer-verified (MathJax 4 + XeTeX) text commands whose text
+/// arguments inherit the enclosing NFSS text attributes.
+fn command_inherits_text_attributes(name: &str) -> bool {
+    matches!(name, "underline" | "textcolor")
 }
 
 fn single_content_replacement(
@@ -692,9 +802,16 @@ fn process_container(
         .iter()
         .any(|&child| is_direct_attribute_node(ast, child, mode))
     {
+        let mut after_unknown = false;
         for index in 0..len {
             let child = ast.children(container)[index];
-            canonicalize_subtree(ast, child, inherited, mode, recorder);
+            let child_inherited = if after_unknown && is_brace_group(ast, child) {
+                inherited.with_mode_reset(mode)
+            } else {
+                inherited
+            };
+            after_unknown = next_after_unknown(ast, child, after_unknown);
+            canonicalize_subtree(ast, child, child_inherited, mode, recorder);
         }
         return;
     }
@@ -741,10 +858,12 @@ fn collect_detached_children(
 ) -> CollectResult {
     let mut pairs = Vec::with_capacity(children.len());
     let mut state = inherited;
+    let mut after_unknown = false;
 
     for (index, &child) in children.iter().enumerate() {
         if cells && is_alignment_separator(ast, child) {
             state = inherited;
+            after_unknown = false;
             pairs.push(Pair { state, node: child });
             continue;
         }
@@ -759,9 +878,19 @@ fn collect_detached_children(
                 recorder,
             )
         {
+            after_unknown = false;
             pairs.push(Pair { state, node: child });
             continue;
         }
+        // Brace groups immediately following an unknown command may be its
+        // unattached arguments; keep their braces and reset inherited
+        // attributes fail-closed inside them.
+        if after_unknown && is_brace_group(ast, child) {
+            canonicalize_subtree(ast, child, state.with_mode_reset(mode), mode, recorder);
+            pairs.push(Pair { state, node: child });
+            continue;
+        }
+        after_unknown = next_after_unknown(ast, child, after_unknown);
         collect_detached_child(ast, child, &mut state, mode, recorder, &mut pairs);
     }
 
@@ -1119,6 +1248,19 @@ fn is_brace_group(ast: &Ast, node: NodeId) -> bool {
             ..
         }
     )
+}
+
+fn is_unknown_command_node(ast: &Ast, node: NodeId) -> bool {
+    match ast.node(node) {
+        Node::Command { known: false, .. } => true,
+        Node::Scripted { base, .. } => is_unknown_command_node(ast, *base),
+        _ => false,
+    }
+}
+
+fn next_after_unknown(ast: &Ast, node: NodeId, after_unknown: bool) -> bool {
+    is_unknown_command_node(ast, node)
+        || (after_unknown && (is_brace_group(ast, node) || is_plain_whitespace_node(ast, node)))
 }
 
 fn mandatory_content_child(ast: &Ast, node: NodeId) -> Option<NodeId> {

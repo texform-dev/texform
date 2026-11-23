@@ -7,7 +7,9 @@
 use texform_core::ast::{Ast, Node, NodeId, Slot};
 use texform_core::parse::{ParseConfig, ParseContext};
 use texform_core::serialize::serialize;
-use texform_interface::syntax_node::{ContentMode, GroupKind, SyntaxNode};
+use texform_interface::syntax_node::{
+    Argument, ArgumentKind, ArgumentValue, ContentMode, GroupKind, SyntaxNode,
+};
 use texform_transform::lower_attributes::MathFontValue;
 use texform_transform::{
     Attr, AttrValue, AttributeSet, BuildConfig, FlattenGroupsConfig, LowerAttributesConfig,
@@ -1057,5 +1059,208 @@ fn vanishing_attribute_commands_stay_between_capturing_neighbors() {
             (0, expected),
             "{source}"
         );
+    }
+}
+
+#[test]
+fn environment_bodies_do_not_inherit_outer_attributes() {
+    let packages = &["base", "ams"];
+
+    // Regression reproducer: inner array cell must retain `\mathbf{U}` even
+    // when an outer `\mathbf{...}` wraps the `\left(\begin{array}...\end{array}\right)`.
+    let nested_array = r"\begin{array}{r} {\mathrm{\bf U^\prime = \left(\begin{array}{ll} {\mathrm{\bf U}} & {} \end{array}\right),}} \end{array}";
+    for profile in PROFILES {
+        let config = profile.default_transform_config();
+        let outcome = run_configured(nested_array, packages, profile, &config);
+        let bold_commands = command_ids(&outcome.ast, "mathbf");
+        assert!(
+            bold_commands.iter().any(|&id| {
+                has_ancestor(&outcome.ast, id, |node, slot| {
+                    matches!(node, Node::Environment { name, .. } if name == "array")
+                        && slot == Slot::EnvBody
+                        && has_ancestor(
+                            &outcome.ast,
+                            id,
+                            |n, _| matches!(n, Node::Command { name, .. } if name == "mathbf"),
+                        )
+                })
+            }),
+            "{profile:?}: inner array lost \\mathbf around U: {}",
+            outcome.text
+        );
+        assert_reparseable(packages, &outcome.text);
+        let second = run_configured(&outcome.text, packages, profile, &config);
+        assert_eq!(
+            second.text, outcome.text,
+            "{profile:?}: not idempotent: {}",
+            outcome.text
+        );
+    }
+
+    // Direct outer `\mathbf` around a matrix/array environment must not erase
+    // inner `\mathbf` or `\bf`.
+    for (source, expected) in [
+        (
+            r"\mathbf{\begin{matrix}\mathbf{x}\end{matrix}}",
+            r"\mathbf { \begin {matrix} \mathbf { x } \end {matrix} }",
+        ),
+        (
+            r"\mathbf{\begin{array}{cc}\mathbf{a} & \bf b\end{array}}",
+            r"\mathbf { \begin {array} {cc} \mathbf { a } & \mathbf { b } \end {array} }",
+        ),
+        (
+            r"\large \begin{matrix} \large x \end{matrix}",
+            r"\large \begin {matrix} \large x \end {matrix}",
+        ),
+        // Redundancy inside the same environment cell still collapses.
+        (
+            r"\begin{array}{c}\mathbf{\mathbf{x}}\end{array}",
+            r"\begin {array} {c} \mathbf { x } \end {array}",
+        ),
+    ] {
+        for_each_profile(source, packages, expected, |_, _| {});
+    }
+
+    // Alignment/matrix commands (`\pmatrix`, `\substack`) also isolate their
+    // body via ArrayItem, so pre-pass lowering must not drop inner `\mathbf`.
+    for (source, expected) in [
+        (
+            r"\mathbf{\pmatrix{\mathbf{a} & b}}",
+            r"\mathbf{\begin{pmatrix} \mathbf{a} & b \end{pmatrix}}",
+        ),
+        (
+            r"\mathbf{\substack{\mathbf{a} \\ b}}",
+            r"\mathbf{\substack{\mathbf{a} \\ b}}",
+        ),
+    ] {
+        serialized_with_packages(source, expected, packages);
+    }
+}
+
+#[test]
+fn fail_closed_command_whitelist_controls_attribute_inheritance() {
+    let packages = &["base", "ams", "textmacros", "boldsymbol", "color"];
+
+    // Non-whitelisted commands (XeTeX-boxing/restarting commands, font-changing
+    // commands, `\sqrt[n]{a}` with an optional root index, unknown commands,
+    // and non-whitelisted text commands) reset inherited attributes fail-closed
+    // so inner wrappers are preserved.
+    for source in [
+        r"\mathbf{\sqrt[4]{\mathbf{a}}}",
+        r"\mathbf{\sqrt[\mathbf{4}]{\mathbf{a}}}",
+        r"\mathbf{\overbrace{\mathbf{a}}}",
+        r"\mathbf{\underbrace{\mathbf{a}}}",
+        r"\mathbf{\overrightarrow{\mathbf{a}}}",
+        r"\mathbf{\boxed{\mathbf{a}}}",
+        r"\mathbf{\smash{\mathbf{a}}}",
+        r"\mathbf{\phantom{\mathbf{a}}}",
+        r"\mathrm{\boldsymbol{\mathrm{a}}}",
+        r"\mathbf{\unknowncmd{\mathbf{a}}}",
+        r"\mathbf{\mathbb{\mathbf{x}}}",
+        r"\mathbf{\mathnormal{\mathbf{x}}}",
+        r"\mathbf{\boldsymbol{\mathbf{x}}}",
+        r"\mathbf{\operatorname{\mathbf{x}}}",
+        r"\text{\textbf{\textnormal{\textbf{x}}}}",
+        r"\text{\textit{\textup{\textit{x}}}}",
+        r"\text{\textit{\emph{\textit{x}}}}",
+    ] {
+        let expected = canonical(packages, source);
+        for_each_profile(source, packages, &expected, |_, _| {});
+    }
+
+    // An unknown command carrying an explicit `Slot::Argument` also resets
+    // inherited attributes via the fail-closed default.
+    let unknown_with_arg = SyntaxNode::Root {
+        mode: ContentMode::Math,
+        children: vec![SyntaxNode::Command {
+            name: "mathbf".to_string(),
+            known: true,
+            args: vec![Some(Argument {
+                kind: ArgumentKind::Mandatory,
+                no_leading_space: false,
+                value: ArgumentValue::MathContent(SyntaxNode::Command {
+                    name: "unknowncmd".to_string(),
+                    known: false,
+                    args: vec![Some(Argument {
+                        kind: ArgumentKind::Mandatory,
+                        no_leading_space: false,
+                        value: ArgumentValue::MathContent(SyntaxNode::Command {
+                            name: "mathbf".to_string(),
+                            known: true,
+                            args: vec![Some(Argument {
+                                kind: ArgumentKind::Mandatory,
+                                no_leading_space: false,
+                                value: ArgumentValue::MathContent(SyntaxNode::Char('a')),
+                            })],
+                        }),
+                    })],
+                }),
+            })],
+        }],
+    };
+    let (_, lowered_unknown) = lower_twice(&unknown_with_arg);
+    assert_eq!(
+        lowered_unknown,
+        r"\mathbf { \unknowncmd { \mathbf { a } } }"
+    );
+
+    // Dual-renderer-verified whitelisted commands, scripts, and delimited
+    // groups inherit outer font attributes, so redundant inner wrappers
+    // deduplicate cleanly.
+    for (source, expected) in [
+        (r"\mathbf{\sqrt{\mathbf{a}}}", r"\mathbf{\sqrt{a}}"),
+        (
+            r"\mathbf{\frac{\mathbf{a}}{\mathbf{b}}}",
+            r"\mathbf{\frac{a}{b}}",
+        ),
+        (r"\mathbf{\hat{\mathbf{a}}}", r"\mathbf{\hat{a}}"),
+        (
+            r"\mathbf{\overset{\mathbf{a}}{\mathbf{b}}}",
+            r"\mathbf{\overset{a}{b}}",
+        ),
+        (r"\mathbf{\mathrel{\mathbf{a}}}", r"\mathbf{\mathrel{a}}"),
+        (
+            r"\mathbf{\textcolor{red}{\mathbf{a}}}",
+            r"\mathbf{\textcolor{red}{a}}",
+        ),
+        (
+            r"\text{\textbf{\underline{\textbf{x}}}}",
+            r"\text{\textbf{\underline{x}}}",
+        ),
+        (
+            r"\mathbf{\left(\mathbf{a}\right)}",
+            r"\mathbf{\left(a\right)}",
+        ),
+        (r"\mathbf{x_{\mathbf{a}}^{\mathbf{b}}}", r"\mathbf{x_a^b}"),
+    ] {
+        let expected = canonical(packages, expected);
+        for_each_profile(source, packages, &expected, |_, _| {});
+    }
+
+    // XeTeX does not inherit `math_size` into scripts or math arguments.
+    for source in [
+        r"\large x^{\large y}",
+        r"\large x_{\large y}",
+        r"\large\frac{\large a}{b}",
+    ] {
+        let expected = canonical(packages, source);
+        for_each_profile(source, packages, &expected, |_, _| {});
+    }
+}
+
+#[test]
+fn declaratives_before_scripts_preserve_attributes() {
+    let packages = &["base", "ams", "textmacros"];
+    for (source, expected) in [
+        (
+            r"\mathrm{N u \it _ l = x}",
+            r"\mathrm { N u } \mathit { { } _ { l } = x }",
+        ),
+        (r"\bf _ 1 + x", r"\mathbf { { } _ { 1 } + x }"),
+        (r"{\bf _ 1 + x} y", r"\mathbf { { } _ { 1 } + x } y"),
+        (r"\displaystyle ^ 2", r"\displaystyle { } ^ { 2 }"),
+        (r"\large _ 1 + x", r"\large { } _ { 1 } + x"),
+    ] {
+        for_each_profile(source, packages, expected, |_, _| {});
     }
 }
