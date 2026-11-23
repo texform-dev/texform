@@ -3,6 +3,31 @@
 All notable changes to TeXForm are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
+## [0.11.0] - 2026-11-23
+
+### Added
+
+- Add syntactic role, node_path, and slot to tokenized serialization
+- **Breaking:** Make `ParseDiagnostic.kind` non-optional and refine `ParseDiagnosticKind`
+- Separate boundary hazards after the transform
+- Support optional subscript argument in `\stackrel` and `\stackbin`
+
+### Changed
+
+- Add zero-alloc AST walks, FxHashMap lookups, and indexed rewrite checks
+- Eliminate per-atom and per-node heap allocations
+- Replace chumsky parser with hand-written recursive descent
+- Reuse traversal buffers and skip irrelevant subtrees in transform phases
+
+### Fixed
+
+- Clean up diagnostic spans, messages, recovery gating, and post-hoc rewrites
+- Keep strict groups that end in a spacing atom
+- Stop attaching scripts to declarative commands
+- Preserve child spans in mixed prime superscripts
+- Write empty `\genfrac` delimiters as `{}`
+- Preserve inner font attributes across opaque environments and commands
+- Rely on boundary separation in delimiter and asterisk rules
 
 ## [0.10.1] - 2026-10-28
 
