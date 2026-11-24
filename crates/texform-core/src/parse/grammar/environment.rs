@@ -17,11 +17,11 @@ use super::other_mode;
 /// Whether `\\` inside environment `name` skips spaces before its `[...]`
 /// argument.
 ///
-/// Matches LaTeX's distinction between `\@arraycr` (`array`, `darray`,
-/// `eqnarray`, `eqnarray*`) and amsmath's `\math@cr`.
+/// Matches LaTeX's distinction between `\@arraycr` (`array`, `eqnarray`,
+/// `eqnarray*`) and amsmath's `\math@cr`.
 #[inline]
 fn row_break_skips_spaces_in_environment(name: &str) -> bool {
-    matches!(name, "array" | "darray" | "eqnarray" | "eqnarray*")
+    matches!(name, "array" | "eqnarray" | "eqnarray*")
 }
 
 impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {

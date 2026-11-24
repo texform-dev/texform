@@ -255,7 +255,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
         }
 
         // `\\` is the only command whose optional `[...]` argument spacing
-        // depends on the enclosing environment (`array`/`darray`/`eqnarray`).
+        // depends on the enclosing environment (`array`/`eqnarray`/`eqnarray*`).
         let allow_row_break_opt_space =
             !is_declarative && name == "\\" && self.row_break_skips_spaces();
         let context_label = if is_declarative {
