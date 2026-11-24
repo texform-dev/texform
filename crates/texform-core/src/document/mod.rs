@@ -39,8 +39,8 @@ use crate::ast::{
 use crate::parse::tree::SpanTree;
 use crate::parse::{KnowledgeBase, ParseDiagnostic, Span};
 use crate::serialize::{
-    SerializeError, SerializeOptions, TokenizedLatex, serialize, serialize_tokenized,
-    serialize_tokenized_with, serialize_with,
+    FragmentedLatex, SerializeError, SerializeOptions, serialize, serialize_fragmented,
+    serialize_fragmented_with, serialize_with,
 };
 
 /// Process-wide unique identity for a [`Document`].
@@ -434,23 +434,23 @@ impl Document {
         Ok(serialize_with(&self.ast, options))
     }
 
-    /// Serialize to LaTeX and record typed tokens from the same traversal.
+    /// Serialize to LaTeX and record typed fragments from the same traversal.
     ///
-    /// Token spans are UTF-8 byte offsets into the returned LaTeX. An empty error
-    /// snippet does not produce a token; use [`Self::has_errors`] to detect error nodes.
-    pub fn to_tokenized_latex(&self) -> Result<TokenizedLatex, SerializeError> {
-        Ok(serialize_tokenized(&self.ast))
+    /// Fragment spans are UTF-8 byte offsets into the returned LaTeX. An empty error
+    /// snippet does not produce a fragment; use [`Self::has_errors`] to detect error nodes.
+    pub fn to_latex_fragments(&self) -> Result<FragmentedLatex, SerializeError> {
+        Ok(serialize_fragmented(&self.ast))
     }
 
-    /// Serialize with explicit options and record typed tokens from the same traversal.
+    /// Serialize with explicit options and record typed fragments from the same traversal.
     ///
-    /// Token spans are UTF-8 byte offsets into the returned LaTeX. An empty error
-    /// snippet does not produce a token; use [`Self::has_errors`] to detect error nodes.
-    pub fn to_tokenized_latex_with(
+    /// Fragment spans are UTF-8 byte offsets into the returned LaTeX. An empty error
+    /// snippet does not produce a fragment; use [`Self::has_errors`] to detect error nodes.
+    pub fn to_latex_fragments_with(
         &self,
         options: &SerializeOptions,
-    ) -> Result<TokenizedLatex, SerializeError> {
-        Ok(serialize_tokenized_with(&self.ast, options))
+    ) -> Result<FragmentedLatex, SerializeError> {
+        Ok(serialize_fragmented_with(&self.ast, options))
     }
 
     fn child_len(&self, parent: NodeId) -> Result<usize, EditError> {

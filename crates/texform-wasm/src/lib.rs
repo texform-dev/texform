@@ -152,13 +152,13 @@ impl Document {
             .map_err(|error| internal_message_to_js(error.to_string()))
     }
 
-    #[wasm_bindgen(js_name = toTokenizedLatex)]
-    pub fn to_tokenized_latex(&self, options: Option<JsValue>) -> Result<JsValue, JsValue> {
+    #[wasm_bindgen(js_name = toLatexFragments)]
+    pub fn to_latex_fragments(&self, options: Option<JsValue>) -> Result<JsValue, JsValue> {
         let options = serialize_options_from_js(options)?;
         let result = borrow_document(&self.inner)?
-            .to_tokenized_latex_with(&options)
+            .to_latex_fragments_with(&options)
             .map_err(|error| internal_message_to_js(error.to_string()))?;
-        binding_dto_to_js(&texform::bindings::tokenized_latex_to_dto(result))
+        binding_dto_to_js(&texform::bindings::fragmented_latex_to_dto(result))
     }
 
     #[wasm_bindgen(js_name = createChar)]

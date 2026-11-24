@@ -111,11 +111,11 @@ SyntaxNode: TypeAlias = dict[str, Any]
 """Lossless parse snapshot as a plain dict. The tagged-union shape is documented on the TypeScript ``SyntaxNode`` type; Python keeps this alias unexpanded."""
 Span: TypeAlias = dict[str, int]
 """Half-open UTF-8 byte range ``{"start": int, "end": int}`` into the source."""
-SerializationTokenKind = Literal[
+FragmentKind = Literal[
     "control_sequence", "character", "delimiter", "text", "raw", "error"
 ]
 """Semantic category of one serialization fragment."""
-SerializationTokenRole = Literal[
+FragmentRole = Literal[
     "head",
     "open",
     "close",
@@ -203,12 +203,12 @@ class NodeSpanEntry(TypedDict):
     span: Span
 
 
-class SerializationToken(TypedDict):
+class SerializationFragment(TypedDict):
     """One serialization fragment with UTF-8 byte offsets and syntactic provenance.
 
-    ``start_byte`` / ``end_byte`` index the accompanying ``TokenizedLatex.latex``
+    ``start_byte`` / ``end_byte`` index the accompanying ``FragmentedLatex.latex``
     string and are UTF-8 byte offsets, not Python code-point indices. Spans do
-    not overlap. Empty error snippets emit no token.
+    not overlap. Empty error snippets emit no fragment.
 
     Attributes:
         text: The UTF-8 decoding of the byte slice
@@ -220,8 +220,8 @@ class SerializationToken(TypedDict):
             construct.
         node_path: Root-relative path of the emitting AST node, always accepted
             by ``Document.node_at``.
-        slot: Immediate slot on ``node_path`` that this token belongs to, or
-            ``None`` for tokens emitted directly by the node itself. Protective
+        slot: Immediate slot on ``node_path`` that this fragment belongs to, or
+            ``None`` for fragments emitted directly by the node itself. Protective
             braces share the same ``(node_path, slot)`` as the slot's outer
             delimiters, so consumers pairing delimiters should use a stack.
         mode: Semantic math/text mode of the fragment, independent of spacing
@@ -231,27 +231,27 @@ class SerializationToken(TypedDict):
     text: str
     start_byte: int
     end_byte: int
-    kind: SerializationTokenKind
-    role: SerializationTokenRole
+    kind: FragmentKind
+    role: FragmentRole
     node_path: str
     slot: NodeSlot | None
     mode: RuntimeContentMode
 
 
-class TokenizedLatex(TypedDict):
-    """Serialized LaTeX and tokens produced by the same serializer traversal.
+class FragmentedLatex(TypedDict):
+    """Serialized LaTeX and fragments produced by the same serializer traversal.
 
-    Text and tokenized output share one traversal and spacing policy; this is
+    Text and fragmented output share one traversal and spacing policy; this is
     not a second lexer pass.
 
     Attributes:
         latex: The serialized LaTeX string, identical to ``Document.to_latex()``.
-        tokens: Ordered, non-overlapping, non-empty fragments. Gaps between
+        fragments: Ordered, non-overlapping, non-empty fragments. Gaps between
             spans contain serializer-inserted spacing.
     """
 
     latex: str
-    tokens: list[SerializationToken]
+    fragments: list[SerializationFragment]
 
 
 class PackageInfo(TypedDict):
@@ -1136,11 +1136,11 @@ class Document:
             SerializeOptions, serialize, Document.to_syntax
         """
 
-    def to_tokenized_latex(self, **options: Unpack[SerializeOptions]) -> TokenizedLatex:
-        """Serialize the tree to LaTeX together with typed output tokens.
+    def to_latex_fragments(self, **options: Unpack[SerializeOptions]) -> FragmentedLatex:
+        """Serialize the tree to LaTeX together with typed output fragments.
 
         ``start_byte`` and ``end_byte`` are UTF-8 byte offsets, not Python
-        string indices. Empty error snippets produce no zero-width token; use
+        string indices. Empty error snippets produce no zero-width fragment; use
         ``has_errors()`` to detect whether the document contains error nodes.
 
         Args:
@@ -1149,16 +1149,16 @@ class Document:
                 style.
 
         Returns:
-            A ``TokenizedLatex`` dict with ``latex`` and ``tokens``.
+            A ``FragmentedLatex`` dict with ``latex`` and ``fragments``.
 
         Raises:
             ConfigError: If an option key is unknown or a value has the wrong
                 type.
 
         Examples:
-            tok = texform.Parser().parse(r"x^2")["document"].to_tokenized_latex()
-            tok["latex"]  # 'x ^ { 2 }'
-            tok["tokens"][0]["kind"]  # 'character'
+            res = texform.Parser().parse(r"x^2")["document"].to_latex_fragments()
+            res["latex"]  # 'x ^ { 2 }'
+            res["fragments"][0]["kind"]  # 'character'
         """
 
     def create_char(self, value: str, *, mode: RuntimeContentMode | None = None) -> Node:
@@ -2926,7 +2926,7 @@ Style = Literal["spaced", "compact"]
 """Spaced output is byte-stable; compact preserves structure and text idempotency."""
 
 class SerializeOptions(TypedDict, total=False):
-    """Options for ``Document.to_latex``, ``Document.to_tokenized_latex``, and ``serialize``.
+    """Options for ``Document.to_latex``, ``Document.to_latex_fragments``, and ``serialize``.
 
     Passed as keywords. Omitted or ``None`` ``style`` selects the default
     spaced style. Unknown keys and invalid values raise ``ConfigError``. For a

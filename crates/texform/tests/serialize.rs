@@ -4,23 +4,23 @@ use std::collections::HashSet;
 
 use support::kb;
 use texform::{
-    AllowedMode, CommandItem, CommandKind, ContentMode, Document, KnowledgeBase, NodeKind,
-    NodeSlot, ParseConfig, Parser, SerializationToken, SerializationTokenKind,
-    SerializationTokenRole, SerializeOptions, Style, SyntaxNode, TokenizedLatex,
+    AllowedMode, CommandItem, CommandKind, ContentMode, Document, FragmentKind, FragmentRole,
+    FragmentedLatex, KnowledgeBase, NodeKind, NodeSlot, ParseConfig, Parser, SerializationFragment,
+    SerializeOptions, Style, SyntaxNode,
 };
 
-fn assert_token_contract(result: &TokenizedLatex) {
+fn assert_fragment_contract(result: &FragmentedLatex) {
     let mut cursor = 0;
-    for token in &result.tokens {
-        assert!(token.span.start < token.span.end);
-        assert!(cursor <= token.span.start);
+    for fragment in &result.fragments {
+        assert!(fragment.span.start < fragment.span.end);
+        assert!(cursor <= fragment.span.start);
         assert!(
-            result.latex[cursor..token.span.start]
+            result.latex[cursor..fragment.span.start]
                 .chars()
                 .all(char::is_whitespace)
         );
-        assert_eq!(token.text, result.latex[token.span.clone()]);
-        cursor = token.span.end;
+        assert_eq!(fragment.text, result.latex[fragment.span.clone()]);
+        cursor = fragment.span.end;
     }
     assert!(result.latex[cursor..].chars().all(char::is_whitespace));
 }
@@ -67,7 +67,7 @@ fn document_serializes_syntax_root() {
 }
 
 #[test]
-fn document_exposes_stable_tokenized_serialization_contract() {
+fn document_exposes_stable_fragmented_serialization_contract() {
     let parser = texform::Parser::builder()
         .knowledge_base(kb(&["base"]))
         .build();
@@ -78,23 +78,23 @@ fn document_exposes_stable_tokenized_serialization_contract() {
         .0;
 
     let result = document
-        .to_tokenized_latex()
-        .expect("document should serialize with tokens");
+        .to_latex_fragments()
+        .expect("document should serialize with fragments");
     assert_eq!(result.latex, document.to_latex().unwrap());
-    assert_token_contract(&result);
-    assert!(result.tokens.iter().any(|token| {
-        token.text == r"\%"
-            && token.kind == SerializationTokenKind::Character
-            && token.mode == ContentMode::Text
+    assert_fragment_contract(&result);
+    assert!(result.fragments.iter().any(|fragment| {
+        fragment.text == r"\%"
+            && fragment.kind == FragmentKind::Character
+            && fragment.mode == ContentMode::Text
     }));
-    assert!(result.tokens.iter().any(|token| {
-        token.text == "_"
-            && token.kind == SerializationTokenKind::Character
-            && token.mode == ContentMode::Math
+    assert!(result.fragments.iter().any(|fragment| {
+        fragment.text == "_"
+            && fragment.kind == FragmentKind::Character
+            && fragment.mode == ContentMode::Math
     }));
     let options = SerializeOptions::default();
     assert_eq!(
-        document.to_tokenized_latex_with(&options).unwrap().latex,
+        document.to_latex_fragments_with(&options).unwrap().latex,
         document.to_latex_with(&options).unwrap()
     );
 }
@@ -173,7 +173,7 @@ fn middle_delimiter_serializes_bare_and_is_text_idempotent() {
 }
 
 #[test]
-fn bigl_non_ascii_token_spans_use_utf8_byte_offsets() {
+fn bigl_non_ascii_fragment_spans_use_utf8_byte_offsets() {
     let parser = texform::Parser::builder()
         .knowledge_base(kb(&["base"]))
         .build();
@@ -184,30 +184,30 @@ fn bigl_non_ascii_token_spans_use_utf8_byte_offsets() {
         .0;
 
     let result = document
-        .to_tokenized_latex()
-        .expect("document should serialize with tokens");
+        .to_latex_fragments()
+        .expect("document should serialize with fragments");
     assert_eq!(result.latex, document.to_latex().unwrap());
-    assert_token_contract(&result);
+    assert_fragment_contract(&result);
     assert!(
         result
-            .tokens
+            .fragments
             .iter()
-            .any(|token| { token.text == "é" && token.kind == SerializationTokenKind::Character })
+            .any(|fragment| { fragment.text == "é" && fragment.kind == FragmentKind::Character })
     );
 }
 
-fn assert_node_path_and_role_consistency(doc: &Document, result: &TokenizedLatex, label: &str) {
-    assert_token_contract(result);
-    for token in &result.tokens {
-        let node = doc.node_at(&token.node_path).unwrap_or_else(|err| {
+fn assert_node_path_and_role_consistency(doc: &Document, result: &FragmentedLatex, label: &str) {
+    assert_fragment_contract(result);
+    for fragment in &result.fragments {
+        let node = doc.node_at(&fragment.node_path).unwrap_or_else(|err| {
             panic!(
-                "doc.node_at({:?}) failed for token {:?} in `{label}`: {err}",
-                token.node_path, token
+                "doc.node_at({:?}) failed for fragment {:?} in `{label}`: {err}",
+                fragment.node_path, fragment
             )
         });
         let kind = node.kind();
-        match token.role {
-            SerializationTokenRole::Head => {
+        match fragment.role {
+            FragmentRole::Head => {
                 assert!(
                     matches!(
                         kind,
@@ -216,14 +216,14 @@ fn assert_node_path_and_role_consistency(doc: &Document, result: &TokenizedLatex
                             | NodeKind::Infix
                             | NodeKind::Environment
                     ),
-                    "{label}: {token:?} resolved to {kind:?}"
+                    "{label}: {fragment:?} resolved to {kind:?}"
                 );
-                assert_eq!(token.slot, None, "{label}: {token:?}");
+                assert_eq!(fragment.slot, None, "{label}: {fragment:?}");
             }
-            SerializationTokenRole::Open | SerializationTokenRole::Close => match token.slot {
+            FragmentRole::Open | FragmentRole::Close => match fragment.slot {
                 None => assert!(
                     matches!(kind, NodeKind::Group | NodeKind::Environment),
-                    "{label}: {token:?} resolved to {kind:?}"
+                    "{label}: {fragment:?} resolved to {kind:?}"
                 ),
                 Some(NodeSlot::Arg(_)) => assert!(
                     matches!(
@@ -233,32 +233,32 @@ fn assert_node_path_and_role_consistency(doc: &Document, result: &TokenizedLatex
                             | NodeKind::Declarative
                             | NodeKind::Environment
                     ),
-                    "{label}: {token:?} resolved to {kind:?}"
+                    "{label}: {fragment:?} resolved to {kind:?}"
                 ),
                 Some(NodeSlot::Subscript | NodeSlot::Superscript) => {
-                    assert_eq!(kind, NodeKind::Scripted, "{label}: {token:?}")
+                    assert_eq!(kind, NodeKind::Scripted, "{label}: {fragment:?}")
                 }
                 Some(NodeSlot::InfixLeft | NodeSlot::InfixRight) => {
-                    assert_eq!(kind, NodeKind::Infix, "{label}: {token:?}")
+                    assert_eq!(kind, NodeKind::Infix, "{label}: {fragment:?}")
                 }
-                other => panic!("{label}: unexpected slot {other:?} for {token:?}"),
+                other => panic!("{label}: unexpected slot {other:?} for {fragment:?}"),
             },
-            SerializationTokenRole::Name => {
-                assert_eq!(kind, NodeKind::Environment, "{label}: {token:?}");
-                assert_eq!(token.slot, None, "{label}: {token:?}");
+            FragmentRole::Name => {
+                assert_eq!(kind, NodeKind::Environment, "{label}: {fragment:?}");
+                assert_eq!(fragment.slot, None, "{label}: {fragment:?}");
             }
-            SerializationTokenRole::Operator => {
-                assert_eq!(kind, NodeKind::Scripted, "{label}: {token:?}");
+            FragmentRole::Operator => {
+                assert_eq!(kind, NodeKind::Scripted, "{label}: {fragment:?}");
                 assert!(
                     matches!(
-                        token.slot,
+                        fragment.slot,
                         Some(NodeSlot::Subscript | NodeSlot::Superscript)
                     ),
-                    "{label}: {token:?}"
+                    "{label}: {fragment:?}"
                 );
             }
-            SerializationTokenRole::Delimiter => match token.slot {
-                None => assert_eq!(kind, NodeKind::Group, "{label}: {token:?}"),
+            FragmentRole::Delimiter => match fragment.slot {
+                None => assert_eq!(kind, NodeKind::Group, "{label}: {fragment:?}"),
                 Some(NodeSlot::Arg(_)) => assert!(
                     matches!(
                         kind,
@@ -267,11 +267,11 @@ fn assert_node_path_and_role_consistency(doc: &Document, result: &TokenizedLatex
                             | NodeKind::Declarative
                             | NodeKind::Environment
                     ),
-                    "{label}: {token:?} resolved to {kind:?}"
+                    "{label}: {fragment:?} resolved to {kind:?}"
                 ),
-                other => panic!("{label}: unexpected slot {other:?} for {token:?}"),
+                other => panic!("{label}: unexpected slot {other:?} for {fragment:?}"),
             },
-            SerializationTokenRole::Value => {
+            FragmentRole::Value => {
                 assert!(
                     matches!(
                         kind,
@@ -280,14 +280,14 @@ fn assert_node_path_and_role_consistency(doc: &Document, result: &TokenizedLatex
                             | NodeKind::Declarative
                             | NodeKind::Environment
                     ),
-                    "{label}: {token:?} resolved to {kind:?}"
+                    "{label}: {fragment:?} resolved to {kind:?}"
                 );
                 assert!(
-                    matches!(token.slot, Some(NodeSlot::Arg(_))),
-                    "{label}: {token:?}"
+                    matches!(fragment.slot, Some(NodeSlot::Arg(_))),
+                    "{label}: {fragment:?}"
                 );
             }
-            SerializationTokenRole::Leaf => {
+            FragmentRole::Leaf => {
                 assert!(
                     matches!(
                         kind,
@@ -298,16 +298,16 @@ fn assert_node_path_and_role_consistency(doc: &Document, result: &TokenizedLatex
                             | NodeKind::AlignmentTab
                             | NodeKind::Error
                     ),
-                    "{label}: {token:?} resolved to {kind:?}"
+                    "{label}: {fragment:?} resolved to {kind:?}"
                 );
-                assert_eq!(token.slot, None, "{label}: {token:?}");
+                assert_eq!(fragment.slot, None, "{label}: {fragment:?}");
             }
         }
     }
 }
 
 #[test]
-fn tokenized_provenance_covers_all_roles_and_valid_node_paths_in_both_styles() {
+fn fragmented_provenance_covers_all_roles_and_valid_node_paths_in_both_styles() {
     let kb_all = KnowledgeBase::builder()
         .packages(&[
             "base",
@@ -369,15 +369,15 @@ fn tokenized_provenance_covers_all_roles_and_valid_node_paths_in_both_styles() {
             .unwrap_or_else(|err| panic!("failed to parse `{source}`: {err}"));
         for style in [Style::Spaced, Style::Compact] {
             let options = SerializeOptions { style };
-            let result = doc.to_tokenized_latex_with(&options).unwrap();
+            let result = doc.to_latex_fragments_with(&options).unwrap();
             assert_eq!(
                 result.latex,
                 doc.to_latex_with(&options).unwrap(),
                 "latex mismatch for `{source}` ({style:?})"
             );
             assert_node_path_and_role_consistency(&doc, &result, source);
-            for token in &result.tokens {
-                seen_roles.insert(token.role.as_str());
+            for fragment in &result.fragments {
+                seen_roles.insert(fragment.role.as_str());
             }
         }
     }
@@ -394,11 +394,11 @@ fn tokenized_provenance_covers_all_roles_and_valid_node_paths_in_both_styles() {
     assert!(partial_doc.has_errors());
     for style in [Style::Spaced, Style::Compact] {
         let options = SerializeOptions { style };
-        let result = partial_doc.to_tokenized_latex_with(&options).unwrap();
+        let result = partial_doc.to_latex_fragments_with(&options).unwrap();
         assert_eq!(result.latex, partial_doc.to_latex_with(&options).unwrap());
         assert_node_path_and_role_consistency(partial_doc, &result, r"\frac{a");
-        for token in &result.tokens {
-            seen_roles.insert(token.role.as_str());
+        for fragment in &result.fragments {
+            seen_roles.insert(fragment.role.as_str());
         }
     }
 
@@ -419,7 +419,7 @@ fn tokenized_provenance_covers_all_roles_and_valid_node_paths_in_both_styles() {
     let explicit_env_doc = Document::from_syntax(&explicit_env_syntax).unwrap();
     for style in [Style::Spaced, Style::Compact] {
         let options = SerializeOptions { style };
-        let result = explicit_env_doc.to_tokenized_latex_with(&options).unwrap();
+        let result = explicit_env_doc.to_latex_fragments_with(&options).unwrap();
         assert_eq!(
             result.latex,
             explicit_env_doc.to_latex_with(&options).unwrap()
@@ -427,16 +427,16 @@ fn tokenized_provenance_covers_all_roles_and_valid_node_paths_in_both_styles() {
         assert_node_path_and_role_consistency(&explicit_env_doc, &result, "explicit env body");
     }
 
-    // Verify all 8 SerializationTokenRole variants were exercised and have the expected string.
+    // Verify all 8 FragmentRole variants were exercised and have the expected string.
     let all_roles = [
-        (SerializationTokenRole::Head, "head"),
-        (SerializationTokenRole::Open, "open"),
-        (SerializationTokenRole::Close, "close"),
-        (SerializationTokenRole::Name, "name"),
-        (SerializationTokenRole::Operator, "operator"),
-        (SerializationTokenRole::Delimiter, "delimiter"),
-        (SerializationTokenRole::Value, "value"),
-        (SerializationTokenRole::Leaf, "leaf"),
+        (FragmentRole::Head, "head"),
+        (FragmentRole::Open, "open"),
+        (FragmentRole::Close, "close"),
+        (FragmentRole::Name, "name"),
+        (FragmentRole::Operator, "operator"),
+        (FragmentRole::Delimiter, "delimiter"),
+        (FragmentRole::Value, "value"),
+        (FragmentRole::Leaf, "leaf"),
     ];
     for (role, expected_str) in all_roles {
         assert_eq!(role.as_str(), expected_str);
@@ -456,16 +456,16 @@ fn format_slot(slot: Option<NodeSlot>) -> String {
     }
 }
 
-fn format_token_lines(tokens: &[SerializationToken]) -> String {
-    tokens
+fn format_fragment_lines(fragments: &[SerializationFragment]) -> String {
+    fragments
         .iter()
-        .map(|t| {
+        .map(|f| {
             format!(
                 "{} {} {} {}",
-                t.text,
-                t.role.as_str(),
-                t.node_path,
-                format_slot(t.slot)
+                f.text,
+                f.role.as_str(),
+                f.node_path,
+                format_slot(f.slot)
             )
         })
         .collect::<Vec<_>>()
@@ -483,27 +483,27 @@ fn normalize_snapshot(expected: &str) -> String {
 }
 
 #[test]
-fn tokenized_paths_and_slots_match_exact_expected_structure() {
+fn fragmented_paths_and_slots_match_exact_expected_structure() {
     let parser = Parser::builder().build();
     let assert_full = |source: &str, style: Style, expected: &str| {
         let (doc, _) = parser.parse(source).try_into_document().unwrap();
-        let tok = doc.to_tokenized_latex_with(&style.into()).unwrap();
+        let res = doc.to_latex_fragments_with(&style.into()).unwrap();
         assert_eq!(
-            format_token_lines(&tok.tokens),
+            format_fragment_lines(&res.fragments),
             normalize_snapshot(expected),
-            "token mismatch for `{source}` ({style:?})"
+            "fragment mismatch for `{source}` ({style:?})"
         );
         if style == Style::Compact {
-            assert_node_path_and_role_consistency(&doc, &tok, &format!("{source} compact"));
+            assert_node_path_and_role_consistency(&doc, &res, &format!("{source} compact"));
         }
     };
     let assert_prefix = |source: &str, count: usize, expected: &str| {
         let (doc, _) = parser.parse(source).try_into_document().unwrap();
-        let tok = doc.to_tokenized_latex().unwrap();
+        let res = doc.to_latex_fragments().unwrap();
         assert_eq!(
-            format_token_lines(&tok.tokens[..count]),
+            format_fragment_lines(&res.fragments[..count]),
             normalize_snapshot(expected),
-            "token prefix mismatch for `{source}`"
+            "fragment prefix mismatch for `{source}`"
         );
     };
 

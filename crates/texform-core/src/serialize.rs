@@ -57,19 +57,19 @@ pub fn serialize_with(ast: &Ast, options: &SerializeOptions) -> String {
     serializer.finish()
 }
 
-/// Serialize an AST to LaTeX and record its typed output tokens.
-pub fn serialize_tokenized(ast: &Ast) -> TokenizedLatex {
-    serialize_tokenized_with(ast, &SerializeOptions::default())
+/// Serialize an AST to LaTeX and record its typed output fragments.
+pub fn serialize_fragmented(ast: &Ast) -> FragmentedLatex {
+    serialize_fragmented_with(ast, &SerializeOptions::default())
 }
 
-/// Serialize an AST to LaTeX and typed output tokens with explicit options.
-pub fn serialize_tokenized_with(ast: &Ast, options: &SerializeOptions) -> TokenizedLatex {
+/// Serialize an AST to LaTeX and typed output fragments with explicit options.
+pub fn serialize_fragmented_with(ast: &Ast, options: &SerializeOptions) -> FragmentedLatex {
     let protection = RefCell::new(HashMap::new());
     let settings = options.style.settings();
     let mut serializer = Serializer::new(
         ast,
         &settings,
-        TokenRecorder::with_capacity(ast.node_count()),
+        FragmentRecorder::with_capacity(ast.node_count()),
         &protection,
     );
     serializer.serialize_root();
@@ -98,49 +98,49 @@ impl std::fmt::Display for SerializeError {
 
 impl std::error::Error for SerializeError {}
 
-/// Serialized LaTeX and the typed tokens recorded during the same serialization pass.
+/// Serialized LaTeX and the typed fragments recorded during the same serialization pass.
 ///
-/// Token categories and boundaries are part of the stable `texform` facade
-/// contract. Tokens are ordered and non-empty; gaps contain only inserted
-/// separator whitespace, while semantic whitespace remains inside its token.
+/// Fragment categories and boundaries are part of the stable `texform` facade
+/// contract. Fragments are ordered and non-empty; gaps contain only inserted
+/// separator whitespace, while semantic whitespace remains inside its fragment.
 ///
-/// - Wrapper delimiters are separate tokens from scalar
-///   [`SerializationTokenKind::Raw`] content.
-/// - An escaped character is one [`SerializationTokenKind::Character`] token,
+/// - Wrapper delimiters are separate fragments from scalar
+///   [`FragmentKind::Raw`] content.
+/// - An escaped character is one [`FragmentKind::Character`] fragment,
 ///   including its escape sequence.
-/// - An empty error snippet emits no token. The document still contains an
+/// - An empty error snippet emits no fragment. The document still contains an
 ///   error node, so its `has_errors()` remains true.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TokenizedLatex {
+pub struct FragmentedLatex {
     /// Serialized LaTeX string, identical to [`Document::to_latex`].
     pub latex: String,
-    /// Non-empty fragments covering `latex`, in order. Empty error snippets emit no token.
-    pub tokens: Vec<SerializationToken>,
+    /// Non-empty fragments covering `latex`, in order. Empty error snippets emit no fragment.
+    pub fragments: Vec<SerializationFragment>,
 }
 
 /// A non-empty serialization fragment with its UTF-8 byte span and syntactic provenance.
 ///
-/// `span` indexes the returned [`TokenizedLatex::latex`] string and selects
+/// `span` indexes the returned [`FragmentedLatex::latex`] string and selects
 /// exactly `text`. Spans do not overlap. `mode` records the semantic math/text
 /// mode, independently of formatting whitespace policy. `role` identifies the
 /// syntactic role of the emitted fragment, `node_path` always resolves to the
 /// emitting AST node via [`crate::document::Document::node_at`], and `slot`
-/// identifies the parent-owned [`NodeSlot`] when the token belongs to a
+/// identifies the parent-owned [`NodeSlot`] when the fragment belongs to a
 /// specific slot on `node_path` (or `None` when emitted directly by the node
 /// itself).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SerializationToken {
+pub struct SerializationFragment {
     /// Fragment text, exactly the slice `latex[span]`.
     pub text: String,
-    /// UTF-8 byte range into [`TokenizedLatex::latex`]; spans do not overlap.
+    /// UTF-8 byte range into [`FragmentedLatex::latex`]; spans do not overlap.
     pub span: Range<usize>,
     /// Semantic category of the fragment.
-    pub kind: SerializationTokenKind,
+    pub kind: FragmentKind,
     /// Syntactic role of the fragment within the emitting AST construct.
-    pub role: SerializationTokenRole,
+    pub role: FragmentRole,
     /// Root-relative path of the emitting AST node, always valid for `Document::node_at`.
     pub node_path: String,
-    /// Immediate slot on `node_path` that this token belongs to, or `None` for node-owned tokens.
+    /// Immediate slot on `node_path` that this fragment belongs to, or `None` for node-owned fragments.
     pub slot: Option<NodeSlot>,
     /// Semantic math/text mode, independent of spacing policy.
     pub mode: ContentMode,
@@ -148,7 +148,7 @@ pub struct SerializationToken {
 
 /// Stable semantic categories for serialization fragments.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SerializationTokenKind {
+pub enum FragmentKind {
     /// A control sequence such as `\frac` or `\,`, including the leading backslash.
     ControlSequence,
     /// A single character atom, including script markers such as `_` and `^`.
@@ -159,16 +159,16 @@ pub enum SerializationTokenKind {
     Text,
     /// A source fragment emitted without further classification (dimension, environment name, ...).
     Raw,
-    /// A recovered error snippet. Empty snippets emit no token.
+    /// A recovered error snippet. Empty snippets emit no fragment.
     Error,
 }
 
 /// Syntactic roles for serialization fragments.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SerializationTokenRole {
+pub enum FragmentRole {
     /// Construct head control sequence (`\frac`, `\bf`, `\over`, `\begin`, `\end`).
     ///
-    /// An environment node emits two `Head` tokens (`\begin` and `\end`), each
+    /// An environment node emits two `Head` fragments (`\begin` and `\end`), each
     /// followed by its own `Open` / `Name` / `Close` group (`slot: None`),
     /// whereas `\left` and `\right` emit `Open` and `Close`.
     Head,
@@ -197,7 +197,7 @@ pub enum SerializationTokenRole {
     Leaf,
 }
 
-impl SerializationTokenRole {
+impl FragmentRole {
     /// Stable snake_case identifier used by language bindings and JSON output.
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -332,8 +332,8 @@ trait Recorder {
         &mut self,
         output: &str,
         span: Range<usize>,
-        kind: SerializationTokenKind,
-        role: SerializationTokenRole,
+        kind: FragmentKind,
+        role: FragmentRole,
         slot: Option<NodeSlot>,
         mode: ContentMode,
     );
@@ -367,8 +367,8 @@ impl Recorder for NoopRecorder {
         &mut self,
         _output: &str,
         _span: Range<usize>,
-        _kind: SerializationTokenKind,
-        _role: SerializationTokenRole,
+        _kind: FragmentKind,
+        _role: FragmentRole,
         _slot: Option<NodeSlot>,
         _mode: ContentMode,
     ) {
@@ -379,24 +379,24 @@ impl Recorder for NoopRecorder {
     }
 }
 
-struct TokenRecorder {
-    tokens: Vec<SerializationToken>,
+struct FragmentRecorder {
+    fragments: Vec<SerializationFragment>,
     path: String,
 }
 
-impl TokenRecorder {
+impl FragmentRecorder {
     fn with_capacity(capacity: usize) -> Self {
         let mut path = String::with_capacity(64);
         path.push_str("root");
         Self {
-            tokens: Vec::with_capacity(capacity),
+            fragments: Vec::with_capacity(capacity),
             path,
         }
     }
 }
 
-impl Recorder for TokenRecorder {
-    type Output = TokenizedLatex;
+impl Recorder for FragmentRecorder {
+    type Output = FragmentedLatex;
     const ENABLED: bool = true;
 
     #[inline]
@@ -425,12 +425,12 @@ impl Recorder for TokenRecorder {
         &mut self,
         output: &str,
         span: Range<usize>,
-        kind: SerializationTokenKind,
-        role: SerializationTokenRole,
+        kind: FragmentKind,
+        role: FragmentRole,
         slot: Option<NodeSlot>,
         mode: ContentMode,
     ) {
-        self.tokens.push(SerializationToken {
+        self.fragments.push(SerializationFragment {
             text: output[span.clone()].to_string(),
             span,
             kind,
@@ -442,9 +442,9 @@ impl Recorder for TokenRecorder {
     }
 
     fn finish(self, latex: String) -> Self::Output {
-        TokenizedLatex {
+        FragmentedLatex {
             latex,
-            tokens: self.tokens,
+            fragments: self.fragments,
         }
     }
 }
@@ -487,14 +487,14 @@ impl<R: Recorder> AtomWriter<R> {
         &mut self,
         mode: ContentMode,
         name: &str,
-        role: SerializationTokenRole,
+        role: FragmentRole,
         slot: Option<NodeSlot>,
         options: &StyleSettings,
     ) {
         self.emit_backslash_prefixed(
             EmissionModes::same(mode),
             AtomKind::ControlSequence,
-            SerializationTokenKind::ControlSequence,
+            FragmentKind::ControlSequence,
             role,
             slot,
             name,
@@ -509,8 +509,8 @@ impl<R: Recorder> AtomWriter<R> {
         &mut self,
         modes: EmissionModes,
         spacing_kind: AtomKind,
-        public_kind: SerializationTokenKind,
-        role: SerializationTokenRole,
+        public_kind: FragmentKind,
+        role: FragmentRole,
         slot: Option<NodeSlot>,
         suffix: &str,
         boundary: BoundaryPolicy,
@@ -543,8 +543,8 @@ impl<R: Recorder> AtomWriter<R> {
         &mut self,
         mode: ContentMode,
         kind: AtomKind,
-        public_kind: SerializationTokenKind,
-        role: SerializationTokenRole,
+        public_kind: FragmentKind,
+        role: FragmentRole,
         slot: Option<NodeSlot>,
         text: &str,
         options: &StyleSettings,
@@ -567,8 +567,8 @@ impl<R: Recorder> AtomWriter<R> {
         &mut self,
         mode: ContentMode,
         spacing_kind: AtomKind,
-        public_kind: SerializationTokenKind,
-        role: SerializationTokenRole,
+        public_kind: FragmentKind,
+        role: FragmentRole,
         slot: Option<NodeSlot>,
         text: &str,
         boundary: BoundaryPolicy,
@@ -592,8 +592,8 @@ impl<R: Recorder> AtomWriter<R> {
         &mut self,
         modes: EmissionModes,
         spacing_kind: AtomKind,
-        public_kind: SerializationTokenKind,
-        role: SerializationTokenRole,
+        public_kind: FragmentKind,
+        role: FragmentRole,
         slot: Option<NodeSlot>,
         text: &str,
         boundary: BoundaryPolicy,
@@ -629,8 +629,8 @@ impl<R: Recorder> AtomWriter<R> {
         &mut self,
         mode: ContentMode,
         kind: AtomKind,
-        public_kind: SerializationTokenKind,
-        role: SerializationTokenRole,
+        public_kind: FragmentKind,
+        role: FragmentRole,
         slot: Option<NodeSlot>,
         text: &str,
     ) {
@@ -661,8 +661,8 @@ impl<R: Recorder> AtomWriter<R> {
         self.emit_attached(
             mode,
             AtomKind::MathChar,
-            SerializationTokenKind::Character,
-            SerializationTokenRole::Value,
+            FragmentKind::Character,
+            FragmentRole::Value,
             slot,
             "*",
         );
@@ -948,8 +948,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             Node::Text(text) => self.writer.emit(
                 mode,
                 AtomKind::TextChunk,
-                SerializationTokenKind::Text,
-                SerializationTokenRole::Leaf,
+                FragmentKind::Text,
+                FragmentRole::Leaf,
                 None,
                 text,
                 self.options,
@@ -957,8 +957,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             Node::ActiveSpace => self.writer.emit(
                 mode,
                 AtomKind::ActiveChar,
-                SerializationTokenKind::Character,
-                SerializationTokenRole::Leaf,
+                FragmentKind::Character,
+                FragmentRole::Leaf,
                 None,
                 "~",
                 self.options,
@@ -967,8 +967,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             Node::AlignmentTab => self.writer.emit(
                 mode,
                 AtomKind::MathChar,
-                SerializationTokenKind::Character,
-                SerializationTokenRole::Leaf,
+                FragmentKind::Character,
+                FragmentRole::Leaf,
                 None,
                 "&",
                 self.options,
@@ -976,8 +976,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             Node::Error { snippet, .. } => self.writer.emit(
                 mode,
                 AtomKind::RawFragment,
-                SerializationTokenKind::Error,
-                SerializationTokenRole::Leaf,
+                FragmentKind::Error,
+                FragmentRole::Leaf,
                 None,
                 snippet,
                 self.options,
@@ -998,18 +998,13 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 self.writer.emit(
                     ContentMode::Math,
                     AtomKind::ControlSequence,
-                    SerializationTokenKind::ControlSequence,
-                    SerializationTokenRole::Open,
+                    FragmentKind::ControlSequence,
+                    FragmentRole::Open,
                     None,
                     r"\left",
                     self.options,
                 );
-                self.emit_delimiter(
-                    left,
-                    ContentMode::Math,
-                    SerializationTokenRole::Delimiter,
-                    None,
-                );
+                self.emit_delimiter(left, ContentMode::Math, FragmentRole::Delimiter, None);
                 for (index, &child) in children.iter().enumerate() {
                     let checkpoint = self.push_child(index);
                     self.visit(child, ContentMode::Math);
@@ -1018,18 +1013,13 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 self.writer.emit(
                     ContentMode::Math,
                     AtomKind::ControlSequence,
-                    SerializationTokenKind::ControlSequence,
-                    SerializationTokenRole::Close,
+                    FragmentKind::ControlSequence,
+                    FragmentRole::Close,
                     None,
                     r"\right",
                     self.options,
                 );
-                self.emit_delimiter(
-                    right,
-                    ContentMode::Math,
-                    SerializationTokenRole::Delimiter,
-                    None,
-                );
+                self.emit_delimiter(right, ContentMode::Math, FragmentRole::Delimiter, None);
             }
             GroupKind::InlineMath => self.visit_inline_math(children),
         }
@@ -1037,7 +1027,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
 
     fn visit_command(&mut self, name: &str, args: &[Option<Argument>], mode: ContentMode) {
         self.writer
-            .emit_control_seq(mode, name, SerializationTokenRole::Head, None, self.options);
+            .emit_control_seq(mode, name, FragmentRole::Head, None, self.options);
 
         let empty_genfrac_delimiters = is_genfrac_without_delimiters(name, args);
         for (index, slot) in args.iter().enumerate() {
@@ -1070,8 +1060,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit_with_boundary(
             mode,
             AtomKind::Brace,
-            SerializationTokenKind::Delimiter,
-            SerializationTokenRole::Open,
+            FragmentKind::Delimiter,
+            FragmentRole::Open,
             node_slot,
             "{",
             opening_boundary,
@@ -1080,8 +1070,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit_with_boundary(
             mode,
             AtomKind::Brace,
-            SerializationTokenKind::Delimiter,
-            SerializationTokenRole::Close,
+            FragmentKind::Delimiter,
+            FragmentRole::Close,
             node_slot,
             "}",
             BoundaryPolicy::SuppressOptionalSpace,
@@ -1098,7 +1088,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit_control_seq(
             ContentMode::Math,
             name,
-            SerializationTokenRole::Head,
+            FragmentRole::Head,
             None,
             self.options,
         );
@@ -1111,7 +1101,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
     /// Emit a declarative command with its explicit arguments.
     fn visit_declarative(&mut self, name: &str, args: &[ArgumentSlot], mode: ContentMode) {
         self.writer
-            .emit_control_seq(mode, name, SerializationTokenRole::Head, None, self.options);
+            .emit_control_seq(mode, name, FragmentRole::Head, None, self.options);
         for (index, slot) in args.iter().enumerate() {
             self.visit_argument_slot(index, slot, mode);
         }
@@ -1157,8 +1147,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit(
             outer_mode,
             AtomKind::ControlSequence,
-            SerializationTokenKind::ControlSequence,
-            SerializationTokenRole::Head,
+            FragmentKind::ControlSequence,
+            FragmentRole::Head,
             None,
             head,
             self.options,
@@ -1167,8 +1157,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit_with_semantic_mode(
             EmissionModes::new(ContentMode::Math, outer_mode),
             AtomKind::Brace,
-            SerializationTokenKind::Delimiter,
-            SerializationTokenRole::Open,
+            FragmentKind::Delimiter,
+            FragmentRole::Open,
             None,
             "{",
             BoundaryPolicy::Auto,
@@ -1177,8 +1167,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit_with_boundary(
             outer_mode,
             AtomKind::RawFragment,
-            SerializationTokenKind::Raw,
-            SerializationTokenRole::Name,
+            FragmentKind::Raw,
+            FragmentRole::Name,
             None,
             name,
             BoundaryPolicy::SuppressOptionalSpace,
@@ -1187,8 +1177,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit_with_boundary(
             outer_mode,
             AtomKind::Brace,
-            SerializationTokenKind::Delimiter,
-            SerializationTokenRole::Close,
+            FragmentKind::Delimiter,
+            FragmentRole::Close,
             None,
             "}",
             BoundaryPolicy::SuppressOptionalSpace,
@@ -1301,7 +1291,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                     delimiter,
                     mode,
                     mode,
-                    SerializationTokenRole::Delimiter,
+                    FragmentRole::Delimiter,
                     Some(NodeSlot::Arg(arg_index)),
                     opening_boundary,
                 ),
@@ -1422,8 +1412,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             self.writer.emit_with_boundary(
                 wrapper_mode,
                 AtomKind::Brace,
-                SerializationTokenKind::Delimiter,
-                SerializationTokenRole::Open,
+                FragmentKind::Delimiter,
+                FragmentRole::Open,
                 Some(slot),
                 open,
                 opening_boundary,
@@ -1441,8 +1431,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             self.writer.emit(
                 wrapper_mode,
                 AtomKind::Brace,
-                SerializationTokenKind::Delimiter,
-                SerializationTokenRole::Close,
+                FragmentKind::Delimiter,
+                FragmentRole::Close,
                 Some(slot),
                 close,
                 self.options,
@@ -1474,8 +1464,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit_with_boundary(
             wrapper_mode,
             AtomKind::Brace,
-            SerializationTokenKind::Delimiter,
-            SerializationTokenRole::Open,
+            FragmentKind::Delimiter,
+            FragmentRole::Open,
             Some(slot),
             open,
             opening_boundary,
@@ -1506,8 +1496,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit_with_boundary(
             wrapper_mode,
             AtomKind::Brace,
-            SerializationTokenKind::Delimiter,
-            SerializationTokenRole::Close,
+            FragmentKind::Delimiter,
+            FragmentRole::Close,
             Some(slot),
             close,
             BoundaryPolicy::SuppressOptionalSpace,
@@ -1536,8 +1526,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit(
             ContentMode::Text,
             AtomKind::Dollar,
-            SerializationTokenKind::Delimiter,
-            SerializationTokenRole::Open,
+            FragmentKind::Delimiter,
+            FragmentRole::Open,
             None,
             "$",
             self.options,
@@ -1550,8 +1540,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit(
             ContentMode::Text,
             AtomKind::Dollar,
-            SerializationTokenKind::Delimiter,
-            SerializationTokenRole::Close,
+            FragmentKind::Delimiter,
+            FragmentRole::Close,
             None,
             "$",
             self.options,
@@ -1563,8 +1553,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit_with_boundary(
             ContentMode::Math,
             AtomKind::ScriptMark,
-            SerializationTokenKind::Character,
-            SerializationTokenRole::Operator,
+            FragmentKind::Character,
+            FragmentRole::Operator,
             Some(slot),
             marker,
             BoundaryPolicy::Auto,
@@ -1661,8 +1651,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit(
             mode,
             kind,
-            SerializationTokenKind::Delimiter,
-            SerializationTokenRole::Open,
+            FragmentKind::Delimiter,
+            FragmentRole::Open,
             None,
             open,
             self.options,
@@ -1675,8 +1665,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit(
             mode,
             kind,
-            SerializationTokenKind::Delimiter,
-            SerializationTokenRole::Close,
+            FragmentKind::Delimiter,
+            FragmentRole::Close,
             None,
             close,
             self.options,
@@ -1699,8 +1689,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit(
             mode,
             kind,
-            SerializationTokenKind::Delimiter,
-            SerializationTokenRole::Open,
+            FragmentKind::Delimiter,
+            FragmentRole::Open,
             None,
             open,
             self.options,
@@ -1709,8 +1699,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit_with_boundary(
             mode,
             kind,
-            SerializationTokenKind::Delimiter,
-            SerializationTokenRole::Close,
+            FragmentKind::Delimiter,
+            FragmentRole::Close,
             None,
             close,
             BoundaryPolicy::SuppressOptionalSpace,
@@ -1737,8 +1727,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit_with_boundary(
             wrapper_mode,
             AtomKind::Brace,
-            SerializationTokenKind::Delimiter,
-            SerializationTokenRole::Open,
+            FragmentKind::Delimiter,
+            FragmentRole::Open,
             Some(slot),
             open,
             opening_boundary,
@@ -1763,8 +1753,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                     self.writer.emit_with_boundary(
                         wrapper_mode,
                         AtomKind::Brace,
-                        SerializationTokenKind::Delimiter,
-                        SerializationTokenRole::Close,
+                        FragmentKind::Delimiter,
+                        FragmentRole::Close,
                         Some(slot),
                         close,
                         BoundaryPolicy::SuppressOptionalSpace,
@@ -1785,8 +1775,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit_with_semantic_mode(
             EmissionModes::new(content_mode, wrapper_mode),
             AtomKind::Brace,
-            SerializationTokenKind::Delimiter,
-            SerializationTokenRole::Close,
+            FragmentKind::Delimiter,
+            FragmentRole::Close,
             Some(slot),
             close,
             BoundaryPolicy::Auto,
@@ -1880,8 +1870,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit_with_boundary(
             mode,
             AtomKind::Brace,
-            SerializationTokenKind::Delimiter,
-            SerializationTokenRole::Open,
+            FragmentKind::Delimiter,
+            FragmentRole::Open,
             slot,
             open,
             opening_boundary,
@@ -1896,8 +1886,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit_with_boundary(
             mode,
             AtomKind::Brace,
-            SerializationTokenKind::Delimiter,
-            SerializationTokenRole::Close,
+            FragmentKind::Delimiter,
+            FragmentRole::Close,
             slot,
             close,
             BoundaryPolicy::SuppressOptionalSpace,
@@ -1918,8 +1908,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             self.writer.emit_with_boundary(
                 mode,
                 AtomKind::Brace,
-                SerializationTokenKind::Delimiter,
-                SerializationTokenRole::Open,
+                FragmentKind::Delimiter,
+                FragmentRole::Open,
                 Some(slot),
                 "{",
                 opening_boundary,
@@ -1952,8 +1942,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             self.writer.emit_with_semantic_mode(
                 EmissionModes::new(content_mode, mode),
                 AtomKind::Brace,
-                SerializationTokenKind::Delimiter,
-                SerializationTokenRole::Close,
+                FragmentKind::Delimiter,
+                FragmentRole::Close,
                 Some(slot),
                 "}",
                 BoundaryPolicy::Auto,
@@ -1966,7 +1956,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             close,
             mode,
             mode,
-            SerializationTokenRole::Close,
+            FragmentRole::Close,
             Some(slot),
             BoundaryPolicy::SuppressOptionalSpace,
         );
@@ -1988,7 +1978,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             open,
             content_mode,
             wrapper_mode,
-            SerializationTokenRole::Open,
+            FragmentRole::Open,
             Some(slot),
             opening_boundary,
         );
@@ -2017,7 +2007,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             close,
             content_mode,
             wrapper_mode,
-            SerializationTokenRole::Close,
+            FragmentRole::Close,
             Some(slot),
             BoundaryPolicy::Auto,
         );
@@ -2038,7 +2028,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             open,
             mode,
             mode,
-            SerializationTokenRole::Open,
+            FragmentRole::Open,
             Some(slot),
             opening_boundary,
         );
@@ -2066,7 +2056,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             close,
             mode,
             mode,
-            SerializationTokenRole::Close,
+            FragmentRole::Close,
             Some(slot),
             BoundaryPolicy::SuppressOptionalSpace,
         );
@@ -2103,12 +2093,12 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             open,
             mode,
             mode,
-            SerializationTokenRole::Open,
+            FragmentRole::Open,
             slot,
             opening_boundary,
         );
         self.emit_scalar_argument_value(arg_index, value, mode, BoundaryPolicy::Auto);
-        self.emit_delimiter(close, mode, SerializationTokenRole::Close, slot);
+        self.emit_delimiter(close, mode, FragmentRole::Close, slot);
     }
 
     fn emit_scalar_argument_value(
@@ -2124,8 +2114,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 delimiter,
                 EmissionModes::same(mode),
                 AtomKind::RawFragment,
-                SerializationTokenKind::Raw,
-                SerializationTokenRole::Delimiter,
+                FragmentKind::Raw,
+                FragmentRole::Delimiter,
                 slot,
                 boundary,
             ),
@@ -2136,8 +2126,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             | ArgumentValue::Column(name) => self.writer.emit_with_boundary(
                 mode,
                 AtomKind::RawFragment,
-                SerializationTokenKind::Raw,
-                SerializationTokenRole::Value,
+                FragmentKind::Raw,
+                FragmentRole::Value,
                 slot,
                 name,
                 boundary,
@@ -2158,7 +2148,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         &mut self,
         delimiter: &Delimiter,
         mode: ContentMode,
-        role: SerializationTokenRole,
+        role: FragmentRole,
         slot: Option<NodeSlot>,
     ) {
         self.emit_delimiter_with_boundary(delimiter, mode, mode, role, slot, BoundaryPolicy::Auto);
@@ -2169,7 +2159,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         delimiter: &Delimiter,
         spacing_mode: ContentMode,
         semantic_mode: ContentMode,
-        role: SerializationTokenRole,
+        role: FragmentRole,
         slot: Option<NodeSlot>,
         boundary: BoundaryPolicy,
     ) {
@@ -2177,7 +2167,7 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             delimiter,
             EmissionModes::new(spacing_mode, semantic_mode),
             AtomKind::DelimiterToken,
-            SerializationTokenKind::Delimiter,
+            FragmentKind::Delimiter,
             role,
             slot,
             boundary,
@@ -2190,8 +2180,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         delimiter: &Delimiter,
         modes: EmissionModes,
         spacing_kind: AtomKind,
-        public_kind: SerializationTokenKind,
-        role: SerializationTokenRole,
+        public_kind: FragmentKind,
+        role: FragmentRole,
         slot: Option<NodeSlot>,
         boundary: BoundaryPolicy,
     ) {
@@ -2277,8 +2267,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit(
             mode,
             kind,
-            SerializationTokenKind::Character,
-            SerializationTokenRole::Leaf,
+            FragmentKind::Character,
+            FragmentRole::Leaf,
             None,
             text,
             self.options,
@@ -2291,8 +2281,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
             self.writer.emit_with_semantic_mode(
                 EmissionModes::new(mode, ContentMode::Math),
                 AtomKind::ControlSequence,
-                SerializationTokenKind::ControlSequence,
-                SerializationTokenRole::Leaf,
+                FragmentKind::ControlSequence,
+                FragmentRole::Leaf,
                 None,
                 r"\prime",
                 BoundaryPolicy::Auto,
@@ -2319,8 +2309,8 @@ impl<'a, R: Recorder> Serializer<'a, R> {
         self.writer.emit_attached(
             ContentMode::Math,
             AtomKind::Prime,
-            SerializationTokenKind::Character,
-            SerializationTokenRole::Leaf,
+            FragmentKind::Character,
+            FragmentRole::Leaf,
             None,
             marks,
         );
@@ -2429,8 +2419,8 @@ mod tests {
         writer.emit(
             ContentMode::Math,
             AtomKind::ControlSequence,
-            SerializationTokenKind::ControlSequence,
-            SerializationTokenRole::Head,
+            FragmentKind::ControlSequence,
+            FragmentRole::Head,
             None,
             r"\operatorname",
             &options,
@@ -2448,8 +2438,8 @@ mod tests {
         writer.emit(
             ContentMode::Math,
             AtomKind::ControlSequence,
-            SerializationTokenKind::ControlSequence,
-            SerializationTokenRole::Head,
+            FragmentKind::ControlSequence,
+            FragmentRole::Head,
             None,
             r"\alpha",
             &options,
@@ -2457,8 +2447,8 @@ mod tests {
         writer.emit_with_boundary(
             ContentMode::Math,
             AtomKind::MathChar,
-            SerializationTokenKind::Character,
-            SerializationTokenRole::Leaf,
+            FragmentKind::Character,
+            FragmentRole::Leaf,
             None,
             "x",
             BoundaryPolicy::SuppressOptionalSpace,
@@ -2476,8 +2466,8 @@ mod tests {
         writer.emit(
             ContentMode::Text,
             AtomKind::TextChunk,
-            SerializationTokenKind::Text,
-            SerializationTokenRole::Leaf,
+            FragmentKind::Text,
+            FragmentRole::Leaf,
             None,
             "abc",
             &options,
@@ -2485,8 +2475,8 @@ mod tests {
         writer.emit(
             ContentMode::Text,
             AtomKind::TextChunk,
-            SerializationTokenKind::Text,
-            SerializationTokenRole::Leaf,
+            FragmentKind::Text,
+            FragmentRole::Leaf,
             None,
             " def",
             &options,
@@ -2513,8 +2503,8 @@ mod tests {
     /// and text.
     fn write_atoms(atoms: &[(ContentMode, AtomKind, Option<BoundaryPolicy>, &str)]) -> String {
         let options = Style::Spaced.settings();
-        let public = SerializationTokenKind::Character;
-        let role = SerializationTokenRole::Leaf;
+        let public = FragmentKind::Character;
+        let role = FragmentRole::Leaf;
         let mut writer = AtomWriter::new(NoopRecorder);
         for (mode, kind, boundary, text) in atoms {
             match boundary {
@@ -2666,8 +2656,8 @@ mod tests {
         );
         let options = Style::Spaced.settings();
         let mut writer = AtomWriter::new(NoopRecorder);
-        let public = SerializationTokenKind::Character;
-        let role = SerializationTokenRole::Leaf;
+        let public = FragmentKind::Character;
+        let role = FragmentRole::Leaf;
         writer.emit(Math, ControlSequence, public, role, None, r"\\", &options);
         writer.emit_star_suffix(Math, Some(NodeSlot::Arg(0)));
         writer.emit_with_boundary(

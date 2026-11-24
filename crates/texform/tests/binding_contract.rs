@@ -106,60 +106,76 @@ fn transform_report_dto_serializes_as_snake_case() {
 }
 
 #[test]
-fn tokenized_latex_dto_uses_snake_case_byte_offsets_and_closed_values() {
+fn fragmented_latex_dto_uses_snake_case_byte_offsets_and_closed_values() {
     let parser = texform::Parser::builder().build();
     let document = parser.parse(r"\text{\%𝒜}").try_into_document().unwrap().0;
-    let result = document.to_tokenized_latex().unwrap();
-    let value = serde_json::to_value(texform::bindings::tokenized_latex_to_dto(result)).unwrap();
+    let result = document.to_latex_fragments().unwrap();
+    let value = serde_json::to_value(texform::bindings::fragmented_latex_to_dto(result)).unwrap();
 
     assert!(
-        value["tokens"]
+        value["fragments"]
             .as_array()
-            .is_some_and(|tokens| !tokens.is_empty())
+            .is_some_and(|fragments| !fragments.is_empty())
     );
-    assert!(value["tokens"][0].get("start_byte").is_some());
-    assert!(value["tokens"][0].get("startByte").is_none());
-    assert!(value["tokens"][0].get("node_path").is_some());
-    assert!(value["tokens"][0].get("nodePath").is_none());
-    assert!(value["tokens"][0].get("slot").is_some());
-    assert_eq!(value["tokens"][0]["slot"], serde_json::Value::Null);
+    assert!(value["fragments"][0].get("start_byte").is_some());
+    assert!(value["fragments"][0].get("startByte").is_none());
+    assert!(value["fragments"][0].get("node_path").is_some());
+    assert!(value["fragments"][0].get("nodePath").is_none());
+    assert!(value["fragments"][0].get("slot").is_some());
+    assert_eq!(value["fragments"][0]["slot"], serde_json::Value::Null);
     assert_eq!(
-        value["tokens"][1]["slot"],
+        value["fragments"][1]["slot"],
         serde_json::json!({ "kind": "arg", "index": 0 })
     );
-    assert!(value["tokens"].as_array().unwrap().iter().all(|token| {
-        let slot_valid = token["slot"].is_null()
-            || (matches!(
-                token["slot"]["kind"].as_str(),
-                Some(
-                    "child"
-                        | "arg"
-                        | "script_base"
-                        | "subscript"
-                        | "superscript"
-                        | "infix_left"
-                        | "infix_right"
-                        | "env_body"
-                )
-            ) && (token["slot"]["index"].is_null() || token["slot"]["index"].is_u64()));
-        matches!(
-            token["kind"].as_str(),
-            Some("control_sequence" | "character" | "delimiter" | "text" | "raw" | "error")
-        ) && matches!(
-            token["role"].as_str(),
-            Some("head" | "open" | "close" | "name" | "operator" | "delimiter" | "value" | "leaf")
-        ) && token["node_path"]
-            .as_str()
-            .is_some_and(|path| document.node_at(path).is_ok())
-            && slot_valid
-            && matches!(token["mode"].as_str(), Some("math" | "text"))
-    }));
-    let unicode = value["tokens"]
+    assert!(
+        value["fragments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|fragment| {
+                let slot_valid = fragment["slot"].is_null()
+                    || (matches!(
+                        fragment["slot"]["kind"].as_str(),
+                        Some(
+                            "child"
+                                | "arg"
+                                | "script_base"
+                                | "subscript"
+                                | "superscript"
+                                | "infix_left"
+                                | "infix_right"
+                                | "env_body"
+                        )
+                    ) && (fragment["slot"]["index"].is_null()
+                        || fragment["slot"]["index"].is_u64()));
+                matches!(
+                    fragment["kind"].as_str(),
+                    Some("control_sequence" | "character" | "delimiter" | "text" | "raw" | "error")
+                ) && matches!(
+                    fragment["role"].as_str(),
+                    Some(
+                        "head"
+                            | "open"
+                            | "close"
+                            | "name"
+                            | "operator"
+                            | "delimiter"
+                            | "value"
+                            | "leaf"
+                    )
+                ) && fragment["node_path"]
+                    .as_str()
+                    .is_some_and(|path| document.node_at(path).is_ok())
+                    && slot_valid
+                    && matches!(fragment["mode"].as_str(), Some("math" | "text"))
+            })
+    );
+    let unicode = value["fragments"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|token| token["text"] == "𝒜")
-        .expect("unicode token should be present");
+        .find(|fragment| fragment["text"] == "𝒜")
+        .expect("unicode fragment should be present");
     assert_eq!(
         unicode["end_byte"].as_u64().unwrap() - unicode["start_byte"].as_u64().unwrap(),
         4

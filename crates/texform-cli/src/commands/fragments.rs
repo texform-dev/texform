@@ -1,7 +1,7 @@
-//! `texform tokenize`: split the serialization into typed tokens.
+//! `texform fragments`: split the serialization into typed fragments.
 
 use texform::bindings::{
-    NormalizeConfigInput, ParseConfigInput, SerializationTokenDto, tokenized_latex_to_dto,
+    NormalizeConfigInput, ParseConfigInput, SerializationFragmentDto, fragmented_latex_to_dto,
 };
 use texform::{Document, ParseConfig, Parser};
 
@@ -16,7 +16,7 @@ pub struct Args {
     #[command(flatten)]
     input: FormulaInput,
 
-    /// Normalize with this profile before tokenizing
+    /// Normalize with this profile before splitting into fragments
     #[arg(long, value_enum)]
     profile: Option<ProfileName>,
 
@@ -24,12 +24,12 @@ pub struct Args {
     #[arg(long, value_name = "JSON|@FILE")]
     config: Option<String>,
 
-    /// Print a JSON array of tokens, with text, kind, role, node path, slot, mode, and byte offsets
+    /// Print a JSON array of fragments, with text, kind, role, node path, slot, mode, and byte offsets
     #[arg(long)]
     json: bool,
 }
 
-/// How a formula becomes the document that is tokenized.
+/// How a formula becomes the document whose serialization is split into fragments.
 enum Pipeline {
     Parse { parser: Parser, config: ParseConfig },
     Normalize(Normalizer),
@@ -55,7 +55,7 @@ impl Pipeline {
 
     /// A complete document, normalized when a profile was given. The
     /// normalize path is `TransformEngine::normalize_with` stopped before
-    /// serialization. Token offsets refer to that serialization.
+    /// serialization. Fragment offsets refer to that serialization.
     fn document(&self, latex: &str) -> Result<Document, texform::Error> {
         match self {
             Self::Parse { parser, config } => {
@@ -84,37 +84,37 @@ pub fn run(args: Args, packages: &[String]) -> u8 {
         Format::Text
     };
     run_formulas(&args.input, format, |latex| {
-        let tokenized = pipeline
+        let fragmented = pipeline
             .document(latex)?
-            .to_tokenized_latex()
+            .to_latex_fragments()
             .map_err(texform::Error::from)?;
-        let tokens = tokenized_latex_to_dto(tokenized).tokens;
+        let fragments = fragmented_latex_to_dto(fragmented).fragments;
         if args.json {
-            return Ok(Success::Json(json_line(&tokens)));
+            return Ok(Success::Json(json_line(&fragments)));
         }
         Ok(Success::Text {
-            line: describe_tokens(&tokens),
+            line: describe_fragments(&fragments),
             warnings: Vec::new(),
         })
     })
 }
 
-fn describe_tokens(tokens: &[SerializationTokenDto]) -> String {
-    let items: Vec<String> = tokens
+fn describe_fragments(fragments: &[SerializationFragmentDto]) -> String {
+    let items: Vec<String> = fragments
         .iter()
-        .map(|token| {
-            let kind = match token.kind {
+        .map(|fragment| {
+            let kind = match fragment.kind {
                 "character" => "char",
                 "control_sequence" => "control_seq",
                 "delimiter" => "delim",
                 kind => kind,
             };
-            let mode = if token.mode == "math" {
+            let mode = if fragment.mode == "math" {
                 String::new()
             } else {
-                format!(", mode={}", token.mode)
+                format!(", mode={}", fragment.mode)
             };
-            format!("{kind}({}{mode})", json_line(&token.text))
+            format!("{kind}({}{mode})", json_line(&fragment.text))
         })
         .collect();
     format!("[{}]", items.join(", "))

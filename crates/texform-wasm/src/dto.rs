@@ -303,14 +303,14 @@ mod tests {
     }
 
     #[test]
-    fn binding_dto_to_json_camelizes_tokenized_latex_token_fields() {
+    fn binding_dto_to_json_camelizes_fragmented_latex_fragment_fields() {
         let parser = texform::Parser::builder().build();
         let document = parser.parse(r"\sqrt{x}").try_into_document().unwrap().0;
-        let tokenized = document.to_tokenized_latex().unwrap();
-        let value = binding_dto_to_json(&texform::bindings::tokenized_latex_to_dto(tokenized))
-            .expect("tokenized latex should serialize");
+        let fragmented = document.to_latex_fragments().unwrap();
+        let value = binding_dto_to_json(&texform::bindings::fragmented_latex_to_dto(fragmented))
+            .expect("fragmented latex should serialize");
 
-        let first = &value["tokens"][0];
+        let first = &value["fragments"][0];
         assert_eq!(first["text"], r"\sqrt");
         assert_eq!(first["kind"], "control_sequence");
         assert_eq!(first["role"], "head");
@@ -320,13 +320,13 @@ mod tests {
         assert!(first.get("startByte").is_some());
         assert!(first.get("start_byte").is_none());
 
-        let open = &value["tokens"][1];
+        let open = &value["fragments"][1];
         assert_eq!(open["text"], "{");
         assert_eq!(open["role"], "open");
         assert_eq!(open["nodePath"], "root.child.0");
         assert_eq!(open["slot"], json!({ "kind": "arg", "index": 1 }));
 
-        // Confirm token.slot matches Node::slot() DTO schema identically.
+        // Confirm fragment.slot matches Node::slot() DTO schema identically.
         let arg_node = document.node_at("root.child.0.arg.1.content").unwrap();
         let node_slot_json =
             binding_dto_to_json(&arg_node.slot().map(texform::bindings::NodeSlotDto::from))

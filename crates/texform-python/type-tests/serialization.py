@@ -4,11 +4,12 @@ import texform
 doc = texform.Document()
 options: texform.SerializeOptions = {"style": "compact"}
 assert_type(doc.to_latex(**options), str)
-tokenized = doc.to_tokenized_latex(style="spaced")
-assert_type(tokenized["latex"], str)
-if tokenized["tokens"]:
-    first = tokenized["tokens"][0]
-    assert_type(first["role"], texform.SerializationTokenRole)
+fragmented = doc.to_latex_fragments(style="spaced")
+assert_type(fragmented["latex"], str)
+if fragmented["fragments"]:
+    first = fragmented["fragments"][0]
+    assert_type(first["kind"], texform.FragmentKind)
+    assert_type(first["role"], texform.FragmentRole)
     assert_type(first["node_path"], str)
     assert_type(first["slot"], texform.NodeSlot | None)
 assert_type(texform.serialize(doc.to_syntax(), style="compact"), str)

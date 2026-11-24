@@ -9,7 +9,7 @@ use std::ops::ControlFlow;
 use serde::de::DeserializeOwned;
 use texform::bindings::{format_read_error, read};
 
-/// Where the formulas of `normalize`, `parse`, and `tokenize` come from.
+/// Where the formulas of `normalize`, `parse`, and `fragments` come from.
 #[derive(clap::Args)]
 pub struct FormulaInput {
     /// Formula to process [default: all of stdin, minus one trailing newline]

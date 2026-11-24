@@ -398,8 +398,8 @@ export interface ParseResult {
   diagnostics: ParseDiagnostic[];
 }
 
-/** Closed semantic categories emitted by tokenized serialization. */
-export type SerializationTokenKind =
+/** Closed semantic categories emitted by fragmented serialization. */
+export type FragmentKind =
   | "control_sequence"
   | "character"
   | "delimiter"
@@ -407,8 +407,8 @@ export type SerializationTokenKind =
   | "raw"
   | "error";
 
-/** Syntactic roles emitted by tokenized serialization. */
-export type SerializationTokenRole =
+/** Syntactic roles emitted by fragmented serialization. */
+export type FragmentRole =
   | "head"
   | "open"
   | "close"
@@ -419,31 +419,31 @@ export type SerializationTokenRole =
   | "leaf";
 
 /** One non-empty serialization fragment with UTF-8 byte offsets and syntactic provenance. */
-export interface SerializationToken {
+export interface SerializationFragment {
   /** Fragment text, decoded from bytes `[startByte, endByte)` of the UTF-8 encoding of `latex`. */
   text: string;
-  /** Inclusive UTF-8 byte offset into {@link TokenizedLatex.latex}, not a JavaScript UTF-16 index. */
+  /** Inclusive UTF-8 byte offset into {@link FragmentedLatex.latex}, not a JavaScript UTF-16 index. */
   startByte: number;
-  /** Exclusive UTF-8 byte offset into {@link TokenizedLatex.latex}, not a JavaScript UTF-16 index. */
+  /** Exclusive UTF-8 byte offset into {@link FragmentedLatex.latex}, not a JavaScript UTF-16 index. */
   endByte: number;
   /** Semantic category of the fragment. */
-  kind: SerializationTokenKind;
+  kind: FragmentKind;
   /** Syntactic role of the fragment within its emitting AST construct. */
-  role: SerializationTokenRole;
+  role: FragmentRole;
   /** Root-relative path of the emitting AST node, always accepted by {@link Document.nodeAt}. */
   nodePath: string;
-  /** Immediate slot on `nodePath` that this token belongs to, or `null` for node-owned tokens. Protective braces share the same `(nodePath, slot)` as the slot's outer delimiters, so consumers pairing delimiters should use a stack. */
+  /** Immediate slot on `nodePath` that this fragment belongs to, or `null` for node-owned fragments. Protective braces share the same `(nodePath, slot)` as the slot's outer delimiters, so consumers pairing delimiters should use a stack. */
   slot: NodeSlot | null;
   /** Semantic math/text mode of the fragment, independent of spacing policy. */
   mode: "math" | "text";
 }
 
-/** Serialized LaTeX and tokens produced by the same serializer traversal. */
-export interface TokenizedLatex {
+/** Serialized LaTeX and fragments produced by the same serializer traversal. */
+export interface FragmentedLatex {
   /** Serialized LaTeX string, identical to {@link Document.toLatex}. */
   latex: string;
-  /** Ordered, non-overlapping, non-empty fragments. Gaps contain serializer-inserted spacing. Empty error snippets emit no token. */
-  tokens: SerializationToken[];
+  /** Ordered, non-overlapping, non-empty fragments. Gaps contain serializer-inserted spacing. Empty error snippets emit no fragment. */
+  fragments: SerializationFragment[];
 }
 
 /** Preorder node columns; field names stay snake_case in both bindings. */
@@ -965,10 +965,10 @@ export class Document {
    */
   toLatex(options?: SerializeOptions | null): string;
   /**
-   * Serialize the tree to LaTeX together with typed output tokens.
+   * Serialize the tree to LaTeX together with typed output fragments.
    *
-   * Token spans use UTF-8 byte offsets, not JavaScript UTF-16 indices. Empty
-   * error snippets produce no zero-width token; use {@link Document.hasErrors}
+   * Fragment spans use UTF-8 byte offsets, not JavaScript UTF-16 indices. Empty
+   * error snippets produce no zero-width fragment; use {@link Document.hasErrors}
    * to detect whether the document contains error nodes.
    *
    * @param options - A {@link SerializeOptions} object, as for {@link Document.toLatex}.
@@ -976,12 +976,12 @@ export class Document {
    * @returns Serialized LaTeX plus typed fragments from the same traversal.
    * @example
    * ```ts
-   * const tok = new Parser().parse('x^2').document!.toTokenizedLatex();
-   * tok.latex; // 'x ^ { 2 }'
-   * tok.tokens[0].kind; // 'character'
+   * const res = new Parser().parse('x^2').document!.toLatexFragments();
+   * res.latex; // 'x ^ { 2 }'
+   * res.fragments[0].kind; // 'character'
    * ```
    */
-  toTokenizedLatex(options?: SerializeOptions | null): TokenizedLatex;
+  toLatexFragments(options?: SerializeOptions | null): FragmentedLatex;
 }
 
 /**
@@ -1503,7 +1503,7 @@ export type ContextItem =
 export type Style = "spaced" | "compact";
 
 /**
- * Options for {@link Document.toLatex}, {@link Document.toTokenizedLatex},
+ * Options for {@link Document.toLatex}, {@link Document.toLatexFragments},
  * and {@link serialize}. Unknown keys and invalid values throw
  * `TexformConfigError`. For a task-oriented walkthrough, see the
  * Serialization guide.

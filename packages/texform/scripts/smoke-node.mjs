@@ -139,14 +139,14 @@ if (defaultLatex === compactLatex) {
   );
 }
 const unicodeDoc = parser.parse(String.raw`\text{\%𝒜}`).document;
-const unicodeTokenized = unicodeDoc.toTokenizedLatex();
-const textOpen = unicodeTokenized.tokens.find((token) => token.text === "{");
-const escaped = unicodeTokenized.tokens.find(
-  (token) => token.text === String.raw`\%`,
+const unicodeFragmented = unicodeDoc.toLatexFragments();
+const textOpen = unicodeFragmented.fragments.find((fragment) => fragment.text === "{");
+const escaped = unicodeFragmented.fragments.find(
+  (fragment) => fragment.text === String.raw`\%`,
 );
-const unicode = unicodeTokenized.tokens.find((token) => token.text === "𝒜");
+const unicode = unicodeFragmented.fragments.find((fragment) => fragment.text === "𝒜");
 if (
-  unicodeTokenized.latex !== unicodeDoc.toLatex() ||
+  unicodeFragmented.latex !== unicodeDoc.toLatex() ||
   textOpen?.role !== "open" ||
   textOpen?.slot?.kind !== "arg" ||
   textOpen?.slot?.index !== 0 ||
@@ -157,7 +157,7 @@ if (
   !unicodeDoc.nodeAt(escaped.nodePath)
 ) {
   throw new Error(
-    "tokenized serialization should preserve LaTeX, escaped characters, roles, slots, and node paths",
+    "fragmented serialization should preserve LaTeX, escaped characters, roles, slots, and node paths",
   );
 }
 if (
@@ -169,11 +169,11 @@ if (
   unicode.endByte - unicode.startByte !== 4 ||
   !unicodeDoc.nodeAt(unicode.nodePath)
 ) {
-  throw new Error("token spans and paths should use camelCase UTF-8 byte offsets");
+  throw new Error("fragment spans and paths should use camelCase UTF-8 byte offsets");
 }
 const sqrtDoc = parser.parse(String.raw`\sqrt{x}`).document;
-const sqrtTokenized = sqrtDoc.toTokenizedLatex();
-const sqrtOpen = sqrtTokenized.tokens.find((token) => token.text === "{");
+const sqrtFragmented = sqrtDoc.toLatexFragments();
+const sqrtOpen = sqrtFragmented.fragments.find((fragment) => fragment.text === "{");
 assert.deepEqual(sqrtOpen?.slot, { kind: "arg", index: 1 });
 const sqrtArgNode = sqrtDoc.nodeAt("root.child.0.arg.1.content");
 assert.deepEqual(sqrtOpen?.slot, sqrtArgNode.slot());
@@ -972,7 +972,7 @@ assert.deepEqual(pairedBuild.argKind(pairedIndex), { kind: "paired", open: "[", 
 assert.equal(pairedBuild.arg(pairedIndex).node.children[0].char, "y");
 
 assert.equal(doc.toLatex({style: "compact"}), "x^y");
-assert.equal(doc.toTokenizedLatex({style: "compact"}).latex, "x^y");
+assert.equal(doc.toLatexFragments({style: "compact"}).latex, "x^y");
 assert.equal(serialize(doc.toSyntax(), {style: "compact"}), "x^y");
 for (const key of ["commandSpacing", "groupInnerSpacing", "adjacentCharSpacing", "scriptSpacing", "scriptOrder", "infixOperandGrouping", "environmentNameSpacing"]) {
   expectError(() => doc.toLatex({[key]: "compact"}), TexformConfigError);

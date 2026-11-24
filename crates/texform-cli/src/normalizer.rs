@@ -1,5 +1,5 @@
 //! Engine construction and the normalize pipeline shared by `normalize`,
-//! `tokenize --profile`, and the serve protocol.
+//! `fragments --profile`, and the serve protocol.
 //!
 //! All three resolve a profile, a package selection, and a
 //! `NormalizeConfigInput` overlay the same way, so a given configuration means

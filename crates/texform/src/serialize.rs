@@ -2,9 +2,9 @@
 //!
 //! The serializer is reached through [`Document::to_latex`](crate::Document::to_latex),
 //! [`Document::to_latex_with`](crate::Document::to_latex_with), and the opt-in
-//! token sidecar methods [`Document::to_tokenized_latex`](crate::Document::to_tokenized_latex)
-//! and [`Document::to_tokenized_latex_with`](crate::Document::to_tokenized_latex_with).
-//! Tokenized serialization records the serializer's own output boundaries;
+//! fragment sidecar methods [`Document::to_latex_fragments`](crate::Document::to_latex_fragments)
+//! and [`Document::to_latex_fragments_with`](crate::Document::to_latex_fragments_with).
+//! Fragmented serialization records the serializer's own output boundaries;
 //! it is not a raw-string lexer, AST dump, or rendered glyph stream.
 //! A required control-word separator is the gap before an ASCII letter that would
 //! extend an unterminated control word. Control symbols do not get that separator,
@@ -29,6 +29,6 @@
 //! ```
 
 pub use texform_core::serialize::{
-    SerializationToken, SerializationTokenKind, SerializationTokenRole, SerializeError,
-    SerializeOptions, Style, TokenizedLatex,
+    FragmentKind, FragmentRole, FragmentedLatex, SerializationFragment, SerializeError,
+    SerializeOptions, Style,
 };

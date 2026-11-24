@@ -39,7 +39,7 @@ texform [--packages <a,b,...>] <COMMAND> [OPTIONS]
 | --- | --- |
 | [`normalize`](#texform-normalize) | Normalize formulas with a transform profile |
 | [`parse`](#texform-parse) | Parse formulas and inspect their syntax trees |
-| [`tokenize`](#texform-tokenize) | Split the spaced serialization of formulas into typed tokens |
+| [`fragments`](#texform-fragments) | Split the spaced serialization of formulas into typed fragments |
 | [`info`](#texform-info) | Show knowledge-base records for a control sequence or an environment |
 | [`packages`](#texform-packages) | List the built-in knowledge packages |
 | [`argspec validate`](#texform-argspec-validate) | Check an xparse-style argument specification |
@@ -55,7 +55,7 @@ texform [--packages <a,b,...>] <COMMAND> [OPTIONS]
 
 ### Formula input
 
-`normalize`, `parse`, and `tokenize` read formulas from one of three sources:
+`normalize`, `parse`, and `fragments` read formulas from one of three sources:
 
 - The `LATEX` argument is one formula. Put `--` before a formula starting with `-`, for example `texform parse -- '-x^2'`. Unknown options are rejected rather than interpreted as formulas. Quote LaTeX with single quotes, such as `'\sqrt{a+b}'`, so the shell preserves backslashes.
 - Without `LATEX`, all of stdin is one formula, minus one trailing newline (`\n` or `\r\n`). A formula with line breaks, such as an environment, stays whole.
@@ -65,12 +65,12 @@ Input must be UTF-8.
 
 ### Output
 
-`normalize` prints one line of LaTeX per formula, and `tokenize` prints one line containing a token list. `parse` prints a syntax tree; with `--lines`, trees are separated into blocks headed by `<line N>`. Use `--json --lines` for one JSON value per input line.
+`normalize` prints one line of LaTeX per formula, and `fragments` prints one line containing a fragment list. `parse` prints a syntax tree; with `--lines`, trees are separated into blocks headed by `<line N>`. Use `--json --lines` for one JSON value per input line.
 
 A failing formula does not stop the run:
 
-- In text mode the error and diagnostics go to stderr. `parse` also shows any partial tree on stdout. Under `--lines`, failed normalization or tokenization writes an empty placeholder line, while tree blocks show `(failed)` when there is no tree to display.
-- In JSON mode each formula produces one JSON value: successful normalization and parsing produce objects, successful tokenization produces an array, and any failure produces `{"ok":false,"error":{...}}`. A parse failure can also include a partial `syntax`. Processing errors, including recovered panics, do not write to stderr; usage and configuration errors still do.
+- In text mode the error and diagnostics go to stderr. `parse` also shows any partial tree on stdout. Under `--lines`, failed normalization or fragment emission writes an empty placeholder line, while tree blocks show `(failed)` when there is no tree to display.
+- In JSON mode each formula produces one JSON value: successful normalization and parsing produce objects, successful `fragments` calls produce an array, and any failure produces `{"ok":false,"error":{...}}`. A parse failure can also include a partial `syntax`. Processing errors, including recovered panics, do not write to stderr; usage and configuration errors still do.
 - When the downstream reader closes stdout, formula processing stops immediately and exits successfully, without consuming the remaining stdin.
 
 Diagnostics are colored only when stderr is a terminal and `NO_COLOR` is unset or empty.
@@ -89,8 +89,8 @@ Diagnostics are colored only when stderr is a terminal and `NO_COLOR` is unset o
 
 | Command | Config shape | Keys |
 | --- | --- | --- |
-| `normalize`, `tokenize --profile` | Normalize config over the profile defaults | `reject_unknown`, `abort_on_error`, `max_group_depth`, `lower_attributes`, `rewrite`, `finalize_ast`, `flatten_groups` |
-| `parse`, `tokenize` | Parse config over the parser defaults | `reject_unknown`, `abort_on_error`, `max_group_depth` |
+| `normalize`, `fragments --profile` | Normalize config over the profile defaults | `reject_unknown`, `abort_on_error`, `max_group_depth`, `lower_attributes`, `rewrite`, `finalize_ast`, `flatten_groups` |
+| `parse`, `fragments` | Parse config over the parser defaults | `reject_unknown`, `abort_on_error`, `max_group_depth` |
 
 The normalize config has the same keys and resolves the same way as the `normalize` overlays of the Python binding (keyword arguments) and the JavaScript binding (camelCase keys), and as the `overrides` object of the serve protocol's `configure`. [`configure`](#configure) shows every key with its default value.
 
@@ -104,7 +104,7 @@ texform normalize --profile authoring --config '{"rewrite":{"enabled":false}}' -
 texform normalize --profile corpus --report --json 'a \over b'
 ```
 
-`--profile` is required: one of `authoring`, `faithful`, `corpus`, or `equiv`. The default `--style spaced` output is identical to `TransformEngine::normalize_with` in the Rust facade for the same packages, profile, and config. The command runs the same pipeline as the serve protocol's [`normalize`](#normalize), so output, errors, and reports agree for the same configuration. Choose `--style compact` for concise output such as `x_i^2`. Style also applies to `--json` and `--report`, and is separate from `--config`; `tokenize` always uses spaced output. `--report` adds the transform report to each result and requires `--json`.
+`--profile` is required: one of `authoring`, `faithful`, `corpus`, or `equiv`. The default `--style spaced` output is identical to `TransformEngine::normalize_with` in the Rust facade for the same packages, profile, and config. The command runs the same pipeline as the serve protocol's [`normalize`](#normalize), so output, errors, and reports agree for the same configuration. Choose `--style compact` for concise output such as `x_i^2`. Style also applies to `--json` and `--report`, and is separate from `--config`; `fragments` always uses spaced output. `--report` adds the transform report to each result and requires `--json`.
 
 ```console
 $ printf '%s\n' 'a \over b' '\frac{a' '\dv{f}{x}' | texform normalize --profile corpus --lines 2>/dev/null
@@ -147,20 +147,20 @@ Root(Math) [
 
 The diagnostic source is named `<argument>`, `<stdin>`, or `<line N>` after where the formula came from. Under `--lines`, each tree is headed by `<line N>` and followed by a blank line, including empty formulas and failures.
 
-### `texform tokenize`
+### `texform fragments`
 
-Lists tokens from the spaced serialization of each formula (`Document::to_tokenized_latex`), rather than lexing the original input. With `--profile`, the formula is normalized before tokenization. Partial documents fail as in `parse`.
+Lists fragments from the spaced serialization of each formula (`Document::to_latex_fragments`), rather than lexing the original input. With `--profile`, the formula is normalized before serialization. Partial documents fail as in `parse`.
 
-The default output is a compact list: `[kind("text"), kind("text", mode=text), ...]`. Human-readable kinds abbreviate `character` to `char`, `control_sequence` to `control_seq`, and `delimiter` to `delim`; `text`, `raw`, and `error` retain their names. JSON keeps the full kind names. Math mode is implicit; only non-math tokens show their mode. Text uses JSON string quoting to preserve spaces and escape newlines, quotes, and backslashes. Empty formulas print `[]`. Each formula occupies one output line, without colors, column alignment, or manual line wrapping. Under `--lines`, failures write an empty placeholder line and diagnostics go to stderr.
+The default output is a compact list: `[kind("text"), kind("text", mode=text), ...]`. Human-readable kinds abbreviate `character` to `char`, `control_sequence` to `control_seq`, and `delimiter` to `delim`; `text`, `raw`, and `error` retain their names. JSON keeps the full kind names. Math mode is implicit; only non-math fragments show their mode. Text uses JSON string quoting to preserve spaces and escape newlines, quotes, and backslashes. Empty formulas print `[]`. Each formula occupies one output line, without colors, column alignment, or manual line wrapping. Under `--lines`, failures write an empty placeholder line and diagnostics go to stderr.
 
 ```console
-$ texform tokenize '\text{a b}'
+$ texform fragments '\text{a b}'
 [control_seq("\\text"), delim("{"), text("a b", mode=text), delim("}")]
 ```
 
-`--json` directly emits an array of token objects, without an `ok` or `latex` wrapper. Each object preserves the bindings' `text`, `start_byte`, `end_byte`, `kind`, `role`, `node_path`, `slot`, and `mode` fields. An empty formula produces `[]`. Under `--lines`, each successful input line produces one array on one output line; a failure produces the standard error object, keeping the correspondence with input lines.
+`--json` directly emits an array of fragment objects, without an `ok` or `latex` wrapper. Each object preserves the bindings' `text`, `start_byte`, `end_byte`, `kind`, `role`, `node_path`, `slot`, and `mode` fields. An empty formula produces `[]`. Under `--lines`, each successful input line produces one array on one output line; a failure produces the standard error object, keeping the correspondence with input lines.
 
-Offsets refer to the spaced serialization, or the normalized serialization when `--profile` is supplied, not to the input string. Spaces between tokens belong to that serialization; joining token texts with spaces is not a way to reconstruct it, particularly in text mode.
+Offsets refer to the spaced serialization, or the normalized serialization when `--profile` is supplied, not to the input string. Spaces between fragments belong to that serialization; joining fragment texts with spaces is not a way to reconstruct it, particularly in text mode.
 
 ### `texform info`
 
@@ -229,7 +229,7 @@ valid: 3 arguments
 | --- | --- |
 | `normalize` | `{"ok":true,"output":string,"report"?:object}` |
 | `parse` | `{"ok":true,"syntax":object,"diagnostics":[object]}` |
-| `tokenize` | `[{"text","start_byte","end_byte","kind","role","node_path","slot","mode"}]` |
+| `fragments` | `[{"text","start_byte","end_byte","kind","role","node_path","slot","mode"}]` |
 | Any formula command, on failure | `{"ok":false,"error":{"kind","message","diagnostics"},"syntax"?:object}` |
 | `info` | `{"command"?:object,"character"?:object,"environment"?:object}`, or `null` when nothing is found |
 | `packages` | `[{"name","commands","environments"}]` on one line |
@@ -238,13 +238,13 @@ valid: 3 arguments
 - `error.kind` is `parse` (the formula did not parse into a complete tree), `transform` (a normalization step failed), or `internal` (an internal error, including a panic inside TeXForm, which fails only that formula). `error.diagnostics` lists parse diagnostics for `parse` failures and is empty otherwise; each diagnostic has `kind`, `message`, `span` (`start` and `end` byte offsets into the formula), `expected`, `found`, and `contexts`. Failures carry `syntax` only from `parse`, and only when a partial document exists.
 - `syntax` is the serialized `SyntaxNode`, the tree format of `Document::to_syntax` in Rust, of `to_syntax()` in Python, and of `toSyntax()` in JavaScript.
 - `report` is the transform report of `normalize_with_report`. Its fields are diagnostic and carry no compatibility promise.
-- Each token is `{"text","start_byte","end_byte","kind","role","node_path","slot","mode"}`. The offsets are UTF-8 byte offsets into the spaced serialization (after normalization when `--profile` is supplied); `kind` is `control_sequence`, `character`, `delimiter`, `text`, `raw`, or `error`, `role` is one of `head`, `open`, `close`, `name`, `operator`, `delimiter`, `value`, or `leaf`, `node_path` addresses the emitting AST node in `Document::node_at` format, `slot` is `null` or `{"kind","index"}` matching `Node.slot()` when the token belongs to a specific slot on `node_path`, and `mode` is `math` or `text`.
+- Each fragment is `{"text","start_byte","end_byte","kind","role","node_path","slot","mode"}`. The offsets are UTF-8 byte offsets into the spaced serialization (after normalization when `--profile` is supplied); `kind` is `control_sequence`, `character`, `delimiter`, `text`, `raw`, or `error`, `role` is one of `head`, `open`, `close`, `name`, `operator`, `delimiter`, `value`, or `leaf`, `node_path` addresses the emitting AST node in `Document::node_at` format, `slot` is `null` or `{"kind","index"}` matching `Node.slot()` when the fragment belongs to a specific slot on `node_path`, and `mode` is `math` or `text`.
 - The `info` records are the results of `lookup_command`, `lookup_character`, and `lookup_env` in the bindings.
 
 ```console
 $ texform normalize --profile corpus --json '\frac{a'
 {"ok":false,"error":{"kind":"parse","message":"parse produced an incomplete document","diagnostics":[{"kind":"argument-validation","message":"unclosed brace argument","span":{"start":5,"end":7},"expected":[],"found":null,"contexts":[{"label":"command argument","span":{"start":5,"end":7}}]}]}}
-$ texform tokenize --json 'x^2'
+$ texform fragments --json 'x^2'
 [{"text":"x","start_byte":0,"end_byte":1,"kind":"character","role":"leaf","node_path":"root.child.0.base","slot":null,"mode":"math"},{"text":"^","start_byte":2,"end_byte":3,"kind":"character","role":"operator","node_path":"root.child.0","slot":{"kind":"superscript","index":null},"mode":"math"},{"text":"{","start_byte":4,"end_byte":5,"kind":"delimiter","role":"open","node_path":"root.child.0","slot":{"kind":"superscript","index":null},"mode":"math"},{"text":"2","start_byte":6,"end_byte":7,"kind":"character","role":"leaf","node_path":"root.child.0.sup","slot":null,"mode":"math"},{"text":"}","start_byte":8,"end_byte":9,"kind":"delimiter","role":"close","node_path":"root.child.0","slot":{"kind":"superscript","index":null},"mode":"math"}]
 ```
 

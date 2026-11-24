@@ -1,11 +1,11 @@
 //! One module per subcommand, except `serve`.
 
 pub mod argspec;
+pub mod fragments;
 pub mod info;
 pub mod normalize;
 pub mod packages;
 pub mod parse;
-pub mod tokenize;
 
 use std::ops::ControlFlow;
 

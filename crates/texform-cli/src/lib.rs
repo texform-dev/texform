@@ -17,7 +17,7 @@ use std::io::{self, Write};
 
 use clap::{Parser, Subcommand};
 
-use crate::commands::{argspec, info, normalize, parse, tokenize};
+use crate::commands::{argspec, fragments, info, normalize, parse};
 use crate::output::USAGE;
 
 /// Parse and normalize LaTeX formulas with TeXForm.
@@ -49,8 +49,8 @@ enum Command {
     Normalize(normalize::Args),
     /// Parse formulas and print their syntax trees
     Parse(parse::Args),
-    /// Split the serialization of formulas into tokens
-    Tokenize(tokenize::Args),
+    /// Split the serialization of formulas into typed fragments
+    Fragments(fragments::Args),
     /// Show knowledge-base records for a control sequence or an environment
     Info(info::Args),
     /// List the built-in knowledge packages
@@ -85,7 +85,7 @@ where
     let status = match cli.command {
         Command::Normalize(args) => normalize::run(args, &packages),
         Command::Parse(args) => parse::run(args, &packages),
-        Command::Tokenize(args) => tokenize::run(args, &packages),
+        Command::Fragments(args) => fragments::run(args, &packages),
         Command::Info(args) => info::run(args, &packages),
         Command::Packages(args) => commands::packages::run(args),
         Command::Argspec(command) => argspec::run(command),

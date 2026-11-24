@@ -523,7 +523,7 @@ impl PyDocument {
     }
 
     #[pyo3(signature = (**options))]
-    fn to_tokenized_latex(
+    fn to_latex_fragments(
         slf: &Bound<'_, Self>,
         py: Python<'_>,
         options: Option<&Bound<'_, PyDict>>,
@@ -533,10 +533,10 @@ impl PyDocument {
             let document = slf.try_borrow().map_err(borrow_error)?;
             document
                 .inner
-                .to_tokenized_latex_with(&options)
+                .to_latex_fragments_with(&options)
                 .map_err(|error| TexformError::new_err(error.to_string()))?
         };
-        let dto = texform::bindings::tokenized_latex_to_dto(result);
+        let dto = texform::bindings::fragmented_latex_to_dto(result);
         Ok(pythonize(py, &dto)?.unbind())
     }
 
@@ -1531,10 +1531,10 @@ mod tests {
                     .unwrap(),
                 r"\frac { a } { b }"
             );
-            let tokenized = document.call_method0("to_tokenized_latex").unwrap();
-            let tokenized = tokenized.cast::<pyo3::types::PyDict>().unwrap();
+            let fragmented = document.call_method0("to_latex_fragments").unwrap();
+            let fragmented = fragmented.cast::<pyo3::types::PyDict>().unwrap();
             assert_eq!(
-                tokenized
+                fragmented
                     .get_item("latex")
                     .unwrap()
                     .unwrap()
@@ -1542,13 +1542,13 @@ mod tests {
                     .unwrap(),
                 r"\frac { a } { b }"
             );
-            let tokens = tokenized
-                .get_item("tokens")
+            let fragments = fragmented
+                .get_item("fragments")
                 .unwrap()
                 .unwrap()
                 .cast_into::<pyo3::types::PyList>()
                 .unwrap();
-            let first = tokens
+            let first = fragments
                 .get_item(0)
                 .unwrap()
                 .cast_into::<pyo3::types::PyDict>()
@@ -1581,7 +1581,7 @@ mod tests {
                     .unwrap(),
                 "Command"
             );
-            let open_brace = tokens
+            let open_brace = fragments
                 .get_item(1)
                 .unwrap()
                 .cast_into::<pyo3::types::PyDict>()
@@ -1616,9 +1616,9 @@ mod tests {
             let arg0_slot = arg0_node.call_method0("slot").unwrap();
             assert!(open_slot.as_any().eq(&arg0_slot).unwrap());
 
-            for item in tokens.iter() {
-                let token = item.cast_into::<pyo3::types::PyDict>().unwrap();
-                let path = token
+            for item in fragments.iter() {
+                let fragment = item.cast_into::<pyo3::types::PyDict>().unwrap();
+                let path = fragment
                     .get_item("node_path")
                     .unwrap()
                     .unwrap()
@@ -1628,64 +1628,66 @@ mod tests {
             }
 
             // Verify real argspec slot attribution across sqrt, genfrac, and scripts.
-            let check_slot =
-                |src: &str, token_text: &str, expected_kind: &str, expected_idx: Option<usize>| {
-                    let res = parser.call_method1("parse", (src,)).unwrap();
-                    let doc = res
-                        .cast::<pyo3::types::PyDict>()
-                        .unwrap()
-                        .get_item("document")
-                        .unwrap()
-                        .unwrap();
-                    let tok_dict = doc
-                        .call_method0("to_tokenized_latex")
-                        .unwrap()
-                        .cast_into::<pyo3::types::PyDict>()
-                        .unwrap();
-                    let tok_list = tok_dict
-                        .get_item("tokens")
-                        .unwrap()
-                        .unwrap()
-                        .cast_into::<pyo3::types::PyList>()
-                        .unwrap();
-                    let found = tok_list
-                        .iter()
-                        .find_map(|item| {
-                            let d = item.cast_into::<pyo3::types::PyDict>().unwrap();
-                            let text = d
-                                .get_item("text")
-                                .unwrap()
-                                .unwrap()
-                                .extract::<String>()
-                                .unwrap();
-                            (text == token_text).then_some(d)
-                        })
-                        .unwrap_or_else(|| panic!("token `{token_text}` not found in `{src}`"));
-                    let slot = found
-                        .get_item("slot")
-                        .unwrap()
-                        .unwrap()
-                        .cast_into::<pyo3::types::PyDict>()
-                        .unwrap();
-                    assert_eq!(
-                        slot.get_item("kind")
+            let check_slot = |src: &str,
+                              fragment_text: &str,
+                              expected_kind: &str,
+                              expected_idx: Option<usize>| {
+                let res = parser.call_method1("parse", (src,)).unwrap();
+                let doc = res
+                    .cast::<pyo3::types::PyDict>()
+                    .unwrap()
+                    .get_item("document")
+                    .unwrap()
+                    .unwrap();
+                let frag_dict = doc
+                    .call_method0("to_latex_fragments")
+                    .unwrap()
+                    .cast_into::<pyo3::types::PyDict>()
+                    .unwrap();
+                let frag_list = frag_dict
+                    .get_item("fragments")
+                    .unwrap()
+                    .unwrap()
+                    .cast_into::<pyo3::types::PyList>()
+                    .unwrap();
+                let found = frag_list
+                    .iter()
+                    .find_map(|item| {
+                        let d = item.cast_into::<pyo3::types::PyDict>().unwrap();
+                        let text = d
+                            .get_item("text")
                             .unwrap()
                             .unwrap()
                             .extract::<String>()
-                            .unwrap(),
-                        expected_kind,
-                        "slot.kind mismatch for `{token_text}` in `{src}`"
-                    );
-                    assert_eq!(
-                        slot.get_item("index")
-                            .unwrap()
-                            .unwrap()
-                            .extract::<Option<usize>>()
-                            .unwrap(),
-                        expected_idx,
-                        "slot.index mismatch for `{token_text}` in `{src}`"
-                    );
-                };
+                            .unwrap();
+                        (text == fragment_text).then_some(d)
+                    })
+                    .unwrap_or_else(|| panic!("fragment `{fragment_text}` not found in `{src}`"));
+                let slot = found
+                    .get_item("slot")
+                    .unwrap()
+                    .unwrap()
+                    .cast_into::<pyo3::types::PyDict>()
+                    .unwrap();
+                assert_eq!(
+                    slot.get_item("kind")
+                        .unwrap()
+                        .unwrap()
+                        .extract::<String>()
+                        .unwrap(),
+                    expected_kind,
+                    "slot.kind mismatch for `{fragment_text}` in `{src}`"
+                );
+                assert_eq!(
+                    slot.get_item("index")
+                        .unwrap()
+                        .unwrap()
+                        .extract::<Option<usize>>()
+                        .unwrap(),
+                    expected_idx,
+                    "slot.index mismatch for `{fragment_text}` in `{src}`"
+                );
+            };
             check_slot(r"\sqrt{x}", "{", "arg", Some(1));
             check_slot(r"\genfrac(]{0pt}{1}{a}{b}", "0pt", "arg", Some(2));
             check_slot(r"x_{ab}^{c}", "_", "subscript", None);
@@ -2910,11 +2912,11 @@ mod tests {
                 .extract::<String>()
                 .unwrap();
             assert_eq!(compact, "x_i^2");
-            let tokenized = document
-                .call_method("to_tokenized_latex", (), Some(&kwargs))
+            let fragmented = document
+                .call_method("to_latex_fragments", (), Some(&kwargs))
                 .unwrap();
             assert_eq!(
-                tokenized
+                fragmented
                     .get_item("latex")
                     .unwrap()
                     .extract::<String>()

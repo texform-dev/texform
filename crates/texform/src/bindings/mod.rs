@@ -17,8 +17,8 @@ use crate::diagnostics::{
 };
 use crate::{
     ActiveCharacterRecord, ActiveCommandRecord, ActiveEnvironmentRecord, ArgKindRef, ArgRef,
-    Document, EditError, Error, FromSyntaxError, GroupKindRef, NodeId, NodeRef, ParseDiagnostic,
-    ParsedArgSpecSlot, SerializationTokenKind, SerializeOptions, SyntaxNode, TokenizedLatex,
+    Document, EditError, Error, FragmentKind, FragmentedLatex, FromSyntaxError, GroupKindRef,
+    NodeId, NodeRef, ParseDiagnostic, ParsedArgSpecSlot, SerializeOptions, SyntaxNode,
 };
 use texform_transform::{
     Attr, AttrValue, AttributeFormCounts, MathFontValue, SizeValue, StyleValue, TextFamily,
@@ -26,13 +26,13 @@ use texform_transform::{
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
-pub struct TokenizedLatexDto {
+pub struct FragmentedLatexDto {
     pub latex: String,
-    pub tokens: Vec<SerializationTokenDto>,
+    pub fragments: Vec<SerializationFragmentDto>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
-pub struct SerializationTokenDto {
+pub struct SerializationFragmentDto {
     pub text: String,
     pub start_byte: usize,
     pub end_byte: usize,
@@ -43,28 +43,28 @@ pub struct SerializationTokenDto {
     pub mode: &'static str,
 }
 
-pub fn tokenized_latex_to_dto(result: TokenizedLatex) -> TokenizedLatexDto {
-    TokenizedLatexDto {
+pub fn fragmented_latex_to_dto(result: FragmentedLatex) -> FragmentedLatexDto {
+    FragmentedLatexDto {
         latex: result.latex,
-        tokens: result
-            .tokens
+        fragments: result
+            .fragments
             .into_iter()
-            .map(|token| SerializationTokenDto {
-                text: token.text,
-                start_byte: token.span.start,
-                end_byte: token.span.end,
-                kind: match token.kind {
-                    SerializationTokenKind::ControlSequence => "control_sequence",
-                    SerializationTokenKind::Character => "character",
-                    SerializationTokenKind::Delimiter => "delimiter",
-                    SerializationTokenKind::Text => "text",
-                    SerializationTokenKind::Raw => "raw",
-                    SerializationTokenKind::Error => "error",
+            .map(|fragment| SerializationFragmentDto {
+                text: fragment.text,
+                start_byte: fragment.span.start,
+                end_byte: fragment.span.end,
+                kind: match fragment.kind {
+                    FragmentKind::ControlSequence => "control_sequence",
+                    FragmentKind::Character => "character",
+                    FragmentKind::Delimiter => "delimiter",
+                    FragmentKind::Text => "text",
+                    FragmentKind::Raw => "raw",
+                    FragmentKind::Error => "error",
                 },
-                role: token.role.as_str(),
-                node_path: token.node_path,
-                slot: token.slot.map(NodeSlotDto::from),
-                mode: token.mode.as_str(),
+                role: fragment.role.as_str(),
+                node_path: fragment.node_path,
+                slot: fragment.slot.map(NodeSlotDto::from),
+                mode: fragment.mode.as_str(),
             })
             .collect(),
     }

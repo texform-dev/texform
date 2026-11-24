@@ -122,7 +122,7 @@ $ texform normalize --profile corpus 'a \over b'
 \frac { a } { b }
 ```
 
-The `texform` binary also parses, tokenizes, and queries the knowledge base, and `texform serve` offers normalization to other programs over a JSON-RPC protocol. See the [CLI guide](crates/texform-cli/README.md).
+The `texform` binary also parses, splits serialized output into fragments, and queries the knowledge base, and `texform serve` offers normalization to other programs over a JSON-RPC protocol. See the [CLI guide](crates/texform-cli/README.md).
 
 Output uses the byte-stable `spaced` style by default. For concise output such as `\frac{a}{b}+x_i^2`, select the `compact` style; see [Configure output style](https://texform.dev/docs/configure-output-style).
 

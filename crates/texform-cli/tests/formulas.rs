@@ -1,5 +1,5 @@
 //! Contract tests for the formula commands: `normalize`, `parse`, and
-//! `tokenize`.
+//! `fragments`.
 
 mod support;
 
@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use support::{engine, parser, texform};
 use texform::Profile;
 use texform::bindings::{
-    NormalizeConfigInput, normalize_error_to_parts, read, tokenized_latex_to_dto,
+    NormalizeConfigInput, fragmented_latex_to_dto, normalize_error_to_parts, read,
     transform_report_to_dto,
 };
 
@@ -181,8 +181,8 @@ fn config_is_validated_against_the_command_shape() {
     for command in [
         &["normalize", "--profile", "corpus"][..],
         &["parse"],
-        &["tokenize"],
-        &["tokenize", "--profile", "corpus"],
+        &["fragments"],
+        &["fragments", "--profile", "corpus"],
     ] {
         let strict = texform(
             &[command, &["--config", &from_file, r"\notacommand"]].concat(),
@@ -215,12 +215,12 @@ fn config_is_validated_against_the_command_shape() {
         USAGE
     );
     assert_eq!(
-        texform(&["tokenize", "--config", transform, "x"], "").code(),
+        texform(&["fragments", "--config", transform, "x"], "").code(),
         USAGE
     );
-    let tokenized = texform(
+    let fragmented = texform(
         &[
-            "tokenize",
+            "fragments",
             "--profile",
             "corpus",
             "--config",
@@ -229,8 +229,8 @@ fn config_is_validated_against_the_command_shape() {
         ],
         "",
     );
-    assert!(tokenized.stdout.contains("control_seq"));
-    assert!(tokenized.stdout.contains(r#""\\over""#));
+    assert!(fragmented.stdout.contains("control_seq"));
+    assert!(fragmented.stdout.contains(r#""\\over""#));
 
     let nested = texform(
         &[
@@ -321,28 +321,28 @@ fn parse_reports_complete_partial_and_missing_documents() {
 }
 
 #[test]
-fn tokenize_splits_the_parsed_or_normalized_serialization() {
+fn fragments_splits_the_parsed_or_normalized_serialization() {
     let formula = r"a \over b";
     let parser = parser();
     let (document, _) = parser.parse(formula).try_into_document().unwrap();
-    let parsed = document.to_tokenized_latex().unwrap();
+    let parsed = document.to_latex_fragments().unwrap();
     let engine = engine(Profile::Corpus);
     let (mut normalized, _) = engine.parser().parse(formula).try_into_document().unwrap();
     engine.transform(&mut normalized).unwrap();
-    let normalized = normalized.to_tokenized_latex().unwrap();
+    let normalized = normalized.to_latex_fragments().unwrap();
     assert_eq!(normalized.latex, engine.normalize(formula).unwrap());
 
     assert_eq!(
-        texform(&["tokenize", "--json", formula], "").json_lines(),
-        vec![serde_json::to_value(tokenized_latex_to_dto(parsed).tokens).unwrap()]
+        texform(&["fragments", "--json", formula], "").json_lines(),
+        vec![serde_json::to_value(fragmented_latex_to_dto(parsed).fragments).unwrap()]
     );
     assert_eq!(
-        texform(&["tokenize", "--profile", "corpus", "--json", formula], "").json_lines(),
-        vec![serde_json::to_value(tokenized_latex_to_dto(normalized).tokens).unwrap()]
+        texform(&["fragments", "--profile", "corpus", "--json", formula], "").json_lines(),
+        vec![serde_json::to_value(fragmented_latex_to_dto(normalized).fragments).unwrap()]
     );
 
     let mixed = texform(
-        &["tokenize", "--lines", "--json"],
+        &["fragments", "--lines", "--json"],
         &lines(&["x", UNCLOSED_FRACTION, ""]),
     );
     let results = mixed.json_lines();
@@ -372,8 +372,8 @@ fn parse_displays_compact_and_verbose_trees_including_partial_trees() {
 }
 
 #[test]
-fn token_list_preserves_text_boundaries_modes_and_line_alignment() {
-    let run = texform(&["tokenize", r"\text{a b}"], "");
+fn fragment_list_preserves_text_boundaries_modes_and_line_alignment() {
+    let run = texform(&["fragments", r"\text{a b}"], "");
     assert_eq!(run.code(), 0);
     assert_eq!(
         run.stdout,
@@ -382,19 +382,19 @@ fn token_list_preserves_text_boundaries_modes_and_line_alignment() {
             "\n"
         )
     );
-    assert_eq!(texform(&["tokenize", ""], "").stdout, "[]\n");
-    let quoted = texform(&["tokenize", "\\text{say \"hi\"}"], "");
+    assert_eq!(texform(&["fragments", ""], "").stdout, "[]\n");
+    let quoted = texform(&["fragments", "\\text{say \"hi\"}"], "");
     assert!(quoted.stdout.contains(r#"text("say \"hi\"", mode=text)"#));
     assert_eq!(quoted.lines().len(), 1);
-    let json = texform(&["tokenize", "--json", r"\text{a b}"], "");
-    let tokens = json.json_lines().remove(0);
-    assert_eq!(tokens.as_array().unwrap().len(), 4);
-    assert_eq!(tokens[0]["kind"], "control_sequence");
-    assert_eq!(tokens[1]["kind"], "delimiter");
-    assert_eq!(tokens[2]["text"], "a b");
-    assert_eq!(tokens[2]["mode"], "text");
+    let json = texform(&["fragments", "--json", r"\text{a b}"], "");
+    let fragments = json.json_lines().remove(0);
+    assert_eq!(fragments.as_array().unwrap().len(), 4);
+    assert_eq!(fragments[0]["kind"], "control_sequence");
+    assert_eq!(fragments[1]["kind"], "delimiter");
+    assert_eq!(fragments[2]["text"], "a b");
+    assert_eq!(fragments[2]["mode"], "text");
     let lines = texform(
-        &["tokenize", "--lines"],
+        &["fragments", "--lines"],
         &lines(&["x", UNCLOSED_FRACTION, ""]),
     );
     assert_eq!(lines.lines(), vec![r#"[char("x")]"#, "", "[]"]);
@@ -405,7 +405,7 @@ fn token_list_preserves_text_boundaries_modes_and_line_alignment() {
 fn unknown_options_fail_and_negative_formulas_use_the_option_separator() {
     for command in [
         &["parse"][..],
-        &["tokenize"],
+        &["fragments"],
         &["normalize", "--profile", "corpus"],
         &["info"],
         &["argspec", "validate"],
@@ -423,7 +423,7 @@ fn unknown_options_fail_and_negative_formulas_use_the_option_separator() {
 fn zero_rewrite_iterations_fail_before_reading_formulas() {
     for command in [
         &["normalize", "--profile", "corpus"][..],
-        &["tokenize", "--profile", "corpus"],
+        &["fragments", "--profile", "corpus"],
     ] {
         let run = texform(
             &[
@@ -455,7 +455,7 @@ fn closed_stdout_stops_without_waiting_for_stdin_eof() {
     use std::time::{Duration, Instant};
     for command in [
         &["parse"][..],
-        &["tokenize"],
+        &["fragments"],
         &["normalize", "--profile", "corpus"],
     ] {
         let mut child = Command::new(support::BIN)
@@ -510,7 +510,7 @@ fn normalize_compact_style_applies_to_text_json_and_reports() {
         USAGE
     );
     assert_eq!(
-        texform(&["tokenize", "--style", "compact"], "x").code(),
+        texform(&["fragments", "--style", "compact"], "x").code(),
         USAGE
     );
 }

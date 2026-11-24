@@ -5,23 +5,23 @@ use texform_core::{
     ast::{Argument, ArgumentKind, ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId},
     parse::{AllowedMode, CommandKind, ParseContext},
     serialize::{
-        SerializationTokenKind, SerializeOptions, Style, TokenizedLatex, serialize,
-        serialize_tokenized, serialize_tokenized_with, serialize_with,
+        FragmentKind, FragmentedLatex, SerializeOptions, Style, serialize, serialize_fragmented,
+        serialize_fragmented_with, serialize_with,
     },
 };
 
-fn assert_token_contract(result: &TokenizedLatex) {
+fn assert_fragment_contract(result: &FragmentedLatex) {
     let mut cursor = 0;
-    for token in &result.tokens {
-        assert!(token.span.start < token.span.end);
-        assert!(cursor <= token.span.start);
+    for fragment in &result.fragments {
+        assert!(fragment.span.start < fragment.span.end);
+        assert!(cursor <= fragment.span.start);
         assert!(
-            result.latex[cursor..token.span.start]
+            result.latex[cursor..fragment.span.start]
                 .chars()
                 .all(char::is_whitespace)
         );
-        assert_eq!(token.text, result.latex[token.span.clone()]);
-        cursor = token.span.end;
+        assert_eq!(fragment.text, result.latex[fragment.span.clone()]);
+        cursor = fragment.span.end;
     }
     assert!(result.latex[cursor..].chars().all(char::is_whitespace));
 }
@@ -80,68 +80,64 @@ fn test_serialize_simple_math_chars() {
 }
 
 #[test]
-fn tokenized_text_and_inline_math_use_semantic_modes() {
+fn fragmented_text_and_inline_math_use_semantic_modes() {
     let ast = parse_to_ast(r"\text{abc$x$}");
-    let result = serialize_tokenized(&ast);
+    let result = serialize_fragmented(&ast);
     assert_eq!(result.latex, serialize(&ast));
-    assert_token_contract(&result);
+    assert_fragment_contract(&result);
 
     let tokens = result
-        .tokens
+        .fragments
         .iter()
         .map(|token| (token.text.as_str(), token.kind, token.mode))
         .collect::<Vec<_>>();
     assert_eq!(
         tokens,
         vec![
-            (
-                r"\text",
-                SerializationTokenKind::ControlSequence,
-                ContentMode::Math,
-            ),
-            ("{", SerializationTokenKind::Delimiter, ContentMode::Math),
-            ("abc", SerializationTokenKind::Text, ContentMode::Text),
-            ("$", SerializationTokenKind::Delimiter, ContentMode::Text),
-            ("x", SerializationTokenKind::Character, ContentMode::Math),
-            ("$", SerializationTokenKind::Delimiter, ContentMode::Text),
-            ("}", SerializationTokenKind::Delimiter, ContentMode::Math),
+            (r"\text", FragmentKind::ControlSequence, ContentMode::Math,),
+            ("{", FragmentKind::Delimiter, ContentMode::Math),
+            ("abc", FragmentKind::Text, ContentMode::Text),
+            ("$", FragmentKind::Delimiter, ContentMode::Text),
+            ("x", FragmentKind::Character, ContentMode::Math),
+            ("$", FragmentKind::Delimiter, ContentMode::Text),
+            ("}", FragmentKind::Delimiter, ContentMode::Math),
         ]
     );
 }
 
 #[test]
-fn tokenized_environment_and_scalar_wrappers_are_decomposed() {
+fn fragmented_environment_and_scalar_wrappers_are_decomposed() {
     let ast = parse_to_ast(r"\begin{array}{lc}α&𝒜\end{array}");
-    let result = serialize_tokenized(&ast);
+    let result = serialize_fragmented(&ast);
     assert_eq!(result.latex, serialize(&ast));
-    assert_token_contract(&result);
+    assert_fragment_contract(&result);
 
-    let begin = &result.tokens[..5];
+    let begin = &result.fragments[..5];
     assert_eq!(begin[0].text, r"\begin");
-    assert_eq!(begin[0].kind, SerializationTokenKind::ControlSequence);
+    assert_eq!(begin[0].kind, FragmentKind::ControlSequence);
     assert_eq!(begin[1].text, "{");
-    assert_eq!(begin[1].kind, SerializationTokenKind::Delimiter);
+    assert_eq!(begin[1].kind, FragmentKind::Delimiter);
     assert_eq!(begin[2].text, "array");
-    assert_eq!(begin[2].kind, SerializationTokenKind::Raw);
+    assert_eq!(begin[2].kind, FragmentKind::Raw);
     assert_eq!(begin[3].text, "}");
-    assert_eq!(begin[3].kind, SerializationTokenKind::Delimiter);
+    assert_eq!(begin[3].kind, FragmentKind::Delimiter);
     assert_eq!(begin[4].text, "{");
-    assert_eq!(begin[4].kind, SerializationTokenKind::Delimiter);
+    assert_eq!(begin[4].kind, FragmentKind::Delimiter);
     assert!(
         result
-            .tokens
+            .fragments
             .iter()
-            .any(|token| { token.text == "lc" && token.kind == SerializationTokenKind::Raw })
+            .any(|token| { token.text == "lc" && token.kind == FragmentKind::Raw })
     );
-    assert!(result.tokens.iter().any(|token| token.text == "𝒜"));
+    assert!(result.fragments.iter().any(|token| token.text == "𝒜"));
 }
 
 #[test]
 fn escaped_text_chars_remain_single_character_tokens() {
-    let result = serialize_tokenized(&parse_to_ast(r"\text{\%\$\{中}"));
-    assert_token_contract(&result);
+    let result = serialize_fragmented(&parse_to_ast(r"\text{\%\$\{中}"));
+    assert_fragment_contract(&result);
     let escaped = result
-        .tokens
+        .fragments
         .iter()
         .filter(|token| matches!(token.text.as_str(), r"\%" | r"\$" | r"\{"))
         .collect::<Vec<_>>();
@@ -149,7 +145,7 @@ fn escaped_text_chars_remain_single_character_tokens() {
     assert!(
         escaped
             .iter()
-            .all(|token| token.kind == SerializationTokenKind::Character)
+            .all(|token| token.kind == FragmentKind::Character)
     );
 }
 
@@ -183,18 +179,18 @@ fn escaped_ampersand_stays_literal_and_alignment_tabs_stay_bare() {
 }
 
 #[test]
-fn tokenized_options_never_change_canonical_text() {
+fn fragmented_options_never_change_canonical_text() {
     let ast = parse_to_ast(r"\sqrt[3]{x_i}");
     let options = SerializeOptions {
         style: Style::Compact,
     };
 
-    let result = serialize_tokenized_with(&ast, &options);
+    let result = serialize_fragmented_with(&ast, &options);
     assert_eq!(result.latex, serialize_with(&ast, &options));
-    assert_token_contract(&result);
-    assert!(result.tokens.iter().any(|token| {
+    assert_fragment_contract(&result);
+    assert!(result.fragments.iter().any(|token| {
         token.text == "_"
-            && token.kind == SerializationTokenKind::Character
+            && token.kind == FragmentKind::Character
             && token.mode == ContentMode::Math
     }));
 }
@@ -232,9 +228,9 @@ fn paired_argument_delimiters_use_wrapper_mode() {
     });
     ast.append_child(ast.root(), wrapper);
 
-    let result = serialize_tokenized(&ast);
+    let result = serialize_fragmented(&ast);
     let delimiters = result
-        .tokens
+        .fragments
         .iter()
         .filter(|token| token.text == "|")
         .collect::<Vec<_>>();
@@ -246,7 +242,7 @@ fn paired_argument_delimiters_use_wrapper_mode() {
     );
     assert!(
         result
-            .tokens
+            .fragments
             .iter()
             .any(|token| { token.text == "x" && token.mode == ContentMode::Math })
     );
@@ -261,13 +257,13 @@ fn empty_error_snippet_has_no_zero_width_token() {
             snippet: snippet.to_string(),
         });
         ast.append_child(ast.root(), error);
-        let result = serialize_tokenized(&ast);
-        assert_token_contract(&result);
+        let result = serialize_fragmented(&ast);
+        assert_fragment_contract(&result);
         if snippet.is_empty() {
-            assert!(result.tokens.is_empty());
+            assert!(result.fragments.is_empty());
         } else {
-            assert_eq!(result.tokens.len(), 1);
-            assert_eq!(result.tokens[0].kind, SerializationTokenKind::Error);
+            assert_eq!(result.fragments.len(), 1);
+            assert_eq!(result.fragments[0].kind, FragmentKind::Error);
         }
     }
 }
@@ -499,23 +495,23 @@ fn prime_symbols_and_quote_superscripts_have_distinct_tokens() {
     let mut ast = Ast::new();
     let prime = ast.new_node(Node::Prime { count: 2 });
     ast.append_child(ast.root(), prime);
-    let tokens = serialize_tokenized(&ast);
+    let tokens = serialize_fragmented(&ast);
     assert_eq!(tokens.latex, serialize(&ast));
-    assert_token_contract(&tokens);
-    assert_eq!(tokens.tokens.len(), 2);
-    assert!(tokens.tokens.iter().all(|token| {
+    assert_fragment_contract(&tokens);
+    assert_eq!(tokens.fragments.len(), 2);
+    assert!(tokens.fragments.iter().all(|token| {
         token.text == r"\prime"
-            && token.kind == SerializationTokenKind::ControlSequence
+            && token.kind == FragmentKind::ControlSequence
             && token.mode == ContentMode::Math
     }));
 
-    let quote = serialize_tokenized(&parse_to_ast("f''"));
+    let quote = serialize_fragmented(&parse_to_ast("f''"));
     assert_eq!(quote.latex, "f''");
     assert!(
         quote
-            .tokens
+            .fragments
             .iter()
-            .any(|token| { token.text == "''" && token.kind == SerializationTokenKind::Character })
+            .any(|token| { token.text == "''" && token.kind == FragmentKind::Character })
     );
 }
 
@@ -529,7 +525,7 @@ fn bare_quote_and_nested_quote_preserve_their_empty_base() {
     ] {
         let ast = parse_to_ast(source);
         assert_eq!(serialize(&ast), expected, "{source}");
-        assert_eq!(serialize_tokenized(&ast).latex, expected, "{source}");
+        assert_eq!(serialize_fragmented(&ast).latex, expected, "{source}");
     }
 
     let compact = SerializeOptions {
@@ -794,12 +790,15 @@ fn test_serialize_mandatory_delimiter_emits_bare_token() {
 
     assert_eq!(serialize(&ast), r"\delim \vert \delim ( \delim .");
 
-    let result = serialize_tokenized(&ast);
+    let result = serialize_fragmented(&ast);
     assert_eq!(result.latex, serialize(&ast));
-    assert_token_contract(&result);
-    assert!(result.tokens.iter().any(|token| {
-        token.text == r"\vert" && token.kind == SerializationTokenKind::Delimiter
-    }));
+    assert_fragment_contract(&result);
+    assert!(
+        result
+            .fragments
+            .iter()
+            .any(|token| { token.text == r"\vert" && token.kind == FragmentKind::Delimiter })
+    );
 }
 
 #[test]
@@ -872,9 +871,9 @@ fn test_serialize_control_delimiter_keeps_space_before_letter() {
 
     assert_eq!(serialize(&ast), r"\big \langle a");
 
-    let result = serialize_tokenized(&ast);
+    let result = serialize_fragmented(&ast);
     assert_eq!(result.latex, serialize(&ast));
-    assert_token_contract(&result);
+    assert_fragment_contract(&result);
 }
 
 #[test]
@@ -1321,7 +1320,7 @@ fn all_styles() -> Vec<SerializeOptions> {
 }
 
 #[test]
-fn every_style_matches_tokenized_latex() {
+fn every_style_matches_fragmented_latex() {
     let complete = [
         r"\sqrt[3]{x}",
         r"\text{a}",
@@ -1351,9 +1350,9 @@ fn every_style_matches_tokenized_latex() {
     for ast in trees {
         for options in &combinations {
             let latex = serialize_with(ast, options);
-            let tokenized = serialize_tokenized_with(ast, options);
+            let tokenized = serialize_fragmented_with(ast, options);
             assert_eq!(tokenized.latex, latex);
-            assert_token_contract(&tokenized);
+            assert_fragment_contract(&tokenized);
         }
     }
 }
@@ -1392,18 +1391,18 @@ fn serialize_options_serde_rejects_legacy_nested_objects() {
     );
 }
 
-fn gap_before(result: &TokenizedLatex, index: usize) -> &str {
+fn gap_before(result: &FragmentedLatex, index: usize) -> &str {
     let start = if index == 0 {
         0
     } else {
-        result.tokens[index - 1].span.end
+        result.fragments[index - 1].span.end
     };
-    &result.latex[start..result.tokens[index].span.start]
+    &result.latex[start..result.fragments[index].span.start]
 }
 
-fn token_at(result: &TokenizedLatex, text: &str) -> usize {
+fn token_at(result: &FragmentedLatex, text: &str) -> usize {
     result
-        .tokens
+        .fragments
         .iter()
         .position(|token| token.text == text)
         .unwrap_or_else(|| panic!("missing token {text} in {}", result.latex))
@@ -1509,41 +1508,35 @@ fn text_control_symbols_do_not_inject_body_whitespace() {
 
     // The thin space stays its own text-mode control-sequence token with no
     // gap before the letter that follows it.
-    let thin = serialize_tokenized(&parse_to_ast(r"\text{a\,b}"));
+    let thin = serialize_fragmented(&parse_to_ast(r"\text{a\,b}"));
     assert_eq!(thin.latex, r"\text {a\,b}");
-    assert_token_contract(&thin);
+    assert_fragment_contract(&thin);
     let comma = token_at(&thin, r"\,");
-    assert_eq!(
-        thin.tokens[comma].kind,
-        SerializationTokenKind::ControlSequence
-    );
-    assert_eq!(thin.tokens[comma].mode, ContentMode::Text);
-    assert_eq!(thin.tokens[comma + 1].text, "b");
+    assert_eq!(thin.fragments[comma].kind, FragmentKind::ControlSequence);
+    assert_eq!(thin.fragments[comma].mode, ContentMode::Text);
+    assert_eq!(thin.fragments[comma + 1].text, "b");
     assert_eq!(gap_before(&thin, comma + 1), "");
 
     // An escaped character is a character token, not a control sequence.
-    let escaped = serialize_tokenized(&parse_to_ast(r"\text{a\%b}"));
-    assert_token_contract(&escaped);
+    let escaped = serialize_fragmented(&parse_to_ast(r"\text{a\%b}"));
+    assert_fragment_contract(&escaped);
     let percent = token_at(&escaped, r"\%");
-    assert_eq!(
-        escaped.tokens[percent].kind,
-        SerializationTokenKind::Character
-    );
-    assert_eq!(escaped.tokens[percent].mode, ContentMode::Text);
+    assert_eq!(escaped.fragments[percent].kind, FragmentKind::Character);
+    assert_eq!(escaped.fragments[percent].mode, ContentMode::Text);
 }
 
 #[test]
 fn control_space_stays_distinct_from_ordinary_text_whitespace() {
     assert_parsed_idempotent(r"\mbox{mod\  1}", r"\mbox {mod\  1}");
 
-    let result = serialize_tokenized(&parse_to_ast(r"\mbox{mod\  1}"));
+    let result = serialize_fragmented(&parse_to_ast(r"\mbox{mod\  1}"));
     assert_eq!(result.latex, r"\mbox {mod\  1}");
-    assert_token_contract(&result);
-    let control_space = &result.tokens[token_at(&result, "\\ ")];
-    assert_eq!(control_space.kind, SerializationTokenKind::ControlSequence);
+    assert_fragment_contract(&result);
+    let control_space = &result.fragments[token_at(&result, "\\ ")];
+    assert_eq!(control_space.kind, FragmentKind::ControlSequence);
     assert_eq!(control_space.mode, ContentMode::Text);
-    let following = &result.tokens[token_at(&result, " 1")];
-    assert_eq!(following.kind, SerializationTokenKind::Text);
+    let following = &result.fragments[token_at(&result, " 1")];
+    assert_eq!(following.kind, FragmentKind::Text);
     assert_eq!(control_space.span.end, following.span.start);
 }
 
@@ -1578,12 +1571,12 @@ fn handcrafted_control_word_keeps_lexical_separator_under_compact_options() {
 
     // The separator is a real gap between two tokens, and it survives a round
     // trip through the parser.
-    let tokenized = serialize_tokenized(&math);
+    let tokenized = serialize_fragmented(&math);
     assert_eq!(tokenized.latex, r"\alpha x");
-    assert_token_contract(&tokenized);
-    assert_eq!(tokenized.tokens.len(), 2);
+    assert_fragment_contract(&tokenized);
+    assert_eq!(tokenized.fragments.len(), 2);
     assert_eq!(gap_before(&tokenized, 1), " ");
-    assert_eq!(tokenized.tokens[1].mode, ContentMode::Math);
+    assert_eq!(tokenized.fragments[1].mode, ContentMode::Math);
     assert_eq!(serialize(&parse_to_ast(&tokenized.latex)), r"\alpha x");
     assert_eq!(
         serialize(&parse_to_ast(&serialize(&text))),
@@ -1652,18 +1645,15 @@ fn starprobe_star_does_not_inject_text_space() {
         r"\text{\starprobe*x}"
     );
 
-    let tokenized = serialize_tokenized(&text);
+    let tokenized = serialize_fragmented(&text);
     assert_eq!(tokenized.latex, serialize(&text));
-    assert_token_contract(&tokenized);
+    assert_fragment_contract(&tokenized);
     let star = token_at(&tokenized, "*");
-    assert_eq!(tokenized.tokens[star - 1].text, r"\starprobe");
-    assert_eq!(
-        tokenized.tokens[star].kind,
-        SerializationTokenKind::Character
-    );
-    assert_eq!(tokenized.tokens[star].mode, ContentMode::Text);
+    assert_eq!(tokenized.fragments[star - 1].text, r"\starprobe");
+    assert_eq!(tokenized.fragments[star].kind, FragmentKind::Character);
+    assert_eq!(tokenized.fragments[star].mode, ContentMode::Text);
     assert_eq!(gap_before(&tokenized, star), "");
-    assert_eq!(tokenized.tokens[star + 1].text, "x");
+    assert_eq!(tokenized.fragments[star + 1].text, "x");
     assert_eq!(gap_before(&tokenized, star + 1), "");
 
     let math = parse_to_ast_with_context(&ctx, r"\starprobe*x");
@@ -1683,19 +1673,19 @@ fn compact_operatorname_star_keeps_argument_tight() {
         r"\operatorname*{x}y"
     );
 
-    let tokenized = serialize_tokenized_with(&ast, &options);
+    let tokenized = serialize_fragmented_with(&ast, &options);
     assert_eq!(tokenized.latex, r"\operatorname*{x}y");
-    assert_token_contract(&tokenized);
+    assert_fragment_contract(&tokenized);
     let star = token_at(&tokenized, "*");
-    assert_eq!(tokenized.tokens[star - 1].text, r"\operatorname");
+    assert_eq!(tokenized.fragments[star - 1].text, r"\operatorname");
     assert_eq!(gap_before(&tokenized, star), "");
     // The operator name is text mode; the sibling after it is back in math.
     assert_eq!(
-        tokenized.tokens[token_at(&tokenized, "x")].mode,
+        tokenized.fragments[token_at(&tokenized, "x")].mode,
         ContentMode::Text
     );
     let follower = token_at(&tokenized, "y");
-    assert_eq!(tokenized.tokens[follower].mode, ContentMode::Math);
+    assert_eq!(tokenized.fragments[follower].mode, ContentMode::Math);
     assert_eq!(gap_before(&tokenized, follower), "");
 }
 
@@ -1705,11 +1695,11 @@ fn direct_output_paths_keep_a_single_written_space() {
     // That byte is the emitted ending, so no second separator may follow.
     let matrix = parse_to_ast(r"\begin {matrix}x\end {matrix}");
     assert_eq!(serialize(&matrix), r"\begin {matrix} x \end {matrix}");
-    let tokenized = serialize_tokenized(&matrix);
+    let tokenized = serialize_fragmented(&matrix);
     assert_eq!(tokenized.latex, serialize(&matrix));
-    assert_token_contract(&tokenized);
+    assert_fragment_contract(&tokenized);
     let begin = token_at(&tokenized, r"\begin");
-    assert_eq!(tokenized.tokens[begin + 1].text, "{");
+    assert_eq!(tokenized.fragments[begin + 1].text, "{");
     assert_eq!(gap_before(&tokenized, begin + 1), " ");
     let compact_name = SerializeOptions {
         style: Style::Compact,
@@ -1719,9 +1709,9 @@ fn direct_output_paths_keep_a_single_written_space() {
         r"\begin{matrix}x\end{matrix}"
     );
 
-    let empty = serialize_tokenized(&parse_to_ast("{}"));
+    let empty = serialize_fragmented(&parse_to_ast("{}"));
     assert_eq!(empty.latex, "{ }");
-    assert_token_contract(&empty);
+    assert_fragment_contract(&empty);
     assert_eq!(gap_before(&empty, 1), " ");
 
     let frac = parse_to_ast(r"\frac{}{a}");
@@ -1776,9 +1766,9 @@ fn constructed_optional_content_protects_closing_tokens_in_all_spacing_styles() 
         ast.append_child(ast.root(), command);
         for style in [Style::Spaced, Style::Compact] {
             let options = SerializeOptions { style };
-            let result = serialize_tokenized_with(&ast, &options);
+            let result = serialize_fragmented_with(&ast, &options);
             assert_eq!(result.latex, serialize_with(&ast, &options));
-            assert_token_contract(&result);
+            assert_fragment_contract(&result);
             assert!(result.latex.contains('{') && result.latex.contains('}'));
             let ctx = texform_core::parse::ParseContextBuilder::empty()
                 .item(support::command_item(
@@ -1804,7 +1794,7 @@ fn nested_optional_arguments_reuse_protection_decisions() {
     let ast = parse_to_ast(&source);
     let output = serialize(&ast);
     assert_eq!(serialize(&parse_to_ast(&output)), output);
-    assert_eq!(serialize_tokenized(&ast).latex, output);
+    assert_eq!(serialize_fragmented(&ast).latex, output);
 }
 
 #[test]
@@ -1845,9 +1835,9 @@ fn compact_style_keeps_lexical_boundaries_and_readable_scripts() {
             output,
             "{source}"
         );
-        let tokenized = serialize_tokenized_with(&ast, &options);
+        let tokenized = serialize_fragmented_with(&ast, &options);
         assert_eq!(tokenized.latex, output);
-        assert_token_contract(&tokenized);
+        assert_fragment_contract(&tokenized);
     }
 }
 
@@ -1933,11 +1923,11 @@ fn environment_header_spacing_does_not_change_text_token_modes() {
         (Style::Spaced, r"\begin {probe}{x}\end {probe}"),
         (Style::Compact, r"\begin{probe}{x}\end{probe}"),
     ] {
-        let result = serialize_tokenized_with(&ast, &style.into());
+        let result = serialize_fragmented_with(&ast, &style.into());
         assert_eq!(result.latex, expected);
         assert!(
             result
-                .tokens
+                .fragments
                 .iter()
                 .all(|token| token.mode == ContentMode::Text)
         );
@@ -1945,7 +1935,7 @@ fn environment_header_spacing_does_not_change_text_token_modes() {
 }
 
 #[test]
-fn tokenized_roles_and_node_paths_cover_implicit_unwrapping_and_custom_argspecs() {
+fn fragmented_roles_and_node_paths_cover_implicit_unwrapping_and_custom_argspecs() {
     let ctx = texform_core::parse::ParseContextBuilder::empty()
         .item(command_item(
             "untilcmd",
@@ -1996,10 +1986,10 @@ fn tokenized_roles_and_node_paths_cover_implicit_unwrapping_and_custom_argspecs(
             .unwrap_or_else(|err| panic!("failed to parse {source}: {err:?}"));
         for style in [Style::Spaced, Style::Compact] {
             let options = SerializeOptions { style };
-            let result = doc.to_tokenized_latex_with(&options).unwrap();
+            let result = doc.to_latex_fragments_with(&options).unwrap();
             assert_eq!(result.latex, doc.to_latex_with(&options).unwrap());
-            assert_token_contract(&result);
-            for token in &result.tokens {
+            assert_fragment_contract(&result);
+            for token in &result.fragments {
                 assert!(
                     doc.node_at(&token.node_path).is_ok(),
                     "invalid node_path `{}` for token {:?} in `{source}` ({style:?})",
@@ -2016,9 +2006,9 @@ fn tokenized_roles_and_node_paths_cover_implicit_unwrapping_and_custom_argspecs(
             .parse(source, &texform_core::parse::ParseConfig::STRICT)
             .try_into_document()
             .unwrap();
-        let tok = doc.to_tokenized_latex().unwrap();
+        let tok = doc.to_latex_fragments().unwrap();
         let actual = tok
-            .tokens
+            .fragments
             .iter()
             .map(|t| {
                 let slot = match t.slot {

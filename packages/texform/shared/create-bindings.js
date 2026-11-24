@@ -609,9 +609,9 @@ export function createBindings({
       return wrapTexformError(() => this.inner.toLatex(options ?? undefined));
     }
 
-    toTokenizedLatex(options) {
+    toLatexFragments(options) {
       return wrapTexformError(() =>
-        this.inner.toTokenizedLatex(options ?? undefined),
+        this.inner.toLatexFragments(options ?? undefined),
       );
     }
   }

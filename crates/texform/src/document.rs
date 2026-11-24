@@ -20,7 +20,7 @@ pub use texform_core::document::{
 };
 pub use texform_core::serialize::SerializeOptions;
 
-pub use crate::serialize::{SerializeError, TokenizedLatex};
+pub use crate::serialize::{FragmentedLatex, SerializeError};
 
 /// Parse-time source span of one tree node, addressed by its tree path.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -710,32 +710,32 @@ impl Document {
         self.inner.to_latex_with(options)
     }
 
-    /// Serialize to LaTeX and record typed output tokens in the same pass.
+    /// Serialize to LaTeX and record typed output fragments in the same pass.
     ///
-    /// Every token has a closed semantic kind and a UTF-8 byte span into `latex`.
-    /// The token stream is not an error-node inventory: use [`Self::has_errors`]
-    /// because an empty error snippet deliberately produces no zero-width token.
+    /// Every fragment has a closed semantic kind and a UTF-8 byte span into `latex`.
+    /// The fragment stream is not an error-node inventory: use [`Self::has_errors`]
+    /// because an empty error snippet deliberately produces no zero-width fragment.
     ///
     /// # Errors
     ///
     /// Returns [`SerializeError`] if a node cannot be serialized.
-    pub fn to_tokenized_latex(&self) -> Result<TokenizedLatex, SerializeError> {
-        self.inner.to_tokenized_latex()
+    pub fn to_latex_fragments(&self) -> Result<FragmentedLatex, SerializeError> {
+        self.inner.to_latex_fragments()
     }
 
-    /// Serialize with explicit options and record typed output tokens in the same pass.
+    /// Serialize with explicit options and record typed output fragments in the same pass.
     ///
     /// The returned `latex` is byte-for-byte identical to [`Self::to_latex_with`]
-    /// with the same options. Token spans are UTF-8 byte offsets.
+    /// with the same options. Fragment spans are UTF-8 byte offsets.
     ///
     /// # Errors
     ///
     /// Returns [`SerializeError`] if a node cannot be serialized.
-    pub fn to_tokenized_latex_with(
+    pub fn to_latex_fragments_with(
         &self,
         options: &SerializeOptions,
-    ) -> Result<TokenizedLatex, SerializeError> {
-        self.inner.to_tokenized_latex_with(options)
+    ) -> Result<FragmentedLatex, SerializeError> {
+        self.inner.to_latex_fragments_with(options)
     }
 }
 
