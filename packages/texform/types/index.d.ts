@@ -1832,12 +1832,13 @@ export type Profile = "authoring" | "faithful" | "corpus" | "equiv";
 /**
  * Construction options for an immutable {@link KnowledgeBase}.
  *
- * Omit `packages` to load the default runtime packages, not every package in
- * the catalog. Use `listPackages()` to see the available names; an unknown name
- * throws {@link TexformConfigError}.
+ * Omit `packages` to load the default runtime packages returned by
+ * {@link defaultPackages}, not every package in the catalog. Use
+ * `listPackages()` to see the available names; an unknown name throws
+ * {@link TexformConfigError}.
  */
 export interface KnowledgeBaseOptions {
-  /** Package names to load; omit to load the default runtime packages. */
+  /** Package names to load; omit to load {@link defaultPackages}. */
   packages?: string[];
   /** Custom command/environment/delimiter-control knowledge to inject. */
   items?: ContextItem[];
@@ -2204,7 +2205,7 @@ export interface PackageInfo {
  *
  * The returned names are the identifiers accepted by the `packages` option of
  * {@link KnowledgeBase}: `ams`, `base`, `bboldx`,
- * `boldsymbol`, `braket`, `physics`, `textmacros`.
+ * `boldsymbol`, `braket`, `color`, `physics`, `textmacros`.
  *
  * @returns One {@link PackageInfo} per built-in package.
  * @example
@@ -2215,6 +2216,24 @@ export interface PackageInfo {
  * ```
  */
 export function listPackages(): PackageInfo[];
+
+/**
+ * List the packages a {@link KnowledgeBase} loads when `packages` is omitted.
+ *
+ * Names are in canonical import order. `physics` is excluded because it
+ * redefines standard commands; extend this list to opt into it.
+ *
+ * @returns The default package names.
+ * @example
+ * ```ts
+ * import { defaultPackages, KnowledgeBase } from 'texform';
+ *
+ * const knowledgeBase = new KnowledgeBase({
+ *   packages: [...defaultPackages(), 'physics'],
+ * });
+ * ```
+ */
+export function defaultPackages(): string[];
 
 /**
  * Summary of one built-in rewrite rule, returned by {@link listRules}.

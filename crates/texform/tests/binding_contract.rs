@@ -264,6 +264,13 @@ fn list_packages_reports_known_packages_with_counts() {
 }
 
 #[test]
+fn default_packages_are_what_an_unconfigured_knowledge_base_loads() {
+    let defaults = texform::default_packages();
+    assert_eq!(defaults, texform::KnowledgeBase::default().packages());
+    assert!(!defaults.contains(&"physics"), "physics should be opt-in");
+}
+
+#[test]
 fn list_rules_reports_metadata_for_disableable_keys() {
     let rules = texform::list_rules();
     let over = rules

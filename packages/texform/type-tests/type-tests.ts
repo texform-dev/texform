@@ -136,9 +136,11 @@ import {
   Parser as ParserClass,
   Document as DocumentClass,
   TransformEngine as EngineClass,
+  defaultPackages,
   listRules,
 } from "../types/index.js";
 const kb = new KnowledgeBase({ packages: ["base"], removeCommands: ["foo"] });
+new KnowledgeBase({ packages: [...defaultPackages(), "physics"] });
 const sharedParser = new ParserClass({ knowledgeBase: kb });
 const sharedEngine = new EngineClass({ profile: "corpus", knowledgeBase: kb });
 const constructed = new DocumentClass({ knowledgeBase: kb, mode: "text" });

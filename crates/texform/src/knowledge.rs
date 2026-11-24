@@ -24,3 +24,12 @@ pub fn list_packages() -> Vec<PackageInfo> {
         })
         .collect()
 }
+
+/// Names of the built-in packages a knowledge base loads when no package list
+/// is given, in canonical import order.
+///
+/// `physics` is excluded because it redefines standard commands; select it
+/// explicitly, for example by extending this list.
+pub fn default_packages() -> Vec<&'static str> {
+    texform_core::parse::default_package_names().to_vec()
+}

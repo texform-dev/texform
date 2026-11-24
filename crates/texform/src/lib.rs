@@ -93,7 +93,8 @@ pub use document::{
 };
 pub use error::{Error, NormalizeError, TransformBuildError, TransformError};
 pub use knowledge::{
-    KnowledgeBase, KnowledgeBaseBuildError, KnowledgeBaseBuilder, PackageInfo, list_packages,
+    KnowledgeBase, KnowledgeBaseBuildError, KnowledgeBaseBuilder, PackageInfo, default_packages,
+    list_packages,
 };
 pub use parse_result::{ParseError, ParseResult};
 pub use parser::{Parser, ParserBuilder};

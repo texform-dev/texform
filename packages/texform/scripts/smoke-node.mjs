@@ -12,6 +12,7 @@ import {
   TexformConformanceError,
   TexformParseError,
   TexformTransformError,
+  defaultPackages,
   listPackages,
   listRules,
   serialize,
@@ -446,6 +447,9 @@ if (
 ) {
   throw new Error("listPackages should report base with record counts");
 }
+// The default list is what an options-free knowledge base loads, so callers can extend it.
+assert.deepEqual(defaultPackages(), new KnowledgeBase().packages());
+assert.ok(!defaultPackages().includes("physics"), "physics should be opt-in");
 
 const rules = listRules();
 const listedRuleKeys = rules.map((rule) => rule.key);

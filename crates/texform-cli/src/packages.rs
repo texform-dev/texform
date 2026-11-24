@@ -8,21 +8,12 @@ pub fn all() -> Vec<String> {
         .collect()
 }
 
-/// Match the facade's runtime defaults: physics is opt-in and braket is enabled.
-/// Tests compare CLI behavior with default builders.
+/// The facade's runtime defaults: physics is opt-in and braket is enabled.
 pub fn defaults() -> Vec<String> {
-    [
-        "base",
-        "ams",
-        "braket",
-        "textmacros",
-        "bboldx",
-        "boldsymbol",
-        "color",
-    ]
-    .into_iter()
-    .map(str::to_owned)
-    .collect()
+    texform::default_packages()
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
 }
 
 /// clap value parser for one `--packages` entry.

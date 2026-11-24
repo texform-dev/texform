@@ -800,6 +800,7 @@ __all__ = [
     "TransformEngine",
     "TransformError",
     "count_targets",
+    "default_packages",
     "list_packages",
     "list_rules",
     "serialize",
@@ -2125,7 +2126,7 @@ class KnowledgeBase:
 
     A knowledge base defines the known commands, environments, characters, and delimiters that parsing, transforms, and ``Document`` construction and edits check against. Share one instance across a ``Parser``, ``TransformEngine``, and their documents.
 
-    Equality and hashing use instance identity: separately constructed knowledge bases are distinct even with identical recipes. Query results are copies. ``packages=None`` loads the default runtime packages; ``[]`` loads none.
+    Equality and hashing use instance identity: separately constructed knowledge bases are distinct even with identical recipes. Query results are copies. ``packages=None`` loads the default runtime packages listed by ``default_packages()``; ``[]`` loads none.
 
     Examples:
         kb = texform.KnowledgeBase(["ams"])
@@ -2900,6 +2901,22 @@ def list_packages() -> list[PackageInfo]:
 
     See Also:
         PackageInfo, Parser, TransformEngine
+    """
+
+def default_packages() -> list[str]:
+    """Return the packages a ``KnowledgeBase`` loads when ``packages`` is omitted.
+
+    Names are in canonical import order. ``physics`` is excluded because it
+    redefines standard commands; extend this list to opt into it.
+
+    Returns:
+        The default package names.
+
+    Examples:
+        texform.KnowledgeBase([*texform.default_packages(), "physics"])
+
+    See Also:
+        list_packages, KnowledgeBase
     """
 
 def list_rules() -> list[RuleInfo]:

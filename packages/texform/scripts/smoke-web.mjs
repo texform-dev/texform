@@ -11,6 +11,7 @@ for (const call of [
   () => web.serialize({}),
   () => web.validateArgspec("m"),
   () => web.listPackages(),
+  () => web.defaultPackages(),
   () => web.listRules(),
 ]) {
   assert.throws(call, (error) => error instanceof web.TexformError && /await init\(\)/.test(error.message));

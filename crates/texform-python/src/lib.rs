@@ -1422,6 +1422,11 @@ fn list_packages(py: Python<'_>) -> PyResult<Py<PyAny>> {
 }
 
 #[pyfunction]
+fn default_packages() -> Vec<&'static str> {
+    texform::default_packages()
+}
+
+#[pyfunction]
 fn list_rules(py: Python<'_>) -> PyResult<Py<PyAny>> {
     Ok(pythonize(py, &texform::bindings::list_rules_to_dto())?.unbind())
 }
@@ -1463,6 +1468,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(serialize, m)?)?;
     m.add_function(wrap_pyfunction!(validate_argspec, m)?)?;
     m.add_function(wrap_pyfunction!(list_packages, m)?)?;
+    m.add_function(wrap_pyfunction!(default_packages, m)?)?;
     m.add_function(wrap_pyfunction!(list_rules, m)?)?;
     m.add_function(wrap_pyfunction!(_run_cli, m)?)?;
     m.add_class::<PyParseConfig>()?;
@@ -3357,6 +3363,17 @@ for make in (texform.Parser, lambda **kw: texform.TransformEngine("equiv", **kw)
         pass
     else:
         raise AssertionError("knowledge options belong to KnowledgeBase")
+"#,
+        );
+    }
+
+    #[test]
+    fn python_default_packages_match_an_unconfigured_knowledge_base() {
+        run_python_test(
+            cr#"
+defaults = texform.default_packages()
+assert defaults == texform.KnowledgeBase().packages()
+assert "physics" not in defaults
 "#,
         );
     }

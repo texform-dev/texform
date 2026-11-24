@@ -3,6 +3,7 @@ import initWasm, {
   KnowledgeBase as WasmKnowledgeBase,
   Parser as WasmParser,
   TransformEngine as WasmTransformEngine,
+  defaultPackages as wasmDefaultPackages,
   listPackages as wasmListPackages,
   listRules as wasmListRules,
   serialize as wasmSerialize,
@@ -40,6 +41,7 @@ const bindings = createBindings({
   serialize: wasmSerialize,
   validateArgspec: validate_argspec,
   listPackages: wasmListPackages,
+  defaultPackages: wasmDefaultPackages,
   listRules: wasmListRules,
 });
 
@@ -58,5 +60,6 @@ export const {
   serialize,
   validateArgspec,
   listPackages,
+  defaultPackages,
   listRules,
 } = bindings;

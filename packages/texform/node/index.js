@@ -12,6 +12,7 @@ const bindings = createBindings({
   serialize: wasm.serialize,
   validateArgspec: wasm.validate_argspec,
   listPackages: wasm.listPackages,
+  defaultPackages: wasm.defaultPackages,
   listRules: wasm.listRules,
 });
 
@@ -30,5 +31,6 @@ export const {
   serialize,
   validateArgspec,
   listPackages,
+  defaultPackages,
   listRules,
 } = bindings;

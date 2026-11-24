@@ -6,6 +6,7 @@ export function createBindings({
   serialize: wasmSerialize,
   validateArgspec: wasmValidateArgspec,
   listPackages: wasmListPackages,
+  defaultPackages: wasmDefaultPackages,
   listRules: wasmListRules,
   isInitialized = () => true,
 }) {
@@ -769,6 +770,7 @@ export function createBindings({
     wrapTexformError(() => wasmSerialize(node, options ?? undefined));
   const validateArgspec = (source) => wrapTexformError(() => wasmValidateArgspec(source));
   const listPackages = () => wrapTexformError(() => wasmListPackages());
+  const defaultPackages = () => wrapTexformError(() => wasmDefaultPackages());
   const listRules = () => wrapTexformError(() => wasmListRules());
 
   return {
@@ -786,6 +788,7 @@ export function createBindings({
     serialize,
     validateArgspec,
     listPackages,
+    defaultPackages,
     listRules,
   };
 }
