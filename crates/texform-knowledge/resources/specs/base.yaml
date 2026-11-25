@@ -1508,14 +1508,14 @@ commands:
       - decoration
 environments:
   - name: array
-    argspec: o m:C
+    argspec: o:N m:C
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
       - nestable
   - name: darray
-    argspec: o m:C
+    argspec: o:N m:C
     body_mode: math
     allowed_mode: math
     tags:

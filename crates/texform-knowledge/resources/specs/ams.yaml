@@ -187,14 +187,14 @@ environments:
     tags:
       - math-alignment
   - name: aligned
-    argspec: o
+    argspec: o:N
     body_mode: math
     allowed_mode: math
     tags:
       - math-alignment
       - nestable
   - name: alignedat
-    argspec: o m:I
+    argspec: o:N m:I
     body_mode: math
     allowed_mode: math
     tags:
@@ -257,7 +257,7 @@ environments:
     tags:
       - math-alignment
   - name: gathered
-    argspec: o
+    argspec: o:N
     body_mode: math
     allowed_mode: math
     tags:
