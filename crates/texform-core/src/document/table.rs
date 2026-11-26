@@ -238,8 +238,10 @@ impl ArgumentTable {
                 ("delimiter", Some(DelimiterRef::from(value).to_string()))
             }
             ArgumentValue::CSName(value) => ("cs_name", Some(value.clone())),
+            ArgumentValue::ControlSequence(value) => ("control_sequence", Some(value.clone())),
             ArgumentValue::Dimension(value) => ("dimension", Some(value.clone())),
             ArgumentValue::Integer(value) => ("integer", Some(value.clone())),
+            ArgumentValue::Real(value) => ("real", Some(value.clone())),
             ArgumentValue::KeyVal(value) => ("key_val", Some(value.clone())),
             ArgumentValue::Column(value) => ("column", Some(value.clone())),
             ArgumentValue::Boolean(value) => ("boolean", Some(value.to_string())),

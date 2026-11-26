@@ -62,8 +62,12 @@ fn render_value_kind(kind: ValueKind) -> TokenStream2 {
         ValueKind::OperatorName => quote!(::texform_knowledge::specs::ValueKind::OperatorName),
         ValueKind::Delimiter => quote!(::texform_knowledge::specs::ValueKind::Delimiter),
         ValueKind::CSName => quote!(::texform_knowledge::specs::ValueKind::CSName),
+        ValueKind::ControlSequence => {
+            quote!(::texform_knowledge::specs::ValueKind::ControlSequence)
+        }
         ValueKind::Dimension => quote!(::texform_knowledge::specs::ValueKind::Dimension),
         ValueKind::Integer => quote!(::texform_knowledge::specs::ValueKind::Integer),
+        ValueKind::Real => quote!(::texform_knowledge::specs::ValueKind::Real),
         ValueKind::KeyVal => quote!(::texform_knowledge::specs::ValueKind::KeyVal),
         ValueKind::Column => quote!(::texform_knowledge::specs::ValueKind::Column),
         ValueKind::Star => quote!(::texform_knowledge::specs::ValueKind::Star),

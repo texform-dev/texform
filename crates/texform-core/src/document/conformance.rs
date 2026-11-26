@@ -573,8 +573,13 @@ fn check_argument(
             ValueKind::OperatorName
         ) | (ArgumentValue::Delimiter(_), ValueKind::Delimiter)
             | (ArgumentValue::CSName(_), ValueKind::CSName)
+            | (
+                ArgumentValue::ControlSequence(_),
+                ValueKind::ControlSequence
+            )
             | (ArgumentValue::Dimension(_), ValueKind::Dimension)
             | (ArgumentValue::Integer(_), ValueKind::Integer)
+            | (ArgumentValue::Real(_), ValueKind::Real)
             | (ArgumentValue::KeyVal(_), ValueKind::KeyVal)
             | (ArgumentValue::Column(_), ValueKind::Column)
             | (ArgumentValue::Boolean(_), ValueKind::Star)

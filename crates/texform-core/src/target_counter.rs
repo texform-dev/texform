@@ -151,8 +151,10 @@ fn count_args(args: &[Option<Argument>], out: &mut TargetCounter) {
             }
             ArgumentValue::Delimiter(_)
             | ArgumentValue::CSName(_)
+            | ArgumentValue::ControlSequence(_)
             | ArgumentValue::Dimension(_)
             | ArgumentValue::Integer(_)
+            | ArgumentValue::Real(_)
             | ArgumentValue::KeyVal(_)
             | ArgumentValue::Column(_)
             | ArgumentValue::Boolean(_) => {}

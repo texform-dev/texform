@@ -57,13 +57,19 @@ pub enum ArgSpecKindInfo {
     OperatorName,
     /// A single delimiter token.
     Delimiter,
-    /// A control-sequence name.
+    /// A literal string without control sequences, kept as text rather than
+    /// parsed: label keys, color names, position letters, and similar values.
     #[serde(rename = "csname")]
     CsName,
+    /// A single control sequence (such as `\abs`), including its backslash.
+    #[serde(rename = "controlsequence")]
+    ControlSequence,
     /// A TeX dimension (such as `2pt`).
     Dimension,
     /// An integer literal.
     Integer,
+    /// A unitless decimal literal (such as `1.5`).
+    Real,
     /// A `key=value` list.
     #[serde(rename = "keyval")]
     KeyVal,
@@ -192,8 +198,10 @@ fn arg_spec_kind_info(kind: ValueKind) -> ArgSpecKindInfo {
         ValueKind::OperatorName => ArgSpecKindInfo::OperatorName,
         ValueKind::Delimiter => ArgSpecKindInfo::Delimiter,
         ValueKind::CSName => ArgSpecKindInfo::CsName,
+        ValueKind::ControlSequence => ArgSpecKindInfo::ControlSequence,
         ValueKind::Dimension => ArgSpecKindInfo::Dimension,
         ValueKind::Integer => ArgSpecKindInfo::Integer,
+        ValueKind::Real => ArgSpecKindInfo::Real,
         ValueKind::KeyVal => ArgSpecKindInfo::KeyVal,
         ValueKind::Column => ArgSpecKindInfo::Column,
         ValueKind::Star => ArgSpecKindInfo::Star,

@@ -173,12 +173,16 @@ pub enum ArgumentValue {
     OperatorNameContent(NodeId),
     /// Parsed delimiter value
     Delimiter(Delimiter),
-    /// Control-sequence name without leading backslash
+    /// Name without control sequences, such as a label key or color name
     CSName(String),
+    /// One control sequence including its leading backslash
+    ControlSequence(String),
     /// Raw dimension string
     Dimension(String),
     /// Raw integer string
     Integer(String),
+    /// Raw unitless decimal string
+    Real(String),
     /// Raw key-value string
     KeyVal(String),
     /// Parsed column specification
@@ -1796,8 +1800,12 @@ impl Ast {
                 syntax_node::ArgumentValue::Delimiter(self.to_syntax_delimiter(delimiter))
             }
             ArgumentValue::CSName(value) => syntax_node::ArgumentValue::CSName(value.clone()),
+            ArgumentValue::ControlSequence(value) => {
+                syntax_node::ArgumentValue::ControlSequence(value.clone())
+            }
             ArgumentValue::Dimension(value) => syntax_node::ArgumentValue::Dimension(value.clone()),
             ArgumentValue::Integer(value) => syntax_node::ArgumentValue::Integer(value.clone()),
+            ArgumentValue::Real(value) => syntax_node::ArgumentValue::Real(value.clone()),
             ArgumentValue::KeyVal(value) => syntax_node::ArgumentValue::KeyVal(value.clone()),
             ArgumentValue::Column(value) => syntax_node::ArgumentValue::Column(value.clone()),
             ArgumentValue::Boolean(value) => syntax_node::ArgumentValue::Boolean(*value),
@@ -2104,8 +2112,12 @@ impl Ast {
                 ArgumentValue::Delimiter(Self::convert_delimiter(*delimiter))
             }
             syntax_node::ArgumentValue::CSName(name) => ArgumentValue::CSName(name.clone()),
+            syntax_node::ArgumentValue::ControlSequence(value) => {
+                ArgumentValue::ControlSequence(value.clone())
+            }
             syntax_node::ArgumentValue::Dimension(value) => ArgumentValue::Dimension(value.clone()),
             syntax_node::ArgumentValue::Integer(value) => ArgumentValue::Integer(value.clone()),
+            syntax_node::ArgumentValue::Real(value) => ArgumentValue::Real(value.clone()),
             syntax_node::ArgumentValue::KeyVal(value) => ArgumentValue::KeyVal(value.clone()),
             syntax_node::ArgumentValue::Column(value) => ArgumentValue::Column(value.clone()),
             syntax_node::ArgumentValue::Boolean(value) => ArgumentValue::Boolean(*value),

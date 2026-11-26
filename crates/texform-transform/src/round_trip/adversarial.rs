@@ -256,6 +256,8 @@ fn fillers(args: &[ArgSpec]) -> String {
             ValueKind::Delimiter => break,
             ValueKind::Dimension => text.push_str("{1em}"),
             ValueKind::Integer => text.push_str("{2}"),
+            ValueKind::Real => text.push_str("{1.5}"),
+            ValueKind::ControlSequence => text.push_str(r"{\relax}"),
             _ => text.push_str("{}"),
         }
     }

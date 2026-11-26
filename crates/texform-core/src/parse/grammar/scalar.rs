@@ -176,6 +176,72 @@ pub(super) fn parse_integer_slice(
     Ok(value)
 }
 
+/// Parse a unitless decimal (`[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)`) directly
+/// from `cursor`.
+///
+/// Matches MathJax's signed-number syntax: no units, no decimal comma, and no
+/// numeric canonicalization of the stored text. Restores `cursor` on error.
+pub(super) fn parse_real_cursor(cursor: &mut Cursor<'_, '_>) -> Result<String, ScalarError> {
+    let start_pos = cursor.pos();
+    let mut out = String::new();
+
+    if let Some(Token::Char(sign @ ('+' | '-'))) = cursor.peek() {
+        cursor.bump();
+        out.push(sign);
+    }
+
+    fn push_digits(cursor: &mut Cursor<'_, '_>, out: &mut String) -> usize {
+        let mut count = 0;
+        while let Some(Token::Char(c)) = cursor.peek()
+            && c.is_ascii_digit()
+        {
+            cursor.bump();
+            out.push(c);
+            count += 1;
+        }
+        count
+    }
+
+    let mut digits = push_digits(cursor, &mut out);
+    if cursor.peek() == Some(Token::Char('.')) {
+        cursor.bump();
+        out.push('.');
+        digits += push_digits(cursor, &mut out);
+    }
+
+    if digits == 0 {
+        let span = cursor.peek_span();
+        cursor.set_pos(start_pos);
+        return Err(ScalarError {
+            message: "invalid real number argument",
+            span,
+        });
+    }
+
+    Ok(out)
+}
+
+/// Parse a whole token slice as a unitless decimal (ignoring surrounding
+/// whitespace).
+pub(super) fn parse_real_slice(
+    tokens: &[Token<'_>],
+    spans: &[Span],
+    fallback_eoi: usize,
+    nullable: bool,
+) -> Result<String, &'static str> {
+    if nullable && is_trimmed_empty(tokens) {
+        return Ok(String::new());
+    }
+    let mut cursor = Cursor::new(tokens, spans, fallback_eoi);
+    cursor.skip_ws();
+    let value = parse_real_cursor(&mut cursor).map_err(|_| "invalid real number argument")?;
+    cursor.skip_ws();
+    if !cursor.is_at_end() {
+        return Err("invalid real number argument");
+    }
+    Ok(value)
+}
+
 /// Parse a LaTeX dimension (`[+-]?[0-9]*([.,][0-9]*)?\s*[a-zA-Z]+`) directly
 /// from `cursor`.
 ///
@@ -499,6 +565,47 @@ pub(super) fn parse_cs_name_slice(
     Ok(tokens_to_string(tokens))
 }
 
+/// Parse exactly one control-sequence token (control word or control symbol)
+/// from `cursor`, returning it with its backslash (`\abs`, `\,`).
+///
+/// The value is a scalar, not a command node: it is never looked up in the
+/// knowledge base. Leaves `cursor` untouched on error.
+pub(super) fn parse_control_sequence_cursor(
+    cursor: &mut Cursor<'_, '_>,
+) -> Result<String, ScalarError> {
+    match cursor.peek() {
+        Some(Token::ControlSeq(name)) => {
+            cursor.bump();
+            Ok(format!("\\{name}"))
+        }
+        _ => Err(ScalarError {
+            message: "expected a single control sequence",
+            span: cursor.peek_span(),
+        }),
+    }
+}
+
+/// Parse a whole token slice as one control sequence (ignoring surrounding
+/// whitespace).
+pub(super) fn parse_control_sequence_slice(
+    tokens: &[Token<'_>],
+    spans: &[Span],
+    fallback_eoi: usize,
+    nullable: bool,
+) -> Result<String, &'static str> {
+    if nullable && is_trimmed_empty(tokens) {
+        return Ok(String::new());
+    }
+    let mut cursor = Cursor::new(tokens, spans, fallback_eoi);
+    cursor.skip_ws();
+    let value = parse_control_sequence_cursor(&mut cursor).map_err(|err| err.message)?;
+    cursor.skip_ws();
+    if !cursor.is_at_end() {
+        return Err("expected a single control sequence");
+    }
+    Ok(value)
+}
+
 /// Check that the argument parser reads a stored scalar value back from its slot.
 ///
 /// The slot's token stream is the recorded boundaries around the lexed value.
@@ -513,8 +620,10 @@ pub(crate) fn validate_scalar_argument(
 
     let raw = match &argument.value {
         Value::CSName(raw)
+        | Value::ControlSequence(raw)
         | Value::Dimension(raw)
         | Value::Integer(raw)
+        | Value::Real(raw)
         | Value::KeyVal(raw)
         | Value::Column(raw) => raw,
         _ => return Ok(()),
@@ -569,8 +678,10 @@ pub(crate) fn validate_scalar_argument(
     match parsed.map(|arg| arg.value) {
         Some(
             ArgumentValue::CSName(value)
+            | ArgumentValue::ControlSequence(value)
             | ArgumentValue::Dimension(value)
             | ArgumentValue::Integer(value)
+            | ArgumentValue::Real(value)
             | ArgumentValue::KeyVal(value)
             | ArgumentValue::Column(value),
         ) if value == *raw => Ok(()),

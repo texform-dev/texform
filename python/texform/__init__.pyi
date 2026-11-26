@@ -131,8 +131,10 @@ ArgSpecKindType = Literal[
     "operatorname",
     "delimiter",
     "csname",
+    "controlsequence",
     "dimension",
     "integer",
+    "real",
     "keyval",
     "column",
     "star",
@@ -662,15 +664,28 @@ class DelimiterArg(TypedDict):
 
 
 class CSNameArg(TypedDict):
-    """A command argument that is a control-sequence name.
+    """A command argument holding a literal string without control sequences, such as a label key, color name, or position letter.
 
     Attributes:
         form: ArgForm
     kind: Discriminator; always ``"CSName"``.
-        value: The control-sequence name without the leading backslash.
+        value: The name as written, without a leading backslash.
     """
 
     kind: Literal["CSName"]
+    value: str
+
+
+class ControlSequenceArg(TypedDict):
+    """A command argument that is a single control sequence, such as the name defined by ``\\DeclareMathOperator``.
+
+    Attributes:
+        form: ArgForm
+    kind: Discriminator; always ``"ControlSequence"``.
+        value: The control sequence including its backslash, such as ``\\abs``; empty for an empty nullable slot.
+    """
+
+    kind: Literal["ControlSequence"]
     value: str
 
 
@@ -697,6 +712,19 @@ class IntegerArg(TypedDict):
     """
 
     kind: Literal["Integer"]
+    value: str
+
+
+class RealArg(TypedDict):
+    """A command argument that is a unitless decimal literal, such as ``1.5``.
+
+    Attributes:
+        form: ArgForm
+    kind: Discriminator; always ``"Real"``.
+        value: The number as written.
+    """
+
+    kind: Literal["Real"]
     value: str
 
 
@@ -745,8 +773,10 @@ ArgRef: TypeAlias = (
     | DelimiterArg
     | OperatorNameArg
     | CSNameArg
+    | ControlSequenceArg
     | DimensionArg
     | IntegerArg
+    | RealArg
     | KeyValArg
     | ColumnArg
     | BooleanArg
@@ -904,7 +934,8 @@ class ArgumentTable(TypedDict):
     value_kind: list[
         Literal[
             "math", "text", "operator_name", "delimiter", "cs_name",
-            "dimension", "integer", "key_val", "column", "boolean",
+            "control_sequence", "dimension", "integer", "real", "key_val",
+            "column", "boolean",
         ]
         | None
     ]

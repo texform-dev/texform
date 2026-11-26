@@ -1160,8 +1160,10 @@ impl<'a> NodeRef<'a> {
             ArgumentValue::OperatorNameContent(id) => ArgRef::OperatorName(self.sibling(*id)),
             ArgumentValue::Delimiter(delimiter) => ArgRef::Delimiter(delimiter.into()),
             ArgumentValue::CSName(value) => ArgRef::CSName(value),
+            ArgumentValue::ControlSequence(value) => ArgRef::ControlSequence(value),
             ArgumentValue::Dimension(value) => ArgRef::Dimension(value),
             ArgumentValue::Integer(value) => ArgRef::Integer(value),
+            ArgumentValue::Real(value) => ArgRef::Real(value),
             ArgumentValue::KeyVal(value) => ArgRef::KeyVal(value),
             ArgumentValue::Column(value) => ArgRef::Column(value),
             ArgumentValue::Boolean(value) => ArgRef::Boolean(*value),
@@ -1263,12 +1265,16 @@ pub enum ArgRef<'a> {
     Text(NodeRef<'a>),
     /// Delimiter argument such as the opener of a paired form.
     Delimiter(DelimiterRef<'a>),
-    /// Control-sequence name argument, without the leading backslash.
+    /// Name argument without control sequences, such as a label key or color name.
     CSName(&'a str),
+    /// Single control-sequence argument, including its backslash (e.g. `\abs`).
+    ControlSequence(&'a str),
     /// Raw dimension argument, kept as its source text (e.g. `2pt`).
     Dimension(&'a str),
     /// Raw integer argument, kept as its source text.
     Integer(&'a str),
+    /// Raw unitless decimal argument, kept as its source text (e.g. `1.5`).
+    Real(&'a str),
     /// Raw key-value argument, kept as its source text.
     KeyVal(&'a str),
     /// Column-specification argument, kept as its source text.

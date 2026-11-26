@@ -29,12 +29,21 @@ pub enum ArgForm {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueKind {
-    Content { mode: ContentMode },
+    Content {
+        mode: ContentMode,
+    },
     OperatorName,
     Delimiter,
+    /// A name that would follow a backslash, without control sequences
+    /// (label keys, color names).
     CSName,
+    /// Exactly one control-sequence token (`\abs`, `\,`), stored with its
+    /// backslash.
+    ControlSequence,
     Dimension,
     Integer,
+    /// A unitless decimal number (`1.5`, `-.5`).
+    Real,
     KeyVal,
     Column,
     Star,
@@ -333,10 +342,17 @@ impl<'a> ArgSpecParser<'a> {
             'N' => ValueKind::CSName,
             'L' => ValueKind::Dimension,
             'I' => ValueKind::Integer,
+            'R' => ValueKind::Real,
             'K' => ValueKind::KeyVal,
+            // `S` is not an argument token, so `:CS` cannot be confused with
+            // `:C` followed by another slot.
+            'C' if self.consume_if('S') => ValueKind::ControlSequence,
             'C' => ValueKind::Column,
             other => {
-                return Err(self.err(format!("unsupported value kind annotation `:{other}`")));
+                return Err(self.err(format!(
+                    "unsupported value kind annotation `:{other}` \
+                     (expected one of :T, :O, :D, :N, :CS, :L, :I, :R, :K, :C)"
+                )));
             }
         };
         let nullable = self.consume_if('?');

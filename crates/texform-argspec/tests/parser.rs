@@ -229,7 +229,7 @@ fn test_parse_arg_specs_accepts_nullable_dimension_annotation() {
 #[test]
 fn test_parse_arg_specs_accepts_nullable_for_all_non_star_non_column_kinds() {
     // All value kinds except Star and Column support nullable
-    for spec_str in &["m:I?", "m:N?", "m:K?", "m:T?"] {
+    for spec_str in &["m:I?", "m:N?", "m:K?", "m:T?", "m:CS?", "m:R?"] {
         let specs = parse_arg_specs(spec_str, "nullable-generalized")
             .unwrap_or_else(|_| panic!("{} should be valid", spec_str));
         assert_eq!(specs.len(), 1);
@@ -267,6 +267,60 @@ fn test_parse_arg_specs_supports_csname_annotation() {
     assert_eq!(specs[3].kind, ValueKind::CSName);
     assert_eq!(specs[3].form, ArgForm::Group);
     assert!(specs[3].required);
+}
+
+#[test]
+fn control_sequence_annotation_is_two_letters_and_leaves_column_unchanged() {
+    let specs = parse_arg_specs("s m:CS m:O o:CS? m:C m:CS", "control-sequence")
+        .expect("control sequence argspec should be valid");
+    let kinds: Vec<_> = specs
+        .iter()
+        .map(|spec| (spec.kind, spec.nullable))
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            (ValueKind::Star, false),
+            (ValueKind::ControlSequence, false),
+            (ValueKind::OperatorName, false),
+            (ValueKind::ControlSequence, true),
+            (ValueKind::Column, false),
+            (ValueKind::ControlSequence, false),
+        ]
+    );
+    // `:C` directly followed by a slot letter is still a column template.
+    let specs = parse_arg_specs("m:Cm", "column-then-slot").expect("`m:Cm` should be valid");
+    assert_eq!(specs[0].kind, ValueKind::Column);
+    assert_eq!(
+        specs[1].kind,
+        ValueKind::Content {
+            mode: ContentMode::Math
+        }
+    );
+}
+
+#[test]
+fn real_annotation_supports_nullable_and_optional_defaults() {
+    let specs = parse_arg_specs("o:R? m:R O{2}:R", "real").expect("real argspec should be valid");
+    let kinds: Vec<_> = specs
+        .iter()
+        .map(|spec| (spec.kind, spec.nullable, spec.required))
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            (ValueKind::Real, true, false),
+            (ValueKind::Real, false, true),
+            (ValueKind::Real, false, false),
+        ]
+    );
+}
+
+#[test]
+fn unknown_annotation_error_lists_supported_annotations() {
+    let err = parse_arg_specs("m:X", "unknown").expect_err("`:X` should be invalid");
+    assert!(err.to_string().contains(":CS"), "{err}");
+    assert!(err.to_string().contains(":R"), "{err}");
 }
 
 #[test]

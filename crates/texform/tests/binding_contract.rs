@@ -71,6 +71,29 @@ fn validate_argspec_reports_operator_name_kind() {
 }
 
 #[test]
+fn validate_argspec_reports_control_sequence_and_real_kinds() {
+    let result = validate_argspec("m:CS m:R? m:C");
+
+    assert!(result.valid);
+    let parsed = result
+        .parsed
+        .expect("valid argspec should include parsed slots");
+    let kinds: Vec<_> = parsed
+        .iter()
+        .map(|slot| serde_json::to_value(&slot.kind).unwrap())
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            serde_json::json!({ "type": "controlsequence" }),
+            serde_json::json!({ "type": "real" }),
+            serde_json::json!({ "type": "column" }),
+        ]
+    );
+    assert!(parsed[1].nullable);
+}
+
+#[test]
 fn validate_argspec_failure_keeps_all_fields_present() {
     let result = validate_argspec("m?");
 

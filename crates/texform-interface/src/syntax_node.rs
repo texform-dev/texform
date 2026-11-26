@@ -78,12 +78,16 @@ pub enum ArgumentValue {
     OperatorNameContent(SyntaxNode),
     /// Delimiter argument value.
     Delimiter(Delimiter),
-    /// Control-sequence name string with no escape/control sequences.
+    /// Name string without control sequences, such as a label key or color name.
     CSName(String),
+    /// A single control sequence including its backslash (`\abs`, `\,`).
+    ControlSequence(String),
     /// Dimension argument value (raw string).
     Dimension(String),
     /// Integer argument value (raw string).
     Integer(String),
+    /// Unitless decimal argument value (raw string).
+    Real(String),
     /// Key-value list argument value (raw string).
     KeyVal(String),
     /// Parsed column template string.
@@ -561,8 +565,12 @@ impl ArgumentValue {
             }
             ArgumentValue::Delimiter(delim) => writeln!(f, "{}Delimiter({:?})", prefix, delim),
             ArgumentValue::CSName(value) => writeln!(f, "{}CSName(\"{}\")", prefix, value),
+            ArgumentValue::ControlSequence(value) => {
+                writeln!(f, "{}ControlSequence(\"{}\")", prefix, value)
+            }
             ArgumentValue::Dimension(value) => writeln!(f, "{}Dimension(\"{}\")", prefix, value),
             ArgumentValue::Integer(value) => writeln!(f, "{}Integer(\"{}\")", prefix, value),
+            ArgumentValue::Real(value) => writeln!(f, "{}Real(\"{}\")", prefix, value),
             ArgumentValue::KeyVal(value) => writeln!(f, "{}KeyVal(\"{}\")", prefix, value),
             ArgumentValue::Column(value) => writeln!(f, "{}Column(\"{}\")", prefix, value),
             ArgumentValue::Boolean(value) => writeln!(f, "{}Boolean({})", prefix, value),

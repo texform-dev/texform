@@ -2120,8 +2120,10 @@ impl<'a, R: Recorder> Serializer<'a, R> {
                 boundary,
             ),
             ArgumentValue::CSName(name)
+            | ArgumentValue::ControlSequence(name)
             | ArgumentValue::Dimension(name)
             | ArgumentValue::Integer(name)
+            | ArgumentValue::Real(name)
             | ArgumentValue::KeyVal(name)
             | ArgumentValue::Column(name) => self.writer.emit_with_boundary(
                 mode,

@@ -294,8 +294,9 @@ export interface Argument {
 
 /**
  * The parsed value carried by an {@link Argument} in snapshot form: math or
- * text content, a delimiter, a control-sequence name, a dimension, an integer,
- * a key=value list, a column spec, or a boolean flag.
+ * text content, a delimiter, a literal string without control sequences, a single
+ * control sequence, a dimension, an integer, a unitless real number, a
+ * key=value list, a column spec, or a boolean flag.
  *
  * @see {@link ArgRef}
  */
@@ -305,8 +306,10 @@ export type ArgumentValue =
   | { OperatorNameContent: SyntaxNode }
   | { Delimiter: Delimiter }
   | { CSName: string }
+  | { ControlSequence: string }
   | { Dimension: string }
   | { Integer: string }
+  | { Real: string }
   | { KeyVal: string }
   | { Column: string }
   | { Boolean: boolean };
@@ -345,8 +348,10 @@ export type NodeSlot = { kind: "child" | "arg" | "script_base" | "subscript" | "
  * {@link Node.arg} and {@link Node.argSlots}.
  *
  * Content kinds (`Math`, `Text`, `OperatorName`) carry a live `node` {@link Node} handle; leaf
- * kinds (`Delimiter`, `CSName`, `Dimension`, `Integer`, `KeyVal`, `Column`,
- * `Boolean`) carry a `value`. `Delimiter` values use source strings. The `kind` discriminator keeps its capitalized
+ * kinds (`Delimiter`, `CSName`, `ControlSequence`, `Dimension`, `Integer`,
+ * `Real`, `KeyVal`, `Column`, `Boolean`) carry a `value`. `CSName` values are
+ * names without control sequences (label keys, color names); `ControlSequence`
+ * values include their backslash (`\abs`). `Delimiter` values use source strings. The `kind` discriminator keeps its capitalized
  * form.
  *
  * @see {@link ArgForm}
@@ -357,8 +362,10 @@ export type ArgRef = { form: ArgForm } & (
   | { kind: "OperatorName"; node: Node }
   | { kind: "Delimiter"; value: string }
   | { kind: "CSName"; value: string }
+  | { kind: "ControlSequence"; value: string }
   | { kind: "Dimension"; value: string }
   | { kind: "Integer"; value: string }
+  | { kind: "Real"; value: string }
   | { kind: "KeyVal"; value: string }
   | { kind: "Column"; value: string }
   | { kind: "Boolean"; value: boolean });
@@ -468,7 +475,7 @@ export interface ArgumentTable {
   index: number[];
   form: Array<ArgForm["kind"] | null>;
   present: boolean[];
-  value_kind: Array<"math" | "text" | "operator_name" | "delimiter" | "cs_name" | "dimension" | "integer" | "key_val" | "column" | "boolean" | null>;
+  value_kind: Array<"math" | "text" | "operator_name" | "delimiter" | "cs_name" | "control_sequence" | "dimension" | "integer" | "real" | "key_val" | "column" | "boolean" | null>;
   value: Array<string | null>;
   content: number[];
   open: Array<string | null>;
@@ -1340,8 +1347,8 @@ export type CommandKind = "prefix" | "infix" | "declarative";
  * The value kind one parsed argument slot accepts, with a `type` discriminator.
  *
  * `content` carries the {@link RuntimeContentMode} its body parses in; the
- * other variants are leaf kinds (operatorname, delimiter, csname, dimension,
- * integer, keyval, column, star).
+ * other variants are leaf kinds (operatorname, delimiter, csname,
+ * controlsequence, dimension, integer, real, keyval, column, star).
  *
  * @see {@link ParsedArgSpecSlot}
  */
@@ -1350,8 +1357,10 @@ export type ArgSpecKindInfo =
   | { type: "operatorname" }
   | { type: "delimiter" }
   | { type: "csname" }
+  | { type: "controlsequence" }
   | { type: "dimension" }
   | { type: "integer" }
+  | { type: "real" }
   | { type: "keyval" }
   | { type: "column" }
   | { type: "star" };

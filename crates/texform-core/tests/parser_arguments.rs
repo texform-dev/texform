@@ -1539,3 +1539,249 @@ fn delimited_content_protection_covers_unpaired_opening_delimiters() {
         );
     }
 }
+
+fn macro_definition_items() -> Vec<ContextItem> {
+    vec![
+        command_item(
+            "DeclareMathOperator",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "s m:CS m:O",
+        ),
+        command_item(
+            "DeclarePairedDelimiter",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "m:CS m m",
+        ),
+        command_item(
+            "MakeAboxedCommand",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "m:CS m:CS",
+        ),
+        command_item(
+            "csopt",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "o:CS? m:CS?",
+        ),
+        command_item(
+            "csforms",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "g:CS r():CS",
+        ),
+        command_item(
+            "MoveEqLeft",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "O{2}:R",
+        ),
+        command_item(
+            "xmathstrut",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "o:R? m:R",
+        ),
+        command_item(
+            "realforms",
+            CommandKind::Prefix,
+            AllowedMode::Math,
+            "g:R r():R?",
+        ),
+    ]
+}
+
+/// Parse strictly (unknown commands rejected) and return the scalar values of
+/// the first command's slots; `None` marks an absent slot.
+fn scalar_values(src: &str) -> Vec<Option<ArgumentValue>> {
+    let output = parse_single_with_items(&macro_definition_items(), src, true);
+    assert!(
+        output.diagnostics.is_empty(),
+        "unexpected diagnostics for {src}: {:?}",
+        output.diagnostics
+    );
+    let (_, args) = first_command(&output);
+    args.into_iter()
+        .map(|slot| slot.map(|arg| arg.value))
+        .collect()
+}
+
+fn assert_rejected(src: &str) {
+    let output = parse_single_with_items(&macro_definition_items(), src, true);
+    assert!(
+        output.document().is_none() && !output.diagnostics.is_empty(),
+        "{src} should be rejected"
+    );
+}
+
+#[test]
+fn control_sequence_argument_accepts_one_bare_or_braced_control_sequence() {
+    let cs = |value: &str| Some(ArgumentValue::ControlSequence(value.to_string()));
+
+    // The defined name is a scalar, so it is neither looked up nor reported as
+    // an unknown command even under strict parsing.
+    let values = scalar_values(r"\DeclareMathOperator{\diff}{Diff}");
+    assert_eq!(values[1], cs(r"\diff"));
+    let values = scalar_values(r"\DeclareMathOperator*\diff{Diff}");
+    assert_eq!(values[0], Some(ArgumentValue::Boolean(true)));
+    assert_eq!(values[1], cs(r"\diff"));
+
+    assert_eq!(
+        scalar_values(r"\DeclarePairedDelimiter\abs{|}{|}")[0],
+        cs(r"\abs")
+    );
+    assert_eq!(
+        scalar_values(r"\DeclarePairedDelimiter { \abs } {|}{|}")[0],
+        cs(r"\abs")
+    );
+    assert_eq!(
+        scalar_values(r"\MakeAboxedCommand\myboxed\boxed"),
+        [cs(r"\myboxed"), cs(r"\boxed")]
+    );
+    assert_eq!(
+        scalar_values(r"\MakeAboxedCommand \myboxed \boxed"),
+        [cs(r"\myboxed"), cs(r"\boxed")]
+    );
+    // Control symbols are single control-sequence tokens too.
+    assert_eq!(
+        scalar_values(r"\MakeAboxedCommand\,{\!}"),
+        [cs(r"\,"), cs(r"\!")]
+    );
+    assert_eq!(
+        scalar_values(r"\csforms{\alpha}(\beta)"),
+        [cs(r"\alpha"), cs(r"\beta")]
+    );
+}
+
+#[test]
+fn control_sequence_argument_rejects_names_and_multiple_tokens() {
+    for src in [
+        r"\DeclareMathOperator{diff}{Diff}",
+        r"\DeclareMathOperator{\a\b}{Diff}",
+        r"\DeclareMathOperator{\abs x}{Diff}",
+        r"\DeclareMathOperator{}{Diff}",
+        r"\DeclarePairedDelimiter a{|}{|}",
+        r"\MakeAboxedCommand\myboxed",
+        r"\csforms{abs}(\beta)",
+        r"\csforms{\alpha}(\beta\gamma)",
+    ] {
+        assert_rejected(src);
+    }
+}
+
+#[test]
+fn nullable_control_sequence_argument_accepts_empty_braces() {
+    let cs = |value: &str| Some(ArgumentValue::ControlSequence(value.to_string()));
+    assert_eq!(scalar_values(r"\csopt{}"), [None, cs("")]);
+    assert_eq!(scalar_values(r"\csopt[]{ }"), [cs(""), cs("")]);
+    assert_eq!(scalar_values(r"\csopt[\a]\b"), [cs(r"\a"), cs(r"\b")]);
+}
+
+#[test]
+fn real_argument_accepts_unitless_decimals() {
+    let real = |value: &str| Some(ArgumentValue::Real(value.to_string()));
+    for (src, expected) in [
+        (r"\MoveEqLeft[1.5]", "1.5"),
+        (r"\MoveEqLeft[ -.5 ]", "-.5"),
+        (r"\MoveEqLeft[+2.]", "+2."),
+        (r"\MoveEqLeft[007]", "007"),
+    ] {
+        assert_eq!(scalar_values(src), [real(expected)], "{src}");
+    }
+    assert_eq!(
+        scalar_values(r"\xmathstrut[0.2]{0.5}"),
+        [real("0.2"), real("0.5")]
+    );
+    assert_eq!(scalar_values(r"\xmathstrut 3"), [None, real("3")]);
+    assert_eq!(
+        scalar_values(r"\xmathstrut[]{.25}"),
+        [real(""), real(".25")]
+    );
+    assert_eq!(scalar_values(r"\realforms{1.5}()"), [real("1.5"), real("")]);
+}
+
+#[test]
+fn real_argument_rejects_units_commas_and_bare_points() {
+    for src in [
+        r"\xmathstrut{1pt}",
+        r"\xmathstrut{1,5}",
+        r"\xmathstrut{.}",
+        r"\xmathstrut{-}",
+        r"\xmathstrut{}",
+        r"\xmathstrut{1.2.3}",
+        r"\realforms{}()",
+        r"\realforms{1e3}()",
+    ] {
+        assert_rejected(src);
+    }
+}
+
+#[test]
+fn optional_real_argument_that_does_not_match_is_left_absent() {
+    // As for `o:I` and `o:L`, an optional bracket whose content is not a valid
+    // value is not consumed; the bracket stays in the following content.
+    for src in [
+        r"\MoveEqLeft[1pt]",
+        r"\MoveEqLeft[a]",
+        r"\MoveEqLeft[1.5 x]",
+    ] {
+        let output = parse_single_with_items(&macro_definition_items(), src, true);
+        let (_, args) = first_command(&output);
+        assert!(args[0].is_none(), "{src}: optional slot should be absent");
+        let latex = output.document().unwrap().to_latex().unwrap();
+        assert!(latex.starts_with(r"\MoveEqLeft ["), "{src} -> {latex}");
+    }
+    // A required slot after a skipped optional then sees the bracket and fails.
+    assert_rejected(r"\xmathstrut[x]{1}");
+}
+
+#[test]
+fn control_sequence_and_real_arguments_serialize_braced_and_idempotent() {
+    let items = macro_definition_items();
+    for (src, expected) in [
+        (
+            r"\DeclareMathOperator{\diff}{Diff}",
+            r"\DeclareMathOperator {\diff} {Diff}",
+        ),
+        (
+            r"\DeclareMathOperator*\diff{Diff}",
+            r"\DeclareMathOperator* {\diff} {Diff}",
+        ),
+        (
+            r"\DeclarePairedDelimiter\abs{|}{|}",
+            r"\DeclarePairedDelimiter {\abs} { | } { | }",
+        ),
+        (
+            r"\MakeAboxedCommand\myboxed\boxed",
+            r"\MakeAboxedCommand {\myboxed} {\boxed}",
+        ),
+        (
+            r"\MakeAboxedCommand\,{ \! }",
+            r"\MakeAboxedCommand {\,} {\!}",
+        ),
+        (r"\csopt[ ]{}", r"\csopt [] {}"),
+        (
+            r"\csforms{ \alpha }( \beta )",
+            r"\csforms {\alpha} ( \beta )",
+        ),
+        (r"\MoveEqLeft[ 1.5 ]", r"\MoveEqLeft [1.5]"),
+        (r"\xmathstrut[0.2] .5", r"\xmathstrut [0.2] {.5}"),
+        (r"\realforms{ -1. }( )", r"\realforms {-1.} ( )"),
+    ] {
+        let doc = parse_single_with_items(&items, src, true)
+            .document()
+            .cloned()
+            .unwrap_or_else(|| panic!("{src} should parse"));
+        let latex = doc.to_latex().unwrap();
+        assert_eq!(latex, expected, "{src}");
+
+        let reparsed = parse_single_with_items(&items, &latex, true)
+            .document()
+            .cloned()
+            .unwrap_or_else(|| panic!("{latex} should reparse"));
+        assert_eq!(reparsed.to_syntax(), doc.to_syntax(), "{src}");
+        assert_eq!(reparsed.to_latex().unwrap(), latex, "{src}");
+    }
+}

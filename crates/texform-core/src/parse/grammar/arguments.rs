@@ -276,6 +276,24 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                 |p| scalar::parse_integer_cursor(&mut p.cursor),
                 ArgumentValue::Integer,
             ),
+            ValueKind::Real => self.parse_inline_or_bracketed_scalar(
+                spec,
+                context_label,
+                arg_start_byte,
+                String::new(),
+                "real number",
+                |p| scalar::parse_real_cursor(&mut p.cursor),
+                ArgumentValue::Real,
+            ),
+            ValueKind::ControlSequence => self.parse_inline_or_bracketed_scalar(
+                spec,
+                context_label,
+                arg_start_byte,
+                String::new(),
+                "control sequence",
+                |p| scalar::parse_control_sequence_cursor(&mut p.cursor),
+                ArgumentValue::ControlSequence,
+            ),
             ValueKind::KeyVal => self.parse_braced_or_bracketed_scalar(
                 spec,
                 context_label,
@@ -872,7 +890,7 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
     // ------------------------------------------------------------------------
 
     /// Parse an inline or `{...}`-wrapped scalar argument (`Delimiter`,
-    /// `Dimension`, `Integer`), optionally accepting an empty `{}` when
+    /// `ControlSequence`, `Dimension`, `Integer`, `Real`), optionally accepting an empty `{}` when
     /// `nullable` is `true`.
     fn parse_maybe_braced_scalar<T>(
         &mut self,
@@ -986,6 +1004,14 @@ impl<'tok, 'src, 'ctx> TokenParser<'tok, 'src, 'ctx> {
                         .map(ArgumentValue::Integer)
                         .map_err(Cow::Borrowed)
                 }
+                ValueKind::ControlSequence => {
+                    scalar::parse_control_sequence_slice(tokens, spans, fallback_eoi, nullable)
+                        .map(ArgumentValue::ControlSequence)
+                        .map_err(Cow::Borrowed)
+                }
+                ValueKind::Real => scalar::parse_real_slice(tokens, spans, fallback_eoi, nullable)
+                    .map(ArgumentValue::Real)
+                    .map_err(Cow::Borrowed),
                 ValueKind::KeyVal => scalar::parse_keyval_slice(tokens, nullable)
                     .map(ArgumentValue::KeyVal)
                     .map_err(Cow::Borrowed),

@@ -328,6 +328,40 @@ fn scalar_values_must_read_back_through_the_argument_parser() {
         ),
         (label.clone(), V::CSName("a]b".into()), false),
         (label, V::CSName("{a]b}".into()), true),
+        (
+            mandatory(ValueKind::ControlSequence),
+            V::ControlSequence("\\abs".into()),
+            true,
+        ),
+        (
+            mandatory(ValueKind::ControlSequence),
+            V::ControlSequence("\\,".into()),
+            true,
+        ),
+        (
+            mandatory(ValueKind::ControlSequence),
+            V::ControlSequence("abs".into()),
+            false,
+        ),
+        (
+            mandatory(ValueKind::ControlSequence),
+            V::ControlSequence("\\a\\b".into()),
+            false,
+        ),
+        // The parser stores the control word without its terminating space.
+        (
+            mandatory(ValueKind::ControlSequence),
+            V::ControlSequence("\\abs ".into()),
+            false,
+        ),
+        (
+            mandatory(ValueKind::ControlSequence),
+            V::ControlSequence(String::new()),
+            false,
+        ),
+        (mandatory(ValueKind::Real), V::Real("-.5".into()), true),
+        (mandatory(ValueKind::Real), V::Real("1.5pt".into()), false),
+        (mandatory(ValueKind::Real), V::Real(" 1.5".into()), false),
     ] {
         let kind = if spec.required {
             ArgumentKind::Mandatory

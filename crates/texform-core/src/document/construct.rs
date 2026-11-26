@@ -284,8 +284,12 @@ impl Document {
                     ArgumentValue::Delimiter(value.parse::<DelimiterValue>()?.into_ast())
                 }
                 (ValueKind::CSName, Arg::Source(value)) => ArgumentValue::CSName(value),
+                (ValueKind::ControlSequence, Arg::Source(value)) => {
+                    ArgumentValue::ControlSequence(value)
+                }
                 (ValueKind::Dimension, Arg::Source(value)) => ArgumentValue::Dimension(value),
                 (ValueKind::Integer, Arg::Source(value)) => ArgumentValue::Integer(value),
+                (ValueKind::Real, Arg::Source(value)) => ArgumentValue::Real(value),
                 (ValueKind::KeyVal, Arg::Source(value)) => ArgumentValue::KeyVal(value),
                 (ValueKind::Column, Arg::Source(value)) => ArgumentValue::Column(value),
                 _ => {
