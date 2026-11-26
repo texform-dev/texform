@@ -21,7 +21,7 @@ use crate::ast::{
     ArgumentKind, ArgumentSlot, ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, Slot,
 };
 use crate::knowledge::{ArgForm, Catalog, DelimiterToken};
-use crate::parse::optional_scalar_reads;
+use crate::parse::{is_backtracking_optional_scalar, optional_scalar_reads};
 use texform_knowledge::specs::ParsedArgSpec;
 
 /// Whether the nearest node of `before`, walked backwards from a boundary, is
@@ -63,6 +63,7 @@ pub(crate) fn boundary_captures<'a, 'r>(
     let serialized_space = mode == ContentMode::Math;
     trailing_slots_capture(
         ast,
+        catalog(ContentMode::Math),
         &record.argspec,
         args,
         after,
@@ -106,7 +107,15 @@ pub(crate) fn environment_captures_in<'a, 'r>(
     };
     // The body follows `\begin{name}`'s closing brace, not a control
     // sequence, so the serializer adds no space before it.
-    trailing_slots_capture(ast, &record.argspec, args, body, false, false)
+    trailing_slots_capture(
+        ast,
+        catalog(ContentMode::Math),
+        &record.argspec,
+        args,
+        body,
+        false,
+        false,
+    )
 }
 
 /// Whether, in text mode, the last node of `before` is a control word that
@@ -306,6 +315,7 @@ fn separate_after<'r>(
 /// rejects a leading space cannot take it.
 fn trailing_slots_capture<'a>(
     ast: &Ast,
+    math_catalog: &Catalog,
     spec: &ParsedArgSpec,
     args: &[ArgumentSlot],
     after: impl Iterator<Item = &'a NodeId>,
@@ -320,8 +330,8 @@ fn trailing_slots_capture<'a>(
     }) else {
         return false;
     };
-    // Read past `next` only when a bracketed scalar slot needs its content.
-    let mut rest: Option<Vec<NodeId>> = None;
+    // Scan past `next` only when a backtracking optional scalar slot needs it.
+    let mut bracket: Option<BracketContent> = None;
     if let Node::Text(text) = ast.node(next) {
         after_space |= text.starts_with(char::is_whitespace);
     }
@@ -345,18 +355,18 @@ fn trailing_slots_capture<'a>(
             continue;
         }
         if form_opens_with(ast, &slot.form, next) {
-            // An optional scalar slot rejects bracket content of the wrong
-            // type and stays absent, leaving the brackets to later slots.
+            // An optional backtracking scalar slot rejects bracket content of
+            // the wrong type and stays absent, leaving the brackets to later
+            // slots.
             let rejects = matches!(slot.form, ArgForm::Standard)
-                && bracket_text(
-                    ast,
-                    next,
-                    rest.get_or_insert_with(|| after.by_ref().collect())
-                        .iter()
-                        .copied(),
-                )
-                .and_then(|text| optional_scalar_reads(slot, &text))
-                    == Some(false);
+                && is_backtracking_optional_scalar(slot.kind)
+                && match bracket.get_or_insert_with(|| bracket_content(ast, next, after.by_ref())) {
+                    BracketContent::Text(text) => {
+                        optional_scalar_reads(slot, text, math_catalog) == Some(false)
+                    }
+                    BracketContent::NonScalar => true,
+                    BracketContent::Unknown => false,
+                };
             if rejects {
                 continue;
             }
@@ -366,46 +376,150 @@ fn trailing_slots_capture<'a>(
     false
 }
 
-/// The text between the `[` that `first` opens with and the first `]` after
-/// it, compacted as the compact serializer writes it. `None` when a node in
-/// between is not plain text, so the content cannot be read from the tree.
-fn bracket_text(ast: &Ast, first: NodeId, rest: impl Iterator<Item = NodeId>) -> Option<String> {
-    // Appends `piece` up to a closing bracket; reports whether one was found.
-    fn push(text: &mut String, piece: &str) -> bool {
-        match piece.find(']') {
-            Some(end) => {
-                text.push_str(&piece[..end]);
-                true
-            }
-            None => {
-                text.push_str(piece);
-                false
-            }
+/// Classification of the nodes between `[` and the first `]` after it for
+/// backtracking optional scalar slots (`:L`, `:I`, `:R`, `:CS`, `:D`).
+enum BracketContent {
+    /// Compact LaTeX text inside `[...]`, ready for [`optional_scalar_reads`].
+    Text(String),
+    /// A node inside `[...]` (such as an explicit brace group, script, or
+    /// command with arguments) that no backtracking scalar parser can accept.
+    NonScalar,
+    /// Cannot determine safely (such as an unclosed `[`, infix, or error node),
+    /// so callers must treat the slot as potentially capturing.
+    Unknown,
+}
+
+enum ScanStep {
+    Continue,
+    Closed,
+    NonScalar,
+    Unknown,
+}
+
+/// Appends `piece` up to a closing bracket; reports whether one was found.
+fn push_until_close(text: &mut String, piece: &str) -> bool {
+    match piece.find(']') {
+        Some(end) => {
+            text.push_str(&piece[..end]);
+            true
+        }
+        None => {
+            text.push_str(piece);
+            false
         }
     }
+}
+
+fn scan_bracket_node(
+    ast: &Ast,
+    node: NodeId,
+    text: &mut String,
+    ends_control_word: &mut bool,
+) -> ScanStep {
+    match ast.node(node) {
+        Node::Char(']') => ScanStep::Closed,
+        Node::Char(c) => {
+            if *ends_control_word && c.is_ascii_alphabetic() {
+                text.push(' ');
+            }
+            text.push(*c);
+            *ends_control_word = false;
+            ScanStep::Continue
+        }
+        Node::Text(piece) => {
+            if *ends_control_word && piece.starts_with(|c: char| c.is_ascii_alphabetic()) {
+                text.push(' ');
+            }
+            *ends_control_word = false;
+            if push_until_close(text, piece) {
+                ScanStep::Closed
+            } else {
+                ScanStep::Continue
+            }
+        }
+        Node::Command { name, args, .. } | Node::Declarative { name, args } => {
+            if args.iter().any(is_supplied) {
+                return ScanStep::NonScalar;
+            }
+            if name.is_empty() {
+                return ScanStep::Unknown;
+            }
+            text.push('\\');
+            text.push_str(name);
+            *ends_control_word = name.chars().all(|c| c.is_ascii_alphabetic());
+            ScanStep::Continue
+        }
+        Node::Group {
+            kind: GroupKind::Implicit,
+            children,
+            ..
+        } => {
+            for &child in children {
+                match scan_bracket_node(ast, child, text, ends_control_word) {
+                    ScanStep::Continue => {}
+                    stop => return stop,
+                }
+            }
+            ScanStep::Continue
+        }
+        Node::Group { .. }
+        | Node::Environment { .. }
+        | Node::Prime { .. }
+        | Node::ActiveSpace
+        | Node::AlignmentTab => ScanStep::NonScalar,
+        Node::Scripted {
+            base,
+            subscript,
+            superscript,
+        } => {
+            // Scan `base` first so `[1.5]^2` (where `base` is `]`) closes the
+            // bracket rather than being misclassified as non-scalar.
+            match scan_bracket_node(ast, *base, text, ends_control_word) {
+                ScanStep::Continue if subscript.is_some() || superscript.is_some() => {
+                    ScanStep::NonScalar
+                }
+                step => step,
+            }
+        }
+        Node::Infix { .. } | Node::Error { .. } | Node::Root { .. } => ScanStep::Unknown,
+    }
+}
+
+/// Inspect the content between the `[` that `first` opens with and the first
+/// `]` after it, formatted as the compact serializer writes it.
+fn bracket_content(ast: &Ast, first: NodeId, rest: impl Iterator<Item = NodeId>) -> BracketContent {
     let mut text = String::new();
     match ast.node(first) {
         Node::Char('[') => {}
         Node::Text(piece) => {
-            if push(&mut text, piece.trim_start().strip_prefix('[')?) {
-                return Some(text);
+            let Some(after_open) = piece.trim_start().strip_prefix('[') else {
+                return BracketContent::Unknown;
+            };
+            if push_until_close(&mut text, after_open) {
+                return BracketContent::Text(text);
             }
         }
-        _ => return None,
+        Node::Scripted {
+            base,
+            subscript,
+            superscript,
+        } if (subscript.is_some() || superscript.is_some())
+            && matches!(ast.node(first_token(ast, *base)), Node::Char('[')) =>
+        {
+            return BracketContent::NonScalar;
+        }
+        _ => return BracketContent::Unknown,
     }
+    let mut ends_control_word = false;
     for node in rest {
-        match ast.node(node) {
-            Node::Char(']') => return Some(text),
-            Node::Char(c) => text.push(*c),
-            Node::Text(piece) => {
-                if push(&mut text, piece) {
-                    return Some(text);
-                }
-            }
-            _ => return None,
+        match scan_bracket_node(ast, node, &mut text, &mut ends_control_word) {
+            ScanStep::Continue => {}
+            ScanStep::Closed => return BracketContent::Text(text),
+            ScanStep::NonScalar => return BracketContent::NonScalar,
+            ScanStep::Unknown => return BracketContent::Unknown,
         }
     }
-    None
+    BracketContent::Unknown
 }
 
 /// An absent star is stored as `false` rather than as an empty slot.
@@ -626,13 +740,20 @@ mod tests {
                 r"\ln\big[2\big]x",
                 r"\ln { } [ 2 ] x",
             ),
-            // An optional real slot would read `[1.5]`; `[x]` stays in place
-            // without a separator (see `every_separator_is_needed`).
+            // An optional real slot would read `[1.5]` (including when `]`
+            // carries a script, as in `[1.5]^2`), while rejected content stays
+            // in place without a separator.
             (
                 DEFAULT,
                 Profile::Equiv,
                 r"\MoveEqLeft\quad[1.5]x",
                 r"\MoveEqLeft { } [ 1 . 5 ] x",
+            ),
+            (
+                DEFAULT,
+                Profile::Equiv,
+                r"\MoveEqLeft\quad[1.5]^2",
+                r"\MoveEqLeft { } [ 1 . 5 ] ^ { 2 }",
             ),
             (
                 DEFAULT,
@@ -690,6 +811,125 @@ mod tests {
                 "{source}"
             );
             assert_round_trip(&parse_ctx, &engine, &ast);
+        }
+    }
+
+    #[test]
+    fn backtracking_optional_scalars_skip_unneeded_separators_and_guard_matches() {
+        use crate::parse::{AllowedMode, CommandItem, ParseContextBuilder};
+
+        let parse_ctx = ParseContextBuilder::default()
+            .packages(DEFAULT)
+            .item(CommandItem::new(
+                "csopt",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "o:CS",
+            ))
+            .item(CommandItem::new(
+                "csoptn",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "o:CS?",
+            ))
+            .item(CommandItem::new(
+                "dopt",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "o:D",
+            ))
+            .item(CommandItem::new(
+                "doptn",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "o:D?",
+            ))
+            .build()
+            .unwrap();
+        let equiv = engine(&parse_ctx, Profile::Equiv);
+
+        // Bracket content that the backtracking scalar slot rejects must not
+        // get a redundant `{}` separator, and must still round-trip cleanly.
+        for (source, expected) in [
+            (r"\MoveEqLeft\quad[\alpha]x", r"\MoveEqLeft [ \alpha ] x"),
+            (r"\MoveEqLeft\quad[x^2]x", r"\MoveEqLeft [ x ^ { 2 } ] x"),
+            (
+                r"\MoveEqLeft\quad[\left(1.5\right)]x",
+                r"\MoveEqLeft [ \left ( 1 . 5 \right ) ] x",
+            ),
+            (
+                r"\MoveEqLeft\quad[\frac{1}{2}]x",
+                r"\MoveEqLeft [ \frac { 1 } { 2 } ] x",
+            ),
+            (r"\MoveEqLeft\quad[^2]x", r"\MoveEqLeft [ ^ { 2 } ] x"),
+            (r"\MoveEqLeft\quad[x]^2", r"\MoveEqLeft [ x ] ^ { 2 }"),
+            (r"\csopt\quad[x]x", r"\csopt [ x ] x"),
+            (r"\csopt\quad[\alpha\beta]x", r"\csopt [ \alpha \beta ] x"),
+            (r"\csopt\quad[\alpha x]x", r"\csopt [ \alpha x ] x"),
+            (
+                r"\csopt\quad[\frac{1}{2}]x",
+                r"\csopt [ \frac { 1 } { 2 } ] x",
+            ),
+            (r"\csopt\quad[\alpha^2]x", r"\csopt [ \alpha ^ { 2 } ] x"),
+            (r"\csoptn\quad[x]x", r"\csoptn [ x ] x"),
+            (r"\dopt\quad[\alpha]x", r"\dopt [ \alpha ] x"),
+            (r"\dopt\quad[x]x", r"\dopt [ x ] x"),
+            (r"\dopt\quad[(\alpha)]x", r"\dopt [ ( \alpha ) ] x"),
+            (r"\dopt\quad[(^2)]x", r"\dopt [ ( ^ { 2 } ) ] x"),
+            (r"\doptn\quad[x]x", r"\doptn [ x ] x"),
+        ] {
+            let mut ast = parse(&parse_ctx, source);
+            let separated = equiv
+                .run_counting_separations(&mut ast, &parse_ctx, equiv.default_config())
+                .unwrap();
+            assert_eq!(separated, 0, "{source} should not insert a separator");
+            assert_eq!(serialize(&ast), expected, "{source}");
+            assert_round_trip(&parse_ctx, &equiv, &ast);
+        }
+
+        // An explicit brace group kept inside `[...]` is rejected by every
+        // backtracking scalar slot; when FlattenGroups removes it, the inner
+        // value becomes visible and does need a separator.
+        let keep_groups = TransformConfig {
+            flatten_groups: FlattenGroupsConfig::DISABLED,
+            ..*equiv.default_config()
+        };
+        for (source, expected) in [
+            (r"\MoveEqLeft\quad[{1.5}]x", r"\MoveEqLeft [ { 1 . 5 } ] x"),
+            (r"\csopt\quad[{\alpha}]x", r"\csopt [ { \alpha } ] x"),
+            (r"\dopt\quad[{(}]x", r"\dopt [ { ( } ] x"),
+        ] {
+            let mut ast = parse(&parse_ctx, source);
+            let separated = equiv
+                .run_counting_separations(&mut ast, &parse_ctx, &keep_groups)
+                .unwrap();
+            assert_eq!(separated, 0, "{source} with kept braces");
+            assert_eq!(serialize(&ast), expected, "{source} with kept braces");
+            let reparsed = round_trip::parse(&parse_ctx, &serialize(&ast)).unwrap();
+            assert_eq!(round_trip::tree_difference(&ast, &reparsed), None);
+        }
+
+        // Bracket content that `:CS`, `:D`, or flattened `:R` would capture
+        // must still receive a separator.
+        for (source, expected) in [
+            (r"\MoveEqLeft\quad[{1.5}]x", r"\MoveEqLeft { } [ 1 . 5 ] x"),
+            (r"\csopt\quad[\alpha]x", r"\csopt { } [ \alpha ] x"),
+            (r"\csopt\quad[{\alpha}]x", r"\csopt { } [ \alpha ] x"),
+            (r"\csopt\quad[\alpha]^2", r"\csopt { } [ \alpha ] ^ { 2 }"),
+            (r"\csoptn\quad[]x", r"\csoptn { } [ ] x"),
+            (r"\dopt\quad[\langle]x", r"\dopt { } [ \langle ] x"),
+            (r"\dopt\quad[(]x", r"\dopt { } [ ( ] x"),
+            (r"\dopt\quad[[]x", r"\dopt { } [ [ ] x"),
+            (r"\dopt\quad[.]x", r"\dopt { } [ . ] x"),
+            (r"\doptn\quad[]x", r"\doptn { } [ ] x"),
+        ] {
+            let mut ast = parse(&parse_ctx, source);
+            let separated = equiv
+                .run_counting_separations(&mut ast, &parse_ctx, equiv.default_config())
+                .unwrap();
+            assert_eq!(separated, 1, "{source} should insert a separator");
+            assert_eq!(serialize(&ast), expected, "{source}");
+            assert_round_trip(&parse_ctx, &equiv, &ast);
         }
     }
 

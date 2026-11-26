@@ -23,8 +23,8 @@ pub use context::{
     KnowledgeBaseBuilder, MutationSummary, PackageLoadError, ParseContext, ParseContextBuildError,
     ParseContextBuilder,
 };
-pub use grammar::scalar::optional_scalar_reads;
 pub(crate) use grammar::scalar::validate_scalar_argument;
+pub use grammar::scalar::{is_backtracking_optional_scalar, optional_scalar_reads};
 pub use result::{
     ParseDiagnostic, ParseDiagnosticContext, ParseDiagnosticKind, ParseError, ParseResult, Span,
 };

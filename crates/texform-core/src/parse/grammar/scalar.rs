@@ -6,7 +6,7 @@ use texform_interface::syntax_node::{ArgumentValue, ContentMode, Delimiter};
 
 use crate::column_parser::parse_column_template;
 use crate::dimension::is_valid_dimension_unit;
-use crate::knowledge::{ArgSpec, DelimiterToken, ValueKind};
+use crate::knowledge::{ArgSpec, Catalog, DelimiterToken, ValueKind};
 use crate::lexer::Token;
 use crate::parse::config::ParseConfig;
 use crate::parse::context::ParseContext;
@@ -369,16 +369,16 @@ pub(super) fn parse_dimension_slice(
 }
 
 /// Parse a registered math delimiter (or `.` -> [`Delimiter::None`]) from
-/// `cursor`.
-pub(super) fn parse_delimiter_cursor(
-    ctx: &ParseContext,
+/// `cursor` against `math_catalog`.
+fn parse_delimiter_cursor_in(
+    math_catalog: &Catalog,
     cursor: &mut Cursor<'_, '_>,
 ) -> Option<Delimiter> {
     let delim = match cursor.peek()? {
         Token::Char(c) => {
             let mut buf = [0u8; 4];
             let s = c.encode_utf8(&mut buf);
-            let record = ctx.lookup_delimiter(s, false, ContentMode::Math)?;
+            let record = math_catalog.lookup_delimiter(s, false)?;
             if record.name == "." && record.unicode_value.is_empty() {
                 Delimiter::None
             } else {
@@ -386,22 +386,53 @@ pub(super) fn parse_delimiter_cursor(
             }
         }
         Token::LBracket => {
-            ctx.lookup_delimiter("[", false, ContentMode::Math)?;
+            math_catalog.lookup_delimiter("[", false)?;
             Delimiter::Char('[')
         }
         Token::RBracket => {
-            ctx.lookup_delimiter("]", false, ContentMode::Math)?;
+            math_catalog.lookup_delimiter("]", false)?;
             Delimiter::Char(']')
         }
         Token::ControlSeq(name) => {
-            ctx.lookup_delimiter(name, true, ContentMode::Math)?;
-            let canonical = ctx.lookup_delimiter_control(name)?;
-            Delimiter::Control(canonical)
+            let record = math_catalog.lookup_delimiter(name, true)?;
+            Delimiter::Control(record.name)
         }
         _ => return None,
     };
     cursor.bump();
     Some(delim)
+}
+
+/// Parse a registered math delimiter (or `.` -> [`Delimiter::None`]) from
+/// `cursor`.
+pub(super) fn parse_delimiter_cursor(
+    ctx: &ParseContext,
+    cursor: &mut Cursor<'_, '_>,
+) -> Option<Delimiter> {
+    parse_delimiter_cursor_in(ctx.catalog(ContentMode::Math), cursor)
+}
+
+/// Parse a whole token slice as a math delimiter (ignoring surrounding
+/// whitespace) against `math_catalog`.
+fn parse_delimiter_slice_in(
+    math_catalog: &Catalog,
+    tokens: &[Token<'_>],
+    spans: &[Span],
+    fallback_eoi: usize,
+    nullable: bool,
+) -> Result<Delimiter, &'static str> {
+    if nullable && is_trimmed_empty(tokens) {
+        return Ok(Delimiter::None);
+    }
+    let mut cursor = Cursor::new(tokens, spans, fallback_eoi);
+    cursor.skip_ws();
+    let value =
+        parse_delimiter_cursor_in(math_catalog, &mut cursor).ok_or("invalid delimiter argument")?;
+    cursor.skip_ws();
+    if !cursor.is_at_end() {
+        return Err("invalid delimiter argument");
+    }
+    Ok(value)
 }
 
 /// Parse a whole token slice as a math delimiter (ignoring surrounding
@@ -413,17 +444,13 @@ pub(super) fn parse_delimiter_slice(
     fallback_eoi: usize,
     nullable: bool,
 ) -> Result<Delimiter, &'static str> {
-    if nullable && is_trimmed_empty(tokens) {
-        return Ok(Delimiter::None);
-    }
-    let mut cursor = Cursor::new(tokens, spans, fallback_eoi);
-    cursor.skip_ws();
-    let value = parse_delimiter_cursor(ctx, &mut cursor).ok_or("invalid delimiter argument")?;
-    cursor.skip_ws();
-    if !cursor.is_at_end() {
-        return Err("invalid delimiter argument");
-    }
-    Ok(value)
+    parse_delimiter_slice_in(
+        ctx.catalog(ContentMode::Math),
+        tokens,
+        spans,
+        fallback_eoi,
+        nullable,
+    )
 }
 
 /// Validate that `raw` is a well-formed `key=value,...` sequence.
@@ -617,22 +644,36 @@ pub(super) fn parse_control_sequence_slice(
     Ok(value)
 }
 
-/// A whole-slice scalar parser: tokens, spans, end-of-input offset, nullable.
-type SliceParser = fn(&[Token<'_>], &[Span], usize, bool) -> Result<String, &'static str>;
+/// Whether an optional `[...]` slot of `kind` rewinds and stays absent when
+/// the bracket content does not parse as its scalar type.
+#[inline]
+pub const fn is_backtracking_optional_scalar(kind: ValueKind) -> bool {
+    matches!(
+        kind,
+        ValueKind::Dimension
+            | ValueKind::Integer
+            | ValueKind::Real
+            | ValueKind::ControlSequence
+            | ValueKind::Delimiter
+    )
+}
 
 /// Whether an optional `[...]` slot of `spec` reads `content` as its value.
 ///
-/// Optional dimension, integer, and real slots rewind and stay absent when the
-/// bracket content does not parse as their type, so a following `[content]`
-/// is left in place. Returns `None` for every other kind, which callers must
-/// treat as possibly capturing.
-pub fn optional_scalar_reads(spec: &ArgSpec, content: &str) -> Option<bool> {
-    let parse: SliceParser = match spec.kind {
-        ValueKind::Dimension => parse_dimension_slice,
-        ValueKind::Integer => parse_integer_slice,
-        ValueKind::Real => parse_real_slice,
-        _ => return None,
-    };
+/// Optional dimension, integer, real, control-sequence, and delimiter slots
+/// rewind and stay absent when the bracket content does not parse as their
+/// type, so a following `[content]` is left in place. Returns `None` for every
+/// other kind, which callers must treat as possibly capturing.
+///
+/// `math_catalog` supplies the math-mode delimiter registry for `:D` slots.
+pub fn optional_scalar_reads(
+    spec: &ArgSpec,
+    content: &str,
+    math_catalog: &Catalog,
+) -> Option<bool> {
+    if !is_backtracking_optional_scalar(spec.kind) {
+        return None;
+    }
     let mut tokens = Vec::new();
     let mut spans = Vec::new();
     for (token, range) in Token::lexer(content).spanned() {
@@ -642,7 +683,24 @@ pub fn optional_scalar_reads(spec: &ArgSpec, content: &str) -> Option<bool> {
         tokens.push(token);
         spans.push(Span::new(range.start, range.end));
     }
-    Some(parse(&tokens, &spans, content.len(), spec.nullable).is_ok())
+    let ok = match spec.kind {
+        ValueKind::Dimension => {
+            parse_dimension_slice(&tokens, &spans, content.len(), spec.nullable).is_ok()
+        }
+        ValueKind::Integer => {
+            parse_integer_slice(&tokens, &spans, content.len(), spec.nullable).is_ok()
+        }
+        ValueKind::Real => parse_real_slice(&tokens, &spans, content.len(), spec.nullable).is_ok(),
+        ValueKind::ControlSequence => {
+            parse_control_sequence_slice(&tokens, &spans, content.len(), spec.nullable).is_ok()
+        }
+        ValueKind::Delimiter => {
+            parse_delimiter_slice_in(math_catalog, &tokens, &spans, content.len(), spec.nullable)
+                .is_ok()
+        }
+        _ => unreachable!("guarded by is_backtracking_optional_scalar"),
+    };
+    Some(ok)
 }
 
 /// Check that the argument parser reads a stored scalar value back from its slot.
