@@ -36,6 +36,12 @@ commands:
     tags:
       - invisible
       - spacing
+  - name: /
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+    tags:
+      - spacing
   - name: \
     kind: prefix
     argspec: '!s !o:L'
@@ -357,6 +363,12 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
+  - name: displaylimits
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+    tags:
+      - presentation
   - name: displaylines
     kind: prefix
     argspec: m
@@ -1384,6 +1396,12 @@ commands:
     allowed_mode: math
     tags:
       - presentation
+  - name: thickspace
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+    tags:
+      - spacing
   - name: thinspace
     kind: prefix
     argspec: ''
@@ -2469,6 +2487,14 @@ characters:
     unicode_value: ζ
     attributes:
       mathvariant: italic
+  - name: dag
+    allowed_mode: both
+    unicode_value: †
+    attributes: {}
+  - name: ddag
+    allowed_mode: both
+    unicode_value: ‡
+    attributes: {}
 delimiters:
   - name: .
     is_control_sequence: false

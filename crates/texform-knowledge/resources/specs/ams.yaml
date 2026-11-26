@@ -1,4 +1,16 @@
 commands:
+  - name: Acute
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: Bar
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags:
+      - decoration
   - name: binom
     kind: prefix
     argspec: m m
@@ -7,10 +19,22 @@ commands:
     kind: prefix
     argspec: m
     allowed_mode: math
+  - name: Breve
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags:
+      - decoration
   - name: cfrac
     kind: prefix
     argspec: o:N m m
     allowed_mode: math
+  - name: Check
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags:
+      - decoration
   - name: dbinom
     kind: prefix
     argspec: m m
@@ -27,6 +51,12 @@ commands:
     allowed_mode: math
     tags:
       - decoration
+  - name: Ddot
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags:
+      - decoration
   - name: DeclareMathOperator
     kind: prefix
     argspec: s m:CS m:O
@@ -38,6 +68,12 @@ commands:
     kind: prefix
     argspec: m m
     allowed_mode: math
+  - name: Dot
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags:
+      - decoration
   - name: eqref
     kind: prefix
     argspec: m:N
@@ -50,6 +86,18 @@ commands:
     kind: prefix
     argspec: m:D? m:D? m:L? m:I? m m
     allowed_mode: math
+  - name: Grave
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: Hat
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags:
+      - decoration
   - name: idotsint
     kind: prefix
     argspec: ''
@@ -137,6 +185,12 @@ commands:
     kind: prefix
     argspec: m m
     allowed_mode: math
+  - name: Tilde
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags:
+      - decoration
   - name: varinjlim
     kind: prefix
     argspec: ''
@@ -153,6 +207,12 @@ commands:
     kind: prefix
     argspec: ''
     allowed_mode: math
+  - name: Vec
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags:
+      - decoration
   - name: xleftarrow
     kind: prefix
     argspec: o m
@@ -1348,6 +1408,10 @@ characters:
     unicode_value: ¥
     attributes:
       mathvariant: italic
+  - name: hdots
+    allowed_mode: math
+    unicode_value: …
+    attributes: {}
 delimiters:
   - name: llcorner
     is_control_sequence: true

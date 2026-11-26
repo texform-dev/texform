@@ -20,4 +20,5 @@ pub const COMMAND_SYMBOL_FACADES: &[(&str, &str)] = &[
     ("^", "_CARET"),
     ("=", "_EQUALS"),
     ("~", "_TILDE"),
+    ("/", "_SLASH"),
 ];
