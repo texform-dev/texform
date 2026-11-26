@@ -429,12 +429,15 @@ pub(super) fn parse_delimiter_slice(
 /// Validate that `raw` is a well-formed `key=value,...` sequence.
 ///
 /// Checks balanced braces, non-empty keys/values, and allows backslash escapes
-/// inside both keys and values.
+/// inside both keys and values. Empty entries, such as a trailing comma in
+/// `a=b,`, are skipped as LaTeX key-value parsers do, but at least one entry is
+/// required.
 pub(super) fn validate_keyval(raw: &str) -> Result<(), &'static str> {
     let mut key = String::new();
     let mut value = String::new();
     let mut in_value = false;
     let mut brace_depth = 0usize;
+    let mut entries = 0usize;
 
     let mut chars = raw.chars().peekable();
     while let Some(ch) = chars.next() {
@@ -490,9 +493,13 @@ pub(super) fn validate_keyval(raw: &str) -> Result<(), &'static str> {
                 key.clear();
                 value.clear();
                 in_value = false;
+                entries += 1;
             }
             ',' if brace_depth == 0 && !in_value => {
-                return Err("keyval missing value");
+                if !key.trim().is_empty() {
+                    return Err("keyval missing value");
+                }
+                key.clear();
             }
             '=' if brace_depth == 0 && in_value => {
                 value.push('=');
@@ -510,7 +517,11 @@ pub(super) fn validate_keyval(raw: &str) -> Result<(), &'static str> {
     if brace_depth != 0 {
         return Err("unbalanced brace in keyval");
     }
-    if !in_value || value.trim().is_empty() {
+    if in_value {
+        if value.trim().is_empty() {
+            return Err("keyval missing value");
+        }
+    } else if !key.trim().is_empty() || entries == 0 {
         return Err("keyval missing value");
     }
 

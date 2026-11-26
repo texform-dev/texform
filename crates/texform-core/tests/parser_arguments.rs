@@ -305,12 +305,20 @@ fn keyval_argument_accepts_nested_and_escaped_shapes() {
             r"\includegraphics[key=val]{file}",
             r"\includegraphics[key={a,b},other=c]{file}",
             r"\includegraphics[key=\{,other=c]{file}",
+            r"\includegraphics[key=\mathit,]{file}",
+            r"\includegraphics[, a=b,, c=d ,]{file}",
         ],
         None,
         &texform_core::parse::ParseConfig::STRICT,
     );
 
-    let expected = ["key=val", "key={a,b},other=c", r"key=\{,other=c"];
+    let expected = [
+        "key=val",
+        "key={a,b},other=c",
+        r"key=\{,other=c",
+        r"key=\mathit,",
+        ", a=b,, c=d ,",
+    ];
 
     for (item, expected_keyval) in outputs.iter().zip(expected) {
         assert!(
@@ -341,6 +349,8 @@ fn keyval_argument_rejects_invalid_shapes() {
             r"\includegraphics[key=]{file}",
             r"\includegraphics[=value]{file}",
             r"\includegraphics[key={a]{file}",
+            r"\includegraphics[a=b,key]{file}",
+            r"\includegraphics[,]{file}",
         ],
         None,
         &texform_core::parse::ParseConfig::STRICT,
