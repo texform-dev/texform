@@ -515,23 +515,11 @@ fn test_canonical_package_import_order_includes_braket() {
 
 #[test]
 fn test_default_package_names_exclude_physics() {
-    assert_eq!(
-        crate::parse::default_package_names(),
-        &[
-            "base",
-            "ams",
-            "braket",
-            "textmacros",
-            "bboldx",
-            "boldsymbol",
-            "color",
-            "upgreek",
-            "mathtools",
-            "cancel",
-            "extpfeil",
-            "textcomp"
-        ]
-    );
+    let expected: Vec<_> = texform_knowledge::packages::IMPORT_ORDER
+        .into_iter()
+        .filter(|name| *name != "physics")
+        .collect();
+    assert_eq!(crate::parse::default_package_names(), expected);
 }
 
 #[test]

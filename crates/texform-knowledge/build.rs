@@ -12,26 +12,16 @@ mod specs_yaml {
     include!("src/specs_yaml.rs");
 }
 
+mod packages {
+    include!("src/packages.rs");
+}
+
 use specs_yaml::{
     AllowedModeYaml, CharacterAttributesYaml, CommandKindYaml, ContentModeYaml, PackageSpecsYaml,
 };
 use texform_argspec::parse_arg_specs;
 
-const MANAGED_PACKAGE_IMPORT_ORDER: [&str; 13] = [
-    "base",
-    "ams",
-    "braket",
-    "physics",
-    "textmacros",
-    "bboldx",
-    "boldsymbol",
-    "color",
-    "upgreek",
-    "mathtools",
-    "cancel",
-    "extpfeil",
-    "textcomp",
-];
+use packages::IMPORT_ORDER;
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -119,7 +109,7 @@ fn assert_managed_order_matches_specs(packages: &[BuiltinPackageSource]) {
         .map(|package| package.name.as_str())
         .collect::<Vec<_>>();
 
-    for managed in MANAGED_PACKAGE_IMPORT_ORDER {
+    for managed in IMPORT_ORDER {
         assert!(
             package_names.contains(&managed),
             "managed package `{managed}` is missing from texform-knowledge resources/specs"
@@ -128,8 +118,16 @@ fn assert_managed_order_matches_specs(packages: &[BuiltinPackageSource]) {
 
     for name in package_names {
         assert!(
-            MANAGED_PACKAGE_IMPORT_ORDER.contains(&name),
-            "package `{name}` exists in texform-knowledge resources/specs but is missing from MANAGED_PACKAGE_IMPORT_ORDER"
+            IMPORT_ORDER.contains(&name),
+            "package `{name}` exists in texform-knowledge resources/specs but is missing from IMPORT_ORDER in src/packages.rs"
+        );
+    }
+
+    let mut import_order = IMPORT_ORDER.iter();
+    for default in packages::DEFAULTS {
+        assert!(
+            import_order.any(|name| *name == default),
+            "default package `{default}` is not a built-in package or is out of import order in src/packages.rs"
         );
     }
 }
@@ -359,13 +357,13 @@ fn generate_builtin_source(
 fn emit_package_name_enum(out: &mut String) {
     out.push_str("#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]\n");
     out.push_str("pub enum PackageName {\n");
-    for package_name in MANAGED_PACKAGE_IMPORT_ORDER {
+    for package_name in IMPORT_ORDER {
         writeln!(out, "    {},", package_variant_ident(package_name)).unwrap();
     }
     out.push_str("}\n");
 
     out.push_str("pub static MANAGED_PACKAGE_IMPORT_ORDER: &[PackageName] = &[\n");
-    for package_name in MANAGED_PACKAGE_IMPORT_ORDER {
+    for package_name in IMPORT_ORDER {
         writeln!(
             out,
             "    PackageName::{},",
@@ -378,7 +376,7 @@ fn emit_package_name_enum(out: &mut String) {
     out.push_str("impl PackageName {\n");
     out.push_str("    pub const fn as_str(self) -> &'static str {\n");
     out.push_str("        match self {\n");
-    for package_name in MANAGED_PACKAGE_IMPORT_ORDER {
+    for package_name in IMPORT_ORDER {
         writeln!(
             out,
             "            PackageName::{} => {:?},",
@@ -392,7 +390,7 @@ fn emit_package_name_enum(out: &mut String) {
 
     out.push_str("    pub const fn import_order(self) -> usize {\n");
     out.push_str("        match self {\n");
-    for (index, package_name) in MANAGED_PACKAGE_IMPORT_ORDER.iter().enumerate() {
+    for (index, package_name) in IMPORT_ORDER.iter().enumerate() {
         writeln!(
             out,
             "            PackageName::{} => {},",
@@ -413,7 +411,7 @@ fn emit_package_name_enum(out: &mut String) {
     out.push_str("    #[allow(clippy::should_implement_trait)]\n");
     out.push_str("    pub fn from_str(name: &str) -> Option<Self> {\n");
     out.push_str("        match name {\n");
-    for package_name in MANAGED_PACKAGE_IMPORT_ORDER {
+    for package_name in IMPORT_ORDER {
         writeln!(
             out,
             "            {:?} => Some(PackageName::{}),",

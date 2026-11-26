@@ -16,15 +16,7 @@ const PROFILES: [Profile; 4] = [
     Profile::Equiv,
 ];
 fn parser() -> ParseContext {
-    ParseContext::from_packages(&[
-        "base",
-        "ams",
-        "braket",
-        "physics",
-        "textmacros",
-        "bboldx",
-        "boldsymbol",
-    ])
+    ParseContext::from_packages(&texform_knowledge::packages::IMPORT_ORDER)
 }
 fn parse(p: &ParseContext, src: &str) -> Option<Ast> {
     p.parse(src, &ParseConfig::default())

@@ -2213,9 +2213,7 @@ export interface PackageInfo {
  * List all built-in knowledge packages with record counts.
  *
  * The returned names are the identifiers accepted by the `packages` option of
- * {@link KnowledgeBase}: `ams`, `base`, `bboldx`,
- * `boldsymbol`, `braket`, `cancel`, `color`, `extpfeil`, `mathtools`,
- * `physics`, `textcomp`, `textmacros`, `upgreek`.
+ * {@link KnowledgeBase}.
  *
  * @returns One {@link PackageInfo} per built-in package.
  * @example

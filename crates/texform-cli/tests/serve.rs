@@ -52,6 +52,11 @@ fn all_packages() -> Vec<String> {
         .collect()
 }
 
+fn sorted(mut names: Vec<&str>) -> Vec<&str> {
+    names.sort_unstable();
+    names
+}
+
 fn timing_keys(value: &Value) -> BTreeSet<&str> {
     value
         .as_object()
@@ -185,20 +190,7 @@ fn configure_defaults_match_the_library_and_all_packages_remain_explicit() {
     );
     assert_eq!(
         served.response(1)["result"]["resolved"]["packages"],
-        json!([
-            "ams",
-            "base",
-            "bboldx",
-            "boldsymbol",
-            "braket",
-            "cancel",
-            "color",
-            "extpfeil",
-            "mathtools",
-            "textcomp",
-            "textmacros",
-            "upgreek"
-        ])
+        json!(sorted(texform::default_packages()))
     );
     assert_eq!(
         served.response(2)["result"]["resolved"]["packages"],

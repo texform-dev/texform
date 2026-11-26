@@ -1836,15 +1836,8 @@ mod tests {
     #[test]
     fn skipping_irrelevant_subtrees_matches_full_traversal() {
         use super::*;
-        let parser = crate::parse::ParseContext::from_packages(&[
-            "base",
-            "ams",
-            "physics",
-            "textmacros",
-            "braket",
-            "bboldx",
-            "boldsymbol",
-        ]);
+        let parser =
+            crate::parse::ParseContext::from_packages(&texform_knowledge::packages::IMPORT_ORDER);
         for source in phase_cases::combinations() {
             let Ok((document, _)) = parser
                 .parse(&source, &crate::parse::ParseConfig::default())

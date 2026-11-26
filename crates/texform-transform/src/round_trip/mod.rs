@@ -35,41 +35,13 @@ use texform_interface::syntax_node::{ArgumentSlot, ArgumentValue, GroupKind, Syn
 use crate::{Profile, TransformContext};
 
 /// The library default packages.
-pub const DEFAULT_PACKAGES: &[&str] = &[
-    "base",
-    "ams",
-    "braket",
-    "textmacros",
-    "bboldx",
-    "boldsymbol",
-    "color",
-    "upgreek",
-    "mathtools",
-    "cancel",
-    "extpfeil",
-    "textcomp",
-];
+pub const DEFAULT_PACKAGES: &[&str] = &texform_knowledge::packages::DEFAULTS;
 /// The packages that introduce most command captures.
 pub const PHYSICS_PACKAGES: &[&str] = &["base", "ams", "physics"];
-/// The library defaults with `physics` enabled.
-pub const MIXED_PACKAGES: &[&str] = &[
-    "base",
-    "ams",
-    "braket",
-    "textmacros",
-    "bboldx",
-    "boldsymbol",
-    "color",
-    "upgreek",
-    "mathtools",
-    "cancel",
-    "extpfeil",
-    "textcomp",
-    "physics",
-];
+/// Every built-in package: the library defaults with `physics` enabled.
+pub const MIXED_PACKAGES: &[&str] = &texform_knowledge::packages::IMPORT_ORDER;
 
-/// Named package selections checked by the fast tests and the report. They
-/// are fixed here rather than taken from the library defaults.
+/// Named package selections checked by the fast tests and the report.
 pub const PACKAGE_SETS: [(&str, &[&str]); 3] = [
     ("default", DEFAULT_PACKAGES),
     ("physics", PHYSICS_PACKAGES),

@@ -52,25 +52,9 @@ use texform_knowledge::specs::{
 const RUNTIME_PACKAGE_NAME: &str = "runtime";
 #[cfg(test)]
 const UNKNOWN_PACKAGE_NAME: &str = "unknown";
-// Runtime defaults intentionally differ from the full builtin registry:
-// Physics requires explicit loading; without its overrides, braket is enabled by default.
-const DEFAULT_PACKAGE_NAMES: [&str; 12] = [
-    "base",
-    "ams",
-    "braket",
-    "textmacros",
-    "bboldx",
-    "boldsymbol",
-    "color",
-    "upgreek",
-    "mathtools",
-    "cancel",
-    "extpfeil",
-    "textcomp",
-];
 
 pub fn default_package_names() -> &'static [&'static str] {
-    &DEFAULT_PACKAGE_NAMES
+    &texform_knowledge::packages::DEFAULTS
 }
 
 /// Error returned when a requested package name is not found in the registry.

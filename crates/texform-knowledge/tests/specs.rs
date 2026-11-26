@@ -1,47 +1,16 @@
 use texform_argspec::{ContentMode, ValueKind};
 use texform_knowledge::builtin::{ALL_PACKAGES, MANAGED_PACKAGE_IMPORT_ORDER, PackageName};
+use texform_knowledge::packages::IMPORT_ORDER;
 use texform_knowledge::specs::{AllowedMode, load_package_specs_from_str};
 
 #[test]
-fn package_name_import_order_matches_transform_order() {
-    assert_eq!(
-        MANAGED_PACKAGE_IMPORT_ORDER,
-        &[
-            PackageName::Base,
-            PackageName::Ams,
-            PackageName::Braket,
-            PackageName::Physics,
-            PackageName::Textmacros,
-            PackageName::Bboldx,
-            PackageName::Boldsymbol,
-            PackageName::Color,
-            PackageName::Upgreek,
-            PackageName::Mathtools,
-            PackageName::Cancel,
-            PackageName::Extpfeil,
-            PackageName::Textcomp,
-        ]
-    );
+fn package_name_import_order_matches_package_list() {
     assert_eq!(
         MANAGED_PACKAGE_IMPORT_ORDER
             .iter()
             .map(|package| package.as_str())
             .collect::<Vec<_>>(),
-        vec![
-            "base",
-            "ams",
-            "braket",
-            "physics",
-            "textmacros",
-            "bboldx",
-            "boldsymbol",
-            "color",
-            "upgreek",
-            "mathtools",
-            "cancel",
-            "extpfeil",
-            "textcomp",
-        ]
+        IMPORT_ORDER
     );
 }
 
@@ -56,24 +25,9 @@ fn package_name_lookup_and_package_access_use_generated_registry() {
 fn all_resource_specs_are_registered() {
     let names: Vec<&str> = ALL_PACKAGES.iter().map(|pkg| pkg.name).collect();
     assert_eq!(texform_knowledge::builtin::all_package_names(), names);
-    assert_eq!(
-        names,
-        vec![
-            "ams",
-            "base",
-            "bboldx",
-            "boldsymbol",
-            "braket",
-            "cancel",
-            "color",
-            "extpfeil",
-            "mathtools",
-            "physics",
-            "textcomp",
-            "textmacros",
-            "upgreek"
-        ]
-    );
+    let mut expected = IMPORT_ORDER;
+    expected.sort_unstable();
+    assert_eq!(names, expected);
 }
 
 #[test]

@@ -308,17 +308,12 @@ fn assert_node_path_and_role_consistency(doc: &Document, result: &FragmentedLate
 
 #[test]
 fn fragmented_provenance_covers_all_roles_and_valid_node_paths_in_both_styles() {
+    let all_packages: Vec<_> = texform::list_packages()
+        .into_iter()
+        .map(|package| package.name)
+        .collect();
     let kb_all = KnowledgeBase::builder()
-        .packages(&[
-            "base",
-            "ams",
-            "braket",
-            "textmacros",
-            "bboldx",
-            "boldsymbol",
-            "color",
-            "physics",
-        ])
+        .packages(&all_packages.iter().map(String::as_str).collect::<Vec<_>>())
         .item(CommandItem::new(
             "untilcmd",
             CommandKind::Prefix,
