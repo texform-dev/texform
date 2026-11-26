@@ -1,0 +1,25 @@
+commands:
+  - name: bcancel
+    kind: prefix
+    argspec: o:K m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: cancel
+    kind: prefix
+    argspec: o:K m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: cancelto
+    kind: prefix
+    argspec: o:K m m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: xcancel
+    kind: prefix
+    argspec: o:K m
+    allowed_mode: math
+    tags:
+      - decoration

@@ -1,0 +1,471 @@
+commands:
+  - name: textacutedbl
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textasciiacute
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textasciibreve
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textasciicaron
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textasciicircum
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textasciidieresis
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textasciimacron
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textasciitilde
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textasteriskcentered
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textbackslash
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textbaht
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textbar
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textbardbl
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textbigcircle
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textblank
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textborn
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textbraceleft
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textbraceright
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textbrokenbar
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textbullet
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textcelsius
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textcent
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textcentoldstyle
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textcircledP
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textcolonmonetary
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textcompwordmark
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+    tags:
+      - invisible
+  - name: textcopyleft
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textcopyright
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textcurrency
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textdagger
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textdaggerdbl
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textdegree
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textdied
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textdiscount
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textdiv
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textdivorced
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textdollar
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textdollaroldstyle
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textdong
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textdownarrow
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: texteightoldstyle
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textellipsis
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textemdash
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textendash
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textestimated
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: texteuro
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textexclamdown
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textfiveoldstyle
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textflorin
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textfouroldstyle
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textfractionsolidus
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textgravedbl
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textgreater
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textguarani
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textinterrobang
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textinterrobangdown
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textlangle
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textlbrackdbl
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textleftarrow
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textless
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textlira
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textlnot
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textlquill
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textmarried
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textmho
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textminus
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textmu
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textmusicalnote
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textnaira
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textnineoldstyle
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textnumero
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textohm
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textonehalf
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textoneoldstyle
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textonequarter
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textonesuperior
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textopenbullet
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textordfeminine
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textordmasculine
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textparagraph
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textperiodcentered
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textpertenthousand
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textperthousand
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textpeso
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textpm
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textquestiondown
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textquotedblleft
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textquotedblright
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textquoteleft
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textquoteright
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textrangle
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textrbrackdbl
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textrecipe
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textreferencemark
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textregistered
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textrightarrow
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textrquill
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textsection
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textservicemark
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textsevenoldstyle
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textsixoldstyle
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textsterling
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textsurd
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textthreeoldstyle
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textthreequarters
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textthreesuperior
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: texttildelow
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: texttimes
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: texttrademark
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: texttwooldstyle
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: texttwosuperior
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textunderscore
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textuparrow
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textvisiblespace
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textwon
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textyen
+    kind: prefix
+    argspec: ''
+    allowed_mode: both
+  - name: textzerooldstyle
+    kind: prefix
+    argspec: ''
+    allowed_mode: both

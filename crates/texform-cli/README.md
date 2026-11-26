@@ -51,7 +51,7 @@ texform [--packages <a,b,...>] <COMMAND> [OPTIONS]
 
 | Option | Meaning |
 | --- | --- |
-| `--packages <a,b,...>` | Knowledge packages to load. Defaults to the same seven packages as the library (`base`, `ams`, `braket`, `textmacros`, `bboldx`, `boldsymbol`, `color`); `physics` is opt-in. An unknown name is a usage error with exit status `2`. `packages` and `argspec validate` do not use it. |
+| `--packages <a,b,...>` | Knowledge packages to load. Defaults to the same twelve packages as the library (`base`, `ams`, `braket`, `textmacros`, `bboldx`, `boldsymbol`, `color`, `upgreek`, `mathtools`, `cancel`, `extpfeil`, `textcomp`); `physics` is opt-in. An unknown name is a usage error with exit status `2`. `packages` and `argspec validate` do not use it. |
 
 ### Formula input
 
@@ -204,9 +204,14 @@ base        270 commands, 7 environments
 bboldx      12 commands, 0 environments
 boldsymbol  1 command, 0 environments
 braket      11 commands, 0 environments
+cancel      4 commands, 0 environments
 color       5 commands, 0 environments
+extpfeil    5 commands, 0 environments
+mathtools   79 commands, 29 environments
 physics     182 commands, 1 environment
+textcomp    117 commands, 0 environments
 textmacros  78 commands, 0 environments
+upgreek     0 commands, 0 environments
 ```
 
 ### `texform argspec validate`
@@ -315,7 +320,7 @@ The optional `style` field sits beside `profile` and accepts `"spaced"` (default
 Builds a normalizer from `config` and stores it under `id` for later `normalize` requests. Configuring an existing `id` replaces its entry; a failed `configure` leaves the previous entry unchanged.
 
 - `profile`: one of `authoring`, `faithful`, `corpus`, `equiv`. It selects the rule set and the default config.
-- `packages`: knowledge packages to load. When omitted, the server's `--packages` value applies, and without that, the same seven runtime packages as the library (`physics` is opt-in). Clients that need a fixed selection should specify it explicitly and record `resolved`.
+- `packages`: knowledge packages to load. When omitted, the server's `--packages` value applies, and without that, the same twelve runtime packages as the library (`physics` is opt-in). Clients that need a fixed selection should specify it explicitly and record `resolved`.
 - `overrides`: config values layered over the profile defaults. It accepts any subset of the keys in `resolved` other than `profile`, `style`, and `packages`, with the same nesting; nested objects may also be partial.
 
 `resolved` is the complete effective config, suitable for recording alongside results:
@@ -324,7 +329,7 @@ Builds a normalizer from `config` and stores it under `id` for later `normalize`
 {
   "profile": "authoring",
   "style": "spaced",
-  "packages": ["ams", "base", "bboldx", "boldsymbol", "braket", "color", "textmacros"],
+  "packages": ["ams", "base", "bboldx", "boldsymbol", "braket", "cancel", "color", "extpfeil", "mathtools", "textcomp", "textmacros", "upgreek"],
   "reject_unknown": false,
   "abort_on_error": false,
   "max_group_depth": 128,

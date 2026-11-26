@@ -21,6 +21,7 @@ use crate::ast::{
     ArgumentKind, ArgumentSlot, ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, Slot,
 };
 use crate::knowledge::{ArgForm, Catalog, DelimiterToken};
+use crate::parse::optional_scalar_reads;
 use texform_knowledge::specs::ParsedArgSpec;
 
 /// Whether the nearest node of `before`, walked backwards from a boundary, is
@@ -311,13 +312,16 @@ fn trailing_slots_capture<'a>(
     mut after_space: bool,
     serialized_space: bool,
 ) -> bool {
-    let Some(next) = after.copied().find(|&node| {
+    let mut after = after.copied();
+    let Some(next) = after.find(|&node| {
         let space = is_whitespace_text(ast, node);
         after_space |= space;
         !space
     }) else {
         return false;
     };
+    // Read past `next` only when a bracketed scalar slot needs its content.
+    let mut rest: Option<Vec<NodeId>> = None;
     if let Node::Text(text) = ast.node(next) {
         after_space |= text.starts_with(char::is_whitespace);
     }
@@ -341,10 +345,67 @@ fn trailing_slots_capture<'a>(
             continue;
         }
         if form_opens_with(ast, &slot.form, next) {
+            // An optional scalar slot rejects bracket content of the wrong
+            // type and stays absent, leaving the brackets to later slots.
+            let rejects = matches!(slot.form, ArgForm::Standard)
+                && bracket_text(
+                    ast,
+                    next,
+                    rest.get_or_insert_with(|| after.by_ref().collect())
+                        .iter()
+                        .copied(),
+                )
+                .and_then(|text| optional_scalar_reads(slot, &text))
+                    == Some(false);
+            if rejects {
+                continue;
+            }
             return true;
         }
     }
     false
+}
+
+/// The text between the `[` that `first` opens with and the first `]` after
+/// it, compacted as the compact serializer writes it. `None` when a node in
+/// between is not plain text, so the content cannot be read from the tree.
+fn bracket_text(ast: &Ast, first: NodeId, rest: impl Iterator<Item = NodeId>) -> Option<String> {
+    // Appends `piece` up to a closing bracket; reports whether one was found.
+    fn push(text: &mut String, piece: &str) -> bool {
+        match piece.find(']') {
+            Some(end) => {
+                text.push_str(&piece[..end]);
+                true
+            }
+            None => {
+                text.push_str(piece);
+                false
+            }
+        }
+    }
+    let mut text = String::new();
+    match ast.node(first) {
+        Node::Char('[') => {}
+        Node::Text(piece) => {
+            if push(&mut text, piece.trim_start().strip_prefix('[')?) {
+                return Some(text);
+            }
+        }
+        _ => return None,
+    }
+    for node in rest {
+        match ast.node(node) {
+            Node::Char(']') => return Some(text),
+            Node::Char(c) => text.push(*c),
+            Node::Text(piece) => {
+                if push(&mut text, piece) {
+                    return Some(text);
+                }
+            }
+            _ => return None,
+        }
+    }
+    None
 }
 
 /// An absent star is stored as `false` rather than as an empty slot.
@@ -564,6 +625,14 @@ mod tests {
                 Profile::Equiv,
                 r"\ln\big[2\big]x",
                 r"\ln { } [ 2 ] x",
+            ),
+            // An optional real slot would read `[1.5]`; `[x]` stays in place
+            // without a separator (see `every_separator_is_needed`).
+            (
+                DEFAULT,
+                Profile::Equiv,
+                r"\MoveEqLeft\quad[1.5]x",
+                r"\MoveEqLeft { } [ 1 . 5 ] x",
             ),
             (
                 DEFAULT,

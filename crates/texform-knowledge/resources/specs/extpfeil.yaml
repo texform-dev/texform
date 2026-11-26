@@ -1,0 +1,21 @@
+commands:
+  - name: xlongequal
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xmapsto
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xtofrom
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xtwoheadleftarrow
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xtwoheadrightarrow
+    kind: prefix
+    argspec: o m
+    allowed_mode: math

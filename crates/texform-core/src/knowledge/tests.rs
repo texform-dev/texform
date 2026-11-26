@@ -68,8 +68,8 @@ fn test_ams_operator_names_use_operator_name_content() {
         .lookup_command("DeclareMathOperator")
         .expect("expected DeclareMathOperator command");
 
-    assert_eq!(declare.argspec.source, "s m:N m:O");
-    assert_eq!(declare.argspec[1].kind, ValueKind::CSName);
+    assert_eq!(declare.argspec.source, "s m:CS m:O");
+    assert_eq!(declare.argspec[1].kind, ValueKind::ControlSequence);
     assert_eq!(declare.argspec[2].kind, ValueKind::OperatorName);
 }
 
@@ -524,7 +524,12 @@ fn test_default_package_names_exclude_physics() {
             "textmacros",
             "bboldx",
             "boldsymbol",
-            "color"
+            "color",
+            "upgreek",
+            "mathtools",
+            "cancel",
+            "extpfeil",
+            "textcomp"
         ]
     );
 }

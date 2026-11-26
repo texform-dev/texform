@@ -92,6 +92,11 @@ fn convenience_factories_use_default_runtime_packages() {
         PackageName::Bboldx,
         PackageName::Boldsymbol,
         PackageName::Color,
+        PackageName::Upgreek,
+        PackageName::Mathtools,
+        PackageName::Cancel,
+        PackageName::Extpfeil,
+        PackageName::Textcomp,
     ];
     assert_eq!(default_ctx.enabled_packages(), expected_packages);
     assert_eq!(shared.enabled_packages(), expected_packages);

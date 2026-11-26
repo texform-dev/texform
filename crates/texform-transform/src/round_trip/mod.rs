@@ -43,6 +43,11 @@ pub const DEFAULT_PACKAGES: &[&str] = &[
     "bboldx",
     "boldsymbol",
     "color",
+    "upgreek",
+    "mathtools",
+    "cancel",
+    "extpfeil",
+    "textcomp",
 ];
 /// The packages that introduce most command captures.
 pub const PHYSICS_PACKAGES: &[&str] = &["base", "ams", "physics"];
@@ -55,6 +60,11 @@ pub const MIXED_PACKAGES: &[&str] = &[
     "bboldx",
     "boldsymbol",
     "color",
+    "upgreek",
+    "mathtools",
+    "cancel",
+    "extpfeil",
+    "textcomp",
     "physics",
 ];
 

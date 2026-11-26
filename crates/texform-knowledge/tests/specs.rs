@@ -15,6 +15,11 @@ fn package_name_import_order_matches_transform_order() {
             PackageName::Bboldx,
             PackageName::Boldsymbol,
             PackageName::Color,
+            PackageName::Upgreek,
+            PackageName::Mathtools,
+            PackageName::Cancel,
+            PackageName::Extpfeil,
+            PackageName::Textcomp,
         ]
     );
     assert_eq!(
@@ -31,6 +36,11 @@ fn package_name_import_order_matches_transform_order() {
             "bboldx",
             "boldsymbol",
             "color",
+            "upgreek",
+            "mathtools",
+            "cancel",
+            "extpfeil",
+            "textcomp",
         ]
     );
 }
@@ -54,9 +64,14 @@ fn all_resource_specs_are_registered() {
             "bboldx",
             "boldsymbol",
             "braket",
+            "cancel",
             "color",
+            "extpfeil",
+            "mathtools",
             "physics",
-            "textmacros"
+            "textcomp",
+            "textmacros",
+            "upgreek"
         ]
     );
 }

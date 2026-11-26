@@ -2214,7 +2214,8 @@ export interface PackageInfo {
  *
  * The returned names are the identifiers accepted by the `packages` option of
  * {@link KnowledgeBase}: `ams`, `base`, `bboldx`,
- * `boldsymbol`, `braket`, `color`, `physics`, `textmacros`.
+ * `boldsymbol`, `braket`, `cancel`, `color`, `extpfeil`, `mathtools`,
+ * `physics`, `textcomp`, `textmacros`, `upgreek`.
  *
  * @returns One {@link PackageInfo} per built-in package.
  * @example

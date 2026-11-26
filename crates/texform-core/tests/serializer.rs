@@ -303,7 +303,7 @@ fn test_serialize_declare_math_operator_name_stays_compact() {
     let ctx = ParseContext::from_packages(&["ams", "base"]);
     let output = serialize(&parse_to_ast_with_context(
         &ctx,
-        r"\DeclareMathOperator{diff}{Diff}",
+        r"\DeclareMathOperator{\diff}{Diff}",
     ));
 
     assert!(

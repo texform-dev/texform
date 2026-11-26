@@ -29,7 +29,7 @@ commands:
       - decoration
   - name: DeclareMathOperator
     kind: prefix
-    argspec: s m:N m:O
+    argspec: s m:CS m:O
     allowed_mode: math
     tags:
       - invisible

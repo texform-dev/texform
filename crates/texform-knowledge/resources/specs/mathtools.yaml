@@ -1,0 +1,593 @@
+commands:
+  - name: Aboxed
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: adjustlimits
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: approxcolon
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: Approxcolon
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: ArrowBetweenLines
+    kind: prefix
+    argspec: s O{\Updownarrow}
+    allowed_mode: math
+  - name: bigtimes
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: clap
+    kind: prefix
+    argspec: m:T
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: colonapprox
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: Colonapprox
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: colondash
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: Colondash
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: coloneq
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: Coloneq
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: coloneqq
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: Coloneqq
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: colonsim
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: Colonsim
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: cramped
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+    tags:
+      - presentation
+  - name: crampedclap
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: crampedllap
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: crampedrlap
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: crampedsubstack
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+  - name: dashcolon
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: Dashcolon
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: dblcolon
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: DeclarePairedDelimiter
+    kind: prefix
+    argspec: m:CS m:D m:D
+    allowed_mode: math
+    tags:
+      - invisible
+      - newdefine
+  - name: DeclarePairedDelimiterX
+    kind: prefix
+    argspec: m:CS o:I m:D m:D m
+    allowed_mode: math
+    tags:
+      - invisible
+      - newdefine
+  - name: DeclarePairedDelimiterXPP
+    kind: prefix
+    argspec: m:CS o:I m m:D m:D m m
+    allowed_mode: math
+    tags:
+      - invisible
+      - newdefine
+  - name: eqcolon
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: Eqcolon
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: eqqcolon
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: Eqqcolon
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: MakeAboxedCommand
+    kind: prefix
+    argspec: s m:CS m:CS
+    allowed_mode: math
+    tags:
+      - invisible
+      - newdefine
+  - name: mathclap
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: mathllap
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: mathmakebox
+    kind: prefix
+    argspec: o:L? O{c}:N? m
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: mathmbox
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+  - name: mathrlap
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: mathtoolsset
+    kind: prefix
+    argspec: m:K
+    allowed_mode: math
+    tags:
+      - invisible
+  - name: MoveEqLeft
+    kind: prefix
+    argspec: O{2}:R
+    allowed_mode: math
+    tags:
+      - invisible
+      - spacing
+  - name: MTFlushSpaceAbove
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: MTFlushSpaceBelow
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: ndownarrow
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: newtagform
+    kind: prefix
+    argspec: m:N o:CS? m:T m:T
+    allowed_mode: math
+    tags:
+      - invisible
+      - newdefine
+  - name: nuparrow
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: ordinarycolon
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: overbracket
+    kind: prefix
+    argspec: O{.1em}:L? O{.2em}:L? m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: prescript
+    kind: prefix
+    argspec: m m m
+    allowed_mode: math
+  - name: refeq
+    kind: prefix
+    argspec: m:N
+    allowed_mode: math
+  - name: renewtagform
+    kind: prefix
+    argspec: m:N o:CS? m:T m:T
+    allowed_mode: math
+    tags:
+      - invisible
+      - newdefine
+  - name: shortvdotswithin
+    kind: prefix
+    argspec: s m
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: shoveleft
+    kind: prefix
+    argspec: o:L? m
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: shoveright
+    kind: prefix
+    argspec: o:L? m
+    allowed_mode: math
+    tags:
+      - spacing
+  - name: simcolon
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: Simcolon
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: splitdfrac
+    kind: prefix
+    argspec: m m
+    allowed_mode: math
+  - name: splitfrac
+    kind: prefix
+    argspec: m m
+    allowed_mode: math
+  - name: underbracket
+    kind: prefix
+    argspec: O{.1em}:L? O{.2em}:L? m
+    allowed_mode: math
+    tags:
+      - decoration
+  - name: usetagform
+    kind: prefix
+    argspec: m:N?
+    allowed_mode: math
+    tags:
+      - invisible
+  - name: vcentcolon
+    kind: prefix
+    argspec: ''
+    allowed_mode: math
+  - name: vdotswithin
+    kind: prefix
+    argspec: m
+    allowed_mode: math
+  - name: xhookleftarrow
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xhookrightarrow
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xLeftarrow
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xleftharpoondown
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xleftharpoonup
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xleftrightarrow
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xLeftrightarrow
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xleftrightharpoons
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xlongleftarrow
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xLongleftarrow
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xlongrightarrow
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xLongrightarrow
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xmapsto
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xmathstrut
+    kind: prefix
+    argspec: o:R? m:R
+    allowed_mode: math
+    tags:
+      - invisible
+      - spacing
+  - name: xRightarrow
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xrightharpoondown
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xrightharpoonup
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+  - name: xrightleftharpoons
+    kind: prefix
+    argspec: o m
+    allowed_mode: math
+environments:
+  - name: bmatrix*
+    argspec: o:N
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: Bmatrix*
+    argspec: o:N
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: bsmallmatrix
+    argspec: ''
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: Bsmallmatrix
+    argspec: ''
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: bsmallmatrix*
+    argspec: o:N
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: Bsmallmatrix*
+    argspec: o:N
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: cases*
+    argspec: ''
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: crampedsubarray
+    argspec: m:C
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: dcases
+    argspec: ''
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: dcases*
+    argspec: ''
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: drcases
+    argspec: ''
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: drcases*
+    argspec: ''
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: lgathered
+    argspec: o:N
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - math-alignment
+      - nestable
+  - name: matrix*
+    argspec: o:N
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: multlined
+    argspec: '!o:L !o:N !o:L'
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - math-alignment
+      - nestable
+  - name: pmatrix*
+    argspec: o:N
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: psmallmatrix
+    argspec: ''
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: psmallmatrix*
+    argspec: o:N
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: rcases
+    argspec: ''
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: rcases*
+    argspec: ''
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: rgathered
+    argspec: o:N
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - math-alignment
+      - nestable
+  - name: smallmatrix*
+    argspec: o:N
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: spreadlines
+    argspec: m:L
+    body_mode: math
+    allowed_mode: math
+  - name: vmatrix*
+    argspec: o:N
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: Vmatrix*
+    argspec: o:N
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: vsmallmatrix
+    argspec: ''
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: Vsmallmatrix
+    argspec: ''
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: vsmallmatrix*
+    argspec: o:N
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+  - name: Vsmallmatrix*
+    argspec: o:N
+    body_mode: math
+    allowed_mode: math
+    tags:
+      - matrix
+      - nestable
+delimiters:
+  - name: lparen
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: (
+    attributes: {}
+  - name: rparen
+    is_control_sequence: true
+    allowed_mode: math
+    unicode_value: )
+    attributes: {}

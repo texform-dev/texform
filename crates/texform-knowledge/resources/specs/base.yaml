@@ -1103,7 +1103,7 @@ commands:
       - mathjax-extension
   - name: scalebox
     kind: prefix
-    argspec: m:N o:N m:T
+    argspec: m:R o:R m:T
     allowed_mode: both
     tags:
       - presentation

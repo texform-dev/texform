@@ -2,7 +2,7 @@
 
 > **The LaTeX math toolkit**
 
-TeXForm parses, edits, and normalizes LaTeX math using a knowledge base of 600+ command and environment specifications across 8 LaTeX packages, validated against MathJax, KaTeX, and XeTeX.
+TeXForm parses, edits, and normalizes LaTeX math using a knowledge base of 850+ command and environment specifications across 13 LaTeX packages, validated against MathJax, KaTeX, and XeTeX.
 
 This crate is the public TeXForm facade — the only crate with a stability guarantee. It exposes the full API surface: a parse-only `Parser`, an editable `Document` tree, a profile-based `TransformEngine`, deterministic serialization, and `validate_argspec`.
 

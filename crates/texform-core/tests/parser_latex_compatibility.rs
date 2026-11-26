@@ -153,7 +153,7 @@ fn scalebox_reads_signed_decimal_scales() {
     ] {
         let syntax = parse_stable(source);
         let args = extract_command_args(&syntax, "scalebox").expect("scalebox command");
-        let scale = |value: &str| ArgumentValue::CSName(value.to_string());
+        let scale = |value: &str| ArgumentValue::Real(value.to_string());
         assert_eq!(expect_arg(&args[0]).value, scale(horizontal), "{source}");
         assert_eq!(
             args[1].as_ref().map(|arg| arg.value.clone()),

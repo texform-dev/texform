@@ -6,7 +6,7 @@ use texform_interface::syntax_node::{ArgumentValue, ContentMode, Delimiter};
 
 use crate::column_parser::parse_column_template;
 use crate::dimension::is_valid_dimension_unit;
-use crate::knowledge::{ArgSpec, DelimiterToken};
+use crate::knowledge::{ArgSpec, DelimiterToken, ValueKind};
 use crate::lexer::Token;
 use crate::parse::config::ParseConfig;
 use crate::parse::context::ParseContext;
@@ -615,6 +615,34 @@ pub(super) fn parse_control_sequence_slice(
         return Err("expected a single control sequence");
     }
     Ok(value)
+}
+
+/// A whole-slice scalar parser: tokens, spans, end-of-input offset, nullable.
+type SliceParser = fn(&[Token<'_>], &[Span], usize, bool) -> Result<String, &'static str>;
+
+/// Whether an optional `[...]` slot of `spec` reads `content` as its value.
+///
+/// Optional dimension, integer, and real slots rewind and stay absent when the
+/// bracket content does not parse as their type, so a following `[content]`
+/// is left in place. Returns `None` for every other kind, which callers must
+/// treat as possibly capturing.
+pub fn optional_scalar_reads(spec: &ArgSpec, content: &str) -> Option<bool> {
+    let parse: SliceParser = match spec.kind {
+        ValueKind::Dimension => parse_dimension_slice,
+        ValueKind::Integer => parse_integer_slice,
+        ValueKind::Real => parse_real_slice,
+        _ => return None,
+    };
+    let mut tokens = Vec::new();
+    let mut spans = Vec::new();
+    for (token, range) in Token::lexer(content).spanned() {
+        let Ok(token) = token else {
+            return Some(false);
+        };
+        tokens.push(token);
+        spans.push(Span::new(range.start, range.end));
+    }
+    Some(parse(&tokens, &spans, content.len(), spec.nullable).is_ok())
 }
 
 /// Check that the argument parser reads a stored scalar value back from its slot.

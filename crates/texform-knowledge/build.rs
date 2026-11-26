@@ -17,7 +17,7 @@ use specs_yaml::{
 };
 use texform_argspec::parse_arg_specs;
 
-const MANAGED_PACKAGE_IMPORT_ORDER: [&str; 8] = [
+const MANAGED_PACKAGE_IMPORT_ORDER: [&str; 13] = [
     "base",
     "ams",
     "braket",
@@ -26,6 +26,11 @@ const MANAGED_PACKAGE_IMPORT_ORDER: [&str; 8] = [
     "bboldx",
     "boldsymbol",
     "color",
+    "upgreek",
+    "mathtools",
+    "cancel",
+    "extpfeil",
+    "textcomp",
 ];
 
 fn main() {
@@ -431,7 +436,11 @@ fn emit_package_module(
     let package_ident = package_module_ident(package.name.as_str());
     writeln!(out, "pub mod {package_ident} {{").unwrap();
     out.push_str("    use super::generated_prelude::*;\n");
-    out.push_str("    use crate::argspec;\n");
+    // Only command and environment records embed argument specifications;
+    // character-only packages such as `upgreek` would leave the import unused.
+    if !package.commands.is_empty() || !package.environments.is_empty() {
+        out.push_str("    use crate::argspec;\n");
+    }
     emit_command_module(out, package.commands.as_slice(), command_symbol_facades);
     emit_environment_module(out, package.environments.as_slice());
     emit_character_module(out, package.characters.as_slice());

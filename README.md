@@ -4,7 +4,7 @@
 
 **The LaTeX math toolkit**
 
-TeXForm parses, edits, and normalizes LaTeX math using a knowledge base of 600+ command and environment specifications across 8 LaTeX packages, validated against MathJax, KaTeX, and XeTeX. One Rust core backs packages for Python, JavaScript, and Rust, plus a command-line tool.
+TeXForm parses, edits, and normalizes LaTeX math using a knowledge base of 850+ command and environment specifications across 13 LaTeX packages, validated against MathJax, KaTeX, and XeTeX. One Rust core backs packages for Python, JavaScript, and Rust, plus a command-line tool.
 
 [![crates.io](https://img.shields.io/crates/v/texform.svg)](https://crates.io/crates/texform)
 [![PyPI](https://img.shields.io/pypi/v/texform.svg)](https://pypi.org/project/texform/)
@@ -21,7 +21,7 @@ Programs that process LaTeX formulas — cleaning OCR and math-recognition outpu
 
 TeXForm provides that layer:
 
-- **Parse against a knowledge base.** Formulas parse into syntax trees driven by xparse-style argument specifications for the commands and environments in `base`, `ams`, `physics`, `braket`, `bboldx`, `boldsymbol`, `textmacros`, and `color`. Unknown commands and unparseable fragments stay in the tree as explicit nodes with diagnostics.
+- **Parse against a knowledge base.** Formulas parse into syntax trees driven by xparse-style argument specifications for the commands and environments in `base`, `ams`, `physics`, `braket`, `bboldx`, `boldsymbol`, `textmacros`, `color`, `upgreek`, `mathtools`, `cancel`, `extpfeil`, and `textcomp`. Unknown commands and unparseable fragments stay in the tree as explicit nodes with diagnostics.
 - **Edit a document tree.** A parsed `Document` is a DOM-style tree you can query, edit, and serialize back to LaTeX. Edits are validated against the knowledge base and fail with structured errors, and serialization is text-idempotent.
 - **Normalize with a profile.** Normalization has no single correct answer, so you pick a `Profile` for your downstream use, and a curated set of rewrite rules produces the canonical form for it. Every rule declares the forms it eliminates, and the engine checks that contract after every run.
 

@@ -1,0 +1,206 @@
+characters:
+  - name: upalpha
+    allowed_mode: math
+    unicode_value: α
+    attributes:
+      mathvariant: normal
+  - name: upbeta
+    allowed_mode: math
+    unicode_value: β
+    attributes:
+      mathvariant: normal
+  - name: upchi
+    allowed_mode: math
+    unicode_value: χ
+    attributes:
+      mathvariant: normal
+  - name: updelta
+    allowed_mode: math
+    unicode_value: δ
+    attributes:
+      mathvariant: normal
+  - name: Updelta
+    allowed_mode: math
+    unicode_value: Δ
+    attributes:
+      mathvariant: normal
+  - name: upepsilon
+    allowed_mode: math
+    unicode_value: ϵ
+    attributes:
+      mathvariant: normal
+  - name: upeta
+    allowed_mode: math
+    unicode_value: η
+    attributes:
+      mathvariant: normal
+  - name: upgamma
+    allowed_mode: math
+    unicode_value: γ
+    attributes:
+      mathvariant: normal
+  - name: Upgamma
+    allowed_mode: math
+    unicode_value: Γ
+    attributes:
+      mathvariant: normal
+  - name: upiota
+    allowed_mode: math
+    unicode_value: ι
+    attributes:
+      mathvariant: normal
+  - name: upkappa
+    allowed_mode: math
+    unicode_value: κ
+    attributes:
+      mathvariant: normal
+  - name: uplambda
+    allowed_mode: math
+    unicode_value: λ
+    attributes:
+      mathvariant: normal
+  - name: Uplambda
+    allowed_mode: math
+    unicode_value: Λ
+    attributes:
+      mathvariant: normal
+  - name: upmu
+    allowed_mode: math
+    unicode_value: μ
+    attributes:
+      mathvariant: normal
+  - name: upnu
+    allowed_mode: math
+    unicode_value: ν
+    attributes:
+      mathvariant: normal
+  - name: upomega
+    allowed_mode: math
+    unicode_value: ω
+    attributes:
+      mathvariant: normal
+  - name: Upomega
+    allowed_mode: math
+    unicode_value: Ω
+    attributes:
+      mathvariant: normal
+  - name: upomicron
+    allowed_mode: math
+    unicode_value: ο
+    attributes:
+      mathvariant: normal
+  - name: upphi
+    allowed_mode: math
+    unicode_value: ϕ
+    attributes:
+      mathvariant: normal
+  - name: Upphi
+    allowed_mode: math
+    unicode_value: Φ
+    attributes:
+      mathvariant: normal
+  - name: uppi
+    allowed_mode: math
+    unicode_value: π
+    attributes:
+      mathvariant: normal
+  - name: Uppi
+    allowed_mode: math
+    unicode_value: Π
+    attributes:
+      mathvariant: normal
+  - name: uppsi
+    allowed_mode: math
+    unicode_value: ψ
+    attributes:
+      mathvariant: normal
+  - name: Uppsi
+    allowed_mode: math
+    unicode_value: Ψ
+    attributes:
+      mathvariant: normal
+  - name: uprho
+    allowed_mode: math
+    unicode_value: ρ
+    attributes:
+      mathvariant: normal
+  - name: upsigma
+    allowed_mode: math
+    unicode_value: σ
+    attributes:
+      mathvariant: normal
+  - name: Upsigma
+    allowed_mode: math
+    unicode_value: Σ
+    attributes:
+      mathvariant: normal
+  - name: uptau
+    allowed_mode: math
+    unicode_value: τ
+    attributes:
+      mathvariant: normal
+  - name: uptheta
+    allowed_mode: math
+    unicode_value: θ
+    attributes:
+      mathvariant: normal
+  - name: Uptheta
+    allowed_mode: math
+    unicode_value: Θ
+    attributes:
+      mathvariant: normal
+  - name: upupsilon
+    allowed_mode: math
+    unicode_value: υ
+    attributes:
+      mathvariant: normal
+  - name: Upupsilon
+    allowed_mode: math
+    unicode_value: Υ
+    attributes:
+      mathvariant: normal
+  - name: upvarepsilon
+    allowed_mode: math
+    unicode_value: ε
+    attributes:
+      mathvariant: normal
+  - name: upvarphi
+    allowed_mode: math
+    unicode_value: φ
+    attributes:
+      mathvariant: normal
+  - name: upvarpi
+    allowed_mode: math
+    unicode_value: ϖ
+    attributes:
+      mathvariant: normal
+  - name: upvarrho
+    allowed_mode: math
+    unicode_value: ϱ
+    attributes:
+      mathvariant: normal
+  - name: upvarsigma
+    allowed_mode: math
+    unicode_value: ς
+    attributes:
+      mathvariant: normal
+  - name: upvartheta
+    allowed_mode: math
+    unicode_value: ϑ
+    attributes:
+      mathvariant: normal
+  - name: upxi
+    allowed_mode: math
+    unicode_value: ξ
+    attributes:
+      mathvariant: normal
+  - name: Upxi
+    allowed_mode: math
+    unicode_value: Ξ
+    attributes:
+      mathvariant: normal
+  - name: upzeta
+    allowed_mode: math
+    unicode_value: ζ
+    attributes:
+      mathvariant: normal
