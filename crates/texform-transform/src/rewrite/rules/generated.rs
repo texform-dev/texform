@@ -303,6 +303,9 @@ pub(crate) mod physics {
             pub(crate) mod antidiagonalmatrix_to_admat;
             pub(crate) mod diagonalmatrix_to_dmat;
             pub(crate) mod matrixdeterminant_to_mdet;
+            pub(crate) mod matrixquantity_to_mqty;
+            pub(crate) mod smallmatrixquantity_to_smqty;
+            pub(crate) mod xmatrix_to_xmat;
         }
         pub(crate) mod named_fn_to_short {
             pub(crate) mod cosine_to_cos;
@@ -532,6 +535,9 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &physics::authoring::matrix_alias::antidiagonalmatrix_to_admat::ANTIDIAGONALMATRIX_TO_ADMAT,
     &physics::authoring::matrix_alias::diagonalmatrix_to_dmat::DIAGONALMATRIX_TO_DMAT,
     &physics::authoring::matrix_alias::matrixdeterminant_to_mdet::MATRIXDETERMINANT_TO_MDET,
+    &physics::authoring::matrix_alias::matrixquantity_to_mqty::MATRIXQUANTITY_TO_MQTY,
+    &physics::authoring::matrix_alias::smallmatrixquantity_to_smqty::SMALLMATRIXQUANTITY_TO_SMQTY,
+    &physics::authoring::matrix_alias::xmatrix_to_xmat::XMATRIX_TO_XMAT,
     &physics::authoring::named_fn_to_short::cosine_to_cos::COSINE_TO_COS,
     &physics::authoring::named_fn_to_short::naturallogarithm_to_ln::NATURALLOGARITHM_TO_LN,
     &physics::authoring::named_fn_to_short::probability_to_pr::PROBABILITY_TO_PR,
