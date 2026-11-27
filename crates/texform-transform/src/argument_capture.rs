@@ -14,8 +14,13 @@
 //!   that starts a following text node, as in `\ldots{} and` → `\ldots and`.
 //!
 //! The engine removes them once after a transform that changed the tree, with
-//! [`separate_boundaries`]. FlattenGroups uses the same predicates so that it
-//! never recreates a hazard by removing a separator.
+//! [`separate_boundaries`]. FlattenGroups uses the same predicates so that a
+//! single unwrap creates no hazard at the adjacencies it changes. Across
+//! several unwraps it can still create one: in `{\MoveEqLeft{[1.5}}]`, the
+//! inner group's `[` is left unclosed before the outer `}`, so that group is
+//! unwrapped, and unwrapping the outer group then meets the `]`, which that
+//! unwrap does not check. The final separation pass removes such hazards,
+//! giving `\MoveEqLeft{}[1.5]`.
 
 use crate::ast::{
     ArgumentKind, ArgumentSlot, ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, Slot,
@@ -29,13 +34,15 @@ use texform_knowledge::specs::ParsedArgSpec;
 /// trailing argument. Whitespace text between them counts as a leading space.
 ///
 /// `catalog` resolves the active records of `mode`, the mode of the sequence
-/// holding both sides.
+/// holding both sides. `after_end` tells whether `after` runs to the end of
+/// its sequence; see [`AfterEnd`].
 pub(crate) fn boundary_captures<'a, 'r>(
     ast: &Ast,
     catalog: impl Fn(ContentMode) -> &'r Catalog,
     mode: ContentMode,
     before: impl Iterator<Item = &'a NodeId>,
     after: impl Iterator<Item = &'a NodeId>,
+    after_end: AfterEnd,
 ) -> bool {
     let mut after_space = false;
     let mut before = before.copied().skip_while(|&node| {
@@ -67,21 +74,24 @@ pub(crate) fn boundary_captures<'a, 'r>(
         &record.argspec,
         args,
         after,
+        after_end.rejects_unclosed_bracket(ast),
         after_space,
         serialized_space,
     )
 }
 
 /// Whether the known environment `env` would read the first token of its body
-/// as an omitted trailing argument. `body` iterates the body's children.
+/// as an omitted trailing argument. `body` iterates the body's children, up to
+/// `body_end` as in [`boundary_captures`].
 pub(crate) fn environment_captures<'a, 'r>(
     ast: &Ast,
     catalog: impl Fn(ContentMode) -> &'r Catalog,
     env: NodeId,
     body: impl Iterator<Item = &'a NodeId>,
+    body_end: AfterEnd,
 ) -> bool {
     sequence_mode_of(ast, env)
-        .is_some_and(|mode| environment_captures_in(ast, catalog, mode, env, body))
+        .is_some_and(|mode| environment_captures_in(ast, catalog, mode, env, body, body_end))
 }
 
 /// [`environment_captures`] for an environment in a sequence of `mode`, which
@@ -92,6 +102,7 @@ pub(crate) fn environment_captures_in<'a, 'r>(
     mode: ContentMode,
     env: NodeId,
     body: impl Iterator<Item = &'a NodeId>,
+    body_end: AfterEnd,
 ) -> bool {
     let Node::Environment {
         name,
@@ -113,6 +124,7 @@ pub(crate) fn environment_captures_in<'a, 'r>(
         &record.argspec,
         args,
         body,
+        body_end.rejects_unclosed_bracket(ast),
         false,
         false,
     )
@@ -145,13 +157,61 @@ pub(crate) fn sequence_boundary_hazard<'a, 'r, B, A>(
     mode: ContentMode,
     before: B,
     after: A,
+    after_end: AfterEnd,
 ) -> bool
 where
     B: Iterator<Item = &'a NodeId> + Clone,
     A: Iterator<Item = &'a NodeId> + Clone,
 {
-    boundary_captures(ast, catalog, mode, before.clone(), after.clone())
+    boundary_captures(ast, catalog, mode, before.clone(), after.clone(), after_end)
         || swallows_leading_space(ast, mode, before, after)
+}
+
+/// What follows the last node of an `after` iterator in the serialization.
+///
+/// A backtracking optional scalar slot (`:L`, `:I`, `:R`, `:CS`, `:D`) reads
+/// `[`, a scalar, and then requires `]`, or rewinds and stays absent. When the
+/// `[` after a command has no `]` among the remaining nodes of its sequence,
+/// the slot can still take it only if a scalar can continue past the end of
+/// the sequence and meet a `]` there, so the decision depends on what closes
+/// the sequence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AfterEnd {
+    /// `after` reaches the last child of this root or group.
+    Sequence(NodeId),
+    /// More nodes may follow `after`, as for a group spliced in front of the
+    /// scripts it carried.
+    Open,
+}
+
+impl AfterEnd {
+    /// Whether an unclosed `[` at the end of `after` stays a literal bracket
+    /// for every backtracking optional scalar slot.
+    ///
+    /// What follows such a sequence on reparse is the end of input (the root,
+    /// and argument contents, which the parser reads in a bounded window),
+    /// `}` (a brace group), `\end{` (an environment body), or `$` (inline
+    /// math). No scalar reads `}`, `{`, or `$`, and the only control sequence
+    /// among them, `\end`, is followed by `{` rather than `]`. A
+    /// `\left...\right` group ends with `\right` and an infix operand
+    /// meets the infix command; a control-sequence slot reads either one and
+    /// may then meet `]`, as in `\right]`, so those sequences stay
+    /// conservative.
+    fn rejects_unclosed_bracket(self, ast: &Ast) -> bool {
+        let AfterEnd::Sequence(sequence) = self else {
+            return false;
+        };
+        match ast.node(sequence) {
+            Node::Root { .. } => true,
+            Node::Group {
+                kind: GroupKind::Explicit | GroupKind::Implicit | GroupKind::InlineMath,
+                ..
+            } => ast
+                .parent(sequence)
+                .is_some_and(|link| !matches!(link.slot, Slot::InfixLeft | Slot::InfixRight)),
+            _ => false,
+        }
+    }
 }
 
 /// Removes every boundary hazard from the tree and returns the separators it
@@ -180,7 +240,13 @@ pub(crate) fn separate_boundaries<'r>(
             unreachable!("preorder scan collected only environments");
         };
         let body = *body;
-        if environment_captures(ast, catalog, env, ast.children(body).iter()) {
+        if environment_captures(
+            ast,
+            catalog,
+            env,
+            ast.children(body).iter(),
+            AfterEnd::Sequence(body),
+        ) {
             let mode = sequence_mode(ast, body).unwrap_or(ContentMode::Math);
             let separator = empty_group(ast, mode);
             ast.insert_child(body, 0, separator);
@@ -230,7 +296,14 @@ fn separate_sequence<'r>(
         );
         let (before, after) = children.split_at(index + 1);
         if !candidate
-            || !sequence_boundary_hazard(ast, catalog, mode, before.iter().rev(), after.iter())
+            || !sequence_boundary_hazard(
+                ast,
+                catalog,
+                mode,
+                before.iter().rev(),
+                after.iter(),
+                AfterEnd::Sequence(sequence),
+            )
         {
             index += 1;
             continue;
@@ -266,6 +339,7 @@ fn separate_after<'r>(
             mode,
             ast.children(sequence)[..end].iter().rev(),
             std::iter::once(&probe),
+            AfterEnd::Open,
         )
     };
     if !reads_group(ast, index + 1) {
@@ -312,13 +386,17 @@ fn separate_after<'r>(
 ///
 /// With `serialized_space`, a following `[` or `*` counts as preceded by a
 /// space, which the serializer writes there in math mode, so a slot that
-/// rejects a leading space cannot take it.
+/// rejects a leading space cannot take it. With `unclosed_rejected`, a `[`
+/// that no node of `after` closes stays a literal bracket for backtracking
+/// optional scalar slots; see [`AfterEnd::rejects_unclosed_bracket`].
+#[allow(clippy::too_many_arguments)]
 fn trailing_slots_capture<'a>(
     ast: &Ast,
     math_catalog: &Catalog,
     spec: &ParsedArgSpec,
     args: &[ArgumentSlot],
     after: impl Iterator<Item = &'a NodeId>,
+    unclosed_rejected: bool,
     mut after_space: bool,
     serialized_space: bool,
 ) -> bool {
@@ -365,6 +443,7 @@ fn trailing_slots_capture<'a>(
                         optional_scalar_reads(slot, text, math_catalog) == Some(false)
                     }
                     BracketContent::NonScalar => true,
+                    BracketContent::Unclosed => unclosed_rejected,
                     BracketContent::Unknown => false,
                 };
             if rejects {
@@ -384,8 +463,11 @@ enum BracketContent {
     /// A node inside `[...]` (such as an explicit brace group, script, or
     /// command with arguments) that no backtracking scalar parser can accept.
     NonScalar,
-    /// Cannot determine safely (such as an unclosed `[`, infix, or error node),
-    /// so callers must treat the slot as potentially capturing.
+    /// No scanned node closes the `[` or rules out a scalar. Whether a slot
+    /// reads it depends on what follows the scanned nodes.
+    Unclosed,
+    /// Cannot determine safely (such as an infix or error node), so callers
+    /// must treat the slot as potentially capturing.
     Unknown,
 }
 
@@ -519,7 +601,7 @@ fn bracket_content(ast: &Ast, first: NodeId, rest: impl Iterator<Item = NodeId>)
             ScanStep::Unknown => return BracketContent::Unknown,
         }
     }
-    BracketContent::Unknown
+    BracketContent::Unclosed
 }
 
 /// An absent star is stored as `false` rather than as an empty slot.
@@ -933,6 +1015,111 @@ mod tests {
         }
     }
 
+    /// A backtracking optional scalar slot needs `]` after its scalar, so a
+    /// `[` that nothing closes before the end of input, a `}`, `\end`, or `$`
+    /// stays a literal bracket. A `\right` or an infix command after the
+    /// sequence can complete a control-sequence slot, so those keep the
+    /// separator, as do slots that are not backtracking scalars.
+    #[test]
+    fn unclosed_brackets_skip_separators_only_where_no_slot_can_close_them() {
+        use crate::parse::{AllowedMode, CommandItem, ParseContextBuilder};
+
+        let parse_ctx = ParseContextBuilder::default()
+            .packages(DEFAULT)
+            .item(CommandItem::new(
+                "csopt",
+                CommandKind::Prefix,
+                AllowedMode::Math,
+                "o:CS",
+            ))
+            .build()
+            .unwrap();
+        for (profile, source, expected) in [
+            (
+                Profile::Equiv,
+                r"\MoveEqLeft\enspace[x|",
+                r"\MoveEqLeft [ x |",
+            ),
+            (
+                Profile::Corpus,
+                r"\MoveEqLeft\allowbreak[x|",
+                r"\MoveEqLeft [ x |",
+            ),
+            (
+                Profile::Equiv,
+                r"\MoveEqLeft\quad[1.5",
+                r"\MoveEqLeft [ 1 . 5",
+            ),
+            (Profile::Equiv, r"\csopt\quad[", r"\csopt ["),
+            (
+                Profile::Equiv,
+                r"x^{\MoveEqLeft\quad[1.5}]",
+                r"x ^ { \MoveEqLeft [ 1 . 5 } ]",
+            ),
+            (
+                Profile::Equiv,
+                r"x^{\csopt\quad[\alpha}]",
+                r"x ^ { \csopt [ \alpha } ]",
+            ),
+            (
+                Profile::Equiv,
+                r"\frac{\MoveEqLeft\quad[1.5}{2}",
+                r"\frac { \MoveEqLeft [ 1 . 5 } { 2 }",
+            ),
+            (
+                Profile::Equiv,
+                r"\begin{aligned}\csopt\quad[\end{aligned}",
+                r"\begin {aligned} \csopt [ \end {aligned}",
+            ),
+            (
+                Profile::Equiv,
+                r"\text{$\MoveEqLeft\quad[1.5$]}",
+                r"\text {$\MoveEqLeft [ 1 . 5$]}",
+            ),
+        ] {
+            let engine = engine(&parse_ctx, profile);
+            let mut ast = parse(&parse_ctx, source);
+            let separated = engine
+                .run_counting_separations(&mut ast, &parse_ctx, engine.default_config())
+                .unwrap();
+            assert_eq!(separated, 0, "{source} should not insert a separator");
+            assert_eq!(serialize(&ast), expected, "{source}");
+            assert_round_trip(&parse_ctx, &engine, &ast);
+        }
+
+        // Profiles rewrite `\over`, so these remove `\quad` directly. Each
+        // separator must be needed: without it, the tree reparses differently.
+        for (source, expected) in [
+            (
+                r"\left(\csopt\quad[\right]",
+                r"\left ( \csopt { } [ \right ]",
+            ),
+            (r"\csopt\quad[\over]x", r"\csopt { } [ \over ] x"),
+            (
+                r"\begin{aligned}\quad[\end{aligned}",
+                r"\begin {aligned} { } [ \end {aligned}",
+            ),
+        ] {
+            let mut ast = parse(&parse_ctx, source);
+            let mut spaces = Vec::new();
+            ast.visit_preorder(ast.root(), |id| {
+                if matches!(ast.node(id), Node::Command { name, .. } if name == "quad") {
+                    spaces.push(id);
+                }
+            });
+            for space in spaces {
+                ast.detach(space);
+                ast.remove_detached(space);
+            }
+            let separators = separate_boundaries(&mut ast, |mode| parse_ctx.catalog(mode));
+            assert_eq!(separators.len(), 1, "{source} should insert a separator");
+            assert_eq!(serialize(&ast), expected, "{source}");
+            assert!(reparses_to_itself(&parse_ctx, &ast), "{source}");
+            let (removed, _) = without_separator(&ast, separators[0]);
+            assert!(!reparses_to_itself(&parse_ctx, &removed), "{source}");
+        }
+    }
+
     /// Every separator is needed: on the stratified adversarial inputs,
     /// removing any one of them, or replacing a wrapping group with an empty
     /// group after the wrapped commands, makes some output style reparse to a
@@ -1223,6 +1410,33 @@ mod tests {
                 context.run_with(&mut ast, parse_ctx, &config).unwrap();
                 assert_eq!(serialize(&ast), before, "{source}");
             }
+        }
+    }
+
+    /// FlattenGroups unwraps a group holding an unclosed `[` when the
+    /// enclosing sequence ends where no scalar slot can close it, and keeps
+    /// the braces when a `]` or `\right` follows.
+    #[test]
+    fn flatten_groups_unwraps_unclosed_brackets_only_where_no_slot_can_close_them() {
+        let parse_ctx = ParseContext::from_packages(DEFAULT);
+        let corpus = engine(&parse_ctx, Profile::Corpus);
+        for (source, expected) in [
+            (r"\MoveEqLeft{[1.5}", r"\MoveEqLeft [ 1 . 5"),
+            (r"\text{a\\{[1pt}}", r"\text {a\\[1pt}"),
+            (r"\MoveEqLeft{[1.5}]", r"\MoveEqLeft { [ 1 . 5 } ]"),
+            (r"\text{a\\{[1pt}]}", r"\text {a\\{[1pt}]}"),
+            (
+                r"\left(\MoveEqLeft{[1.5}\right]",
+                r"\left ( \MoveEqLeft { [ 1 . 5 } \right ]",
+            ),
+        ] {
+            let mut ast = parse(&parse_ctx, source);
+            let separated = corpus
+                .run_counting_separations(&mut ast, &parse_ctx, corpus.default_config())
+                .unwrap();
+            assert_eq!(separated, 0, "{source} should not insert a separator");
+            assert_eq!(serialize(&ast), expected, "{source}");
+            assert_round_trip(&parse_ctx, &corpus, &ast);
         }
     }
 

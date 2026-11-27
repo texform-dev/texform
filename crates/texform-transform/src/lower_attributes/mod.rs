@@ -32,7 +32,7 @@ use std::sync::OnceLock;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::argument_capture::{environment_captures_in, sequence_boundary_hazard};
+use crate::argument_capture::{AfterEnd, environment_captures_in, sequence_boundary_hazard};
 use crate::ast::{Argument, ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, Slot};
 use crate::parse::ParseContext;
 use crate::report::ReportRecorder;
@@ -921,7 +921,9 @@ fn vanishes(ast: &Ast, child: NodeId, state: AttributeState, mode: ContentMode) 
 /// Whether removing a vanishing node between `last` and `after` would create
 /// a boundary hazard. At the start of an environment body, the environment
 /// is the reader. A neighbor with another state is emitted in another segment
-/// and its wrapper separates the two.
+/// and its wrapper separates the two. `after` is checked as an open-ended
+/// list: the rebuilt children may regroup it into segments, so what follows
+/// its last node is not known here.
 fn removal_creates_hazard(
     ast: &Ast,
     state: AttributeState,
@@ -934,8 +936,9 @@ fn removal_creates_hazard(
     let parse_ctx = recorder.parse_ctx;
     let catalog = |mode| parse_ctx.catalog(mode);
     let Some(last) = last else {
-        return env
-            .is_some_and(|env| environment_captures_in(ast, catalog, mode, env, after.iter()));
+        return env.is_some_and(|env| {
+            environment_captures_in(ast, catalog, mode, env, after.iter(), AfterEnd::Open)
+        });
     };
     if last.state != state {
         return false;
@@ -946,6 +949,7 @@ fn removal_creates_hazard(
         mode,
         std::iter::once(&last.node),
         after.iter(),
+        AfterEnd::Open,
     )
 }
 

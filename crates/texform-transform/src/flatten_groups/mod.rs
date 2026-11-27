@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Deserializer};
 
-use crate::argument_capture::{environment_captures, sequence_boundary_hazard};
+use crate::argument_capture::{AfterEnd, environment_captures, sequence_boundary_hazard};
 use crate::ast::{ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, ParentLink, Slot};
 use crate::parse::ParseContext;
 use crate::report::ReportRecorder;
@@ -609,16 +609,19 @@ fn is_possible_argument_capture(
         && ast
             .parent(parent)
             .is_some_and(|body| body.slot == Slot::EnvBody);
-    let env_captures = |after: &mut dyn Iterator<Item = &NodeId>| {
+    let env_captures = |after: &mut dyn Iterator<Item = &NodeId>, end| {
         opens_body
             && environment_captures(
                 ast,
                 catalog,
                 ast.parent_id(parent).expect("body has a parent"),
                 after,
+                end,
             )
     };
     if script_base {
+        // The spliced content is followed by the scripts it carried, which
+        // the iterators below do not see.
         return !children.is_empty()
             && (sequence_boundary_hazard(
                 ast,
@@ -626,21 +629,27 @@ fn is_possible_argument_capture(
                 mode,
                 before.iter().rev(),
                 children.iter(),
-            ) || env_captures(&mut children.iter()));
+                AfterEnd::Open,
+            ) || env_captures(&mut children.iter(), AfterEnd::Open));
     }
+    // Both adjacencies see every node up to the end of `parent`, which the
+    // splice does not change.
+    let end = AfterEnd::Sequence(parent);
     sequence_boundary_hazard(
         ast,
         catalog,
         mode,
         before.iter().rev(),
         children.iter().chain(after),
-    ) || env_captures(&mut children.iter().chain(after))
+        end,
+    ) || env_captures(&mut children.iter().chain(after), end)
         || sequence_boundary_hazard(
             ast,
             catalog,
             mode,
             children.iter().rev().chain(before.iter().rev()),
             after.iter(),
+            end,
         )
 }
 
