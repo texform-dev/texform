@@ -250,6 +250,41 @@ pub(crate) mod base {
         }
     }
 }
+pub(crate) mod mathtools {
+    pub(crate) mod authoring {
+        pub(crate) mod matrix_star_alignment {
+            pub(crate) mod matrix_star_default_align_to_matrix;
+        }
+    }
+    pub(crate) mod corpus {
+        pub(crate) mod fenced_matrix_env {
+            #[allow(non_snake_case)]
+            pub(crate) mod Bmatrix_star_env_to_brace_matrix_star;
+            #[allow(non_snake_case)]
+            pub(crate) mod Vmatrix_star_env_to_Vert_matrix_star;
+            pub(crate) mod bmatrix_star_env_to_bracket_matrix_star;
+            pub(crate) mod helpers;
+            pub(crate) mod pmatrix_star_env_to_paren_matrix_star;
+            pub(crate) mod vmatrix_star_env_to_vert_matrix_star;
+        }
+        pub(crate) mod fenced_smallmatrix_env {
+            #[allow(non_snake_case)]
+            pub(crate) mod Bsmallmatrix_env_to_brace_smallmatrix;
+            #[allow(non_snake_case)]
+            pub(crate) mod Vsmallmatrix_env_to_Vert_smallmatrix;
+            pub(crate) mod bsmallmatrix_env_to_bracket_smallmatrix;
+            pub(crate) mod helpers;
+            pub(crate) mod psmallmatrix_env_to_paren_smallmatrix;
+            pub(crate) mod vsmallmatrix_env_to_vert_smallmatrix;
+        }
+    }
+    pub(crate) mod equiv {
+        pub(crate) mod cases_style {
+            pub(crate) mod dcases_to_cases;
+            pub(crate) mod drcases_to_rcases;
+        }
+    }
+}
 pub(crate) mod physics {
     pub(crate) mod authoring {
         pub(crate) mod character_alias {
@@ -472,6 +507,19 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::faithful::spacing_alias::mskip_to_mspace::MSKIP_TO_MSPACE,
     &base::faithful::stacked_operator::stackbin_expand::STACKBIN_EXPAND,
     &base::faithful::stacked_operator::stackrel_expand::STACKREL_EXPAND,
+    &mathtools::authoring::matrix_star_alignment::matrix_star_default_align_to_matrix::MATRIX_STAR_DEFAULT_ALIGN_TO_MATRIX,
+    &mathtools::corpus::fenced_matrix_env::Bmatrix_star_env_to_brace_matrix_star::BMATRIX_STAR_ENV_TO_BRACE_MATRIX_STAR,
+    &mathtools::corpus::fenced_matrix_env::Vmatrix_star_env_to_Vert_matrix_star::VMATRIX_STAR_ENV_TO_VERT_MATRIX_STAR,
+    &mathtools::corpus::fenced_matrix_env::bmatrix_star_env_to_bracket_matrix_star::BMATRIX_STAR_ENV_TO_BRACKET_MATRIX_STAR,
+    &mathtools::corpus::fenced_matrix_env::pmatrix_star_env_to_paren_matrix_star::PMATRIX_STAR_ENV_TO_PAREN_MATRIX_STAR,
+    &mathtools::corpus::fenced_matrix_env::vmatrix_star_env_to_vert_matrix_star::VMATRIX_STAR_ENV_TO_VERT_MATRIX_STAR,
+    &mathtools::corpus::fenced_smallmatrix_env::Bsmallmatrix_env_to_brace_smallmatrix::BSMALLMATRIX_ENV_TO_BRACE_SMALLMATRIX,
+    &mathtools::corpus::fenced_smallmatrix_env::Vsmallmatrix_env_to_Vert_smallmatrix::VSMALLMATRIX_ENV_TO_VERT_SMALLMATRIX,
+    &mathtools::corpus::fenced_smallmatrix_env::bsmallmatrix_env_to_bracket_smallmatrix::BSMALLMATRIX_ENV_TO_BRACKET_SMALLMATRIX,
+    &mathtools::corpus::fenced_smallmatrix_env::psmallmatrix_env_to_paren_smallmatrix::PSMALLMATRIX_ENV_TO_PAREN_SMALLMATRIX,
+    &mathtools::corpus::fenced_smallmatrix_env::vsmallmatrix_env_to_vert_smallmatrix::VSMALLMATRIX_ENV_TO_VERT_SMALLMATRIX,
+    &mathtools::equiv::cases_style::dcases_to_cases::DCASES_TO_CASES,
+    &mathtools::equiv::cases_style::drcases_to_rcases::DRCASES_TO_RCASES,
     &physics::authoring::character_alias::divsymbol_to_divisionsymbol::DIVSYMBOL_TO_DIVISIONSYMBOL,
     &physics::authoring::character_alias::dotproduct_to_vdot::DOTPRODUCT_TO_VDOT,
     &physics::authoring::derivative_to_short::derivative_to_dv::DERIVATIVE_TO_DV,
