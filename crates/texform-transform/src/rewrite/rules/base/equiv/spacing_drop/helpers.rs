@@ -1,7 +1,8 @@
 use crate::ast::{ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, Slot};
+use crate::rewrite::helpers::content_mode_at;
 
 pub(super) fn drop_spacer(ast: &mut Ast, node_id: NodeId, spacer_names: &[&str]) -> bool {
-    let Some(mode) = content_mode(ast, node_id) else {
+    let Some(mode) = content_mode_at(ast, node_id) else {
         return false;
     };
 
@@ -29,32 +30,6 @@ pub(super) fn drop_spacer(ast: &mut Ast, node_id: NodeId, spacer_names: &[&str])
     }
 
     true
-}
-
-fn content_mode(ast: &Ast, node_id: NodeId) -> Option<ContentMode> {
-    let link = ast.parent(node_id)?;
-    match link.slot {
-        Slot::GroupChild(_) => match ast.node(link.parent) {
-            Node::Root { mode, .. } | Node::Group { mode, .. } => Some(*mode),
-            _ => None,
-        },
-        Slot::Argument(index) => {
-            let argument = ast.arg_slots(link.parent).get(index)?.as_ref()?;
-            match &argument.value {
-                ArgumentValue::MathContent(_) | ArgumentValue::OperatorNameContent(_) => {
-                    Some(ContentMode::Math)
-                }
-                ArgumentValue::TextContent(_) => Some(ContentMode::Text),
-                _ => None,
-            }
-        }
-        Slot::ScriptBase
-        | Slot::ScriptSub
-        | Slot::ScriptSup
-        | Slot::InfixLeft
-        | Slot::InfixRight => Some(ContentMode::Math),
-        Slot::EnvBody => None,
-    }
 }
 
 fn drop_math_spacers(ast: &mut Ast, parent: NodeId, spacer_names: &[&str]) {

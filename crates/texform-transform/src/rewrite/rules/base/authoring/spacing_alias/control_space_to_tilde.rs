@@ -14,7 +14,8 @@
 
 use texform_knowledge::builtin::base;
 
-use crate::ast::{ArgumentValue, Ast, ContentMode, Node, NodeId, Slot};
+use crate::ast::{ContentMode, Node};
+use crate::rewrite::helpers::content_mode_at;
 use crate::rewrite::rule::{RuleConsumes, RuleEffect, RuleProduces};
 use crate::rewrite::{cmd_targets, define_rule};
 
@@ -39,7 +40,7 @@ define_rule! {
             cx.for_rule(Self::KEY)
                 .expect_no_args(command.args, "\\ ")?;
 
-            if content_mode(cx.ast, node_id) != Some(ContentMode::Math) {
+            if content_mode_at(cx.ast, node_id) != Some(ContentMode::Math) {
                 return Ok(RuleEffect::Skipped);
             }
 
@@ -49,35 +50,10 @@ define_rule! {
     }
 }
 
-fn content_mode(ast: &Ast, node_id: NodeId) -> Option<ContentMode> {
-    let parent = ast.parent(node_id)?;
-    match parent.slot {
-        Slot::GroupChild(_) => match ast.node(parent.parent) {
-            Node::Root { mode, .. } | Node::Group { mode, .. } => Some(*mode),
-            _ => None,
-        },
-        Slot::Argument(index) => {
-            let argument = ast.arg_slots(parent.parent).get(index)?.as_ref()?;
-            match argument.value {
-                ArgumentValue::MathContent(_) | ArgumentValue::OperatorNameContent(_) => {
-                    Some(ContentMode::Math)
-                }
-                ArgumentValue::TextContent(_) => Some(ContentMode::Text),
-                _ => None,
-            }
-        }
-        Slot::ScriptBase
-        | Slot::ScriptSub
-        | Slot::ScriptSup
-        | Slot::InfixLeft
-        | Slot::InfixRight => Some(ContentMode::Math),
-        Slot::EnvBody => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::Slot;
     use crate::parse::ParseContext;
     use crate::rewrite::transform_examples;
     use crate::rewrite::{RuleLevel, run_one_rule_for_test};
