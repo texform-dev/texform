@@ -120,6 +120,9 @@ pub(crate) mod base {
             pub(crate) mod break_to_linebreak;
             pub(crate) mod newline_to_linebreak;
         }
+        pub(crate) mod math_mode_wrapper {
+            pub(crate) mod ensuremath_expand;
+        }
         pub(crate) mod not_remap {
             pub(crate) mod helpers;
             pub(crate) mod not_equals_to_neq;
@@ -438,6 +441,7 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::authoring::limit_placement::displaylimits_drop::DISPLAYLIMITS_DROP,
     &base::authoring::linebreak_alias::break_to_linebreak::BREAK_TO_LINEBREAK,
     &base::authoring::linebreak_alias::newline_to_linebreak::NEWLINE_TO_LINEBREAK,
+    &base::authoring::math_mode_wrapper::ensuremath_expand::ENSUREMATH_EXPAND,
     &base::authoring::not_remap::not_equals_to_neq::NOT_EQUALS_TO_NEQ,
     &base::authoring::not_remap::not_exists_to_nexists::NOT_EXISTS_TO_NEXISTS,
     &base::authoring::not_remap::not_in_to_notin::NOT_IN_TO_NOTIN,

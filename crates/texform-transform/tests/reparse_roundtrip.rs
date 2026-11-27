@@ -322,6 +322,10 @@ const BOUNDARY_EXAMPLES: &[&str] = &[
     r"\rm\curl\div\big[a]",
     r"\sine\nobreak(x)",
     r"\ln\big[2\big]x",
+    r"\var\ensuremath{}{x}",
+    r"{\var\ensuremath{}{x}}",
+    r"{\var\ensuremath{}(x)}",
+    r"\curl\div\ensuremath{}{x}",
     // Environment capture.
     r"\begin{aligned}\big[a]\end{aligned}",
     r"\begin{aligned}\quad[a]\end{aligned}",
