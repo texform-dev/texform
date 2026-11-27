@@ -224,6 +224,9 @@ pub(crate) mod base {
             pub(crate) mod limits_drop;
             pub(crate) mod nolimits_drop;
         }
+        pub(crate) mod phantom_family {
+            pub(crate) mod vphantom_drop;
+        }
         pub(crate) mod spacing_drop {
             pub(crate) mod enspace_drop;
             pub(crate) mod helpers;
@@ -500,6 +503,7 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::equiv::limit_placement::integral_displaylimits_drop::INTEGRAL_DISPLAYLIMITS_DROP,
     &base::equiv::limit_placement::limits_drop::LIMITS_DROP,
     &base::equiv::limit_placement::nolimits_drop::NOLIMITS_DROP,
+    &base::equiv::phantom_family::vphantom_drop::VPHANTOM_DROP,
     &base::equiv::spacing_drop::enspace_drop::ENSPACE_DROP,
     &base::equiv::spacing_drop::qquad_drop::QQUAD_DROP,
     &base::equiv::spacing_drop::quad_drop::QUAD_DROP,
