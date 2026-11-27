@@ -9,12 +9,35 @@ use crate::rewrite::rule::RewriteRule;
 
 pub(crate) mod ams {
     pub(crate) mod authoring {
+        pub(crate) mod accent_alias {
+            #[allow(non_snake_case)]
+            pub(crate) mod Acute_to_acute;
+            #[allow(non_snake_case)]
+            pub(crate) mod Bar_to_bar;
+            #[allow(non_snake_case)]
+            pub(crate) mod Breve_to_breve;
+            #[allow(non_snake_case)]
+            pub(crate) mod Check_to_check;
+            #[allow(non_snake_case)]
+            pub(crate) mod Ddot_to_ddot;
+            #[allow(non_snake_case)]
+            pub(crate) mod Dot_to_dot;
+            #[allow(non_snake_case)]
+            pub(crate) mod Grave_to_grave;
+            #[allow(non_snake_case)]
+            pub(crate) mod Hat_to_hat;
+            #[allow(non_snake_case)]
+            pub(crate) mod Tilde_to_tilde;
+            #[allow(non_snake_case)]
+            pub(crate) mod Vec_to_vec;
+        }
         pub(crate) mod character_alias {
             #[allow(non_snake_case)]
             pub(crate) mod Doteq_to_doteqdot;
             #[allow(non_snake_case)]
             pub(crate) mod doublecap_to_Cap;
             pub(crate) mod gggtr_to_ggg;
+            pub(crate) mod hdots_to_ldots;
             pub(crate) mod llless_to_lll;
             pub(crate) mod trianglerighteq_to_unrhd;
             pub(crate) mod unlhd_to_trianglelefteq;
@@ -81,12 +104,17 @@ pub(crate) mod base {
     pub(crate) mod authoring {
         pub(crate) mod character_alias {
             pub(crate) mod ast_to_asterisk;
+            pub(crate) mod dag_to_dagger;
+            pub(crate) mod ddag_to_ddagger;
             pub(crate) mod ge_to_geq;
             pub(crate) mod le_to_leq;
             pub(crate) mod lnot_to_neg;
             pub(crate) mod ne_to_neq;
             pub(crate) mod owns_to_ni;
             pub(crate) mod prime_to_prime_node;
+        }
+        pub(crate) mod limit_placement {
+            pub(crate) mod displaylimits_drop;
         }
         pub(crate) mod linebreak_alias {
             pub(crate) mod break_to_linebreak;
@@ -131,7 +159,11 @@ pub(crate) mod base {
             pub(crate) mod hskip_to_hspace;
             pub(crate) mod negthinspace_to_neg_comma_space;
             pub(crate) mod space_to_tilde;
+            pub(crate) mod thickspace_to_semicolon;
             pub(crate) mod thinspace_to_comma_space;
+        }
+        pub(crate) mod spacing_drop {
+            pub(crate) mod italic_correction_drop;
         }
         pub(crate) mod spacing_merge {
             pub(crate) mod double_enspace_to_quad;
@@ -185,6 +217,7 @@ pub(crate) mod base {
         }
         pub(crate) mod limit_placement {
             pub(crate) mod helpers;
+            pub(crate) mod integral_displaylimits_drop;
             pub(crate) mod limits_drop;
             pub(crate) mod nolimits_drop;
         }
@@ -316,9 +349,20 @@ pub(crate) mod physics {
 }
 
 pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
+    &ams::authoring::accent_alias::Acute_to_acute::ACUTE_TO_ACUTE,
+    &ams::authoring::accent_alias::Bar_to_bar::BAR_TO_BAR,
+    &ams::authoring::accent_alias::Breve_to_breve::BREVE_TO_BREVE,
+    &ams::authoring::accent_alias::Check_to_check::CHECK_TO_CHECK,
+    &ams::authoring::accent_alias::Ddot_to_ddot::DDOT_TO_DDOT,
+    &ams::authoring::accent_alias::Dot_to_dot::DOT_TO_DOT,
+    &ams::authoring::accent_alias::Grave_to_grave::GRAVE_TO_GRAVE,
+    &ams::authoring::accent_alias::Hat_to_hat::HAT_TO_HAT,
+    &ams::authoring::accent_alias::Tilde_to_tilde::TILDE_TO_TILDE,
+    &ams::authoring::accent_alias::Vec_to_vec::VEC_TO_VEC,
     &ams::authoring::character_alias::Doteq_to_doteqdot::DOTEQ_TO_DOTEQDOT,
     &ams::authoring::character_alias::doublecap_to_Cap::DOUBLECAP_TO_CAP,
     &ams::authoring::character_alias::gggtr_to_ggg::GGGTR_TO_GGG,
+    &ams::authoring::character_alias::hdots_to_ldots::HDOTS_TO_LDOTS,
     &ams::authoring::character_alias::llless_to_lll::LLLESS_TO_LLL,
     &ams::authoring::character_alias::trianglerighteq_to_unrhd::TRIANGLERIGHTEQ_TO_UNRHD,
     &ams::authoring::character_alias::unlhd_to_trianglelefteq::UNLHD_TO_TRIANGLELEFTEQ,
@@ -348,12 +392,15 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &ams::faithful::multi_integral::idotsint_expand::IDOTSINT_EXPAND,
     &ams::faithful::substack::substack_expand::SUBSTACK_EXPAND,
     &base::authoring::character_alias::ast_to_asterisk::AST_TO_ASTERISK,
+    &base::authoring::character_alias::dag_to_dagger::DAG_TO_DAGGER,
+    &base::authoring::character_alias::ddag_to_ddagger::DDAG_TO_DDAGGER,
     &base::authoring::character_alias::ge_to_geq::GE_TO_GEQ,
     &base::authoring::character_alias::le_to_leq::LE_TO_LEQ,
     &base::authoring::character_alias::lnot_to_neg::LNOT_TO_NEG,
     &base::authoring::character_alias::ne_to_neq::NE_TO_NEQ,
     &base::authoring::character_alias::owns_to_ni::OWNS_TO_NI,
     &base::authoring::character_alias::prime_to_prime_node::PRIME_TO_PRIME_NODE,
+    &base::authoring::limit_placement::displaylimits_drop::DISPLAYLIMITS_DROP,
     &base::authoring::linebreak_alias::break_to_linebreak::BREAK_TO_LINEBREAK,
     &base::authoring::linebreak_alias::newline_to_linebreak::NEWLINE_TO_LINEBREAK,
     &base::authoring::not_remap::not_equals_to_neq::NOT_EQUALS_TO_NEQ,
@@ -382,7 +429,9 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::authoring::spacing_alias::hskip_to_hspace::HSKIP_TO_HSPACE,
     &base::authoring::spacing_alias::negthinspace_to_neg_comma_space::NEGTHINSPACE_TO_NEG_COMMA_SPACE,
     &base::authoring::spacing_alias::space_to_tilde::SPACE_TO_TILDE,
+    &base::authoring::spacing_alias::thickspace_to_semicolon::THICKSPACE_TO_SEMICOLON,
     &base::authoring::spacing_alias::thinspace_to_comma_space::THINSPACE_TO_COMMA_SPACE,
+    &base::authoring::spacing_drop::italic_correction_drop::ITALIC_CORRECTION_DROP,
     &base::authoring::spacing_merge::double_enspace_to_quad::DOUBLE_ENSPACE_TO_QUAD,
     &base::authoring::spacing_merge::double_quad_to_qquad::DOUBLE_QUAD_TO_QQUAD,
     &base::authoring::spacing_merge::small_spacer_merge_to_enspace::SMALL_SPACER_MERGE_TO_ENSPACE,
@@ -406,6 +455,7 @@ pub(crate) static ALL_RULES: &[&dyn RewriteRule] = &[
     &base::equiv::fixed_delimiter_size::Bigg_delimiter_size_drop::BIGG_DELIMITER_SIZE_DROP,
     &base::equiv::fixed_delimiter_size::big_delimiter_size_drop::BIG_DELIMITER_SIZE_DROP,
     &base::equiv::fixed_delimiter_size::bigg_delimiter_size_drop::BIGG_DELIMITER_SIZE_DROP,
+    &base::equiv::limit_placement::integral_displaylimits_drop::INTEGRAL_DISPLAYLIMITS_DROP,
     &base::equiv::limit_placement::limits_drop::LIMITS_DROP,
     &base::equiv::limit_placement::nolimits_drop::NOLIMITS_DROP,
     &base::equiv::spacing_drop::enspace_drop::ENSPACE_DROP,
