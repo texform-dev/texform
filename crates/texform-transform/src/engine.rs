@@ -2,11 +2,12 @@
 //! LowerAttributes → FinalizeAst → FlattenGroups rounds. Each phase reaches
 //! its own fixed point and reports mutations independently of diagnostics.
 //! A phase is skipped when it has already processed the current AST version.
-//! Any mutation invalidates the other phases. After at most eight rounds the
-//! engine either reaches their common fixed point or returns NotConverged.
-//! When any phase changed the tree, boundary separation then runs once so the
-//! output text reparses to the transformed tree. Eliminated-form validation
-//! runs last and is read-only.
+//! Any mutation invalidates the other phases. Once all enabled phases agree
+//! on a changed AST, boundary separation inserts any required separators and
+//! increments the version so the enabled phases re-converge on the separated
+//! tree. After at most eight rounds total the engine either reaches a common
+//! fixed point or returns NotConverged. Eliminated-form validation runs last
+//! and is read-only.
 
 use crate::ast::Ast;
 use crate::config::TransformConfig;
@@ -82,51 +83,60 @@ fn execute_with(
     let mut version = 0;
     let mut seen = [None; 4];
     let mut rounds = 0;
-    while enabled
-        .iter()
-        .enumerate()
-        .any(|(phase, enabled)| *enabled && seen[phase] != Some(version))
-    {
-        if rounds == MAX_ROUNDS {
-            return Err(TransformError::NotConverged {
-                max_rounds: MAX_ROUNDS,
-            });
-        }
-        rounds += 1;
-        // Each phase reaches its own fixed point. Any mutation invalidates all
-        // other phases, including those earlier in this deterministic order.
-        for phase in [0, 1, 0, 2, 3] {
-            if !enabled[phase] || seen[phase] == Some(version) {
-                continue;
+    let mut separated = 0;
+    loop {
+        while enabled
+            .iter()
+            .enumerate()
+            .any(|(phase, enabled)| *enabled && seen[phase] != Some(version))
+        {
+            if rounds == MAX_ROUNDS {
+                return Err(TransformError::NotConverged {
+                    max_rounds: MAX_ROUNDS,
+                });
             }
-            let changed = match phase {
-                0 => lower_attributes::run(ast, parse_ctx, &cfg.lower_attributes, recorder),
-                1 => rewrite::run(
-                    ast,
-                    parse_ctx,
-                    tctx.rewrite_plan(),
-                    cfg.rewrite.max_iterations,
-                    recorder,
-                )
-                .map_err(TransformError::Rewrite)?,
-                2 => finalize_ast::run(ast, &cfg.finalize_ast, recorder),
-                3 => flatten_groups::run(ast, parse_ctx, &guards, recorder),
-                _ => unreachable!("phase index comes from the fixed schedule"),
-            };
-            if changed {
-                version += 1;
+            rounds += 1;
+            // Each phase reaches its own fixed point. Any mutation invalidates all
+            // other phases, including those earlier in this deterministic order.
+            for phase in [0, 1, 0, 2, 3] {
+                if !enabled[phase] || seen[phase] == Some(version) {
+                    continue;
+                }
+                let changed = match phase {
+                    0 => lower_attributes::run(ast, parse_ctx, &cfg.lower_attributes, recorder),
+                    1 => rewrite::run(
+                        ast,
+                        parse_ctx,
+                        tctx.rewrite_plan(),
+                        cfg.rewrite.max_iterations,
+                        recorder,
+                    )
+                    .map_err(TransformError::Rewrite)?,
+                    2 => finalize_ast::run(ast, &cfg.finalize_ast, recorder),
+                    3 => flatten_groups::run(ast, parse_ctx, &guards, recorder),
+                    _ => unreachable!("phase index comes from the fixed schedule"),
+                };
+                if changed {
+                    version += 1;
+                }
+                seen[phase] = Some(version);
             }
-            seen[phase] = Some(version);
         }
-    }
 
-    // A parsed tree has no boundary hazards, so an unchanged tree needs no
-    // separation. Separators contain no target names.
-    let separated = if separate && version > 0 {
-        argument_capture::separate_boundaries(ast, |mode| parse_ctx.catalog(mode)).len()
-    } else {
-        0
-    };
+        // A parsed tree has no boundary hazards, so an unchanged tree needs no
+        // separation. When separation inserts a separator, bump the version so
+        // the enabled phases re-converge on the separated tree.
+        if !separate || version == 0 {
+            break;
+        }
+        let count =
+            argument_capture::separate_boundaries(ast, |mode| parse_ctx.catalog(mode)).len();
+        if count == 0 {
+            break;
+        }
+        separated += count;
+        version += 1;
+    }
 
     if cfg.rewrite.enabled
         && let Some(violation) = rewrite::find_first_eliminated_violation(

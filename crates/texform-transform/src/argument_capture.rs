@@ -13,14 +13,16 @@
 //! - Text-mode space swallowing: in text mode, a control word drops the space
 //!   that starts a following text node, as in `\ldots{} and` → `\ldots and`.
 //!
-//! The engine removes them once after a transform that changed the tree, with
-//! [`separate_boundaries`]. FlattenGroups uses the same predicates so that a
-//! single unwrap creates no hazard at the adjacencies it changes. Across
-//! several unwraps it can still create one: in `{\MoveEqLeft{[1.5}}]`, the
-//! inner group's `[` is left unclosed before the outer `}`, so that group is
+//! Once the enabled phases converge on a changed tree, the engine removes
+//! these hazards with [`separate_boundaries`] and re-converges the enabled
+//! phases on the separated tree inside the same round budget, so the result
+//! is a fixed point. FlattenGroups uses the same predicates so that a single
+//! unwrap creates no hazard at the adjacencies it changes. Across several
+//! unwraps it can still create one: in `{\MoveEqLeft{[1.5}}]`, the inner
+//! group's `[` is left unclosed before the outer `}`, so that group is
 //! unwrapped, and unwrapping the outer group then meets the `]`, which that
-//! unwrap does not check. The final separation pass removes such hazards,
-//! giving `\MoveEqLeft{}[1.5]`.
+//! unwrap does not check. Boundary separation removes such hazards, giving
+//! `\MoveEqLeft{}[1.5]`.
 
 use crate::ast::{
     ArgumentKind, ArgumentSlot, ArgumentValue, Ast, ContentMode, GroupKind, Node, NodeId, Slot,
@@ -1475,6 +1477,53 @@ mod tests {
             }
             cx.ast.remove_node(node);
             Ok(RuleEffect::Applied)
+        }
+    }
+
+    #[test]
+    fn boundary_separation_reconverges_phases_to_a_fixed_point() {
+        let parse_ctx = ParseContext::from_packages(PHYSICS);
+
+        // Wrapping `\smqty` or `\mqty` inside a brace group leaves the outer
+        // group starting with a group rather than a command, so strict
+        // FlattenGroups unwraps it on the next round and reaches a fixed point.
+        for profile in [Profile::Authoring, Profile::Faithful] {
+            let engine = engine(&parse_ctx, profile);
+            for (source, expected) in [
+                (r"{\smqty\ast}", r"{ \smqty } *"),
+                (r"{\mqty\ast}", r"{ \mqty } *"),
+            ] {
+                let mut ast = parse(&parse_ctx, source);
+                let separated = engine
+                    .run_counting_separations(&mut ast, &parse_ctx, engine.default_config())
+                    .unwrap();
+                assert_eq!(separated, 1, "{source}");
+                assert_eq!(serialize(&ast), expected, "{source}");
+                assert_round_trip(&parse_ctx, &engine, &ast);
+            }
+        }
+
+        // Wrapping `\var` removes command contact before `{x}`, so strict
+        // FlattenGroups unwraps `{x}` (and any enclosing group) in the next
+        // round rather than leaving a non-fixed-point `{\var}{x}`.
+        let strict_authoring = TransformConfig {
+            lower_attributes: LowerAttributesConfig::ENABLED,
+            rewrite: RewriteConfig::DEFAULT,
+            finalize_ast: FinalizeAstConfig::ENABLED,
+            flatten_groups: FlattenGroupsConfig::STRICT,
+        };
+        let context = TransformContext::from_rewrite_plan_for_tests(
+            strict_authoring,
+            Plan::from_rules_for_tests(vec![&DROP_BADBREAK]),
+        );
+        for source in [r"\var\badbreak{x}", r"{\var\badbreak{x}}"] {
+            let mut ast = parse(&parse_ctx, source);
+            let separated = context
+                .run_counting_separations(&mut ast, &parse_ctx, &strict_authoring)
+                .unwrap();
+            assert_eq!(separated, 1, "{source}");
+            assert_eq!(serialize(&ast), r"{ \var } x", "{source}");
+            assert_round_trip(&parse_ctx, &context, &ast);
         }
     }
 

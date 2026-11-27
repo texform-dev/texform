@@ -41,8 +41,8 @@ impl TransformContext {
         engine::execute(self, ast, parse_ctx, config, None, &mut recorder).map(drop)
     }
 
-    /// Run with `config` and return how many boundary hazards the final
-    /// boundary separation step removed.
+    /// Run with `config` and return how many boundary hazards boundary
+    /// separation removed.
     ///
     /// Unstable: round-trip and attribution tests use this count to tell
     /// which steps relied on separation.

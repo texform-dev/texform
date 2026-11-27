@@ -74,7 +74,7 @@ The engine repeats the deterministic order **LowerAttributes → Rewrite → Low
 
 Any phase mutation makes all other phases eligible again, including earlier ones. For example, flattening can expose adjacent attributes or a rewrite match; finalizing can create another singleton group to flatten. The engine allows at most eight rounds, then returns `TransformError::NotConverged` rather than silently returning an unstable tree. This is an internal budget, not a runtime option.
 
-After convergence, if any phase changed the AST, **boundary separation** runs once. It is not a phase, has no configuration, and does not take part in convergence. When Rewrite is enabled, eliminated-form validation then runs once and does not mutate the AST.
+Once all enabled phases converge on a changed AST, **boundary separation** runs. It is not a phase and has no configuration, but if it inserts a separator it increments the AST version and the enabled phases re-converge on the separated tree within the same eight-round budget. When Rewrite is enabled, eliminated-form validation runs once after the loop and does not mutate the AST.
 
 ### Output contract and boundary separation
 
@@ -92,7 +92,7 @@ The separator is an empty group after the command, or at the start of the enviro
 
 The division of work with the serializer is: problems that only need whitespace in the text or an argument's own braces belong to the serializer; problems that need an extra node in the tree belong to boundary separation. For example, `\\` rejects a space before its optional `[...]`, and in math mode the serializer always writes a space between a control sequence and a following `[` or `*`, so `\\ [ x ]` needs no separator.
 
-In math mode a separator is an empty ordinary atom, and a wrapping group turns the command into an ordinary subformula, so separation can change the spacing at that position, or whether a following binary operator such as `*` is read as binary. That cost is part of the rendering effect of the rule or phase that created the hazard. LowerAttributes where it preserves rendering and FlattenGroups under `STRICT` promise unchanged rendering, so they must not rely on separation; the round-trip attribution test runs them on the adversarial boundary inputs and fails when separation was needed. Rule metadata does not record rendering effects, so a rule's reliance on separation is not checked here. Separation runs once at the end, so a tree with a separator is not guaranteed to be a fixed point of another transform; the round-trip checks report such cases as `retransform` failures.
+In math mode a separator is an empty ordinary atom, and a wrapping group turns the command into an ordinary subformula, so separation can change the spacing at that position, or whether a following binary operator such as `*` is read as binary. That cost is part of the rendering effect of the rule or phase that created the hazard. LowerAttributes where it preserves rendering and FlattenGroups under `STRICT` promise unchanged rendering, so they must not rely on separation; the round-trip attribution test runs them on the adversarial boundary inputs and fails when separation was needed. Rule metadata does not record rendering effects, so a rule's reliance on separation is not checked here. Because boundary separation participates in the convergence loop, the enabled phases re-converge after any separator is inserted, so the transformed tree is a fixed point of another transform.
 
 The scheduler relies on three phase contracts:
 

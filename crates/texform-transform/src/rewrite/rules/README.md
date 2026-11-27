@@ -80,7 +80,7 @@ Domain guards such as whitelists, neighbor-class checks, and package-owner predi
 
 ### Boundary hazards
 
-Deleting or replacing a node can leave neighbors that a reparse would bind differently, such as the `physics` `\ln` reading a following `[2]` once a separator between them is gone. The engine removes these boundary hazards once after the transform (see [Output contract and boundary separation](../../../README.md#output-contract-and-boundary-separation)). Rules follow this contract:
+Deleting or replacing a node can leave neighbors that a reparse would bind differently, such as the `physics` `\ln` reading a following `[2]` once a separator between them is gone. The engine removes these boundary hazards during convergence and re-converges the enabled phases on the separated tree (see [Output contract and boundary separation](../../../README.md#output-contract-and-boundary-separation)). Rules follow this contract:
 
 - Rules need not handle boundary hazards themselves. Where separation is needed, the separator can change the rendered spacing or atom class at that position, and that change is part of the rule's rendering effect.
 - Rules read arguments only from argument slots. A rule must not merge an adjacent sibling into a command's arguments: during Rewrite a sibling may have become adjacent only because an invisible node between them was just deleted.
