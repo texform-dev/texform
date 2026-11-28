@@ -2176,7 +2176,7 @@ class KnowledgeBase:
         """Build the knowledge base once.
 
         Args:
-            packages: Package names to load, or ``None`` for the defaults.
+            packages: Package names to load in precedence order, or ``None`` for the defaults. If ``"base"`` is present it is always imported first; remaining packages follow in request order (deduplicated by first occurrence), with later incompatible definitions overriding earlier ones like LaTeX ``\\usepackage``. Place ``"braket"`` after ``"physics"`` to match MathJax when loading both, and place ``"mathtools"`` after ``"ams"`` when loading both.
             items: Extra command, environment, or delimiter items to add.
             remove_commands: Command names to remove after loading.
             remove_environments: Environment names to remove after loading.
@@ -2189,7 +2189,7 @@ class KnowledgeBase:
     def __eq__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
     def packages(self) -> list[str]:
-        """Return the loaded package names in canonical order."""
+        """Return the loaded package names in effective import order (``"base"`` first when present, followed by remaining packages in request order)."""
     def commands(self, mode: Literal["math", "text"]) -> list[dict[str, Any]]:
         """Return the command records for ``mode``, sorted by name."""
     def environments(self, mode: Literal["math", "text"]) -> list[dict[str, Any]]:
@@ -2937,8 +2937,11 @@ def list_packages() -> list[PackageInfo]:
 def default_packages() -> list[str]:
     """Return the packages a ``KnowledgeBase`` loads when ``packages`` is omitted.
 
-    Names are in canonical import order. ``physics`` is excluded because it
-    redefines standard commands; extend this list to opt into it.
+    Names are in default import order (``"base"`` first, with ``"ams"`` before
+    ``"mathtools"``). Package order sets precedence like LaTeX ``\\usepackage``;
+    ``physics`` is excluded because it redefines standard commands. Appending
+    ``"physics"`` lets it override ``"braket"``, while placing ``"braket"``
+    after ``"physics"`` matches MathJax.
 
     Returns:
         The default package names.

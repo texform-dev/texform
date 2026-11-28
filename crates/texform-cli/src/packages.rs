@@ -29,17 +29,6 @@ pub fn parse_name(name: &str) -> Result<String, String> {
     }
 }
 
-/// Deduplicate `selection` into catalog order.
-///
-/// Parsers load packages in a fixed order regardless of how they were
-/// requested, so this is the loaded set in a stable presentation.
-pub fn canonical(selection: &[String]) -> Vec<String> {
-    all()
-        .into_iter()
-        .filter(|name| selection.contains(name))
-        .collect()
-}
-
 /// Build a parser that loads exactly `selection`.
 pub fn parser(selection: &[String]) -> Result<texform::Parser, texform::KnowledgeBaseBuildError> {
     let names: Vec<&str> = selection.iter().map(String::as_str).collect();

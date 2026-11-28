@@ -29,7 +29,7 @@ use crate::output::USAGE;
 #[derive(Parser)]
 #[command(name = "texform", version = build_info::VERSION_TEXT)]
 struct Cli {
-    /// Knowledge packages to load, comma-separated [default: same as the library; excludes physics]
+    /// Knowledge packages to load, comma-separated; order sets precedence (`base` is always loaded first) [default: same as the library; excludes physics]
     #[arg(
         long,
         global = true,

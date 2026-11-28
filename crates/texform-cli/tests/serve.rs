@@ -52,11 +52,6 @@ fn all_packages() -> Vec<String> {
         .collect()
 }
 
-fn sorted(mut names: Vec<&str>) -> Vec<&str> {
-    names.sort_unstable();
-    names
-}
-
 fn timing_keys(value: &Value) -> BTreeSet<&str> {
     value
         .as_object()
@@ -160,12 +155,13 @@ fn configure_resolves_the_effective_config() {
     let mut expected = serde_json::to_value(NormalizeConfigInput::from_config(overrides)).unwrap();
     expected["profile"] = json!("authoring");
     expected["style"] = json!("spaced");
-    // The serve-level `--packages` applies when `packages` is omitted.
-    expected["packages"] = json!(["ams", "base"]);
+    // The serve-level `--packages` applies when `packages` is omitted, reported
+    // in effective import order (`base` first, remaining packages in request order).
+    expected["packages"] = json!(["base", "ams"]);
     assert_eq!(*first, expected);
 
-    // Reconfiguring an id replaces its engine; packages are reported as the
-    // loaded set in catalog order.
+    // Reconfiguring an id replaces its engine; packages are reported in
+    // effective import order with duplicates removed by first occurrence.
     let second = &served.response(2)["result"]["resolved"];
     assert_eq!(second["profile"], "equiv");
     assert_eq!(second["packages"], json!(["base", "physics"]));
@@ -174,27 +170,29 @@ fn configure_resolves_the_effective_config() {
 
 #[test]
 fn configure_defaults_match_the_library_and_all_packages_remain_explicit() {
+    let all = all_packages();
+    let expected_all_order = texform::KnowledgeBase::builder()
+        .packages(&all.iter().map(String::as_str).collect::<Vec<_>>())
+        .build()
+        .unwrap()
+        .packages();
     let served = serve(
         &[],
         &[
             initialize(0),
             configure(1, "default", json!({"profile": "corpus"})),
-            configure(
-                2,
-                "all",
-                json!({"profile": "corpus", "packages": all_packages()}),
-            ),
+            configure(2, "all", json!({"profile": "corpus", "packages": all})),
             normalize(3, "default", r"\quantity{x}", false),
             normalize(4, "all", r"\quantity{x}", false),
         ],
     );
     assert_eq!(
         served.response(1)["result"]["resolved"]["packages"],
-        json!(sorted(texform::default_packages()))
+        json!(texform::default_packages())
     );
     assert_eq!(
         served.response(2)["result"]["resolved"]["packages"],
-        json!(all_packages())
+        json!(expected_all_order)
     );
     assert_eq!(
         served.response(3)["result"]["output"],
@@ -206,6 +204,42 @@ fn configure_defaults_match_the_library_and_all_packages_remain_explicit() {
         served.response(3)["result"]["output"],
         served.response(4)["result"]["output"]
     );
+}
+
+#[test]
+fn configure_package_order_controls_physics_and_braket_precedence() {
+    let served = serve(
+        &[],
+        &[
+            initialize(0),
+            configure(
+                1,
+                "physics-wins",
+                json!({ "profile": "faithful", "packages": ["base", "ams", "braket", "physics"] }),
+            ),
+            configure(
+                2,
+                "braket-wins",
+                json!({ "profile": "faithful", "packages": ["base", "ams", "physics", "braket"] }),
+            ),
+            normalize(3, "physics-wins", r"\braket{a|b}", false),
+            normalize(4, "braket-wins", r"\braket{a|b}", false),
+        ],
+    );
+
+    assert_eq!(
+        served.response(1)["result"]["resolved"]["packages"],
+        json!(["base", "ams", "braket", "physics"])
+    );
+    assert_eq!(
+        served.response(2)["result"]["resolved"]["packages"],
+        json!(["base", "ams", "physics", "braket"])
+    );
+    assert_eq!(
+        served.response(3)["result"]["output"],
+        r"\left \langle a | b \middle \vert a | b \right \rangle"
+    );
+    assert_eq!(served.response(4)["result"]["output"], r"\braket { a | b }");
 }
 
 #[test]

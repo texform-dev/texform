@@ -19,9 +19,16 @@
 //!
 //! # Package import order
 //!
-//! Managed packages (base, ams, physics, …) are always imported in a
-//! fixed canonical order regardless of the caller-supplied order. This
-//! keeps merge results and `from_packages` arrays stable.
+//! If `base` is requested, it is always imported first regardless of its
+//! position in the list. All remaining packages are imported in the caller's
+//! request order, deduplicated by first occurrence, matching LaTeX's
+//! `\usepackage` precedence: a later incompatible definition overrides an
+//! earlier one, while compatible definitions merge with `from_packages` kept
+//! in canonical order.
+//!
+//! To match MathJax when loading both `physics` and `braket`, list `braket`
+//! after `physics`. When loading both `ams` and `mathtools`, list `mathtools`
+//! after `ams` (as in the default package list).
 //!
 //! Public knowledge construction reports invalid packages and argument specs as errors.
 
@@ -143,7 +150,7 @@ impl Catalog {
 
     pub fn try_build_from_packages(packages: &[&str]) -> Result<Self, PackageLoadError> {
         let mut kb = Catalog::new();
-        let to_load = canonical_package_import_order(packages);
+        let to_load = package_import_order(packages);
         import_package_names(&mut kb, to_load.as_slice())?;
         Ok(kb)
     }
@@ -153,7 +160,7 @@ impl Catalog {
         target_mode: ContentMode,
     ) -> Result<Self, PackageLoadError> {
         let mut kb = Catalog::new();
-        let to_load = canonical_package_import_order(packages);
+        let to_load = package_import_order(packages);
         import_package_names_for_mode(&mut kb, to_load.as_slice(), target_mode)?;
         Ok(kb)
     }
@@ -184,6 +191,19 @@ impl Catalog {
             .get(name)
             .copied()
             .map(|idx| &self.characters[idx])
+    }
+
+    /// Look up character metadata for `name` only when its parser-facing active
+    /// command view comes from a character rather than an explicit command.
+    pub fn lookup_active_character(&self, name: &str) -> Option<&ActiveCharacterRecord> {
+        if !self.suppressed_command_names.is_empty() && self.suppressed_command_names.contains(name)
+        {
+            return None;
+        }
+        match self.active_command_idx_by_name.get(name).copied()? {
+            ActiveCommandSource::Character(_) => self.lookup_character(name),
+            ActiveCommandSource::Explicit(_) => None,
+        }
     }
 
     /// Look up environment metadata by name.
@@ -832,11 +852,29 @@ fn is_managed_package(name: &str) -> bool {
     PackageName::from_str(name).is_some()
 }
 
-/// Reorders requested package names so that managed packages always appear in
-/// the fixed order defined by `MANAGED_PACKAGE_IMPORT_ORDER`, followed by any
-/// unmanaged packages in their original request order. This ensures merge
-/// results and `from_packages` arrays are stable regardless of caller order.
-fn canonical_package_import_order<'a>(requested: &[&'a str]) -> Vec<&'a str> {
+/// Resolves the effective package import order: `base` always comes first if
+/// present, and all remaining packages stay in caller request order,
+/// deduplicated by first occurrence (matching LaTeX's `\usepackage` rules).
+pub(crate) fn package_import_order<'a>(requested: &[&'a str]) -> Vec<&'a str> {
+    let unique = dedup_names_in_request_order(requested);
+    let mut ordered = Vec::with_capacity(unique.len());
+
+    if let Some(&base) = unique.iter().find(|&&name| name == "base") {
+        ordered.push(base);
+    }
+
+    for &name in &unique {
+        if name != "base" {
+            ordered.push(name);
+        }
+    }
+
+    ordered
+}
+
+/// Orders `from_packages` on merged records stably using `MANAGED_PACKAGE_IMPORT_ORDER`,
+/// followed by any unmanaged packages in their original order.
+fn canonical_from_packages_order<'a>(requested: &[&'a str]) -> Vec<&'a str> {
     let unique = dedup_names_in_request_order(requested);
     let mut normalized = Vec::new();
 
@@ -881,7 +919,7 @@ fn merge_from_packages(existing: &[&str], incoming: &[&str]) -> Vec<String> {
         .copied()
         .chain(incoming.iter().copied())
         .collect();
-    canonical_package_import_order(combined.as_slice())
+    canonical_from_packages_order(combined.as_slice())
         .into_iter()
         .map(ToString::to_string)
         .collect()

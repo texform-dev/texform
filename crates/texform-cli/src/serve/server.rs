@@ -12,9 +12,9 @@ use texform::bindings::{
 };
 
 use super::rpc::RpcError;
+use crate::build_info;
 use crate::normalizer::{Normalized, Normalizer, ProfileName, StageTimings, Stopwatch};
 use crate::output::panic_message;
-use crate::{build_info, packages};
 
 /// Bumped only for incompatible changes to method semantics or required
 /// fields; optional fields and new methods keep the version.
@@ -87,7 +87,13 @@ impl Server {
         let resolved = to_json(Resolved {
             style: spec.style,
             profile: spec.profile,
-            packages: packages::canonical(requested),
+            packages: normalizer
+                .engine
+                .knowledge_base()
+                .packages()
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
             config: NormalizeConfigInput::from_config(normalizer.config.clone()),
         });
         self.configs.insert(

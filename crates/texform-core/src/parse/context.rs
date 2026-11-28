@@ -258,7 +258,12 @@ impl KnowledgeBaseBuilder {
 
     /// Load exactly these built-in packages instead of the defaults.
     ///
-    /// Packages are imported in canonical order regardless of the given order.
+    /// Order sets precedence: if `base` is included it is always imported
+    /// first, and all other packages follow in the given order (deduplicated
+    /// by first occurrence), with later incompatible definitions overriding
+    /// earlier ones just like LaTeX `\usepackage`. To match MathJax when
+    /// loading both `physics` and `braket`, place `braket` after `physics`.
+    /// When loading both `ams` and `mathtools`, place `mathtools` after `ams`.
     /// An empty slice loads no built-in knowledge.
     pub fn packages(mut self, packages: &[&str]) -> Self {
         self.packages = Some(packages.iter().map(|name| (*name).to_string()).collect());
@@ -302,7 +307,7 @@ impl KnowledgeBaseBuilder {
             .as_ref()
             .map(|names| names.iter().map(String::as_str).collect::<Vec<_>>())
             .unwrap_or_else(|| default_package_names().to_vec());
-        let enabled_packages = canonical_enabled_package_names(&names)?;
+        let enabled_packages = resolved_enabled_package_names(&names)?;
         let mut math_catalog = Catalog::try_build_from_packages_for_mode(&names, ContentMode::Math)
             .map_err(KnowledgeBaseBuildError::PackageLoad)?;
         let mut text_catalog = Catalog::try_build_from_packages_for_mode(&names, ContentMode::Text)
@@ -370,24 +375,17 @@ impl KnowledgeBaseBuilder {
     }
 }
 
-fn canonical_enabled_package_names(
+fn resolved_enabled_package_names(
     requested: &[&str],
 ) -> Result<Vec<PackageName>, KnowledgeBaseBuildError> {
     let mut packages = Vec::new();
-    for package in texform_knowledge::builtin::MANAGED_PACKAGE_IMPORT_ORDER {
-        if requested.contains(&package.as_str()) {
-            packages.push(*package);
-        }
-    }
-
-    for requested_name in requested {
-        if PackageName::from_str(requested_name).is_none() {
-            return Err(KnowledgeBaseBuildError::PackageLoad(
-                PackageLoadError::UnknownPackage {
-                    name: (*requested_name).to_string(),
-                },
-            ));
-        }
+    for requested_name in crate::knowledge::package_import_order(requested) {
+        let package = PackageName::from_str(requested_name).ok_or_else(|| {
+            KnowledgeBaseBuildError::PackageLoad(PackageLoadError::UnknownPackage {
+                name: requested_name.to_string(),
+            })
+        })?;
+        packages.push(package);
     }
 
     Ok(packages)
@@ -478,7 +476,8 @@ impl KnowledgeBase {
         Arc::as_ptr(&self.0) as usize
     }
 
-    /// Loaded packages in canonical import order.
+    /// Loaded packages in effective import order (`base` first when present,
+    /// followed by the remaining packages in request order).
     pub fn packages(&self) -> Vec<&'static str> {
         self.0
             .enabled_packages
@@ -626,6 +625,17 @@ impl KnowledgeBase {
         mode: ContentMode,
     ) -> Option<&ActiveCharacterRecord> {
         self.catalog(mode).lookup_character(name)
+    }
+
+    /// Look up character metadata for `name` in `mode` only when its active
+    /// parser-facing command view comes from a character rather than an explicit command.
+    #[doc(hidden)]
+    pub fn lookup_active_character(
+        &self,
+        name: &str,
+        mode: ContentMode,
+    ) -> Option<&ActiveCharacterRecord> {
+        self.catalog(mode).lookup_active_character(name)
     }
 
     /// Look up environment metadata by name in `mode`.

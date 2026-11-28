@@ -231,9 +231,8 @@ fn knowledge_base_builder_reports_invalid_items_and_packages() {
 }
 
 #[test]
-fn knowledge_base_builder_packages_use_canonical_loading_order() {
-    // Callers can pass packages in any order, with duplicates, and still get
-    // canonical package merge behavior.
+fn knowledge_base_builder_packages_follow_request_order_with_base_first() {
+    // `base` is always imported first; duplicates keep their first position.
     let parser = Parser::builder()
         .knowledge_base(kb(&["physics", "base", "physics"]))
         .build();
@@ -258,9 +257,104 @@ fn knowledge_base_builder_packages_use_canonical_loading_order() {
             assert_eq!(
                 args.len(),
                 1,
-                "physics command should remain active after canonical package loading"
+                "physics command should override base after ordered package loading"
             );
         }
         other => panic!("expected command node, got {:?}", other),
+    }
+}
+
+#[test]
+fn knowledge_base_builder_package_order_controls_overlapping_optional_packages() {
+    let physics_then_braket = kb(&["base", "physics", "braket"]);
+    let braket_then_physics = kb(&["base", "braket", "physics"]);
+
+    assert_eq!(
+        physics_then_braket.packages(),
+        ["base", "physics", "braket"]
+    );
+    assert_eq!(
+        braket_then_physics.packages(),
+        ["base", "braket", "physics"]
+    );
+
+    for name in ["bra", "ket", "braket"] {
+        assert_eq!(
+            physics_then_braket
+                .lookup_command(name, ContentMode::Math)
+                .unwrap()
+                .argspec
+                .source,
+            "m",
+            "{name} should use braket definition when braket is listed last"
+        );
+        assert_eq!(
+            physics_then_braket
+                .lookup_command(name, ContentMode::Math)
+                .unwrap()
+                .from_packages,
+            ["braket"]
+        );
+        assert_eq!(
+            braket_then_physics
+                .lookup_command(name, ContentMode::Math)
+                .unwrap()
+                .from_packages,
+            ["physics"]
+        );
+    }
+    assert_eq!(
+        braket_then_physics
+            .lookup_command("braket", ContentMode::Math)
+            .unwrap()
+            .argspec
+            .source,
+        "s m g"
+    );
+    // `ketbra` is supplied only by physics (removed from braket to match LaTeX).
+    for loaded in [&physics_then_braket, &braket_then_physics] {
+        let ketbra = loaded
+            .lookup_command("ketbra", ContentMode::Math)
+            .expect("ketbra should be defined by physics");
+        assert_eq!(ketbra.argspec.source, "s m g");
+        assert_eq!(ketbra.from_packages, ["physics"]);
+    }
+
+    let braket_active = Parser::builder()
+        .knowledge_base(physics_then_braket)
+        .build();
+    let doc = braket_active
+        .parse(r"\braket{a|b}")
+        .try_into_document()
+        .unwrap()
+        .0;
+    match doc.to_syntax() {
+        SyntaxNode::Root { children, .. } => match &children[0] {
+            SyntaxNode::Command { name, args, .. } => {
+                assert_eq!(name, "braket");
+                assert_eq!(args.len(), 1);
+            }
+            other => panic!("expected command node, got {:?}", other),
+        },
+        other => panic!("expected root node, got {:?}", other),
+    }
+
+    let ams_then_mathtools = kb(&["base", "ams", "mathtools"]);
+    let mathtools_then_ams = kb(&["base", "mathtools", "ams"]);
+    assert_eq!(ams_then_mathtools.packages(), ["base", "ams", "mathtools"]);
+    assert_eq!(mathtools_then_ams.packages(), ["base", "mathtools", "ams"]);
+
+    for name in ["shoveleft", "shoveright"] {
+        let mt = ams_then_mathtools
+            .lookup_command(name, ContentMode::Math)
+            .unwrap();
+        assert_eq!(mt.argspec.source, "o:L? m");
+        assert_eq!(mt.from_packages, ["mathtools"]);
+
+        let ams = mathtools_then_ams
+            .lookup_command(name, ContentMode::Math)
+            .unwrap();
+        assert_eq!(ams.argspec.source, "m");
+        assert_eq!(ams.from_packages, ["ams"]);
     }
 }

@@ -1842,12 +1842,16 @@ export type Profile = "authoring" | "faithful" | "corpus" | "equiv";
  * Construction options for an immutable {@link KnowledgeBase}.
  *
  * Omit `packages` to load the default runtime packages returned by
- * {@link defaultPackages}, not every package in the catalog. Use
- * `listPackages()` to see the available names; an unknown name throws
- * {@link TexformConfigError}.
+ * {@link defaultPackages}, not every package in the catalog. Package order sets
+ * precedence like LaTeX `\usepackage`: `base` is always imported first when
+ * present, and the remaining packages follow in request order (deduplicated by
+ * first occurrence) so later incompatible definitions override earlier ones.
+ * Place `braket` after `physics` to match MathJax when loading both, and place
+ * `mathtools` after `ams` when loading both. Use `listPackages()` to see the
+ * available names; an unknown name throws {@link TexformConfigError}.
  */
 export interface KnowledgeBaseOptions {
-  /** Package names to load; omit to load {@link defaultPackages}. */
+  /** Package names to load in precedence order; omit to load {@link defaultPackages}. */
   packages?: string[];
   /** Custom command/environment/delimiter-control knowledge to inject. */
   items?: ContextItem[];
@@ -2228,8 +2232,11 @@ export function listPackages(): PackageInfo[];
 /**
  * List the packages a {@link KnowledgeBase} loads when `packages` is omitted.
  *
- * Names are in canonical import order. `physics` is excluded because it
- * redefines standard commands; extend this list to opt into it.
+ * Names are in default import order (`base` first, with `ams` before
+ * `mathtools`). Package order sets precedence like LaTeX `\usepackage`;
+ * `physics` is excluded because it redefines standard commands. Appending
+ * `physics` lets it override `braket`, while placing `braket` after `physics`
+ * matches MathJax.
  *
  * @returns The default package names.
  * @example
@@ -2299,6 +2306,7 @@ export class KnowledgeBase {
   [Symbol.dispose](): void;
   /** Whether `other` is the same instance; equality is identity, not recipe. */
   isSame(other: KnowledgeBase): boolean;
+  /** Loaded package names in effective import order (`base` first when present, followed by remaining packages in request order). */
   packages(): string[];
   commands(mode: RuntimeContentMode): CommandInfo[];
   environments(mode: RuntimeContentMode): EnvInfo[];

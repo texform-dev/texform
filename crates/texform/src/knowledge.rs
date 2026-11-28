@@ -26,10 +26,14 @@ pub fn list_packages() -> Vec<PackageInfo> {
 }
 
 /// Names of the built-in packages a knowledge base loads when no package list
-/// is given, in canonical import order.
+/// is given, in default import order (`base` first, with `ams` before
+/// `mathtools`).
 ///
-/// `physics` is excluded because it redefines standard commands; select it
-/// explicitly, for example by extending this list.
+/// Package order sets precedence just like LaTeX `\usepackage`: later
+/// incompatible definitions override earlier ones. `physics` is excluded
+/// because it redefines standard commands; select it explicitly by extending
+/// this list (appending `physics` lets it override `braket`, whereas placing
+/// `braket` after `physics` matches MathJax).
 pub fn default_packages() -> Vec<&'static str> {
     texform_core::parse::default_package_names().to_vec()
 }

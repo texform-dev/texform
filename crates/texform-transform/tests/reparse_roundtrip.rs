@@ -279,6 +279,32 @@ fn physics_inputs_round_trip() {
 }
 
 #[test]
+fn physics_then_braket_inputs_round_trip() {
+    let parse_ctx = ParseContext::from_packages(&["base", "ams", "physics", "braket"]);
+    let engines = round_trip::engines(&parse_ctx);
+    let lane = Lane {
+        name: "physics-then-braket",
+        parse_ctx,
+        engines,
+    };
+    let inputs = [
+        r"\braket{\phi}{\psi}",
+        r"\braket{a|b}",
+        r"\bra{\psi}",
+        r"\ket*{\psi}",
+        r"\ketbra{a}{b}",
+        r"\braket{a|b} + \qty(x + y)",
+        r"\dv{f}{x} \bra{\psi} \ket{\phi}",
+        r"\sin(x) \braket{a|b} + \ketbra{a}{b}",
+        r"\qty(\bra{\psi} + \ket{\phi}) + \dv[2]{f}{x}",
+    ];
+    for source in inputs {
+        assert!(parse(&lane.parse_ctx, source).is_some(), "{source}");
+    }
+    assert_round_trips(&lane, inputs);
+}
+
+#[test]
 fn physics_fences_protect_unpaired_opening_delimiters_after_transforms() {
     let lane = lane("mixed");
     // Dropping `\big` and flattening its brace group leaves a bare opener

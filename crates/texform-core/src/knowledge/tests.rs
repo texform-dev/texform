@@ -506,11 +506,145 @@ fn test_exact_empty_packages_still_build_empty_kb() {
 }
 
 #[test]
-fn test_canonical_package_import_order_includes_braket() {
+fn test_package_import_order_places_base_first_and_preserves_request_order() {
     assert_eq!(
-        canonical_package_import_order(&["physics", "braket", "base", "custom"]),
+        package_import_order(&["physics", "braket", "base", "custom"]),
+        vec!["base", "physics", "braket", "custom"]
+    );
+    assert_eq!(
+        package_import_order(&["braket", "physics"]),
+        vec!["braket", "physics"]
+    );
+    assert_eq!(
+        package_import_order(&["physics", "braket", "physics", "base", "braket"]),
+        vec!["base", "physics", "braket"]
+    );
+}
+
+#[test]
+fn test_canonical_from_packages_order_includes_braket() {
+    assert_eq!(
+        canonical_from_packages_order(&["physics", "braket", "base", "custom"]),
         vec!["base", "braket", "physics", "custom"]
     );
+}
+
+#[test]
+fn test_lookup_active_character_distinguishes_character_views_from_explicit_overrides() {
+    let base_only = Catalog::build_from_packages(&["base"]);
+    let div_char = base_only
+        .lookup_active_character("div")
+        .expect("base \\div should be an active character");
+    assert_eq!(div_char.unicode_value, "÷");
+
+    let with_physics = Catalog::build_from_packages(&["base", "physics"]);
+    assert!(
+        with_physics.lookup_character("div").is_some(),
+        "raw base \\div character metadata remains stored"
+    );
+    assert!(
+        with_physics.lookup_active_character("div").is_none(),
+        "physics explicit \\div command shadows the character view"
+    );
+    let active_div = with_physics
+        .lookup_command("div")
+        .expect("physics \\div command should be active");
+    assert_from_packages(active_div.from_packages, &["physics"]);
+
+    let mut suppressed = Catalog::build_from_packages(&["base"]);
+    assert!(suppressed.remove_command_by_name("div"));
+    assert!(suppressed.lookup_active_character("div").is_none());
+}
+
+#[test]
+fn test_order_sensitive_names_across_all_optional_package_pairs() {
+    use std::collections::BTreeSet;
+
+    let optional_packages: Vec<&'static str> =
+        texform_knowledge::builtin::MANAGED_PACKAGE_IMPORT_ORDER
+            .iter()
+            .map(|package| package.as_str())
+            .filter(|&name| name != "base")
+            .collect();
+
+    let mut diffs = BTreeSet::new();
+
+    for i in 0..optional_packages.len() {
+        for j in (i + 1)..optional_packages.len() {
+            let p = optional_packages[i];
+            let q = optional_packages[j];
+            let pq = crate::parse::KnowledgeBase::from_packages(&["base", p, q]);
+            let qp = crate::parse::KnowledgeBase::from_packages(&["base", q, p]);
+            let pair = if p < q { (p, q) } else { (q, p) };
+
+            for mode in [ContentMode::Math, ContentMode::Text] {
+                let pq_cat = pq.catalog(mode);
+                let qp_cat = qp.catalog(mode);
+
+                let cmd_names: BTreeSet<&str> = pq_cat
+                    .commands()
+                    .into_iter()
+                    .chain(qp_cat.commands())
+                    .map(|record| record.name)
+                    .collect();
+                for name in cmd_names {
+                    let left = pq_cat.lookup_command(name);
+                    let right = qp_cat.lookup_command(name);
+                    let left_char = pq_cat.lookup_active_character(name);
+                    let right_char = qp_cat.lookup_active_character(name);
+                    let same = match (left, right, left_char, right_char) {
+                        (Some(l), Some(r), Some(lc), Some(rc)) => {
+                            l.kind == r.kind
+                                && l.argspec.source == r.argspec.source
+                                && lc.unicode_value == rc.unicode_value
+                        }
+                        (Some(l), Some(r), None, None) => {
+                            l.kind == r.kind && l.argspec.source == r.argspec.source
+                        }
+                        (None, None, None, None) => true,
+                        _ => false,
+                    };
+                    if !same {
+                        let kind = if left_char.is_some() || right_char.is_some() {
+                            "character"
+                        } else {
+                            "command"
+                        };
+                        diffs.insert((pair.0, pair.1, kind, name.to_string()));
+                    }
+                }
+
+                let env_names: BTreeSet<&str> = pq_cat
+                    .environments()
+                    .into_iter()
+                    .chain(qp_cat.environments())
+                    .map(|record| record.name)
+                    .collect();
+                for name in env_names {
+                    let same = match (pq_cat.lookup_env(name), qp_cat.lookup_env(name)) {
+                        (Some(l), Some(r)) => {
+                            l.argspec.source == r.argspec.source && l.body_mode == r.body_mode
+                        }
+                        (None, None) => true,
+                        _ => false,
+                    };
+                    if !same {
+                        diffs.insert((pair.0, pair.1, "environment", name.to_string()));
+                    }
+                }
+            }
+        }
+    }
+
+    let actual: Vec<(&str, &str, &str, String)> = diffs.into_iter().collect();
+    let expected: Vec<(&str, &str, &str, String)> = vec![
+        ("ams", "mathtools", "command", "shoveleft".to_string()),
+        ("ams", "mathtools", "command", "shoveright".to_string()),
+        ("braket", "physics", "command", "bra".to_string()),
+        ("braket", "physics", "command", "braket".to_string()),
+        ("braket", "physics", "command", "ket".to_string()),
+    ];
+    assert_eq!(actual, expected);
 }
 
 #[test]

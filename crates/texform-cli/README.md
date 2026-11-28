@@ -51,7 +51,7 @@ texform [--packages <a,b,...>] <COMMAND> [OPTIONS]
 
 | Option | Meaning |
 | --- | --- |
-| `--packages <a,b,...>` | Knowledge packages to load. Defaults to the same twelve packages as the library (`base`, `ams`, `braket`, `textmacros`, `bboldx`, `boldsymbol`, `color`, `upgreek`, `mathtools`, `cancel`, `extpfeil`, `textcomp`); `physics` is opt-in. An unknown name is a usage error with exit status `2`. `packages` and `argspec validate` do not use it. |
+| `--packages <a,b,...>` | Knowledge packages to load. Order sets precedence just like LaTeX `\usepackage`: `base` is always loaded first when present, and the remaining packages follow in request order (deduplicated by first occurrence) so later incompatible definitions override earlier ones. To match MathJax when loading both `physics` and `braket`, list `braket` after `physics`; when loading both `ams` and `mathtools`, list `mathtools` after `ams`. Defaults to the same twelve packages as the library (`base`, `ams`, `braket`, `textmacros`, `bboldx`, `boldsymbol`, `color`, `upgreek`, `mathtools`, `cancel`, `extpfeil`, `textcomp`); `physics` is opt-in. An unknown name is a usage error with exit status `2`. `packages` and `argspec validate` do not use it. |
 
 ### Formula input
 
@@ -279,7 +279,7 @@ A session looks like this (`→` is client to server, `←` is server to client;
 → {"jsonrpc":"2.0","id":0,"method":"initialize","params":{}}
 ← {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":1,"serverInfo":{"name":"texform","version":"0.8.0","commit":"0123456789abcdef0123456789abcdef01234567","commitDate":"2026-09-30","dirty":false}}}
 → {"jsonrpc":"2.0","id":1,"method":"configure","params":{"id":"authoring-no-rewrite","config":{"profile":"authoring","overrides":{"rewrite":{"enabled":false}}}}}
-← {"jsonrpc":"2.0","id":1,"result":{"resolved":{"profile":"authoring","packages":["ams","base","..."],"rewrite":{"enabled":false,"max_iterations":100},"...":"..."}}}
+← {"jsonrpc":"2.0","id":1,"result":{"resolved":{"profile":"authoring","packages":["base","ams","..."],"rewrite":{"enabled":false,"max_iterations":100},"...":"..."}}}
 → {"jsonrpc":"2.0","id":2,"method":"normalize","params":{"config":"authoring-no-rewrite","latex":"\\frac12","timing":true}}
 ← {"jsonrpc":"2.0","id":2,"result":{"output":"\\frac { 1 } { 2 }","timing":{"parse_ns":41250,"transform_ns":35980,"serialize_ns":2410}}}
 → {"jsonrpc":"2.0","id":3,"method":"normalize","params":{"config":"authoring-no-rewrite","latex":"\\frac{a"}}
@@ -320,7 +320,7 @@ The optional `style` field sits beside `profile` and accepts `"spaced"` (default
 Builds a normalizer from `config` and stores it under `id` for later `normalize` requests. Configuring an existing `id` replaces its entry; a failed `configure` leaves the previous entry unchanged.
 
 - `profile`: one of `authoring`, `faithful`, `corpus`, `equiv`. It selects the rule set and the default config.
-- `packages`: knowledge packages to load. When omitted, the server's `--packages` value applies, and without that, the same twelve runtime packages as the library (`physics` is opt-in). Clients that need a fixed selection should specify it explicitly and record `resolved`.
+- `packages`: knowledge packages to load in precedence order (`base` is always loaded first when present, and later incompatible definitions override earlier ones). When omitted, the server's `--packages` value applies, and without that, the same twelve runtime packages as the library (`physics` is opt-in). Clients that need a fixed selection should specify it explicitly and record `resolved`.
 - `overrides`: config values layered over the profile defaults. It accepts any subset of the keys in `resolved` other than `profile`, `style`, and `packages`, with the same nesting; nested objects may also be partial.
 
 `resolved` is the complete effective config, suitable for recording alongside results:
@@ -329,7 +329,7 @@ Builds a normalizer from `config` and stores it under `id` for later `normalize`
 {
   "profile": "authoring",
   "style": "spaced",
-  "packages": ["ams", "base", "bboldx", "boldsymbol", "braket", "cancel", "color", "extpfeil", "mathtools", "textcomp", "textmacros", "upgreek"],
+  "packages": ["base", "ams", "braket", "textmacros", "bboldx", "boldsymbol", "color", "upgreek", "mathtools", "cancel", "extpfeil", "textcomp"],
   "reject_unknown": false,
   "abort_on_error": false,
   "max_group_depth": 128,
@@ -340,7 +340,7 @@ Builds a normalizer from `config` and stores it under `id` for later `normalize`
 }
 ```
 
-`packages` lists the loaded set without duplicates in catalog order, regardless of the order requested; the load order is fixed by TeXForm. Key order within `resolved` is not significant.
+`packages` lists the loaded packages in effective import order (`base` first when present, followed by the remaining requested packages deduplicated by first occurrence). Key order within `resolved` is not significant.
 
 An unknown profile, an unknown package, or an invalid override (including `rewrite.max_iterations = 0`, even when rewriting is disabled) fails with `-32602` before registering the configuration.
 

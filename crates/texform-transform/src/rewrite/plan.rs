@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use rustc_hash::FxHashMap;
 
 use crate::config::BuildConfig;
-use crate::parse::{MutationSummary, ParseContext};
+use crate::parse::{ContentMode, MutationSummary, ParseContext};
 use crate::rewrite::registry;
 use crate::rewrite::rule::{
     PackageName, RewriteRule, RuleKey, RuleTarget, RuleTargetKey, RuleTargetKind,
@@ -87,6 +87,11 @@ pub enum RuleAvailabilityFailure {
         required: Vec<PackageName>,
         active: Vec<PackageName>,
     },
+    ConsumedDefinitionMismatch {
+        target: RuleTargetKey,
+        mode: ContentMode,
+        active: Vec<PackageName>,
+    },
     ProducedTargetUnavailable {
         target: RuleTargetKey,
         active: Vec<PackageName>,
@@ -123,6 +128,18 @@ impl std::fmt::Display for RuleAvailabilityFailure {
                 package_names_for_message(required.as_slice()),
                 package_names_for_message(active.as_slice())
             ),
+            RuleAvailabilityFailure::ConsumedDefinitionMismatch {
+                target,
+                mode,
+                active,
+            } => write!(
+                f,
+                "consumed {} `{}` resolves to a different definition in {} mode with active packages {:?}",
+                target.kind_label(),
+                target.name,
+                content_mode_label(*mode),
+                package_names_for_message(active.as_slice())
+            ),
             RuleAvailabilityFailure::ProducedTargetUnavailable { target, active } => write!(
                 f,
                 "produced {} `{}` is unavailable in active packages {:?}",
@@ -138,6 +155,13 @@ impl std::error::Error for PlanBuildError {}
 
 fn package_names_for_message(packages: &[PackageName]) -> Vec<&'static str> {
     packages.iter().map(|package| package.as_str()).collect()
+}
+
+fn content_mode_label(mode: ContentMode) -> &'static str {
+    match mode {
+        ContentMode::Math => "math",
+        ContentMode::Text => "text",
+    }
 }
 
 fn filter_rules(
@@ -170,6 +194,13 @@ fn filter_rules(
         validate_rule_metadata(rule)?;
 
         if let Some(reason) = package_availability_failure(rule, parse_ctx) {
+            if explicitly_selected {
+                return Err(PlanBuildError::SelectedRuleUnavailable { rule: key, reason });
+            }
+            continue;
+        }
+
+        if let Some(reason) = consumed_definition_mismatch_failure(rule, parse_ctx) {
             if explicitly_selected {
                 return Err(PlanBuildError::SelectedRuleUnavailable { rule: key, reason });
             }
@@ -240,6 +271,72 @@ fn package_availability_failure(
         required: rule.meta().enabled_by_packages.to_vec(),
         active: active.to_vec(),
     })
+}
+
+fn consumed_definition_mismatch_failure(
+    rule: &'static dyn RewriteRule,
+    parse_ctx: &ParseContext,
+) -> Option<RuleAvailabilityFailure> {
+    let meta = rule.meta();
+    for target in meta
+        .consumes
+        .eliminates
+        .iter()
+        .chain(meta.consumes.touches.iter())
+        .copied()
+    {
+        if let Some(mode) = target_definition_mismatch_mode(parse_ctx, target) {
+            return Some(RuleAvailabilityFailure::ConsumedDefinitionMismatch {
+                target: target.key(),
+                mode,
+                active: parse_ctx.enabled_packages().to_vec(),
+            });
+        }
+    }
+    None
+}
+
+fn target_definition_mismatch_mode(
+    parse_ctx: &ParseContext,
+    target: RuleTarget,
+) -> Option<ContentMode> {
+    let allowed_mode = match target {
+        RuleTarget::Command(record) => record.allowed_mode,
+        RuleTarget::Environment(record) => record.allowed_mode,
+        RuleTarget::Character(record) => record.allowed_mode,
+    };
+
+    for mode in [ContentMode::Math, ContentMode::Text] {
+        if !allowed_mode.allows(mode) {
+            continue;
+        }
+        let matches = match target {
+            RuleTarget::Command(record) => match parse_ctx.lookup_command(record.name, mode) {
+                Some(active) => {
+                    active.kind == record.kind && active.argspec.source == record.argspec.source
+                }
+                None => true,
+            },
+            RuleTarget::Environment(record) => match parse_ctx.lookup_env(record.name, mode) {
+                Some(active) => {
+                    active.argspec.source == record.argspec.source
+                        && active.body_mode == record.body_mode
+                }
+                None => true,
+            },
+            RuleTarget::Character(record) => match parse_ctx.lookup_command(record.name, mode) {
+                Some(_) => parse_ctx
+                    .lookup_active_character(record.name, mode)
+                    .is_some_and(|active| active.unicode_value == record.unicode_value),
+                None => true,
+            },
+        };
+        if !matches {
+            return Some(mode);
+        }
+    }
+
+    None
 }
 
 fn produced_target_availability_failure(

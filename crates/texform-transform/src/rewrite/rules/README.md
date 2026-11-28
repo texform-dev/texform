@@ -68,15 +68,35 @@ These macros are intentionally local to `texform-transform`; they are ergonomics
 
 | Layer | Fields | Engine behavior |
 | --- | --- | --- |
-| Plan filtering | `level`, `enabled_by_packages`, `produces` | Filter by profile and active packages, and require every produced target to exist in the `ParseContext` |
+| Plan filtering | `level`, `enabled_by_packages`, `consumes`, `produces` | Filter by profile and active packages, verify that every consumed target resolves to a matching active definition in its allowed modes, and require every produced target to exist in the `ParseContext` |
 | Mutation safety | `eliminates`, `touches`, `produces` | Exclude the whole rule when the runtime mutation summary contains any declared target name |
 | Scheduling | `triggers` | Index rule attempts by named target; every trigger must also appear in `C` |
 | Dependency ordering | `produces`, `C` | Add `A → B` when `produces(A) ∩ C(B)` is non-empty, then reject cycles |
 | Output contract | `eliminates` | After the full pipeline, reject output in which an eliminated target remains |
 
-`Plan::build` validates non-empty triggers, `triggers ⊆ C`, package and produced-target availability, and an acyclic dependency graph. It does not infer `enabled_by_packages` or enforce a unique eliminate owner. Registry tests in `tests/rewrite_context.rs` validate package inference, unique eliminate ownership across every managed-package subset at Equiv level, and disjoint `eliminates` and `produces` sets for every registered rule.
+`Plan::build` validates non-empty triggers, `triggers ⊆ C`, package availability, consumed-definition compatibility, produced-target availability, and an acyclic dependency graph. It does not infer `enabled_by_packages` or enforce a unique eliminate owner. Registry tests in `tests/rewrite_context.rs` validate package inference, unique eliminate ownership and consumed/produced definition invariants across bounded package configurations (including order-sensitive permutations) at Equiv level, and disjoint `eliminates` and `produces` sets for every registered rule.
 
 Domain guards such as whitelists, neighbor-class checks, and package-owner predicates stay in the rule body and tests when `apply` validates them at runtime. They are not metadata merely because the implementation inspects them.
+
+### Definition Identity and Guards
+
+Scheduling and node matching still operate by target name (`RuleTargetKey`), not by comparing per-node definitions at runtime. Definition identity is enforced at two boundaries instead:
+
+- **Consumed targets (`eliminates` and `touches`):** `Plan::build` checks every consumed `RuleTarget` in each `ContentMode` permitted by the record's `allowed_mode`. When the `ParseContext` defines that name in that mode, the active definition must match the record (same `kind` and `argspec.source` for commands; same `argspec.source` and `body_mode` for environments; an active character view with the same `unicode_value` rather than an overriding explicit command for characters). Otherwise the whole rule is excluded from the plan (or fails with `RuleAvailabilityFailure::ConsumedDefinitionMismatch` when explicitly selected). For example, loading `braket` after `physics` automatically excludes `physics/physics-bra-expand`, `physics/physics-ket-expand`, and `physics/physics-braket-expand`.
+- **Produced targets (`produces`):** `Plan::build` only checks that produced target names exist in the `ParseContext`; it does not exclude a rule when another package redefines one of its outputs, so safe branches of multi-output rules (such as `ams/operatorname-to-named-function`) stay active. Instead, the rule must guard each produced target in `apply` before emitting it, and `produced_definition_mismatch_snapshot` in `tests/rewrite_context.rs` records every `(rule, target, minimal_packages)` pair whose active definition can differ from the declared record.
+
+When writing a produced-target guard, inspect the active record in the relevant mode and skip if another package has taken over the name:
+
+```rust
+if !cx
+    .lookup_command(record.name, ContentMode::Math)
+    .is_some_and(|active| active.from_packages == ["base"])
+{
+    return Ok(RuleEffect::Skipped);
+}
+```
+
+If a rule is intended to target the overriding package's definition across its entire enabled domain (such as a `physics`-only rule emitting `\sin`), reference that package's builtin record in `produces` instead of adding a snapshot entry.
 
 ### Boundary hazards
 

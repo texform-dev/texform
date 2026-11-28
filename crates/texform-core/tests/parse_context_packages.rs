@@ -28,11 +28,10 @@ fn package_context_loads_linebreak_from_base_and_textmacros() {
 #[test]
 fn explicit_context_exposes_enabled_packages_in_import_order() {
     let ctx = ParseContext::from_packages(&["physics", "base", "braket"]);
-    // Core verifies the internal canonical merge order; the facade has the
-    // public builder contract test.
+    // `base` is always imported first; the remaining packages keep request order.
     assert_eq!(
         ctx.enabled_packages(),
-        &[PackageName::Base, PackageName::Braket, PackageName::Physics]
+        &[PackageName::Base, PackageName::Physics, PackageName::Braket]
     );
 }
 
