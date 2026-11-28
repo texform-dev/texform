@@ -541,9 +541,18 @@ mod tests {
         );
     }
 
+    const FLATTEN_STRICT: FlattenGroupsConfig = FlattenGroupsConfig {
+        enabled: true,
+        preserve_rendered_spacing: true,
+    };
+    const FLATTEN_STRUCTURAL_ONLY: FlattenGroupsConfig = FlattenGroupsConfig {
+        enabled: true,
+        preserve_rendered_spacing: false,
+    };
+
     #[test]
     fn flatten_groups_input_default_leaves_base_unchanged() {
-        let base = FlattenGroupsConfig::STRUCTURAL_ONLY;
+        let base = FLATTEN_STRUCTURAL_ONLY;
         assert_eq!(FlattenGroupsConfigInput::default().into_config(base), base);
     }
 
@@ -553,7 +562,7 @@ mod tests {
             enabled: Some(false),
             preserve_rendered_spacing: Some(true),
         }
-        .into_config(FlattenGroupsConfig::STRUCTURAL_ONLY);
+        .into_config(FLATTEN_STRUCTURAL_ONLY);
         assert!(!out.enabled);
         assert!(out.preserve_rendered_spacing);
     }
@@ -561,7 +570,7 @@ mod tests {
     #[test]
     fn flatten_groups_overlay_enabled_on_corpus_preserves_guards() {
         let base = corpus().flatten_groups;
-        assert_eq!(base, FlattenGroupsConfig::STRUCTURAL_ONLY);
+        assert_eq!(base, FLATTEN_STRUCTURAL_ONLY);
 
         let out = FlattenGroupsConfigInput {
             enabled: Some(true),
@@ -579,9 +588,9 @@ mod tests {
 
     #[test]
     fn flatten_groups_input_from_config_into_config_is_identity() {
-        let cfg = FlattenGroupsConfig::STRUCTURAL_ONLY;
+        let cfg = FLATTEN_STRUCTURAL_ONLY;
         assert_eq!(
-            FlattenGroupsConfigInput::from_config(cfg).into_config(FlattenGroupsConfig::STRICT),
+            FlattenGroupsConfigInput::from_config(cfg).into_config(FLATTEN_STRICT),
             cfg
         );
     }

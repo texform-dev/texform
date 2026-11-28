@@ -64,20 +64,26 @@ impl Profile {
         }
     }
 
-    /// Per-run [`TransformConfig`] this profile uses. Authoring and Faithful keep every FlattenGroups guard; Corpus and Equiv use the structural-only subset.
+    /// Per-run [`TransformConfig`] this profile uses. Authoring and Faithful enable FlattenGroups with `preserve_rendered_spacing: true`; Corpus and Equiv set `preserve_rendered_spacing: false` so only structural guards stay on.
     pub const fn default_transform_config(self) -> TransformConfig {
         match self {
             Self::Authoring | Self::Faithful => TransformConfig {
                 lower_attributes: LowerAttributesConfig::ENABLED,
                 rewrite: RewriteConfig::DEFAULT,
                 finalize_ast: FinalizeAstConfig::ENABLED,
-                flatten_groups: FlattenGroupsConfig::STRICT,
+                flatten_groups: FlattenGroupsConfig {
+                    enabled: true,
+                    preserve_rendered_spacing: true,
+                },
             },
             Self::Corpus | Self::Equiv => TransformConfig {
                 lower_attributes: LowerAttributesConfig::ENABLED,
                 rewrite: RewriteConfig::DEFAULT,
                 finalize_ast: FinalizeAstConfig::ENABLED,
-                flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
+                flatten_groups: FlattenGroupsConfig {
+                    enabled: true,
+                    preserve_rendered_spacing: false,
+                },
             },
         }
     }

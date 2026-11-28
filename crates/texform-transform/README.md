@@ -92,7 +92,7 @@ The separator is an empty group after the command, or at the start of the enviro
 
 The division of work with the serializer is: problems that only need whitespace in the text or an argument's own braces belong to the serializer; problems that need an extra node in the tree belong to boundary separation. For example, `\\` rejects a space before its optional `[...]`, and in math mode the serializer always writes a space between a control sequence and a following `[` or `*`, so `\\ [ x ]` needs no separator.
 
-In math mode a separator is an empty ordinary atom, and a wrapping group turns the command into an ordinary subformula, so separation can change the spacing at that position, or whether a following binary operator such as `*` is read as binary. That cost is part of the rendering effect of the rule or phase that created the hazard. LowerAttributes where it preserves rendering and FlattenGroups under `STRICT` promise unchanged rendering, so they must not rely on separation; the round-trip attribution test runs them on the adversarial boundary inputs and fails when separation was needed. Rule metadata does not record rendering effects, so a rule's reliance on separation is not checked here. Because boundary separation participates in the convergence loop, the enabled phases re-converge after any separator is inserted, so the transformed tree is a fixed point of another transform.
+In math mode a separator is an empty ordinary atom, and a wrapping group turns the command into an ordinary subformula, so separation can change the spacing at that position, or whether a following binary operator such as `*` is read as binary. That cost is part of the rendering effect of the rule or phase that created the hazard. LowerAttributes where it preserves rendering and FlattenGroups with `preserve_rendered_spacing: true` promise unchanged rendering, so they must not rely on separation; the round-trip attribution test runs them on the adversarial boundary inputs and fails when separation was needed. Rule metadata does not record rendering effects, so a rule's reliance on separation is not checked here. Because boundary separation participates in the convergence loop, the enabled phases re-converge after any separator is inserted, so the transformed tree is a fixed point of another transform.
 
 The scheduler relies on three phase contracts:
 
@@ -118,10 +118,10 @@ Each profile selects cumulative build-time rule levels and supplies a default ru
 
 | Profile | Rule levels | `flatten_groups` | Target scenario |
 | --- | --- | --- | --- |
-| `Authoring` | `Authoring` | `STRICT` | Polished author-facing formatting; stylistic choices kept. |
-| `Faithful` | `Authoring` + `Faithful` | `STRICT` | Render-faithful universal forms. |
-| `Corpus` | `Authoring` + `Faithful` + `Corpus` | `STRUCTURAL_ONLY` | Complete canonical forms that remain suitable labels for the original formulas. |
-| `Equiv` | `Authoring` + `Faithful` + `Corpus` + `Equiv` | `STRUCTURAL_ONLY` | Aggressive intermediates for equivalence comparison, including projections that discard visually salient choices. |
+| `Authoring` | `Authoring` | `enabled: true, preserve_rendered_spacing: true` | Polished author-facing formatting; stylistic choices kept. |
+| `Faithful` | `Authoring` + `Faithful` | `enabled: true, preserve_rendered_spacing: true` | Render-faithful universal forms. |
+| `Corpus` | `Authoring` + `Faithful` + `Corpus` | `enabled: true, preserve_rendered_spacing: false` | Complete canonical forms that remain suitable labels for the original formulas. |
+| `Equiv` | `Authoring` + `Faithful` + `Corpus` + `Equiv` | `enabled: true, preserve_rendered_spacing: false` | Aggressive intermediates for equivalence comparison, including projections that discard visually salient choices. |
 
 #### `RuleLevel`
 
@@ -165,9 +165,9 @@ Two structural protections are always on while the phase runs and are not `Flatt
 
 Fine-grained per-guard control is not a public API. It lives on the internal `FlattenGroupsGuards` type.
 
-#### Preset values
+#### Profile defaults and disabling
 
-`STRICT` sets `enabled` and `preserve_rendered_spacing` to `true` (every internal guard on). `STRUCTURAL_ONLY` keeps the phase on and sets `preserve_rendered_spacing` to `false` (only structural guards stay on). Profiles select them as shown above. `ENABLED` and `DEFAULTS` alias `STRICT`; `DISABLED` skips FlattenGroups. See [FlattenGroups configuration](src/flatten_groups/mod.rs) for exact fields and presets.
+`Authoring` and `Faithful` enable FlattenGroups with `preserve_rendered_spacing: true` (every internal guard on). `Corpus` and `Equiv` enable FlattenGroups with `preserve_rendered_spacing: false` (only structural guards stay on). `FlattenGroupsConfig::DISABLED` skips FlattenGroups (`enabled: false`, `preserve_rendered_spacing: true`). See [FlattenGroups configuration](src/flatten_groups/mod.rs) for exact fields and defaults.
 
 ### `FlattenGroupsGuards` (internal / unstable)
 

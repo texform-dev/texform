@@ -4,6 +4,8 @@
 //!
 //! Any failure, including an unexpected transform error, fails the test. The attribution test checks that steps
 //! promising identical rendering never rely on boundary separation.
+#[path = "support/configs.rs"]
+mod configs;
 #[path = "support/phase_cases.rs"]
 mod phase_cases;
 
@@ -455,7 +457,7 @@ fn rendering_preserving_phases_do_not_rely_on_boundary_separation() {
                     enabled: false,
                     ..RewriteConfig::DEFAULT
                 },
-                FlattenGroupsConfig::STRICT,
+                configs::FLATTEN_STRICT,
             );
             for input in &inputs {
                 check(

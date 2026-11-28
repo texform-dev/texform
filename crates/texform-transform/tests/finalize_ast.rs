@@ -1,3 +1,7 @@
+#[path = "support/configs.rs"]
+mod configs;
+
+use configs::{FLATTEN_STRICT, FLATTEN_STRUCTURAL_ONLY};
 use texform_core::ast::Ast;
 use texform_core::parse::{ParseConfig, ParseContext};
 use texform_core::serialize::serialize;
@@ -656,7 +660,7 @@ fn empty_text_group_becomes_empty_group_before_flatten_strict_and_structural() {
             ..RewriteConfig::DEFAULT
         },
         finalize_ast: FinalizeAstConfig::ENABLED,
-        flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
+        flatten_groups: FLATTEN_STRUCTURAL_ONLY,
     };
     let structural_report = context
         .run_with_report(&mut structural, &parse_ctx, &structural_cfg)
@@ -672,7 +676,7 @@ fn empty_text_group_becomes_empty_group_before_flatten_strict_and_structural() {
             ..RewriteConfig::DEFAULT
         },
         finalize_ast: FinalizeAstConfig::ENABLED,
-        flatten_groups: FlattenGroupsConfig::STRICT,
+        flatten_groups: FLATTEN_STRICT,
     };
     let strict_engine_report = context
         .run_with_report(&mut strict, &parse_ctx, &strict_cfg)
@@ -711,7 +715,7 @@ fn engine_prime_merge_then_flatten_keeps_double_prime_shorthand() {
     let (_ast, report, text) = run_engine(
         r"f^{\prime\prime}",
         FinalizeAstConfig::ENABLED,
-        FlattenGroupsConfig::STRUCTURAL_ONLY,
+        FLATTEN_STRUCTURAL_ONLY,
     );
 
     assert_eq!(text, "f''");
@@ -721,7 +725,7 @@ fn engine_prime_merge_then_flatten_keeps_double_prime_shorthand() {
 #[test]
 fn engine_text_merge_before_flatten_can_unwrap_singleton_group() {
     // Hand-built text-mode tree: group with two adjacent Text children becomes
-    // a singleton after pre-FinalizeAst, then STRUCTURAL_ONLY FlattenGroups
+    // a singleton after pre-FinalizeAst, then structural-only FlattenGroups
     // unwraps it into the parent text sequence.
     let parse_ctx = ParseContext::from_packages(&["base", "ams", "textmacros"]);
     let context =
@@ -742,7 +746,7 @@ fn engine_text_merge_before_flatten_can_unwrap_singleton_group() {
                     ..RewriteConfig::DEFAULT
                 },
                 finalize_ast: FinalizeAstConfig::ENABLED,
-                flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
+                flatten_groups: FLATTEN_STRUCTURAL_ONLY,
             },
         )
         .expect("transform");
@@ -775,7 +779,7 @@ fn engine_second_finalize_merges_text_exposed_by_flatten() {
                     ..RewriteConfig::DEFAULT
                 },
                 finalize_ast: FinalizeAstConfig::ENABLED,
-                flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
+                flatten_groups: FLATTEN_STRUCTURAL_ONLY,
             },
         )
         .expect("transform");
@@ -806,7 +810,7 @@ fn engine_second_finalize_merges_primes_exposed_by_flatten() {
                     ..RewriteConfig::DEFAULT
                 },
                 finalize_ast: FinalizeAstConfig::ENABLED,
-                flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
+                flatten_groups: FLATTEN_STRUCTURAL_ONLY,
             },
         )
         .expect("transform");
@@ -859,7 +863,7 @@ fn engine_finalize_disabled_leaves_flatten_independent() {
     let (_ast, report, text) = run_engine(
         r"f^{\prime\prime}",
         FinalizeAstConfig::DISABLED,
-        FlattenGroupsConfig::STRUCTURAL_ONLY,
+        FLATTEN_STRUCTURAL_ONLY,
     );
 
     assert_ne!(text, "f''");
@@ -890,7 +894,7 @@ fn engine_report_accumulates_pre_and_post_without_double_counting() {
                     ..RewriteConfig::DEFAULT
                 },
                 finalize_ast: FinalizeAstConfig::ENABLED,
-                flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
+                flatten_groups: FLATTEN_STRUCTURAL_ONLY,
             },
         )
         .expect("transform");

@@ -25,25 +25,11 @@ pub struct FlattenGroupsConfig {
 }
 
 impl FlattenGroupsConfig {
-    /// Phase on with rendered-spacing protection: every internal guard is on.
-    pub const STRICT: Self = Self {
-        enabled: true,
-        preserve_rendered_spacing: true,
-    };
-    /// Phase on without rendered-spacing protection: only structural guards stay on.
-    pub const STRUCTURAL_ONLY: Self = Self {
-        enabled: true,
-        preserve_rendered_spacing: false,
-    };
-    /// Phase on with every preserve guard: alias of [`Self::STRICT`].
-    pub const ENABLED: Self = Self::STRICT;
-    /// Phase off. `preserve_rendered_spacing` is copied from [`Self::STRICT`] but unused while disabled.
+    /// Phase off. `preserve_rendered_spacing` is unused while disabled.
     pub const DISABLED: Self = Self {
         enabled: false,
-        ..Self::STRICT
+        preserve_rendered_spacing: true,
     };
-    /// Historical default: same as [`Self::STRICT`].
-    pub const DEFAULTS: Self = Self::STRICT;
 }
 
 /// Configurable FlattenGroups protection set for one run. Possible arguments

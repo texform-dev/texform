@@ -40,6 +40,12 @@ pub use rewrite::{
 };
 
 #[cfg(test)]
+extern crate self as texform_transform;
+#[cfg(test)]
+#[path = "../tests/support/configs.rs"]
+pub(crate) mod test_configs;
+
+#[cfg(test)]
 pub(crate) fn parse_to_ast_for_test(
     parse_ctx: &parse::ParseContext,
     src: &str,

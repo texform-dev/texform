@@ -215,7 +215,7 @@ pub(crate) mod tests {
                 lower_attributes: crate::LowerAttributesConfig::ENABLED,
                 rewrite: crate::RewriteConfig::DEFAULT,
                 finalize_ast: crate::FinalizeAstConfig::ENABLED,
-                flatten_groups: FlattenGroupsConfig::STRICT,
+                flatten_groups: crate::test_configs::FLATTEN_STRICT,
             },
             RewritePlan::from_rules_for_tests(vec![&WRAP_SINGLETON]),
         );

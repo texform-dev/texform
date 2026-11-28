@@ -1387,8 +1387,8 @@ mod tests {
         let physics = ParseContext::from_packages(PHYSICS);
         let context = engine(&parse_ctx, Profile::Corpus);
         for flatten_groups in [
-            FlattenGroupsConfig::STRUCTURAL_ONLY,
-            FlattenGroupsConfig::STRICT,
+            crate::test_configs::FLATTEN_STRUCTURAL_ONLY,
+            crate::test_configs::FLATTEN_STRICT,
         ] {
             let config = TransformConfig {
                 lower_attributes: LowerAttributesConfig::DISABLED,
@@ -1510,7 +1510,7 @@ mod tests {
             lower_attributes: LowerAttributesConfig::ENABLED,
             rewrite: RewriteConfig::DEFAULT,
             finalize_ast: FinalizeAstConfig::ENABLED,
-            flatten_groups: FlattenGroupsConfig::STRICT,
+            flatten_groups: crate::test_configs::FLATTEN_STRICT,
         };
         let context = TransformContext::from_rewrite_plan_for_tests(
             strict_authoring,
@@ -1574,7 +1574,7 @@ mod tests {
                 lower_attributes: LowerAttributesConfig::ENABLED,
                 rewrite: RewriteConfig::DEFAULT,
                 finalize_ast: FinalizeAstConfig::ENABLED,
-                flatten_groups: FlattenGroupsConfig::STRICT,
+                flatten_groups: crate::test_configs::FLATTEN_STRICT,
             },
             Plan::from_rules_for_tests(vec![&crate::engine::tests::WRAP_SINGLETON]),
         );

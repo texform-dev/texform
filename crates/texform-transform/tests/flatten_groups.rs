@@ -1,3 +1,7 @@
+#[path = "support/configs.rs"]
+mod configs;
+
+use configs::{FLATTEN_STRICT, FLATTEN_STRUCTURAL_ONLY};
 use texform_core::ast::{ArgumentValue, Ast, GroupKind, Node, Slot};
 use texform_core::parse::{ParseConfig, ParseContext};
 use texform_core::serialize::serialize;
@@ -13,7 +17,7 @@ struct Outcome {
 }
 
 fn run_flatten_groups(src: &str) -> Outcome {
-    run_flatten_groups_with_config(src, FlattenGroupsConfig::ENABLED)
+    run_flatten_groups_with_config(src, FLATTEN_STRICT)
 }
 
 fn run_flatten_groups_with_config(src: &str, config: FlattenGroupsConfig) -> Outcome {
@@ -336,7 +340,7 @@ fn strict_keeps_groups_ending_in_spacing_atoms() {
     assert_eq!(outcome.report.guard_hits.command_contact, 1);
     assert_eq!(outcome.report.guard_hits.trailing_atom_spacing_char, 2);
 
-    let outcome = run_flatten_groups_with_config(src, FlattenGroupsConfig::STRUCTURAL_ONLY);
+    let outcome = run_flatten_groups_with_config(src, FLATTEN_STRUCTURAL_ONLY);
     assert_eq!(outcome.text, r"a \in b + a + b + a , b + a b c");
 }
 
@@ -355,7 +359,7 @@ fn reports_scripted_command_like_subflag_hits() {
 fn turning_off_spacing_guards_flattens_spacing_only_cases() {
     let outcome = run_flatten_groups_with_config(
         r"\cos{A} + {} + {+} + {-n} + f{\left(x\right)}",
-        FlattenGroupsConfig::STRUCTURAL_ONLY,
+        FLATTEN_STRUCTURAL_ONLY,
     );
 
     assert_eq!(outcome.text, r"\cos A + + + + - n + f \left ( x \right )");
@@ -368,7 +372,7 @@ fn turning_off_spacing_guards_flattens_spacing_only_cases() {
 fn structural_only_still_keeps_semantic_guard_cases() {
     let outcome = run_flatten_groups_with_config(
         r"{\cal M} + {x_i}^2 + {a \over b} + \begin{matrix}{x}\end{matrix}",
-        FlattenGroupsConfig::STRUCTURAL_ONLY,
+        FLATTEN_STRUCTURAL_ONLY,
     );
 
     assert_eq!(
@@ -383,66 +387,59 @@ fn structural_only_still_keeps_semantic_guard_cases() {
 
 #[test]
 fn individual_guard_toggles_affect_only_their_cases() {
-    let outcome =
-        run_flatten_groups_with_overlay(r"\cos{A} + {a}", FlattenGroupsConfig::STRICT, |guards| {
-            guards.command_contact = Some(false)
-        });
+    let outcome = run_flatten_groups_with_overlay(r"\cos{A} + {a}", FLATTEN_STRICT, |guards| {
+        guards.command_contact = Some(false)
+    });
     assert_eq!(outcome.text, r"\cos A + a");
     assert_eq!(outcome.report.actions.replaced_single_child, 2);
 
-    let outcome =
-        run_flatten_groups_with_overlay(r"a{} + {+}", FlattenGroupsConfig::STRICT, |guards| {
-            guards.empty_group = Some(false)
-        });
+    let outcome = run_flatten_groups_with_overlay(r"a{} + {+}", FLATTEN_STRICT, |guards| {
+        guards.empty_group = Some(false)
+    });
     assert_eq!(outcome.text, r"a + { + }");
     assert_eq!(outcome.report.actions.removed_empty, 1);
     assert_eq!(outcome.report.guard_hits.lone_atom_spacing_char, 1);
 
-    let outcome =
-        run_flatten_groups_with_overlay(r"{+} + {-n}", FlattenGroupsConfig::STRICT, |guards| {
-            guards.lone_atom_spacing_char = Some(false)
-        });
+    let outcome = run_flatten_groups_with_overlay(r"{+} + {-n}", FLATTEN_STRICT, |guards| {
+        guards.lone_atom_spacing_char = Some(false)
+    });
     assert_eq!(outcome.text, r"+ + { - n }");
     assert_eq!(outcome.report.actions.replaced_single_child, 1);
     assert_eq!(outcome.report.guard_hits.leading_atom_spacing_char, 1);
 
-    let outcome =
-        run_flatten_groups_with_overlay(r"{+} + {-n}", FlattenGroupsConfig::STRICT, |guards| {
-            guards.leading_atom_spacing_char = Some(false)
-        });
+    let outcome = run_flatten_groups_with_overlay(r"{+} + {-n}", FLATTEN_STRICT, |guards| {
+        guards.leading_atom_spacing_char = Some(false)
+    });
     assert_eq!(outcome.text, r"{ + } + - n");
     assert_eq!(outcome.report.guard_hits.lone_atom_spacing_char, 1);
     assert_eq!(outcome.report.actions.inlined_multi_child, 1);
 
-    let outcome = run_flatten_groups_with_overlay(
-        r"f{\left(x\right)} + {a}",
-        FlattenGroupsConfig::STRICT,
-        |guards| guards.delimited_pair = Some(false),
-    );
+    let outcome =
+        run_flatten_groups_with_overlay(r"f{\left(x\right)} + {a}", FLATTEN_STRICT, |guards| {
+            guards.delimited_pair = Some(false)
+        });
     assert_eq!(outcome.text, r"f \left ( x \right ) + a");
     assert_eq!(outcome.report.actions.replaced_single_child, 2);
 }
 
 #[test]
 fn semantic_guard_toggles_affect_their_cases() {
-    let outcome =
-        run_flatten_groups_with_overlay(r"{\cal M} + {a}", FlattenGroupsConfig::STRICT, |guards| {
-            guards.declarative_scope = Some(false);
-            guards.command_contact = Some(false);
-        });
+    let outcome = run_flatten_groups_with_overlay(r"{\cal M} + {a}", FLATTEN_STRICT, |guards| {
+        guards.declarative_scope = Some(false);
+        guards.command_contact = Some(false);
+    });
     assert_eq!(outcome.text, r"\cal M + a");
     assert_eq!(outcome.report.actions.inlined_multi_child, 1);
 
-    let outcome =
-        run_flatten_groups_with_overlay(r"{a \over b}, c", FlattenGroupsConfig::STRICT, |guards| {
-            guards.infix_scope = Some(false)
-        });
+    let outcome = run_flatten_groups_with_overlay(r"{a \over b}, c", FLATTEN_STRICT, |guards| {
+        guards.infix_scope = Some(false)
+    });
     assert_eq!(outcome.text, r"a \over b , c");
     assert_eq!(outcome.report.guard_hits.infix_scope, 0);
 
     let outcome = run_flatten_groups_with_overlay(
         r"\begin{matrix}{x}\end{matrix}",
-        FlattenGroupsConfig::STRICT,
+        FLATTEN_STRICT,
         |guards| guards.env_body = Some(false),
     );
     assert_eq!(outcome.text, r"\begin {matrix} x \end {matrix}");
@@ -499,10 +496,9 @@ fn script_base_non_atomic_groups_are_preserved() {
 
 #[test]
 fn script_base_guard_can_be_disabled() {
-    let outcome =
-        run_flatten_groups_with_overlay(r"{x_i}^2", FlattenGroupsConfig::STRICT, |guards| {
-            guards.script_base = Some(false)
-        });
+    let outcome = run_flatten_groups_with_overlay(r"{x_i}^2", FLATTEN_STRICT, |guards| {
+        guards.script_base = Some(false)
+    });
 
     assert_eq!(outcome.text, r"x _ { i } ^ { 2 }");
     assert_eq!(outcome.report.actions.unwrapped_slot, 1);
@@ -557,13 +553,9 @@ fn prime_group_is_not_preserved_as_atom_spacing_char_or_command_contact() {
 
 #[test]
 fn empty_research_overlay_matches_public_config() {
-    let public =
-        run_flatten_groups_with_config(r"{\cal M} + \cos{A} + {}", FlattenGroupsConfig::STRICT);
-    let overlay = run_flatten_groups_with_overlay(
-        r"{\cal M} + \cos{A} + {}",
-        FlattenGroupsConfig::STRICT,
-        |_| {},
-    );
+    let public = run_flatten_groups_with_config(r"{\cal M} + \cos{A} + {}", FLATTEN_STRICT);
+    let overlay =
+        run_flatten_groups_with_overlay(r"{\cal M} + \cos{A} + {}", FLATTEN_STRICT, |_| {});
     assert_eq!(overlay.text, public.text);
     assert_eq!(overlay.ast.to_syntax_root(), public.ast.to_syntax_root());
     assert_eq!(overlay.report, public.report);
@@ -571,21 +563,17 @@ fn empty_research_overlay_matches_public_config() {
 
 #[test]
 fn strict_spacing_ablation_and_structural_reenable() {
-    let ablated = run_flatten_groups_with_overlay(
-        r"\cos{A} + {} + {+}",
-        FlattenGroupsConfig::STRICT,
-        |guards| {
+    let ablated =
+        run_flatten_groups_with_overlay(r"\cos{A} + {} + {+}", FLATTEN_STRICT, |guards| {
             guards.command_contact = Some(false);
             guards.empty_group = Some(false);
             guards.lone_atom_spacing_char = Some(false);
-        },
-    );
+        });
     assert_eq!(ablated.text, r"\cos A + + +");
 
-    let reenabled =
-        run_flatten_groups_with_overlay(r"a{}", FlattenGroupsConfig::STRUCTURAL_ONLY, |guards| {
-            guards.empty_group = Some(true)
-        });
+    let reenabled = run_flatten_groups_with_overlay(r"a{}", FLATTEN_STRUCTURAL_ONLY, |guards| {
+        guards.empty_group = Some(true)
+    });
     assert_eq!(reenabled.text, r"a { }");
     assert_eq!(reenabled.report.guard_hits.empty_group, 1);
 }
@@ -597,11 +585,10 @@ fn cross_hit_cos_plus_needs_both_spacing_guards_off() {
         (true, false, r"\cos { + }", 1, 0),
         (false, false, r"\cos +", 0, 0),
     ] {
-        let outcome =
-            run_flatten_groups_with_overlay(r"\cos{+}", FlattenGroupsConfig::STRICT, |guards| {
-                guards.command_contact = Some(contact);
-                guards.lone_atom_spacing_char = Some(lone_atom);
-            });
+        let outcome = run_flatten_groups_with_overlay(r"\cos{+}", FLATTEN_STRICT, |guards| {
+            guards.command_contact = Some(contact);
+            guards.lone_atom_spacing_char = Some(lone_atom);
+        });
         assert_eq!(outcome.text, text);
         let counts = outcome.report.guard_hits;
         assert_eq!(counts.command_contact, contact_count);
@@ -613,14 +600,11 @@ fn cross_hit_cos_plus_needs_both_spacing_guards_off() {
 fn scripted_subflag_depends_on_command_contact() {
     for contact in [false, true] {
         for scripted in [false, true] {
-            let outcome = run_flatten_groups_with_overlay(
-                r"\sum_i{(x_i)}",
-                FlattenGroupsConfig::STRICT,
-                |guards| {
+            let outcome =
+                run_flatten_groups_with_overlay(r"\sum_i{(x_i)}", FLATTEN_STRICT, |guards| {
                     guards.command_contact = Some(contact);
                     guards.command_like_includes_scripted_base = Some(scripted);
-                },
-            );
+                });
             let preserved = contact && scripted;
             assert_eq!(
                 outcome.text,
@@ -652,10 +636,7 @@ fn disabled_phase_skips_flatten_even_with_overlay() {
 
 #[test]
 fn unknown_commands_keep_all_adjacent_brace_arguments_in_every_strategy() {
-    for strategy in [
-        FlattenGroupsConfig::STRICT,
-        FlattenGroupsConfig::STRUCTURAL_ONLY,
-    ] {
+    for strategy in [FLATTEN_STRICT, FLATTEN_STRUCTURAL_ONLY] {
         let outcome = run_flatten_groups_with_config(r"\unknown{a}{}{bc}+{d}", strategy);
         assert_eq!(outcome.text, r"\unknown { a } { } { b c } + d");
         assert!(outcome.report.guard_hits.unknown_command_arguments >= 3);
@@ -668,7 +649,7 @@ fn unknown_argument_protection_keeps_scripted_arguments_and_command_bases() {
         (r"\unknown{a}^2", r"\unknown { a } ^ { 2 }"),
         (r"\unknown_1{a}{b}", r"\unknown _ { 1 } { a } { b }"),
     ] {
-        let outcome = run_flatten_groups_with_config(source, FlattenGroupsConfig::STRUCTURAL_ONLY);
+        let outcome = run_flatten_groups_with_config(source, FLATTEN_STRUCTURAL_ONLY);
         assert_eq!(outcome.text, expected);
         assert!(outcome.report.guard_hits.unknown_command_arguments > 0);
     }
@@ -676,10 +657,7 @@ fn unknown_argument_protection_keeps_scripted_arguments_and_command_bases() {
 
 #[test]
 fn groups_whose_splice_lets_a_command_read_an_omitted_argument_stay_in_every_strategy() {
-    for strategy in [
-        FlattenGroupsConfig::STRICT,
-        FlattenGroupsConfig::STRUCTURAL_ONLY,
-    ] {
+    for strategy in [FLATTEN_STRICT, FLATTEN_STRUCTURAL_ONLY] {
         for (packages, source, expected) in [
             // `physics` gives `\sin` an optional `[...]` exponent slot.
             (
@@ -759,11 +737,7 @@ fn groups_that_no_slot_could_capture_still_flatten() {
         (&["base", "ams"], r"a\\*{[x]}b", r"a \\* [ x ] b"),
         (&["base", "ams"], r"a{\\}*b", r"a \\ * b"),
     ] {
-        let outcome = run_flatten_groups_with_packages(
-            packages,
-            source,
-            FlattenGroupsConfig::STRUCTURAL_ONLY,
-        );
+        let outcome = run_flatten_groups_with_packages(packages, source, FLATTEN_STRUCTURAL_ONLY);
         assert_eq!(outcome.text, expected, "{source}");
         assert_eq!(outcome.report.guard_hits.argument_capture, 0, "{source}");
     }
@@ -771,8 +745,7 @@ fn groups_that_no_slot_could_capture_still_flatten() {
 
 #[test]
 fn known_commands_and_nonadjacent_groups_keep_the_existing_flattening_behavior() {
-    let outcome =
-        run_flatten_groups_with_config(r"\cos{a}{b}+{c}", FlattenGroupsConfig::STRUCTURAL_ONLY);
+    let outcome = run_flatten_groups_with_config(r"\cos{a}{b}+{c}", FLATTEN_STRUCTURAL_ONLY);
     assert_eq!(outcome.text, r"\cos a b + c");
     assert_eq!(outcome.report.guard_hits.unknown_command_arguments, 0);
 }

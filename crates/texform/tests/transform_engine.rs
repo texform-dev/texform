@@ -264,7 +264,10 @@ fn document_transform_preserves_parse_once_workflow() {
                     ..RewriteConfig::DEFAULT
                 },
                 finalize_ast: FinalizeAstConfig::ENABLED,
-                flatten_groups: FlattenGroupsConfig::STRUCTURAL_ONLY,
+                flatten_groups: FlattenGroupsConfig {
+                    enabled: true,
+                    preserve_rendered_spacing: false,
+                },
             },
         )
         .expect("transform should succeed");
