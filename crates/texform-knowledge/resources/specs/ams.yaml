@@ -153,14 +153,14 @@ commands:
     argspec: ''
     allowed_mode: math
   - name: shoveleft
-    kind: declarative
-    argspec: ''
+    kind: prefix
+    argspec: m
     allowed_mode: math
     tags:
       - spacing
   - name: shoveright
-    kind: declarative
-    argspec: ''
+    kind: prefix
+    argspec: m
     allowed_mode: math
     tags:
       - spacing

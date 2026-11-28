@@ -27,10 +27,6 @@ commands:
     kind: prefix
     argspec: m
     allowed_mode: math
-  - name: ketbra
-    kind: prefix
-    argspec: m m
-    allowed_mode: math
   - name: Ketbra
     kind: prefix
     argspec: m m
