@@ -3,6 +3,29 @@
 All notable changes to TeXForm are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). A single version number covers the Rust crate ([crates.io](https://crates.io/crates/texform)), the Python package ([PyPI](https://pypi.org/project/texform/)), and the JavaScript package ([npm](https://www.npmjs.com/package/texform)).
+## [0.12.0] - 2026-11-28
+
+### Added
+
+- **Breaking:** Load packages in request order and check consumed rule definitions
+- Add the `upgreek`, `mathtools`, `cancel`, `extpfeil`, and `textcomp` packages
+- **Breaking:** Add `:CS` control-sequence and `:R` real value kinds
+- Expose the default knowledge packages
+- Recognize amsmath and LaTeX kernel commands that MathJax lacks
+- Add `vphantom-drop` rule
+- Add physics matrix alias rules
+- Add `ensuremath-expand` rule
+- Add mathtools environment rewrites
+- Rewrite amsmath and kernel commands that MathJax lacks
+
+### Fixed
+
+- Accept empty entries in key-value arguments
+- Stop skipping row-break spaces in darray
+- Align `ams` shove commands and drop `braket` `ketbra`
+- Parse environment positions as names
+- Converge boundary separation inside the engine loop
+- Skip separators for brackets no scalar slot can close
 
 ## [0.11.0] - 2026-11-23
 
